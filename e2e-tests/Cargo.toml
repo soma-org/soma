@@ -1,0 +1,17 @@
+[package]
+name = "e2e-tests"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+types.workspace = true
+test-cluster.workspace = true
+rand.workspace = true
+node.workspace = true
+futures.workspace = true
+tracing-subscriber.workspace = true
+bcs.workspace = true
+msim.workspace = true
+tokio = { git = "https://github.com/mystenmark/tokio-madsim-fork.git", rev = "e47aafebf98e9c1734a8848a1876d5946c44bdd1", package = "real_tokio", features = [
+    "full",
+] }

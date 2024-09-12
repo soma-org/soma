@@ -1,0 +1,34 @@
+use serde::{Deserialize, Serialize};
+
+use crate::base::{Round, SequenceNumber};
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, Copy)]
+pub struct ExecutionIndices {
+    /// The round number of the last committed leader.
+    pub last_committed_round: Round,
+    /// The index of the last sub-DAG that was executed (either fully or partially).
+    pub sub_dag_index: SequenceNumber,
+    /// The index of the last transaction was executed (used for crash-recovery).
+    pub transaction_index: SequenceNumber,
+}
+
+impl Ord for ExecutionIndices {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (
+            self.last_committed_round,
+            self.sub_dag_index,
+            self.transaction_index,
+        )
+            .cmp(&(
+                other.last_committed_round,
+                other.sub_dag_index,
+                other.transaction_index,
+            ))
+    }
+}
+
+impl PartialOrd for ExecutionIndices {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}

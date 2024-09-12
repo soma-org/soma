@@ -1,0 +1,15 @@
+[package]
+name = "node"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+authority.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+types.workspace = true
+tracing.workspace = true
+arc-swap.workspace = true
+futures.workspace = true
+parking_lot.workspace = true
+msim.workspace = true

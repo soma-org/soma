@@ -1,0 +1,29 @@
+[package]
+name = "types"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+serde.workspace = true
+rand.workspace = true
+fastcrypto.workspace = true
+anyhow.workspace = true
+eyre.workspace = true
+bcs.workspace = true
+serde_repr.workspace = true
+thiserror.workspace = true
+multiaddr.workspace = true
+tracing.workspace = true
+tonic.workspace = true
+tokio.workspace = true
+tap.workspace = true
+async-trait.workspace = true
+nonempty.workspace = true
+serde_with = { version = "3.8", features = ["schemars_0_8"] }
+derive_more = "0.99.17"
+schemars = { version = "0.8.21", features = ["either"] }
+hex = "0.4.3"
+static_assertions = "1.1.0"
+serde-name = "0.2.1"
+enum_dispatch = "^0.3"
+roaring = "0.10.6"

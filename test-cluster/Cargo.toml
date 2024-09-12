@@ -1,0 +1,19 @@
+[package]
+name = "test-cluster"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+node.workspace = true
+types.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+rand.workspace = true
+msim.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+fastcrypto.workspace = true
+futures.workspace = true
+bcs.workspace = true
+tempfile = "3.12.0"
