@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = ["macros", "shard"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unused = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "warn"
+# cargo = "warn"
+nursery = "warn"
+missing_docs_in_private_items = "warn"
+# pub(crate) is useful for checking dead code
+redundant_pub_crate = { level = "allow", priority = 1 }
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+
+[workspace.dependencies]
+# workspace deps
+macros = { path = "macros" }
+
+# external deps
+tokio = { version = "1.0", features = ["full"] }
+bcs = "0.1.6"
+bs58 = "0.5.1"
+enum_dispatch = "0.3.13"
+fastcrypto = { version = "0.1.8", features = ["copy_key"] }
+fastcrypto-tbls = "0.1.0"
+serde = { version = "1.0", features = ["derive"] }
+bytes = { version = "1.7.1", features = ["serde"] }
+strum_macros = "0.26"
+thiserror = "1.0.63"
+base64 = "0.22.1"
+multiaddr = "0.18.1"
+tracing = "0.1.40"
+eyre = "0.6.12"
+rand = "0.8.5"
+serde_repr = "0.1.19"
+url = { version = "2.5.2", features = ["serde"] }
