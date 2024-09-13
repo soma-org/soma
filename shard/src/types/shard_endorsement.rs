@@ -26,7 +26,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardEndorsementAPI)]
 pub enum ShardEndorsement {
     V1(ShardEndorsementV1),
@@ -39,7 +39,7 @@ pub trait ShardEndorsementAPI {
     fn shard_ref(&self) -> &ShardRef;
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShardEndorsementV1 {
     scores: Vec<Score>,
     manifest: Manifest,
@@ -69,123 +69,6 @@ impl ShardEndorsementAPI for ShardEndorsementV1 {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct SignedShardEndorsement {
-    shard_endorsement: ShardEndorsement,
-    signature: Bytes,
-}
-
-#[derive(Serialize, Deserialize)]
-struct InnerShardEndorsementDigest([u8; DIGEST_LENGTH]);
-
-fn compute_inner_shard_endorsement_digest(
-    shard_endorsement: &ShardEndorsement,
-) -> ShardResult<InnerShardEndorsementDigest> {
-    let mut hasher = DefaultHashFunction::new();
-    hasher.update(bcs::to_bytes(shard_endorsement).map_err(ShardError::SerializationFailure)?);
-    Ok(InnerShardEndorsementDigest(hasher.finalize().into()))
-}
-
-fn to_shard_endorsement_scoped_message(
-    digest: InnerShardEndorsementDigest,
-) -> ScopedMessage<InnerShardEndorsementDigest> {
-    ScopedMessage::new(Scope::ShardEndorsement, digest)
-}
-
-fn compute_shard_endorsement_signature(
-    shard_endorsement: &ShardEndorsement,
-    protocol_keypair: &ProtocolKeyPair,
-) -> ShardResult<ProtocolKeySignature> {
-    let digest = compute_inner_shard_endorsement_digest(shard_endorsement)?;
-    let message = bcs::to_bytes(&to_shard_endorsement_scoped_message(digest))
-        .map_err(ShardError::SerializationFailure)?;
-    Ok(protocol_keypair.sign(&message))
-}
-fn verify_shard_endorsement_signature(
-    shard_endorsement: &ShardEndorsement,
-    signature: &[u8],
-    protocol_pubkey: &ProtocolPublicKey,
-) -> ShardResult<()> {
-    let digest = compute_inner_shard_endorsement_digest(shard_endorsement)?;
-    let message = bcs::to_bytes(&to_shard_endorsement_scoped_message(digest))
-        .map_err(ShardError::SerializationFailure)?;
-    let sig =
-        ProtocolKeySignature::from_bytes(signature).map_err(ShardError::MalformedSignature)?;
-    protocol_pubkey
-        .verify(&message, &sig)
-        .map_err(ShardError::SignatureVerificationFailure)
-}
-
-impl Deref for SignedShardEndorsement {
-    type Target = ShardEndorsement;
-
-    fn deref(&self) -> &Self::Target {
-        &self.shard_endorsement
-    }
-}
-
-#[derive(Clone)]
-pub struct VerifiedShardEndorsement {
-    block: Arc<SignedShardEndorsement>,
-    // add digest or request
-    serialized: Bytes,
-}
-
-impl VerifiedShardEndorsement {
-    pub(crate) fn new(signed_shard_endorsement: SignedShardEndorsement, serialized: Bytes) -> Self {
-        Self {
-            block: Arc::new(signed_shard_endorsement),
-            serialized,
-        }
-    }
-}
-
-/// Digest of a `ShardEndorsement` which covers the `ShardEndorsement` in Bytes format.
-#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ShardEndorsementDigest([u8; DIGEST_LENGTH]);
-
-impl ShardEndorsementDigest {
-    /// Lexicographic min & max digest.
-    pub const MIN: Self = Self([u8::MIN; DIGEST_LENGTH]);
-    pub const MAX: Self = Self([u8::MAX; DIGEST_LENGTH]);
-}
-
-impl Hash for ShardEndorsementDigest {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.0[..8]);
-    }
-}
-
-impl From<ShardEndorsementDigest> for Digest<{ DIGEST_LENGTH }> {
-    fn from(hd: ShardEndorsementDigest) -> Self {
-        Digest::new(hd.0)
-    }
-}
-
-impl fmt::Display for ShardEndorsementDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-                .get(0..4)
-                .ok_or(fmt::Error)?
-        )
-    }
-}
-
-impl fmt::Debug for ShardEndorsementDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-        )
-    }
-}
-
-impl AsRef<[u8]> for ShardEndorsementDigest {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
+macros::generate_signed_type!(ShardEndorsement);
+macros::generate_digest_type!(SignedShardEndorsement);
+macros::generate_verified_type!(SignedShardEndorsement);

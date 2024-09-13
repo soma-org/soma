@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 /// CommitIndex references a specific commit in a vector
 type CommitIndex = u32;
 
+// TODO: use the macros when actual commit is added...
+
 /// Represents the hash digest of a commit
 #[derive(Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 struct CommitDigest([u8; DIGEST_LENGTH]);

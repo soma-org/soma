@@ -24,7 +24,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[enum_dispatch(ShardInputAPI)]
 pub enum ShardInput {
     V1(ShardInputV1),
@@ -38,7 +38,7 @@ pub trait ShardInputAPI {
     fn modality(&self) -> &Modality;
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShardInputV1 {
     transaction_certificate: TransactionCertificate,
     shard_secret: ShardSecret,
@@ -77,123 +77,6 @@ impl ShardInputAPI for ShardInputV1 {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct SignedShardInput {
-    shard_input: ShardInput,
-    signature: Bytes,
-}
-
-#[derive(Serialize, Deserialize)]
-struct InnerShardInputDigest([u8; DIGEST_LENGTH]);
-
-fn compute_inner_shard_input_digest(
-    shard_input: &ShardInput,
-) -> ShardResult<InnerShardInputDigest> {
-    let mut hasher = DefaultHashFunction::new();
-    hasher.update(bcs::to_bytes(shard_input).map_err(ShardError::SerializationFailure)?);
-    Ok(InnerShardInputDigest(hasher.finalize().into()))
-}
-
-fn to_shard_input_scoped_message(
-    digest: InnerShardInputDigest,
-) -> ScopedMessage<InnerShardInputDigest> {
-    ScopedMessage::new(Scope::ShardInput, digest)
-}
-
-fn compute_shard_input_signature(
-    shard_input: &ShardInput,
-    protocol_keypair: &ProtocolKeyPair,
-) -> ShardResult<ProtocolKeySignature> {
-    let digest = compute_inner_shard_input_digest(shard_input)?;
-    let message = bcs::to_bytes(&to_shard_input_scoped_message(digest))
-        .map_err(ShardError::SerializationFailure)?;
-    Ok(protocol_keypair.sign(&message))
-}
-fn verify_shard_input_signature(
-    shard_input: &ShardInput,
-    signature: &[u8],
-    protocol_pubkey: &ProtocolPublicKey,
-) -> ShardResult<()> {
-    let digest = compute_inner_shard_input_digest(shard_input)?;
-    let message = bcs::to_bytes(&to_shard_input_scoped_message(digest))
-        .map_err(ShardError::SerializationFailure)?;
-    let sig =
-        ProtocolKeySignature::from_bytes(signature).map_err(ShardError::MalformedSignature)?;
-    protocol_pubkey
-        .verify(&message, &sig)
-        .map_err(ShardError::SignatureVerificationFailure)
-}
-
-impl Deref for SignedShardInput {
-    type Target = ShardInput;
-
-    fn deref(&self) -> &Self::Target {
-        &self.shard_input
-    }
-}
-
-#[derive(Clone)]
-pub struct VerifiedShardInput {
-    block: Arc<SignedShardInput>,
-    // add digest or request
-    serialized: Bytes,
-}
-
-impl VerifiedShardInput {
-    pub(crate) fn new(signed_shard_input: SignedShardInput, serialized: Bytes) -> Self {
-        Self {
-            block: Arc::new(signed_shard_input),
-            serialized,
-        }
-    }
-}
-
-/// Digest of a `ShardInput` which covers the `ShardInput` in Bytes format.
-#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ShardInputDigest([u8; DIGEST_LENGTH]);
-
-impl ShardInputDigest {
-    /// Lexicographic min & max digest.
-    pub const MIN: Self = Self([u8::MIN; DIGEST_LENGTH]);
-    pub const MAX: Self = Self([u8::MAX; DIGEST_LENGTH]);
-}
-
-impl Hash for ShardInputDigest {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.0[..8]);
-    }
-}
-
-impl From<ShardInputDigest> for Digest<{ DIGEST_LENGTH }> {
-    fn from(hd: ShardInputDigest) -> Self {
-        Digest::new(hd.0)
-    }
-}
-
-impl fmt::Display for ShardInputDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-                .get(0..4)
-                .ok_or(fmt::Error)?
-        )
-    }
-}
-
-impl fmt::Debug for ShardInputDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-        )
-    }
-}
-
-impl AsRef<[u8]> for ShardInputDigest {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
+macros::generate_signed_type!(ShardInput);
+macros::generate_digest_type!(SignedShardInput);
+macros::generate_verified_type!(SignedShardInput);

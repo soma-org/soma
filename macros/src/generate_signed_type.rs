@@ -20,7 +20,7 @@ pub(crate) fn generate_signed_type(input: TokenStream) -> TokenStream {
 
     /// `#signed_name` contains a `#name` instance and its corresponding signature.
     ///
-    /// The signature is computed by serializing the `MacroTest` instance and hashing it
+    /// The signature is computed by serializing the `#name` instance and hashing it
     /// to produce an inner digest used solely for signing. This inner digest is then
     /// wrapped in a `ScopedMessage` with a `Scope` that matches the struct name.
     /// Scopes help prevent malicious signature reuse across different domains.
@@ -29,28 +29,28 @@ pub(crate) fn generate_signed_type(input: TokenStream) -> TokenStream {
     /// Note: The recommended way to refer to a signed type is by computing a digest that
     /// includes the signature. This ensures that different valid signatures for the same
     /// content result in different digests.
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct #signed_name {
-        /// The underlying `MacroTest` instance
-        inner: MacroTest,
+        /// The underlying `#name` instance
+        inner: #name,
         /// The byte representation of the signature
         signature: bytes::Bytes,
     }
 
-    /// A private type representing the digest of `MacroTest`.
+    /// A private type representing the digest of `#name`.
     #[derive(Serialize, Deserialize)]
     struct #inner_digest_name([u8; DIGEST_LENGTH]);
 
     impl std::ops::Deref for #signed_name {
-        type Target = MacroTest;
+        type Target = #name;
 
         fn deref(&self) -> &Self::Target {
             &self.inner
         }
     }
 
-    impl MacroTest {
-        /// Signs the `MacroTest` instance using the provided keypair.
+    impl #name {
+        /// Signs the `#name` instance using the provided keypair.
         ///
         /// This method internally calculates an inner digest, scopes the message,
         /// and derives the signature.
@@ -70,21 +70,21 @@ pub(crate) fn generate_signed_type(input: TokenStream) -> TokenStream {
             })
         }
 
-        /// Computes the inner digest of the `MacroTest` instance.
+        /// Computes the inner digest of the `#name` instance.
         ///
-        /// This method serializes the `MacroTest` using `bcs`, then hashes the result.
-        fn inner_digest(&self) -> ShardResult<InnerMacroTestDigest> {
+        /// This method serializes the `#name` using `bcs`, then hashes the result.
+        fn inner_digest(&self) -> ShardResult<#inner_digest_name> {
             let mut hasher = DefaultHashFunction::new();
             hasher.update(bcs::to_bytes(self).map_err(ShardError::SerializationFailure)?);
-            Ok(InnerMacroTestDigest(hasher.finalize().into()))
+            Ok(#inner_digest_name(hasher.finalize().into()))
         }
 
-        /// Creates a `ScopedMessage` with `Scope::MacroTest` for the given digest.
-        const fn scoped_message(digest: InnerMacroTestDigest) -> ScopedMessage<InnerMacroTestDigest> {
-            ScopedMessage::new(Scope::MacroTest, digest)
+        /// Creates a `ScopedMessage` with `Scope::#name` for the given digest.
+        const fn scoped_message(digest: #inner_digest_name) -> ScopedMessage<#inner_digest_name> {
+            ScopedMessage::new(Scope::#name, digest)
         }
 
-        /// Computes the signature for the `MacroTest` instance.
+        /// Computes the signature for the `#name` instance.
         ///
         /// This method calls `inner_digest`, `scoped_message`, and then signs the resulting message.
         fn compute_signature(&self, keypair: &ProtocolKeyPair) -> ShardResult<ProtocolKeySignature> {
@@ -98,8 +98,8 @@ pub(crate) fn generate_signed_type(input: TokenStream) -> TokenStream {
     impl #signed_name {
         /// Verifies the signature of the `#signed_name` instance.
         ///
-        /// This method computes a hash digest of the inner `MacroTest`, converts it to a
-        /// `ScopedMessage` with `Scope::MacroTest`, and verifies the signature against
+        /// This method computes a hash digest of the inner `#name`, converts it to a
+        /// `ScopedMessage` with `Scope::#name`, and verifies the signature against
         /// the provided public key.
         ///
         /// # Arguments
@@ -112,7 +112,7 @@ pub(crate) fn generate_signed_type(input: TokenStream) -> TokenStream {
         pub fn verify_signature(&self, public_key: &ProtocolPublicKey) -> ShardResult<()> {
             let inner = &self.inner;
             let digest = inner.inner_digest()?;
-            let message = bcs::to_bytes(&MacroTest::scoped_message(digest))
+            let message = bcs::to_bytes(&#name::scoped_message(digest))
                 .map_err(ShardError::SerializationFailure)?;
             let sig = ProtocolKeySignature::from_bytes(&self.signature)
                 .map_err(ShardError::MalformedSignature)?;

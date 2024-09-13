@@ -115,84 +115,26 @@ pub struct SignedTransaction {
     pub tx_signatures: Vec<ProtocolKeySignature>,
 }
 
-impl SignedTransaction {
-    fn serialize(&self) -> ShardResult<Bytes> {
-        let bytes = bcs::to_bytes(self).map_err(ShardError::SerializationFailure)?;
-        Ok(bytes.into())
-    }
-    fn digest(&self) -> ShardResult<TransactionDigest> {
-        let mut hasher = DefaultHashFunction::new();
-        hasher.update(self.serialize()?);
-        Ok(TransactionDigest(hasher.finalize().into()))
-    }
-}
-/// Digest of a `Transaction` which covers the `Transaction` in Bytes format.
-#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TransactionDigest([u8; DIGEST_LENGTH]);
-
-impl TransactionDigest {
-    /// Lexicographic min & max digest.
-    pub const MIN: Self = Self([u8::MIN; DIGEST_LENGTH]);
-    pub const MAX: Self = Self([u8::MAX; DIGEST_LENGTH]);
-}
-
-impl Hash for TransactionDigest {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.0[..8]);
-    }
-}
-
-impl From<TransactionDigest> for Digest<{ DIGEST_LENGTH }> {
-    fn from(hd: TransactionDigest) -> Self {
-        Digest::new(hd.0)
-    }
-}
-
-impl fmt::Display for TransactionDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-                .get(0..4)
-                .ok_or(fmt::Error)?
-        )
-    }
-}
-
-impl fmt::Debug for TransactionDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-        )
-    }
-}
-
-impl AsRef<[u8]> for TransactionDigest {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
+macros::generate_digest_type!(SignedTransaction);
+macros::generate_verified_type!(SignedTransaction);
 
 /// `TransactionRef` uniquely identifies a `VerifiedTransaction` via `digest`. It also contains the slot
 /// info (round and author) so it can be used in logic such as aggregating stakes for a round.
 #[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TransactionRef {
-    pub digest: TransactionDigest,
+    pub digest: SignedTransactionDigest,
 }
 
 impl TransactionRef {
     pub const MIN: Self = Self {
-        digest: TransactionDigest::MIN,
+        digest: SignedTransactionDigest::MIN,
     };
 
     pub const MAX: Self = Self {
-        digest: TransactionDigest::MAX,
+        digest: SignedTransactionDigest::MAX,
     };
 
-    pub fn new(digest: TransactionDigest) -> Self {
+    pub fn new(digest: SignedTransactionDigest) -> Self {
         Self { digest }
     }
 }
@@ -213,26 +155,5 @@ impl fmt::Debug for TransactionRef {
 impl Hash for TransactionRef {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(&self.digest.0[..8]);
-    }
-}
-
-#[derive(Clone)]
-pub struct VerifiedTransaction {
-    block: Arc<SignedTransaction>,
-    digest: TransactionDigest,
-    serialized: Bytes,
-}
-
-impl VerifiedTransaction {
-    pub(crate) fn new(
-        signed_transaction: SignedTransaction,
-        digest: TransactionDigest,
-        serialized: Bytes,
-    ) -> Self {
-        Self {
-            block: Arc::new(signed_transaction),
-            digest,
-            serialized,
-        }
     }
 }

@@ -95,7 +95,7 @@ type BlockTimestampMs = u64;
 
 /// BlockHeader is an enum that switches on versions. Because BlockHeaders can be sent independently
 /// over the wire, they need to be versioned seperately from Blocks.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(BlockHeaderAPI)]
 pub(crate) enum BlockHeader {
     V1(BlockHeaderV1),
@@ -123,7 +123,7 @@ trait BlockHeaderAPI {
 }
 
 /// [`BlockHeaderV1`] is the first version of the block header.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct BlockHeaderV1 {
     /// The epoch that this block header was produced.
     epoch: Epoch,
@@ -224,7 +224,7 @@ impl BlockHeaderAPI for BlockHeaderV1 {
 ///
 /// Note: `BlockHeaderDigest` is computed over this struct, so any added field (without `#[serde(skip)]`)
 /// will affect the values of `BlockHeaderDigest` and `BlockHeaderRef`.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct SignedBlockHeader {
     inner: BlockHeader,
     signature: Bytes,
