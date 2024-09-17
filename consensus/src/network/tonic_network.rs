@@ -33,6 +33,7 @@ use super::{
     NetworkClient, NetworkManager, NetworkService,
 };
 use tokio_stream::{iter, Iter};
+use cfg_if::cfg_if;
 
 // Maximum bytes size in a single fetch_blocks() response.
 const MAX_FETCH_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
@@ -531,12 +532,15 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
         let authority = self.context.committee.authority(self.context.own_index);
         // By default, bind to the unspecified address to allow the actual address to be assigned.
         // But bind to localhost if it is requested.
-        let own_address = if authority.address.is_localhost_ip() {
-            authority.address.clone()
-        } else {
-            authority.address.with_zero_ip()
-        };
-        let own_address = to_socket_addr(&own_address).unwrap();
+        // let own_address = if authority.address.is_localhost_ip() {
+        //     authority.address.clone()
+        // } else {
+        //     authority.address.with_zero_ip()
+        // };
+
+        let own_address = to_socket_addr(&authority.address).unwrap();
+        info!("Binding to address: {0}", own_address);
+        // panic!();
         let service = TonicServiceProxy::new(self.context.clone(), service);
 
         // TODO: Add tracing middleware, keepalive and message size limits
@@ -561,34 +565,46 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
             if Instant::now() > deadline {
                 panic!("Failed to start server: timeout");
             }
-            // TODO: Handle msim TCPListener case
-            // TODO: Try creating an ephemeral port to test the highest allowed send and recv buffer sizes.
 
-            info!("Binding tonic server to address {:?}", own_address);
+            cfg_if!(
+                if #[cfg(msim)] {
+                    // msim does not have a working stub for TcpSocket. So create TcpListener directly.
+                    match tokio::net::TcpListener::bind(own_address).await {
+                        Ok(listener) => break listener,
+                        Err(e) => {
+                            warn!("Error binding to {own_address}: {e:?}");
+                            panic!();
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+                } else {
+                    info!("Binding tonic server to address {:?}", own_address);
+                    // TODO: Try creating an ephemeral port to test the highest allowed send and recv buffer sizes.
+                    // Create TcpListener via TCP socket.
+                    let socket = create_socket(&own_address);
+                    match socket.bind(own_address) {
+                        Ok(_) => {
+                            info!(
+                                "Successfully bound tonic server to address {:?}",
+                                own_address
+                            )
+                        }
+                        Err(e) => {
+                            warn!("Error binding to {own_address}: {e:?}");
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            continue;
+                        }
+                    };
 
-            // Create TcpListener via TCP socket.
-            let socket = create_socket(&own_address);
-            match socket.bind(own_address) {
-                Ok(_) => {
-                    info!(
-                        "Successfully bound tonic server to address {:?}",
-                        own_address
-                    )
+                    match socket.listen(MAX_CONNECTIONS_BACKLOG) {
+                        Ok(listener) => break listener,
+                        Err(e) => {
+                            warn!("Error listening at {own_address}: {e:?}");
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                    }
                 }
-                Err(e) => {
-                    warn!("Error binding to {own_address}: {e:?}");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    continue;
-                }
-            };
-
-            match socket.listen(MAX_CONNECTIONS_BACKLOG) {
-                Ok(listener) => break listener,
-                Err(e) => {
-                    warn!("Error listening at {own_address}: {e:?}");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-            }
+            );
         };
 
         let connections_info = Arc::new(ConnectionsInfo::new(self.context.clone()));
@@ -826,13 +842,13 @@ fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
     let mut iter = addr.iter();
 
     match (iter.next(), iter.next()) {
-        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port))) => {
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
             Ok(format!("{}:{}", ipaddr, port))
         }
-        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port))) => {
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
             Ok(format!("{}:{}", ipaddr, port))
         }
-        (Some(Protocol::Dns(hostname)), Some(Protocol::Udp(port))) => {
+        (Some(Protocol::Dns(hostname)), Some(Protocol::Tcp(port))) => {
             Ok(format!("{}:{}", hostname, port))
         }
 
@@ -886,6 +902,7 @@ fn to_socket_addr(addr: &Multiaddr) -> Result<SocketAddr, &'static str> {
     }
 }
 
+#[cfg(not(msim))]
 fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
     let socket = if address.is_ipv4() {
         tokio::net::TcpSocket::new_v4()

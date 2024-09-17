@@ -10,6 +10,7 @@ pub mod orchestrator;
 pub mod output;
 pub mod quorum_driver;
 pub mod reconfiguration;
+pub mod safe_client;
 pub mod server;
 pub mod service;
 pub mod signature_verifier;

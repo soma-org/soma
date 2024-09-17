@@ -9,21 +9,20 @@ use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use tokio::time::{sleep, timeout};
 use tracing::{debug, error, info, instrument, trace, trace_span, warn, Instrument};
 use types::{
-    base::{AuthorityName, ConciseableName}, client::Config, committee::{Committee, CommitteeWithNetworkMetadata, VotingPower}, crypto::ConciseAuthorityPublicKeyBytes, digests::TransactionDigest, error::{SomaError, SomaResult}, grpc::{HandleCertificateRequest, HandleCertificateResponse}, quorum_driver::QuorumDriverResponse, system_state::{EpochStartSystemState, EpochStartSystemStateTrait}, transaction::{CertifiedTransaction, Transaction}
+    base::{AuthorityName, ConciseableName}, client::Config, committee::{Committee, CommitteeWithNetworkMetadata, VotingPower}, crypto::{AuthoritySignInfo, ConciseAuthorityPublicKeyBytes}, digests::TransactionDigest, error::{SomaError, SomaResult}, grpc::{HandleCertificateRequest, HandleCertificateResponse}, quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse}, system_state::{EpochStartSystemState, EpochStartSystemStateTrait}, transaction::{CertifiedTransaction, SignedTransaction, Transaction}
 };
 use utils::agg::{quorum_map_then_reduce_with_timeout, AsyncResult, ReduceOutput};
 use types::committee::CommitteeTrait;
 use crate::{
     client::{
         make_network_authority_clients_with_network_config, AuthorityAPI, NetworkAuthorityClient,
-    },
-    committee_store::CommitteeStore,
+    }, committee_store::CommitteeStore, safe_client::SafeClient, stake_aggregator::{InsertResult, StakeAggregator}
 };
 
 #[derive(Debug)]
 struct ProcessTransactionState {
     // The list of signatures gathered at any point
-    // tx_signatures: StakeAggregator<AuthoritySignInfo, true>,
+    tx_signatures: StakeAggregator<AuthoritySignInfo, true>,
     // The list of errors gathered at any point
     errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>,
     // If there are conflicting transactions, we note them down and may attempt to retry
@@ -113,7 +112,7 @@ pub struct AuthorityAggregator<A: Clone> {
     /// to use concise validator public keys.
     pub validator_display_names: Arc<HashMap<AuthorityName, String>>,
     /// How to talk to this committee.
-    pub authority_clients: Arc<BTreeMap<AuthorityName, Arc<A>>>,
+    pub authority_clients: Arc<BTreeMap<AuthorityName, Arc<SafeClient<A>>>>,
 
     // pub timeouts: TimeoutConfig,
     /// Store here for clone during re-config.
@@ -130,20 +129,34 @@ impl<A: Clone> AuthorityAggregator<A> {
         Self {
             committee: Arc::new(committee),
             validator_display_names,
-            authority_clients: Arc::new(
-                authority_clients
-                    .into_iter()
-                    .map(|(name, api)| {
-                        (
-                            name,
-                            Arc::new(api),
-                        )
-                    })
-                    .collect(),
+            authority_clients: create_safe_clients(
+                authority_clients,
+                &committee_store,
             ),
             committee_store,
         }
     }
+}
+
+fn create_safe_clients<A: Clone>(
+    authority_clients: BTreeMap<AuthorityName, A>,
+    committee_store: &Arc<CommitteeStore>,
+) -> Arc<BTreeMap<AuthorityName, Arc<SafeClient<A>>>> {
+    Arc::new(
+        authority_clients
+            .into_iter()
+            .map(|(name, api)| {
+                (
+                    name,
+                    Arc::new(SafeClient::new(
+                        api,
+                        committee_store.clone(),
+                        name,
+                    )),
+                )
+            })
+            .collect(),
+    )
 }
 
 impl AuthorityAggregator<NetworkAuthorityClient> {
@@ -209,7 +222,7 @@ where
         authority_errors: &mut HashMap<AuthorityName, SomaError>,
     ) -> Result<S, SomaError>
     where
-        FMap: Fn(AuthorityName, Arc<A>) -> AsyncResult<'a, S, SomaError> + Send + Clone + 'a,
+        FMap: Fn(AuthorityName, Arc<SafeClient<A>>) -> AsyncResult<'a, S, SomaError> + Send + Clone + 'a,
         S: Send,
     {
         let start = tokio::time::Instant::now();
@@ -227,7 +240,7 @@ where
 
             let mut futures = FuturesUnordered::<BoxFuture<'a, Event<S>>>::new();
 
-            let start_req = |name: AuthorityName, client: Arc<A>| {
+            let start_req = |name: AuthorityName, client: Arc<SafeClient<A>>| {
                 let map_each_authority = map_each_authority.clone();
                 Box::pin(async move {
                     trace!(name=?name.concise(), now = ?tokio::time::Instant::now() - start, "new request");
@@ -333,7 +346,7 @@ where
         description: String,
     ) -> Result<S, SomaError>
     where
-        FMap: Fn(AuthorityName, Arc<A>) -> AsyncResult<'a, S, SomaError> + Send + Clone + 'a,
+        FMap: Fn(AuthorityName, Arc<SafeClient<A>>) -> AsyncResult<'a, S, SomaError> + Send + Clone + 'a,
         S: Send,
     {
         let mut authority_errors = HashMap::new();
@@ -384,7 +397,7 @@ where
         );
         let committee = self.committee.clone();
         let state = ProcessTransactionState {
-            // tx_signatures: StakeAggregator::new(committee.clone()),
+            tx_signatures: StakeAggregator::new(committee.clone()),
             errors: vec![],
 
             retryable: true,
@@ -414,27 +427,27 @@ where
                 |mut state, name, weight, response| {
                     let display_name = validator_display_names.get(&name).unwrap_or(&name.concise().to_string()).clone();
                     Box::pin(async move {
-                        // match self.handle_process_transaction_response(
-                        //     tx_digest, &mut state, response, name, weight,
-                        // ) {
-                        //     Ok(Some(result)) => {
-                        //         return ReduceOutput::Success(result);
-                        //     }
-                        //     Ok(None) => {},
-                        //     Err(err) => {
-                        //         let concise_name = name.concise();
-                        //         debug!(?tx_digest, name=?concise_name, weight, "Error processing transaction from validator: {:?}", err);
-                        //         let (retryable, categorized) = err.is_retryable();
-                        //         if !categorized {
-                        //             // TODO: Should minimize possible uncategorized errors here
-                        //             // use ERROR for now to make them easier to spot.
-                        //             error!(?tx_digest, "uncategorized tx error: {err}");
-                        //         }
+                        match self.handle_process_transaction_response(
+                            tx_digest, &mut state, response, name, weight,
+                        ) {
+                            Ok(Some(result)) => {
+                                return ReduceOutput::Success(result);
+                            }
+                            Ok(None) => {},
+                            Err(err) => {
+                                let concise_name = name.concise();
+                                debug!(?tx_digest, name=?concise_name, weight, "Error processing transaction from validator: {:?}", err);
+                                // let (retryable, categorized) = err.is_retryable();
+                                // if !categorized {
+                                //     // TODO: Should minimize possible uncategorized errors here
+                                //     // use ERROR for now to make them easier to spot.
+                                //     error!(?tx_digest, "uncategorized tx error: {err}");
+                                // }
                                
-                        //         state.errors.push((err, vec![name], weight));
+                                state.errors.push((err, vec![name], weight));
 
-                        //     }
-                        // };
+                            }
+                        };
                         ReduceOutput::Continue(state)
                     })
                 },
@@ -448,6 +461,117 @@ where
             }
         }
     }
+
+    fn handle_process_transaction_response(
+        &self,
+        tx_digest: &TransactionDigest,
+        state: &mut ProcessTransactionState,
+        response: SomaResult<PlainTransactionInfoResponse>,
+        name: AuthorityName,
+        weight: VotingPower,
+    ) -> SomaResult<Option<ProcessTransactionResult>> {
+        match response {
+            Ok(PlainTransactionInfoResponse::Signed(signed)) => {
+                debug!(?tx_digest, name=?name.concise(), weight, "Received signed transaction from validator handle_transaction");
+                self.handle_transaction_response_with_signed(state, signed)
+            }
+            Ok(PlainTransactionInfoResponse::ExecutedWithCert(cert)) => {
+                debug!(?tx_digest, name=?name.concise(), weight, "Received prev certificate and effects from validator handle_transaction");
+                self.handle_transaction_response_with_executed(state, Some(cert))
+            }
+            Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(_)) => {
+                debug!(?tx_digest, name=?name.concise(), weight, "Received prev effects from validator handle_transaction");
+                self.handle_transaction_response_with_executed(state, None)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn handle_transaction_response_with_signed(
+        &self,
+        state: &mut ProcessTransactionState,
+        plain_tx: SignedTransaction,
+    ) -> SomaResult<Option<ProcessTransactionResult>> {
+        match state.tx_signatures.insert(plain_tx.clone()) {
+            InsertResult::NotEnoughVotes {
+                bad_votes,
+                bad_authorities,
+            } => {
+                // state.non_retryable_stake += bad_votes;
+                if bad_votes > 0 {
+                    state.errors.push((
+                        SomaError::InvalidSignature {
+                            error: "Individual signature verification failed".to_string(),
+                        },
+                        bad_authorities,
+                        bad_votes,
+                    ));
+                }
+                Ok(None)
+            }
+            InsertResult::Failed { error } => Err(error),
+            InsertResult::QuorumReached(cert_sig) => {
+                let certificate =
+                    CertifiedTransaction::new_from_data_and_sig(plain_tx.into_data(), cert_sig);
+                certificate.verify_committee_sigs_only(&self.committee)?;
+                Ok(Some(ProcessTransactionResult::Certified {
+                    certificate,
+                    newly_formed: true,
+                }))
+            }
+        }
+    }
+
+    fn handle_transaction_response_with_executed(
+        &self,
+        state: &mut ProcessTransactionState,
+        certificate: Option<CertifiedTransaction>,
+        // plain_tx_effects: SignedTransactionEffects,
+        // events: TransactionEvents,
+    ) -> SomaResult<Option<ProcessTransactionResult>> {
+        match certificate {
+            Some(certificate) if certificate.epoch() == self.committee.epoch => {
+                // If we get a certificate in the same epoch, then we use it.
+                // A certificate in a past epoch does not guarantee finality
+                // and validators may reject to process it.
+                Ok(Some(ProcessTransactionResult::Certified {
+                    certificate,
+                    newly_formed: false,
+                }))
+            }
+            _ => {
+                // If we get 2f+1 effects, it's a proof that the transaction
+                // has already been finalized. This works because validators would re-sign effects for transactions
+                // that were finalized in previous epochs.
+                // let digest = plain_tx_effects.data().digest();
+                // match state.effects_map.insert(digest, plain_tx_effects.clone()) {
+                //     InsertResult::NotEnoughVotes {
+                //         bad_votes,
+                //         bad_authorities,
+                //     } => {
+                //         state.non_retryable_stake += bad_votes;
+                //         if bad_votes > 0 {
+                //             state.errors.push((
+                //                 SuiError::InvalidSignature {
+                //                     error: "Individual signature verification failed".to_string(),
+                //                 },
+                //                 bad_authorities,
+                //                 bad_votes,
+                //             ));
+                //         }
+                //         Ok(None)
+                //     }
+                //     InsertResult::Failed { error } => Err(error),
+                //     InsertResult::QuorumReached(cert_sig) => {
+                        Ok(Some(ProcessTransactionResult::Executed(
+                            
+                        )))
+                //     }
+                // }
+            }
+        }
+    }
+
 
     fn handle_process_transaction_error(
         &self,
@@ -634,6 +758,7 @@ where
     ) -> SomaResult<Option<QuorumDriverResponse>> {
         match response {
             Ok(HandleCertificateResponse {
+                succeeded,
             }) => {
                 debug!(
                     ?tx_digest,

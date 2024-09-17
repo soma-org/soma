@@ -18,7 +18,6 @@ pub struct ValidatorGenesisConfig {
     pub account_key_pair: SomaKeyPair,
     pub network_key_pair: NetworkKeyPair,
     pub network_address: Multiaddr,
-    pub p2p_address: Multiaddr,
     pub consensus_address: Multiaddr,
 }
 
@@ -123,6 +122,7 @@ impl ValidatorGenesisConfigBuilder {
 
     pub fn build<R: rand::RngCore + rand::CryptoRng>(self, rng: &mut R) -> ValidatorGenesisConfig {
         let ip = self.ip.unwrap_or_else(local_ip_utils::get_new_ip);
+        let localhost = local_ip_utils::localhost_for_testing();
         let protocol_key_pair = self
             .protocol_key_pair
             .unwrap_or_else(|| get_key_pair_from_rng(rng).1);
@@ -135,20 +135,19 @@ impl ValidatorGenesisConfigBuilder {
             NetworkKeyPair::new(get_key_pair_from_rng(rng).1),
         );
 
-        let (network_address, p2p_address, consensus_address) =
-            if let Some(offset) = self.port_offset {
-                (
-                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
-                    local_ip_utils::new_deterministic_udp_address_for_testing(&ip, offset + 1),
-                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
-                )
-            } else {
-                (
-                    local_ip_utils::new_tcp_address_for_testing(&ip),
-                    local_ip_utils::new_udp_address_for_testing(&ip),
-                    local_ip_utils::new_tcp_address_for_testing(&ip),
-                )
-            };
+        let (network_address, consensus_address) = if let Some(offset) = self.port_offset {
+            (
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
+                // local_ip_utils::new_deterministic_udp_address_for_testing(&ip, offset + 1),
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
+            )
+        } else {
+            (
+                local_ip_utils::new_tcp_address_for_testing(&ip),
+                // local_ip_utils::new_udp_address_for_testing(&ip),
+                local_ip_utils::new_tcp_address_for_testing(&ip),
+            )
+        };
 
         ValidatorGenesisConfig {
             key_pair: protocol_key_pair,
@@ -156,7 +155,6 @@ impl ValidatorGenesisConfigBuilder {
             account_key_pair: account_key_pair.into(),
             network_key_pair,
             network_address,
-            p2p_address,
             consensus_address,
         }
     }

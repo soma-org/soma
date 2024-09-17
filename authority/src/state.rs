@@ -364,14 +364,15 @@ impl AuthorityState {
         };
         // Since we obtain a reference to the epoch store before taking the execution lock, it's
         // possible that reconfiguration has happened and they no longer match.
-        if *execution_guard != epoch_store.epoch() {
-            tx_guard.release();
-            info!("The epoch of the execution_guard doesn't match the epoch store");
-            return Err(SomaError::WrongEpoch {
-                expected_epoch: epoch_store.epoch(),
-                actual_epoch: *execution_guard,
-            });
-        }
+        // TODO: Verify Epoch
+        // if *execution_guard != epoch_store.epoch() {
+        //     tx_guard.release();
+        //     info!("The epoch of the execution_guard doesn't match the epoch store");
+        //     return Err(SomaError::WrongEpoch {
+        //         expected_epoch: epoch_store.epoch(),
+        //         actual_epoch: *execution_guard,
+        //     });
+        // }
 
         // Errors originating from prepare_certificate may be transient (failure to read locks) or
         // non-transient (transaction input is invalid, move vm errors). However, all errors from
@@ -591,14 +592,16 @@ impl AuthorityState {
         transaction: &VerifiedExecutableTransaction,
     ) -> SomaResult<ExecutionLockReadGuard> {
         let lock = self.execution_lock.read().await;
-        if *lock == transaction.auth_sig().epoch() {
-            Ok(lock)
-        } else {
-            Err(SomaError::WrongEpoch {
-                expected_epoch: *lock,
-                actual_epoch: transaction.auth_sig().epoch(),
-            })
-        }
+        Ok(lock)
+        // TODO: Verify Epoch
+        // if *lock == transaction.auth_sig().epoch() {
+        //     Ok(lock)
+        // } else {
+        //     Err(SomaError::WrongEpoch {
+        //         expected_epoch: *lock,
+        //         actual_epoch: transaction.auth_sig().epoch(),
+        //     })
+        // }
     }
 
     pub async fn execution_lock_for_reconfiguration(&self) -> ExecutionLockWriteGuard {

@@ -175,7 +175,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                             v.network_key_pair.public().into(),
                             v.worker_key_pair.public().into(),
                             v.network_address.clone(),
-                            v.p2p_address.clone(),
+                            v.consensus_address.clone(),
                             v.network_address.clone(),
                             10000 / validators.len() as u64,
                         )

@@ -10,6 +10,7 @@ use fastcrypto::ed25519::Ed25519KeyPair;
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::Mutex;
+use tracing::info;
 use types::parameters::Parameters;
 use types::{committee::EpochId, node_config::NodeConfig};
 use types::{

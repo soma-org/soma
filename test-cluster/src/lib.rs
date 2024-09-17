@@ -290,9 +290,11 @@ impl TestClusterBuilder {
     }
 
     async fn start_swarm(&mut self) -> Result<Swarm, anyhow::Error> {
-        let mut builder: SwarmBuilder = Swarm::builder().committee_size(
-            NonZeroUsize::new(self.num_validators.unwrap_or(NUM_VALIDATORS)).unwrap(),
-        );
+        let mut builder: SwarmBuilder = Swarm::builder()
+            .committee_size(
+                NonZeroUsize::new(self.num_validators.unwrap_or(NUM_VALIDATORS)).unwrap(),
+            )
+            .with_fullnode_count(1);
 
         if let Some(genesis_config) = self.genesis_config.take() {
             builder = builder.with_genesis_config(genesis_config);

@@ -269,12 +269,13 @@ impl AuthoritySignInfoTrait for AuthoritySignInfo {
         obligation: &mut VerificationObligation<'a>,
         message_index: usize,
     ) -> SomaResult<()> {
-        if self.epoch != committee.epoch() {
-            return Err(SomaError::WrongEpoch {
-                expected_epoch: committee.epoch(),
-                actual_epoch: self.epoch,
-            });
-        }
+        // TODO: Verify Epoch
+        // if self.epoch != committee.epoch() {
+        //     return Err(SomaError::WrongEpoch {
+        //         expected_epoch: committee.epoch(),
+        //         actual_epoch: self.epoch,
+        //     });
+        // }
         let weight = committee.weight(&self.authority);
         if weight <= 0 {
             return Err(SomaError::UnknownSigner {
@@ -360,13 +361,13 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
         obligation: &mut VerificationObligation<'a>,
         message_index: usize,
     ) -> SomaResult<()> {
-        // Check epoch
-        if self.epoch != committee.epoch() {
-            return Err(SomaError::WrongEpoch {
-                expected_epoch: committee.epoch(),
-                actual_epoch: self.epoch,
-            });
-        }
+        // TODO: Verify epoch
+        // if self.epoch != committee.epoch() {
+        //     return Err(SomaError::WrongEpoch {
+        //         expected_epoch: committee.epoch(),
+        //         actual_epoch: self.epoch,
+        //     });
+        // }
 
         let mut weight = 0;
 

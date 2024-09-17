@@ -188,7 +188,7 @@ impl AuthorityKeyPairWithPath {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ConsensusConfig {
     // Base consensus DB path for all epochs.
@@ -217,9 +217,15 @@ pub struct ConsensusConfig {
     pub submit_delay_step_override_millis: Option<u64>,
 
     pub parameters: Option<Parameters>,
+
+    pub address: Multiaddr,
 }
 
 impl ConsensusConfig {
+    pub fn address(&self) -> &Multiaddr {
+        &self.address
+    }
+
     pub fn db_path(&self) -> &Path {
         &self.db_path
     }

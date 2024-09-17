@@ -12,6 +12,5 @@ futures.workspace = true
 tracing-subscriber.workspace = true
 bcs.workspace = true
 msim.workspace = true
-tokio = { git = "https://github.com/mystenmark/tokio-madsim-fork.git", rev = "e47aafebf98e9c1734a8848a1876d5946c44bdd1", package = "real_tokio", features = [
-    "full",
-] }
+tokio.workspace = true
+tracing.workspace = true

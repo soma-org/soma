@@ -5,6 +5,7 @@ use itertools::izip;
 use nonempty::NonEmpty;
 use parking_lot::{Mutex, MutexGuard};
 use tokio::{runtime::Handle, sync::oneshot, time::timeout};
+use tracing::info;
 use types::crypto::{AuthoritySignInfoTrait, VerificationObligation};
 use types::envelope::Message;
 use types::transaction::verify_sender_signed_data_message_signatures;
@@ -127,12 +128,13 @@ impl SignatureVerifier {
     ) -> SomaResult<VerifiedCertificate> {
         // this is the only innocent error we are likely to encounter - filter it before we poison
         // a whole batch.
-        if cert.auth_sig().epoch != self.committee.epoch() {
-            return Err(SomaError::WrongEpoch {
-                expected_epoch: self.committee.epoch(),
-                actual_epoch: cert.auth_sig().epoch,
-            });
-        }
+        // TODO: Verify Epoch
+        // if cert.auth_sig().epoch != self.committee.epoch() {
+        //     return Err(SomaError::WrongEpoch {
+        //         expected_epoch: self.committee.epoch(),
+        //         actual_epoch: cert.auth_sig().epoch,
+        //     });
+        // }
 
         self.verify_cert_inner(cert).await
     }
@@ -246,11 +248,7 @@ fn batch_verify(committee: &Committee, certs: &[CertifiedTransaction]) -> SomaRe
     let mut obligation = VerificationObligation::default();
 
     for cert in certs {
-        let idx = obligation.add_message(
-            cert.data(),
-            cert.epoch(),
-            Intent::consensus_app(cert.scope()),
-        );
+        let idx = obligation.add_message(cert.data(), cert.epoch(), Intent::soma_transaction());
         cert.auth_sig()
             .add_to_verification_obligation(committee, &mut obligation, idx)?;
     }

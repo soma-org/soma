@@ -46,7 +46,9 @@ pub struct HandleTransactionResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct HandleCertificateResponse {}
+pub struct HandleCertificateResponse {
+    pub succeeded: bool,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HandleCertificateRequest {

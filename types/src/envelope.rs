@@ -10,10 +10,14 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     base::AuthorityName,
-    committee::EpochId,
-    crypto::{AuthoritySignInfo, AuthoritySignature, AuthorityStrongQuorumSignInfo, EmptySignInfo},
+    committee::{Committee, EpochId},
+    crypto::{
+        AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature,
+        AuthorityStrongQuorumSignInfo, EmptySignInfo,
+    },
+    error::SomaResult,
     intent::{Intent, IntentScope},
-    transaction::CertificateProof,
+    transaction::{CertificateProof, SenderSignedData},
 };
 
 pub trait Message {
@@ -141,6 +145,13 @@ where
 impl<T: Message + PartialEq, S: PartialEq> PartialEq for Envelope<T, S> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data && self.auth_signature == other.auth_signature
+    }
+}
+
+impl Envelope<SenderSignedData, AuthoritySignInfo> {
+    pub fn verify_committee_sigs_only(&self, committee: &Committee) -> SomaResult {
+        self.auth_signature
+            .verify_secure(self.data(), Intent::soma_transaction(), committee)
     }
 }
 

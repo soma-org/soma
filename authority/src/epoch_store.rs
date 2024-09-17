@@ -1125,6 +1125,7 @@ impl AuthorityPerEpochStore {
                     // TODO: check if the signer is the same as the validator
                     let mut state = self.system_state.write();
                     return state.request_add_validator(
+                        signer,
                         args.pubkey_bytes,
                         args.network_pubkey_bytes,
                         args.worker_pubkey_bytes,
@@ -1136,7 +1137,7 @@ impl AuthorityPerEpochStore {
                 StateTransactionKind::RemoveValidator(args) => {
                     // TODO: check if the signer is the same as the validator
                     let mut state = self.system_state.write();
-                    return state.request_remove_validator(args.pubkey_bytes);
+                    return state.request_remove_validator(signer, args.pubkey_bytes);
                 }
             },
             TransactionKind::EndOfEpochTransaction(tx) => match tx {

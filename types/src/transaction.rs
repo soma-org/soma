@@ -393,6 +393,11 @@ impl CertifiedTransaction {
         self.auth_sig()
             .verify_secure(self.data(), Intent::soma_transaction(), committee)
     }
+
+    pub fn verify_committee_sigs_only(&self, committee: &Committee) -> SomaResult {
+        self.auth_sig()
+            .verify_secure(self.data(), Intent::soma_transaction(), committee)
+    }
 }
 
 impl VerifiedTransaction {

@@ -1,17 +1,21 @@
+use crate::{
+    adapter::ConsensusAdapter, epoch_store::AuthorityPerEpochStore, state::AuthorityState,
+    tonic_gen::validator_server::Validator,
+};
+use nonempty::nonempty;
 use nonempty::NonEmpty;
+use std::sync::Arc;
 use tonic::{async_trait, Response};
-use tracing::{error_span, Instrument};
+use tracing::{error_span, info, Instrument};
 use types::{
     consensus::ConsensusTransaction,
     error::SomaError,
-    grpc::{HandleCertificateRequest, HandleCertificateResponse, HandleTransactionResponse, SubmitCertificateResponse},
+    grpc::{
+        HandleCertificateRequest, HandleCertificateResponse, HandleTransactionResponse,
+        SubmitCertificateResponse,
+    },
     transaction::{CertifiedTransaction, Transaction},
 };
-use nonempty::nonempty;
-use crate::{
-    adapter::ConsensusAdapter, epoch_store::AuthorityPerEpochStore, state::AuthorityState, tonic_gen::validator_server::Validator,
-};
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct ValidatorService {
@@ -67,8 +71,7 @@ impl ValidatorService {
         //     }
         // }
 
-        let transaction = epoch_store
-            .verify_transaction(transaction)?;
+        let transaction = epoch_store.verify_transaction(transaction)?;
 
         let tx_digest = transaction.digest();
 
@@ -187,10 +190,8 @@ impl ValidatorService {
         if !wait_for_effects {
             // It is useful to enqueue owned object transaction for execution locally,
             // even when we are not returning effects to user
-            let certificates_without_shared_objects = verified_certificates
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>();
+            let certificates_without_shared_objects =
+                verified_certificates.iter().cloned().collect::<Vec<_>>();
             if !certificates_without_shared_objects.is_empty() {
                 self.state.enqueue_certificates_for_execution(
                     certificates_without_shared_objects,
@@ -214,7 +215,7 @@ impl ValidatorService {
 
                 Ok::<_, SomaError>(HandleCertificateResponse {
                     // effects: signed_effects.into_inner(),
-                    
+                    succeeded: true,
                 })
             },
         ))
@@ -228,48 +229,40 @@ impl ValidatorService {
     async fn submit_certificate_impl(
         &self,
         request: tonic::Request<CertifiedTransaction>,
-    ) -> Result<tonic::Response<SubmitCertificateResponse>, tonic::Status>{
+    ) -> Result<tonic::Response<SubmitCertificateResponse>, tonic::Status> {
         let epoch_store = self.state.load_epoch_store_one_call_per_task();
         let certificate = request.into_inner();
 
         let span = error_span!("submit_certificate", tx_digest = ?certificate.digest());
-        self.handle_certificates(
-            nonempty![certificate],
-            &epoch_store,
-            false,
-        )
-        .instrument(span)
-        .await
-        .map(|executed| {
-            tonic::Response::new(SubmitCertificateResponse {
-                executed: executed.map(|mut x| x.remove(0)).map(Into::into),
+        self.handle_certificates(nonempty![certificate], &epoch_store, false)
+            .instrument(span)
+            .await
+            .map(|executed| {
+                tonic::Response::new(SubmitCertificateResponse {
+                    executed: executed.map(|mut x| x.remove(0)).map(Into::into),
+                })
             })
-        })
     }
 
     async fn handle_certificate_impl(
         &self,
         request: tonic::Request<HandleCertificateRequest>,
-    ) -> Result<tonic::Response<HandleCertificateResponse>, tonic::Status>{
+    ) -> Result<tonic::Response<HandleCertificateResponse>, tonic::Status> {
         let epoch_store = self.state.load_epoch_store_one_call_per_task();
         let request = request.into_inner();
 
-        let span = error_span!("handle_certificate_v3", tx_digest = ?request.certificate.digest());
-        self.handle_certificates(
-            nonempty![request.certificate],
-            &epoch_store,
-            true,
-        )
-        .instrument(span)
-        .await
-        .map(|resp| {
-            tonic::Response::new(
-                resp.expect(
-                    "handle_certificate should not return none with wait_for_effects=true",
+        let span = error_span!("handle_certificate", tx_digest = ?request.certificate.digest());
+        self.handle_certificates(nonempty![request.certificate], &epoch_store, true)
+            .instrument(span)
+            .await
+            .map(|resp| {
+                tonic::Response::new(
+                    resp.expect(
+                        "handle_certificate should not return none with wait_for_effects=true",
+                    )
+                    .remove(0),
                 )
-                .remove(0),
-            )
-        })
+            })
     }
 }
 

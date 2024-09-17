@@ -45,12 +45,18 @@ impl ValidatorConfigBuilder {
             .join(key_path.clone());
 
         let network_address = validator.network_address;
-
+        let consensus_address = validator.consensus_address;
         let consensus_db_path = config_directory.join(CONSENSUS_DB_NAME).join(key_path);
 
         let consensus_config = ConsensusConfig {
+            address: consensus_address,
             db_path: consensus_db_path,
-            ..Default::default()
+            db_pruner_period_secs: None,
+            db_retention_epochs: None,
+            submit_delay_step_override_millis: None,
+            max_submit_position: None,
+            max_pending_transactions: None,
+            parameters: None,
         };
 
         NodeConfig {

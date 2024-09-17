@@ -5,6 +5,7 @@ use eyre::Result;
 use std::{collections::BTreeMap, net::SocketAddr};
 use tonic::transport::Channel;
 use tonic::{metadata::KeyAndValueRef, IntoRequest};
+use tracing::info;
 use types::{
     base::AuthorityName,
     client::{connect, connect_lazy, Config},
@@ -111,7 +112,7 @@ pub fn make_network_authority_clients_with_network_config(
 ) -> BTreeMap<AuthorityName, NetworkAuthorityClient> {
     let mut authority_clients = BTreeMap::new();
     for (name, (_state, network_metadata)) in committee.validators() {
-        let address = network_metadata.network_address.clone();
+        let address = network_metadata.consensus_address.clone();
         let address = address.rewrite_udp_to_tcp();
         let maybe_channel = network_config.connect_lazy(&address).map_err(|e| {
             tracing::error!(

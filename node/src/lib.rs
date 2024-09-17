@@ -510,7 +510,7 @@ impl SomaNode {
         server_builder = server_builder.add_service(ValidatorServer::new(validator_service));
 
         let server = server_builder
-            .bind(config.network_address())
+            .bind(config.consensus_config().unwrap().address())
             .await
             .map_err(|err| anyhow!(err.to_string()))?;
         let local_addr = server.local_addr();

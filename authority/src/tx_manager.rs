@@ -182,13 +182,14 @@ impl TransactionManager {
             // table is consulted. So this behavior is benigh.
             let digest = *pending_cert.certificate.digest();
 
-            if inner.epoch != pending_cert.certificate.epoch() {
-                warn!(
-                    "Ignoring enqueued certificate from wrong epoch. Expected={} Certificate={:?}",
-                    inner.epoch, pending_cert.certificate
-                );
-                continue;
-            }
+            // TODO: verify epoch
+            // if inner.epoch != pending_cert.certificate.epoch() {
+            //     warn!(
+            //         "Ignoring enqueued certificate from wrong epoch. Expected={} Certificate={:?}",
+            //         inner.epoch, pending_cert.certificate
+            //     );
+            //     continue;
+            // }
 
             // skip already pending txes
             if inner.pending_certificates.contains_key(&digest) {

@@ -7,7 +7,7 @@ use fastcrypto::{bls12381, ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use crate::crypto::AuthorityPublicKey;
+use crate::crypto::{AuthorityPublicKey, SomaKeyPair, SomaPublicKey};
 use crate::{
     base::{AuthorityName, SomaAddress},
     committee::{
@@ -225,6 +225,7 @@ impl SystemState {
 
     pub fn request_add_validator(
         &mut self,
+        signer: SomaAddress,
         pubkey_bytes: Vec<u8>,
         network_pubkey_bytes: Vec<u8>,
         worker_pubkey_bytes: Vec<u8>,
@@ -233,7 +234,7 @@ impl SystemState {
         primary_address: Vec<u8>,
     ) -> SomaResult {
         let validator = Validator::new(
-            SomaAddress::from_bytes(&pubkey_bytes).unwrap(),
+            signer,
             PublicKey::from_bytes(&pubkey_bytes).unwrap(),
             crypto::NetworkPublicKey::new(
                 Ed25519PublicKey::from_bytes(&network_pubkey_bytes).unwrap(),
@@ -241,27 +242,31 @@ impl SystemState {
             crypto::NetworkPublicKey::new(
                 Ed25519PublicKey::from_bytes(&worker_pubkey_bytes).unwrap(),
             ),
-            Multiaddr::from_str(&String::from_utf8(net_address).unwrap()).unwrap(),
-            Multiaddr::from_str(&String::from_utf8(p2p_address).unwrap()).unwrap(),
-            Multiaddr::from_str(&String::from_utf8(primary_address).unwrap()).unwrap(),
-            1,
+            Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&p2p_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&primary_address).unwrap()).unwrap(),
+            0,
         );
         self.validators.request_add_validator(validator)
     }
 
-    pub fn request_remove_validator(&mut self, pubkey_bytes: Vec<u8>) -> SomaResult {
-        self.validators
-            .request_remove_validator(SomaAddress::from_bytes(&pubkey_bytes).unwrap())
+    pub fn request_remove_validator(
+        &mut self,
+        signer: SomaAddress,
+        pubkey_bytes: Vec<u8>,
+    ) -> SomaResult {
+        self.validators.request_remove_validator(signer)
     }
 
     pub fn advance_epoch(&mut self, new_epoch: u64, epoch_start_timestamp_ms: u64) -> SomaResult {
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
-        self.epoch += 1;
 
         // Sanity check to make sure we are advancing to the right epoch.
         if new_epoch == self.epoch {
             return Err(SomaError::AdvancedToWrongEpoch);
         }
+
+        self.epoch += 1;
 
         self.validators.advance_epoch();
 
@@ -295,6 +300,7 @@ impl SystemStateTrait for SystemState {
                     (
                         validator.voting_power,
                         NetworkMetadata {
+                            consensus_address: verified_metadata.p2p_address.clone(),
                             network_address: verified_metadata.net_address.clone(),
                             primary_address: verified_metadata.primary_address.clone(),
                         },
@@ -414,6 +420,7 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
                     (
                         validator.voting_power,
                         NetworkMetadata {
+                            consensus_address: validator.p2p_address.clone(),
                             network_address: validator.net_address.clone(),
                             primary_address: validator.primary_address.clone(),
                         },

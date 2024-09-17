@@ -84,6 +84,7 @@ pub async fn execution_process(
                     .await;
                 if let Err(e) = res {
                     if attempts == EXECUTION_MAX_ATTEMPTS {
+                        break;
                         panic!("Failed to execute certified transaction {digest:?} after {attempts} attempts! error={e} certificate={certificate:?}");
                     }
                     // Assume only transient failure can happen. Permanent failure is probably

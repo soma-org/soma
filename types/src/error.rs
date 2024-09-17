@@ -122,6 +122,12 @@ pub enum SomaError {
         signer: AuthorityName,
         conflicting_sig: bool,
     },
+
+    #[error("Validator {authority:?} is faulty in a Byzantine manner: {reason:?}")]
+    ByzantineAuthoritySuspicion {
+        authority: AuthorityName,
+        reason: String,
+    },
 }
 
 impl From<Status> for SomaError {
