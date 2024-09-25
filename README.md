@@ -1,4 +1,4 @@
-# shard-v2
+# Shard
 
 ```bash
 tree -a -I target -I .git
