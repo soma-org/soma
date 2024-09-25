@@ -158,6 +158,7 @@ pub struct LeaderTonicManager {
 }
 
 impl LeaderTonicManager {
+    /// creates a new leader tonic manager
     pub fn new(context: Arc<LeaderContext>, network_keypair: NetworkKeyPair) -> Self {
         Self {
             context: context.clone(),
