@@ -78,7 +78,7 @@ use crate::{
     error::ShardResult,
     types::authority_committee::{AuthorityIndex, Epoch},
     types::commit::CommitVote,
-    types::context::Context,
+    // types::context::Context,
     types::transaction::{SignedTransaction, TransactionRef},
 };
 
@@ -255,19 +255,19 @@ impl SignedBlockHeader {
 
     /// This method only verifies this block's signature. Verification of the full block
     /// should be done via BlockVerifier.
-    fn verify_signature(&self, context: &Context) -> ShardResult<()> {
-        let block_header = &self.inner;
-        let committee = &context.authority_committee;
-        ensure!(
-            committee.is_valid_index(block_header.author()),
-            ShardError::InvalidAuthorityIndex {
-                index: block_header.author(),
-                max: committee.size() - 1
-            }
-        );
-        let authority = committee.authority(block_header.author());
-        verify_block_header_signature(block_header, self.signature(), &authority.protocol_key)
-    }
+    // fn verify_signature(&self, context: &Context) -> ShardResult<()> {
+    //     let block_header = &self.inner;
+    //     let committee = &context.authority_committee;
+    //     ensure!(
+    //         committee.is_valid_index(block_header.author()),
+    //         ShardError::InvalidAuthorityIndex {
+    //             index: block_header.author(),
+    //             max: committee.size() - 1
+    //         }
+    //     );
+    //     let authority = committee.authority(block_header.author());
+    //     verify_block_header_signature(block_header, self.signature(), &authority.protocol_key)
+    // }
 
     /// Serialises the block using the bcs serializer
     fn serialize(&self) -> Result<Bytes, bcs::Error> {

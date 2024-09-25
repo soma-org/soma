@@ -23,6 +23,15 @@ tracing.workspace = true
 rand.workspace = true
 serde_repr.workspace = true
 url.workspace = true
+prost.workspace = true
+async-trait.workspace = true
+tonic.workspace = true
+tower-http.workspace = true
+parking_lot.workspace = true
+tower.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
 
 [lints]
 workspace = true

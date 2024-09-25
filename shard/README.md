@@ -8,3 +8,8 @@ and add the ability to add two functions one that takes a closure that verifies 
 
 3. Add rust dynamic library support to enable ML in rust as well as python.
 ```
+
+# Sep 19
+- fix modality index and modality committee to be more ergonomic
+- split context
+- split core / core threads

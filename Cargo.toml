@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["macros", "shard"]
+members = [ "cli","macros", "shard"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -42,3 +42,10 @@ eyre = "0.6.12"
 rand = "0.8.5"
 serde_repr = "0.1.19"
 url = { version = "2.5.2", features = ["serde"] }
+prost = "0.13.2"
+async-trait = "0.1.82"
+tonic = "0.12.2"
+parking_lot = "0.12.3"
+tower = { version = "0.5.1", features = ["full"] }
+tower-http = { version = "0.5.1", features = ["full"] }
+tonic-build = "0.12.2"

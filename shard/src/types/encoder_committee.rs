@@ -65,36 +65,36 @@ impl<M: ModalityMarker> EncoderCommittee<M> {
     /// Accessors to Committee fields.
 
     /// returns the epoch
-    fn epoch(&self) -> Epoch {
+    pub(crate) fn epoch(&self) -> Epoch {
         self.epoch
     }
 
     /// returns total stake
-    fn total_stake(&self) -> Stake {
+    pub(crate) fn total_stake(&self) -> Stake {
         self.total_stake
     }
 
     /// returns selection threshold
-    fn selection_threshold(&self) -> Count {
+    pub(crate) fn selection_threshold(&self) -> Count {
         self.selection_threshold
     }
     /// returns quorum threshold
-    fn quorum_threshold(&self) -> Count {
+    pub(crate) fn quorum_threshold(&self) -> Count {
         self.quorum_threshold
     }
 
     /// returns stake for a given encoder index (of the specific modality)
-    fn stake(&self, encoder_index: EncoderIndex<M>) -> Stake {
+    pub(crate) fn stake(&self, encoder_index: EncoderIndex<M>) -> Stake {
         self.encoders[encoder_index].stake
     }
 
     /// returns the encoder at a specified encoder index
-    fn encoder(&self, encoder_index: EncoderIndex<M>) -> &Encoder<M> {
+    pub(crate) fn encoder(&self, encoder_index: EncoderIndex<M>) -> &Encoder<M> {
         &self.encoders[encoder_index]
     }
 
     /// returns all the encoders
-    fn encoders(&self) -> impl Iterator<Item = (EncoderIndex<M>, &Encoder<M>)> {
+    pub(crate) fn encoders(&self) -> impl Iterator<Item = (EncoderIndex<M>, &Encoder<M>)> {
         self.encoders
             .iter()
             .enumerate()
@@ -105,17 +105,17 @@ impl<M: ModalityMarker> EncoderCommittee<M> {
     /// Helpers for Committee properties.
 
     /// Returns true if the provided stake has reached validity (f+1).
-    fn reached_selection(&self, count: Count) -> bool {
+    pub(crate) fn reached_selection(&self, count: Count) -> bool {
         count >= self.selection_threshold()
     }
     /// Returns true if the provided stake has reached quorum (2f+1).
-    fn reached_quorum(&self, count: Count) -> bool {
+    pub(crate) fn reached_quorum(&self, count: Count) -> bool {
         count >= self.quorum_threshold()
     }
 
     /// Coverts an index to an EncoderIndex, if valid.
     /// Returns None if index is out of bound.
-    fn to_encoder_index(&self, index: usize) -> Option<EncoderIndex<M>> {
+    pub(crate) fn to_encoder_index(&self, index: usize) -> Option<EncoderIndex<M>> {
         if index < self.encoders.len() {
             Some(EncoderIndex(index as u32, PhantomData))
         } else {
@@ -124,12 +124,12 @@ impl<M: ModalityMarker> EncoderCommittee<M> {
     }
 
     /// Returns true if the provided index is valid.
-    fn is_valid_index(&self, index: EncoderIndex<M>) -> bool {
+    pub(crate) fn is_valid_index(&self, index: EncoderIndex<M>) -> bool {
         index.value() < self.size()
     }
 
     /// Returns number of authorities in the committee.
-    fn size(&self) -> usize {
+    pub(crate) fn size(&self) -> usize {
         self.encoders.len()
     }
 }
@@ -138,7 +138,7 @@ impl<M: ModalityMarker> EncoderCommittee<M> {
 // TODO: switch to arc'ing these details to make the code more efficient if the same encoder
 // is a member of multiple modalities
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Encoder<M: ModalityMarker> {
+pub(crate) struct Encoder<M: ModalityMarker> {
     /// Voting power of the authority in the committee.
     stake: Stake,
     /// Network address for communicating with the authority.
@@ -173,6 +173,10 @@ impl<M: ModalityMarker> EncoderIndex<M> {
     /// returns the value
     const fn value(&self) -> usize {
         self.0 as usize
+    }
+
+    const fn new(index: u32) -> Self {
+        Self(index, PhantomData)
     }
 }
 
