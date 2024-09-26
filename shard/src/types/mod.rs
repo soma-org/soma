@@ -4,7 +4,6 @@ pub(crate) mod checksum;
 pub(crate) mod commit;
 pub(crate) mod context;
 pub(crate) mod encoder_committee;
-pub(crate) mod macro_helper_type;
 pub(crate) mod manifest;
 pub(crate) mod modality;
 pub(crate) mod multiaddr;
