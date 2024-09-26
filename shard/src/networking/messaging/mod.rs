@@ -1,7 +1,7 @@
-mod channel_pool;
-mod encoder_tonic_service;
-mod leader_tonic_service;
-mod tonic;
+pub(crate) mod channel_pool;
+pub(crate) mod encoder_tonic_service;
+pub(crate) mod leader_tonic_service;
+pub(crate) mod tonic;
 
 mod tonic_gen {
     include!(concat!(env!("OUT_DIR"), "/shard.LeaderService.rs"));
@@ -26,6 +26,8 @@ use crate::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::{sync::Arc, time::Duration};
+
+pub(crate) const MESSAGE_TIMEOUT: std::time::Duration = Duration::from_secs(60);
 
 #[async_trait]
 pub(crate) trait LeaderNetworkClient: Send + Sync + Sized + 'static {

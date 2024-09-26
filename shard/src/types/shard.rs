@@ -26,7 +26,7 @@ pub(crate) struct ShardSecret {
     /// the digest that uniquely identifies a manifest
     manifest_digest: ManifestDigest, //TODO: switch to a manifest ref to be more in-line?
     /// the node that will be coordinating communication and selecting the commits
-    leader: NetworkIdentityIndex,
+    pub(crate) leader: NetworkIdentityIndex,
 }
 
 impl ShardSecret {
