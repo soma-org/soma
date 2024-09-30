@@ -3,6 +3,7 @@ use arc_swap::ArcSwap;
 use authority::{
     adapter::{ConsensusAdapter, SubmitToConsensus},
     aggregator::AuthorityAggregator,
+    cache::build_execution_cache,
     client::NetworkAuthorityClient,
     committee_store::CommitteeStore,
     epoch_store::AuthorityPerEpochStore,
@@ -14,6 +15,8 @@ use authority::{
     service::ValidatorService,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
     state::AuthorityState,
+    store::AuthorityStore,
+    store_tables::AuthorityPerpetualTables,
     throughput::{
         ConsensusThroughputCalculator, ConsensusThroughputProfiler, ThroughputProfileRanges,
     },
@@ -33,7 +36,7 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
-use tracing::{info, warn};
+use tracing::{error_span, info, warn, Instrument};
 use types::{
     base::AuthorityName,
     client::Config,
@@ -46,7 +49,9 @@ use types::{
     system_state::{
         EpochStartSystemState, EpochStartSystemStateTrait, SystemState, SystemStateTrait,
     },
-    transaction::Transaction,
+    transaction::{
+        CertificateProof, ExecutableTransaction, Transaction, VerifiedExecutableTransaction,
+    },
 };
 
 pub mod handle;
@@ -121,20 +126,23 @@ impl SomaNode {
             &genesis_committee,
         ));
 
-        // let store =
-        // AuthorityStore::open(perpetual_tables, &genesis, &config, &prometheus_registry).await?;
+        let perpetual_tables = Arc::new(AuthorityPerpetualTables::open(
+            &config.db_path().join("store"),
+        ));
+        let is_genesis = perpetual_tables
+            .database_is_empty()
+            .expect("Database read should not fail at init.");
+        let store = AuthorityStore::open(perpetual_tables, &genesis, &config).await?;
 
-        let cur_epoch = 0; //store.get_recovery_epoch_at_restart()?;
+        let cur_epoch = store.get_recovery_epoch_at_restart()?;
         let committee = committee_store
             .get_committee(&cur_epoch)?
             .expect("Committee of the current epoch must exist");
+        let epoch_start_configuration = store
+            .get_epoch_start_configuration()?
+            .expect("EpochStartConfiguration of the current epoch must exist");
 
-        let epoch_start_configuration =
-            EpochStartConfiguration::new(starting_system_state.clone().into_epoch_start_state());
-
-        // let epoch_start_configuration = store
-        //     .get_epoch_start_configuration()?
-        //     .expect("EpochStartConfiguration of the current epoch must exist");
+        let cache_traits = build_execution_cache(&store);
 
         let auth_agg = {
             Arc::new(ArcSwap::new(Arc::new(
@@ -205,24 +213,25 @@ impl SomaNode {
             epoch_store.clone(),
             committee_store.clone(),
             config.clone(),
+            cache_traits.clone(),
         )
         .await;
 
-        // TODO: ensure genesis txn was executed
+        // ensure genesis txn was executed
         if epoch_store.epoch() == 0 {
-            // let txn = &genesis.transaction();
-            // let transaction =
-            //     sui_types::executable_transaction::VerifiedExecutableTransaction::new_unchecked(
-            //         sui_types::executable_transaction::ExecutableTransaction::new_from_data_and_sig(
-            //             genesis.transaction().data().clone(),
-            //             sui_types::executable_transaction::CertificateProof::Checkpoint(0, 0),
-            //         ),
-            //     );
-            // state
-            //     .try_execute_immediately(&transaction, None, &epoch_store)
-            //     .instrument(span)
-            //     .await
-            //     .unwrap();
+            let txn = &genesis.transaction();
+            let span = error_span!("genesis_txn", tx_digest = ?txn.digest());
+            let transaction = VerifiedExecutableTransaction::new_unchecked(
+                ExecutableTransaction::new_from_data_and_sig(
+                    genesis.transaction().data().clone(),
+                    CertificateProof::new_system(0),
+                ),
+            );
+            state
+                .try_execute_immediately(&transaction, None, &epoch_store)
+                .instrument(span)
+                .await
+                .unwrap();
         }
 
         // checkpoint_store
@@ -544,7 +553,7 @@ impl SomaNode {
 
             let cur_epoch_store = self.state.load_epoch_store_one_call_per_task();
 
-            let latest_system_state = self
+            let (latest_system_state, _) = self
                 .state
                 .create_and_execute_advance_epoch_tx(&cur_epoch_store, timestamp_ms)
                 .await?;

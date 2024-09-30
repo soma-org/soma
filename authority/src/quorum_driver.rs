@@ -565,12 +565,12 @@ where
                     debug!(?tx_digest, "Transaction processing succeeded");
                     (certificate, newly_formed)
                 }
-                Ok(ProcessTransactionResult::Executed()) => {
+                Ok(ProcessTransactionResult::Executed(effects_cert)) => {
                     debug!(
                         ?tx_digest,
                         "Transaction processing succeeded with effects directly"
                     );
-                    let response = QuorumDriverResponse {};
+                    let response = QuorumDriverResponse { effects_cert };
                     quorum_driver.notify(transaction, &Ok(response), old_retry_times + 1);
                     return;
                 }

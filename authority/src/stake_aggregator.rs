@@ -124,15 +124,14 @@ impl<const STRENGTH: bool> StakeAggregator<AuthoritySignInfo, STRENGTH> {
         envelope: Envelope<T, AuthoritySignInfo>,
     ) -> InsertResult<AuthorityQuorumSignInfo<STRENGTH>> {
         let (data, sig) = envelope.into_data_and_sig();
-        // TODO: Verify Epoch
-        // if self.committee.epoch != sig.epoch {
-        //     return InsertResult::Failed {
-        //         error: SomaError::WrongEpoch {
-        //             expected_epoch: self.committee.epoch,
-        //             actual_epoch: sig.epoch,
-        //         },
-        //     };
-        // }
+        if self.committee.epoch != sig.epoch {
+            return InsertResult::Failed {
+                error: SomaError::WrongEpoch {
+                    expected_epoch: self.committee.epoch,
+                    actual_epoch: sig.epoch,
+                },
+            };
+        }
         match self.insert_generic(sig.authority, sig) {
             InsertResult::QuorumReached(_) => {
                 match AuthorityQuorumSignInfo::<STRENGTH>::new_from_auth_sign_infos(

@@ -1,6 +1,7 @@
 use std::{
     cmp::max,
     collections::{HashMap, HashSet},
+    sync::Arc,
 };
 
 use parking_lot::RwLock;
@@ -8,11 +9,11 @@ use tokio::{sync::mpsc::UnboundedSender, time::Instant};
 use tracing::{instrument, trace, warn};
 use types::{
     committee::EpochId,
-    digests::TransactionDigest,
+    digests::{TransactionDigest, TransactionEffectsDigest},
     transaction::{VerifiedCertificate, VerifiedExecutableTransaction},
 };
 
-use crate::epoch_store::AuthorityPerEpochStore;
+use crate::{cache::TransactionCacheRead, epoch_store::AuthorityPerEpochStore};
 
 /// Minimum capacity of HashMaps used in TransactionManager.
 const MIN_HASHMAP_CAPACITY: usize = 1000;
@@ -30,12 +31,17 @@ pub struct TransactionManager {
     // before the inner lock (for read or write) can be acquired. During reconfiguration, we acquire
     // the outer lock for write, to ensure that no other threads can be running while we reconfigure.
     inner: RwLock<RwLock<Inner>>,
+
+    transaction_cache_read: Arc<dyn TransactionCacheRead>,
 }
 
 #[derive(Clone, Debug)]
 pub struct PendingCertificate {
     // Certified transaction to be executed.
     pub certificate: VerifiedExecutableTransaction,
+    // When executing from checkpoint, the certified effects digest is provided, so that forks can
+    // be detected prior to committing the transaction.
+    pub expected_effects_digest: Option<TransactionEffectsDigest>,
 }
 
 struct Inner {
@@ -82,10 +88,12 @@ impl TransactionManager {
         // transaction_cache_read: Arc<dyn TransactionCacheRead>,
         epoch_store: &AuthorityPerEpochStore,
         tx_ready_certificates: UnboundedSender<PendingCertificate>,
+        transaction_cache_read: Arc<dyn TransactionCacheRead>,
     ) -> TransactionManager {
         let transaction_manager = TransactionManager {
             inner: RwLock::new(RwLock::new(Inner::new(epoch_store.epoch()))),
             tx_ready_certificates,
+            transaction_cache_read,
         };
         transaction_manager.enqueue(epoch_store.all_pending_execution().unwrap(), epoch_store);
         transaction_manager
@@ -115,50 +123,52 @@ impl TransactionManager {
         certs: Vec<VerifiedExecutableTransaction>,
         epoch_store: &AuthorityPerEpochStore,
     ) {
+        let certs = certs.into_iter().map(|cert| (cert, None)).collect();
         self.enqueue_impl(certs, epoch_store)
     }
 
-    // #[instrument(level = "trace", skip_all)]
-    // pub(crate) fn enqueue_with_expected_effects_digest(
-    //     &self,
-    //     certs: Vec<(VerifiedExecutableTransaction, TransactionEffectsDigest)>,
-    //     epoch_store: &AuthorityPerEpochStore,
-    // ) {
-    //     let certs = certs
-    //         .into_iter()
-    //         .map(|(cert, fx)| (cert, Some(fx)))
-    //         .collect();
-    //     self.enqueue_impl(certs, epoch_store)
-    // }
+    #[instrument(level = "trace", skip_all)]
+    pub(crate) fn enqueue_with_expected_effects_digest(
+        &self,
+        certs: Vec<(VerifiedExecutableTransaction, TransactionEffectsDigest)>,
+        epoch_store: &AuthorityPerEpochStore,
+    ) {
+        let certs = certs
+            .into_iter()
+            .map(|(cert, fx)| (cert, Some(fx)))
+            .collect();
+        self.enqueue_impl(certs, epoch_store)
+    }
 
     fn enqueue_impl(
         &self,
-        certs: Vec<
-            VerifiedExecutableTransaction, // Option<TransactionEffectsDigest>,
-        >,
+        certs: Vec<(
+            VerifiedExecutableTransaction,
+            Option<TransactionEffectsDigest>,
+        )>,
         epoch_store: &AuthorityPerEpochStore,
     ) {
         let reconfig_lock = self.inner.read();
 
-        // TODO: filter out already executed certs
-        // let certs: Vec<_> = certs
-        //     .into_iter()
-        //     .filter(|(cert, _)| {
-        //         let digest = *cert.digest();
-        //         // skip already executed txes
-        //         if self
-        //             .transaction_cache_read
-        //             .is_tx_already_executed(&digest)
-        //             .unwrap_or_else(|err| {
-        //                 panic!("Failed to check if tx is already executed: {:?}", err)
-        //             })
-        //         {
-        //             false
-        //         } else {
-        //             true
-        //         }
-        //     })
-        //     .collect();
+        // filter out already executed certs
+        let certs: Vec<_> = certs
+            .into_iter()
+            .filter(|(cert, _)| {
+                let digest = *cert.digest();
+                // skip already executed txes
+                if self
+                    .transaction_cache_read
+                    .is_tx_already_executed(&digest)
+                    .unwrap_or_else(|err| {
+                        panic!("Failed to check if tx is already executed: {:?}", err)
+                    })
+                {
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
 
         // After this point, the function cannot return early and must run to the end. Otherwise,
         // it can lead to data inconsistencies and potentially some transactions will never get
@@ -170,8 +180,11 @@ impl TransactionManager {
         let mut pending = Vec::new();
         let pending_cert_enqueue_time = Instant::now();
 
-        for cert in certs {
-            pending.push(PendingCertificate { certificate: cert });
+        for (cert, expected_effects_digest) in certs {
+            pending.push(PendingCertificate {
+                certificate: cert,
+                expected_effects_digest,
+            });
         }
 
         for mut pending_cert in pending {
@@ -182,14 +195,13 @@ impl TransactionManager {
             // table is consulted. So this behavior is benigh.
             let digest = *pending_cert.certificate.digest();
 
-            // TODO: verify epoch
-            // if inner.epoch != pending_cert.certificate.epoch() {
-            //     warn!(
-            //         "Ignoring enqueued certificate from wrong epoch. Expected={} Certificate={:?}",
-            //         inner.epoch, pending_cert.certificate
-            //     );
-            //     continue;
-            // }
+            if inner.epoch != pending_cert.certificate.epoch() {
+                warn!(
+                    "Ignoring enqueued certificate from wrong epoch. Expected={} Certificate={:?}",
+                    inner.epoch, pending_cert.certificate
+                );
+                continue;
+            }
 
             // skip already pending txes
             if inner.pending_certificates.contains_key(&digest) {
@@ -199,14 +211,14 @@ impl TransactionManager {
             if inner.executing_certificates.contains(&digest) {
                 continue;
             }
-            // TODO: skip already executed txes
-            // let is_tx_already_executed = self
-            //     .transaction_cache_read
-            //     .is_tx_already_executed(&digest)
-            //     .expect("Check if tx is already executed should not fail");
-            // if is_tx_already_executed {
-            //     continue;
-            // }
+            // skip already executed txes
+            let is_tx_already_executed = self
+                .transaction_cache_read
+                .is_tx_already_executed(&digest)
+                .expect("Check if tx is already executed should not fail");
+            if is_tx_already_executed {
+                continue;
+            }
 
             // Ready transactions can start to execute.
             // Send to execution driver for execution.

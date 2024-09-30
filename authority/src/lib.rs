@@ -1,5 +1,6 @@
 pub mod adapter;
 pub mod aggregator;
+pub mod cache;
 pub mod client;
 pub mod committee_store;
 pub mod epoch_store;
@@ -17,6 +18,8 @@ pub mod signature_verifier;
 pub mod stake_aggregator;
 pub mod start_epoch;
 pub mod state;
+pub mod store;
+pub mod store_tables;
 pub mod throughput;
 pub mod tx_manager;
 pub mod tx_validator;

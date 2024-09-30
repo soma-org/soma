@@ -269,13 +269,12 @@ impl AuthoritySignInfoTrait for AuthoritySignInfo {
         obligation: &mut VerificationObligation<'a>,
         message_index: usize,
     ) -> SomaResult<()> {
-        // TODO: Verify Epoch
-        // if self.epoch != committee.epoch() {
-        //     return Err(SomaError::WrongEpoch {
-        //         expected_epoch: committee.epoch(),
-        //         actual_epoch: self.epoch,
-        //     });
-        // }
+        if self.epoch != committee.epoch() {
+            return Err(SomaError::WrongEpoch {
+                expected_epoch: committee.epoch(),
+                actual_epoch: self.epoch,
+            });
+        }
         let weight = committee.weight(&self.authority);
         if weight <= 0 {
             return Err(SomaError::UnknownSigner {
@@ -361,13 +360,12 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
         obligation: &mut VerificationObligation<'a>,
         message_index: usize,
     ) -> SomaResult<()> {
-        // TODO: Verify epoch
-        // if self.epoch != committee.epoch() {
-        //     return Err(SomaError::WrongEpoch {
-        //         expected_epoch: committee.epoch(),
-        //         actual_epoch: self.epoch,
-        //     });
-        // }
+        if self.epoch != committee.epoch() {
+            return Err(SomaError::WrongEpoch {
+                expected_epoch: committee.epoch(),
+                actual_epoch: self.epoch,
+            });
+        }
 
         let mut weight = 0;
 
@@ -646,6 +644,7 @@ mod bcs_signable {
     impl BcsSignable for crate::transaction::TransactionData {}
     impl BcsSignable for crate::transaction::SenderSignedData {}
     impl BcsSignable for crate::committee::Committee {}
+    impl BcsSignable for crate::effects::TransactionEffects {}
 }
 
 impl<T, W> Signable<W> for T

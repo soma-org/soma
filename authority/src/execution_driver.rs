@@ -29,12 +29,12 @@ pub async fn execution_process(
     // Loop whenever there is a signal that a new transactions is ready to process.
     loop {
         let certificate;
-
+        let expected_effects_digest;
         tokio::select! {
             result = rx_ready_certificates.recv() => {
                 if let Some(pending_cert) = result {
                     certificate = pending_cert.certificate;
-
+                    expected_effects_digest = pending_cert.expected_effects_digest;
                 } else {
                     // Should only happen after the AuthorityState has shut down and tx_ready_certificate
                     // has been dropped by TransactionManager.
@@ -80,11 +80,10 @@ pub async fn execution_process(
                
                 attempts += 1;
                 let res = authority
-                    .try_execute_immediately(&certificate,  &epoch_store)
+                    .try_execute_immediately(&certificate, expected_effects_digest,  &epoch_store)
                     .await;
                 if let Err(e) = res {
                     if attempts == EXECUTION_MAX_ATTEMPTS {
-                        break;
                         panic!("Failed to execute certified transaction {digest:?} after {attempts} attempts! error={e} certificate={certificate:?}");
                     }
                     // Assume only transient failure can happen. Permanent failure is probably

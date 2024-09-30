@@ -2,12 +2,21 @@ use std::{pin::Pin, sync::Arc};
 
 use arc_swap::{ArcSwap, Guard};
 use parking_lot::Mutex;
+use tap::TapFallible;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn, Instrument};
 use types::checkpoint::CheckpointTimestamp;
+use types::digests::TransactionEffectsDigest;
+use types::effects::{
+    self, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
+    VerifiedCertifiedTransactionEffects, VerifiedSignedTransactionEffects,
+};
+use types::envelope::Message;
+use types::error::ExecutionError;
 use types::system_state::{EpochStartSystemStateTrait, SystemState};
-use types::transaction::EndOfEpochTransactionKind;
+use types::transaction::{EndOfEpochTransactionKind, SenderSignedData};
+use types::tx_outputs::TransactionOutputs;
 use types::{
     base::AuthorityName,
     committee::{Committee, EpochId},
@@ -23,6 +32,7 @@ use types::{
     },
 };
 
+use crate::cache::{ExecutionCacheTraitPointers, ExecutionCacheWrite, TransactionCacheRead};
 use crate::epoch_store::CertTxGuard;
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
@@ -64,6 +74,9 @@ pub struct AuthorityState {
     /// Shuts down the execution task. Used only in testing.
     #[allow(unused)]
     tx_execution_shutdown: Mutex<Option<oneshot::Sender<()>>>,
+
+    /// The database
+    execution_cache_trait_pointers: ExecutionCacheTraitPointers,
 }
 
 impl AuthorityState {
@@ -74,10 +87,16 @@ impl AuthorityState {
         epoch_store: Arc<AuthorityPerEpochStore>,
         committee_store: Arc<CommitteeStore>,
         config: NodeConfig,
+        execution_cache_trait_pointers: ExecutionCacheTraitPointers,
     ) -> Arc<Self> {
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
-        let transaction_manager =
-            Arc::new(TransactionManager::new(&epoch_store, tx_ready_certificates));
+        let transaction_manager = Arc::new(TransactionManager::new(
+            &epoch_store,
+            tx_ready_certificates,
+            execution_cache_trait_pointers
+                .transaction_cache_reader
+                .clone(),
+        ));
         let (tx_execution_shutdown, rx_execution_shutdown) = oneshot::channel();
 
         let epoch = epoch_store.epoch();
@@ -90,6 +109,7 @@ impl AuthorityState {
             committee_store,
             transaction_manager,
             config,
+            execution_cache_trait_pointers,
         });
 
         // Start a task to execute ready certificates.
@@ -101,6 +121,14 @@ impl AuthorityState {
         ));
 
         state
+    }
+
+    pub fn get_transaction_cache_reader(&self) -> &Arc<dyn TransactionCacheRead> {
+        &self.execution_cache_trait_pointers.transaction_cache_reader
+    }
+
+    pub fn get_cache_writer(&self) -> &Arc<dyn ExecutionCacheWrite> {
+        &self.execution_cache_trait_pointers.cache_writer
     }
 
     /// This is a private method and should be kept that way. It doesn't check whether
@@ -140,9 +168,9 @@ impl AuthorityState {
         debug!("handle_transaction");
 
         // Ensure an idempotent answer.
-        // if let Some((_, status)) = self.get_transaction_status(&tx_digest, epoch_store)? {
-        //     return Ok(HandleTransactionResponse { status });
-        // }
+        if let Some((_, status)) = self.get_transaction_status(&tx_digest, epoch_store)? {
+            return Ok(HandleTransactionResponse { status });
+        }
 
         // The should_accept_user_certs check here is best effort, because
         // between a validator signs a tx and a cert is formed, the validator
@@ -171,18 +199,16 @@ impl AuthorityState {
                 Ok(HandleTransactionResponse {
                     status: TransactionStatus::Signed(s.into_inner().into_sig()),
                 })
-            } // It happens frequently that while we are checking the validity of the transaction, it
+            }
+            // It happens frequently that while we are checking the validity of the transaction, it
             // has just been executed.
             // In that case, we could still return Ok to avoid showing confusing errors.
-            _ => Err(SomaError::GenericAuthorityError {
-                error: String::from("handle_transaction impl error"),
+            Err(err) => Ok(HandleTransactionResponse {
+                status: self
+                    .get_transaction_status(&tx_digest, epoch_store)?
+                    .ok_or(err)?
+                    .1,
             }),
-            // Err(err) => Ok(HandleTransactionResponse {
-            //     status: self
-            //         .get_transaction_status(&tx_digest, epoch_store)?
-            //         .ok_or(err)?
-            //         .1,
-            // }),
         }
     }
 
@@ -200,7 +226,7 @@ impl AuthorityState {
         // digests matching this TransactionEffectsEnvelope, before calling
         // this function, in order to prevent a byzantine validator from
         // giving us incorrect effects.
-        // effects: &VerifiedCertifiedTransactionEffects,
+        effects: &VerifiedCertifiedTransactionEffects,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult {
         assert!(self.is_fullnode(epoch_store));
@@ -215,34 +241,34 @@ impl AuthorityState {
         let digest = *transaction.digest();
         debug!("execute_certificate_with_effects");
 
-        // if *effects.data().transaction_digest() != digest {
-        //     return Err(SomaError::ErrorWhileProcessingCertificate {
-        //         err: "effects/tx digest mismatch".to_string(),
-        //     });
-        // }
+        if *effects.data().transaction_digest() != digest {
+            return Err(SomaError::ErrorWhileProcessingCertificate {
+                err: "effects/tx digest mismatch".to_string(),
+            });
+        }
 
-        // let expected_effects_digest = effects.digest();
+        let expected_effects_digest = effects.digest();
 
         self.transaction_manager
             .enqueue(vec![transaction.clone()], epoch_store);
 
-        // let observed_effects = self
-        //     .get_transaction_cache_reader()
-        //     .notify_read_executed_effects(&[digest])
-        //     .instrument(tracing::debug_span!(
-        //         "notify_read_effects_in_execute_certificate_with_effects"
-        //     ))
-        //     .await?
-        //     .pop()
-        //     .expect("notify_read_effects should return exactly 1 element");
+        let observed_effects = self
+            .get_transaction_cache_reader()
+            .notify_read_executed_effects(&[digest])
+            .instrument(tracing::debug_span!(
+                "notify_read_effects_in_execute_certificate_with_effects"
+            ))
+            .await?
+            .pop()
+            .expect("notify_read_effects should return exactly 1 element");
 
-        // let observed_effects_digest = observed_effects.digest();
-        // if &observed_effects_digest != expected_effects_digest {
-        //     panic!(
-        //         "Locally executed effects do not match canonical effects! expected_effects_digest={:?} observed_effects_digest={:?} expected_effects={:?} observed_effects={:?} input_objects={:?}",
-        //         expected_effects_digest, observed_effects_digest, effects.data(), observed_effects, transaction.data().transaction_data().input_objects()
-        //     );
-        // }
+        let observed_effects_digest = observed_effects.digest();
+        if &observed_effects_digest != expected_effects_digest {
+            panic!(
+                "Locally executed effects do not match canonical effects! expected_effects_digest={:?} observed_effects_digest={:?} expected_effects={:?} observed_effects={:?}",
+                expected_effects_digest, observed_effects_digest, effects.data(), observed_effects
+            );
+        }
         Ok(())
     }
 
@@ -252,30 +278,22 @@ impl AuthorityState {
         &self,
         certificate: &VerifiedCertificate,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SomaResult {
+    ) -> SomaResult<TransactionEffects> {
         debug!("execute_certificate");
 
-        // if !certificate.contains_shared_object() {
-        // Shared object transactions need to be sequenced by the consensus before enqueueing
-        // for execution, done in AuthorityPerEpochStore::handle_consensus_transaction().
-        // For owned object transactions, they can be enqueued for execution immediately.
         self.enqueue_certificates_for_execution(vec![certificate.clone()], epoch_store);
-        // }
-
-        Ok(())
-
-        // self.notify_read_effects(certificate).await
+        self.notify_read_effects(certificate).await
     }
 
-    // pub async fn notify_read_effects(
-    //     &self,
-    //     certificate: &VerifiedCertificate,
-    // ) -> SomaResult<TransactionEffects> {
-    //     self.get_transaction_cache_reader()
-    //         .notify_read_executed_effects(&[*certificate.digest()])
-    //         .await
-    //         .map(|mut r| r.pop().expect("must return correct number of effects"))
-    // }
+    pub async fn notify_read_effects(
+        &self,
+        certificate: &VerifiedCertificate,
+    ) -> SomaResult<TransactionEffects> {
+        self.get_transaction_cache_reader()
+            .notify_read_executed_effects(&[*certificate.digest()])
+            .await
+            .map(|mut r| r.pop().expect("must return correct number of effects"))
+    }
 
     /// Internal logic to execute a certificate.
     ///
@@ -292,23 +310,20 @@ impl AuthorityState {
     pub async fn try_execute_immediately(
         &self,
         certificate: &VerifiedExecutableTransaction,
-        // mut expected_effects_digest: Option<TransactionEffectsDigest>,
+        mut expected_effects_digest: Option<TransactionEffectsDigest>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SomaResult {
+    ) -> SomaResult<(TransactionEffects, Option<ExecutionError>)> {
         debug!("execute_certificate_internal");
 
-        // let tx_digest = certificate.digest();
-        // let input_objects = self
-        //     .read_objects_for_execution(certificate, epoch_store)
-        //     .await?;
+        let tx_digest = certificate.digest();
 
-        // if expected_effects_digest.is_none() {
-        //     // We could be re-executing a previously executed but uncommitted transaction, perhaps after
-        //     // restarting with a new binary. In this situation, if we have published an effects signature,
-        //     // we must be sure not to equivocate.
-        //     // TODO: read from cache instead of DB
-        //     expected_effects_digest = epoch_store.get_signed_effects_digest(tx_digest)?;
-        // }
+        if expected_effects_digest.is_none() {
+            // We could be re-executing a previously executed but uncommitted transaction, perhaps after
+            // restarting with a new binary. In this situation, if we have published an effects signature,
+            // we must be sure not to equivocate.
+            // TODO: read from cache instead of DB
+            expected_effects_digest = epoch_store.get_signed_effects_digest(tx_digest)?;
+        }
 
         // This acquires a lock on the tx digest to prevent multiple concurrent executions of the
         // same tx. While we don't need this for safety (tx sequencing is ultimately atomic), it is
@@ -316,15 +331,9 @@ impl AuthorityState {
         // may as well hold the lock and save the cpu time for other requests.
         let tx_guard = epoch_store.acquire_tx_guard(certificate).await?;
 
-        self.process_certificate(
-            tx_guard,
-            certificate,
-            // input_objects,
-            // expected_effects_digest,
-            epoch_store,
-        )
-        .await
-        // .tap_err(|e| info!(?tx_digest, "process_certificate failed: {e}"))
+        self.process_certificate(tx_guard, certificate, expected_effects_digest, epoch_store)
+            .await
+            .tap_err(|e| info!(?tx_digest, "process_certificate failed: {e}"))
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -332,22 +341,21 @@ impl AuthorityState {
         &self,
         tx_guard: CertTxGuard,
         certificate: &VerifiedExecutableTransaction,
-        // input_objects: InputObjects,
-        // expected_effects_digest: Option<TransactionEffectsDigest>,
+        expected_effects_digest: Option<TransactionEffectsDigest>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SomaResult {
+    ) -> SomaResult<(TransactionEffects, Option<ExecutionError>)> {
         let process_certificate_start_time = tokio::time::Instant::now();
         let digest = *certificate.digest();
 
         // The cert could have been processed by a concurrent attempt of the same cert, so check if
         // the effects have already been written.
-        // if let Some(effects) = self
-        //     .get_transaction_cache_reader()
-        //     .get_executed_effects(&digest)?
-        // {
-        //     tx_guard.release();
-        //     return Ok((effects, None));
-        // }
+        if let Some(effects) = self
+            .get_transaction_cache_reader()
+            .get_executed_effects(&digest)?
+        {
+            tx_guard.release();
+            return Ok((effects, None));
+        }
         let execution_guard = self
             .execution_lock_for_executable_transaction(certificate)
             .await;
@@ -364,39 +372,52 @@ impl AuthorityState {
         };
         // Since we obtain a reference to the epoch store before taking the execution lock, it's
         // possible that reconfiguration has happened and they no longer match.
-        // TODO: Verify Epoch
-        // if *execution_guard != epoch_store.epoch() {
-        //     tx_guard.release();
-        //     info!("The epoch of the execution_guard doesn't match the epoch store");
-        //     return Err(SomaError::WrongEpoch {
-        //         expected_epoch: epoch_store.epoch(),
-        //         actual_epoch: *execution_guard,
-        //     });
-        // }
+
+        if *execution_guard != epoch_store.epoch() {
+            tx_guard.release();
+            info!("The epoch of the execution_guard doesn't match the epoch store");
+            return Err(SomaError::WrongEpoch {
+                expected_epoch: epoch_store.epoch(),
+                actual_epoch: *execution_guard,
+            });
+        }
 
         // Errors originating from prepare_certificate may be transient (failure to read locks) or
         // non-transient (transaction input is invalid, move vm errors). However, all errors from
         // this function occur before we have written anything to the db, so we commit the tx
         // guard and rely on the client to retry the tx (if it was transient).
-        let _ = match self.prepare_certificate(&execution_guard, certificate, epoch_store) {
-            Err(e) => {
-                info!(name = ?self.name, ?digest, "Error preparing transaction: {e}");
-                tx_guard.release();
-                return Err(e);
-            }
-            Ok(res) => res,
-        };
+        let (effects, execution_error_opt) =
+            match self.prepare_certificate(&execution_guard, certificate, epoch_store) {
+                Err(e) => {
+                    info!(name = ?self.name, ?digest, "Error preparing transaction: {e}");
+                    tx_guard.release();
+                    return Err(e);
+                }
+                Ok(res) => res,
+            };
 
-        self.commit_certificate(certificate, tx_guard, execution_guard, epoch_store)
-            .await?;
+        self.commit_certificate(
+            certificate,
+            &effects,
+            tx_guard,
+            execution_guard,
+            epoch_store,
+        )
+        .await?;
 
-        Ok(())
+        Ok((effects, execution_error_opt))
+    }
+
+    pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> SomaResult<bool> {
+        self.get_transaction_cache_reader()
+            .is_tx_already_executed(digest)
     }
 
     #[instrument(level = "trace", skip_all)]
     async fn commit_certificate(
         &self,
         certificate: &VerifiedExecutableTransaction,
+        effects: &TransactionEffects,
         tx_guard: CertTxGuard,
         _execution_guard: ExecutionLockReadGuard<'_>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
@@ -408,17 +429,17 @@ impl AuthorityState {
         // TODO: once executed_in_epoch_table is enabled everywhere, we can remove the code below entirely.
         let should_sign_effects = self.is_validator(epoch_store);
 
-        // let effects_sig = if should_sign_effects {
-        //     Some(AuthoritySignInfo::new(
-        //         epoch_store.epoch(),
-        //         effects,
-        //         Intent::soma_transaction(),
-        //         self.name,
-        //         &*self.secret,
-        //     ))
-        // } else {
-        //     None
-        // };
+        let effects_sig = if should_sign_effects {
+            Some(AuthoritySignInfo::new(
+                epoch_store.epoch(),
+                effects,
+                Intent::soma_transaction(),
+                self.name,
+                &*self.secret,
+            ))
+        } else {
+            None
+        };
 
         // index certificate
         // let _ = self
@@ -430,21 +451,20 @@ impl AuthorityState {
 
         // The insertion to epoch_store is not atomic with the insertion to the perpetual store. This is OK because
         // we insert to the epoch store first. And during lookups we always look up in the perpetual store first.
-        // epoch_store.insert_tx_key_and_effects_signature(
-        //     &tx_key,
-        //     tx_digest,
-        //     &effects.digest(),
-        //     effects_sig.as_ref(),
-        // )?;
+        epoch_store.insert_tx_key_and_effects_signature(
+            &tx_key,
+            tx_digest,
+            &effects.digest(),
+            effects_sig.as_ref(),
+        )?;
 
-        // let transaction_outputs = TransactionOutputs::build_transaction_outputs(
-        //     certificate.clone().into_unsigned(),
-        //     effects.clone(),
-        //     inner_temporary_store,
-        // );
-        // self.get_cache_writer()
-        //     .write_transaction_outputs(epoch_store.epoch(), transaction_outputs.into())
-        //     .await?;
+        let transaction_outputs = TransactionOutputs::build_transaction_outputs(
+            certificate.clone().into_unsigned(),
+            effects.clone(),
+        );
+        self.get_cache_writer()
+            .write_transaction_outputs(epoch_store.epoch(), transaction_outputs.into())
+            .await?;
 
         // commit_certificate finished, the tx is fully committed to the store.
         tx_guard.commit_tx();
@@ -473,7 +493,7 @@ impl AuthorityState {
         _execution_guard: &ExecutionLockReadGuard<'_>,
         certificate: &VerifiedExecutableTransaction,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SomaResult {
+    ) -> SomaResult<(TransactionEffects, Option<ExecutionError>)> {
         let prepare_certificate_start_time = tokio::time::Instant::now();
 
         // TODO: We need to move this to a more appropriate place to avoid redundant checks.
@@ -484,7 +504,10 @@ impl AuthorityState {
         let transaction_data = &certificate.data().intent_message().value;
         let (kind, signer) = transaction_data.execution_parts();
 
-        return epoch_store.execute_transaction(kind, signer);
+        let (mut effects, execution_error_opt) =
+            epoch_store.execute_transaction(tx_digest, kind, signer);
+
+        Ok((effects, execution_error_opt))
     }
 
     #[instrument(level = "error", skip_all)]
@@ -563,12 +586,13 @@ impl AuthorityState {
             .enqueue_certificates(certs, epoch_store)
     }
 
-    pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> SomaResult<bool> {
-        // TODO: check transaction cache
-        Ok(false)
-
-        // self.get_transaction_cache_reader()
-        //     .is_tx_already_executed(digest)
+    pub(crate) fn enqueue_with_expected_effects_digest(
+        &self,
+        certs: Vec<(VerifiedExecutableTransaction, TransactionEffectsDigest)>,
+        epoch_store: &AuthorityPerEpochStore,
+    ) {
+        self.transaction_manager
+            .enqueue_with_expected_effects_digest(certs, epoch_store)
     }
 
     pub fn transaction_manager(&self) -> &Arc<TransactionManager> {
@@ -592,16 +616,15 @@ impl AuthorityState {
         transaction: &VerifiedExecutableTransaction,
     ) -> SomaResult<ExecutionLockReadGuard> {
         let lock = self.execution_lock.read().await;
-        Ok(lock)
-        // TODO: Verify Epoch
-        // if *lock == transaction.auth_sig().epoch() {
-        //     Ok(lock)
-        // } else {
-        //     Err(SomaError::WrongEpoch {
-        //         expected_epoch: *lock,
-        //         actual_epoch: transaction.auth_sig().epoch(),
-        //     })
-        // }
+
+        if *lock == transaction.auth_sig().epoch() {
+            Ok(lock)
+        } else {
+            Err(SomaError::WrongEpoch {
+                expected_epoch: *lock,
+                actual_epoch: transaction.auth_sig().epoch(),
+            })
+        }
     }
 
     pub async fn execution_lock_for_reconfiguration(&self) -> ExecutionLockWriteGuard {
@@ -642,7 +665,7 @@ impl AuthorityState {
         &self,
         epoch_store: &Arc<AuthorityPerEpochStore>,
         epoch_start_timestamp_ms: CheckpointTimestamp,
-    ) -> anyhow::Result<SystemState> {
+    ) -> anyhow::Result<(SystemState, TransactionEffects)> {
         let next_epoch = epoch_store.epoch() + 1;
 
         let tx = VerifiedTransaction::new_end_of_epoch_transaction(
@@ -664,25 +687,139 @@ impl AuthorityState {
 
         // The tx could have been executed by state sync already - if so simply return an error.
         // The checkpoint builder will shortly be terminated by reconfiguration anyway.
-        // if self
-        //     .get_transaction_cache_reader()
-        //     .is_tx_already_executed(tx_digest)
-        //     .expect("read cannot fail")
-        // {
-        //     warn!("change epoch tx has already been executed via state sync");
-        //     return Err(anyhow::anyhow!(
-        //         "change epoch tx has already been executed via state sync"
-        //     ));
-        // }
+        if self
+            .get_transaction_cache_reader()
+            .is_tx_already_executed(tx_digest)
+            .expect("read cannot fail")
+        {
+            warn!("change epoch tx has already been executed via state sync");
+            return Err(anyhow::anyhow!(
+                "change epoch tx has already been executed via state sync"
+            ));
+        }
 
         let execution_guard = self
             .execution_lock_for_executable_transaction(&executable_tx)
             .await?;
 
-        let _ = self.prepare_certificate(&execution_guard, &executable_tx, epoch_store)?;
+        let (effects, _execution_error_opt) =
+            self.prepare_certificate(&execution_guard, &executable_tx, epoch_store)?;
         let system_obj = self.epoch_store.load().system_state();
 
-        Ok(system_obj)
+        // The change epoch transaction cannot fail to execute.
+        assert!(effects.status().is_ok());
+        Ok((system_obj, effects))
+    }
+
+    /// Make a status response for a transaction
+    #[instrument(level = "trace", skip_all)]
+    pub fn get_transaction_status(
+        &self,
+        transaction_digest: &TransactionDigest,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<Option<(SenderSignedData, TransactionStatus)>> {
+        // TODO: In the case of read path, we should not have to re-sign the effects.
+        if let Some(effects) =
+            self.get_signed_effects_and_maybe_resign(transaction_digest, epoch_store)?
+        {
+            if let Some(transaction) = self
+                .get_transaction_cache_reader()
+                .get_transaction_block(transaction_digest)?
+            {
+                let cert_sig = epoch_store.get_transaction_cert_sig(transaction_digest)?;
+
+                return Ok(Some((
+                    (*transaction).clone().into_message(),
+                    TransactionStatus::Executed(cert_sig, effects.into_inner()),
+                )));
+            } else {
+                // The read of effects and read of transaction are not atomic. It's possible that we reverted
+                // the transaction (during epoch change) in between the above two reads, and we end up
+                // having effects but not transaction. In this case, we just fall through.
+                debug!(tx_digest=?transaction_digest, "Signed effects exist but no transaction found");
+            }
+        }
+        Ok(None)
+    }
+
+    /// Get the signed effects of the given transaction. If the effects was signed in a previous
+    /// epoch, re-sign it so that the caller is able to form a cert of the effects in the current
+    /// epoch.
+    #[instrument(level = "trace", skip_all)]
+    pub fn get_signed_effects_and_maybe_resign(
+        &self,
+        transaction_digest: &TransactionDigest,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<Option<VerifiedSignedTransactionEffects>> {
+        let effects = self
+            .get_transaction_cache_reader()
+            .get_executed_effects(transaction_digest)?;
+        match effects {
+            Some(effects) => Ok(Some(self.sign_effects(effects, epoch_store)?)),
+            None => Ok(None),
+        }
+    }
+
+    #[instrument(level = "trace", skip_all)]
+    pub(crate) fn sign_effects(
+        &self,
+        effects: TransactionEffects,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<VerifiedSignedTransactionEffects> {
+        let tx_digest = *effects.transaction_digest();
+        let signed_effects = match epoch_store.get_effects_signature(&tx_digest)? {
+            Some(sig) if sig.epoch == epoch_store.epoch() => {
+                SignedTransactionEffects::new_from_data_and_sig(effects, sig)
+            }
+            _ => {
+                // If the transaction was executed in previous epochs, the validator will
+                // re-sign the effects with new current epoch so that a client is always able to
+                // obtain an effects certificate at the current epoch.
+                //
+                // Why is this necessary? Consider the following case:
+                // - assume there are 4 validators
+                // - Quorum driver gets 2 signed effects before reconfig halt
+                // - The tx makes it into final checkpoint.
+                // - 2 validators go away and are replaced in the new epoch.
+                // - The new epoch begins.
+                // - The quorum driver cannot complete the partial effects cert from the previous epoch,
+                //   because it may not be able to reach either of the 2 former validators.
+                // - But, if the 2 validators that stayed are willing to re-sign the effects in the new
+                //   epoch, the QD can make a new effects cert and return it to the client.
+                //
+                // This is a considered a short-term workaround. Eventually, Quorum Driver should be able
+                // to return either an effects certificate, -or- a proof of inclusion in a checkpoint. In
+                // the case above, the Quorum Driver would return a proof of inclusion in the final
+                // checkpoint, and this code would no longer be necessary.
+                debug!(
+                    ?tx_digest,
+                    epoch=?epoch_store.epoch(),
+                    "Re-signing the effects with the current epoch"
+                );
+
+                let sig = AuthoritySignInfo::new(
+                    epoch_store.epoch(),
+                    &effects,
+                    Intent::soma_transaction(),
+                    self.name,
+                    &*self.secret,
+                );
+
+                let effects = SignedTransactionEffects::new_from_data_and_sig(effects, sig.clone());
+
+                epoch_store.insert_effects_digest_and_signature(
+                    &tx_digest,
+                    effects.digest(),
+                    &sig,
+                )?;
+
+                effects
+            }
+        };
+
+        Ok(VerifiedSignedTransactionEffects::new_unchecked(
+            signed_effects,
+        ))
     }
 }
 

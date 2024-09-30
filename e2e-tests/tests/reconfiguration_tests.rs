@@ -1,7 +1,6 @@
 use std::{collections::HashSet, fs::File, sync::Once, time::Duration};
 
 use futures::future::join_all;
-use msim::tracing::field::debug;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
 use test_cluster::{
@@ -9,7 +8,7 @@ use test_cluster::{
     TestCluster, TestClusterBuilder,
 };
 use tokio::time::sleep;
-use tracing::info;
+use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::fmt;
 use types::{
     base::SomaAddress,
@@ -29,6 +28,7 @@ fn init_tracing() {
         let file = File::create("test.log").expect("Failed to create log file");
 
         let subscriber = fmt::Subscriber::builder()
+            .with_max_level(LevelFilter::DEBUG)
             // .with_env_filter(EnvFilter::from_default_env())
             .with_writer(file)
             .with_ansi(false)
@@ -65,7 +65,7 @@ async fn advance_epoch_tx_test() {
     let results: HashSet<_> = join_all(tasks)
         .await
         .into_iter()
-        .map(|result| result.epoch())
+        .map(|(state, _)| state.epoch())
         .collect();
     // Check that all validators have the same result.
     assert_eq!(results.len(), 1);
@@ -273,9 +273,6 @@ async fn execute_add_validator_transactions(
         vec![&new_validator.account_key_pair],
     );
     test_cluster.execute_transaction(tx).await;
-
-    // TODO: Remove
-    tokio::time::sleep(Duration::from_millis(25)).await;
 
     // Check that we can get the pending validator from 0x5.
     test_cluster.fullnode_handle.soma_node.with(|node| {

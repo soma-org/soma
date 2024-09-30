@@ -8,7 +8,7 @@ pub trait EpochStartConfigTrait {
     fn epoch_start_state(&self) -> &EpochStartSystemState;
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct EpochStartConfiguration {
     system_state: EpochStartSystemState,
     // epoch_digest is defined as following

@@ -1,6 +1,9 @@
 use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
-use futures::{future::select, future::Either};
+use futures::{
+    future::{select, Either},
+    FutureExt,
+};
 use tokio::{
     sync::broadcast::{error::RecvError, Receiver},
     task::JoinHandle,
@@ -9,11 +12,12 @@ use tokio::{
 use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
 use types::{
     digests::TransactionDigest,
+    effects::{TransactionEffectsAPI, VerifiedCertifiedTransactionEffects},
     error::{SomaError, SomaResult},
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
-        IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult, QuorumDriverError,
-        QuorumDriverResponse, QuorumDriverResult,
+        FinalizedEffects, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
+        QuorumDriverError, QuorumDriverResponse, QuorumDriverResult,
     },
     system_state::SystemState,
     transaction::{VerifiedExecutableTransaction, VerifiedTransaction},
@@ -120,13 +124,13 @@ where
         ) {
             let executable_tx = VerifiedExecutableTransaction::new_from_quorum_execution(
                 transaction,
-                0, // TODO: response.effects_cert.executed_epoch(),
+                response.effects_cert.executed_epoch(),
             );
             Self::execute_finalized_tx_locally_with_timeout(
                 &self.validator_state,
                 &epoch_store,
                 &executable_tx,
-                // &response.effects_cert,
+                &response.effects_cert,
             )
             .await
             .is_ok()
@@ -134,9 +138,11 @@ where
             false
         };
 
-        let QuorumDriverResponse {} = response;
+        let QuorumDriverResponse { effects_cert } = response;
 
-        let response = ExecuteTransactionResponse {};
+        let response = ExecuteTransactionResponse {
+            effects: FinalizedEffects::new_from_effects_cert(effects_cert.into()),
+        };
 
         Ok((response, executed_locally))
     }
@@ -195,32 +201,31 @@ where
         self.quorum_driver()
             .submit_transaction_no_ticket(request.clone(), client_addr)
             .await?;
+
         // It's possible that the transaction effects is already stored in DB at this point.
         // So we also subscribe to that. If we hear from `effects_await` first, it means
         // the ticket misses the previous notification, and we want to ask quorum driver
         // to form a certificate for us again, to serve this request.
-        // let cache_reader = self.validator_state.get_transaction_cache_reader().clone();
-        // let qd = self.clone_quorum_driver();
+        let cache_reader = self.validator_state.get_transaction_cache_reader().clone();
+        let qd = self.clone_quorum_driver();
         Ok(async move {
-            // let digests = [tx_digest];
-            // let effects_await = cache_reader.notify_read_executed_effects(&digests);
+            let digests = [tx_digest];
+            let effects_await = cache_reader.notify_read_executed_effects(&digests);
             // let-and-return necessary to satisfy borrow checker.
             #[allow(clippy::let_and_return)]
-            let quorum_driver_response = ticket.await;
-            Ok(quorum_driver_response)
-            // let res = match select(ticket).await {
-            //     Either::Left((quorum_driver_response, _)) => Ok(quorum_driver_response),
-            //     Either::Right((_, unfinished_quorum_driver_task)) => {
-            //         debug!(
-            //             ?tx_digest,
-            //             "Effects are available in DB, use quorum driver to get a certificate"
-            //         );
-            //         qd.submit_transaction_no_ticket(request, client_addr)
-            //             .await?;
-            //         Ok(unfinished_quorum_driver_task.await)
-            //     }
-            // };
-            // res
+            let res = match select(ticket, effects_await.boxed()).await {
+                Either::Left((quorum_driver_response, _)) => Ok(quorum_driver_response),
+                Either::Right((_, unfinished_quorum_driver_task)) => {
+                    debug!(
+                        ?tx_digest,
+                        "Effects are available in DB, use quorum driver to get a certificate"
+                    );
+                    qd.submit_transaction_no_ticket(request, client_addr)
+                        .await?;
+                    Ok(unfinished_quorum_driver_task.await)
+                }
+            };
+            res
         })
     }
 
@@ -229,7 +234,7 @@ where
         validator_state: &Arc<AuthorityState>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
         transaction: &VerifiedExecutableTransaction,
-        // effects_cert: &VerifiedCertifiedTransactionEffects,
+        effects_cert: &VerifiedCertifiedTransactionEffects,
     ) -> SomaResult {
         // TODO: attempt a finalized tx at most once per request.
         // Every WaitForLocalExecution request will be attempted to execute twice,
@@ -250,7 +255,7 @@ where
             LOCAL_EXECUTION_TIMEOUT,
             validator_state.fullnode_execute_certificate_with_effects(
                 transaction,
-                // effects_cert,
+                effects_cert,
                 epoch_store,
             ),
         )
@@ -289,7 +294,7 @@ where
     ) {
         loop {
             match effects_receiver.recv().await {
-                Ok(Ok((transaction, QuorumDriverResponse {}))) => {
+                Ok(Ok((transaction, QuorumDriverResponse { effects_cert }))) => {
                     let tx_digest = transaction.digest();
 
                     let epoch_store = validator_state.load_epoch_store_one_call_per_task();
@@ -311,14 +316,14 @@ where
 
                     let executable_tx = VerifiedExecutableTransaction::new_from_quorum_execution(
                         transaction,
-                        0, //effects_cert.executed_epoch(), // TODO: make this an actual executed epoch
+                        effects_cert.executed_epoch(),
                     );
 
                     let _ = Self::execute_finalized_tx_locally_with_timeout(
                         &validator_state,
                         &epoch_store,
                         &executable_tx,
-                        // &effects_cert,
+                        &effects_cert,
                     )
                     .await;
                 }

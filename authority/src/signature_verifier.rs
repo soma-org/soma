@@ -128,13 +128,12 @@ impl SignatureVerifier {
     ) -> SomaResult<VerifiedCertificate> {
         // this is the only innocent error we are likely to encounter - filter it before we poison
         // a whole batch.
-        // TODO: Verify Epoch
-        // if cert.auth_sig().epoch != self.committee.epoch() {
-        //     return Err(SomaError::WrongEpoch {
-        //         expected_epoch: self.committee.epoch(),
-        //         actual_epoch: cert.auth_sig().epoch,
-        //     });
-        // }
+        if cert.auth_sig().epoch != self.committee.epoch() {
+            return Err(SomaError::WrongEpoch {
+                expected_epoch: self.committee.epoch(),
+                actual_epoch: cert.auth_sig().epoch,
+            });
+        }
 
         self.verify_cert_inner(cert).await
     }

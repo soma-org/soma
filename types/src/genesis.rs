@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     committee::{Committee, CommitteeWithNetworkMetadata},
+    effects::{self, TransactionEffects},
     error::SomaResult,
     system_state::{SystemState, SystemStateTrait},
     transaction::Transaction,
@@ -11,13 +12,19 @@ use crate::{
 pub struct Genesis {
     transaction: Transaction,
     system_state: SystemState,
+    effects: TransactionEffects,
 }
 
 impl Genesis {
-    pub fn new(transaction: Transaction, system_state: SystemState) -> Self {
+    pub fn new(
+        transaction: Transaction,
+        system_state: SystemState,
+        effects: TransactionEffects,
+    ) -> Self {
         Self {
             transaction,
             system_state,
+            effects,
         }
     }
 
@@ -31,5 +38,13 @@ impl Genesis {
 
     pub fn committee(&self) -> SomaResult<Committee> {
         Ok(self.committee_with_network().committee().clone())
+    }
+
+    pub fn transaction(&self) -> &Transaction {
+        &self.transaction
+    }
+
+    pub fn effects(&self) -> &TransactionEffects {
+        &self.effects
     }
 }

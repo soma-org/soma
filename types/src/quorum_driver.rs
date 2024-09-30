@@ -2,9 +2,13 @@ use std::collections::BTreeMap;
 
 use crate::{
     base::AuthorityName,
-    committee::VotingPower,
-    crypto::ConciseAuthorityPublicKeyBytes,
+    committee::{EpochId, VotingPower},
+    crypto::{AuthorityStrongQuorumSignInfo, ConciseAuthorityPublicKeyBytes},
     digests::TransactionDigest,
+    effects::{
+        CertifiedTransactionEffects, SignedTransactionEffects, TransactionEffects,
+        VerifiedCertifiedTransactionEffects,
+    },
     error::SomaError,
     transaction::{CertifiedTransaction, SignedTransaction, Transaction, VerifiedTransaction},
 };
@@ -18,7 +22,7 @@ pub struct ExecuteTransactionRequest {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecuteTransactionResponse {
-    // pub effects: FinalizedEffects,
+    pub effects: FinalizedEffects,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, schemars::JsonSchema)]
@@ -27,34 +31,17 @@ pub enum ExecuteTransactionRequestType {
     WaitForLocalExecution,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum EffectsFinalityInfo {
+    Certified(AuthorityStrongQuorumSignInfo),
+    // Checkpointed(EpochId, CheckpointSequenceNumber),
+}
+
 /// When requested to execute a transaction with WaitForLocalExecution,
 /// TransactionOrchestrator attempts to execute this transaction locally
 /// after it is finalized. This value represents whether the transaction
 /// is confirmed to be executed on this node before the response returns.
 pub type IsTransactionExecutedLocally = bool;
-
-// #[derive(Serialize, Deserialize, Clone, Debug)]
-// pub struct FinalizedEffects {
-//     pub effects: TransactionEffects,s
-//     pub finality_info: EffectsFinalityInfo,
-// }
-
-// impl FinalizedEffects {
-//     pub fn new_from_effects_cert(effects_cert: CertifiedTransactionEffects) -> Self {
-//         let (data, sig) = effects_cert.into_data_and_sig();
-//         Self {
-//             effects: data,
-//             finality_info: EffectsFinalityInfo::Certified(sig),
-//         }
-//     }
-
-//     pub fn epoch(&self) -> EpochId {
-//         match &self.finality_info {
-//             EffectsFinalityInfo::Certified(cert) => cert.epoch,
-//             EffectsFinalityInfo::Checkpointed(epoch, _) => *epoch,
-//         }
-//     }
-// }
 
 #[derive(Clone, Debug)]
 pub struct QuorumDriverRequest {
@@ -63,7 +50,7 @@ pub struct QuorumDriverRequest {
 
 #[derive(Debug, Clone)]
 pub struct QuorumDriverResponse {
-    // pub effects_cert: VerifiedCertifiedTransactionEffects,
+    pub effects_cert: VerifiedCertifiedTransactionEffects,
 }
 
 pub type QuorumDriverResult = Result<QuorumDriverResponse, QuorumDriverError>;
@@ -124,19 +111,39 @@ pub type GroupedErrors = Vec<(SomaError, VotingPower, Vec<ConciseAuthorityPublic
 #[derive(Clone, Debug)]
 pub enum PlainTransactionInfoResponse {
     Signed(SignedTransaction),
-    ExecutedWithCert(
-        CertifiedTransaction,
-        // SignedTransactionEffects,
-    ),
-    ExecutedWithoutCert(Transaction),
+    ExecutedWithCert(CertifiedTransaction, SignedTransactionEffects),
+    ExecutedWithoutCert(Transaction, SignedTransactionEffects),
 }
 
 impl PlainTransactionInfoResponse {
     pub fn is_executed(&self) -> bool {
         match self {
             PlainTransactionInfoResponse::Signed(_) => false,
-            PlainTransactionInfoResponse::ExecutedWithCert(_) => true,
-            PlainTransactionInfoResponse::ExecutedWithoutCert(_) => true,
+            PlainTransactionInfoResponse::ExecutedWithCert(_, _) => true,
+            PlainTransactionInfoResponse::ExecutedWithoutCert(_, _) => true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FinalizedEffects {
+    pub effects: TransactionEffects,
+    pub finality_info: EffectsFinalityInfo,
+}
+
+impl FinalizedEffects {
+    pub fn new_from_effects_cert(effects_cert: CertifiedTransactionEffects) -> Self {
+        let (data, sig) = effects_cert.into_data_and_sig();
+        Self {
+            effects: data,
+            finality_info: EffectsFinalityInfo::Certified(sig),
+        }
+    }
+
+    pub fn epoch(&self) -> EpochId {
+        match &self.finality_info {
+            EffectsFinalityInfo::Certified(cert) => cert.epoch,
+            // EffectsFinalityInfo::Checkpointed(epoch, _) => *epoch,
         }
     }
 }

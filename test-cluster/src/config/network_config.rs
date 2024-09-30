@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use types::{
     committee::{Committee, CommitteeWithNetworkMetadata},
     crypto::{get_key_pair_from_rng, SomaKeyPair},
+    effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
     node_config::NodeConfig,
@@ -163,8 +164,9 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         let account_keys = genesis_config.generate_accounts(&mut rng).unwrap();
 
+        let tx = VerifiedTransaction::new_genesis_transaction().into_inner();
         let genesis = Genesis::new(
-            VerifiedTransaction::new_genesis_transaction().into_inner(),
+            tx.clone(),
             SystemState::create(
                 validators
                     .iter()
@@ -184,6 +186,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 0,
                 SystemParameters::default(),
             ),
+            TransactionEffects::new(ExecutionStatus::Success, 0, *tx.digest()),
         );
 
         let validator_configs = validators

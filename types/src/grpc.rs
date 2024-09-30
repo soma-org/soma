@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo},
+    effects::SignedTransactionEffects,
     transaction::CertifiedTransaction,
 };
 
@@ -13,13 +14,23 @@ pub enum TransactionStatus {
     /// (i.e. the signature part of the CertifiedTransaction), as well as the signed effects.
     /// The certificate signature is optional because for transactions executed in previous
     /// epochs, we won't keep around the certificate signatures.
-    Executed(Option<AuthorityStrongQuorumSignInfo>),
+    Executed(
+        Option<AuthorityStrongQuorumSignInfo>,
+        SignedTransactionEffects,
+    ),
 }
 
 impl TransactionStatus {
     pub fn into_signed_for_testing(self) -> AuthoritySignInfo {
         match self {
             Self::Signed(s) => s,
+            _ => unreachable!("Incorrect response type"),
+        }
+    }
+
+    pub fn into_effects_for_testing(self) -> SignedTransactionEffects {
+        match self {
+            Self::Executed(_, e) => e,
             _ => unreachable!("Incorrect response type"),
         }
     }
@@ -32,8 +43,12 @@ impl PartialEq for TransactionStatus {
                 Self::Signed(s2) => s1.epoch == s2.epoch,
                 _ => false,
             },
-            Self::Executed(c1) => match other {
-                Self::Executed(c2) => c1.as_ref().map(|a| a.epoch) == c2.as_ref().map(|a| a.epoch),
+            Self::Executed(c1, e1) => match other {
+                Self::Executed(c2, e2) => {
+                    c1.as_ref().map(|a| a.epoch) == c2.as_ref().map(|a| a.epoch)
+                        && e1.epoch() == e2.epoch()
+                        && e1.digest() == e2.digest()
+                }
                 _ => false,
             },
         }
@@ -47,7 +62,7 @@ pub struct HandleTransactionResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HandleCertificateResponse {
-    pub succeeded: bool,
+    pub signed_effects: SignedTransactionEffects,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

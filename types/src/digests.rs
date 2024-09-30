@@ -1,4 +1,4 @@
-use crate::serde::Readable;
+use crate::{error::SomaError, serde::Readable};
 use fastcrypto::encoding::{Base58, Encoding};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -94,6 +94,12 @@ impl fmt::Debug for Digest {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct TransactionDigest(Digest);
 
+impl Default for TransactionDigest {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
 impl TransactionDigest {
     pub const ZERO: Self = Self(Digest::ZERO);
 
@@ -105,7 +111,6 @@ impl TransactionDigest {
     /// ie. for an object there is no parent digest.
     /// Note that this is not the same as the digest of the genesis transaction,
     /// which cannot be known ahead of time.
-    // TODO(https://github.com/MystenLabs/sui/issues/65): we can pick anything here
     pub const fn genesis_marker() -> Self {
         Self::ZERO
     }
@@ -168,6 +173,101 @@ impl fmt::Display for TransactionDigest {
 impl fmt::Debug for TransactionDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("TransactionDigest").field(&self.0).finish()
+    }
+}
+
+impl TryFrom<Vec<u8>> for Digest {
+    type Error = SomaError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+        let bytes: [u8; 32] =
+            <[u8; 32]>::try_from(&bytes[..]).map_err(|_| SomaError::InvalidDigestLength {
+                expected: 32,
+                actual: bytes.len(),
+            })?;
+
+        Ok(Self::from(bytes))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct TransactionEffectsDigest(Digest);
+
+impl TransactionEffectsDigest {
+    pub const ZERO: Self = Self(Digest::ZERO);
+
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn generate<R: rand::RngCore + rand::CryptoRng>(rng: R) -> Self {
+        Self(Digest::generate(rng))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+
+    pub fn next_lexicographical(&self) -> Option<Self> {
+        self.0.next_lexicographical().map(Self)
+    }
+}
+
+impl AsRef<[u8]> for TransactionEffectsDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for TransactionEffectsDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<Vec<u8>> for TransactionEffectsDigest {
+    type Error = SomaError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+        Digest::try_from(bytes).map(TransactionEffectsDigest)
+    }
+}
+
+impl From<TransactionEffectsDigest> for [u8; 32] {
+    fn from(digest: TransactionEffectsDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for TransactionEffectsDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for TransactionEffectsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for TransactionEffectsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("TransactionEffectsDigest")
+            .field(&self.0)
+            .finish()
     }
 }
 

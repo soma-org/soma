@@ -20,9 +20,10 @@ use types::{
     committee::{Committee, EpochId},
     consensus::{ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind},
     crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
-    digests::TransactionDigest,
+    digests::{TransactionDigest, TransactionEffectsDigest},
+    effects::{self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects},
     envelope::TrustedEnvelope,
-    error::{SomaError, SomaResult},
+    error::{ExecutionError, SomaError, SomaResult},
     execution_indices::ExecutionIndices,
     mutex_table::{MutexGuard, MutexTable},
     protocol::{Chain, ProtocolConfig},
@@ -195,6 +196,23 @@ pub struct AuthorityEpochTables {
 
     /// Validators that have sent EndOfPublish message in this epoch
     end_of_publish: RwLock<BTreeMap<AuthorityName, ()>>,
+
+    /// Signatures over transaction effects that we have signed and returned to users.
+    /// We store this to avoid re-signing the same effects twice.
+    /// Note that this may contain signatures for effects from previous epochs, in the case
+    /// that a user requests a signature for effects from a previous epoch. However, the
+    /// signature is still epoch-specific and so is stored in the epoch store.
+    effects_signatures: RwLock<BTreeMap<TransactionDigest, AuthoritySignInfo>>,
+
+    /// When we sign a TransactionEffects, we must record the digest of the effects in order
+    /// to detect and prevent equivocation when re-executing a transaction that may not have been
+    /// committed to disk.
+    /// Entries are removed from this table after the transaction in question has been committed
+    /// to disk.
+    signed_effects_digests: RwLock<BTreeMap<TransactionDigest, TransactionEffectsDigest>>,
+
+    /// Signatures of transaction certificates that are executed locally.
+    transaction_cert_signatures: RwLock<BTreeMap<TransactionDigest, AuthorityStrongQuorumSignInfo>>,
 }
 
 impl AuthorityEpochTables {
@@ -1118,13 +1136,18 @@ impl AuthorityPerEpochStore {
         Ok(CertTxGuard(self.acquire_tx_lock(digest).await))
     }
 
-    pub fn execute_transaction(&self, kind: TransactionKind, signer: SomaAddress) -> SomaResult {
+    pub fn execute_transaction(
+        &self,
+        tx_digest: TransactionDigest,
+        kind: TransactionKind,
+        signer: SomaAddress,
+    ) -> (TransactionEffects, Option<ExecutionError>) {
         match kind {
             TransactionKind::StateTransaction(tx) => match tx.kind {
                 StateTransactionKind::AddValidator(args) => {
                     // TODO: check if the signer is the same as the validator
                     let mut state = self.system_state.write();
-                    return state.request_add_validator(
+                    let result = state.request_add_validator(
                         signer,
                         args.pubkey_bytes,
                         args.network_pubkey_bytes,
@@ -1133,23 +1156,180 @@ impl AuthorityPerEpochStore {
                         args.p2p_address,
                         args.primary_address,
                     );
+
+                    let execution_status = match &result {
+                        Ok(()) => ExecutionStatus::Success,
+                        Err(err) => {
+                            let error = ExecutionFailureStatus::SomaError(err.clone());
+                            ExecutionStatus::Failure { error }
+                        }
+                    };
+
+                    let execution_error = match &result {
+                        Ok(()) => None,
+                        Err(err) => {
+                            let error = ExecutionFailureStatus::SomaError(err.clone());
+                            Some(ExecutionError::new(error, None))
+                        }
+                    };
+
+                    let effects =
+                        TransactionEffects::new(execution_status, self.epoch(), tx_digest);
+
+                    return (effects, execution_error);
                 }
                 StateTransactionKind::RemoveValidator(args) => {
                     // TODO: check if the signer is the same as the validator
                     let mut state = self.system_state.write();
-                    return state.request_remove_validator(signer, args.pubkey_bytes);
+                    let result = state.request_remove_validator(signer, args.pubkey_bytes);
+
+                    let execution_status = match &result {
+                        Ok(()) => ExecutionStatus::Success,
+                        Err(err) => {
+                            let error = ExecutionFailureStatus::SomaError(err.clone());
+                            ExecutionStatus::Failure { error }
+                        }
+                    };
+
+                    let execution_error = match &result {
+                        Ok(()) => None,
+                        Err(err) => {
+                            let error = ExecutionFailureStatus::SomaError(err.clone());
+                            Some(ExecutionError::new(error, None))
+                        }
+                    };
+
+                    let effects =
+                        TransactionEffects::new(execution_status, self.epoch(), tx_digest);
+
+                    return (effects, execution_error);
                 }
             },
             TransactionKind::EndOfEpochTransaction(tx) => match tx {
                 EndOfEpochTransactionKind::ChangeEpoch(change_epoch) => {
                     let mut state = self.system_state.write();
-                    return state
+                    let result = state
                         .advance_epoch(change_epoch.epoch, change_epoch.epoch_start_timestamp_ms);
+
+                    let execution_status = match &result {
+                        Ok(()) => ExecutionStatus::Success,
+                        Err(err) => {
+                            let error = ExecutionFailureStatus::SomaError(err.clone());
+                            ExecutionStatus::Failure { error }
+                        }
+                    };
+
+                    let execution_error = match &result {
+                        Ok(()) => None,
+                        Err(err) => {
+                            let error = ExecutionFailureStatus::SomaError(err.clone());
+                            Some(ExecutionError::new(error, None))
+                        }
+                    };
+
+                    let effects =
+                        TransactionEffects::new(execution_status, self.epoch(), tx_digest);
+
+                    return (effects, execution_error);
                 }
-                _ => return Ok(()),
+                _ => panic!("Unsupported EndOfEpochTransactionKind"),
             },
-            _ => return Ok(()),
+            _ => {
+                let effects =
+                    TransactionEffects::new(ExecutionStatus::Success, self.epoch(), tx_digest);
+                return (effects, None);
+            }
         }
+    }
+
+    #[instrument(level = "trace", skip_all)]
+    pub fn insert_tx_cert_sig(
+        &self,
+        tx_digest: &TransactionDigest,
+        cert_sig: &AuthorityStrongQuorumSignInfo,
+    ) -> SomaResult {
+        let tables = self.tables()?;
+        let _ = tables
+            .transaction_cert_signatures
+            .write()
+            .insert(*tx_digest, cert_sig.clone());
+        Ok(())
+    }
+
+    pub fn get_transaction_cert_sig(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> SomaResult<Option<AuthorityStrongQuorumSignInfo>> {
+        Ok(self
+            .tables()?
+            .transaction_cert_signatures
+            .read()
+            .get(tx_digest)
+            .cloned())
+    }
+
+    pub fn get_effects_signature(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> SomaResult<Option<AuthoritySignInfo>> {
+        let tables = self.tables()?;
+        let effects_signatures = tables.effects_signatures.read();
+        Ok(effects_signatures.get(tx_digest).cloned())
+    }
+
+    pub fn insert_effects_digest_and_signature(
+        &self,
+        tx_digest: &TransactionDigest,
+        effects_digest: &TransactionEffectsDigest,
+        effects_signature: &AuthoritySignInfo,
+    ) -> SomaResult {
+        let tables = self.tables()?;
+        let _ = tables
+            .effects_signatures
+            .write()
+            .insert(*tx_digest, effects_signature.clone());
+        let _ = tables
+            .signed_effects_digests
+            .write()
+            .insert(*tx_digest, *effects_digest);
+
+        Ok(())
+    }
+
+    #[instrument(level = "trace", skip_all)]
+    pub fn insert_tx_key_and_effects_signature(
+        &self,
+        tx_key: &TransactionKey,
+        tx_digest: &TransactionDigest,
+        effects_digest: &TransactionEffectsDigest,
+        effects_signature: Option<&AuthoritySignInfo>,
+    ) -> SomaResult {
+        let tables = self.tables()?;
+
+        if let Some(effects_signature) = effects_signature {
+            let _ = tables
+                .effects_signatures
+                .write()
+                .insert(*tx_digest, effects_signature.clone());
+            let _ = tables
+                .signed_effects_digests
+                .write()
+                .insert(*tx_digest, *effects_digest);
+        }
+
+        if !matches!(tx_key, TransactionKey::Digest(_)) {
+            self.executed_digests_notify_read.notify(tx_key, tx_digest);
+        }
+        Ok(())
+    }
+
+    pub fn get_signed_effects_digest(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> SomaResult<Option<TransactionEffectsDigest>> {
+        let tables = self.tables()?;
+        let signed_effects_digests = tables.signed_effects_digests.read();
+        Ok(signed_effects_digests.get(tx_digest).cloned())
     }
 }
 

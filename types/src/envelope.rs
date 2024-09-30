@@ -70,9 +70,9 @@ impl<T: Message, S> Envelope<T, S> {
     }
 
     /// Remove the authority signatures `S` from this envelope.
-    // pub fn into_unsigned(self) -> Envelope<T, EmptySignInfo> {
-    //     Envelope::<T, EmptySignInfo>::new(self.into_data())
-    // }
+    pub fn into_unsigned(self) -> Envelope<T, EmptySignInfo> {
+        Envelope::<T, EmptySignInfo>::new(self.into_data())
+    }
 
     pub fn auth_sig(&self) -> &S {
         &self.auth_signature
@@ -265,6 +265,10 @@ impl<T: Message, S> VerifiedEnvelope<T, S> {
     /// ***never use over the network!***
     pub fn serializable(self) -> TrustedEnvelope<T, S> {
         self.0
+    }
+
+    pub fn into_unsigned(self) -> VerifiedEnvelope<T, EmptySignInfo> {
+        VerifiedEnvelope::<T, EmptySignInfo>::new_from_verified(self.into_inner().into_unsigned())
     }
 }
 

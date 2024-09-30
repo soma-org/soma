@@ -6,6 +6,7 @@ use nonempty::nonempty;
 use nonempty::NonEmpty;
 use std::sync::Arc;
 use tonic::{async_trait, Response};
+use tracing::debug;
 use tracing::{error_span, info, Instrument};
 use types::{
     consensus::ConsensusTransaction,
@@ -103,34 +104,26 @@ impl ValidatorService {
         epoch_store: &Arc<AuthorityPerEpochStore>,
         wait_for_effects: bool,
     ) -> Result<Option<Vec<HandleCertificateResponse>>, tonic::Status> {
-        // Todo: Validate if cert can be executed
         // Fullnode does not serve handle_certificate call.
-        // fp_ensure!(
-        //     !self.state.is_fullnode(epoch_store),
-        //     SuiError::FullNodeCantHandleCertificate.into()
-        // );
+        if !(!self.state.is_fullnode(epoch_store)) {
+            return Err(SomaError::FullNodeCantHandleCertificate.into());
+        }
 
         // 1) Check if the certificate is already executed.
         //    This is only needed when we have only one certificate (not a soft bundle).
         //    When multiple certificates are provided, we will either submit all of them or none of them to consensus.
-        // if certificates.len() == 1 {
-        //     let tx_digest = *certificates[0].digest();
+        if certificates.len() == 1 {
+            let tx_digest = *certificates[0].digest();
 
-        //     // if let Some(signed_effects) = self
-        //     //     .state
-        //     //     .get_signed_effects_and_maybe_resign(&tx_digest, epoch_store)?
-        //     // {
-        //     //     return Ok(Some(vec![HandleCertificateResponse {
-        //     //             // effects: signed_effects.into_inner(),
-
-        //     //         }]));
-        //     // };
-
-        //     return Ok(Some(vec![HandleCertificateResponse {
-        //         // effects: signed_effects.into_inner(),
-
-        //     }]));
-        // }
+            if let Some(signed_effects) = self
+                .state
+                .get_signed_effects_and_maybe_resign(&tx_digest, epoch_store)?
+            {
+                return Ok(Some(vec![HandleCertificateResponse {
+                    signed_effects: signed_effects.into_inner(),
+                }]));
+            };
+        }
 
         // 2) Verify the certificates.
         // Check system overload
@@ -201,25 +194,32 @@ impl ValidatorService {
             return Ok(None);
         }
 
+        debug!("Verified certificates: {:?}", verified_certificates);
+
         // 4) Execute the certificates immediately if they contain only owned object transactions,
         // or wait for the execution results if it contains shared objects.
         let responses = futures::future::try_join_all(verified_certificates.into_iter().map(
             |certificate| async move {
+                debug!("Executing certificate: {:?}", certificate);
+
                 let effects = self
                     .state
                     .execute_certificate(&certificate, epoch_store)
                     .await?;
 
-                // let signed_effects = self.state.sign_effects(effects, epoch_store)?;
-                // epoch_store.insert_tx_cert_sig(certificate.digest(), certificate.auth_sig())?;
+                debug!("Got effects: {:?}", effects);
+
+                let signed_effects = self.state.sign_effects(effects, epoch_store)?;
+                epoch_store.insert_tx_cert_sig(certificate.digest(), certificate.auth_sig())?;
 
                 Ok::<_, SomaError>(HandleCertificateResponse {
-                    // effects: signed_effects.into_inner(),
-                    succeeded: true,
+                    signed_effects: signed_effects.into_inner(),
                 })
             },
         ))
         .await?;
+
+        debug!("Executed certificates: {:?}", responses);
 
         Ok(Some(responses))
     }

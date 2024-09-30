@@ -9,20 +9,21 @@ use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use tokio::time::{sleep, timeout};
 use tracing::{debug, error, info, instrument, trace, trace_span, warn, Instrument};
 use types::{
-    base::{AuthorityName, ConciseableName}, client::Config, committee::{Committee, CommitteeWithNetworkMetadata, VotingPower}, crypto::{AuthoritySignInfo, ConciseAuthorityPublicKeyBytes}, digests::TransactionDigest, error::{SomaError, SomaResult}, grpc::{HandleCertificateRequest, HandleCertificateResponse}, quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse}, system_state::{EpochStartSystemState, EpochStartSystemStateTrait}, transaction::{CertifiedTransaction, SignedTransaction, Transaction}
+    base::{AuthorityName, ConciseableName}, client::Config, committee::{Committee, CommitteeWithNetworkMetadata, EpochId, VotingPower}, crypto::{AuthoritySignInfo, ConciseAuthorityPublicKeyBytes}, digests::{TransactionDigest, TransactionEffectsDigest}, effects::{self, CertifiedTransactionEffects, SignedTransactionEffects, TransactionEffects, VerifiedCertifiedTransactionEffects}, envelope::Message, error::{SomaError, SomaResult}, grpc::{HandleCertificateRequest, HandleCertificateResponse}, quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse}, system_state::{EpochStartSystemState, EpochStartSystemStateTrait}, transaction::{CertifiedTransaction, SignedTransaction, Transaction}
 };
 use utils::agg::{quorum_map_then_reduce_with_timeout, AsyncResult, ReduceOutput};
 use types::committee::CommitteeTrait;
 use crate::{
     client::{
         make_network_authority_clients_with_network_config, AuthorityAPI, NetworkAuthorityClient,
-    }, committee_store::CommitteeStore, safe_client::SafeClient, stake_aggregator::{InsertResult, StakeAggregator}
+    }, committee_store::CommitteeStore, safe_client::SafeClient, stake_aggregator::{InsertResult, MultiStakeAggregator, StakeAggregator}
 };
 
 #[derive(Debug)]
 struct ProcessTransactionState {
     // The list of signatures gathered at any point
     tx_signatures: StakeAggregator<AuthoritySignInfo, true>,
+    effects_map: MultiStakeAggregator<TransactionEffectsDigest, TransactionEffects, true>,
     // The list of errors gathered at any point
     errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>,
     // If there are conflicting transactions, we note them down and may attempt to retry
@@ -79,8 +80,8 @@ struct ProcessCertificateState {
     // Different authorities could return different effects.  We want at least one effect to come
     // from 2f+1 authorities, which meets quorum and can be considered the approved effect.
     // The map here allows us to count the stake for each unique effect.
-    // effects_map:
-    //     MultiStakeAggregator<(EpochId, TransactionEffectsDigest), TransactionEffects, true>,
+    effects_map:
+        MultiStakeAggregator<(EpochId, TransactionEffectsDigest), TransactionEffects, true>,
     non_retryable_stake: VotingPower,
     non_retryable_errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>,
     retryable_errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>,
@@ -100,7 +101,7 @@ pub enum ProcessTransactionResult {
         /// such as settlement latency.
         newly_formed: bool,
     },
-    Executed(),
+    Executed(VerifiedCertifiedTransactionEffects),
 }
 
 #[derive(Clone)]
@@ -399,7 +400,7 @@ where
         let state = ProcessTransactionState {
             tx_signatures: StakeAggregator::new(committee.clone()),
             errors: vec![],
-
+            effects_map: MultiStakeAggregator::new(committee.clone()),
             retryable: true,
             conflicting_tx_digests: Default::default(),
 
@@ -457,6 +458,7 @@ where
         match result {
             Ok((result, _)) => Ok(result),
             Err(state) => {
+                let state = self.record_non_quorum_effects_maybe(tx_digest, state);
                 Err(self.handle_process_transaction_error(tx_digest, state))
             }
         }
@@ -475,13 +477,13 @@ where
                 debug!(?tx_digest, name=?name.concise(), weight, "Received signed transaction from validator handle_transaction");
                 self.handle_transaction_response_with_signed(state, signed)
             }
-            Ok(PlainTransactionInfoResponse::ExecutedWithCert(cert)) => {
+            Ok(PlainTransactionInfoResponse::ExecutedWithCert(cert, effects)) => {
                 debug!(?tx_digest, name=?name.concise(), weight, "Received prev certificate and effects from validator handle_transaction");
-                self.handle_transaction_response_with_executed(state, Some(cert))
+                self.handle_transaction_response_with_executed(state, Some(cert), effects)
             }
-            Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(_)) => {
+            Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(_, effects)) => {
                 debug!(?tx_digest, name=?name.concise(), weight, "Received prev effects from validator handle_transaction");
-                self.handle_transaction_response_with_executed(state, None)
+                self.handle_transaction_response_with_executed(state, None, effects)
             }
             Err(err) => Err(err),
         }
@@ -526,8 +528,7 @@ where
         &self,
         state: &mut ProcessTransactionState,
         certificate: Option<CertifiedTransaction>,
-        // plain_tx_effects: SignedTransactionEffects,
-        // events: TransactionEvents,
+        plain_tx_effects: SignedTransactionEffects,
     ) -> SomaResult<Option<ProcessTransactionResult>> {
         match certificate {
             Some(certificate) if certificate.epoch() == self.committee.epoch => {
@@ -543,33 +544,95 @@ where
                 // If we get 2f+1 effects, it's a proof that the transaction
                 // has already been finalized. This works because validators would re-sign effects for transactions
                 // that were finalized in previous epochs.
-                // let digest = plain_tx_effects.data().digest();
-                // match state.effects_map.insert(digest, plain_tx_effects.clone()) {
-                //     InsertResult::NotEnoughVotes {
-                //         bad_votes,
-                //         bad_authorities,
-                //     } => {
-                //         state.non_retryable_stake += bad_votes;
-                //         if bad_votes > 0 {
-                //             state.errors.push((
-                //                 SuiError::InvalidSignature {
-                //                     error: "Individual signature verification failed".to_string(),
-                //                 },
-                //                 bad_authorities,
-                //                 bad_votes,
-                //             ));
-                //         }
-                //         Ok(None)
-                //     }
-                //     InsertResult::Failed { error } => Err(error),
-                //     InsertResult::QuorumReached(cert_sig) => {
+                let digest = plain_tx_effects.data().digest();
+                match state.effects_map.insert(digest, plain_tx_effects.clone()) {
+                    InsertResult::NotEnoughVotes {
+                        bad_votes,
+                        bad_authorities,
+                    } => {
+                        // state.non_retryable_stake += bad_votes;
+                        if bad_votes > 0 {
+                            state.errors.push((
+                                SomaError::InvalidSignature {
+                                    error: "Individual signature verification failed".to_string(),
+                                },
+                                bad_authorities,
+                                bad_votes,
+                            ));
+                        }
+                        Ok(None)
+                    }
+                    InsertResult::Failed { error } => Err(error),
+                    InsertResult::QuorumReached(cert_sig) => {
+                        let ct = CertifiedTransactionEffects::new_from_data_and_sig(
+                            plain_tx_effects.into_data(),
+                            cert_sig,
+                        );
                         Ok(Some(ProcessTransactionResult::Executed(
-                            
+                            ct.verify(&self.committee)?,
                         )))
-                //     }
-                // }
+                    }
+                }
             }
         }
+    }
+
+    /// Check if we have some signed TransactionEffects but not a quorum
+    fn record_non_quorum_effects_maybe(
+        &self,
+        tx_digest: &TransactionDigest,
+        mut state: ProcessTransactionState,
+    ) -> ProcessTransactionState {
+        if state.effects_map.unique_key_count() > 0 {
+            let non_quorum_effects = state.effects_map.get_all_unique_values();
+            warn!(
+                ?tx_digest,
+                "Received signed Effects but not with a quorum {:?}", non_quorum_effects
+            );
+
+            // Safe to unwrap because we know that there is at least one entry in the map
+            // from the check above.
+            let (_most_staked_effects_digest, (_, most_staked_effects_digest_stake)) =
+                non_quorum_effects
+                    .iter()
+                    .max_by_key(|&(_, (_, stake))| stake)
+                    .unwrap();
+            // We check if we have enough retryable stake to get quorum for the most staked
+            // effects digest, otherwise it indicates we have violated safety assumptions
+            // or we have forked.
+            if *most_staked_effects_digest_stake //+ self.get_retryable_stake(&state)
+                < self.committee.quorum_threshold()
+            {
+                state.retryable = false;
+                if state.check_if_error_indicates_tx_finalized_with_different_user_sig(
+                    self.committee.validity_threshold(),
+                ) {
+                    state.tx_finalized_with_different_user_sig = true;
+                } else {
+                    // TODO: Figure out a more reliable way to detect invariance violations.
+                    error!(
+                        "We have seen signed effects but unable to reach quorum threshold even including retriable stakes. This is very rare. Tx: {tx_digest:?}. Non-quorum effects: {non_quorum_effects:?}."
+                    );
+                }
+            }
+
+            let mut involved_validators = Vec::new();
+            let mut total_stake = 0;
+            for (validators, stake) in non_quorum_effects.values() {
+                involved_validators.extend_from_slice(validators);
+                total_stake += stake;
+            }
+            // TODO: Instead of pushing a new error, we should add more information about the non-quorum effects
+            // in the final error if state is no longer retryable
+            state.errors.push((
+                SomaError::QuorumFailedToGetEffectsQuorumWhenProcessingTransaction {
+                    effects_map: non_quorum_effects,
+                },
+                involved_validators,
+                total_stake,
+            ));
+        }
+        state
     }
 
 
@@ -629,7 +692,7 @@ where
         client_addr: Option<SocketAddr>,
     ) -> Result<QuorumDriverResponse, AggregatorProcessCertificateError> {
         let state = ProcessCertificateState {
-            // effects_map: MultiStakeAggregator::new(self.committee.clone()),
+            effects_map: MultiStakeAggregator::new(self.committee.clone()),
             non_retryable_stake: 0,
             non_retryable_errors: vec![],
             retryable_errors: vec![],
@@ -758,7 +821,7 @@ where
     ) -> SomaResult<Option<QuorumDriverResponse>> {
         match response {
             Ok(HandleCertificateResponse {
-                succeeded,
+                signed_effects,
             }) => {
                 debug!(
                     ?tx_digest,
@@ -766,48 +829,44 @@ where
                     "Validator handled certificate successfully",
                 );
 
-                // let effects_digest = *signed_effects.digest();
-                // // Note: here we aggregate votes by the hash of the effects structure
-                // match state.effects_map.insert(
-                //     (signed_effects.epoch(), effects_digest),
-                //     signed_effects.clone(),
-                // ) {
-                //     InsertResult::NotEnoughVotes {
-                //         bad_votes,
-                //         bad_authorities,
-                //     } => {
-                //         state.non_retryable_stake += bad_votes;
-                //         if bad_votes > 0 {
-                //             state.non_retryable_errors.push((
-                //                 SuiError::InvalidSignature {
-                //                     error: "Individual signature verification failed".to_string(),
-                //                 },
-                //                 bad_authorities,
-                //                 bad_votes,
-                //             ));
-                //         }
-                //         Ok(None)
-                //     }
-                //     InsertResult::Failed { error } => Err(error),
-                //     InsertResult::QuorumReached(cert_sig) => {
-                //         let ct = CertifiedTransactionEffects::new_from_data_and_sig(
-                //             signed_effects.into_data(),
-                //             cert_sig,
-                //         );
-                //         ct.verify(&committee).map(|ct| {
-                //             debug!(?tx_digest, "Got quorum for validators handle_certificate.");
-                //             Some(QuorumDriverResponse {
-                //                 effects_cert: ct,
-                //                 events: state.events.take(),
-                //                 input_objects: state.input_objects.take(),
-                //                 output_objects: state.output_objects.take(),
-                //                 auxiliary_data: state.auxiliary_data.take(),
-                //             })
-                //         })
-                //     }
-                // }
+                let effects_digest = *signed_effects.digest();
+                // Note: here we aggregate votes by the hash of the effects structure
+                match state.effects_map.insert(
+                    (signed_effects.epoch(), effects_digest),
+                    signed_effects.clone(),
+                ) {
+                    InsertResult::NotEnoughVotes {
+                        bad_votes,
+                        bad_authorities,
+                    } => {
+                        // state.non_retryable_stake += bad_votes;
+                        if bad_votes > 0 {
+                            state.non_retryable_errors.push((
+                                SomaError::InvalidSignature {
+                                    error: "Individual signature verification failed".to_string(),
+                                },
+                                bad_authorities,
+                                bad_votes,
+                            ));
+                        }
+                        Ok(None)
+                    }
+                    InsertResult::Failed { error } => Err(error),
+                    InsertResult::QuorumReached(cert_sig) => {
+                        let ct = CertifiedTransactionEffects::new_from_data_and_sig(
+                            signed_effects.into_data(),
+                            cert_sig,
+                        );
 
-                Ok(Some(QuorumDriverResponse {}))
+                        ct.verify(&committee).map(|ct| {
+                            debug!(?tx_digest, "Got quorum for validators handle_certificate.");
+                            Some(QuorumDriverResponse {
+                                effects_cert: ct,
+                               
+                            })
+                        })
+                    }
+                }
             }
             Err(err) => Err(err),
         }

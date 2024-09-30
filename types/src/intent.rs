@@ -55,7 +55,7 @@ impl Default for AppId {
 #[repr(u8)]
 pub enum IntentScope {
     TransactionData = 0, // Used for a user signature on a transaction data.
-    // TransactionEffects = 1,      // Used for an authority signature on transaction effects.
+
     // CheckpointSummary = 2,       // Used for an authority signature on a checkpoint summary.
     // PersonalMessage = 3,         // Used for a user signature on a personal message.
     // ProofOfPossession = 5, // Used as a signature representing an authority's proof of possession of its authority protocol key.
@@ -63,6 +63,7 @@ pub enum IntentScope {
     // BridgeEventUnused = 7, // for bridge purposes but it's currently not included in messages.
     ConsensusBlock = 1, // Used for consensus authority signature on block's digest
     SenderSignedTransaction = 2, // Used for an authority signature on a user signed transaction.
+    TransactionEffects = 3, // Used for an authority signature on transaction effects.
 }
 
 impl TryFrom<u8> for IntentScope {

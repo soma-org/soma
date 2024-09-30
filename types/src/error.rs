@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use fastcrypto::error;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -5,7 +7,9 @@ use tonic::Status;
 
 use crate::{
     base::AuthorityName,
-    committee::{Committee, EpochId},
+    committee::{Committee, EpochId, VotingPower},
+    digests::TransactionEffectsDigest,
+    effects::ExecutionFailureStatus,
 };
 pub type SomaResult<T = ()> = Result<T, SomaError>;
 
@@ -128,6 +132,23 @@ pub enum SomaError {
         authority: AuthorityName,
         reason: String,
     },
+
+    #[error("Invalid digest length. Expected {expected}, got {actual}")]
+    InvalidDigestLength { expected: usize, actual: usize },
+
+    #[error(
+        "Failed to get a quorum of signed effects when processing transaction: {effects_map:?}"
+    )]
+    QuorumFailedToGetEffectsQuorumWhenProcessingTransaction {
+        effects_map: BTreeMap<TransactionEffectsDigest, (Vec<AuthorityName>, VotingPower)>,
+    },
+
+    #[error("Transaction certificate processing failed: {err}")]
+    ErrorWhileProcessingCertificate { err: String },
+
+    // Unsupported Operations on Fullnode
+    #[error("Fullnode does not support handle_certificate")]
+    FullNodeCantHandleCertificate,
 }
 
 impl From<Status> for SomaError {
@@ -166,5 +187,66 @@ impl From<&str> for SomaError {
         SomaError::GenericAuthorityError {
             error: error.to_string(),
         }
+    }
+}
+
+type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+pub type ExecutionErrorKind = ExecutionFailureStatus;
+
+#[derive(Debug)]
+pub struct ExecutionError {
+    inner: Box<ExecutionErrorInner>,
+}
+
+#[derive(Debug)]
+struct ExecutionErrorInner {
+    kind: ExecutionErrorKind,
+    source: Option<BoxError>,
+}
+
+impl ExecutionError {
+    pub fn new(kind: ExecutionErrorKind, source: Option<BoxError>) -> Self {
+        Self {
+            inner: Box::new(ExecutionErrorInner { kind, source }),
+        }
+    }
+
+    pub fn new_with_source<E: Into<BoxError>>(kind: ExecutionErrorKind, source: E) -> Self {
+        Self::new(kind, Some(source.into()))
+    }
+
+    pub fn from_kind(kind: ExecutionErrorKind) -> Self {
+        Self::new(kind, None)
+    }
+
+    pub fn kind(&self) -> &ExecutionErrorKind {
+        &self.inner.kind
+    }
+
+    pub fn source(&self) -> &Option<BoxError> {
+        &self.inner.source
+    }
+
+    pub fn to_execution_status(&self) -> ExecutionFailureStatus {
+        self.kind().clone()
+    }
+}
+
+impl std::fmt::Display for ExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ExecutionError: {:?}", self)
+    }
+}
+
+impl std::error::Error for ExecutionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.inner.source.as_ref().map(|e| &**e as _)
+    }
+}
+
+impl From<ExecutionErrorKind> for ExecutionError {
+    fn from(kind: ExecutionErrorKind) -> Self {
+        Self::from_kind(kind)
     }
 }
