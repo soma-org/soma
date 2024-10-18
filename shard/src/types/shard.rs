@@ -1,12 +1,11 @@
 use crate::error::ShardError;
-use crate::types::manifest::ManifestDigest;
 use crate::ProtocolKeySignature;
 use crate::{
     crypto::{DefaultHashFunction, DIGEST_LENGTH},
     error::ShardResult,
 };
 use bytes::Bytes;
-use fastcrypto::hash::{Digest, HashFunction};
+use fastcrypto::hash::HashFunction;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -14,9 +13,11 @@ use std::{
 };
 
 use super::authority_committee::Epoch;
+use super::digest::Digest;
+use super::manifest::Manifest;
 use super::modality::Modality;
-use super::network_committee::NetworkIdentityIndex;
-use super::transaction::SignedTransactionDigest;
+use super::network_committee::NetworkingIndex;
+use super::transaction::SignedTransaction;
 
 /// Contains the manifest digest and leader. By keeping these details
 /// secret from the broader network and only sharing with selected shard members
@@ -24,14 +25,14 @@ use super::transaction::SignedTransactionDigest;
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct ShardSecret {
     /// the digest that uniquely identifies a manifest
-    manifest_digest: ManifestDigest, //TODO: switch to a manifest ref to be more in-line?
+    manifest_digest: Digest<Manifest>, //TODO: switch to a manifest ref to be more in-line?
     /// the node that will be coordinating communication and selecting the commits
-    pub(crate) leader: NetworkIdentityIndex,
+    pub(crate) leader: NetworkingIndex,
 }
 
 impl ShardSecret {
     /// creates a new shard secret given a manifest digest and leader
-    const fn new(manifest_digest: ManifestDigest, leader: NetworkIdentityIndex) -> Self {
+    const fn new(manifest_digest: Digest<Manifest>, leader: NetworkingIndex) -> Self {
         Self {
             manifest_digest,
             leader,
@@ -39,15 +40,11 @@ impl ShardSecret {
     }
 }
 
-macros::generate_digest_type!(ShardSecret);
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ShardEntropy {
     signature: ProtocolKeySignature,
-    transaction_digest: SignedTransactionDigest,
+    transaction_digest: Digest<SignedTransaction>,
 }
-
-macros::generate_digest_type!(ShardEntropy);
 
 /// Uniquely identifies a shard by the epoch, leader, entropy, and modality
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -55,9 +52,9 @@ pub(crate) struct ShardRef {
     /// the epoch that this shard was sampled from, important since committees change each epoch
     epoch: Epoch,
     /// the leader of the shard
-    leader: NetworkIdentityIndex,
+    leader: NetworkingIndex,
     /// the tbls threshold signature that acts as a safe source of randomness
-    entropy_digest: ShardEntropyDigest,
+    entropy_digest: Digest<ShardEntropy>,
     /// modality
     modality: Modality,
 }
@@ -66,24 +63,24 @@ impl ShardRef {
     /// lex min.
     const MIN: Self = Self {
         epoch: 0,
-        leader: NetworkIdentityIndex::MIN,
-        entropy_digest: ShardEntropyDigest::MIN,
+        leader: NetworkingIndex::MIN,
+        entropy_digest: Digest::MIN,
         modality: Modality::text(),
     };
 
     /// lex max
     const MAX: Self = Self {
         epoch: u64::MAX,
-        leader: NetworkIdentityIndex::MAX,
-        entropy_digest: ShardEntropyDigest::MAX,
+        leader: NetworkingIndex::MAX,
+        entropy_digest: Digest::MAX,
         modality: Modality::video(),
     };
 
     /// creates a new shard ref
     const fn new(
         epoch: Epoch,
-        leader: NetworkIdentityIndex,
-        entropy_digest: ShardEntropyDigest,
+        leader: NetworkingIndex,
+        entropy_digest: Digest<ShardEntropy>,
         modality: Modality,
     ) -> Self {
         Self {

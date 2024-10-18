@@ -75,6 +75,3 @@ impl TransactionCertificateAPI for TransactionCertificateV1 {
         &self.certificate_signature
     }
 }
-
-macros::generate_digest_type!(TransactionCertificate);
-macros::generate_verified_type!(TransactionCertificate);

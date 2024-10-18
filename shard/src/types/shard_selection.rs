@@ -50,7 +50,3 @@ impl ShardSelectionAPI for ShardSelectionV1 {
         &self.commits
     }
 }
-
-macros::generate_signed_type!(ShardSelection);
-macros::generate_digest_type!(SignedShardSelection);
-macros::generate_verified_type!(SignedShardSelection);

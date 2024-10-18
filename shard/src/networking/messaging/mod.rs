@@ -1,27 +1,28 @@
 pub(crate) mod channel_pool;
 pub(crate) mod encoder_tonic_service;
-pub(crate) mod leader_tonic_service;
 pub(crate) mod tonic;
 
 mod tonic_gen {
-    include!(concat!(env!("OUT_DIR"), "/shard.LeaderService.rs"));
-    include!(concat!(env!("OUT_DIR"), "/shard.EncoderService.rs"));
+    include!(concat!(env!("OUT_DIR"), "/soma.EncoderService.rs"));
 }
 
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
+use crate::types::certificate::ShardCertificate;
+use crate::types::manifest::Manifest;
 use crate::types::multiaddr::{Multiaddr, Protocol};
+use crate::types::shard::ShardRef;
+// use crate::types::shard::ShardRef;
+use crate::types::shard_commit::ShardCommit;
+use crate::types::shard_endorsement::ShardEndorsement;
+use crate::types::shard_input::ShardInput;
+use crate::types::shard_reveal::ShardReveal;
+use crate::types::{signed::Signed, verified::Verified};
+use crate::ProtocolKeySignature;
 use crate::{
     crypto::keys::NetworkKeyPair,
     error::ShardResult,
-    types::{
-        context::{EncoderContext, LeaderContext},
-        network_committee::NetworkIdentityIndex,
-        shard_commit::VerifiedSignedShardCommit,
-        shard_endorsement::VerifiedSignedShardEndorsement,
-        shard_input::VerifiedSignedShardInput,
-        shard_selection::VerifiedSignedShardSelection,
-    },
+    types::{context::EncoderContext, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -30,87 +31,162 @@ use std::{sync::Arc, time::Duration};
 pub(crate) const MESSAGE_TIMEOUT: std::time::Duration = Duration::from_secs(60);
 
 #[async_trait]
-pub(crate) trait LeaderNetworkClient: Send + Sync + Sized + 'static {
-    /// note: using network identity index because leaders can be any staked member
-    /// and are not dependent on a specific modality
-    async fn send_commit(
+pub(crate) trait EncoderClient: Send + Sync + Sized + 'static {
+    //TODO: ensure everything going over the wire is verified and versioned
+    async fn send_shard_input(
         &self,
-        peer: NetworkIdentityIndex,
-        commit: &VerifiedSignedShardCommit,
+        peer: NetworkingIndex,
+        input: &Verified<Signed<ShardInput>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
-    /// note: using network identity index because leaders can be any staked member
-    /// and are not dependent on a specific modality
+    async fn get_shard_input(
+        &self,
+        peer: NetworkingIndex,
+        input: &Verified<ShardRef>,
+        timeout: Duration,
+    ) -> ShardResult<Bytes>;
+
+    async fn send_probes(
+        &self,
+        peer: NetworkingIndex,
+        probes: &Vec<Verified<ShardCertificate<Signed<Probe>>>>,
+        timeout: Duration,
+    );
+
+    async fn get_probes(
+        &self,
+        peer: NetworkingIndex,
+        slots: ShardSlots,
+        timeout: Duration,
+    ) -> ShardResult<Vec<Bytes>>;
+
+    async fn get_commit_signature(
+        &self,
+        peer: NetworkingIndex,
+        commit: &Verified<Signed<ShardCommit>>,
+        timeout: Duration,
+    ) -> ShardResult<Bytes>;
+
+    async fn send_certified_commits(
+        &self,
+        peer: NetworkingIndex,
+        commits: &Vec<Verified<ShardCertificate<Signed<ShardCommit>>>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
+    async fn get_certified_commits(
+        &self,
+        peer: NetworkingIndex,
+        // TODO: fix type and verify
+        slots: ShardSlots,
+        timeout: Duration,
+    ) -> ShardResult<Vec<Bytes>>;
+
+    async fn get_reveal_signature(
+        &self,
+        peer: NetworkingIndex,
+        reveal: &Verified<Signed<ShardReveal>>,
+        timeout: Duration,
+    ) -> ShardResult<Bytes>;
+
+    async fn send_certified_reveals(
+        &self,
+        peer: NetworkingIndex,
+        reveals: &Vec<Verified<ShardCertificate<Signed<ShardReveal>>>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
+    async fn get_certified_reveals(
+        &self,
+        peer: NetworkingIndex,
+        // TODO: fix type and verify
+        slots: ShardSlots,
+        timeout: Duration,
+    ) -> ShardResult<Vec<Bytes>>;
+
+    async fn send_commit_manifests(
+        &self,
+        peer: NetworkingIndex,
+        commits: &Vec<Verified<Signed<Manifest>>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
+    async fn get_commit_manifests(
+        &self,
+        peer: NetworkingIndex,
+        slots: ShardSlots,
+        timeout: Duration,
+    ) -> ShardResult<Vec<Bytes>>;
+
+    async fn send_removal_signatures(
+        &self,
+        peer: NetworkingIndex,
+        //TODO: fix type
+        removals: &Vec<Verified<Signed<Removal>>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
+    async fn send_certified_removals(
+        &self,
+        peer: NetworkingIndex,
+        // TODO: fix type
+        removals: &Vec<Verified<ShardCertificate<Removal>>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
+    async fn send_removal_set(
+        &self,
+        peer: NetworkingIndex,
+        removal_set: &Verified<Signed<RemovalSet>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
     async fn send_endorsement(
         &self,
-        peer: NetworkIdentityIndex,
-        endorsement: &VerifiedSignedShardEndorsement,
+        peer: NetworkingIndex,
+        removal_set: &Verified<Signed<ShardEndorsement>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
+    async fn send_finality_proof(
+        &self,
+        peer: NetworkingIndex,
+        finality_proof: &Verified<EmbeddingFinalityProof>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+
+    async fn send_delivery_proof(
+        &self,
+        peer: NetworkingIndex,
+        delivery_proof: &Verified<EmbeddingDeliveryProof>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
 
 #[async_trait]
-pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
-    async fn send_input(
+pub(crate) trait EncoderService: Send + Sync + Sized + 'static {
+    async fn handle_send_input(&self, peer: NetworkingIndex, input: Bytes) -> ShardResult<()>;
+    async fn handle_get_input(
         &self,
-        peer: NetworkIdentityIndex,
-        input: &VerifiedSignedShardInput,
-        timeout: Duration,
-    ) -> ShardResult<()>;
-
-    async fn send_selection(
-        &self,
-        peer: NetworkIdentityIndex,
-        selection: &VerifiedSignedShardSelection,
-        timeout: Duration,
-    ) -> ShardResult<()>;
-}
-
-#[async_trait]
-pub(crate) trait LeaderNetworkService: Send + Sync + Sized + 'static {
-    async fn handle_send_commit(
-        &self,
-        peer: NetworkIdentityIndex,
-        commit: Bytes,
-    ) -> ShardResult<()>;
-    async fn handle_send_endorsement(
-        &self,
-        peer: NetworkIdentityIndex,
-        endorsement: Bytes,
-    ) -> ShardResult<()>;
-}
-
-#[async_trait]
-pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
-    async fn handle_send_input(&self, peer: NetworkIdentityIndex, input: Bytes) -> ShardResult<()>;
+        peer: NetworkingIndex,
+        shard_ref: Bytes,
+    ) -> ShardResult<VerifiedSignedShardInput>;
     async fn handle_send_selection(
         &self,
-        peer: NetworkIdentityIndex,
+        peer: NetworkingIndex,
         selection: Bytes,
     ) -> ShardResult<()>;
 }
 
-pub(crate) trait LeaderNetworkManager<S>: Send + Sync
+pub(crate) trait EncoderManager<S>: Send + Sync
 where
-    S: LeaderNetworkService,
+    S: EncoderService,
 {
-    type Client: EncoderNetworkClient;
-
-    fn new(context: Arc<LeaderContext>, network_keypair: NetworkKeyPair) -> Self;
-    fn encoder_client(&self) -> Arc<Self::Client>;
-    async fn start(&mut self, service: Arc<S>);
-    async fn stop(&mut self);
-}
-
-pub(crate) trait EncoderNetworkManager<S>: Send + Sync
-where
-    S: EncoderNetworkService,
-{
-    type Client: LeaderNetworkClient;
+    type Client: EncoderClient;
 
     fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self;
-    fn leader_client(&self) -> Arc<Self::Client>;
+    fn client(&self) -> Arc<Self::Client>;
     async fn start(&mut self, service: Arc<S>);
     async fn stop(&mut self);
 }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "cli","macros", "shard"]
+members = ["cli", "shard"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -49,3 +49,4 @@ parking_lot = "0.12.3"
 tower = { version = "0.5.1", features = ["full"] }
 tower-http = { version = "0.5.1", features = ["full"] }
 tonic-build = "0.12.2"
+aes = "0.8.4"

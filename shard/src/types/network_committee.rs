@@ -53,33 +53,33 @@ impl NetworkCommittee {
     // }
 
     /// returns the identitity for a given network index
-    pub fn identity(&self, identity_index: NetworkIdentityIndex) -> &NetworkIdentity {
+    pub fn identity(&self, identity_index: NetworkingIndex) -> &NetworkIdentity {
         &self.identities[identity_index]
     }
 
     /// returns all the network identities as an iterator
-    pub fn identities(&self) -> impl Iterator<Item = (NetworkIdentityIndex, &NetworkIdentity)> {
+    pub fn identities(&self) -> impl Iterator<Item = (NetworkingIndex, &NetworkIdentity)> {
         self.identities
             .iter()
             .enumerate()
-            .map(|(i, a)| (NetworkIdentityIndex(i as u32), a))
+            .map(|(i, a)| (NetworkingIndex(i as u32), a))
     }
 
     /// -----------------------------------------------------------------------
     /// Helpers for Committee properties.
 
-    /// Coverts an index to an NetworkIdentityIndex, if valid.
+    /// Coverts an index to an NetworkingIndex, if valid.
     /// Returns None if index is out of bound.
-    pub fn to_identity_index(&self, index: usize) -> Option<NetworkIdentityIndex> {
+    pub fn to_identity_index(&self, index: usize) -> Option<NetworkingIndex> {
         if index < self.identities.len() {
-            Some(NetworkIdentityIndex(index as u32))
+            Some(NetworkingIndex(index as u32))
         } else {
             None
         }
     }
 
     /// Returns true if the provided index is valid.
-    pub fn is_valid_index(&self, index: NetworkIdentityIndex) -> bool {
+    pub fn is_valid_index(&self, index: NetworkingIndex) -> bool {
         index.value() < self.size()
     }
 
@@ -102,18 +102,18 @@ pub struct NetworkIdentity {
     pub network_key: NetworkPublicKey,
 }
 
-/// Each authority is uniquely identified by its `NetworkIdentityIndex` in the Committee.
-/// `NetworkIdentityIndex` is between 0 (inclusive) and the total number of authorities (exclusive).
+/// Each authority is uniquely identified by its `NetworkingIndex` in the Committee.
+/// `NetworkingIndex` is between 0 (inclusive) and the total number of authorities (exclusive).
 ///
-/// NOTE: for safety, invalid `NetworkIdentityIndex` should be impossible to create. So `NetworkIdentityIndex`
-/// should not be created or incremented outside of this file. `NetworkIdentityIndex` received from peers
+/// NOTE: for safety, invalid `NetworkingIndex` should be impossible to create. So `NetworkingIndex`
+/// should not be created or incremented outside of this file. `NetworkingIndex` received from peers
 /// should be validated before use.
 #[derive(
     Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize,
 )]
-pub struct NetworkIdentityIndex(u32);
+pub struct NetworkingIndex(u32);
 
-impl NetworkIdentityIndex {
+impl NetworkingIndex {
     /// Minimum committee size is 1, so 0 index is always valid.
     pub const ZERO: Self = Self(0);
 
@@ -129,14 +129,14 @@ impl NetworkIdentityIndex {
 }
 
 #[cfg(test)]
-impl NetworkIdentityIndex {
+impl NetworkingIndex {
     pub const fn new_for_test(index: u32) -> Self {
         Self(index)
     }
 }
 
 // TODO: re-evaluate formats for production debugging.
-impl Display for NetworkIdentityIndex {
+impl Display for NetworkingIndex {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.value() < 26 {
             let c = (b'A' + self.value() as u8) as char;
@@ -147,30 +147,30 @@ impl Display for NetworkIdentityIndex {
     }
 }
 
-impl<T, const N: usize> Index<NetworkIdentityIndex> for [T; N] {
+impl<T, const N: usize> Index<NetworkingIndex> for [T; N] {
     type Output = T;
 
-    fn index(&self, index: NetworkIdentityIndex) -> &Self::Output {
+    fn index(&self, index: NetworkingIndex) -> &Self::Output {
         self.get(index.value()).unwrap()
     }
 }
 
-impl<T> Index<NetworkIdentityIndex> for Vec<T> {
+impl<T> Index<NetworkingIndex> for Vec<T> {
     type Output = T;
 
-    fn index(&self, index: NetworkIdentityIndex) -> &Self::Output {
+    fn index(&self, index: NetworkingIndex) -> &Self::Output {
         self.get(index.value()).unwrap()
     }
 }
 
-impl<T, const N: usize> IndexMut<NetworkIdentityIndex> for [T; N] {
-    fn index_mut(&mut self, index: NetworkIdentityIndex) -> &mut Self::Output {
+impl<T, const N: usize> IndexMut<NetworkingIndex> for [T; N] {
+    fn index_mut(&mut self, index: NetworkingIndex) -> &mut Self::Output {
         self.get_mut(index.value()).unwrap()
     }
 }
 
-impl<T> IndexMut<NetworkIdentityIndex> for Vec<T> {
-    fn index_mut(&mut self, index: NetworkIdentityIndex) -> &mut Self::Output {
+impl<T> IndexMut<NetworkingIndex> for Vec<T> {
+    fn index_mut(&mut self, index: NetworkingIndex) -> &mut Self::Output {
         self.get_mut(index.value()).unwrap()
     }
 }

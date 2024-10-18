@@ -20,40 +20,10 @@ fn main() -> Result<()> {
 fn build_tonic_services(out_dir: &Path) {
     let codec_path = "tonic::codec::ProstCodec";
 
-    let leader_shard_service = tonic_build::manual::Service::builder()
-        .name("LeaderService")
-        .package("shard")
-        .comment("Shard leader interface")
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("send_commit")
-                .route_name("SendCommit")
-                .input_type("crate::networking::messaging::leader_tonic_service::SendCommitRequest")
-                .output_type(
-                    "crate::networking::messaging::leader_tonic_service::SendCommitResponse",
-                )
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("send_endorsement")
-                .route_name("SendEndorsement")
-                .input_type(
-                    "crate::networking::messaging::leader_tonic_service::SendEndorsementRequest",
-                )
-                .output_type(
-                    "crate::networking::messaging::leader_tonic_service::SendEndorsementResponse",
-                )
-                .codec_path(codec_path)
-                .build(),
-        )
-        .build();
-
     let encoder_shard_service = tonic_build::manual::Service::builder()
         .name("EncoderService")
-        .package("shard")
-        .comment("Shard encoder interface")
+        .package("soma")
+        .comment("Soma encoder interface")
         .method(
             tonic_build::manual::Method::builder()
                 .name("send_input")
@@ -81,5 +51,5 @@ fn build_tonic_services(out_dir: &Path) {
         .build();
     tonic_build::manual::Builder::new()
         .out_dir(out_dir)
-        .compile(&[leader_shard_service, encoder_shard_service]);
+        .compile(&[encoder_shard_service]);
 }

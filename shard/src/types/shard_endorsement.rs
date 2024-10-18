@@ -68,7 +68,3 @@ impl ShardEndorsementAPI for ShardEndorsementV1 {
         &self.shard_ref
     }
 }
-
-macros::generate_signed_type!(ShardEndorsement);
-macros::generate_digest_type!(SignedShardEndorsement);
-macros::generate_verified_type!(SignedShardEndorsement);

@@ -1,6 +1,6 @@
 use crate::{
     crypto::{
-        keys::{ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey},
+        keys::{AuthorityPublicKey, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey},
         DefaultHashFunction, DIGEST_LENGTH,
     },
     error::{ShardError, ShardResult},
@@ -70,6 +70,8 @@ impl ShardCommitAPI for ShardCommitV1 {
         &self.manifest
     }
 }
-macros::generate_signed_type!(ShardCommit);
-macros::generate_digest_type!(SignedShardCommit);
-macros::generate_verified_type!(SignedShardCommit);
+
+// pub struct CommitCertificate {
+//     signed_commit: SignedShardCommit,
+//     aggregate_signature: AuthorityPublicKey,
+// }

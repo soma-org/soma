@@ -88,6 +88,3 @@ impl ChunkAPI for ChunkV1 {
         self.size
     }
 }
-
-macros::generate_digest_type!(Manifest);
-macros::generate_verified_type!(Manifest);

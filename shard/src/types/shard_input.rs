@@ -76,7 +76,3 @@ impl ShardInputAPI for ShardInputV1 {
         &self.modality
     }
 }
-
-macros::generate_signed_type!(ShardInput);
-macros::generate_digest_type!(SignedShardInput);
-macros::generate_verified_type!(SignedShardInput);

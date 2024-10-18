@@ -4,7 +4,7 @@ use crate::{
 };
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use fastcrypto::hash::{Digest, HashFunction};
+use fastcrypto::hash::HashFunction;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -15,7 +15,7 @@ use std::{
 
 use crate::types::authority_committee::Epoch;
 
-use super::{scope::ScopedMessage, shard::ShardSecretDigest};
+use super::{digest::Digest, scope::ScopedMessage, shard::ShardSecret};
 
 /// TransactionData contains the details of a transaction. TransactionData is versioned
 /// at the top-level given that it is sent over the network.
@@ -85,7 +85,7 @@ impl TransactionDataAPI for TransactionDataV1 {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct ShardTransaction {
-    shard_secret_digest: ShardSecretDigest,
+    shard_secret_digest: Digest<ShardSecret>,
 }
 
 impl TransactionData {
@@ -115,26 +115,23 @@ pub struct SignedTransaction {
     pub tx_signatures: Vec<ProtocolKeySignature>,
 }
 
-macros::generate_digest_type!(SignedTransaction);
-macros::generate_verified_type!(SignedTransaction);
-
 /// `TransactionRef` uniquely identifies a `VerifiedTransaction` via `digest`. It also contains the slot
 /// info (round and author) so it can be used in logic such as aggregating stakes for a round.
 #[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TransactionRef {
-    pub digest: SignedTransactionDigest,
+    pub digest: Digest<SignedTransaction>,
 }
 
 impl TransactionRef {
     pub const MIN: Self = Self {
-        digest: SignedTransactionDigest::MIN,
+        digest: Digest::MIN,
     };
 
     pub const MAX: Self = Self {
-        digest: SignedTransactionDigest::MAX,
+        digest: Digest::MAX,
     };
 
-    pub fn new(digest: SignedTransactionDigest) -> Self {
+    pub fn new(digest: Digest<SignedTransaction>) -> Self {
         Self { digest }
     }
 }
