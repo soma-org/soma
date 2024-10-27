@@ -17,7 +17,7 @@ use crate::types::shard_commit::ShardCommit;
 use crate::types::shard_endorsement::ShardEndorsement;
 use crate::types::shard_input::ShardInput;
 use crate::types::shard_reveal::ShardReveal;
-use crate::types::{signed::Signed, verified::Verified};
+use crate::types::{serialized::Serialized, signed::Signed};
 use crate::ProtocolKeySignature;
 use crate::{
     crypto::keys::NetworkKeyPair,
@@ -30,10 +30,13 @@ use std::{sync::Arc, time::Duration};
 
 pub(crate) const MESSAGE_TIMEOUT: std::time::Duration = Duration::from_secs(60);
 
+/// The Encoder Network client takes verified types as inputs, the reason being that verified types already contain
+/// serialized versions of the data. E.g. in the case of loading data from a database the serialized data is already
+/// available so it would be redundant to deserialized + re-serialized. The response from a client fn is always in the form
+/// of bytes due to the fact that verifying for each specific networking implementation would be redundant and would require
+/// maintaining multiple versions of the same codebase.
 #[async_trait]
-pub(crate) trait EncoderClient: Send + Sync + Sized + 'static {
-    //TODO: ensure everything going over the wire is verified and versioned
-
+pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     /// Send shard input is used by the client to send an input to the shard.
     /// Each input has a finality proof of the transaction guranteeing that funds
     /// are secure, and the threshold signature which acts as entropy for shard selection.
@@ -44,7 +47,7 @@ pub(crate) trait EncoderClient: Send + Sync + Sized + 'static {
     async fn send_shard_input(
         &self,
         peer: NetworkingIndex,
-        input: &Verified<Signed<ShardInput>>,
+        shard_input: &Serialized<Signed<ShardInput>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -55,210 +58,234 @@ pub(crate) trait EncoderClient: Send + Sync + Sized + 'static {
     async fn get_shard_input(
         &self,
         peer: NetworkingIndex,
-        input: &Verified<ShardRef>,
+        shard_ref: &Serialized<ShardRef>,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
-    /// Send probes is only used in the the extremely slim case that a race condition happens where the node requested the probe and sent out removals
-    /// but other peers have successfully received the probe AFTER the peer requested the probe from peers.
-    /// In such case, peers that:
-    /// - have the probe
-    /// - have not received a removal certificate
-    /// - have received a removal signature from the fast node
-    /// use send probes as an attempt to self-heal the shard and supply the fast node with the neccessary probe so that it does not
-    /// get stuck without the probe but also without a removal certificate.
-    async fn send_probes(
-        &self,
-        peer: NetworkingIndex,
-        probes: &Vec<Verified<ShardCertificate<Signed<Probe>>>>,
-        timeout: Duration,
-    );
-
-    /// Get probes requests specific probes from a peer. Typical flow is to request a probe directly from
-    /// the owner, but if that person is unreachable, an encoder can request it from his shard members.
-    /// The flow for getting a probe is:
-    /// 1. ask the probe owner directly
-    /// 2. retry until timeout hits
-    /// 3. ask shard peers if they have the probe
-    /// 4. if no, send removal signature out
-    async fn get_probes(
-        &self,
-        peer: NetworkingIndex,
-        slots: ShardSlots,
-        timeout: Duration,
-    ) -> ShardResult<Vec<Bytes>>;
-
     /// Get commit signature is used when a shard member has performed the computation
     /// and encrypted their embeddings using an encryption key. The commit contains
-    /// information pertaining to the checksums of embedding data and download URLs.
+    /// information pertaining to the checksums of embedding data and a download location.
+    /// The download location is then used to download probes, encrypted embeddings, peers embeddings etc.
+    /// In the future, this commit might route to different encoders / probes.
     /// Commit certificates are produced by aggregating a quorum number of signatures.
     /// Get commit signatures is how one asks for those signatures
-    async fn get_commit_signature(
+    async fn get_shard_commit_signature(
         &self,
         peer: NetworkingIndex,
-        commit: &Verified<Signed<ShardCommit>>,
+        shard_commit: &Serialized<Signed<ShardCommit>>,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
     /// After a commit has been certified with quorum number of signatures, it is rebroadcast
-    /// to all peers. Send certified commits is how that method is called. It has a backup functionality
-    /// that allows it to fill in any peers that have signaled their inability to get the certificate
-    /// with a removal. In the case that a node has a commit, a removal, but no removal certificate they attempt
-    /// to backfill their peers.
-    async fn send_certified_commits(
+    /// to all peers.
+    async fn send_shard_commit_certificate(
         &self,
         peer: NetworkingIndex,
-        commits: &Vec<Verified<ShardCertificate<Signed<ShardCommit>>>>,
+        shard_commit_certificate: &Serialized<ShardCertificate<Signed<ShardCommit>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     /// In the case that a node has not received a certified commit and it's timeout for waiting has been exhausted,
     /// the node will attempt to ask their peers for the certified commits. If no one returns with the certificates,
     /// the node broadcasts a removal signature.
-    async fn get_certified_commits(
+    async fn batch_get_shard_commit_certificates(
         &self,
         peer: NetworkingIndex,
-        // TODO: fix type and verify
-        slots: ShardSlots,
+        slots: &Serialized<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>>;
 
     /// Reveals must also be certified with quorum number of signatures from shard members.
     /// To get the signatures, the node reveals the key used to perform commit encryption.
-    async fn get_reveal_signature(
+    async fn get_shard_reveal_signature(
         &self,
         peer: NetworkingIndex,
-        reveal: &Verified<Signed<ShardReveal>>,
+        shard_reveal: &Serialized<Signed<ShardReveal>>,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
     /// Once a node has a certified reveal, they broadcast that to all their shard peers.
-    /// The endpoint can also be used to backfill peers that have signalled that they need the
-    /// reveal certificate. In the case of already receiving a removal certificate, there is no need to
-    /// backfill.
-    async fn send_certified_reveals(
+    async fn send_shard_reveal_certificate(
         &self,
         peer: NetworkingIndex,
-        reveals: &Vec<Verified<ShardCertificate<Signed<ShardReveal>>>>,
+        shard_reveal_certificate: &Serialized<ShardCertificate<Signed<ShardReveal>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     /// If a node has not received a reveal certificate and the timeout has been exhausted, the node
     /// attempts to ask peers for the certificate. If no one has the certificate, the peer broadcasts a removal.
-    async fn get_certified_reveals(
+    async fn batch_get_shard_reveal_certificates(
         &self,
         peer: NetworkingIndex,
-        // TODO: fix type and verify
-        slots: ShardSlots,
+        slots: &Serialized<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>>;
 
-    /// Send commit manifests is used to backfill any nodes that have signalled that they wish to remove the commit due to problems
-    /// with downloading the data. This is only used by nodes that have received removal signatures, but not removal certificates,
-    /// and were able to successfully download the data.
-    async fn send_commit_manifests(
-        &self,
-        peer: NetworkingIndex,
-        commits: &Vec<Verified<Signed<Manifest>>>,
-        timeout: Duration,
-    ) -> ShardResult<()>;
-
-    /// Get commit manifests is used to ask peers for alternative commit data manifests. Nodes use this after exhausting all retries
-    /// of downloading the commit data from the author. If a peer does in fact have the commit data, they provide a download link.
-    /// If no one has it, or those new links fail, the node broadcasts a removal signature.
-    async fn get_commit_manifests(
-        &self,
-        peer: NetworkingIndex,
-        //TODO: verify and fix type
-        slots: ShardSlots,
-        timeout: Duration,
-    ) -> ShardResult<Vec<Bytes>>;
-
-    /// Send removal signatures is used when a node has exhausted all means of
+    /// Send shard removal signature is used when a node has exhausted all means of
     /// getting some piece of data to move forward. The node first attempts to wait in
     /// case of commit/reveal certificates or download retries in the case of encrypted embeddings
     /// and probes. Next the node attempts to resolve by contacting peers in the shard. At last,
     /// they sign a message expressing the desire to remove that piece of data.
-    async fn send_removal_signatures(
+    async fn send_shard_removal_signature(
         &self,
         peer: NetworkingIndex,
-        //TODO: fix type
-        removals: &Vec<Verified<Signed<Removal>>>,
+        shard_removal: &Serialized<Signed<ShardRemoval>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
-    /// If a node receives quorum number of removals signatures, and they did not know of the removal certificate prior, they broadcast the certificate to all peers.
-    /// This is likely a bit redundant, and might be removed in the future.
-    async fn send_certified_removals(
+    async fn batch_send_shard_removal_certificates(
         &self,
         peer: NetworkingIndex,
-        // TODO: fix type
-        removals: &Vec<Verified<ShardCertificate<Removal>>>,
-        timeout: Duration,
-    ) -> ShardResult<()>;
-
-    /// send removal set is triggered when all stages have been able to proceed, and all embeddings have been run through all probes. There may still be some inconsistencies
-    /// in the shard, specifically some removal certificates that haven't percolated. Send removal set is a method of synchronizing those removals. If a new node receives any
-    /// new removal certificates, they add that removal set and store the count of messages received for that removal set. When they have received a quorum number of their latest
-    /// removal set, the node sends the final endorsement.
-    async fn send_removal_set(
-        &self,
-        peer: NetworkingIndex,
-        removal_set: &Verified<Signed<RemovalSet>>,
+        shard_removal_certificates: &Vec<Serialized<ShardCertificate<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     /// Send endorsement sends the signed final scores for the encoders and embeddings to all other peers.
     /// Once a quorum number of identical endorsements (more importantly signatures) have been aggregated, the aggregate
     /// signature + endorsement can be used to finalize the embeddings.
-    async fn send_endorsement(
+    async fn send_shard_endorsement(
         &self,
         peer: NetworkingIndex,
-        removal_set: &Verified<Signed<ShardEndorsement>>,
+        shard_endorsement: &Serialized<Signed<ShardEndorsement>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     /// Once a node has a certified endorsement, they start a countdown to attempt to submit that data on-chain. The countdown
     /// is staggered such that there is less of a chance for redundant transactions. Redundancy does not harm the system it is just less efficient.
     /// A finality proof, stops the nodes countdown because it proves that the embedding was validly submitted on-chain.
-    async fn send_finality_proof(
+    async fn send_shard_finality_proof(
         &self,
         peer: NetworkingIndex,
-        finality_proof: &Verified<EmbeddingFinalityProof>,
+        shard_finality_proof: &Serialized<ShardFinalityProof>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     /// While not required for receiving any reward, honest nodes are expected to attempt delivering the final embeddings to the original client/RPC.
     /// The same staggered approach is used to minimize redundant messages. Receiving a delivery proof stops the countdown for the node. Inversely, any
     /// honest node that successfully delivers to the client, receives a signature in receipt and should notify their peers.
-    async fn send_delivery_proof(
+    async fn send_shard_delivery_proof(
         &self,
         peer: NetworkingIndex,
-        delivery_proof: &Verified<EmbeddingDeliveryProof>,
+        shard_delivery_proof: &Serialized<ShardDeliveryProof>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
 
+/// The network service takes bytes as an input, since these types have come over the wire they are already serialized, but verification should
+/// occur inside the network service rather than the networking specific implementations due to redundant verification code for all networking protocols.
+/// The return types are verified types so that serialization is non-redundant and handle in one place, where the verified type has the serialized form of the type
+/// allowing the networking specific implementations. The type inside the verified type is Arc'd so the copy is relatively
+/// lightweight, giving the network specific implementation access to any additional information from the type, digest, etc. It's also a way to enforce some type
+/// safety on the output of each handled function.
 #[async_trait]
-pub(crate) trait EncoderService: Send + Sync + Sized + 'static {
-    async fn handle_send_input(&self, peer: NetworkingIndex, input: Bytes) -> ShardResult<()>;
-    async fn handle_get_input(
+pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
+    /// handle the shard input. Must verify the input: transaction proof is valid, shard member, downloaded data matches checksums, etc.
+    /// Post-verification, triggers the background processes for the shard of processing the data and downloading probes
+    async fn handle_send_shard_input(
+        &self,
+        peer: NetworkingIndex,
+        shard_input: Bytes,
+    ) -> ShardResult<()>;
+
+    /// Responds to a node requesting an input. The node verifies whether the requesting peer is a member of the shard, otherwise will not return the input
+    /// for security reasons.
+    // TODO: evaluate whether to allow peers to arbitrary call this to get the input data
+    async fn handle_get_shard_input(
         &self,
         peer: NetworkingIndex,
         shard_ref: Bytes,
-    ) -> ShardResult<VerifiedSignedShardInput>;
-    async fn handle_send_selection(
+    ) -> ShardResult<Serialized<Signed<ShardInput>>>;
+
+    /// Validates whether the requesting peer is a member of the shard, if so, they also check for a conflicting commit message. In the case of no
+    /// previous commit and valid membership, the handler signes off on the commit using their BLS key
+    async fn handle_get_shard_commit_signature(
         &self,
         peer: NetworkingIndex,
-        selection: Bytes,
+        shard_commit: Bytes,
+    ) -> ShardResult<Serialized<Signed<ShardCommit>>>;
+
+    /// Checks validity, then fills the slot for the commit from that shard member. After quorum number of commit certificates have been received,
+    /// a countdown is triggered to wait a bit before asking peers for the missing commit certificate and then removing.
+    async fn handle_send_shard_commit_certificate(
+        &self,
+        peer: NetworkingIndex,
+        shard_commit_certificate: Vec<Bytes>,
+    ) -> ShardResult<()>;
+
+    /// validates whether a shard member, returns commits if they exist, otherwise returns empty vec. Returns empty for any commits that have a removal certificate.
+    async fn handle_batch_get_shard_commit_certificates(
+        &self,
+        peer: NetworkingIndex,
+        slots: Bytes,
+    ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>>;
+
+    /// Checks validity of peer and message. In the case of no conflicting reveal messages from the peer, handler returns a
+    /// BLS aggregate signature for the certificate
+    async fn handle_get_shard_reveal_signature(
+        &self,
+        peer: NetworkingIndex,
+        shard_reveal: Bytes,
+    ) -> ShardResult<Serialized<Signed<Signed<ShardReveal>>>>;
+
+    /// checks validity and then if there is no existing certificate, adds the reveal its corresponding slot. After receiving a quorum
+    /// number of reveals, a countdown is triggered before asking peers for the missing reveal and then proceeding to broadcast a removal.
+    async fn handle_send_shard_reveal_certificate(
+        &self,
+        peer: NetworkingIndex,
+        shard_reveal_certificate: Bytes,
+    ) -> ShardResult<()>;
+
+    /// returns a certified reveal if the node has it, otherwise an empty vec. Returns empty if the node has a removal certificate.
+    async fn handle_batch_get_shard_reveal_certificates(
+        &self,
+        peer: NetworkingIndex,
+        slots: Bytes,
+    ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardReveal>>>>>;
+
+    /// receives a removal signature from a peer. The removal signature is stored and checked whether quorum has been hit
+    /// by the number of removal signatures.
+    async fn handle_send_shard_removal_signature(
+        &self,
+        peer: NetworkingIndex,
+        shard_removal: Bytes,
+    ) -> ShardResult<()>;
+
+    /// verifies the removal certificate and then integrates it into the shard state. Valid removal certificates always trump existing data.
+    async fn handle_batch_send_shard_removal_certificates(
+        &self,
+        peer: NetworkingIndex,
+        shard_removal_certificates: Vec<Bytes>,
+    ) -> ShardResult<()>;
+
+    /// receives a signed endorsement from a peer. The endorsement should match the
+    async fn handle_send_shard_endorsement(
+        &self,
+        peer: NetworkingIndex,
+        shard_endorsement: Bytes,
+    ) -> ShardResult<()>;
+
+    /// add finality proof to nodes state. If both delivery proof and finality proof exist,
+    /// cancel the countdown to attempt submission on-chain.
+    async fn handle_send_shard_finality_proof(
+        &self,
+        peer: NetworkingIndex,
+        shard_finality_proof: Bytes,
+    ) -> ShardResult<()>;
+
+    /// add delivery proof to nodes state. If both delivery proof and finality proof exist,
+    /// cancel the countdown to attempt submission on-chain.    
+    async fn handle_send_shard_delivery_proof(
+        &self,
+        peer: NetworkingIndex,
+        shard_delivery_proof: Bytes,
     ) -> ShardResult<()>;
 }
 
 pub(crate) trait EncoderManager<S>: Send + Sync
 where
-    S: EncoderService,
+    S: EncoderNetworkService,
 {
-    type Client: EncoderClient;
+    type Client: EncoderNetworkClient;
 
     fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self;
     fn client(&self) -> Arc<Self::Client>;

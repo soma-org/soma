@@ -12,6 +12,7 @@ pub(crate) mod multiaddr;
 pub(crate) mod network_committee;
 pub(crate) mod scope;
 pub(crate) mod score;
+pub(crate) mod serialized;
 pub(crate) mod shard;
 pub(crate) mod shard_commit;
 pub(crate) mod shard_endorsement;
