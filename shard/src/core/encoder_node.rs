@@ -3,8 +3,7 @@ use std::sync::Arc;
 use crate::{
     crypto::keys::NetworkKeyPair,
     networking::messaging::{
-        encoder_tonic_service::EncoderTonicManager, leader_tonic_service::LeaderTonicClient,
-        EncoderNetworkManager,
+        tonic_network::EncoderTonicManager, EncoderNetworkClient, EncoderNetworkManager,
     },
     types::context::EncoderContext,
 };
@@ -21,10 +20,9 @@ impl Encoder {
     pub async fn start(
         encoder_context: Arc<EncoderContext>,
         network_keypair: NetworkKeyPair,
-        leader_client: LeaderTonicClient<EncoderContext>,
     ) -> Self {
         let encoder_node: EncoderNode<EncoderTonicManager> =
-            EncoderNode::start(encoder_context, network_keypair, leader_client).await;
+            EncoderNode::start(encoder_context, network_keypair).await;
         Self(encoder_node)
     }
     pub async fn stop(self) {
@@ -47,10 +45,10 @@ where
     pub(crate) async fn start(
         encoder_context: Arc<EncoderContext>,
         network_keypair: NetworkKeyPair,
-        leader_client: LeaderTonicClient<EncoderContext>,
     ) -> Self {
         let mut network_manager = N::new(encoder_context, network_keypair);
-        let core = EncoderCore::new(100_usize, leader_client);
+        let client = network_manager.client();
+        let core = EncoderCore::new(100_usize, client);
         let (core_dispatcher, core_thread_handle) = EncoderChannelCoreThreadDispatcher::start(core);
         let core_dispatcher = Arc::new(core_dispatcher);
         let network_service = Arc::new(EncoderService::new(core_dispatcher));

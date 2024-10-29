@@ -1,16 +1,7 @@
-use crate::error::ShardError;
 use crate::ProtocolKeySignature;
-use crate::{
-    crypto::{DefaultHashFunction, DIGEST_LENGTH},
-    error::ShardResult,
-};
-use bytes::Bytes;
-use fastcrypto::hash::HashFunction;
+use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
 
 use super::authority_committee::Epoch;
 use super::digest::Digest;
@@ -46,75 +37,76 @@ pub struct ShardEntropy {
     transaction_digest: Digest<SignedTransaction>,
 }
 
-/// Uniquely identifies a shard by the epoch, leader, entropy, and modality
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ShardRef {
-    /// the epoch that this shard was sampled from, important since committees change each epoch
-    epoch: Epoch,
-    /// the leader of the shard
-    leader: NetworkingIndex,
-    /// the tbls threshold signature that acts as a safe source of randomness
-    entropy_digest: Digest<ShardEntropy>,
-    /// modality
-    modality: Modality,
+/// Shard commit is the wrapper that contains the versioned shard commit. It
+/// represents the encoders response to a batch of data
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[enum_dispatch(ShardRefAPI)]
+pub enum ShardRef {
+    V1(ShardRefV1),
 }
 
-impl ShardRef {
-    /// lex min.
-    const MIN: Self = Self {
-        epoch: 0,
-        leader: NetworkingIndex::MIN,
-        entropy_digest: Digest::MIN,
-        modality: Modality::text(),
-    };
+/// `ShardRefAPI` is the trait that every shard commit version must implement
+#[enum_dispatch]
+trait ShardRefAPI {
+    fn epoch(&self) -> &Epoch;
+    fn modality(&self) -> &Modality;
+    fn seed(&self) -> &Digest<ShardEntropy>;
+}
 
-    /// lex max
-    const MAX: Self = Self {
-        epoch: u64::MAX,
-        leader: NetworkingIndex::MAX,
-        entropy_digest: Digest::MAX,
-        modality: Modality::video(),
-    };
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ShardRefV1 {
+    /// the epoch that this shard was sampled from, important since committees change each epoch
+    epoch: Epoch,
+    /// modality
+    modality: Modality,
+    /// the digest from the tbls threshold signature and data hash that when combined forms a unique source of randomness
+    seed: Digest<ShardEntropy>,
+}
 
-    /// creates a new shard ref
-    const fn new(
-        epoch: Epoch,
-        leader: NetworkingIndex,
-        entropy_digest: Digest<ShardEntropy>,
-        modality: Modality,
-    ) -> Self {
+impl ShardRefV1 {
+    /// create a shard commit v1
+    pub(crate) const fn new(epoch: Epoch, modality: Modality, seed: Digest<ShardEntropy>) -> Self {
         Self {
             epoch,
-            leader,
-            entropy_digest,
             modality,
+            seed,
         }
     }
 }
 
-// TODO: re-evaluate formats for production debugging.
-impl fmt::Display for ShardRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Shard({},{},{})",
-            self.epoch, self.leader, self.entropy_digest
-        )
+impl ShardRefAPI for ShardRefV1 {
+    fn epoch(&self) -> &Epoch {
+        &self.epoch
+    }
+    fn modality(&self) -> &Modality {
+        &self.modality
+    }
+    fn seed(&self) -> &Digest<ShardEntropy> {
+        &self.seed
     }
 }
 
-impl fmt::Debug for ShardRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Shard({},{},{})",
-            self.epoch, self.leader, self.entropy_digest
-        )
-    }
-}
+// impl ShardRef {
+//     /// lex min.
+//     const MIN: Self = Self {
+//         epoch: 0,
+//         leader: NetworkingIndex::MIN,
+//         entropy_digest: Digest::MIN,
+//         modality: Modality::text(),
+//     };
+
+//     /// lex max
+//     const MAX: Self = Self {
+//         epoch: u64::MAX,
+//         leader: NetworkingIndex::MAX,
+//         entropy_digest: Digest::MAX,
+//         modality: Modality::video(),
+//     };
+
+// }
 
 impl Hash for ShardRef {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.entropy_digest.0[..8]);
+        state.write(&self.seed().0[..8]);
     }
 }

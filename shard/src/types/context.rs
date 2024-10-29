@@ -2,12 +2,12 @@ use crate::types::authority_committee::AuthorityCommittee;
 
 use super::{
     modality::{ModalityCommittee, OwnModalityIndices},
-    network_committee::{NetworkCommittee, NetworkIdentityIndex},
+    network_committee::{NetworkCommittee, NetworkingIndex},
 };
 
 pub(crate) trait NetworkingContext: Send + Sync + 'static {
     fn network_committee(&self) -> &NetworkCommittee;
-    fn own_network_index(&self) -> NetworkIdentityIndex;
+    fn own_network_index(&self) -> NetworkingIndex;
 }
 
 #[derive(Clone)]
@@ -19,7 +19,7 @@ pub(crate) struct EncoderContext {
     /// the committee of allowed network keys
     pub(crate) network_committee: NetworkCommittee,
     /// the services own index for the network committee
-    pub(crate) own_network_index: NetworkIdentityIndex,
+    pub(crate) own_network_index: NetworkingIndex,
     /// The encoder committee for each registered modality
     pub(crate) modality_committees: ModalityCommittee,
     /// The services own index for each respective modality
@@ -32,7 +32,7 @@ impl EncoderContext {
     pub(crate) fn new(
         authority_committee: AuthorityCommittee,
         network_committee: NetworkCommittee,
-        own_network_index: NetworkIdentityIndex,
+        own_network_index: NetworkingIndex,
         modality_committees: ModalityCommittee,
         own_modality_indices: OwnModalityIndices,
     ) -> Self {
@@ -50,7 +50,7 @@ impl NetworkingContext for EncoderContext {
     fn network_committee(&self) -> &NetworkCommittee {
         &self.network_committee
     }
-    fn own_network_index(&self) -> NetworkIdentityIndex {
+    fn own_network_index(&self) -> NetworkingIndex {
         self.own_network_index
     }
 }
@@ -64,7 +64,7 @@ pub(crate) struct LeaderContext {
     /// the committee of allowed network keys
     pub(crate) network_committee: NetworkCommittee,
     /// the services own index for the network committee
-    pub(crate) own_network_index: NetworkIdentityIndex,
+    pub(crate) own_network_index: NetworkingIndex,
     /// The encoder committee for each registered modality
     pub(crate) modality_committees: ModalityCommittee,
     /// The services own index for each respective modality
@@ -77,7 +77,7 @@ impl LeaderContext {
     pub(crate) fn new(
         authority_committee: AuthorityCommittee,
         network_committee: NetworkCommittee,
-        own_network_index: NetworkIdentityIndex,
+        own_network_index: NetworkingIndex,
         modality_committees: ModalityCommittee,
         own_modality_indices: OwnModalityIndices,
     ) -> Self {
@@ -95,7 +95,7 @@ impl NetworkingContext for LeaderContext {
     fn network_committee(&self) -> &NetworkCommittee {
         &self.network_committee
     }
-    fn own_network_index(&self) -> NetworkIdentityIndex {
+    fn own_network_index(&self) -> NetworkingIndex {
         self.own_network_index
     }
 }

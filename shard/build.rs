@@ -17,33 +17,170 @@ fn main() -> Result<()> {
 }
 
 /// builds the tonic services
+#[allow(clippy::too_many_lines)]
 fn build_tonic_services(out_dir: &Path) {
     let codec_path = "tonic::codec::ProstCodec";
-
     let encoder_shard_service = tonic_build::manual::Service::builder()
         .name("EncoderService")
         .package("soma")
         .comment("Soma encoder interface")
         .method(
             tonic_build::manual::Method::builder()
-                .name("send_input")
-                .route_name("SendInput")
-                .input_type("crate::networking::messaging::encoder_tonic_service::SendInputRequest")
+                .name("send_shard_input")
+                .route_name("SendShardInput")
+                .input_type("crate::networking::messaging::tonic_network::SendShardInputRequest")
+                .output_type("crate::networking::messaging::tonic_network::SendShardInputResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("get_shard_input")
+                .route_name("GetShardInput")
+                .input_type("crate::networking::messaging::tonic_network::GetShardInputRequest")
+                .output_type("crate::networking::messaging::tonic_network::GetShardInputResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("get_shard_commit_signature")
+                .route_name("GetShardCommitSignature")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::GetShardCommitSignatureRequest",
+                )
                 .output_type(
-                    "crate::networking::messaging::encoder_tonic_service::SendInputResponse",
+                    "crate::networking::messaging::tonic_network::GetShardCommitSignatureResponse",
                 )
                 .codec_path(codec_path)
                 .build(),
         )
         .method(
             tonic_build::manual::Method::builder()
-                .name("send_selection")
-                .route_name("SendSelection")
+                .name("send_shard_commit_certificate")
+                .route_name("SendShardCommitCertificate")
                 .input_type(
-                    "crate::networking::messaging::encoder_tonic_service::SendSelectionRequest",
+                    "crate::networking::messaging::tonic_network::SendShardCommitCertificateRequest",
                 )
                 .output_type(
-                    "crate::networking::messaging::encoder_tonic_service::SendSelectionResponse",
+                    "crate::networking::messaging::tonic_network::SendShardCommitCertificateResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("batch_get_shard_commit_certificates")
+                .route_name("BatchGetShardCommitCertificates")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::BatchGetShardCommitCertificatesRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::BatchGetShardCommitCertificatesResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("get_shard_reveal_signature")
+                .route_name("GetShardRevealSignature")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::GetShardRevealSignatureRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::GetShardRevealSignatureResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("send_shard_reveal_certificate")
+                .route_name("SendShardRevealCertificate")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::SendShardRevealCertificateRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::SendShardRevealCertificateResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("batch_get_shard_reveal_certificates")
+                .route_name("BatchGetShardRevealCertificates")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::BatchGetShardRevealCertificatesRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::BatchGetShardRevealCertificatesResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("batch_send_shard_removal_signatures")
+                .route_name("BatchSendShardRemovalSignatures")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::BatchSendShardRemovalSignaturesRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::BatchSendShardRemovalSignaturesResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("batch_send_shard_removal_certificates")
+                .route_name("BatchSendShardRemovalCertificates")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::BatchSendShardRemovalCertificatesRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::BatchSendShardRemovalCertificatesResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("send_shard_endorsement")
+                .route_name("SendShardEndorsement")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::SendShardEndorsementRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::SendShardEndorsementResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("send_shard_finality_proof")
+                .route_name("SendShardFinalityProof")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::SendShardFinalityProofRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::SendShardFinalityProofResponse",
+                )
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("send_shard_delivery_proof")
+                .route_name("SendShardDeliveryProof")
+                .input_type(
+                    "crate::networking::messaging::tonic_network::SendShardDeliveryProofRequest",
+                )
+                .output_type(
+                    "crate::networking::messaging::tonic_network::SendShardDeliveryProofResponse",
                 )
                 .codec_path(codec_path)
                 .build(),

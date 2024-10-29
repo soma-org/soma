@@ -3,8 +3,7 @@ use async_trait::async_trait;
 use crate::{
     core::encoder_core::EncoderCore,
     error::{ShardError, ShardResult},
-    networking::messaging::LeaderNetworkClient,
-    types::{shard_input::VerifiedSignedShardInput, shard_selection::VerifiedSignedShardSelection},
+    networking::messaging::EncoderNetworkClient,
 };
 use tokio::sync::mpsc;
 
@@ -34,8 +33,8 @@ impl EncoderCoreThreadHandle {
     }
 }
 
-struct EncoderCoreThread<LNC: LeaderNetworkClient> {
-    core: EncoderCore<LNC>,
+struct EncoderCoreThread<C: EncoderNetworkClient> {
+    core: EncoderCore<C>,
     receiver: mpsc::Receiver<EncoderCoreThreadCommand>,
 }
 

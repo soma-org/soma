@@ -23,14 +23,8 @@ pub(crate) enum ShardError {
     #[error("Error serializing: {0}")]
     SerializationFailure(bcs::Error),
 
-    #[error("Error deserializing input: {0}")]
-    MalformedInput(bcs::Error),
-
-    #[error("Error deserializing selection: {0}")]
-    MalformedSelection(bcs::Error),
-
-    #[error("Error deserializing endorsement: {0}")]
-    MalformedEndorsement(bcs::Error),
+    #[error("Error deserializing type: {0}")]
+    MalformedType(bcs::Error),
 
     #[error("Block contains a transaction that is too large: {size} > {limit}")]
     TransactionTooLarge { size: usize, limit: usize },

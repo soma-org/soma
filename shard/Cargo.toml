@@ -28,6 +28,7 @@ tower-http.workspace = true
 parking_lot.workspace = true
 tower.workspace = true
 aes.workspace = true
+crypto-common.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

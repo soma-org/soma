@@ -1,6 +1,6 @@
 use crate::networking::messaging::to_host_port_str;
-use crate::types::multiaddr::{Multiaddr, Protocol};
-use crate::types::network_committee::NetworkIdentityIndex;
+use crate::types::context::EncoderContext;
+use crate::types::network_committee::NetworkingIndex;
 use crate::{
     error::{ShardError, ShardResult},
     types::context::NetworkingContext,
@@ -10,9 +10,9 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{trace, warn};
 
-pub(crate) struct ChannelPool<N: NetworkingContext> {
-    context: Arc<N>,
-    channels: RwLock<BTreeMap<NetworkIdentityIndex, Channel>>,
+pub(crate) struct ChannelPool {
+    context: Arc<EncoderContext>,
+    channels: RwLock<BTreeMap<NetworkingIndex, Channel>>,
 }
 
 pub(crate) type Channel = tower_http::trace::Trace<
@@ -20,11 +20,8 @@ pub(crate) type Channel = tower_http::trace::Trace<
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
 >;
 
-impl<N> ChannelPool<N>
-where
-    N: NetworkingContext,
-{
-    pub(crate) fn new(context: Arc<N>) -> Self {
+impl ChannelPool {
+    pub(crate) fn new(context: Arc<EncoderContext>) -> Self {
         Self {
             context,
             channels: RwLock::new(BTreeMap::new()),
@@ -33,7 +30,7 @@ where
 
     pub(crate) async fn get_channel(
         &self,
-        peer: NetworkIdentityIndex,
+        peer: NetworkingIndex,
         timeout: Duration,
     ) -> ShardResult<Channel> {
         {

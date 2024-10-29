@@ -9,7 +9,7 @@ pub struct Verified<T> {
 }
 
 impl<T> Verified<T> {
-    pub(crate) fn new<F>(self, inner: T, serialized: Bytes, verifier: F) -> ShardResult<Self>
+    pub(crate) fn new<F>(inner: T, serialized: Bytes, verifier: F) -> ShardResult<Self>
     where
         F: FnOnce(&T) -> ShardResult<()>,
     {
@@ -17,7 +17,7 @@ impl<T> Verified<T> {
         let digest = Digest::<T>::new_from_bytes(&serialized);
 
         Ok(Self {
-            inner: std::sync::Arc::new(self),
+            inner: std::sync::Arc::new(inner),
             digest,
             serialized,
         })

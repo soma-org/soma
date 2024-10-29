@@ -13,9 +13,7 @@ use crate::{
     },
     types::{
         context::{EncoderContext, NetworkingContext},
-        network_committee::NetworkIdentityIndex,
-        shard_input::VerifiedSignedShardInput,
-        shard_selection::VerifiedSignedShardSelection,
+        network_committee::NetworkingIndex,
     },
 };
 use tracing::info;
@@ -24,18 +22,17 @@ use crate::networking::messaging::tonic_gen::encoder_service_client::EncoderServ
 
 use super::{
     channel_pool::{Channel, ChannelPool},
-    leader_tonic_service::LeaderTonicClient,
     tonic_gen::encoder_service_server::EncoderService,
     EncoderNetworkClient, EncoderNetworkManager, EncoderNetworkService,
 };
 
 // Implements Tonic RPC client for Consensus.
-pub(crate) struct EncoderTonicClient<N: NetworkingContext> {
+pub(crate) struct EncoderTonicClient {
     network_keypair: NetworkKeyPair,
-    channel_pool: Arc<ChannelPool<N>>,
+    channel_pool: Arc<ChannelPool>,
 }
 
-impl<N: NetworkingContext> EncoderTonicClient<N> {
+impl EncoderTonicClient {
     pub(crate) fn new(context: Arc<N>, network_keypair: NetworkKeyPair) -> Self {
         Self {
             network_keypair,
@@ -45,7 +42,7 @@ impl<N: NetworkingContext> EncoderTonicClient<N> {
 
     async fn get_client(
         &self,
-        peer: NetworkIdentityIndex,
+        peer: NetworkingIndex,
         timeout: Duration,
     ) -> ShardResult<EncoderServiceClient<Channel>> {
         // let config = &self.context.parameters.tonic;
@@ -57,11 +54,11 @@ impl<N: NetworkingContext> EncoderTonicClient<N> {
 }
 
 #[async_trait]
-impl<N: NetworkingContext> EncoderNetworkClient for EncoderTonicClient<N> {
-    async fn send_input(
+impl EncoderNetworkClient for EncoderTonicClient<N> {
+    async fn send_shard_input(
         &self,
-        peer: NetworkIdentityIndex,
-        input: &VerifiedSignedShardInput,
+        peer: NetworkingIndex,
+        shard_input: &Serialized<Signed<ShardInput>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendInputRequest {
@@ -78,7 +75,7 @@ impl<N: NetworkingContext> EncoderNetworkClient for EncoderTonicClient<N> {
 
     async fn send_selection(
         &self,
-        peer: NetworkIdentityIndex,
+        peer: NetworkingIndex,
         selection: &VerifiedSignedShardSelection,
         timeout: Duration,
     ) -> ShardResult<()> {
@@ -226,34 +223,146 @@ impl<S: EncoderNetworkService> EncoderNetworkManager<S> for EncoderTonicManager 
 }
 // ////////////////////////////////////////////////////////////////////
 
-/// `SendShardInputRequest` contains a serialized signed shard input type.
-/// A leader calls `SendInput` for each member of the shard.
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendInputRequest {
-    /// Signed but not verified shard input
-    /// Note: make changes in versioned struct, not here
+pub(crate) struct SendShardInputRequest {
     #[prost(bytes = "bytes", tag = "1")]
-    input: Bytes,
+    shard_input: Bytes,
 }
 
-/// Empty response
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendInputResponse {}
+pub(crate) struct SendShardInputResponse {}
 
 // ////////////////////////////////////////////////////////////////////
-
-/// Contains a serialized shard selection. This is also called by the leader
-/// hence the type definition existing for the encoder. It is also possible for
-/// a encoder to reuse the signed message from the leader to broadcast to the
-/// shard members if the leader fails after delivering a few signed shard selections.
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendSelectionRequest {
-    /// signed shard selection, can be resent by shard memebers if signature matches
-    /// Note: make changes in versioned struct, not here
+pub(crate) struct GetShardInputRequest {
     #[prost(bytes = "bytes", tag = "1")]
-    selection: Bytes,
+    shard_ref: Bytes,
 }
 
-/// Empty response
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendSelectionResponse {}
+pub(crate) struct GetShardInputResponse {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_input: Bytes,
+}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetShardCommitSignatureRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_commit: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetShardCommitSignatureResponse {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_commit_signature: Bytes,
+}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardCommitCertificateRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_commit_certificate: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardCommitCertificateResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchGetShardCommitCertificatesRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_slots: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchGetShardCommitCertificatesResponse {
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    shard_commit_certificates: Vec<Bytes>,
+}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetShardRevealSignatureRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_reveal: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetShardRevealSignatureResponse {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_reveal_signature: Bytes,
+}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardRevealCertificateRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_reveal_certificate: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardRevealCertificateResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchGetShardRevealCertificatesRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_slots: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchGetShardRevealCertificatesResponse {
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    shard_reveal_certificates: Vec<Bytes>,
+}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchSendShardRemovalSignaturesRequest {
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    shard_removal_signatures: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchSendShardRemovalSignaturesResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchSendShardRemovalCertificatesRequest {
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    shard_removal_certificates: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct BatchSendShardRemovalCertificatesResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardEndorsementRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_endorsement: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardEndorsementResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardFinalityProofRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_finality_proof: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardFinalityProofResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardDeliveryProofRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    shard_delivery_proof: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendShardDeliveryProofResponse {}

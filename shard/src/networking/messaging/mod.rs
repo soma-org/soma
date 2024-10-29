@@ -1,6 +1,6 @@
 pub(crate) mod channel_pool;
-pub(crate) mod encoder_tonic_service;
 pub(crate) mod tonic;
+pub(crate) mod tonic_network;
 
 mod tonic_gen {
     include!(concat!(env!("OUT_DIR"), "/soma.EncoderService.rs"));
@@ -14,9 +14,14 @@ use crate::types::multiaddr::{Multiaddr, Protocol};
 use crate::types::shard::ShardRef;
 // use crate::types::shard::ShardRef;
 use crate::types::shard_commit::ShardCommit;
+use crate::types::shard_delivery_proof::ShardDeliveryProof;
 use crate::types::shard_endorsement::ShardEndorsement;
+use crate::types::shard_finality_proof::ShardFinalityProof;
 use crate::types::shard_input::ShardInput;
+use crate::types::shard_removal::ShardRemoval;
 use crate::types::shard_reveal::ShardReveal;
+use crate::types::shard_slots::ShardSlots;
+use crate::types::signed::Signature;
 use crate::types::{serialized::Serialized, signed::Signed};
 use crate::ProtocolKeySignature;
 use crate::{
@@ -91,7 +96,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn batch_get_shard_commit_certificates(
         &self,
         peer: NetworkingIndex,
-        slots: &Serialized<ShardSlots>,
+        shard_slots: &Serialized<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>>;
 
@@ -117,7 +122,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn batch_get_shard_reveal_certificates(
         &self,
         peer: NetworkingIndex,
-        slots: &Serialized<ShardSlots>,
+        shard_slots: &Serialized<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>>;
 
@@ -126,10 +131,10 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     /// case of commit/reveal certificates or download retries in the case of encrypted embeddings
     /// and probes. Next the node attempts to resolve by contacting peers in the shard. At last,
     /// they sign a message expressing the desire to remove that piece of data.
-    async fn send_shard_removal_signature(
+    async fn batch_send_shard_removal_signatures(
         &self,
         peer: NetworkingIndex,
-        shard_removal: &Serialized<Signed<ShardRemoval>>,
+        shard_removal_signatures: &Vec<Serialized<Signed<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -184,16 +189,15 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_shard_input(
         &self,
         peer: NetworkingIndex,
-        shard_input: Bytes,
+        shard_input_bytes: Bytes,
     ) -> ShardResult<()>;
 
     /// Responds to a node requesting an input. The node verifies whether the requesting peer is a member of the shard, otherwise will not return the input
-    /// for security reasons.
-    // TODO: evaluate whether to allow peers to arbitrary call this to get the input data
+    /// for security reasons. May want to allow anyone to access the input this way in the future?
     async fn handle_get_shard_input(
         &self,
         peer: NetworkingIndex,
-        shard_ref: Bytes,
+        shard_ref_bytes: Bytes,
     ) -> ShardResult<Serialized<Signed<ShardInput>>>;
 
     /// Validates whether the requesting peer is a member of the shard, if so, they also check for a conflicting commit message. In the case of no
@@ -201,22 +205,22 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_get_shard_commit_signature(
         &self,
         peer: NetworkingIndex,
-        shard_commit: Bytes,
-    ) -> ShardResult<Serialized<Signed<ShardCommit>>>;
+        shard_commit_bytes: Bytes,
+    ) -> ShardResult<Serialized<Signature<Signed<ShardCommit>>>>;
 
     /// Checks validity, then fills the slot for the commit from that shard member. After quorum number of commit certificates have been received,
     /// a countdown is triggered to wait a bit before asking peers for the missing commit certificate and then removing.
     async fn handle_send_shard_commit_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_commit_certificate: Vec<Bytes>,
+        shard_commit_certificate: Bytes,
     ) -> ShardResult<()>;
 
     /// validates whether a shard member, returns commits if they exist, otherwise returns empty vec. Returns empty for any commits that have a removal certificate.
     async fn handle_batch_get_shard_commit_certificates(
         &self,
         peer: NetworkingIndex,
-        slots: Bytes,
+        shard_slots_bytes: Bytes,
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>>;
 
     /// Checks validity of peer and message. In the case of no conflicting reveal messages from the peer, handler returns a
@@ -224,30 +228,30 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_get_shard_reveal_signature(
         &self,
         peer: NetworkingIndex,
-        shard_reveal: Bytes,
-    ) -> ShardResult<Serialized<Signed<Signed<ShardReveal>>>>;
+        shard_reveal_bytes: Bytes,
+    ) -> ShardResult<Serialized<Signature<Signed<ShardReveal>>>>;
 
     /// checks validity and then if there is no existing certificate, adds the reveal its corresponding slot. After receiving a quorum
     /// number of reveals, a countdown is triggered before asking peers for the missing reveal and then proceeding to broadcast a removal.
     async fn handle_send_shard_reveal_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_reveal_certificate: Bytes,
+        shard_reveal_certificate_bytes: Bytes,
     ) -> ShardResult<()>;
 
     /// returns a certified reveal if the node has it, otherwise an empty vec. Returns empty if the node has a removal certificate.
     async fn handle_batch_get_shard_reveal_certificates(
         &self,
         peer: NetworkingIndex,
-        slots: Bytes,
+        shard_slots_bytes: Bytes,
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardReveal>>>>>;
 
     /// receives a removal signature from a peer. The removal signature is stored and checked whether quorum has been hit
     /// by the number of removal signatures.
-    async fn handle_send_shard_removal_signature(
+    async fn handle_batch_send_shard_removal_signatures(
         &self,
         peer: NetworkingIndex,
-        shard_removal: Bytes,
+        shard_removal_signatures: Vec<Bytes>,
     ) -> ShardResult<()>;
 
     /// verifies the removal certificate and then integrates it into the shard state. Valid removal certificates always trump existing data.
@@ -261,7 +265,7 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_shard_endorsement(
         &self,
         peer: NetworkingIndex,
-        shard_endorsement: Bytes,
+        shard_endorsement_bytes: Bytes,
     ) -> ShardResult<()>;
 
     /// add finality proof to nodes state. If both delivery proof and finality proof exist,
@@ -269,7 +273,7 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_shard_finality_proof(
         &self,
         peer: NetworkingIndex,
-        shard_finality_proof: Bytes,
+        shard_finality_proof_bytes: Bytes,
     ) -> ShardResult<()>;
 
     /// add delivery proof to nodes state. If both delivery proof and finality proof exist,
@@ -277,11 +281,11 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_shard_delivery_proof(
         &self,
         peer: NetworkingIndex,
-        shard_delivery_proof: Bytes,
+        shard_delivery_proof_bytes: Bytes,
     ) -> ShardResult<()>;
 }
 
-pub(crate) trait EncoderManager<S>: Send + Sync
+pub(crate) trait EncoderNetworkManager<S>: Send + Sync
 where
     S: EncoderNetworkService,
 {

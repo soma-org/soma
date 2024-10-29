@@ -50,3 +50,4 @@ tower = { version = "0.5.1", features = ["full"] }
 tower-http = { version = "0.5.1", features = ["full"] }
 tonic-build = "0.12.2"
 aes = "0.8.4"
+crypto-common = "0.1.6"
