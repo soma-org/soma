@@ -1,14 +1,15 @@
 use crate::{error::ShardResult, types::digest::Digest};
 use bytes::Bytes;
+use serde::Serialize;
 use std::sync::Arc;
 
-pub struct Verified<T> {
+pub struct Verified<T: Serialize> {
     inner: Arc<T>,
     digest: Digest<T>,
     serialized: Bytes,
 }
 
-impl<T> Verified<T> {
+impl<T: Serialize> Verified<T> {
     pub(crate) fn new<F>(inner: T, serialized: Bytes, verifier: F) -> ShardResult<Self>
     where
         F: FnOnce(&T) -> ShardResult<()>,
@@ -23,8 +24,8 @@ impl<T> Verified<T> {
         })
     }
 
-    pub(crate) const fn digest(&self) -> Digest<T> {
-        self.digest
+    pub(crate) fn digest(&self) -> Digest<T> {
+        self.digest.clone()
     }
 
     pub(crate) const fn serialized(&self) -> &bytes::Bytes {
@@ -32,7 +33,7 @@ impl<T> Verified<T> {
     }
 }
 
-impl<T> std::ops::Deref for Verified<T> {
+impl<T: Serialize> std::ops::Deref for Verified<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -40,7 +41,7 @@ impl<T> std::ops::Deref for Verified<T> {
     }
 }
 
-impl<T> PartialEq for Verified<T> {
+impl<T: Serialize> PartialEq for Verified<T> {
     fn eq(&self, other: &Self) -> bool {
         self.digest() == other.digest()
     }

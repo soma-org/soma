@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use std::{sync::Arc, time::Duration};
+use std::{io::Read, sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 use tonic::{transport::Server, Request, Response};
 use tower_http::add_extension::AddExtensionLayer;
@@ -12,8 +12,18 @@ use crate::{
         to_socket_addr, tonic::PeerInfo, tonic_gen::encoder_service_server::EncoderServiceServer,
     },
     types::{
+        certificate::ShardCertificate,
         context::{EncoderContext, NetworkingContext},
         network_committee::NetworkingIndex,
+        shard::ShardRef,
+        shard_commit::ShardCommit,
+        shard_delivery_proof::ShardDeliveryProof,
+        shard_endorsement::ShardEndorsement,
+        shard_finality_proof::ShardFinalityProof,
+        shard_input::ShardInput,
+        shard_removal::ShardRemoval,
+        shard_reveal::ShardReveal,
+        shard_slots::ShardSlots,
     },
 };
 use tracing::info;
@@ -26,6 +36,11 @@ use super::{
     EncoderNetworkClient, EncoderNetworkManager, EncoderNetworkService,
 };
 
+use crate::types::{
+    serialized::Serialized,
+    signed::{Signature, Signed},
+};
+
 // Implements Tonic RPC client for Consensus.
 pub(crate) struct EncoderTonicClient {
     network_keypair: NetworkKeyPair,
@@ -33,7 +48,7 @@ pub(crate) struct EncoderTonicClient {
 }
 
 impl EncoderTonicClient {
-    pub(crate) fn new(context: Arc<N>, network_keypair: NetworkKeyPair) -> Self {
+    pub(crate) fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self {
         Self {
             network_keypair,
             channel_pool: Arc::new(ChannelPool::new(context)),
@@ -54,40 +69,285 @@ impl EncoderTonicClient {
 }
 
 #[async_trait]
-impl EncoderNetworkClient for EncoderTonicClient<N> {
+impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_input(
         &self,
         peer: NetworkingIndex,
         shard_input: &Serialized<Signed<ShardInput>>,
         timeout: Duration,
     ) -> ShardResult<()> {
-        let mut request = Request::new(SendInputRequest {
-            input: input.serialized().clone(),
+        let mut request = Request::new(SendShardInputRequest {
+            shard_input: shard_input.bytes(),
         });
         request.set_timeout(timeout);
         self.get_client(peer, timeout)
             .await?
-            .send_input(request)
+            .send_shard_input(request)
             .await
-            .map_err(|e| ShardError::NetworkRequest(format!("send_input failed: {e:?}")))?;
+            .map_err(|e| ShardError::NetworkRequest(format!("send_shard_input failed: {e:?}")))?;
         Ok(())
     }
 
-    async fn send_selection(
+    async fn get_shard_input(
         &self,
         peer: NetworkingIndex,
-        selection: &VerifiedSignedShardSelection,
+        shard_ref: &Serialized<ShardRef>,
+        timeout: Duration,
+    ) -> ShardResult<Bytes> {
+        let mut request = Request::new(GetShardInputRequest {
+            shard_ref: shard_ref.bytes(),
+        });
+        request.set_timeout(timeout);
+        let response = self
+            .get_client(peer, timeout)
+            .await?
+            .get_shard_input(request)
+            .await
+            .map_err(|e| ShardError::NetworkRequest(format!("get_shard_input failed: {e:?}")))?;
+
+        Ok(response.into_inner().shard_input)
+    }
+
+    async fn get_shard_commit_signature(
+        &self,
+        peer: NetworkingIndex,
+        shard_commit: &Serialized<Signed<ShardCommit>>,
+        timeout: Duration,
+    ) -> ShardResult<Bytes> {
+        let mut request = Request::new(GetShardCommitSignatureRequest {
+            shard_commit: shard_commit.bytes(),
+        });
+        request.set_timeout(timeout);
+        let response = self
+            .get_client(peer, timeout)
+            .await?
+            .get_shard_commit_signature(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!("get_shard_commit_signature failed: {e:?}"))
+            })?;
+
+        Ok(response.into_inner().shard_commit_signature)
+    }
+
+    async fn send_shard_commit_certificate(
+        &self,
+        peer: NetworkingIndex,
+        shard_commit_certificate: &Serialized<ShardCertificate<Signed<ShardCommit>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
-        let mut request = Request::new(SendSelectionRequest {
-            selection: selection.serialized().clone(),
+        let mut request = Request::new(SendShardCommitCertificateRequest {
+            shard_commit_certificate: shard_commit_certificate.bytes(),
         });
         request.set_timeout(timeout);
         self.get_client(peer, timeout)
             .await?
-            .send_selection(request)
+            .send_shard_commit_certificate(request)
             .await
-            .map_err(|e| ShardError::NetworkRequest(format!("send_input failed: {e:?}")))?;
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!("send_shard_commit_certificate failed: {e:?}"))
+            })?;
+        Ok(())
+    }
+
+    async fn batch_get_shard_commit_certificates(
+        &self,
+        peer: NetworkingIndex,
+        shard_slots: &Serialized<ShardSlots>,
+        timeout: Duration,
+    ) -> ShardResult<Vec<Bytes>> {
+        let mut request = Request::new(BatchGetShardCommitCertificatesRequest {
+            shard_slots: shard_slots.bytes(),
+        });
+        request.set_timeout(timeout);
+        let response = self
+            .get_client(peer, timeout)
+            .await?
+            .batch_get_shard_commit_certificates(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!(
+                    "batch_get_shard_commit_certificates failed: {e:?}"
+                ))
+            })?;
+
+        Ok(response.into_inner().shard_commit_certificates)
+    }
+
+    async fn get_shard_reveal_signature(
+        &self,
+        peer: NetworkingIndex,
+        shard_reveal: &Serialized<Signed<ShardReveal>>,
+        timeout: Duration,
+    ) -> ShardResult<Bytes> {
+        let mut request = Request::new(GetShardRevealSignatureRequest {
+            shard_reveal: shard_reveal.bytes(),
+        });
+        request.set_timeout(timeout);
+        let response = self
+            .get_client(peer, timeout)
+            .await?
+            .get_shard_reveal_signature(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!("get_shard_reveal_signature failed: {e:?}"))
+            })?;
+
+        Ok(response.into_inner().shard_reveal_signature)
+    }
+
+    async fn send_shard_reveal_certificate(
+        &self,
+        peer: NetworkingIndex,
+        shard_reveal_certificate: &Serialized<ShardCertificate<Signed<ShardReveal>>>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let mut request = Request::new(SendShardRevealCertificateRequest {
+            shard_reveal_certificate: shard_reveal_certificate.bytes(),
+        });
+        request.set_timeout(timeout);
+        self.get_client(peer, timeout)
+            .await?
+            .send_shard_reveal_certificate(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!("send_shard_reveal_certificate failed: {e:?}"))
+            })?;
+        Ok(())
+    }
+
+    async fn batch_get_shard_reveal_certificates(
+        &self,
+        peer: NetworkingIndex,
+        shard_slots: &Serialized<ShardSlots>,
+        timeout: Duration,
+    ) -> ShardResult<Vec<Bytes>> {
+        let mut request = Request::new(BatchGetShardRevealCertificatesRequest {
+            shard_slots: shard_slots.bytes(),
+        });
+        request.set_timeout(timeout);
+        let response = self
+            .get_client(peer, timeout)
+            .await?
+            .batch_get_shard_reveal_certificates(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!(
+                    "batch_get_shard_reveal_certificates failed: {e:?}"
+                ))
+            })?;
+
+        Ok(response.into_inner().shard_reveal_certificates)
+    }
+
+    async fn batch_send_shard_removal_signatures(
+        &self,
+        peer: NetworkingIndex,
+        shard_removal_signatures: &Vec<Serialized<Signed<ShardRemoval>>>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let shard_removal_signatures_bytes = shard_removal_signatures
+            .iter()
+            .map(|x| x.bytes())
+            .collect::<Vec<_>>();
+
+        let mut request = Request::new(BatchSendShardRemovalSignaturesRequest {
+            shard_removal_signatures: shard_removal_signatures_bytes,
+        });
+        request.set_timeout(timeout);
+        self.get_client(peer, timeout)
+            .await?
+            .batch_send_shard_removal_signatures(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!(
+                    "batch_send_shard_removal_signatures failed: {e:?}"
+                ))
+            })?;
+        Ok(())
+    }
+
+    async fn batch_send_shard_removal_certificates(
+        &self,
+        peer: NetworkingIndex,
+        shard_removal_certificates: &Vec<Serialized<ShardCertificate<ShardRemoval>>>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let shard_removal_certificates_bytes = shard_removal_certificates
+            .iter()
+            .map(|x| x.bytes())
+            .collect::<Vec<_>>();
+        let mut request = Request::new(BatchSendShardRemovalCertificatesRequest {
+            shard_removal_certificates: shard_removal_certificates_bytes,
+        });
+        request.set_timeout(timeout);
+        self.get_client(peer, timeout)
+            .await?
+            .batch_send_shard_removal_certificates(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!(
+                    "batch_send_shard_removal_certificates failed: {e:?}"
+                ))
+            })?;
+        Ok(())
+    }
+
+    async fn send_shard_endorsement(
+        &self,
+        peer: NetworkingIndex,
+        shard_endorsement: &Serialized<Signed<ShardEndorsement>>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let mut request = Request::new(SendShardEndorsementRequest {
+            shard_endorsement: shard_endorsement.bytes(),
+        });
+        request.set_timeout(timeout);
+        self.get_client(peer, timeout)
+            .await?
+            .send_shard_endorsement(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!("send_shard_endorsement failed: {e:?}"))
+            })?;
+        Ok(())
+    }
+    async fn send_shard_finality_proof(
+        &self,
+        peer: NetworkingIndex,
+        shard_finality_proof: &Serialized<ShardFinalityProof>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let mut request = Request::new(SendShardFinalityProofRequest {
+            shard_finality_proof: shard_finality_proof.bytes(),
+        });
+        request.set_timeout(timeout);
+        self.get_client(peer, timeout)
+            .await?
+            .send_shard_finality_proof(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!("send_shard_finality_proof failed: {e:?}"))
+            })?;
+        Ok(())
+    }
+    async fn send_shard_delivery_proof(
+        &self,
+        peer: NetworkingIndex,
+        shard_delivery_proof: &Serialized<ShardDeliveryProof>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let mut request = Request::new(SendShardDeliveryProofRequest {
+            shard_delivery_proof: shard_delivery_proof.bytes(),
+        });
+        request.set_timeout(timeout);
+        self.get_client(peer, timeout)
+            .await?
+            .send_shard_delivery_proof(request)
+            .await
+            .map_err(|e| {
+                ShardError::NetworkRequest(format!("send_shard_delivery_proof failed: {e:?}"))
+            })?;
         Ok(())
     }
 }
@@ -106,10 +366,10 @@ impl<S: EncoderNetworkService> EncoderTonicServiceProxy<S> {
 
 #[async_trait]
 impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
-    async fn send_input(
+    async fn send_shard_input(
         &self,
-        request: Request<SendInputRequest>,
-    ) -> Result<Response<SendInputResponse>, tonic::Status> {
+        request: Request<SendShardInputRequest>,
+    ) -> Result<Response<SendShardInputResponse>, tonic::Status> {
         let Some(peer_index) = request
             .extensions()
             .get::<PeerInfo>()
@@ -117,19 +377,43 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         else {
             return Err(tonic::Status::internal("PeerInfo not found"));
         };
-        let input = request.into_inner().input;
+        let shard_input = request.into_inner().shard_input;
+
         self.service
-            .handle_send_input(peer_index, input)
+            .handle_send_shard_input(peer_index, shard_input)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
 
-        Ok(Response::new(SendInputResponse {}))
+        Ok(Response::new(SendShardInputResponse {}))
+    }
+    async fn get_shard_input(
+        &self,
+        request: Request<GetShardInputRequest>,
+    ) -> Result<Response<GetShardInputResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_ref = request.into_inner().shard_ref;
+
+        let service_response = self
+            .service
+            .handle_get_shard_input(peer_index, shard_ref)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+
+        Ok(Response::new(GetShardInputResponse {
+            shard_input: service_response.bytes(),
+        }))
     }
 
-    async fn send_selection(
+    async fn get_shard_commit_signature(
         &self,
-        request: Request<SendSelectionRequest>,
-    ) -> Result<Response<SendSelectionResponse>, tonic::Status> {
+        request: Request<GetShardCommitSignatureRequest>,
+    ) -> Result<Response<GetShardCommitSignatureResponse>, tonic::Status> {
         let Some(peer_index) = request
             .extensions()
             .get::<PeerInfo>()
@@ -137,19 +421,244 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         else {
             return Err(tonic::Status::internal("PeerInfo not found"));
         };
-        let selection = request.into_inner().selection;
+        let shard_commit = request.into_inner().shard_commit;
+
+        let shard_commit_signature = self
+            .service
+            .handle_get_shard_commit_signature(peer_index, shard_commit)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+
+        Ok(Response::new(GetShardCommitSignatureResponse {
+            shard_commit_signature: shard_commit_signature.bytes(),
+        }))
+    }
+
+    async fn send_shard_commit_certificate(
+        &self,
+        request: Request<SendShardCommitCertificateRequest>,
+    ) -> Result<Response<SendShardCommitCertificateResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_commit_certificate = request.into_inner().shard_commit_certificate;
+
         self.service
-            .handle_send_selection(peer_index, selection)
+            .handle_send_shard_commit_certificate(peer_index, shard_commit_certificate)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
-        Ok(Response::new(SendSelectionResponse {}))
+
+        Ok(Response::new(SendShardCommitCertificateResponse {}))
+    }
+
+    async fn batch_get_shard_commit_certificates(
+        &self,
+        request: Request<BatchGetShardCommitCertificatesRequest>,
+    ) -> Result<Response<BatchGetShardCommitCertificatesResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_slots = request.into_inner().shard_slots;
+
+        let shard_commit_certificates = self
+            .service
+            .handle_batch_get_shard_commit_certificates(peer_index, shard_slots)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+
+        let shard_commit_certificates = shard_commit_certificates
+            .iter()
+            .map(|x| x.bytes())
+            .collect::<Vec<_>>();
+
+        Ok(Response::new(BatchGetShardCommitCertificatesResponse {
+            shard_commit_certificates,
+        }))
+    }
+    async fn get_shard_reveal_signature(
+        &self,
+        request: Request<GetShardRevealSignatureRequest>,
+    ) -> Result<Response<GetShardRevealSignatureResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_reveal = request.into_inner().shard_reveal;
+
+        let shard_reveal_signature = self
+            .service
+            .handle_get_shard_reveal_signature(peer_index, shard_reveal)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+
+        Ok(Response::new(GetShardRevealSignatureResponse {
+            shard_reveal_signature: shard_reveal_signature.bytes(),
+        }))
+    }
+    async fn send_shard_reveal_certificate(
+        &self,
+        request: Request<SendShardRevealCertificateRequest>,
+    ) -> Result<Response<SendShardRevealCertificateResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_reveal_certificate = request.into_inner().shard_reveal_certificate;
+
+        self.service
+            .handle_send_shard_reveal_certificate(peer_index, shard_reveal_certificate)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+
+        Ok(Response::new(SendShardRevealCertificateResponse {}))
+    }
+
+    async fn batch_get_shard_reveal_certificates(
+        &self,
+        request: Request<BatchGetShardRevealCertificatesRequest>,
+    ) -> Result<Response<BatchGetShardRevealCertificatesResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_slots = request.into_inner().shard_slots;
+
+        let shard_reveal_certificates = self
+            .service
+            .handle_batch_get_shard_reveal_certificates(peer_index, shard_slots)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+        let shard_reveal_certificates = shard_reveal_certificates
+            .iter()
+            .map(|x| x.bytes())
+            .collect::<Vec<_>>();
+
+        Ok(Response::new(BatchGetShardRevealCertificatesResponse {
+            shard_reveal_certificates,
+        }))
+    }
+    async fn batch_send_shard_removal_signatures(
+        &self,
+        request: Request<BatchSendShardRemovalSignaturesRequest>,
+    ) -> Result<Response<BatchSendShardRemovalSignaturesResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_removal_signatures = request.into_inner().shard_removal_signatures;
+
+        self.service
+            .handle_batch_send_shard_removal_signatures(peer_index, shard_removal_signatures)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+
+        Ok(Response::new(BatchSendShardRemovalSignaturesResponse {}))
+    }
+    async fn batch_send_shard_removal_certificates(
+        &self,
+        request: Request<BatchSendShardRemovalCertificatesRequest>,
+    ) -> Result<Response<BatchSendShardRemovalCertificatesResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_removal_certificates = request.into_inner().shard_removal_certificates;
+
+        self.service
+            .handle_batch_send_shard_removal_certificates(peer_index, shard_removal_certificates)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+
+        Ok(Response::new(BatchSendShardRemovalCertificatesResponse {}))
+    }
+    async fn send_shard_endorsement(
+        &self,
+        request: Request<SendShardEndorsementRequest>,
+    ) -> Result<Response<SendShardEndorsementResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_endorsement = request.into_inner().shard_endorsement;
+
+        self.service
+            .handle_send_shard_endorsement(peer_index, shard_endorsement)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+
+        Ok(Response::new(SendShardEndorsementResponse {}))
+    }
+    async fn send_shard_finality_proof(
+        &self,
+        request: Request<SendShardFinalityProofRequest>,
+    ) -> Result<Response<SendShardFinalityProofResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_finality_proof = request.into_inner().shard_finality_proof;
+
+        self.service
+            .handle_send_shard_finality_proof(peer_index, shard_finality_proof)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+
+        Ok(Response::new(SendShardFinalityProofResponse {}))
+    }
+    async fn send_shard_delivery_proof(
+        &self,
+        request: Request<SendShardDeliveryProofRequest>,
+    ) -> Result<Response<SendShardDeliveryProofResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.network_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let shard_delivery_proof = request.into_inner().shard_delivery_proof;
+
+        self.service
+            .handle_send_shard_delivery_proof(peer_index, shard_delivery_proof)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+
+        Ok(Response::new(SendShardDeliveryProofResponse {}))
     }
 }
 
 pub struct EncoderTonicManager {
     context: Arc<EncoderContext>,
-    leader_client: Arc<LeaderTonicClient<EncoderContext>>,
-    // encoder_client: Arc<EncoderTonicClient>,
+    client: Arc<EncoderTonicClient>,
     shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
@@ -157,7 +666,7 @@ impl EncoderTonicManager {
     pub fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self {
         Self {
             context: context.clone(),
-            leader_client: Arc::new(LeaderTonicClient::new(context, network_keypair)),
+            client: Arc::new(EncoderTonicClient::new(context, network_keypair)),
             // encoder_client: Arc::new(EncoderTonicClient::new(context, network_keypair)),
             shutdown_tx: None,
         }
@@ -165,14 +674,14 @@ impl EncoderTonicManager {
 }
 
 impl<S: EncoderNetworkService> EncoderNetworkManager<S> for EncoderTonicManager {
-    type Client = LeaderTonicClient<EncoderContext>;
+    type Client = EncoderTonicClient;
 
     fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self {
         EncoderTonicManager::new(context, network_keypair)
     }
 
-    fn leader_client(&self) -> Arc<Self::Client> {
-        self.leader_client.clone()
+    fn client(&self) -> Arc<Self::Client> {
+        self.client.clone()
     }
 
     async fn start(&mut self, service: Arc<S>) {

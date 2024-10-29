@@ -4,6 +4,7 @@ use crate::{
     core::encoder_core::EncoderCore,
     error::{ShardError, ShardResult},
     networking::messaging::EncoderNetworkClient,
+    types::{shard_input::ShardInput, signed::Signed, verified::Verified},
 };
 use tokio::sync::mpsc;
 
@@ -11,14 +12,15 @@ use tokio::sync::mpsc;
 const CORE_THREAD_COMMANDS_CHANNEL_SIZE: usize = 1000;
 
 enum EncoderCoreThreadCommand {
-    ProcessInput(VerifiedSignedShardInput),
-    ProcessSelection(VerifiedSignedShardSelection),
+    ProcessShardInput(Verified<Signed<ShardInput>>),
 }
 
 #[async_trait]
 pub trait EncoderCoreThreadDispatcher: Sync + Send + 'static {
-    async fn process_input(&self, input: VerifiedSignedShardInput) -> ShardResult<()>;
-    async fn process_selection(&self, selection: VerifiedSignedShardSelection) -> ShardResult<()>;
+    async fn process_shard_input(
+        &self,
+        shard_input: Verified<Signed<ShardInput>>,
+    ) -> ShardResult<()>;
 }
 
 pub struct EncoderCoreThreadHandle {
@@ -38,7 +40,7 @@ struct EncoderCoreThread<C: EncoderNetworkClient> {
     receiver: mpsc::Receiver<EncoderCoreThreadCommand>,
 }
 
-impl<LNC: LeaderNetworkClient> EncoderCoreThread<LNC> {
+impl<C: EncoderNetworkClient> EncoderCoreThread<C> {
     pub async fn run(mut self) {
         // tracing::debug!("Started core thread");
 
@@ -49,11 +51,8 @@ impl<LNC: LeaderNetworkClient> EncoderCoreThread<LNC> {
                         break;
                     };
                     match command {
-                        EncoderCoreThreadCommand::ProcessInput(input) => {
-                            self.core.process_input(input).await;
-                        }
-                        EncoderCoreThreadCommand::ProcessSelection(selection) => {
-                            self.core.process_selection(selection).await;
+                        EncoderCoreThreadCommand::ProcessShardInput(shard_input) => {
+                            self.core.process_shard_input(shard_input).await;
                         }
                     }
                 }
@@ -69,8 +68,8 @@ pub(crate) struct EncoderChannelCoreThreadDispatcher {
 }
 
 impl EncoderChannelCoreThreadDispatcher {
-    pub(crate) fn start<LNC: LeaderNetworkClient>(
-        core: EncoderCore<LNC>,
+    pub(crate) fn start<C: EncoderNetworkClient>(
+        core: EncoderCore<C>,
     ) -> (Self, EncoderCoreThreadHandle) {
         let (sender, receiver) = mpsc::channel(CORE_THREAD_COMMANDS_CHANNEL_SIZE);
         let core_thread = EncoderCoreThread { core, receiver };
@@ -100,15 +99,11 @@ impl EncoderChannelCoreThreadDispatcher {
 
 #[async_trait]
 impl EncoderCoreThreadDispatcher for EncoderChannelCoreThreadDispatcher {
-    async fn process_input(&self, input: VerifiedSignedShardInput) -> ShardResult<()> {
-        // TODO: better error handling
-        self.send(EncoderCoreThreadCommand::ProcessInput(input))
-            .await?;
-        Ok(())
-    }
-    async fn process_selection(&self, selection: VerifiedSignedShardSelection) -> ShardResult<()> {
-        // TODO: better error handling
-        self.send(EncoderCoreThreadCommand::ProcessSelection(selection))
+    async fn process_shard_input(
+        &self,
+        shard_input: Verified<Signed<ShardInput>>,
+    ) -> ShardResult<()> {
+        self.send(EncoderCoreThreadCommand::ProcessShardInput(shard_input))
             .await?;
         Ok(())
     }

@@ -1,7 +1,8 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
-use super::{digest::Digest, shard::ShardRef, shard_endorsement::ShardEndorsement};
+use super::shard::ShardRef;
+use crate::types::network_committee::NetworkingIndex;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardSlotsAPI)]

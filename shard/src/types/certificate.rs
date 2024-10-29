@@ -46,22 +46,15 @@ impl<T> ShardCertificate<T> {
 
 #[enum_dispatch]
 trait ShardCertificateAPI {
-    /// Returns the signed transaction
-    fn signed_transaction(&self) -> &SignedTransaction;
-    /// Returns the round
-    fn signed_block_header(&self) -> &SignedBlockHeader;
-    /// Returns the author authority index. Dependent on epoch.
-    fn certificate_signature(&self) -> &ProtocolKeySignature;
+    fn indices(&self) -> Vec<NetworkingIndex>;
+    fn aggregate_signature(&self) -> &ProtocolKeySignature;
 }
 
 impl<T> ShardCertificateAPI for ShardCertificateV1<T> {
-    fn signed_transaction(&self) -> &SignedTransaction {
-        &self.signed_transaction
+    fn indices(&self) -> Vec<NetworkingIndex> {
+        self.indices.clone()
     }
-    fn signed_block_header(&self) -> &SignedBlockHeader {
-        &self.signed_block_header
-    }
-    fn certificate_signature(&self) -> &ProtocolKeySignature {
-        &self.certificate_signature
+    fn aggregate_signature(&self) -> &ProtocolKeySignature {
+        &self.aggregate_signature
     }
 }

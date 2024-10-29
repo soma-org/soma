@@ -13,9 +13,8 @@ use super::transaction::SignedTransaction;
 /// Contains the manifest digest and leader. By keeping these details
 /// secret from the broader network and only sharing with selected shard members
 /// we can reduce censorship related attacks that target specific users
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct ShardSecret {
-    /// the digest that uniquely identifies a manifest
     manifest_digest: Digest<Manifest>, //TODO: switch to a manifest ref to be more in-line?
     /// the node that will be coordinating communication and selecting the commits
     pub(crate) leader: NetworkingIndex,
@@ -107,6 +106,6 @@ impl ShardRefAPI for ShardRefV1 {
 
 impl Hash for ShardRef {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.seed().0[..8]);
+        state.write(&self.seed().as_ref()[..8]);
     }
 }

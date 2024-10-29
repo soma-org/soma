@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{ShardError, ShardResult},
@@ -9,22 +10,24 @@ use crate::{
 
 use super::digest::Digest;
 
-pub struct Signed<T> {
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Signed<T: Serialize> {
     inner: T,
     signature: Signature<T>,
 }
 
-pub struct Signature<T> {
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Signature<T: Serialize> {
     bytes: Bytes,
     marker: PhantomData<T>,
 }
 
-impl<T> Signed<T> {
+impl<T: Serialize> Signed<T> {
     pub fn new(inner: T, scope: Scope, keypair: &ProtocolKeyPair) -> ShardResult<Self> {
         let inner_digest: Digest<T> = Digest::new(&inner)?;
         let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
             .map_err(ShardError::SerializationFailure)?;
-        let signature = keypair.sign(&message)?;
+        let signature = keypair.sign(&message);
         Ok(Self {
             inner,
             signature: Signature {
@@ -54,7 +57,7 @@ impl<T> Signed<T> {
         Ok(())
     }
 
-    pub fn signature(&self) -> Signature<T> {
-        self.signature
+    pub fn signature(&self) -> Bytes {
+        self.signature.bytes.clone()
     }
 }

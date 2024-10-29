@@ -112,14 +112,14 @@ impl VersionedScope {
 /// The serialization of an ScopedMessage is compact: it only appends two bytes
 /// to the message itself.
 #[derive(Debug, PartialEq, Eq, Serialize, Clone, Hash, Deserialize)]
-pub struct ScopedMessage<T> {
+pub struct ScopedMessage<T: Serialize> {
     /// the version and scope of a message
     versioned_scope: VersionedScope,
     ///the actual message value
     value: T,
 }
 
-impl<T> ScopedMessage<T> {
+impl<T: Serialize> ScopedMessage<T> {
     /// creates a new scoped message for the given generic message
     pub const fn new(scope: Scope, value: T) -> Self {
         Self {

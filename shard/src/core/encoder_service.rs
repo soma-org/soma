@@ -8,7 +8,7 @@ use crate::{
     types::{
         certificate::ShardCertificate, network_committee::NetworkingIndex, serialized::Serialized,
         shard::ShardRef, shard_commit::ShardCommit, shard_input::ShardInput,
-        shard_reveal::ShardReveal, verified::Verified,
+        shard_reveal::ShardReveal, signed::Signature, verified::Verified,
     },
 };
 
@@ -40,7 +40,9 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         let signed_input: Signed<ShardInput> =
             bcs::from_bytes(&shard_input_bytes).map_err(ShardError::MalformedType)?;
         let verified_input = Verified::new(signed_input, shard_input_bytes, &unverified)?;
-        self.core_dispatcher.process_input(verified_input).await?;
+        self.core_dispatcher
+            .process_shard_input(verified_input)
+            .await?;
         Ok(())
     }
     async fn handle_get_shard_input(
@@ -49,21 +51,22 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         shard_ref_bytes: Bytes,
     ) -> ShardResult<Serialized<Signed<ShardInput>>> {
         let shard_ref: ShardRef =
-            bcs::from_bytes(&shard_ref_bytes).map_err(ShardError::MalformedInput)?;
+            bcs::from_bytes(&shard_ref_bytes).map_err(ShardError::MalformedType)?;
         let verified_shard_ref = Verified::new(shard_ref, shard_ref_bytes, &unverified)?;
         // self.core_dispatcher.process_input(verified_input).await?;
-        Ok(())
+        unimplemented!()
     }
     async fn handle_get_shard_commit_signature(
         &self,
         peer: NetworkingIndex,
         shard_commit_bytes: Bytes,
-    ) -> ShardResult<Serialized<Signed<ShardCommit>>> {
+    ) -> ShardResult<Serialized<Signature<Signed<ShardCommit>>>> {
         let shard_commit: Signed<ShardCommit> =
-            bcs::from_bytes(&shard_commit_bytes).map_err(ShardError::MalformedInput)?;
+            bcs::from_bytes(&shard_commit_bytes).map_err(ShardError::MalformedType)?;
         let verified_shard_commit = Verified::new(shard_commit, shard_commit_bytes, &unverified)?;
         // self.core_dispatcher.process_input(verified_input).await?;
-        Ok(())
+
+        unimplemented!()
     }
 
     async fn handle_send_shard_commit_certificate(
@@ -72,7 +75,7 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         shard_commit_certificate_bytes: Bytes,
     ) -> ShardResult<()> {
         let shard_commit_certificate: ShardCertificate<Signed<ShardCommit>> =
-            bcs::from_bytes(&shard_commit_certificate_bytes).map_err(ShardError::MalformedInput)?;
+            bcs::from_bytes(&shard_commit_certificate_bytes).map_err(ShardError::MalformedType)?;
         let verified_shard_commit_certificate = Verified::new(
             shard_commit_certificate,
             shard_commit_certificate_bytes,
@@ -87,15 +90,15 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         slots_bytes: Bytes,
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn handle_get_shard_reveal_signature(
         &self,
         peer: NetworkingIndex,
         shard_reveal_bytes: Bytes,
-    ) -> ShardResult<Serialized<Signed<Signed<ShardReveal>>>> {
-        Ok(())
+    ) -> ShardResult<Serialized<Signature<Signed<ShardReveal>>>> {
+        unimplemented!()
     }
 
     async fn handle_send_shard_reveal_certificate(
@@ -111,7 +114,8 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         slots_bytes: Bytes,
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardReveal>>>>> {
-        Ok(())
+        // Ok(())
+        unimplemented!()
     }
 
     async fn handle_batch_send_shard_removal_signatures(

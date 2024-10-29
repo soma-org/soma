@@ -13,15 +13,15 @@ impl<T> Serialized<T> {
             marker: PhantomData,
         }
     }
-    pub(crate) const fn bytes(&self) -> &bytes::Bytes {
-        &self.bytes
+    pub(crate) fn bytes(&self) -> bytes::Bytes {
+        self.bytes.clone()
     }
 }
 
 impl<T> std::ops::Deref for Serialized<T> {
-    type Target = T;
+    type Target = Bytes;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.bytes
     }
 }

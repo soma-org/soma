@@ -1,5 +1,8 @@
 // use crate::networking::messaging::MESSAGE_TIMEOUT;
-use crate::networking::messaging::EncoderNetworkClient;
+use crate::{
+    networking::messaging::EncoderNetworkClient,
+    types::{shard_input::ShardInput, signed::Signed, verified::Verified},
+};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
@@ -20,13 +23,13 @@ where
         }
     }
 
-    // pub async fn process_input(&self, input: VerifiedSignedShardInput) {
-    //     let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+    pub async fn process_shard_input(&self, shard_input: Verified<Signed<ShardInput>>) {
+        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
 
-    //     tokio::spawn(async move {
-    //         drop(permit);
-    //     });
-    // }
+        tokio::spawn(async move {
+            drop(permit);
+        });
+    }
 
     // pub async fn process_selection(&self, selection: VerifiedSignedShardSelection) {
     //     let permit = self.semaphore.clone().acquire_owned().await.unwrap();

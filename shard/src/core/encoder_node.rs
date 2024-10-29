@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     crypto::keys::NetworkKeyPair,
-    networking::messaging::{
-        tonic_network::EncoderTonicManager, EncoderNetworkClient, EncoderNetworkManager,
-    },
+    networking::messaging::{tonic_network::EncoderTonicManager, EncoderNetworkManager},
     types::context::EncoderContext,
 };
 

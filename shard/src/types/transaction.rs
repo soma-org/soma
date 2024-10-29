@@ -117,7 +117,7 @@ pub struct SignedTransaction {
 
 /// `TransactionRef` uniquely identifies a `VerifiedTransaction` via `digest`. It also contains the slot
 /// info (round and author) so it can be used in logic such as aggregating stakes for a round.
-#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TransactionRef {
     pub digest: Digest<SignedTransaction>,
 }
@@ -151,6 +151,6 @@ impl fmt::Debug for TransactionRef {
 
 impl Hash for TransactionRef {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.digest.0[..8]);
+        state.write(&self.digest.as_ref()[..8]);
     }
 }
