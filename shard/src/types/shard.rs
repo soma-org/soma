@@ -38,7 +38,7 @@ pub struct ShardEntropy {
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[enum_dispatch(ShardRefAPI)]
 pub enum ShardRef {
     V1(ShardRefV1),
@@ -52,7 +52,7 @@ trait ShardRefAPI {
     fn seed(&self) -> &Digest<ShardEntropy>;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct ShardRefV1 {
     /// the epoch that this shard was sampled from, important since committees change each epoch
     epoch: Epoch,

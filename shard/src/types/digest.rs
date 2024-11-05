@@ -7,7 +7,7 @@ use crate::{
     // error::{ShardError, ShardResult},
 };
 use fastcrypto::hash::HashFunction;
-use std::marker::PhantomData;
+use std::{cmp::Ordering, marker::PhantomData};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Digest<T: Serialize> {
@@ -28,6 +28,18 @@ impl<T: Serialize> PartialEq for Digest<T> {
     }
 }
 impl<T: Serialize> Eq for Digest<T> {}
+
+impl<T: Serialize> Ord for Digest<T> {
+    fn cmp(&self, other: &Digest<T>) -> Ordering {
+        self.inner.cmp(&other.inner)
+    }
+}
+
+impl<T: Serialize> PartialOrd for Digest<T> {
+    fn partial_cmp(&self, other: &Digest<T>) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl<T: Serialize> Digest<T> {
     pub fn new(inner: &T) -> ShardResult<Self> {

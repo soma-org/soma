@@ -1,18 +1,15 @@
+#![doc = include_str!("README.md")]
 pub(crate) mod channel_pool;
-pub(crate) mod tonic;
 pub(crate) mod tonic_network;
 
+/// Includes the generated protobuf/gRPC service code
 mod tonic_gen {
     include!(concat!(env!("OUT_DIR"), "/soma.EncoderService.rs"));
 }
 
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
-
 use crate::types::certificate::ShardCertificate;
-use crate::types::manifest::Manifest;
 use crate::types::multiaddr::{Multiaddr, Protocol};
 use crate::types::shard::ShardRef;
-// use crate::types::shard::ShardRef;
 use crate::types::shard_commit::ShardCommit;
 use crate::types::shard_delivery_proof::ShardDeliveryProof;
 use crate::types::shard_endorsement::ShardEndorsement;
@@ -23,7 +20,6 @@ use crate::types::shard_reveal::ShardReveal;
 use crate::types::shard_slots::ShardSlots;
 use crate::types::signed::Signature;
 use crate::types::{serialized::Serialized, signed::Signed};
-use crate::ProtocolKeySignature;
 use crate::{
     crypto::keys::NetworkKeyPair,
     error::ShardResult,
@@ -31,15 +27,18 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::{sync::Arc, time::Duration};
 
+/// Default message timeout for each request.
+// TODO: make timeout configurable and tune the default timeout based on measured network latency
 pub(crate) const MESSAGE_TIMEOUT: std::time::Duration = Duration::from_secs(60);
 
-/// The Encoder Network client takes verified types as inputs, the reason being that verified types already contain
-/// serialized versions of the data. E.g. in the case of loading data from a database the serialized data is already
-/// available so it would be redundant to deserialized + re-serialized. The response from a client fn is always in the form
-/// of bytes due to the fact that verifying for each specific networking implementation would be redundant and would require
+/// The Encoder Network client takes pre-serialized versions of the data. E.g. in the case of loading data from a database the serialized data is already
+/// available so it would be redundant to deserialized + re-serialized the type. The response from a client fn is always in the form
+/// of bytes due to the fact that verification of types for each specific networking implementation would be redundant and would require
 /// maintaining multiple versions of the same codebase.
+//TODO: to enforce type verification, it should be impossible to create a serialized type without going through verification first
 #[async_trait]
 pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     /// Send shard input is used by the client to send an input to the shard.
@@ -67,7 +66,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
-    /// Get commit signature is used when a shard member has performed the computation
+    /// Get shard commit signature is used when a shard member has performed the computation
     /// and encrypted their embeddings using an encryption key. The commit contains
     /// information pertaining to the checksums of embedding data and a download location.
     /// The download location is then used to download probes, encrypted embeddings, peers embeddings etc.
@@ -138,6 +137,11 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
         timeout: Duration,
     ) -> ShardResult<()>;
 
+    /// Before sending the final endorsement, shard members batch send all removal certificates to their fellow shard members.
+    /// The trigger for syncing removal certificates is after running every embedding across every probe. In the case that a shard member is
+    /// missing a certificate, they adopt the new certificate and resend the batch of removal certificates. Upon receiving a quorum of batch removal certificates
+    /// that match the shard members own certificates, it continues to endorsement. There is a chance of redundant computation from missing a removal certificate, but
+    /// it is worth the tradeoff of eager execution vs needing to wait for full state sync.
     async fn batch_send_shard_removal_certificates(
         &self,
         peer: NetworkingIndex,
@@ -213,7 +217,7 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_shard_commit_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_commit_certificate: Bytes,
+        shard_commit_certificate_bytes: Bytes,
     ) -> ShardResult<()>;
 
     /// validates whether a shard member, returns commits if they exist, otherwise returns empty vec. Returns empty for any commits that have a removal certificate.
@@ -251,14 +255,14 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     async fn handle_batch_send_shard_removal_signatures(
         &self,
         peer: NetworkingIndex,
-        shard_removal_signatures: Vec<Bytes>,
+        shard_removal_signatures_bytes_vector: Vec<Bytes>,
     ) -> ShardResult<()>;
 
     /// verifies the removal certificate and then integrates it into the shard state. Valid removal certificates always trump existing data.
     async fn handle_batch_send_shard_removal_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_removal_certificates: Vec<Bytes>,
+        shard_removal_certificates_bytes_vector: Vec<Bytes>,
     ) -> ShardResult<()>;
 
     /// receives a signed endorsement from a peer. The endorsement should match the
@@ -285,18 +289,27 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
     ) -> ShardResult<()>;
 }
 
+/// `EncoderNetworkManager` handles starting and stopping the network related services
+/// The network manager also provides clients to other encoders in an efficient way.
 pub(crate) trait EncoderNetworkManager<S>: Send + Sync
 where
     S: EncoderNetworkService,
 {
+    /// type alias
     type Client: EncoderNetworkClient;
 
+    /// Creates a new manager by taking an encoder context and a network keypair.
+    /// The network keypair is used for TLS authentication.
     fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self;
+    /// Returns a client
     fn client(&self) -> Arc<Self::Client>;
+    /// Starts the network services
     async fn start(&mut self, service: Arc<S>);
+    /// Stops the network services
     async fn stop(&mut self);
 }
 
+/// Converts a multiaddress to a host:port string handling both TCP and UDP
 fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
     let mut iter = addr.iter();
 
@@ -326,6 +339,7 @@ fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
         }
     }
 }
+/// Converts multiaddress to socket address
 fn to_socket_addr(addr: &Multiaddr) -> Result<SocketAddr, &'static str> {
     let mut iter = addr.iter();
     match (iter.next(), iter.next()) {

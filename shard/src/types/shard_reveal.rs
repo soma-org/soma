@@ -14,7 +14,7 @@ pub enum ShardReveal {
 
 /// `ShardRevealAPI` is the trait that every shard commit version must implement
 #[enum_dispatch]
-trait ShardRevealAPI {
+pub(crate) trait ShardRevealAPI {
     /// returns the shard ref
     fn shard_ref(&self) -> &ShardRef;
     /// returns the encryption key

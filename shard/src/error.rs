@@ -46,6 +46,8 @@ pub(crate) enum ShardError {
     #[error("Genesis blocks should not be queried!")]
     UnexpectedGenesisBlockRequested,
 
+    #[error("Contacting peer is unauthorized")]
+    UnauthorizedPeer,
     // #[error(
     //     "Expected {requested} but received {received} blocks returned from authority {authority}"
     // )]
@@ -126,6 +128,9 @@ pub(crate) enum ShardError {
     #[error("No available authority to fetch commits")]
     NoAvailableAuthorityToFetchCommits,
 
+    #[error("This request conflicts with a previous request")]
+    ConflictingRequest,
+
     #[error("Sending to core thread failed: {0}")]
     FailedToSendToCoreThread(String),
     // #[error("Received no commit from peer {peer}")]
@@ -165,6 +170,9 @@ pub(crate) enum ShardError {
 
     // #[error("RocksDB failure: {0}")]
     // RocksDBFailure(#[from] TypedStoreError),
+    #[error("Datastore error: {0}")]
+    DatastoreError(String),
+
     #[error("Unknown network peer: {0}")]
     UnknownNetworkPeer(String),
 

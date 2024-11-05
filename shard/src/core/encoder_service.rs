@@ -1,28 +1,52 @@
 use async_trait::async_trait;
 use bytes::Bytes;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::EncoderNetworkService,
+    storage::datastore::Store,
     types::{
-        certificate::ShardCertificate, network_committee::NetworkingIndex, serialized::Serialized,
-        shard::ShardRef, shard_commit::ShardCommit, shard_input::ShardInput,
-        shard_reveal::ShardReveal, signed::Signature, verified::Verified,
+        certificate::ShardCertificate,
+        context::EncoderContext,
+        network_committee::NetworkingIndex,
+        serialized::Serialized,
+        shard::ShardRef,
+        shard_commit::{ShardCommit, ShardCommitAPI},
+        shard_input::ShardInput,
+        shard_reveal::{ShardReveal, ShardRevealAPI},
+        shard_slots::{ShardSlots, ShardSlotsAPI},
+        signed::Signature,
+        verified::Verified,
     },
+    ProtocolKeyPair,
 };
 
 use super::encoder_core_thread::EncoderCoreThreadDispatcher;
 use crate::types::signed::Signed;
 
-pub(crate) struct EncoderService<C: EncoderCoreThreadDispatcher> {
+pub(crate) struct EncoderService<C: EncoderCoreThreadDispatcher, S: Store> {
+    context: Arc<EncoderContext>,
     core_dispatcher: Arc<C>,
+    store: Arc<S>,
+    keypair: Arc<ProtocolKeyPair>,
 }
 
-impl<C: EncoderCoreThreadDispatcher> EncoderService<C> {
-    pub(crate) fn new(core_dispatcher: Arc<C>) -> Self {
+impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderService<C, S> {
+    pub(crate) fn new(
+        context: Arc<EncoderContext>,
+        core_dispatcher: Arc<C>,
+        store: Arc<S>,
+        keypair: Arc<ProtocolKeyPair>,
+    ) -> Self {
         println!("configured core thread");
-        Self { core_dispatcher }
+        Self {
+            context,
+            core_dispatcher,
+            store,
+            keypair,
+        }
     }
 }
 
@@ -31,19 +55,13 @@ fn unverified<T>(input: &T) -> ShardResult<()> {
 }
 
 #[async_trait]
-impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C> {
+impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S> {
     async fn handle_send_shard_input(
         &self,
         peer: NetworkingIndex,
         shard_input_bytes: Bytes,
     ) -> ShardResult<()> {
-        let signed_input: Signed<ShardInput> =
-            bcs::from_bytes(&shard_input_bytes).map_err(ShardError::MalformedType)?;
-        let verified_input = Verified::new(signed_input, shard_input_bytes, &unverified)?;
-        self.core_dispatcher
-            .process_shard_input(verified_input)
-            .await?;
-        Ok(())
+        unimplemented!()
     }
     async fn handle_get_shard_input(
         &self,
@@ -52,9 +70,13 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
     ) -> ShardResult<Serialized<Signed<ShardInput>>> {
         let shard_ref: ShardRef =
             bcs::from_bytes(&shard_ref_bytes).map_err(ShardError::MalformedType)?;
-        let verified_shard_ref = Verified::new(shard_ref, shard_ref_bytes, &unverified)?;
-        // self.core_dispatcher.process_input(verified_input).await?;
-        unimplemented!()
+        // TODO: change this to use a cache rather than database call?
+        let shard = self.store.read_shard(&shard_ref)?;
+        if !shard.contains(&peer) {
+            return Err(ShardError::UnauthorizedPeer);
+        }
+        let signed_shard_input = self.store.read_signed_shard_input(&shard_ref)?;
+        Ok(signed_shard_input.serialized())
     }
     async fn handle_get_shard_commit_signature(
         &self,
@@ -63,10 +85,45 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
     ) -> ShardResult<Serialized<Signature<Signed<ShardCommit>>>> {
         let shard_commit: Signed<ShardCommit> =
             bcs::from_bytes(&shard_commit_bytes).map_err(ShardError::MalformedType)?;
-        let verified_shard_commit = Verified::new(shard_commit, shard_commit_bytes, &unverified)?;
-        // self.core_dispatcher.process_input(verified_input).await?;
 
-        unimplemented!()
+        //1. verify shard membersip
+        let shard = self.store.read_shard(&shard_commit.shard_ref())?;
+        if !shard.contains(&peer) {
+            return Err(ShardError::UnauthorizedPeer);
+        }
+        //2. verify signature
+
+        shard_commit.verify_signature(
+            crate::Scope::ShardCommit,
+            &self.context.network_committee.identity(&peer).protocol_key,
+        )?;
+
+        //3. verify shard commit
+        //TODO: fix verification
+        let verified_shard_commit = Verified::new(shard_commit, shard_commit_bytes, unverified)?;
+
+        if self
+            .store
+            .read_shard_commit_digest(&verified_shard_commit.shard_ref(), peer)
+            .is_ok_and(|digest| digest != verified_shard_commit.digest())
+        {
+            return Err(ShardError::ConflictingRequest);
+        }
+
+        // TODO: add digest to datastore
+
+        let signature_bytes = bcs::to_bytes(
+            &Signed::new(
+                verified_shard_commit.deref().to_owned(),
+                crate::Scope::ShardReveal,
+                &self.keypair,
+            )?
+            .signature(),
+        )
+        .map_err(ShardError::SerializationFailure)?;
+        Ok(Serialized::new(bytes::Bytes::copy_from_slice(
+            &signature_bytes,
+        )))
     }
 
     async fn handle_send_shard_commit_certificate(
@@ -74,15 +131,7 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_commit_certificate_bytes: Bytes,
     ) -> ShardResult<()> {
-        let shard_commit_certificate: ShardCertificate<Signed<ShardCommit>> =
-            bcs::from_bytes(&shard_commit_certificate_bytes).map_err(ShardError::MalformedType)?;
-        let verified_shard_commit_certificate = Verified::new(
-            shard_commit_certificate,
-            shard_commit_certificate_bytes,
-            &unverified,
-        )?;
-        // self.core_dispatcher.process_input(verified_input).await?;
-        Ok(())
+        unimplemented!()
     }
 
     async fn handle_batch_get_shard_commit_certificates(
@@ -90,7 +139,23 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         slots_bytes: Bytes,
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>> {
-        unimplemented!()
+        let shard_slots: ShardSlots =
+            bcs::from_bytes(&slots_bytes).map_err(ShardError::MalformedType)?;
+        let shard = self.store.read_shard(&shard_slots.shard_ref())?;
+        if !shard.contains(&peer) {
+            return Err(ShardError::UnauthorizedPeer);
+        }
+
+        let batch_shard_commit_certificates = self.store.batch_read_shard_commit_certificates(
+            shard_slots.shard_ref().clone(),
+            shard_slots.shard_members(),
+        )?;
+
+        Ok(batch_shard_commit_certificates
+            .iter()
+            .flatten()
+            .map(|x| x.serialized())
+            .collect())
     }
 
     async fn handle_get_shard_reveal_signature(
@@ -98,7 +163,49 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_reveal_bytes: Bytes,
     ) -> ShardResult<Serialized<Signature<Signed<ShardReveal>>>> {
-        unimplemented!()
+        let shard_reveal: Signed<ShardReveal> =
+            bcs::from_bytes(&shard_reveal_bytes).map_err(ShardError::MalformedType)?;
+
+        //1. verify shard membersip
+        let shard = self.store.read_shard(&shard_reveal.shard_ref())?;
+        if !shard.contains(&peer) {
+            return Err(ShardError::UnauthorizedPeer);
+        }
+        //2. verify signature
+
+        shard_reveal.verify_signature(
+            crate::Scope::ShardReveal,
+            &self.context.network_committee.identity(&peer).protocol_key,
+        )?;
+
+        //3. verify shard reveal
+        //TODO: fix verification
+        let verified_shard_reveal = Verified::new(shard_reveal, shard_reveal_bytes, unverified)?;
+
+        //4. check for digest in store
+        if self
+            .store
+            .read_shard_reveal_digest(&verified_shard_reveal.shard_ref(), peer)
+            .is_ok_and(|digest| digest != verified_shard_reveal.digest())
+        {
+            return Err(ShardError::ConflictingRequest);
+        }
+
+        // TODO: add digest to datastore
+        // TODO: clean up how signatures are created
+
+        let signature_bytes = bcs::to_bytes(
+            &Signed::new(
+                verified_shard_reveal.deref().to_owned(),
+                crate::Scope::ShardReveal,
+                &self.keypair,
+            )?
+            .signature(),
+        )
+        .map_err(ShardError::SerializationFailure)?;
+        Ok(Serialized::new(bytes::Bytes::copy_from_slice(
+            &signature_bytes,
+        )))
     }
 
     async fn handle_send_shard_reveal_certificate(
@@ -106,7 +213,7 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_reveal_certificate_bytes: Bytes,
     ) -> ShardResult<()> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn handle_batch_get_shard_reveal_certificates(
@@ -114,8 +221,23 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         slots_bytes: Bytes,
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardReveal>>>>> {
-        // Ok(())
-        unimplemented!()
+        let shard_slots: ShardSlots =
+            bcs::from_bytes(&slots_bytes).map_err(ShardError::MalformedType)?;
+        let shard = self.store.read_shard(&shard_slots.shard_ref())?;
+        if !shard.contains(&peer) {
+            return Err(ShardError::UnauthorizedPeer);
+        }
+
+        let batch_shard_reveal_certificates = self.store.batch_read_shard_reveal_certificates(
+            shard_slots.shard_ref().clone(),
+            shard_slots.shard_members(),
+        )?;
+
+        Ok(batch_shard_reveal_certificates
+            .iter()
+            .flatten()
+            .map(|x| x.serialized())
+            .collect())
     }
 
     async fn handle_batch_send_shard_removal_signatures(
@@ -123,7 +245,7 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_removal_signatures: Vec<Bytes>,
     ) -> ShardResult<()> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn handle_batch_send_shard_removal_certificates(
@@ -131,7 +253,7 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_removal_certificates: Vec<Bytes>,
     ) -> ShardResult<()> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn handle_send_shard_endorsement(
@@ -139,7 +261,7 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_endorsement_bytes: Bytes,
     ) -> ShardResult<()> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn handle_send_shard_finality_proof(
@@ -147,7 +269,7 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_finality_proof_bytes: Bytes,
     ) -> ShardResult<()> {
-        Ok(())
+        unimplemented!()
     }
 
     async fn handle_send_shard_delivery_proof(
@@ -155,6 +277,6 @@ impl<C: EncoderCoreThreadDispatcher> EncoderNetworkService for EncoderService<C>
         peer: NetworkingIndex,
         shard_delivery_proof_bytes: Bytes,
     ) -> ShardResult<()> {
-        Ok(())
+        unimplemented!()
     }
 }

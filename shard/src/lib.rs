@@ -3,6 +3,7 @@ mod core;
 mod crypto;
 mod error;
 mod networking;
+mod storage;
 mod types;
 
 pub use types::scope::{Scope, ScopedMessage};

@@ -1,8 +1,15 @@
-use crate::{error::ShardResult, types::digest::Digest};
-use bytes::Bytes;
+use crate::{
+    error::{ShardError, ShardResult},
+    types::digest::Digest,
+    ProtocolKeyPair, Scope,
+};
+use bytes::{Buf, Bytes};
 use serde::Serialize;
 use std::sync::Arc;
 
+use super::{serialized::Serialized, signed::Signed};
+
+#[derive(Debug, Clone)]
 pub struct Verified<T: Serialize> {
     inner: Arc<T>,
     digest: Digest<T>,
@@ -28,8 +35,8 @@ impl<T: Serialize> Verified<T> {
         self.digest.clone()
     }
 
-    pub(crate) const fn serialized(&self) -> &bytes::Bytes {
-        &self.serialized
+    pub(crate) fn serialized(&self) -> Serialized<T> {
+        Serialized::new(self.serialized.clone())
     }
 }
 

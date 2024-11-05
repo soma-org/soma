@@ -11,7 +11,7 @@ pub enum ShardSlots {
 }
 
 #[enum_dispatch]
-trait ShardSlotsAPI {
+pub(crate) trait ShardSlotsAPI {
     fn shard_ref(&self) -> &ShardRef;
     fn shard_members(&self) -> &Vec<NetworkingIndex>;
 }

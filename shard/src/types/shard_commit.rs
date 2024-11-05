@@ -35,7 +35,7 @@ pub enum ShardCommit {
 
 /// `ShardCommitAPI` is the trait that every shard commit version must implement
 #[enum_dispatch]
-trait ShardCommitAPI {
+pub(crate) trait ShardCommitAPI {
     /// returns the shard ref
     fn shard_ref(&self) -> &ShardRef;
     /// returns the manifest (checksums of the actual embeddings)

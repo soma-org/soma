@@ -1,3 +1,4 @@
+//! `ChannelPool` stores tonic channels for re-use.
 use crate::networking::messaging::to_host_port_str;
 use crate::types::context::EncoderContext;
 use crate::types::network_committee::NetworkingIndex;
@@ -10,24 +11,39 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{trace, warn};
 
+/// `ChannelPool` contains the encoder context and an efficient mapping between networking index
+/// and an open channel. In the future it might be better to have a single `ChannelPool` for both
+/// consensus networking and the encoders to reduce the code, at which time a generic would need to
+/// be used for the context to support contexts for both encoders and authorities.
 pub(crate) struct ChannelPool {
+    /// context allows going from index to address
     context: Arc<EncoderContext>,
+    /// channels stored using a RWLock to better support the concurrent usage
     channels: RwLock<BTreeMap<NetworkingIndex, Channel>>,
 }
 
+/// Type alias since the type definition is so long
 pub(crate) type Channel = tower_http::trace::Trace<
     tonic::transport::Channel,
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
 >;
 
+/// `ChannelPool` implements methods to create a new channel pool and get a channel from a
+/// pre-existing channel pool. Note under the current construction, you would need to create
+/// a new channel and reestablish the channels every epoch.
 impl ChannelPool {
-    pub(crate) fn new(context: Arc<EncoderContext>) -> Self {
+    /// the new fn takes an encoder context and establishes a new
+    /// RwLock to hold the btree of index to channel maps
+    pub(crate) const fn new(context: Arc<EncoderContext>) -> Self {
         Self {
             context,
             channels: RwLock::new(BTreeMap::new()),
         }
     }
 
+    /// the get channel method first attempts to look up the channel inside the RwLocked BTreeMap. It drops
+    /// the lock and returns if found. Otherwise it uses the network identity to look up the multiaddress, map to a suitable
+    /// tonic address, and then establish a connection. The newly connected channel is stored in the map, and returned.
     pub(crate) async fn get_channel(
         &self,
         peer: NetworkingIndex,

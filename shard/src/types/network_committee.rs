@@ -53,8 +53,8 @@ impl NetworkCommittee {
     // }
 
     /// returns the identitity for a given network index
-    pub fn identity(&self, identity_index: NetworkingIndex) -> &NetworkIdentity {
-        &self.identities[identity_index]
+    pub fn identity(&self, index: &NetworkingIndex) -> &NetworkIdentity {
+        &self.identities[index]
     }
 
     /// returns all the network identities as an iterator

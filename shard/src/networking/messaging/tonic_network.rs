@@ -1,3 +1,4 @@
+//! Tonic Network contains all the code related to tonic-specific code implementing the network client, service, and manager traits.
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::{io::Read, sync::Arc, time::Duration};
@@ -9,7 +10,7 @@ use crate::{
     crypto::keys::NetworkKeyPair,
     error::{ShardError, ShardResult},
     networking::messaging::{
-        to_socket_addr, tonic::PeerInfo, tonic_gen::encoder_service_server::EncoderServiceServer,
+        to_socket_addr, tonic_gen::encoder_service_server::EncoderServiceServer,
     },
     types::{
         certificate::ShardCertificate,
@@ -41,13 +42,17 @@ use crate::types::{
     signed::{Signature, Signed},
 };
 
-// Implements Tonic RPC client for Consensus.
+// Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderTonicClient {
+    /// network_keypair used for TLS
     network_keypair: NetworkKeyPair,
+    /// channel pool for tonic channel reuse
     channel_pool: Arc<ChannelPool>,
 }
 
+/// Implments the core functionality of the encoder tonic client
 impl EncoderTonicClient {
+    /// Creates a new encoder tonic client and establishes an arc'd channel pool
     pub(crate) fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self {
         Self {
             network_keypair,
@@ -55,6 +60,8 @@ impl EncoderTonicClient {
         }
     }
 
+    /// returns an encoder client
+    // TODO: re-introduce configuring limits to the client for safety
     async fn get_client(
         &self,
         peer: NetworkingIndex,
@@ -69,6 +76,8 @@ impl EncoderTonicClient {
 }
 
 #[async_trait]
+/// each function operates similarly in the sense that every request is packaged, a timeout is set
+/// and a peer's client is retrieved from the channel pool.
 impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_input(
         &self,
@@ -352,16 +361,29 @@ impl EncoderNetworkClient for EncoderTonicClient {
     }
 }
 
-/// Proxies Tonic requests to NetworkService with actual handler implementation.
+/// Proxies Tonic requests to `NetworkService` with actual handler implementation.
 struct EncoderTonicServiceProxy<S: EncoderNetworkService> {
+    /// Encoder context
     context: Arc<EncoderContext>,
+    /// Encoder Network Service - this is typically the same even between different networking stacks. The trait
+    /// makes testing easier.
     service: Arc<S>,
 }
 
+/// Implements a new method to create an encoder tonic service proxy
 impl<S: EncoderNetworkService> EncoderTonicServiceProxy<S> {
-    fn new(context: Arc<EncoderContext>, service: Arc<S>) -> Self {
+    /// Creates the tonic service proxy using pre-established context and service
+    const fn new(context: Arc<EncoderContext>, service: Arc<S>) -> Self {
         Self { context, service }
     }
+}
+
+/// Used to pack the networking index into each request. Using a new type
+/// such that this can be extended in the future. May want to version this however?
+#[derive(Clone, Debug)]
+pub(crate) struct PeerInfo {
+    /// networking index, verified using the TLS networking keypair
+    pub(crate) network_index: NetworkingIndex,
 }
 
 #[async_trait]
@@ -382,7 +404,7 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_send_shard_input(peer_index, shard_input)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendShardInputResponse {}))
     }
@@ -450,7 +472,7 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_send_shard_commit_certificate(peer_index, shard_commit_certificate)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendShardCommitCertificateResponse {}))
     }
@@ -522,7 +544,7 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_send_shard_reveal_certificate(peer_index, shard_reveal_certificate)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendShardRevealCertificateResponse {}))
     }
@@ -570,7 +592,7 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_batch_send_shard_removal_signatures(peer_index, shard_removal_signatures)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(BatchSendShardRemovalSignaturesResponse {}))
     }
@@ -590,7 +612,7 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_batch_send_shard_removal_certificates(peer_index, shard_removal_certificates)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(BatchSendShardRemovalCertificatesResponse {}))
     }
@@ -610,7 +632,7 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_send_shard_endorsement(peer_index, shard_endorsement)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendShardEndorsementResponse {}))
     }
@@ -630,7 +652,7 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_send_shard_finality_proof(peer_index, shard_finality_proof)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendShardFinalityProofResponse {}))
     }
@@ -650,24 +672,28 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         self.service
             .handle_send_shard_delivery_proof(peer_index, shard_delivery_proof)
             .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")));
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendShardDeliveryProofResponse {}))
     }
 }
 
+/// Tonic specific manager type that contains a tonic specific client and
+/// the oneshot tokio channel to trigger service shutdown.
 pub struct EncoderTonicManager {
     context: Arc<EncoderContext>,
     client: Arc<EncoderTonicClient>,
     shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
+/// Implementation of the encoder tonic manager that contains a new fn to create the type
+// TODO: switch this to type state pattern
 impl EncoderTonicManager {
+    /// Takes context, and network keypair and creates a new encoder tonic client
     pub fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self {
         Self {
             context: context.clone(),
             client: Arc::new(EncoderTonicClient::new(context, network_keypair)),
-            // encoder_client: Arc::new(EncoderTonicClient::new(context, network_keypair)),
             shutdown_tx: None,
         }
     }
@@ -677,13 +703,17 @@ impl<S: EncoderNetworkService> EncoderNetworkManager<S> for EncoderTonicManager 
     type Client = EncoderTonicClient;
 
     fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self {
-        EncoderTonicManager::new(context, network_keypair)
+        Self::new(context, network_keypair)
     }
 
     fn client(&self) -> Arc<Self::Client> {
         self.client.clone()
     }
 
+    /// if the network is running locally, then it uses the localhost address, otherwise
+    /// it uses the zero address since it will be used in a hosted context where the service will
+    /// be routed to using the IP address. The function starts a gRPC server taking a shutdown channel
+    /// to allow the system to trigger shutdown from outside of the spawned tokio task.
     async fn start(&mut self, service: Arc<S>) {
         let network_identity = self
             .context

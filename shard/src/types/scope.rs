@@ -43,7 +43,7 @@ pub enum Scope {
     ConsensusBlockHeader = 8, // Used for consensus authority signature on block's digest
     ShardInput = 9,
     ShardCommit = 10,
-    ShardSelection = 11,
+    ShardReveal = 11,
     ShardEndorsement = 12,
     // TODO: add cfg
     MacroTest = 13,

@@ -57,7 +57,18 @@ impl<T: Serialize> Signed<T> {
         Ok(())
     }
 
-    pub fn signature(&self) -> Bytes {
-        self.signature.bytes.clone()
+    pub fn signature(&self) -> Signature<T> {
+        Signature {
+            bytes: self.signature.bytes.clone(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T: Serialize> std::ops::Deref for Signed<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
