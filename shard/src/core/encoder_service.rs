@@ -23,29 +23,30 @@ use crate::{
     ProtocolKeyPair,
 };
 
-use super::encoder_core_thread::EncoderCoreThreadDispatcher;
 use crate::types::signed::Signed;
 
-pub(crate) struct EncoderService<C: EncoderCoreThreadDispatcher, S: Store> {
+use super::encoder_core_thread::TaskDispatcher;
+
+pub(crate) struct EncoderService<C: TaskDispatcher, S: Store> {
     context: Arc<EncoderContext>,
-    core_dispatcher: Arc<C>,
+    task_dispatcher: Arc<C>,
     store: Arc<S>,
-    keypair: Arc<ProtocolKeyPair>,
+    protocol_keypair: Arc<ProtocolKeyPair>,
 }
 
-impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderService<C, S> {
+impl<C: TaskDispatcher, S: Store> EncoderService<C, S> {
     pub(crate) fn new(
         context: Arc<EncoderContext>,
-        core_dispatcher: Arc<C>,
+        task_dispatcher: Arc<C>,
         store: Arc<S>,
-        keypair: Arc<ProtocolKeyPair>,
+        protocol_keypair: Arc<ProtocolKeyPair>,
     ) -> Self {
         println!("configured core thread");
         Self {
             context,
-            core_dispatcher,
+            task_dispatcher,
             store,
-            keypair,
+            protocol_keypair,
         }
     }
 }
@@ -55,7 +56,7 @@ fn unverified<T>(input: &T) -> ShardResult<()> {
 }
 
 #[async_trait]
-impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S> {
+impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S> {
     async fn handle_send_shard_input(
         &self,
         peer: NetworkingIndex,
@@ -95,7 +96,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
 
         shard_commit.verify_signature(
             crate::Scope::ShardCommit,
-            &self.context.network_committee.identity(&peer).protocol_key,
+            &self.context.network_committee.identity(peer).protocol_key,
         )?;
 
         //3. verify shard commit
@@ -104,7 +105,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
 
         if self
             .store
-            .read_shard_commit_digest(&verified_shard_commit.shard_ref(), peer)
+            .read_shard_commit_digest(verified_shard_commit.shard_ref(), peer)
             .is_ok_and(|digest| digest != verified_shard_commit.digest())
         {
             return Err(ShardError::ConflictingRequest);
@@ -116,7 +117,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
             &Signed::new(
                 verified_shard_commit.deref().to_owned(),
                 crate::Scope::ShardReveal,
-                &self.keypair,
+                &self.protocol_keypair,
             )?
             .signature(),
         )
@@ -141,7 +142,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>> {
         let shard_slots: ShardSlots =
             bcs::from_bytes(&slots_bytes).map_err(ShardError::MalformedType)?;
-        let shard = self.store.read_shard(&shard_slots.shard_ref())?;
+        let shard = self.store.read_shard(shard_slots.shard_ref())?;
         if !shard.contains(&peer) {
             return Err(ShardError::UnauthorizedPeer);
         }
@@ -167,7 +168,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
             bcs::from_bytes(&shard_reveal_bytes).map_err(ShardError::MalformedType)?;
 
         //1. verify shard membersip
-        let shard = self.store.read_shard(&shard_reveal.shard_ref())?;
+        let shard = self.store.read_shard(shard_reveal.shard_ref())?;
         if !shard.contains(&peer) {
             return Err(ShardError::UnauthorizedPeer);
         }
@@ -175,7 +176,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
 
         shard_reveal.verify_signature(
             crate::Scope::ShardReveal,
-            &self.context.network_committee.identity(&peer).protocol_key,
+            &self.context.network_committee.identity(peer).protocol_key,
         )?;
 
         //3. verify shard reveal
@@ -185,7 +186,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
         //4. check for digest in store
         if self
             .store
-            .read_shard_reveal_digest(&verified_shard_reveal.shard_ref(), peer)
+            .read_shard_reveal_digest(verified_shard_reveal.shard_ref(), peer)
             .is_ok_and(|digest| digest != verified_shard_reveal.digest())
         {
             return Err(ShardError::ConflictingRequest);
@@ -198,7 +199,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
             &Signed::new(
                 verified_shard_reveal.deref().to_owned(),
                 crate::Scope::ShardReveal,
-                &self.keypair,
+                &self.protocol_keypair,
             )?
             .signature(),
         )
@@ -223,7 +224,7 @@ impl<C: EncoderCoreThreadDispatcher, S: Store> EncoderNetworkService for Encoder
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardReveal>>>>> {
         let shard_slots: ShardSlots =
             bcs::from_bytes(&slots_bytes).map_err(ShardError::MalformedType)?;
-        let shard = self.store.read_shard(&shard_slots.shard_ref())?;
+        let shard = self.store.read_shard(shard_slots.shard_ref())?;
         if !shard.contains(&peer) {
             return Err(ShardError::UnauthorizedPeer);
         }

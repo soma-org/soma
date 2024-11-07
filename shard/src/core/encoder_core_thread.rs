@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use tracing::warn;
 
 use crate::{
     core::encoder_core::EncoderCore,
@@ -6,105 +7,101 @@ use crate::{
     networking::messaging::EncoderNetworkClient,
     types::{shard_input::ShardInput, signed::Signed, verified::Verified},
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinSet};
 
 // TODO: make this configurable
 const CORE_THREAD_COMMANDS_CHANNEL_SIZE: usize = 1000;
 
-enum EncoderCoreThreadCommand {
-    ProcessShardInput(Verified<Signed<ShardInput>>),
-}
-
 #[async_trait]
-pub trait EncoderCoreThreadDispatcher: Sync + Send + 'static {
+pub trait TaskDispatcher: Sync + Send + 'static {
     async fn process_shard_input(
         &self,
         shard_input: Verified<Signed<ShardInput>>,
     ) -> ShardResult<()>;
 }
 
-pub struct EncoderCoreThreadHandle {
-    sender: mpsc::Sender<EncoderCoreThreadCommand>,
-    join_handle: tokio::task::JoinHandle<()>,
+pub struct TaskManagerHandle {
+    shard_input_sender: mpsc::Sender<Verified<Signed<ShardInput>>>,
+    join_set: JoinSet<()>,
 }
 
-impl EncoderCoreThreadHandle {
+impl TaskManagerHandle {
     pub async fn stop(self) {
-        drop(self.sender);
-        self.join_handle.await.ok();
+        drop(self.shard_input_sender);
+        self.join_set.join_all().await;
     }
 }
 
-struct EncoderCoreThread<C: EncoderNetworkClient> {
+struct TaskManager<C: EncoderNetworkClient> {
     core: EncoderCore<C>,
-    receiver: mpsc::Receiver<EncoderCoreThreadCommand>,
+    shard_input_receiver: mpsc::Receiver<Verified<Signed<ShardInput>>>,
 }
 
-impl<C: EncoderNetworkClient> EncoderCoreThread<C> {
-    pub async fn run(mut self) {
-        // tracing::debug!("Started core thread");
-
+impl<C: EncoderNetworkClient> TaskManager<C> {
+    pub async fn run_shard_input_receiver(mut self) {
         loop {
             tokio::select! {
-                command = self.receiver.recv() => {
-                    let Some(command) = command else {
+                shard_input= self.shard_input_receiver.recv() => {
+                    let Some(shard_input) = shard_input else {
                         break;
                     };
-                    match command {
-                        EncoderCoreThreadCommand::ProcessShardInput(shard_input) => {
-                            self.core.process_shard_input(shard_input).await;
-                        }
-                    }
+                    self.core.process_shard_input(shard_input).await;
                 }
+                // TODO: select on other important things here if needed
             }
-            // add any important listeners here
         }
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct EncoderChannelCoreThreadDispatcher {
-    sender: mpsc::Sender<EncoderCoreThreadCommand>,
+pub(crate) struct ChannelTaskDispatcher {
+    shard_input_sender: mpsc::WeakSender<Verified<Signed<ShardInput>>>,
 }
 
-impl EncoderChannelCoreThreadDispatcher {
+impl ChannelTaskDispatcher {
     pub(crate) fn start<C: EncoderNetworkClient>(
         core: EncoderCore<C>,
-    ) -> (Self, EncoderCoreThreadHandle) {
-        let (sender, receiver) = mpsc::channel(CORE_THREAD_COMMANDS_CHANNEL_SIZE);
-        let core_thread = EncoderCoreThread { core, receiver };
-
-        let join_handle = tokio::spawn(async move { core_thread.run().await });
-
-        let dispatcher = EncoderChannelCoreThreadDispatcher {
-            sender: sender.clone(),
+    ) -> (Self, TaskManagerHandle) {
+        let (shard_input_sender, shard_input_receiver) =
+            mpsc::channel(CORE_THREAD_COMMANDS_CHANNEL_SIZE);
+        let task_manager = TaskManager {
+            core,
+            shard_input_receiver,
         };
-        let handle = EncoderCoreThreadHandle {
-            join_handle,
-            sender,
+
+        let mut join_set = JoinSet::new();
+
+        join_set.spawn(async move { task_manager.run_shard_input_receiver().await });
+
+        let dispatcher = ChannelTaskDispatcher {
+            shard_input_sender: shard_input_sender.downgrade(),
         };
-        println!("started core thread");
+        let handle = TaskManagerHandle {
+            join_set,
+            shard_input_sender,
+        };
         (dispatcher, handle)
     }
 
-    async fn send(&self, command: EncoderCoreThreadCommand) -> ShardResult<()> {
-        self.sender
-            .send(command)
-            .await
-            .map_err(|e| ShardError::FailedToSendToCoreThread(e.to_string()))?;
-
-        Ok(())
+    async fn send<T: Sync + Send>(&self, sender: &mpsc::WeakSender<T>, value: T) {
+        if let Some(sender) = sender.upgrade() {
+            if let Err(err) = sender.send(value).await {
+                warn!(
+                    "Couldn't send to task manager thread, probably is shutting down: {}",
+                    err
+                );
+            }
+        }
     }
 }
 
 #[async_trait]
-impl EncoderCoreThreadDispatcher for EncoderChannelCoreThreadDispatcher {
+impl TaskDispatcher for ChannelTaskDispatcher {
     async fn process_shard_input(
         &self,
         shard_input: Verified<Signed<ShardInput>>,
     ) -> ShardResult<()> {
-        self.send(EncoderCoreThreadCommand::ProcessShardInput(shard_input))
-            .await?;
+        self.send(&self.shard_input_sender, shard_input).await;
         Ok(())
     }
 }

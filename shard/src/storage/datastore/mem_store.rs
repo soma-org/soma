@@ -31,7 +31,7 @@ struct Inner {
 }
 
 impl MemStore {
-    #[cfg(test)]
+    // #[cfg(test)]
     pub(crate) const fn new() -> Self {
         Self {
             inner: RwLock::new(Inner {

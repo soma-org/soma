@@ -53,7 +53,7 @@ impl NetworkCommittee {
     // }
 
     /// returns the identitity for a given network index
-    pub fn identity(&self, index: &NetworkingIndex) -> &NetworkIdentity {
+    pub fn identity(&self, index: NetworkingIndex) -> &NetworkIdentity {
         &self.identities[index]
     }
 
