@@ -1,39 +1,36 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    committee::{Committee, CommitteeWithNetworkMetadata},
+    committee::{Committee, CommitteeWithNetworkMetadata, EpochId},
     effects::{self, TransactionEffects},
     error::SomaResult,
-    system_state::{SystemState, SystemStateTrait},
+    object::{Object, ObjectID},
+    system_state::{get_system_state, SystemState, SystemStateTrait},
     transaction::Transaction,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Genesis {
     transaction: Transaction,
-    system_state: SystemState,
     effects: TransactionEffects,
+    objects: Vec<Object>,
 }
 
 impl Genesis {
     pub fn new(
         transaction: Transaction,
-        system_state: SystemState,
         effects: TransactionEffects,
+        objects: Vec<Object>,
     ) -> Self {
         Self {
             transaction,
-            system_state,
             effects,
+            objects,
         }
     }
 
-    pub fn system_state(&self) -> SystemState {
-        self.system_state.clone()
-    }
-
     pub fn committee_with_network(&self) -> CommitteeWithNetworkMetadata {
-        self.system_state().get_current_epoch_committee()
+        self.system_object().get_current_epoch_committee()
     }
 
     pub fn committee(&self) -> SomaResult<Committee> {
@@ -46,5 +43,21 @@ impl Genesis {
 
     pub fn effects(&self) -> &TransactionEffects {
         &self.effects
+    }
+
+    pub fn objects(&self) -> &[Object] {
+        &self.objects
+    }
+
+    pub fn object(&self, id: ObjectID) -> Option<Object> {
+        self.objects.iter().find(|o| o.id() == id).cloned()
+    }
+
+    pub fn epoch(&self) -> EpochId {
+        0
+    }
+
+    pub fn system_object(&self) -> SystemState {
+        get_system_state(&self.objects()).expect("System State object must always exist")
     }
 }

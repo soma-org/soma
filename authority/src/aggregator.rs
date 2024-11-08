@@ -839,6 +839,12 @@ where
                         bad_votes,
                         bad_authorities,
                     } => {
+                        warn!(
+                            ?tx_digest,
+                            ?effects_digest,
+                            bad_votes,
+                            "Not enough votes for effects"
+                        );
                         // state.non_retryable_stake += bad_votes;
                         if bad_votes > 0 {
                             state.non_retryable_errors.push((
@@ -851,7 +857,14 @@ where
                         }
                         Ok(None)
                     }
-                    InsertResult::Failed { error } => Err(error),
+                    InsertResult::Failed { error } => {
+                        warn!(
+                            ?tx_digest,
+                            ?effects_digest,
+                            "Failed to insert effects"
+                        );    
+                        Err(error)
+                    },
                     InsertResult::QuorumReached(cert_sig) => {
                         let ct = CertifiedTransactionEffects::new_from_data_and_sig(
                             signed_effects.into_data(),

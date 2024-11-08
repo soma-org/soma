@@ -7,7 +7,6 @@ use fastcrypto::{bls12381, ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use crate::crypto::{AuthorityPublicKey, SomaKeyPair, SomaPublicKey};
 use crate::{
     base::{AuthorityName, SomaAddress},
     committee::{
@@ -19,11 +18,16 @@ use crate::{
     multiaddr::Multiaddr,
     parameters,
     peer_id::PeerId,
+    SYSTEM_STATE_OBJECT_ID,
+};
+use crate::{
+    crypto::{AuthorityPublicKey, SomaKeyPair, SomaPublicKey},
+    storage::object_store::ObjectStore,
 };
 
 pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, Hash)]
 pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
@@ -52,7 +56,7 @@ pub struct SystemParameters {
     pub validator_low_stake_grace_period: u64,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, Hash)]
 pub struct ValidatorMetadata {
     pub soma_address: SomaAddress,
     pub protocol_pubkey: PublicKey,
@@ -68,7 +72,7 @@ pub struct ValidatorMetadata {
     pub next_epoch_primary_address: Option<Multiaddr>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Validator {
     pub metadata: ValidatorMetadata,
     pub voting_power: u64,
@@ -105,7 +109,7 @@ impl Validator {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct ValidatorSet {
     pub total_stake: u64,
     pub active_validators: Vec<Validator>,
@@ -199,7 +203,7 @@ pub trait SystemStateTrait {
     fn into_epoch_start_state(self) -> EpochStartSystemState;
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct SystemState {
     pub epoch: u64,
     // pub protocol_version: u64,
@@ -529,4 +533,17 @@ impl EpochStartValidatorInfo {
     pub fn authority_name(&self) -> AuthorityName {
         (&self.protocol_pubkey).into()
     }
+}
+
+pub fn get_system_state(object_store: &dyn ObjectStore) -> Result<SystemState, SomaError> {
+    let object = object_store
+        .get_object(&SYSTEM_STATE_OBJECT_ID)?
+        // Don't panic here on None because object_store is a generic store.
+        .ok_or_else(|| {
+            SomaError::SystemStateReadError("SystemState object not found".to_owned())
+        })?;
+
+    let result = bcs::from_bytes::<SystemState>(object.as_inner().data.contents())
+        .map_err(|err| SomaError::SystemStateReadError(err.to_string()))?;
+    Ok(result)
 }

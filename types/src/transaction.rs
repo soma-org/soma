@@ -21,6 +21,7 @@ use crate::{
     envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
     error::{SomaError, SomaResult},
     intent::{Intent, IntentMessage, IntentScope},
+    object::Object,
 };
 use tap::Pipe;
 
@@ -74,7 +75,9 @@ impl TransactionKind {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct GenesisTransaction {}
+pub struct GenesisTransaction {
+    pub objects: Vec<Object>,
+}
 
 /// EndOfEpochTransactionKind
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -401,8 +404,8 @@ impl CertifiedTransaction {
 }
 
 impl VerifiedTransaction {
-    pub fn new_genesis_transaction() -> Self {
-        GenesisTransaction {}
+    pub fn new_genesis_transaction(objects: Vec<Object>) -> Self {
+        GenesisTransaction { objects }
             .pipe(TransactionKind::Genesis)
             .pipe(Self::new_system_transaction)
     }

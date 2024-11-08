@@ -18,7 +18,10 @@ use tracing::{debug, info, instrument, warn};
 use types::{
     base::{AuthorityName, ConciseableName, Round, SomaAddress},
     committee::{Committee, EpochId},
-    consensus::{ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind},
+    consensus::{
+        ConsensusCommitPrologue, ConsensusTransaction, ConsensusTransactionKey,
+        ConsensusTransactionKind,
+    },
     crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
     digests::{TransactionDigest, TransactionEffectsDigest},
     effects::{self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects},
@@ -26,13 +29,21 @@ use types::{
     error::{ExecutionError, SomaError, SomaResult},
     execution_indices::ExecutionIndices,
     mutex_table::{MutexGuard, MutexTable},
+    object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Version},
     protocol::{Chain, ProtocolConfig},
-    system_state::{self, EpochStartSystemState, EpochStartSystemStateTrait, SystemState},
-    transaction::{
-        CertifiedTransaction, EndOfEpochTransactionKind, SenderSignedData, StateTransactionKind,
-        Transaction, TransactionKey, TransactionKind, TrustedExecutableTransaction,
-        VerifiedCertificate, VerifiedExecutableTransaction, VerifiedTransaction,
+    storage::object_store::ObjectStore,
+    system_state::{
+        self, get_system_state, EpochStartSystemState, EpochStartSystemStateTrait, SystemState,
     },
+    temporary_store::TemporaryStore,
+    transaction::{
+        self, CertifiedTransaction, EndOfEpochTransactionKind, SenderSignedData,
+        StateTransactionKind, Transaction, TransactionKey, TransactionKind,
+        TrustedExecutableTransaction, VerifiedCertificate, VerifiedExecutableTransaction,
+        VerifiedSignedTransaction, VerifiedTransaction,
+    },
+    tx_outputs::WrittenObjects,
+    SYSTEM_STATE_OBJECT_ID,
 };
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
 
@@ -45,6 +56,7 @@ use crate::{
     signature_verifier::SignatureVerifier,
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
+    store::LockDetails,
 };
 
 /// The key where the latest consensus index is stored in the database.
@@ -155,7 +167,6 @@ pub struct AuthorityPerEpochStore {
     // executed_in_epoch_table_enabled: once_cell::sync::OnceCell<bool>,
 
     // chain_identifier: ChainIdentifier,
-    system_state: Arc<RwLock<SystemState>>,
 }
 
 /// AuthorityEpochTables contains tables that contain data that is only valid within an epoch.
@@ -213,6 +224,13 @@ pub struct AuthorityEpochTables {
 
     /// Signatures of transaction certificates that are executed locally.
     transaction_cert_signatures: RwLock<BTreeMap<TransactionDigest, AuthorityStrongQuorumSignInfo>>,
+
+    /// This is map between the transaction digest and transactions found in the `transaction_lock`.
+    signed_transactions:
+        RwLock<BTreeMap<TransactionDigest, TrustedEnvelope<SenderSignedData, AuthoritySignInfo>>>,
+
+    /// Map from ObjectRef to transaction locking that object
+    object_locked_transactions: RwLock<BTreeMap<ObjectRef, TransactionDigest>>,
 }
 
 impl AuthorityEpochTables {
@@ -241,6 +259,52 @@ impl AuthorityEpochTables {
             .get(&LAST_CONSENSUS_STATS_ADDR)
             .copied())
     }
+
+    pub fn get_locked_transaction(
+        &self,
+        obj_ref: &ObjectRef,
+    ) -> SomaResult<Option<TransactionDigest>> {
+        Ok(self.object_locked_transactions.read().get(obj_ref).cloned())
+    }
+
+    pub fn multi_get_locked_transactions(
+        &self,
+        owned_input_objects: &[ObjectRef],
+    ) -> SomaResult<Vec<Option<TransactionDigest>>> {
+        let locks = self.object_locked_transactions.read();
+        let mut results = Vec::with_capacity(owned_input_objects.len());
+
+        for obj_ref in owned_input_objects {
+            results.push(locks.get(obj_ref).cloned());
+        }
+
+        Ok(results)
+    }
+
+    pub fn write_transaction_locks(
+        &self,
+        transaction: VerifiedSignedTransaction,
+        locks_to_write: impl Iterator<Item = (ObjectRef, TransactionDigest)>,
+    ) -> SomaResult {
+        // Insert locks
+        {
+            let mut locked_transactions = self.object_locked_transactions.write();
+            for (obj_ref, lock) in locks_to_write {
+                locked_transactions.insert(obj_ref, lock);
+            }
+        }
+
+        // Insert transaction
+        {
+            let mut transactions = self.signed_transactions.write();
+            transactions.insert(
+                *transaction.digest(),
+                transaction.serializable_ref().clone(),
+            );
+        }
+
+        Ok(())
+    }
 }
 
 pub(crate) const MUTEX_TABLE_SIZE: usize = 1024;
@@ -251,7 +315,6 @@ impl AuthorityPerEpochStore {
         name: AuthorityName,
         committee: Arc<Committee>,
         epoch_start_configuration: EpochStartConfiguration,
-        system_state: SystemState,
     ) -> Arc<Self> {
         let current_time = Instant::now();
         let epoch_id = committee.epoch;
@@ -306,7 +369,6 @@ impl AuthorityPerEpochStore {
             epoch_open_time: current_time,
             epoch_close_time: Default::default(),
             epoch_start_configuration,
-            system_state: Arc::new(RwLock::new(system_state)),
         });
         s
     }
@@ -337,10 +399,6 @@ impl AuthorityPerEpochStore {
         self.epoch_start_configuration.epoch_start_state()
     }
 
-    pub fn system_state(&self) -> SystemState {
-        self.system_state.read().clone()
-    }
-
     pub fn new_at_next_epoch(
         &self,
         name: AuthorityName,
@@ -348,12 +406,7 @@ impl AuthorityPerEpochStore {
         epoch_start_configuration: EpochStartConfiguration,
     ) -> Arc<Self> {
         assert_eq!(self.epoch() + 1, new_committee.epoch);
-        Self::new(
-            name,
-            Arc::new(new_committee),
-            epoch_start_configuration,
-            self.system_state.read().clone(),
-        )
+        Self::new(name, Arc::new(new_committee), epoch_start_configuration)
     }
 
     pub fn new_at_next_epoch_for_testing(&self) -> Arc<Self> {
@@ -1138,16 +1191,52 @@ impl AuthorityPerEpochStore {
 
     pub fn execute_transaction(
         &self,
+        store: &dyn ObjectStore,
         tx_digest: TransactionDigest,
         kind: TransactionKind,
         signer: SomaAddress,
-    ) -> (TransactionEffects, Option<ExecutionError>) {
-        match kind {
+    ) -> (WrittenObjects, TransactionEffects, Option<ExecutionError>) {
+        if let TransactionKind::ConsensusCommitPrologue(_prologue) = kind {
+            let input_objects: BTreeMap<ObjectID, Object> = BTreeMap::new();
+            let lamport_timestamp =
+                Version::lamport_increment(input_objects.iter().map(|(_, o)| o.version()));
+
+            let temporary_store = TemporaryStore::new(input_objects, tx_digest, lamport_timestamp);
+            let (written_objects, effects) =
+                temporary_store.into_effects(&tx_digest, ExecutionStatus::Success, self.epoch());
+
+            return (written_objects, effects, None);
+        }
+
+        let mut input_objects: BTreeMap<ObjectID, Object> = BTreeMap::new();
+
+        // TODO: add input objects based on tx kind
+        input_objects.insert(
+            SYSTEM_STATE_OBJECT_ID,
+            store
+                .get_object(&SYSTEM_STATE_OBJECT_ID)
+                .unwrap()
+                .expect("Expected system state object to exist"),
+        );
+
+        let lamport_timestamp =
+            Version::lamport_increment(input_objects.iter().map(|(_, o)| o.version()));
+
+        let mut temporary_store = TemporaryStore::new(input_objects, tx_digest, lamport_timestamp);
+
+        let mut state_object = temporary_store
+            .read_object(&SYSTEM_STATE_OBJECT_ID)
+            .expect("Could not get system state object");
+        let mut state =
+            bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents()).unwrap();
+
+        // apply result to state
+        let result = match kind {
             TransactionKind::StateTransaction(tx) => match tx.kind {
                 StateTransactionKind::AddValidator(args) => {
                     // TODO: check if the signer is the same as the validator
-                    let mut state = self.system_state.write();
-                    let result = state.request_add_validator(
+
+                    state.request_add_validator(
                         signer,
                         args.pubkey_bytes,
                         args.network_pubkey_bytes,
@@ -1155,91 +1244,52 @@ impl AuthorityPerEpochStore {
                         args.net_address,
                         args.p2p_address,
                         args.primary_address,
-                    );
-
-                    let execution_status = match &result {
-                        Ok(()) => ExecutionStatus::Success,
-                        Err(err) => {
-                            let error = ExecutionFailureStatus::SomaError(err.clone());
-                            ExecutionStatus::Failure { error }
-                        }
-                    };
-
-                    let execution_error = match &result {
-                        Ok(()) => None,
-                        Err(err) => {
-                            let error = ExecutionFailureStatus::SomaError(err.clone());
-                            Some(ExecutionError::new(error, None))
-                        }
-                    };
-
-                    let effects =
-                        TransactionEffects::new(execution_status, self.epoch(), tx_digest);
-
-                    return (effects, execution_error);
+                    )
                 }
                 StateTransactionKind::RemoveValidator(args) => {
                     // TODO: check if the signer is the same as the validator
-                    let mut state = self.system_state.write();
-                    let result = state.request_remove_validator(signer, args.pubkey_bytes);
 
-                    let execution_status = match &result {
-                        Ok(()) => ExecutionStatus::Success,
-                        Err(err) => {
-                            let error = ExecutionFailureStatus::SomaError(err.clone());
-                            ExecutionStatus::Failure { error }
-                        }
-                    };
+                    info!("Init state object: {:?}", state);
 
-                    let execution_error = match &result {
-                        Ok(()) => None,
-                        Err(err) => {
-                            let error = ExecutionFailureStatus::SomaError(err.clone());
-                            Some(ExecutionError::new(error, None))
-                        }
-                    };
-
-                    let effects =
-                        TransactionEffects::new(execution_status, self.epoch(), tx_digest);
-
-                    return (effects, execution_error);
+                    state.request_remove_validator(signer, args.pubkey_bytes)
                 }
             },
             TransactionKind::EndOfEpochTransaction(tx) => match tx {
                 EndOfEpochTransactionKind::ChangeEpoch(change_epoch) => {
-                    let mut state = self.system_state.write();
-                    let result = state
-                        .advance_epoch(change_epoch.epoch, change_epoch.epoch_start_timestamp_ms);
-
-                    let execution_status = match &result {
-                        Ok(()) => ExecutionStatus::Success,
-                        Err(err) => {
-                            let error = ExecutionFailureStatus::SomaError(err.clone());
-                            ExecutionStatus::Failure { error }
-                        }
-                    };
-
-                    let execution_error = match &result {
-                        Ok(()) => None,
-                        Err(err) => {
-                            let error = ExecutionFailureStatus::SomaError(err.clone());
-                            Some(ExecutionError::new(error, None))
-                        }
-                    };
-
-                    let effects =
-                        TransactionEffects::new(execution_status, self.epoch(), tx_digest);
-
-                    return (effects, execution_error);
+                    state.advance_epoch(change_epoch.epoch, 0) // TODO: figure out how to make epoch_start_timestamp_ms the same across all SystemState objects
                 }
-                _ => panic!("Unsupported EndOfEpochTransactionKind"),
             },
-            _ => {
-                let effects =
-                    TransactionEffects::new(ExecutionStatus::Success, self.epoch(), tx_digest);
-                return (effects, None);
+            _ => Ok(()),
+        };
+
+        let execution_status = match &result {
+            Ok(()) => ExecutionStatus::Success,
+            Err(err) => {
+                let error = ExecutionFailureStatus::SomaError(err.clone());
+                ExecutionStatus::Failure { error }
             }
-        }
+        };
+
+        let execution_error = match &result {
+            Ok(()) => None,
+            Err(err) => {
+                let error = ExecutionFailureStatus::SomaError(err.clone());
+                Some(ExecutionError::new(error, None))
+            }
+        };
+
+        info!("After state object: {:?}", state);
+
+        // turn state back to object
+        state_object
+            .data
+            .update_contents(bcs::to_bytes(&state).unwrap());
+
+        temporary_store.mutate_input_object(state_object);
+        let (written_objects, effects) =
+            temporary_store.into_effects(&tx_digest, execution_status, self.epoch());
+
+        return (written_objects, effects, execution_error);
     }
 
     #[instrument(level = "trace", skip_all)]

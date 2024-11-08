@@ -345,3 +345,123 @@ impl fmt::Debug for CertificateDigest {
         f.debug_tuple("CertificateDigest").field(&self.0).finish()
     }
 }
+
+// Each object has a unique digest
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct ObjectDigest(Digest);
+
+impl ObjectDigest {
+    pub const MIN: ObjectDigest = Self::new([u8::MIN; 32]);
+    pub const MAX: ObjectDigest = Self::new([u8::MAX; 32]);
+    pub const OBJECT_DIGEST_DELETED_BYTE_VAL: u8 = 99;
+    pub const OBJECT_DIGEST_WRAPPED_BYTE_VAL: u8 = 88;
+    pub const OBJECT_DIGEST_CANCELLED_BYTE_VAL: u8 = 77;
+
+    /// A marker that signifies the object is deleted.
+    pub const OBJECT_DIGEST_DELETED: ObjectDigest =
+        Self::new([Self::OBJECT_DIGEST_DELETED_BYTE_VAL; 32]);
+
+    /// A marker that signifies the object is wrapped into another object.
+    pub const OBJECT_DIGEST_WRAPPED: ObjectDigest =
+        Self::new([Self::OBJECT_DIGEST_WRAPPED_BYTE_VAL; 32]);
+
+    pub const OBJECT_DIGEST_CANCELLED: ObjectDigest =
+        Self::new([Self::OBJECT_DIGEST_CANCELLED_BYTE_VAL; 32]);
+
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn generate<R: rand::RngCore + rand::CryptoRng>(rng: R) -> Self {
+        Self(Digest::generate(rng))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn is_alive(&self) -> bool {
+        *self != Self::OBJECT_DIGEST_DELETED && *self != Self::OBJECT_DIGEST_WRAPPED
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        *self == Self::OBJECT_DIGEST_DELETED
+    }
+
+    pub fn is_wrapped(&self) -> bool {
+        *self == Self::OBJECT_DIGEST_WRAPPED
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+}
+
+impl AsRef<[u8]> for ObjectDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for ObjectDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<ObjectDigest> for [u8; 32] {
+    fn from(digest: ObjectDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for ObjectDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for ObjectDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for ObjectDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "o#{}", self.0)
+    }
+}
+
+impl TryFrom<&[u8]> for ObjectDigest {
+    type Error = crate::error::SomaError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, crate::error::SomaError> {
+        let arr: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| crate::error::SomaError::InvalidTransactionDigest)?;
+        Ok(Self::new(arr))
+    }
+}
+
+impl std::str::FromStr for ObjectDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(ObjectDigest::new(result))
+    }
+}

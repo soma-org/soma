@@ -117,8 +117,6 @@ impl SomaNode {
 
         let genesis = config.genesis().clone();
 
-        let starting_system_state = genesis.system_state();
-
         let secret = Arc::pin(config.protocol_key_pair().copy());
         let genesis_committee = genesis.committee()?;
         let committee_store = Arc::new(CommitteeStore::new(
@@ -157,7 +155,6 @@ impl SomaNode {
             config.protocol_public_key(),
             committee.clone(),
             epoch_start_configuration,
-            starting_system_state,
         );
 
         info!("created epoch store");
@@ -310,7 +307,7 @@ impl SomaNode {
             sim_state: Default::default(),
         };
 
-        info!("SuiNode started!");
+        info!("SomaNode started!");
         let node = Arc::new(node);
         let node_copy = node.clone();
 

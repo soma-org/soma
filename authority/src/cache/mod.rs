@@ -7,19 +7,29 @@ use types::{
     digests::{TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
     error::SomaResult,
+    object::{Object, ObjectID, ObjectRef, Version},
+    storage::{object_store::ObjectStore, ObjectKey, ObjectOrTombstone},
+    system_state::SystemState,
     transaction::VerifiedTransaction,
     tx_outputs::TransactionOutputs,
 };
 use writeback_cache::WritebackCache;
 
-use crate::store::AuthorityStore;
+use crate::{
+    epoch_store::AuthorityPerEpochStore,
+    store::{AuthorityStore, LockResult},
+};
 
+pub(crate) mod cache_types;
+pub(crate) mod object_locks;
 pub(crate) mod writeback_cache;
 
 #[derive(Clone)]
 pub struct ExecutionCacheTraitPointers {
     pub transaction_cache_reader: Arc<dyn TransactionCacheRead>,
     pub cache_writer: Arc<dyn ExecutionCacheWrite>,
+    pub object_cache_reader: Arc<dyn ObjectCacheRead>,
+    pub object_store: Arc<dyn ObjectStore + Send + Sync>,
     // pub backing_store: Arc<dyn BackingStore + Send + Sync>,
     // pub reconfig_api: Arc<dyn ExecutionCacheReconfigAPI>,
     // pub accumulator_store: Arc<dyn AccumulatorStore>,
@@ -32,7 +42,8 @@ impl ExecutionCacheTraitPointers {
     where
         T: TransactionCacheRead
             + ExecutionCacheWrite
-            // + BackingStore
+            + ObjectCacheRead
+            + ObjectStore
             // + ExecutionCacheReconfigAPI
             // + AccumulatorStore
             // + StateSyncAPI
@@ -42,6 +53,8 @@ impl ExecutionCacheTraitPointers {
         Self {
             transaction_cache_reader: cache.clone(),
             cache_writer: cache.clone(),
+            object_cache_reader: cache.clone(),
+            object_store: cache.clone(),
             // backing_store: cache.clone(),
             // reconfig_api: cache.clone(),
             // accumulator_store: cache.clone(),
@@ -199,4 +212,55 @@ pub trait ExecutionCacheCommit: Send + Sync {
         &'a self,
         digests: &'a [TransactionDigest],
     ) -> BoxFuture<'a, SomaResult>;
+}
+
+pub trait ObjectCacheRead: Send + Sync {
+    fn get_object(&self, id: &ObjectID) -> SomaResult<Option<Object>>;
+
+    fn get_objects(&self, objects: &[ObjectID]) -> SomaResult<Vec<Option<Object>>> {
+        let mut ret = Vec::with_capacity(objects.len());
+        for object_id in objects {
+            ret.push(self.get_object(object_id)?);
+        }
+        Ok(ret)
+    }
+
+    fn get_latest_object_ref_or_tombstone(
+        &self,
+        object_id: ObjectID,
+    ) -> SomaResult<Option<ObjectRef>>;
+
+    fn get_latest_object_or_tombstone(
+        &self,
+        object_id: ObjectID,
+    ) -> SomaResult<Option<(ObjectKey, ObjectOrTombstone)>>;
+
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: Version,
+    ) -> SomaResult<Option<Object>>;
+
+    fn multi_get_objects_by_key(
+        &self,
+        object_keys: &[ObjectKey],
+    ) -> SomaResult<Vec<Option<Object>>>;
+
+    fn object_exists_by_key(&self, object_id: &ObjectID, version: Version) -> SomaResult<bool>;
+
+    fn multi_object_exists_by_key(&self, object_keys: &[ObjectKey]) -> SomaResult<Vec<bool>>;
+
+    /// Return the object with version less then or eq to the provided seq number.
+    /// This is used by indexer to find the correct version of dynamic field child object.
+    /// We do not store the version of the child object, but because of lamport timestamp,
+    /// we know the child must have version number less then or eq to the parent.
+    fn find_object_lt_or_eq_version(
+        &self,
+        object_id: ObjectID,
+        version: Version,
+    ) -> SomaResult<Option<Object>>;
+
+    fn get_lock(&self, obj_ref: ObjectRef, epoch_store: &AuthorityPerEpochStore) -> LockResult;
+
+    fn get_system_state_object(&self) -> SomaResult<SystemState>;
 }

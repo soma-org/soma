@@ -14,9 +14,11 @@ use types::effects::{
 };
 use types::envelope::Message;
 use types::error::ExecutionError;
+use types::storage::object_store::ObjectStore;
 use types::system_state::{EpochStartSystemStateTrait, SystemState};
 use types::transaction::{EndOfEpochTransactionKind, SenderSignedData};
-use types::tx_outputs::TransactionOutputs;
+use types::tx_outputs::{TransactionOutputs, WrittenObjects};
+use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
     base::AuthorityName,
     committee::{Committee, EpochId},
@@ -32,7 +34,9 @@ use types::{
     },
 };
 
-use crate::cache::{ExecutionCacheTraitPointers, ExecutionCacheWrite, TransactionCacheRead};
+use crate::cache::{
+    ExecutionCacheTraitPointers, ExecutionCacheWrite, ObjectCacheRead, TransactionCacheRead,
+};
 use crate::epoch_store::CertTxGuard;
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
@@ -129,6 +133,14 @@ impl AuthorityState {
 
     pub fn get_cache_writer(&self) -> &Arc<dyn ExecutionCacheWrite> {
         &self.execution_cache_trait_pointers.cache_writer
+    }
+
+    pub fn get_object_store(&self) -> &Arc<dyn ObjectStore + Send + Sync> {
+        &self.execution_cache_trait_pointers.object_store
+    }
+
+    pub fn get_object_cache_reader(&self) -> &Arc<dyn ObjectCacheRead> {
+        &self.execution_cache_trait_pointers.object_cache_reader
     }
 
     /// This is a private method and should be kept that way. It doesn't check whether
@@ -386,7 +398,7 @@ impl AuthorityState {
         // non-transient (transaction input is invalid, move vm errors). However, all errors from
         // this function occur before we have written anything to the db, so we commit the tx
         // guard and rely on the client to retry the tx (if it was transient).
-        let (effects, execution_error_opt) =
+        let (written_objects, effects, execution_error_opt) =
             match self.prepare_certificate(&execution_guard, certificate, epoch_store) {
                 Err(e) => {
                     info!(name = ?self.name, ?digest, "Error preparing transaction: {e}");
@@ -398,6 +410,7 @@ impl AuthorityState {
 
         self.commit_certificate(
             certificate,
+            &written_objects,
             &effects,
             tx_guard,
             execution_guard,
@@ -417,6 +430,7 @@ impl AuthorityState {
     async fn commit_certificate(
         &self,
         certificate: &VerifiedExecutableTransaction,
+        written_objects: &WrittenObjects,
         effects: &TransactionEffects,
         tx_guard: CertTxGuard,
         _execution_guard: ExecutionLockReadGuard<'_>,
@@ -461,6 +475,7 @@ impl AuthorityState {
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
             effects.clone(),
+            written_objects.clone(),
         );
         self.get_cache_writer()
             .write_transaction_outputs(epoch_store.epoch(), transaction_outputs.into())
@@ -493,7 +508,7 @@ impl AuthorityState {
         _execution_guard: &ExecutionLockReadGuard<'_>,
         certificate: &VerifiedExecutableTransaction,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SomaResult<(TransactionEffects, Option<ExecutionError>)> {
+    ) -> SomaResult<(WrittenObjects, TransactionEffects, Option<ExecutionError>)> {
         let prepare_certificate_start_time = tokio::time::Instant::now();
 
         // TODO: We need to move this to a more appropriate place to avoid redundant checks.
@@ -504,10 +519,14 @@ impl AuthorityState {
         let transaction_data = &certificate.data().intent_message().value;
         let (kind, signer) = transaction_data.execution_parts();
 
-        let (mut effects, execution_error_opt) =
-            epoch_store.execute_transaction(tx_digest, kind, signer);
+        let (written_objects, effects, execution_error_opt) = epoch_store.execute_transaction(
+            self.get_object_store().as_ref(),
+            tx_digest,
+            kind,
+            signer,
+        );
 
-        Ok((effects, execution_error_opt))
+        Ok((written_objects, effects, execution_error_opt))
     }
 
     #[instrument(level = "error", skip_all)]
@@ -605,7 +624,9 @@ impl AuthorityState {
 
     // This function is only used for testing.
     pub fn get_system_state_object_for_testing(&self) -> SystemState {
-        self.epoch_store_for_testing().system_state()
+        self.get_object_cache_reader()
+            .get_system_state_object()
+            .unwrap()
     }
 
     /// Attempts to acquire execution lock for an executable transaction.
@@ -702,13 +723,31 @@ impl AuthorityState {
             .execution_lock_for_executable_transaction(&executable_tx)
             .await?;
 
-        let (effects, _execution_error_opt) =
+        let (written_objects, effects, _execution_error_opt) =
             self.prepare_certificate(&execution_guard, &executable_tx, epoch_store)?;
-        let system_obj = self.epoch_store.load().system_state();
+
+        let system_obj = written_objects.get(&SYSTEM_STATE_OBJECT_ID).unwrap();
+        let system_state =
+            bcs::from_bytes::<SystemState>(system_obj.as_inner().data.contents()).unwrap();
+
+        self.get_cache_writer()
+            .write_transaction_outputs(
+                epoch_store.epoch(),
+                TransactionOutputs::build_transaction_outputs(tx, effects.clone(), written_objects)
+                    .into(),
+            )
+            .await?;
+
+        //  TODO: instead of writing the advanced epoch state object to cache, write to long term storage self.get_state_sync_store()
+        // .insert_transaction_and_effects(&tx, &effects)
+        // .map_err(|err| {
+        //     let err: anyhow::Error = err.into();
+        //     err
+        // })?;
 
         // The change epoch transaction cannot fail to execute.
         assert!(effects.status().is_ok());
-        Ok((system_obj, effects))
+        Ok((system_state, effects))
     }
 
     /// Make a status response for a transaction

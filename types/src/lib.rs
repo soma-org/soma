@@ -15,11 +15,38 @@ pub mod intent;
 pub mod multiaddr;
 pub mod mutex_table;
 pub mod node_config;
+pub mod object;
 pub mod parameters;
 pub mod peer_id;
 pub mod protocol;
 pub mod quorum_driver;
 pub(crate) mod serde;
+pub mod storage;
 pub mod system_state;
+pub mod temporary_store;
 pub mod transaction;
 pub mod tx_outputs;
+
+use base::SomaAddress;
+use object::ObjectID;
+
+macro_rules! built_in_ids {
+    ($($addr:ident / $id:ident = $init:expr);* $(;)?) => {
+        $(
+            pub const $addr: SomaAddress = builtin_address($init);
+            pub const $id: ObjectID = ObjectID::from_address($addr);
+        )*
+    }
+}
+
+const fn builtin_address(suffix: u16) -> SomaAddress {
+    let mut addr = [0u8; SomaAddress::LENGTH];
+    let [hi, lo] = suffix.to_be_bytes();
+    addr[SomaAddress::LENGTH - 2] = hi;
+    addr[SomaAddress::LENGTH - 1] = lo;
+    SomaAddress::new(addr)
+}
+
+built_in_ids! {
+    SYSTEM_STATE_ADDRESS / SYSTEM_STATE_OBJECT_ID = 0x5;
+}

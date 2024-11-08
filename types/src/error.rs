@@ -8,8 +8,9 @@ use tonic::Status;
 use crate::{
     base::AuthorityName,
     committee::{Committee, EpochId, VotingPower},
-    digests::TransactionEffectsDigest,
+    digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::ExecutionFailureStatus,
+    object::{ObjectID, ObjectRef, Version},
 };
 pub type SomaResult<T = ()> = Result<T, SomaError>;
 
@@ -149,6 +150,47 @@ pub enum SomaError {
     // Unsupported Operations on Fullnode
     #[error("Fullnode does not support handle_certificate")]
     FullNodeCantHandleCertificate,
+
+    #[error("Invalid transaction digest.")]
+    InvalidTransactionDigest,
+
+    #[error(
+        "Could not find the referenced object {:?} at version {:?}",
+        object_id,
+        version
+    )]
+    ObjectNotFound {
+        object_id: ObjectID,
+        version: Option<Version>,
+    },
+    #[error(
+        "Object {obj_ref:?} already locked by a different transaction: {pending_transaction:?}"
+    )]
+    ObjectLockConflict {
+        obj_ref: ObjectRef,
+        pending_transaction: TransactionDigest,
+    },
+    #[error("Object {provided_obj_ref:?} is not available for consumption, its current version: {current_version:?}")]
+    ObjectVersionUnavailableForConsumption {
+        provided_obj_ref: ObjectRef,
+        current_version: Version,
+    },
+    #[error(
+        "Invalid Object digest for object {object_id:?}. Expected digest : {expected_digest:?}"
+    )]
+    InvalidObjectDigest {
+        object_id: ObjectID,
+        expected_digest: ObjectDigest,
+    },
+
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    #[error("Attempt to re-initialize a transaction lock for objects {:?}.", refs)]
+    ObjectLockAlreadyInitialized { refs: Vec<ObjectRef> },
+
+    #[error("Failed to read or deserialize system state related data structures on-chain: {0}")]
+    SystemStateReadError(String),
 }
 
 impl From<Status> for SomaError {
@@ -248,5 +290,11 @@ impl std::error::Error for ExecutionError {
 impl From<ExecutionErrorKind> for ExecutionError {
     fn from(kind: ExecutionErrorKind) -> Self {
         Self::from_kind(kind)
+    }
+}
+
+impl From<crate::storage::storage_error::Error> for SomaError {
+    fn from(e: crate::storage::storage_error::Error) -> Self {
+        Self::Storage(e.to_string())
     }
 }

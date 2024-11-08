@@ -72,7 +72,7 @@ eyre = "0.6.12"
 futures = "0.3.30"
 parking_lot = "0.12.3"
 rand = "0.8.5"
-serde = "1.0.204"
+serde = { version = "1.0.204", features = ["derive", "rc"] }
 thiserror = "1.0.63"
 
 tokio-util = "0.7.10"

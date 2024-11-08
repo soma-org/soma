@@ -645,6 +645,7 @@ mod bcs_signable {
     impl BcsSignable for crate::transaction::SenderSignedData {}
     impl BcsSignable for crate::committee::Committee {}
     impl BcsSignable for crate::effects::TransactionEffects {}
+    impl BcsSignable for crate::object::ObjectInner {}
 }
 
 impl<T, W> Signable<W> for T
@@ -1094,7 +1095,7 @@ impl<S: SomaSignatureInner + Sized> SomaSignature for S {
 }
 
 /// Network key is used for TLS and as the network identity of the authority.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct NetworkPublicKey(ed25519::Ed25519PublicKey);
 pub struct NetworkPrivateKey(ed25519::Ed25519PrivateKey);
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

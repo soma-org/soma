@@ -1,12 +1,15 @@
 use std::fmt;
+use std::str::FromStr;
 
 use crate::crypto::{DefaultHash, GenericSignature, PublicKey, SomaPublicKey, SomaSignature};
 use crate::error::SomaResult;
+use crate::object::ObjectID;
 use crate::serde::Readable;
 use crate::{crypto::AuthorityPublicKeyBytes, error::SomaError};
 use anyhow::anyhow;
-use fastcrypto::encoding::{Encoding, Hex};
+use fastcrypto::encoding::{decode_bytes_hex, Encoding, Hex};
 use fastcrypto::hash::HashFunction;
+use rand::rngs::OsRng;
 use rand::Rng;
 use schemars::JsonSchema;
 use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
@@ -104,11 +107,22 @@ pub struct SomaAddress(
 );
 
 impl SomaAddress {
+    pub const LENGTH: usize = SOMA_ADDRESS_LENGTH;
     pub const ZERO: Self = Self([0u8; SOMA_ADDRESS_LENGTH]);
+
+    pub const fn new(address: [u8; Self::LENGTH]) -> Self {
+        Self(address)
+    }
 
     /// Convert the address to a byte buffer.
     pub fn to_vec(&self) -> Vec<u8> {
         self.0.to_vec()
+    }
+
+    pub fn random() -> Self {
+        let mut rng = OsRng;
+        let buf: [u8; Self::LENGTH] = rng.gen();
+        Self(buf)
     }
 
     pub fn generate<R: rand::RngCore + rand::CryptoRng>(mut rng: R) -> Self {
@@ -177,5 +191,42 @@ impl TryFrom<&GenericSignature> for SomaAddress {
                 Ok(SomaAddress::from(&pub_key))
             }
         }
+    }
+}
+
+impl From<ObjectID> for SomaAddress {
+    fn from(object_id: ObjectID) -> SomaAddress {
+        Self(object_id.into_bytes())
+    }
+}
+
+impl TryFrom<&[u8]> for SomaAddress {
+    type Error = SomaError;
+
+    /// Tries to convert the provided byte array into a SomaAddress.
+    fn try_from(bytes: &[u8]) -> Result<Self, SomaError> {
+        Self::from_bytes(bytes)
+    }
+}
+
+impl TryFrom<Vec<u8>> for SomaAddress {
+    type Error = SomaError;
+
+    /// Tries to convert the provided byte buffer into a SomaAddress.
+    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+        Self::from_bytes(bytes)
+    }
+}
+
+impl AsRef<[u8]> for SomaAddress {
+    fn as_ref(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
+
+impl FromStr for SomaAddress {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        decode_bytes_hex(s).map_err(|e| anyhow!(e))
     }
 }

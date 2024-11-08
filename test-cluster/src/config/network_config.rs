@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::{collections::BTreeMap, num::NonZeroUsize};
 
 use fastcrypto::traits::KeyPair;
 use rand::rngs::OsRng;
@@ -6,12 +6,16 @@ use serde::{Deserialize, Serialize};
 use types::{
     committee::{Committee, CommitteeWithNetworkMetadata},
     crypto::{get_key_pair_from_rng, SomaKeyPair},
+    digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
     node_config::NodeConfig,
+    object::{Object, ObjectData, ObjectType, Version},
     system_state::{SystemParameters, SystemState, Validator},
+    temporary_store::TemporaryStore,
     transaction::VerifiedTransaction,
+    SYSTEM_STATE_OBJECT_ID,
 };
 
 use super::{
@@ -164,30 +168,44 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         let account_keys = genesis_config.generate_accounts(&mut rng).unwrap();
 
-        let tx = VerifiedTransaction::new_genesis_transaction().into_inner();
-        let genesis = Genesis::new(
-            tx.clone(),
-            SystemState::create(
-                validators
-                    .iter()
-                    .map(|v| {
-                        Validator::new(
-                            (&v.account_key_pair.public()).into(),
-                            (v.key_pair.public()).clone(),
-                            v.network_key_pair.public().into(),
-                            v.worker_key_pair.public().into(),
-                            v.network_address.clone(),
-                            v.consensus_address.clone(),
-                            v.network_address.clone(),
-                            10000 / validators.len() as u64,
-                        )
-                    })
-                    .collect(),
-                0,
-                SystemParameters::default(),
-            ),
-            TransactionEffects::new(ExecutionStatus::Success, 0, *tx.digest()),
+        let system_state = SystemState::create(
+            validators
+                .iter()
+                .map(|v| {
+                    Validator::new(
+                        (&v.account_key_pair.public()).into(),
+                        (v.key_pair.public()).clone(),
+                        v.network_key_pair.public().into(),
+                        v.worker_key_pair.public().into(),
+                        v.network_address.clone(),
+                        v.consensus_address.clone(),
+                        v.network_address.clone(),
+                        10000 / validators.len() as u64,
+                    )
+                })
+                .collect(),
+            0,
+            SystemParameters::default(),
         );
+        let state_object = Object::new(
+            ObjectData::new_with_id(
+                SYSTEM_STATE_OBJECT_ID,
+                ObjectType::SystemState,
+                Version::MIN,
+                bcs::to_bytes(&system_state).unwrap(),
+            ),
+            TransactionDigest::default(),
+        );
+        let objects = vec![state_object.clone()];
+
+        let tx = VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
+        let digest = *tx.digest();
+
+        let mut temp_store = TemporaryStore::new(BTreeMap::new(), digest, (Version::MIN).next());
+        temp_store.create_object(state_object);
+        let (_, effects) = temp_store.into_effects(&digest, ExecutionStatus::Success, 0);
+
+        let genesis = Genesis::new(tx.clone(), effects, objects);
 
         let validator_configs = validators
             .into_iter()
