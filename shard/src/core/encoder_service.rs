@@ -25,7 +25,7 @@ use crate::{
 
 use crate::types::signed::Signed;
 
-use super::encoder_core_thread::TaskDispatcher;
+use super::task_manager::TaskDispatcher;
 
 pub(crate) struct EncoderService<C: TaskDispatcher, S: Store> {
     context: Arc<EncoderContext>,
@@ -62,6 +62,14 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
         peer: NetworkingIndex,
         shard_input_bytes: Bytes,
     ) -> ShardResult<()> {
+        // 1. verify everything in the input (tx, amount, finality, shard inclusion)
+        // 2. store shard members in shard store
+        // 3. send to the task manager
+
+        // inside task manager:
+        // 1. download the data
+        // 2. compute the embeddings for the data
+        // 3. broadcast the commit out to the rest of the shard
         unimplemented!()
     }
     async fn handle_get_shard_input(
@@ -88,7 +96,7 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
             bcs::from_bytes(&shard_commit_bytes).map_err(ShardError::MalformedType)?;
 
         //1. verify shard membersip
-        let shard = self.store.read_shard(&shard_commit.shard_ref())?;
+        let shard = self.store.read_shard(shard_commit.shard_ref())?;
         if !shard.contains(&peer) {
             return Err(ShardError::UnauthorizedPeer);
         }
@@ -132,6 +140,17 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
         peer: NetworkingIndex,
         shard_commit_certificate_bytes: Bytes,
     ) -> ShardResult<()> {
+        // 1. verify the shard commit certificate
+        // 2. verify the shard commit values
+        // 3. send to task manager
+        // task manager:
+        // 1. trigger downloading the commit
+        // (downloading includes encrypted data and probe)
+        // 2. add to tracker for the quorum
+        // once quorum has hit, trigger the timeouts for checking with peers and sending removal signatures.
+        // also need to figure out the right way to deal with downloading data too
+        // !!!!!!! MAKE IT SO A COMMIT IS DONE WHEN THE DATA IS DOWNLOADED
+        // after the timeout hits, ask peers for commits but also ask for data
         unimplemented!()
     }
 
@@ -214,6 +233,15 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
         peer: NetworkingIndex,
         shard_reveal_certificate_bytes: Bytes,
     ) -> ShardResult<()> {
+        // 1. verify the shard reveal certificate
+        // 2. verify the shard reveal values
+        // 3. send to task manager
+        // task manager:
+        // 1. decrypt data
+        // 2. apply probe
+        // 3. store partial result
+        // wait for quorum to be done and then trigger timeout
+        // done status is after the computation has been completed for that probe combo
         unimplemented!()
     }
 
@@ -246,6 +274,11 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
         peer: NetworkingIndex,
         shard_removal_signatures: Vec<Bytes>,
     ) -> ShardResult<()> {
+        // verify that removal shard signature is valid
+        // check whether the software already has a certified removal
+        // send to task manager
+        // task manager:
+        // stop tasks pertaining to that peer
         unimplemented!()
     }
 
@@ -255,6 +288,11 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
         shard_removal_certificates: Vec<Bytes>,
     ) -> ShardResult<()> {
         unimplemented!()
+        // verify validity of certificate
+        // if the certificate is new:
+        // 1. trigger removal and stopping of tokio tasks related to this peer
+        // otherwise store the entire set if it is a superset or the same certificates as your own node
+        // broadcast a message with your new super set to all peers
     }
 
     async fn handle_send_shard_endorsement(
@@ -262,22 +300,19 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
         peer: NetworkingIndex,
         shard_endorsement_bytes: Bytes,
     ) -> ShardResult<()> {
+        // collect enough for quorum endorsement
+        // trigger staggered timeout to submit on-chain and back to the RPC
         unimplemented!()
     }
 
-    async fn handle_send_shard_finality_proof(
+    async fn handle_send_shard_completion_proof(
         &self,
         peer: NetworkingIndex,
-        shard_finality_proof_bytes: Bytes,
+        shard_completion_proof_bytes: Bytes,
     ) -> ShardResult<()> {
-        unimplemented!()
-    }
-
-    async fn handle_send_shard_delivery_proof(
-        &self,
-        peer: NetworkingIndex,
-        shard_delivery_proof_bytes: Bytes,
-    ) -> ShardResult<()> {
+        // check validity of proof
+        // send to task manager to trigger stopping the countdown for delivery and finality
+        // handle clean up
         unimplemented!()
     }
 }

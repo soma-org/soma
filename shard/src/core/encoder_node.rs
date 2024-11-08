@@ -10,8 +10,8 @@ use crate::{
 
 use super::{
     encoder_core::EncoderCore,
-    encoder_core_thread::{ChannelTaskDispatcher, TaskManagerHandle},
     encoder_service::EncoderService,
+    task_manager::{ChannelTaskDispatcher, TaskManagerHandle},
 };
 
 pub struct Encoder(EncoderNode<EncoderTonicManager>);

@@ -4,24 +4,24 @@ use serde::{Deserialize, Serialize};
 use super::{shard::ShardRef, transaction_certificate::TransactionCertificate};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[enum_dispatch(ShardFinalityProofAPI)]
-pub enum ShardFinalityProof {
-    V1(ShardFinalityProofV1),
+#[enum_dispatch(ShardCompletionProofAPI)]
+pub enum ShardCompletionProof {
+    V1(ShardCompletionProofV1),
 }
 
 #[enum_dispatch]
-trait ShardFinalityProofAPI {
+trait ShardCompletionProofAPI {
     fn shard_ref(&self) -> &ShardRef;
     fn transaction_certificate(&self) -> &TransactionCertificate;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct ShardFinalityProofV1 {
+struct ShardCompletionProofV1 {
     shard_ref: ShardRef,
     transaction_certificate: TransactionCertificate,
 }
 
-impl ShardFinalityProofV1 {
+impl ShardCompletionProofV1 {
     pub(crate) const fn new(
         shard_ref: ShardRef,
         transaction_certificate: TransactionCertificate,
@@ -33,7 +33,7 @@ impl ShardFinalityProofV1 {
     }
 }
 
-impl ShardFinalityProofAPI for ShardFinalityProofV1 {
+impl ShardCompletionProofAPI for ShardCompletionProofV1 {
     fn shard_ref(&self) -> &ShardRef {
         &self.shard_ref
     }

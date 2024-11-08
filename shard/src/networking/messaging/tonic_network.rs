@@ -18,9 +18,8 @@ use crate::{
         network_committee::NetworkingIndex,
         shard::ShardRef,
         shard_commit::ShardCommit,
-        shard_delivery_proof::ShardDeliveryProof,
+        shard_completion_proof::ShardCompletionProof,
         shard_endorsement::ShardEndorsement,
-        shard_finality_proof::ShardFinalityProof,
         shard_input::ShardInput,
         shard_removal::ShardRemoval,
         shard_reveal::ShardReveal,
@@ -321,41 +320,22 @@ impl EncoderNetworkClient for EncoderTonicClient {
             })?;
         Ok(())
     }
-    async fn send_shard_finality_proof(
+    async fn send_shard_completion_proof(
         &self,
         peer: NetworkingIndex,
-        shard_finality_proof: &Serialized<ShardFinalityProof>,
+        shard_completion_proof: &Serialized<ShardCompletionProof>,
         timeout: Duration,
     ) -> ShardResult<()> {
-        let mut request = Request::new(SendShardFinalityProofRequest {
-            shard_finality_proof: shard_finality_proof.bytes(),
+        let mut request = Request::new(SendShardCompletionProofRequest {
+            shard_completion_proof: shard_completion_proof.bytes(),
         });
         request.set_timeout(timeout);
         self.get_client(peer, timeout)
             .await?
-            .send_shard_finality_proof(request)
+            .send_shard_completion_proof(request)
             .await
             .map_err(|e| {
-                ShardError::NetworkRequest(format!("send_shard_finality_proof failed: {e:?}"))
-            })?;
-        Ok(())
-    }
-    async fn send_shard_delivery_proof(
-        &self,
-        peer: NetworkingIndex,
-        shard_delivery_proof: &Serialized<ShardDeliveryProof>,
-        timeout: Duration,
-    ) -> ShardResult<()> {
-        let mut request = Request::new(SendShardDeliveryProofRequest {
-            shard_delivery_proof: shard_delivery_proof.bytes(),
-        });
-        request.set_timeout(timeout);
-        self.get_client(peer, timeout)
-            .await?
-            .send_shard_delivery_proof(request)
-            .await
-            .map_err(|e| {
-                ShardError::NetworkRequest(format!("send_shard_delivery_proof failed: {e:?}"))
+                ShardError::NetworkRequest(format!("send_shard_completion_prooffailed: {e:?}"))
             })?;
         Ok(())
     }
@@ -636,10 +616,10 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
 
         Ok(Response::new(SendShardEndorsementResponse {}))
     }
-    async fn send_shard_finality_proof(
+    async fn send_shard_completion_proof(
         &self,
-        request: Request<SendShardFinalityProofRequest>,
-    ) -> Result<Response<SendShardFinalityProofResponse>, tonic::Status> {
+        request: Request<SendShardCompletionProofRequest>,
+    ) -> Result<Response<SendShardCompletionProofResponse>, tonic::Status> {
         let Some(peer_index) = request
             .extensions()
             .get::<PeerInfo>()
@@ -647,34 +627,14 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
         else {
             return Err(tonic::Status::internal("PeerInfo not found"));
         };
-        let shard_finality_proof = request.into_inner().shard_finality_proof;
+        let shard_completion_proof = request.into_inner().shard_completion_proof;
 
         self.service
-            .handle_send_shard_finality_proof(peer_index, shard_finality_proof)
+            .handle_send_shard_completion_proof(peer_index, shard_completion_proof)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
-        Ok(Response::new(SendShardFinalityProofResponse {}))
-    }
-    async fn send_shard_delivery_proof(
-        &self,
-        request: Request<SendShardDeliveryProofRequest>,
-    ) -> Result<Response<SendShardDeliveryProofResponse>, tonic::Status> {
-        let Some(peer_index) = request
-            .extensions()
-            .get::<PeerInfo>()
-            .map(|p| p.network_index)
-        else {
-            return Err(tonic::Status::internal("PeerInfo not found"));
-        };
-        let shard_delivery_proof = request.into_inner().shard_delivery_proof;
-
-        self.service
-            .handle_send_shard_delivery_proof(peer_index, shard_delivery_proof)
-            .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
-
-        Ok(Response::new(SendShardDeliveryProofResponse {}))
+        Ok(Response::new(SendShardCompletionProofResponse {}))
     }
 }
 
@@ -888,20 +848,10 @@ pub(crate) struct SendShardEndorsementResponse {}
 
 // ////////////////////////////////////////////////////////////////////
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendShardFinalityProofRequest {
+pub(crate) struct SendShardCompletionProofRequest {
     #[prost(bytes = "bytes", tag = "1")]
-    shard_finality_proof: Bytes,
+    shard_completion_proof: Bytes,
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendShardFinalityProofResponse {}
-
-// ////////////////////////////////////////////////////////////////////
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendShardDeliveryProofRequest {
-    #[prost(bytes = "bytes", tag = "1")]
-    shard_delivery_proof: Bytes,
-}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendShardDeliveryProofResponse {}
+pub(crate) struct SendShardCompletionProofResponse {}

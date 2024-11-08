@@ -11,9 +11,8 @@ use crate::types::certificate::ShardCertificate;
 use crate::types::multiaddr::{Multiaddr, Protocol};
 use crate::types::shard::ShardRef;
 use crate::types::shard_commit::ShardCommit;
-use crate::types::shard_delivery_proof::ShardDeliveryProof;
+use crate::types::shard_completion_proof::ShardCompletionProof;
 use crate::types::shard_endorsement::ShardEndorsement;
-use crate::types::shard_finality_proof::ShardFinalityProof;
 use crate::types::shard_input::ShardInput;
 use crate::types::shard_removal::ShardRemoval;
 use crate::types::shard_reveal::ShardReveal;
@@ -162,20 +161,13 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     /// Once a node has a certified endorsement, they start a countdown to attempt to submit that data on-chain. The countdown
     /// is staggered such that there is less of a chance for redundant transactions. Redundancy does not harm the system it is just less efficient.
     /// A finality proof, stops the nodes countdown because it proves that the embedding was validly submitted on-chain.
-    async fn send_shard_finality_proof(
-        &self,
-        peer: NetworkingIndex,
-        shard_finality_proof: &Serialized<ShardFinalityProof>,
-        timeout: Duration,
-    ) -> ShardResult<()>;
-
     /// While not required for receiving any reward, honest nodes are expected to attempt delivering the final embeddings to the original client/RPC.
     /// The same staggered approach is used to minimize redundant messages. Receiving a delivery proof stops the countdown for the node. Inversely, any
     /// honest node that successfully delivers to the client, receives a signature in receipt and should notify their peers.
-    async fn send_shard_delivery_proof(
+    async fn send_shard_completion_proof(
         &self,
         peer: NetworkingIndex,
-        shard_delivery_proof: &Serialized<ShardDeliveryProof>,
+        shard_completion_proof: &Serialized<ShardCompletionProof>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -274,18 +266,10 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
 
     /// add finality proof to nodes state. If both delivery proof and finality proof exist,
     /// cancel the countdown to attempt submission on-chain.
-    async fn handle_send_shard_finality_proof(
+    async fn handle_send_shard_completion_proof(
         &self,
         peer: NetworkingIndex,
-        shard_finality_proof_bytes: Bytes,
-    ) -> ShardResult<()>;
-
-    /// add delivery proof to nodes state. If both delivery proof and finality proof exist,
-    /// cancel the countdown to attempt submission on-chain.    
-    async fn handle_send_shard_delivery_proof(
-        &self,
-        peer: NetworkingIndex,
-        shard_delivery_proof_bytes: Bytes,
+        shard_completion_proof_bytes: Bytes,
     ) -> ShardResult<()>;
 }
 

@@ -161,26 +161,13 @@ fn build_tonic_services(out_dir: &Path) {
         )
         .method(
             tonic_build::manual::Method::builder()
-                .name("send_shard_finality_proof")
-                .route_name("SendShardFinalityProof")
+                .name("send_shard_completion_proof")
+                .route_name("SendShardCompletionProof")
                 .input_type(
-                    "crate::networking::messaging::tonic_network::SendShardFinalityProofRequest",
+                    "crate::networking::messaging::tonic_network::SendShardCompletionProofRequest",
                 )
                 .output_type(
-                    "crate::networking::messaging::tonic_network::SendShardFinalityProofResponse",
-                )
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("send_shard_delivery_proof")
-                .route_name("SendShardDeliveryProof")
-                .input_type(
-                    "crate::networking::messaging::tonic_network::SendShardDeliveryProofRequest",
-                )
-                .output_type(
-                    "crate::networking::messaging::tonic_network::SendShardDeliveryProofResponse",
+                    "crate::networking::messaging::tonic_network::SendShardCompletionProofResponse",
                 )
                 .codec_path(codec_path)
                 .build(),
