@@ -2,6 +2,7 @@
 mod core;
 mod crypto;
 mod error;
+mod intelligence;
 mod networking;
 mod storage;
 mod types;

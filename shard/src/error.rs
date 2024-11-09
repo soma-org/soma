@@ -48,6 +48,9 @@ pub(crate) enum ShardError {
 
     #[error("Contacting peer is unauthorized")]
     UnauthorizedPeer,
+
+    #[error("Failed loading python code: {0}")]
+    FailedLoadingPythonCode(String),
     // #[error(
     //     "Expected {requested} but received {received} blocks returned from authority {authority}"
     // )]
