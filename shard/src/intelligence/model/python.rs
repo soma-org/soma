@@ -73,13 +73,12 @@ impl PythonModel {
 // TODO: define the attribute / method names as constants defined outside of the functions
 impl Model for PythonModel {
     fn init(&mut self) -> ShardResult<()> {
-        let entry_point_code = std::fs::read_to_string(&self.entry_point)
-            .map_err(|e| ShardError::FailedLoadingPythonCode(
-                format!("Failed to read entry point file: {}", e)
-            ))?;
+        let entry_point_code = std::fs::read_to_string(&self.entry_point).map_err(|e| {
+            ShardError::FailedLoadingPythonCode(format!("Failed to read entry point file: {}", e))
+        })?;
 
         let module_wrapper = GILOnceCell::new();
-        
+
         Python::with_gil(|py| -> ShardResult<()> {
             module_wrapper.get_or_init(py, || {
                 // Use Option to represent potential failure
@@ -97,34 +96,39 @@ impl Model for PythonModel {
                     Ok(())
                 }
                 None => Err(ShardError::FailedLoadingPythonCode(
-                    "Module wrapper initialization failed".to_string()
-                ))
+                    "Module wrapper initialization failed".to_string(),
+                )),
             }
         })
     }
 
     fn call(&self, input: DataRefs) -> ShardResult<DataRefs> {
-
         Python::with_gil(|py| {
-
             //TODO: have concrete typing rather than using the PyAny
-            let _py_result = self.module_wrapper
+            let _py_result = self
+                .module_wrapper
                 .as_ref()
-                .ok_or_else(|| ShardError::FailedLoadingPythonCode("Module wrapper not initialized".into()))?
+                .ok_or_else(|| {
+                    ShardError::FailedLoadingPythonCode("Module wrapper not initialized".into())
+                })?
                 .get(py)
                 .and_then(|wrapper| wrapper.as_ref())
-                .ok_or_else(|| ShardError::FailedLoadingPythonCode("Python instance not available".into()))?
+                .ok_or_else(|| {
+                    ShardError::FailedLoadingPythonCode("Python instance not available".into())
+                })?
                 //TODO: change method and add args
                 .call_method0(py, "process_data")
-                .map_err(|e| ShardError::FailedLoadingPythonCode(format!("Failed to call Python method: {}", e)))?;
-
+                .map_err(|e| {
+                    ShardError::FailedLoadingPythonCode(format!(
+                        "Failed to call Python method: {}",
+                        e
+                    ))
+                })?;
 
             // map the result to data refs
 
             // Ok(result)
             Ok(DataRefs::default())
-
         })
-
     }
 }
