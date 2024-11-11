@@ -29,7 +29,7 @@ pub(crate) struct PythonModel {
     /// The python interpreter using the specified virtual env
     python_interpreter: PathBuf,
     /// contains an active module wrapper after initialization
-    module_wrapper: Option<GILOnceCell<Py<PyAny>>>,
+    module_wrapper: Option<GILOnceCell<Option<Py<PyAny>>>>,
 }
 
 impl PythonModel {
@@ -68,35 +68,63 @@ impl PythonModel {
     }
 }
 
+// TODO: improve the concrete typing of the python class / methods / args
+// TODO: add more specific shard error types
+// TODO: define the attribute / method names as constants defined outside of the functions
 impl Model for PythonModel {
     fn init(&mut self) -> ShardResult<()> {
-        let module_wrapper = GILOnceCell::new();
-        Python::with_gil(|py| -> ShardResult<()> {
-            let entry_point_code = std::fs::read_to_string(&self.entry_point)
-                .map_err(|e| ShardError::FailedLoadingPythonCode(e.to_string()))?;
+        let entry_point_code = std::fs::read_to_string(&self.entry_point)
+            .map_err(|e| ShardError::FailedLoadingPythonCode(
+                format!("Failed to read entry point file: {}", e)
+            ))?;
 
+        let module_wrapper = GILOnceCell::new();
+        
+        Python::with_gil(|py| -> ShardResult<()> {
             module_wrapper.get_or_init(py, || {
-                // TODO: figure out how to improve error handling here
-                let py_module = PyModule::from_code_bound(py, &entry_point_code, "", "").unwrap();
-                // TODO: type the module wrapper better, and figure out whether the attribute name should be configurable
-                let module_wrapper: Py<PyAny> = py_module.getattr("Wrapper").unwrap().into();
-                // TODO: pass in the backend configuration to the python wrapper
-                module_wrapper.call0(py).unwrap()
+                // Use Option to represent potential failure
+                PyModule::from_code_bound(py, &entry_point_code, "", "")
+                    .and_then(|py_module| py_module.getattr("Wrapper"))
+                    .and_then(|wrapper| wrapper.call0())
+                    .map(|instance| Some(instance.into()))
+                    .unwrap_or(None)
             });
 
-            Ok(())
-        })?;
-        self.module_wrapper = Some(module_wrapper);
-        Ok(())
+            // Check if we got a valid wrapper
+            match module_wrapper.get(py).and_then(|w| w.as_ref()) {
+                Some(_) => {
+                    self.module_wrapper = Some(module_wrapper);
+                    Ok(())
+                }
+                None => Err(ShardError::FailedLoadingPythonCode(
+                    "Module wrapper initialization failed".to_string()
+                ))
+            }
+        })
     }
 
     fn call(&self, input: DataRefs) -> ShardResult<DataRefs> {
-        Ok(DataRefs::default())
-        // TODO: improve error handling and return a typed response.
 
-        // if let module_wrapper= Some(self.module_wrapper) {
+        Python::with_gil(|py| {
 
-        // }
-        // module_wrapper.call_method0().unwrap();
+            //TODO: have concrete typing rather than using the PyAny
+            let _py_result = self.module_wrapper
+                .as_ref()
+                .ok_or_else(|| ShardError::FailedLoadingPythonCode("Module wrapper not initialized".into()))?
+                .get(py)
+                .and_then(|wrapper| wrapper.as_ref())
+                .ok_or_else(|| ShardError::FailedLoadingPythonCode("Python instance not available".into()))?
+                //TODO: change method and add args
+                .call_method0(py, "process_data")
+                .map_err(|e| ShardError::FailedLoadingPythonCode(format!("Failed to call Python method: {}", e)))?;
+
+
+            // map the result to data refs
+
+            // Ok(result)
+            Ok(DataRefs::default())
+
+        })
+
     }
 }
