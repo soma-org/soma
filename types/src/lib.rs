@@ -1,3 +1,4 @@
+pub mod accumulator;
 pub mod base;
 pub mod checkpoint;
 pub mod client;

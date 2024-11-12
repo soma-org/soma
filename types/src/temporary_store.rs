@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use tracing::info;
+
 use crate::{
     committee::EpochId,
     digests::TransactionDigest,
@@ -65,6 +67,18 @@ impl TemporaryStore {
             .update_version_and_previous_tx(self.lamport_timestamp, self.tx_digest);
     }
 
+    /// Given an object ID, if it's not modified, returns None.
+    fn get_object_modified_at(&self, object_id: &ObjectID) -> Option<Object> {
+        if self.execution_results.modified_objects.contains(object_id) {
+            if let Some(obj) = self.input_objects.get(object_id) {
+                return Some(obj.clone());
+            }
+            None
+        } else {
+            None
+        }
+    }
+
     fn get_object_changes(&self) -> BTreeMap<ObjectID, EffectsObjectChange> {
         let results = &self.execution_results;
         let all_ids = results
@@ -80,7 +94,7 @@ impl TemporaryStore {
                 (
                     *id,
                     EffectsObjectChange::new(
-                        self.read_object(id)
+                        self.get_object_modified_at(id)
                             .map(|obj| ((obj.data.version(), obj.digest()))),
                         results.written_objects.get(id),
                         results.created_object_ids.contains(id),

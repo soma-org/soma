@@ -16,6 +16,7 @@ use futures::{
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, info, instrument, warn};
 use types::{
+    accumulator::Accumulator,
     base::{AuthorityName, ConciseableName, Round, SomaAddress},
     committee::{Committee, EpochId},
     consensus::{
@@ -56,6 +57,7 @@ use crate::{
     signature_verifier::SignatureVerifier,
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
+    state_accumulator::CheckpointSequenceNumber,
     store::LockDetails,
 };
 
@@ -127,8 +129,7 @@ pub struct AuthorityPerEpochStore {
     pub(crate) signature_verifier: SignatureVerifier,
 
     // pub(crate) checkpoint_state_notify_read: NotifyRead<CheckpointSequenceNumber, Accumulator>,
-
-    // running_root_notify_read: NotifyRead<CheckpointSequenceNumber, Accumulator>,
+    running_root_notify_read: NotifyRead<CheckpointSequenceNumber, Accumulator>,
     executed_digests_notify_read: NotifyRead<TransactionKey, TransactionDigest>,
 
     /// This is used to notify all epoch specific tasks that epoch has ended.
@@ -231,6 +232,17 @@ pub struct AuthorityEpochTables {
 
     /// Map from ObjectRef to transaction locking that object
     object_locked_transactions: RwLock<BTreeMap<ObjectRef, TransactionDigest>>,
+
+    // Maps checkpoint sequence number to an accumulator with accumulated state
+    // only for the checkpoint that the key references. Append-only, i.e.,
+    // the accumulator is complete wrt the checkpoint
+    pub state_hash_by_checkpoint: RwLock<BTreeMap<CheckpointSequenceNumber, Accumulator>>,
+
+    /// Maps checkpoint sequence number to the running (non-finalized) root state
+    /// accumulator up th that checkpoint. This should be equivalent to the root
+    /// state hash at end of epoch. Guaranteed to be written to in checkpoint
+    /// sequence number order.
+    pub running_root_accumulators: RwLock<BTreeMap<CheckpointSequenceNumber, Accumulator>>,
 }
 
 impl AuthorityEpochTables {
@@ -363,6 +375,7 @@ impl AuthorityPerEpochStore {
             consensus_notify_read: NotifyRead::new(),
             signature_verifier,
             executed_digests_notify_read: NotifyRead::new(),
+            running_root_notify_read: NotifyRead::new(),
             end_of_publish: Mutex::new(end_of_publish),
             pending_consensus_certificates: Mutex::new(pending_consensus_certificates),
             mutex_table: MutexTable::new(MUTEX_TABLE_SIZE),
@@ -434,6 +447,89 @@ impl AuthorityPerEpochStore {
 
     pub fn epoch(&self) -> EpochId {
         self.committee.epoch
+    }
+
+    pub fn get_state_hash_for_checkpoint(
+        &self,
+        checkpoint: &CheckpointSequenceNumber,
+    ) -> SomaResult<Option<Accumulator>> {
+        Ok(self
+            .tables()?
+            .state_hash_by_checkpoint
+            .read()
+            .get(checkpoint)
+            .cloned())
+    }
+
+    pub fn insert_state_hash_for_checkpoint(
+        &self,
+        checkpoint: &CheckpointSequenceNumber,
+        accumulator: &Accumulator,
+    ) -> SomaResult {
+        self.tables()?
+            .state_hash_by_checkpoint
+            .write()
+            .insert(*checkpoint, accumulator.clone());
+        Ok(())
+    }
+
+    pub fn get_running_root_accumulator(
+        &self,
+        checkpoint: &CheckpointSequenceNumber,
+    ) -> SomaResult<Option<Accumulator>> {
+        Ok(self
+            .tables()?
+            .running_root_accumulators
+            .read()
+            .get(checkpoint)
+            .cloned())
+    }
+
+    pub fn get_highest_running_root_accumulator(
+        &self,
+    ) -> SomaResult<Option<(CheckpointSequenceNumber, Accumulator)>> {
+        Ok(self
+            .tables()?
+            .running_root_accumulators
+            .read()
+            .iter()
+            .next_back()
+            .map(|(k, v)| (*k, v.clone())))
+    }
+
+    pub fn insert_running_root_accumulator(
+        &self,
+        checkpoint: &CheckpointSequenceNumber,
+        acc: &Accumulator,
+    ) -> SomaResult {
+        self.tables()?
+            .running_root_accumulators
+            .write()
+            .insert(*checkpoint, acc.clone());
+        self.running_root_notify_read.notify(checkpoint, acc);
+
+        Ok(())
+    }
+
+    pub async fn notify_read_running_root(
+        &self,
+        checkpoint: CheckpointSequenceNumber,
+    ) -> SomaResult<Accumulator> {
+        let registration = self.running_root_notify_read.register_one(&checkpoint);
+        let acc = self
+            .tables()?
+            .running_root_accumulators
+            .read()
+            .get(&checkpoint)
+            .cloned();
+
+        let result = match acc {
+            Some(ready) => Either::Left(futures::future::ready(ready)),
+            None => Either::Right(registration),
+        }
+        .await;
+
+        Ok(result)
     }
 
     /// When submitting a certificate caller **must** provide a ReconfigState lock guard
@@ -1248,9 +1344,7 @@ impl AuthorityPerEpochStore {
                 }
                 StateTransactionKind::RemoveValidator(args) => {
                     // TODO: check if the signer is the same as the validator
-
                     info!("Init state object: {:?}", state);
-
                     state.request_remove_validator(signer, args.pubkey_bytes)
                 }
             },
@@ -1277,9 +1371,7 @@ impl AuthorityPerEpochStore {
                 Some(ExecutionError::new(error, None))
             }
         };
-
         info!("After state object: {:?}", state);
-
         // turn state back to object
         state_object
             .data

@@ -17,7 +17,9 @@
 
 use crate::{
     epoch_store::AuthorityPerEpochStore,
+    state_accumulator::{AccumulatorStore, CheckpointSequenceNumber},
     store::{AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus},
+    store_tables::LiveObject,
 };
 use core::hash::Hash;
 use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};
@@ -28,6 +30,7 @@ use std::sync::Arc;
 use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
+    accumulator::Accumulator,
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
@@ -1204,5 +1207,41 @@ impl ObjectCacheRead for WritebackCache {
 
     fn get_system_state_object(&self) -> SomaResult<SystemState> {
         get_system_state(self)
+    }
+}
+
+impl AccumulatorStore for WritebackCache {
+    fn get_root_state_accumulator_for_epoch(
+        &self,
+        epoch: EpochId,
+    ) -> SomaResult<Option<(CheckpointSequenceNumber, Accumulator)>> {
+        self.store.get_root_state_accumulator_for_epoch(epoch)
+    }
+
+    fn get_root_state_accumulator_for_highest_epoch(
+        &self,
+    ) -> SomaResult<Option<(EpochId, (CheckpointSequenceNumber, Accumulator))>> {
+        self.store.get_root_state_accumulator_for_highest_epoch()
+    }
+
+    fn insert_state_accumulator_for_epoch(
+        &self,
+        epoch: EpochId,
+        checkpoint_seq_num: &CheckpointSequenceNumber,
+        acc: &Accumulator,
+    ) -> SomaResult {
+        self.store
+            .insert_state_accumulator_for_epoch(epoch, checkpoint_seq_num, acc)
+    }
+
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        // The only time it is safe to iterate the live object set is at an epoch boundary,
+        // at which point the db is consistent and the dirty cache is empty. So this does
+        // read the cache
+        assert!(
+            self.dirty.is_empty(),
+            "cannot iterate live object set with dirty data"
+        );
+        self.store.iter_live_object_set()
     }
 }

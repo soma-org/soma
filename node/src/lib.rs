@@ -15,6 +15,7 @@ use authority::{
     service::ValidatorService,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
     state::AuthorityState,
+    state_accumulator::StateAccumulator,
     store::AuthorityStore,
     store_tables::AuthorityPerpetualTables,
     throughput::{
@@ -29,6 +30,7 @@ use msim::task::NodeId;
 use simulator::SimState;
 use std::{
     sync::Arc,
+    sync::Weak,
     time::{Duration, SystemTime},
 };
 use tokio::{
@@ -93,7 +95,7 @@ pub struct SomaNode {
     transaction_orchestrator: Option<Arc<TransactiondOrchestrator<NetworkAuthorityClient>>>,
     // state_sync_handle: state_sync::Handle,
     // checkpoint_store: Arc<CheckpointStore>,
-    // accumulator: Mutex<Option<Arc<StateAccumulator>>>,
+    accumulator: Mutex<Option<Arc<StateAccumulator>>>,
     // connection_monitor_status: Arc<ConnectionMonitorStatus>,
     // AuthorityAggregator of the network, created at start and beginning of each epoch.
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
@@ -202,6 +204,10 @@ impl SomaNode {
         //     Self::start_state_archival(&config, &prometheus_registry, state_sync_store.clone())
         //         .await?;
 
+        let accumulator = Arc::new(StateAccumulator::new(
+            cache_traits.accumulator_store.clone(),
+        ));
+
         info!("create authority state");
         let authority_name = config.protocol_public_key();
         let state = AuthorityState::new(
@@ -211,6 +217,7 @@ impl SomaNode {
             committee_store.clone(),
             config.clone(),
             cache_traits.clone(),
+            accumulator.clone(),
         )
         .await;
 
@@ -268,7 +275,7 @@ impl SomaNode {
                 // checkpoint_store.clone(),
                 // state_sync_handle.clone(),
                 // randomness_handle.clone(),
-                // Arc::downgrade(&accumulator),
+                Arc::downgrade(&accumulator),
                 // connection_monitor_status.clone(),
             )
             .await?;
@@ -302,6 +309,7 @@ impl SomaNode {
             state,
             transaction_orchestrator,
             auth_agg, // shutdown_channel_tx: shutdown_channel,
+            accumulator: Mutex::new(Some(accumulator)),
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -342,7 +350,7 @@ impl SomaNode {
         // checkpoint_store: Arc<CheckpointStore>,
         // state_sync_handle: state_sync::Handle,
         // randomness_handle: randomness::Handle,
-        // accumulator: Weak<StateAccumulator>,
+        accumulator: Weak<StateAccumulator>,
         // connection_monitor_status: Arc<ConnectionMonitorStatus>,
     ) -> Result<ValidatorComponents> {
         let mut config_clone = config.clone();
@@ -401,7 +409,7 @@ impl SomaNode {
             // randomness_handle,
             consensus_manager,
             // consensus_store_pruner,
-            // accumulator,
+            accumulator,
             validator_server_handle,
             // validator_overload_monitor_handle,
         )
@@ -417,7 +425,7 @@ impl SomaNode {
         // randomness_handle: randomness::Handle,
         consensus_manager: ConsensusManager,
         // consensus_store_pruner: ConsensusStorePruner,
-        // accumulator: Weak<StateAccumulator>,
+        accumulator: Weak<StateAccumulator>,
         validator_server_handle: JoinHandle<Result<()>>,
         // validator_overload_monitor_handle: Option<JoinHandle<()>>,
     ) -> Result<ValidatorComponents> {
@@ -428,7 +436,7 @@ impl SomaNode {
         //     epoch_store.clone(),
         //     state.clone(),
         //     state_sync_handle,
-        //     accumulator,
+        //    TODO: accumulator,
         //     checkpoint_metrics.clone(),
         // );
 
@@ -546,6 +554,10 @@ impl SomaNode {
     /// after which it iniitiates reconfiguration of the entire system.
     pub async fn monitor_reconfiguration(self: Arc<Self>) -> Result<()> {
         loop {
+            let mut accumulator_guard = self.accumulator.lock().await;
+            let accumulator = accumulator_guard.take().unwrap();
+
+            // TODO: start checkpoint executor here to run schedule checkpoint execution loop
             let timestamp_ms = self.run_epoch(Duration::from_secs(15)).await; // TODO: make this configurable
 
             let cur_epoch_store = self.state.load_epoch_store_one_call_per_task();
@@ -603,8 +615,15 @@ impl SomaNode {
                         &cur_epoch_store,
                         next_epoch_committee.clone(),
                         new_epoch_start_state,
+                        accumulator.clone(),
                     )
                     .await;
+
+                let new_accumulator = Arc::new(StateAccumulator::new(
+                    self.state.get_accumulator_store().clone(),
+                ));
+                let weak_accumulator = Arc::downgrade(&new_accumulator);
+                *accumulator_guard = Some(new_accumulator);
 
                 if self.state.is_validator(&new_epoch_store) {
                     // Only restart consensus if this node is still a validator in the new epoch.
@@ -615,6 +634,7 @@ impl SomaNode {
                             consensus_adapter,
                             new_epoch_store.clone(),
                             consensus_manager,
+                            weak_accumulator,
                             validator_server_handle,
                         )
                         .await?,
@@ -630,8 +650,15 @@ impl SomaNode {
                         &cur_epoch_store,
                         next_epoch_committee.clone(),
                         new_epoch_start_state,
+                        accumulator.clone(),
                     )
                     .await;
+
+                let new_accumulator = Arc::new(StateAccumulator::new(
+                    self.state.get_accumulator_store().clone(),
+                ));
+                let weak_accumulator = Arc::downgrade(&new_accumulator);
+                *accumulator_guard = Some(new_accumulator);
 
                 if self.state.is_validator(&new_epoch_store) {
                     info!("Promoting the node from fullnode to validator, starting grpc server");
@@ -642,6 +669,7 @@ impl SomaNode {
                             self.state.clone(),
                             Arc::new(next_epoch_committee.clone()),
                             new_epoch_store.clone(),
+                            weak_accumulator,
                         )
                         .await?,
                     )
@@ -671,7 +699,7 @@ impl SomaNode {
         cur_epoch_store: &AuthorityPerEpochStore,
         next_epoch_committee: Committee,
         next_epoch_start_system_state: EpochStartSystemState,
-        // accumulator: Arc<StateAccumulator>,
+        accumulator: Arc<StateAccumulator>,
     ) -> Arc<AuthorityPerEpochStore> {
         let next_epoch = next_epoch_committee.epoch();
 
@@ -689,6 +717,7 @@ impl SomaNode {
                 cur_epoch_store,
                 next_epoch_committee,
                 epoch_start_configuration,
+                accumulator,
             )
             .await
             .expect("Reconfigure authority state cannot fail");

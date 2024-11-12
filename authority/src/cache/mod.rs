@@ -17,6 +17,7 @@ use writeback_cache::WritebackCache;
 
 use crate::{
     epoch_store::AuthorityPerEpochStore,
+    state_accumulator::AccumulatorStore,
     store::{AuthorityStore, LockResult},
 };
 
@@ -32,7 +33,7 @@ pub struct ExecutionCacheTraitPointers {
     pub object_store: Arc<dyn ObjectStore + Send + Sync>,
     // pub backing_store: Arc<dyn BackingStore + Send + Sync>,
     // pub reconfig_api: Arc<dyn ExecutionCacheReconfigAPI>,
-    // pub accumulator_store: Arc<dyn AccumulatorStore>,
+    pub accumulator_store: Arc<dyn AccumulatorStore>,
     // pub state_sync_store: Arc<dyn StateSyncAPI>,
     pub cache_commit: Arc<dyn ExecutionCacheCommit>,
 }
@@ -45,7 +46,7 @@ impl ExecutionCacheTraitPointers {
             + ObjectCacheRead
             + ObjectStore
             // + ExecutionCacheReconfigAPI
-            // + AccumulatorStore
+            + AccumulatorStore
             // + StateSyncAPI
             + ExecutionCacheCommit
             + 'static,
@@ -57,7 +58,7 @@ impl ExecutionCacheTraitPointers {
             object_store: cache.clone(),
             // backing_store: cache.clone(),
             // reconfig_api: cache.clone(),
-            // accumulator_store: cache.clone(),
+            accumulator_store: cache.clone(),
             // state_sync_store: cache.clone(),
             cache_commit: cache.clone(),
         }

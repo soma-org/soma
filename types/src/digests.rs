@@ -1,5 +1,8 @@
-use crate::{error::SomaError, serde::Readable};
-use fastcrypto::encoding::{Base58, Encoding};
+use crate::{accumulator::Accumulator, error::SomaError, serde::Readable};
+use fastcrypto::{
+    encoding::{Base58, Encoding},
+    hash::MultisetHash,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
@@ -463,5 +466,26 @@ impl std::str::FromStr for ObjectDigest {
         }
         result.copy_from_slice(&buffer);
         Ok(ObjectDigest::new(result))
+    }
+}
+
+/// The Sha256 digest of an EllipticCurveMultisetHash committing to the live object set.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+pub struct ECMHLiveObjectSetDigest {
+    #[schemars(with = "[u8; 32]")]
+    pub digest: Digest,
+}
+
+impl From<fastcrypto::hash::Digest<32>> for ECMHLiveObjectSetDigest {
+    fn from(digest: fastcrypto::hash::Digest<32>) -> Self {
+        Self {
+            digest: Digest::new(digest.digest),
+        }
+    }
+}
+
+impl Default for ECMHLiveObjectSetDigest {
+    fn default() -> Self {
+        Accumulator::default().digest().into()
     }
 }

@@ -10,6 +10,7 @@ use parking_lot::RwLock;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
 use types::{
+    accumulator::Accumulator,
     committee::{Committee, EpochId},
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::{TransactionEffects, TransactionEffectsAPI},
@@ -28,6 +29,7 @@ use types::{
 use crate::{
     epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration,
+    state_accumulator::{AccumulatorStore, CheckpointSequenceNumber},
     store_tables::{AuthorityPerpetualTables, LiveObject, StoreObject},
 };
 
@@ -975,6 +977,50 @@ impl ObjectStore for AuthorityStore {
         version: Version,
     ) -> Result<Option<Object>, types::storage::storage_error::Error> {
         self.perpetual_tables.get_object_by_key(object_id, version)
+    }
+}
+
+impl AccumulatorStore for AuthorityStore {
+    fn get_root_state_accumulator_for_epoch(
+        &self,
+        epoch: EpochId,
+    ) -> SomaResult<Option<(CheckpointSequenceNumber, Accumulator)>> {
+        Ok(self
+            .perpetual_tables
+            .root_state_hash_by_epoch
+            .read()
+            .get(&epoch)
+            .cloned())
+    }
+
+    fn get_root_state_accumulator_for_highest_epoch(
+        &self,
+    ) -> SomaResult<Option<(EpochId, (CheckpointSequenceNumber, Accumulator))>> {
+        Ok(self
+            .perpetual_tables
+            .root_state_hash_by_epoch
+            .read()
+            .iter()
+            .next_back()
+            .map(|(epoch, (seq, acc))| (*epoch, (*seq, acc.clone()))))
+    }
+
+    fn insert_state_accumulator_for_epoch(
+        &self,
+        epoch: EpochId,
+        last_checkpoint_of_epoch: &CheckpointSequenceNumber,
+        acc: &Accumulator,
+    ) -> SomaResult {
+        self.perpetual_tables
+            .root_state_hash_by_epoch
+            .write()
+            .insert(epoch, (*last_checkpoint_of_epoch, acc.clone()));
+
+        Ok(())
+    }
+
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        Box::new(self.perpetual_tables.iter_live_object_set())
     }
 }
 

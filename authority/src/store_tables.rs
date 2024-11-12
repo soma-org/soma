@@ -6,6 +6,7 @@ use std::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use types::{
+    accumulator::Accumulator,
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
@@ -18,6 +19,7 @@ use types::{
 
 use crate::{
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
+    state_accumulator::CheckpointSequenceNumber,
     store::LockDetails,
 };
 
@@ -72,6 +74,11 @@ pub struct AuthorityPerpetualTables {
 
     /// Parameters of the system fixed at the epoch start
     pub(crate) epoch_start_configuration: RwLock<BTreeMap<(), EpochStartConfiguration>>,
+
+    // Finalized root state accumulator for epoch, to be included in last checkpoint of epoch. These values should only ever be written once
+    // and never changed
+    pub(crate) root_state_hash_by_epoch:
+        RwLock<BTreeMap<EpochId, (CheckpointSequenceNumber, Accumulator)>>,
 }
 
 impl AuthorityPerpetualTables {
@@ -88,6 +95,7 @@ impl AuthorityPerpetualTables {
             epoch_start_configuration: RwLock::new(BTreeMap::new()),
             objects: RwLock::new(BTreeMap::new()),
             object_transaction_locks: RwLock::new(BTreeMap::new()),
+            root_state_hash_by_epoch: RwLock::new(BTreeMap::new()),
         }
     }
 
@@ -265,6 +273,19 @@ impl AuthorityPerpetualTables {
             .collect())
     }
 
+    pub fn iter_live_object_set(&self) -> LiveSetIter<'_> {
+        LiveSetIter {
+            iter: self
+                .objects
+                .read()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            tables: self,
+            prev: None,
+        }
+    }
+
     pub fn range_iter_live_object_set(
         &self,
         lower_bound: Option<ObjectID>,
@@ -291,7 +312,6 @@ impl AuthorityPerpetualTables {
             iter: filtered_map,
             tables: self,
             prev: None,
-            include_wrapped_object,
         }
     }
 }
@@ -343,8 +363,6 @@ pub struct LiveSetIter<'a> {
     iter: BTreeMap<ObjectKey, StoreObject>,
     tables: &'a AuthorityPerpetualTables,
     prev: Option<(ObjectKey, StoreObject)>,
-    /// Whether a wrapped object is considered as a live object.
-    include_wrapped_object: bool,
 }
 
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash)]

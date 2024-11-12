@@ -1,13 +1,15 @@
+use std::ops::Add;
 use std::{pin::Pin, sync::Arc};
 
 use arc_swap::{ArcSwap, Guard};
+use fastcrypto::hash::MultisetHash;
 use parking_lot::Mutex;
 use tap::TapFallible;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, warn, Instrument};
 use types::checkpoint::CheckpointTimestamp;
-use types::digests::TransactionEffectsDigest;
+use types::digests::{ECMHLiveObjectSetDigest, TransactionEffectsDigest};
 use types::effects::{
     self, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
     VerifiedCertifiedTransactionEffects, VerifiedSignedTransactionEffects,
@@ -40,6 +42,7 @@ use crate::cache::{
 use crate::epoch_store::CertTxGuard;
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
+use crate::state_accumulator::{AccumulatorStore, CheckpointSequenceNumber, StateAccumulator};
 use crate::{
     client::NetworkAuthorityClient, committee_store::CommitteeStore,
     epoch_store::AuthorityPerEpochStore, start_epoch::EpochStartConfiguration,
@@ -81,6 +84,12 @@ pub struct AuthorityState {
 
     /// The database
     execution_cache_trait_pointers: ExecutionCacheTraitPointers,
+
+    // The state accumulator
+    accumulator: Arc<StateAccumulator>,
+
+    // Current Checkpoint
+    current_checkpoint: parking_lot::RwLock<CheckpointSequenceNumber>,
 }
 
 impl AuthorityState {
@@ -92,6 +101,7 @@ impl AuthorityState {
         committee_store: Arc<CommitteeStore>,
         config: NodeConfig,
         execution_cache_trait_pointers: ExecutionCacheTraitPointers,
+        accumulator: Arc<StateAccumulator>,
     ) -> Arc<Self> {
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
         let transaction_manager = Arc::new(TransactionManager::new(
@@ -114,6 +124,8 @@ impl AuthorityState {
             transaction_manager,
             config,
             execution_cache_trait_pointers,
+            accumulator,
+            current_checkpoint: parking_lot::RwLock::new(0),
         });
 
         // Start a task to execute ready certificates.
@@ -141,6 +153,10 @@ impl AuthorityState {
 
     pub fn get_object_cache_reader(&self) -> &Arc<dyn ObjectCacheRead> {
         &self.execution_cache_trait_pointers.object_cache_reader
+    }
+
+    pub fn get_accumulator_store(&self) -> &Arc<dyn AccumulatorStore> {
+        &self.execution_cache_trait_pointers.accumulator_store
     }
 
     /// This is a private method and should be kept that way. It doesn't check whether
@@ -418,6 +434,18 @@ impl AuthorityState {
         )
         .await?;
 
+        let checkpoint = self.current_checkpoint.read().clone();
+        let checkpoint_acc = self.accumulator.accumulate_checkpoint(
+            vec![effects.clone()],
+            checkpoint,
+            epoch_store,
+        )?;
+        self.accumulator
+            .accumulate_running_root(epoch_store, checkpoint, Some(checkpoint_acc))
+            .await?;
+        let new_checkpoint = checkpoint.add(1);
+        *self.current_checkpoint.write() = new_checkpoint;
+
         Ok((effects, execution_error_opt))
     }
 
@@ -535,13 +563,16 @@ impl AuthorityState {
         cur_epoch_store: &AuthorityPerEpochStore,
         new_committee: Committee,
         epoch_start_configuration: EpochStartConfiguration,
-        // accumulator: Arc<StateAccumulator>,
+        accumulator: Arc<StateAccumulator>,
         // expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
         let new_epoch = new_committee.epoch;
         self.committee_store
             .insert_new_committee(new_committee.clone())?;
         let mut execution_lock = self.execution_lock_for_reconfiguration().await;
+
+        // TODO: check system consistency using accumulator after reverting uncommitted epoch transactions
+        self.is_consistent_state(self.accumulator.clone(), cur_epoch_store);
 
         let new_epoch_store = self
             .reopen_epoch_db(cur_epoch_store, new_committee, epoch_start_configuration)
@@ -690,7 +721,7 @@ impl AuthorityState {
         let next_epoch = epoch_store.epoch() + 1;
 
         let tx = VerifiedTransaction::new_end_of_epoch_transaction(
-            EndOfEpochTransactionKind::new_change_epoch(next_epoch, epoch_start_timestamp_ms),
+            EndOfEpochTransactionKind::new_change_epoch(next_epoch, 0), // TODO: change this to the correct value
         );
 
         let executable_tx =
@@ -737,6 +768,20 @@ impl AuthorityState {
                     .into(),
             )
             .await?;
+
+        let checkpoint = self.current_checkpoint.read().clone();
+        let checkpoint_acc = self.accumulator.accumulate_checkpoint(
+            vec![effects.clone()],
+            checkpoint,
+            epoch_store,
+        )?;
+        self.accumulator
+            .accumulate_running_root(epoch_store, checkpoint, Some(checkpoint_acc))
+            .await?;
+        self.accumulator
+            .accumulate_epoch(epoch_store.clone(), checkpoint)?;
+        let new_checkpoint = checkpoint.add(1);
+        *self.current_checkpoint.write() = new_checkpoint;
 
         //  TODO: instead of writing the advanced epoch state object to cache, write to long term storage self.get_state_sync_store()
         // .insert_transaction_and_effects(&tx, &effects)
@@ -859,6 +904,35 @@ impl AuthorityState {
         Ok(VerifiedSignedTransactionEffects::new_unchecked(
             signed_effects,
         ))
+    }
+
+    fn is_consistent_state(
+        &self,
+        accumulator: Arc<StateAccumulator>,
+        cur_epoch_store: &AuthorityPerEpochStore,
+    ) {
+        // let live_object_set_hash = accumulator.digest_live_object_set();
+
+        let root_state_hash: ECMHLiveObjectSetDigest = self
+            .get_accumulator_store()
+            .get_root_state_accumulator_for_epoch(cur_epoch_store.epoch())
+            .expect("Retrieving root state hash cannot fail")
+            .expect("Root state hash for epoch must exist")
+            .1
+            .digest()
+            .into();
+
+        info!("State consistency check passed {:?}", root_state_hash);
+
+        // let is_inconsistent = root_state_hash != live_object_set_hash;
+        // if is_inconsistent {
+        //     error!(
+        //         "Inconsistent state detected: root state hash: {:?}, live object set hash: {:?}",
+        //         root_state_hash, live_object_set_hash
+        //     );
+        // } else {
+        //     info!("State consistency check passed {:?}", root_state_hash);
+        // }
     }
 }
 

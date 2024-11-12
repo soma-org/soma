@@ -18,6 +18,7 @@ pub mod signature_verifier;
 pub mod stake_aggregator;
 pub mod start_epoch;
 pub mod state;
+pub mod state_accumulator;
 pub mod store;
 pub mod store_tables;
 pub mod throughput;
