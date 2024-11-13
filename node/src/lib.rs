@@ -232,7 +232,7 @@ impl SomaNode {
                 ),
             );
             state
-                .try_execute_immediately(&transaction, None, &epoch_store)
+                .try_execute_immediately(&transaction, None, Some(0), &epoch_store)
                 .instrument(span)
                 .await
                 .unwrap();
@@ -615,7 +615,6 @@ impl SomaNode {
                         &cur_epoch_store,
                         next_epoch_committee.clone(),
                         new_epoch_start_state,
-                        accumulator.clone(),
                     )
                     .await;
 
@@ -650,7 +649,6 @@ impl SomaNode {
                         &cur_epoch_store,
                         next_epoch_committee.clone(),
                         new_epoch_start_state,
-                        accumulator.clone(),
                     )
                     .await;
 
@@ -699,7 +697,6 @@ impl SomaNode {
         cur_epoch_store: &AuthorityPerEpochStore,
         next_epoch_committee: Committee,
         next_epoch_start_system_state: EpochStartSystemState,
-        accumulator: Arc<StateAccumulator>,
     ) -> Arc<AuthorityPerEpochStore> {
         let next_epoch = next_epoch_committee.epoch();
 
@@ -717,7 +714,6 @@ impl SomaNode {
                 cur_epoch_store,
                 next_epoch_committee,
                 epoch_start_configuration,
-                accumulator,
             )
             .await
             .expect("Reconfigure authority state cannot fail");

@@ -29,7 +29,7 @@ use types::{
 use crate::{
     epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration,
-    state_accumulator::{AccumulatorStore, CheckpointSequenceNumber},
+    state_accumulator::{AccumulatorStore, CommitIndex},
     store_tables::{AuthorityPerpetualTables, LiveObject, StoreObject},
 };
 
@@ -981,40 +981,39 @@ impl ObjectStore for AuthorityStore {
 }
 
 impl AccumulatorStore for AuthorityStore {
-    fn get_root_state_accumulator_for_epoch(
+    fn get_root_state_accumulator_for_commit(
         &self,
-        epoch: EpochId,
-    ) -> SomaResult<Option<(CheckpointSequenceNumber, Accumulator)>> {
+        commit: CommitIndex,
+    ) -> SomaResult<Option<Accumulator>> {
         Ok(self
             .perpetual_tables
-            .root_state_hash_by_epoch
+            .root_state_hash_by_commit
             .read()
-            .get(&epoch)
+            .get(&commit)
             .cloned())
     }
 
-    fn get_root_state_accumulator_for_highest_epoch(
+    fn get_root_state_accumulator_for_highest_commit(
         &self,
-    ) -> SomaResult<Option<(EpochId, (CheckpointSequenceNumber, Accumulator))>> {
+    ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
         Ok(self
             .perpetual_tables
-            .root_state_hash_by_epoch
+            .root_state_hash_by_commit
             .read()
             .iter()
             .next_back()
-            .map(|(epoch, (seq, acc))| (*epoch, (*seq, acc.clone()))))
+            .map(|(seq, acc)| (*seq, acc.clone())))
     }
 
-    fn insert_state_accumulator_for_epoch(
+    fn insert_state_accumulator_for_commit(
         &self,
-        epoch: EpochId,
-        last_checkpoint_of_epoch: &CheckpointSequenceNumber,
+        commit: &CommitIndex,
         acc: &Accumulator,
     ) -> SomaResult {
         self.perpetual_tables
-            .root_state_hash_by_epoch
+            .root_state_hash_by_commit
             .write()
-            .insert(epoch, (*last_checkpoint_of_epoch, acc.clone()));
+            .insert(*commit, acc.clone());
 
         Ok(())
     }

@@ -30,11 +30,13 @@ pub async fn execution_process(
     loop {
         let certificate;
         let expected_effects_digest;
+        let commit;
         tokio::select! {
             result = rx_ready_certificates.recv() => {
                 if let Some(pending_cert) = result {
                     certificate = pending_cert.certificate;
                     expected_effects_digest = pending_cert.expected_effects_digest;
+                    commit = pending_cert.commit;
                 } else {
                     // Should only happen after the AuthorityState has shut down and tx_ready_certificate
                     // has been dropped by TransactionManager.
@@ -72,15 +74,15 @@ pub async fn execution_process(
         tokio::spawn(async move {
    
             let _guard = permit;
-            if let Ok(true) = authority.is_tx_already_executed(&digest) {
-                return;
-            }
+            // TODO: if let Ok(true) = authority.is_tx_already_executed(&digest) {
+            //     return;
+            // }
             let mut attempts = 0;
             loop {
                
                 attempts += 1;
                 let res = authority
-                    .try_execute_immediately(&certificate, expected_effects_digest,  &epoch_store)
+                    .try_execute_immediately(&certificate, expected_effects_digest, commit,  &epoch_store)
                     .await;
                 if let Err(e) = res {
                     if attempts == EXECUTION_MAX_ATTEMPTS {

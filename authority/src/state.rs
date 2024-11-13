@@ -42,7 +42,7 @@ use crate::cache::{
 use crate::epoch_store::CertTxGuard;
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
-use crate::state_accumulator::{AccumulatorStore, CheckpointSequenceNumber, StateAccumulator};
+use crate::state_accumulator::{AccumulatorStore, CommitIndex, StateAccumulator};
 use crate::{
     client::NetworkAuthorityClient, committee_store::CommitteeStore,
     epoch_store::AuthorityPerEpochStore, start_epoch::EpochStartConfiguration,
@@ -87,9 +87,6 @@ pub struct AuthorityState {
 
     // The state accumulator
     accumulator: Arc<StateAccumulator>,
-
-    // Current Checkpoint
-    current_checkpoint: parking_lot::RwLock<CheckpointSequenceNumber>,
 }
 
 impl AuthorityState {
@@ -125,7 +122,6 @@ impl AuthorityState {
             config,
             execution_cache_trait_pointers,
             accumulator,
-            current_checkpoint: parking_lot::RwLock::new(0),
         });
 
         // Start a task to execute ready certificates.
@@ -278,7 +274,7 @@ impl AuthorityState {
         let expected_effects_digest = effects.digest();
 
         self.transaction_manager
-            .enqueue(vec![transaction.clone()], epoch_store);
+            .enqueue(vec![transaction.clone()], epoch_store, None);
 
         let observed_effects = self
             .get_transaction_cache_reader()
@@ -339,6 +335,7 @@ impl AuthorityState {
         &self,
         certificate: &VerifiedExecutableTransaction,
         mut expected_effects_digest: Option<TransactionEffectsDigest>,
+        commit: Option<CommitIndex>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult<(TransactionEffects, Option<ExecutionError>)> {
         debug!("execute_certificate_internal");
@@ -359,9 +356,15 @@ impl AuthorityState {
         // may as well hold the lock and save the cpu time for other requests.
         let tx_guard = epoch_store.acquire_tx_guard(certificate).await?;
 
-        self.process_certificate(tx_guard, certificate, expected_effects_digest, epoch_store)
-            .await
-            .tap_err(|e| info!(?tx_digest, "process_certificate failed: {e}"))
+        self.process_certificate(
+            tx_guard,
+            certificate,
+            expected_effects_digest,
+            commit,
+            epoch_store,
+        )
+        .await
+        .tap_err(|e| info!(?tx_digest, "process_certificate failed: {e}"))
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -370,6 +373,7 @@ impl AuthorityState {
         tx_guard: CertTxGuard,
         certificate: &VerifiedExecutableTransaction,
         expected_effects_digest: Option<TransactionEffectsDigest>,
+        commit: Option<CommitIndex>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult<(TransactionEffects, Option<ExecutionError>)> {
         let process_certificate_start_time = tokio::time::Instant::now();
@@ -382,6 +386,20 @@ impl AuthorityState {
             .get_executed_effects(&digest)?
         {
             tx_guard.release();
+
+            if let Some(commit) = commit {
+                if !effects.all_changed_objects().is_empty() {
+                    let commit_acc = self.accumulator.accumulate_commit(
+                        vec![effects.clone()],
+                        commit,
+                        epoch_store,
+                    )?;
+                    self.accumulator
+                        .accumulate_running_root(epoch_store, commit, Some(commit_acc))
+                        .await?;
+                }
+            }
+
             return Ok((effects, None));
         }
         let execution_guard = self
@@ -434,17 +452,18 @@ impl AuthorityState {
         )
         .await?;
 
-        let checkpoint = self.current_checkpoint.read().clone();
-        let checkpoint_acc = self.accumulator.accumulate_checkpoint(
-            vec![effects.clone()],
-            checkpoint,
-            epoch_store,
-        )?;
-        self.accumulator
-            .accumulate_running_root(epoch_store, checkpoint, Some(checkpoint_acc))
-            .await?;
-        let new_checkpoint = checkpoint.add(1);
-        *self.current_checkpoint.write() = new_checkpoint;
+        if let Some(commit) = commit {
+            if !effects.all_changed_objects().is_empty() {
+                let commit_acc = self.accumulator.accumulate_commit(
+                    vec![effects.clone()],
+                    commit,
+                    epoch_store,
+                )?;
+                self.accumulator
+                    .accumulate_running_root(epoch_store, commit, Some(commit_acc))
+                    .await?;
+            }
+        }
 
         Ok((effects, execution_error_opt))
     }
@@ -563,7 +582,6 @@ impl AuthorityState {
         cur_epoch_store: &AuthorityPerEpochStore,
         new_committee: Committee,
         epoch_start_configuration: EpochStartConfiguration,
-        accumulator: Arc<StateAccumulator>,
         // expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
         let new_epoch = new_committee.epoch;
@@ -572,7 +590,6 @@ impl AuthorityState {
         let mut execution_lock = self.execution_lock_for_reconfiguration().await;
 
         // TODO: check system consistency using accumulator after reverting uncommitted epoch transactions
-        self.is_consistent_state(self.accumulator.clone(), cur_epoch_store);
 
         let new_epoch_store = self
             .reopen_epoch_db(cur_epoch_store, new_committee, epoch_start_configuration)
@@ -633,7 +650,7 @@ impl AuthorityState {
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) {
         self.transaction_manager
-            .enqueue_certificates(certs, epoch_store)
+            .enqueue_certificates(certs, epoch_store, None)
     }
 
     pub(crate) fn enqueue_with_expected_effects_digest(
@@ -769,20 +786,6 @@ impl AuthorityState {
             )
             .await?;
 
-        let checkpoint = self.current_checkpoint.read().clone();
-        let checkpoint_acc = self.accumulator.accumulate_checkpoint(
-            vec![effects.clone()],
-            checkpoint,
-            epoch_store,
-        )?;
-        self.accumulator
-            .accumulate_running_root(epoch_store, checkpoint, Some(checkpoint_acc))
-            .await?;
-        self.accumulator
-            .accumulate_epoch(epoch_store.clone(), checkpoint)?;
-        let new_checkpoint = checkpoint.add(1);
-        *self.current_checkpoint.write() = new_checkpoint;
-
         //  TODO: instead of writing the advanced epoch state object to cache, write to long term storage self.get_state_sync_store()
         // .insert_transaction_and_effects(&tx, &effects)
         // .map_err(|err| {
@@ -904,35 +907,6 @@ impl AuthorityState {
         Ok(VerifiedSignedTransactionEffects::new_unchecked(
             signed_effects,
         ))
-    }
-
-    fn is_consistent_state(
-        &self,
-        accumulator: Arc<StateAccumulator>,
-        cur_epoch_store: &AuthorityPerEpochStore,
-    ) {
-        // let live_object_set_hash = accumulator.digest_live_object_set();
-
-        let root_state_hash: ECMHLiveObjectSetDigest = self
-            .get_accumulator_store()
-            .get_root_state_accumulator_for_epoch(cur_epoch_store.epoch())
-            .expect("Retrieving root state hash cannot fail")
-            .expect("Root state hash for epoch must exist")
-            .1
-            .digest()
-            .into();
-
-        info!("State consistency check passed {:?}", root_state_hash);
-
-        // let is_inconsistent = root_state_hash != live_object_set_hash;
-        // if is_inconsistent {
-        //     error!(
-        //         "Inconsistent state detected: root state hash: {:?}, live object set hash: {:?}",
-        //         root_state_hash, live_object_set_hash
-        //     );
-        // } else {
-        //     info!("State consistency check passed {:?}", root_state_hash);
-        // }
     }
 }
 

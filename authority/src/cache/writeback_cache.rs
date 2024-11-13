@@ -17,7 +17,7 @@
 
 use crate::{
     epoch_store::AuthorityPerEpochStore,
-    state_accumulator::{AccumulatorStore, CheckpointSequenceNumber},
+    state_accumulator::{AccumulatorStore, CommitIndex},
     store::{AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus},
     store_tables::LiveObject,
 };
@@ -1211,27 +1211,25 @@ impl ObjectCacheRead for WritebackCache {
 }
 
 impl AccumulatorStore for WritebackCache {
-    fn get_root_state_accumulator_for_epoch(
+    fn get_root_state_accumulator_for_commit(
         &self,
-        epoch: EpochId,
-    ) -> SomaResult<Option<(CheckpointSequenceNumber, Accumulator)>> {
-        self.store.get_root_state_accumulator_for_epoch(epoch)
+        commit: CommitIndex,
+    ) -> SomaResult<Option<Accumulator>> {
+        self.store.get_root_state_accumulator_for_commit(commit)
     }
 
-    fn get_root_state_accumulator_for_highest_epoch(
+    fn get_root_state_accumulator_for_highest_commit(
         &self,
-    ) -> SomaResult<Option<(EpochId, (CheckpointSequenceNumber, Accumulator))>> {
-        self.store.get_root_state_accumulator_for_highest_epoch()
+    ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
+        self.store.get_root_state_accumulator_for_highest_commit()
     }
 
-    fn insert_state_accumulator_for_epoch(
+    fn insert_state_accumulator_for_commit(
         &self,
-        epoch: EpochId,
-        checkpoint_seq_num: &CheckpointSequenceNumber,
+        commit: &CommitIndex,
         acc: &Accumulator,
     ) -> SomaResult {
-        self.store
-            .insert_state_accumulator_for_epoch(epoch, checkpoint_seq_num, acc)
+        self.store.insert_state_accumulator_for_commit(commit, acc)
     }
 
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {

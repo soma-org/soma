@@ -57,7 +57,7 @@ use crate::{
     signature_verifier::SignatureVerifier,
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    state_accumulator::CheckpointSequenceNumber,
+    state_accumulator::CommitIndex,
     store::LockDetails,
 };
 
@@ -129,7 +129,7 @@ pub struct AuthorityPerEpochStore {
     pub(crate) signature_verifier: SignatureVerifier,
 
     // pub(crate) checkpoint_state_notify_read: NotifyRead<CheckpointSequenceNumber, Accumulator>,
-    running_root_notify_read: NotifyRead<CheckpointSequenceNumber, Accumulator>,
+    running_root_notify_read: NotifyRead<CommitIndex, Accumulator>,
     executed_digests_notify_read: NotifyRead<TransactionKey, TransactionDigest>,
 
     /// This is used to notify all epoch specific tasks that epoch has ended.
@@ -233,16 +233,15 @@ pub struct AuthorityEpochTables {
     /// Map from ObjectRef to transaction locking that object
     object_locked_transactions: RwLock<BTreeMap<ObjectRef, TransactionDigest>>,
 
-    // Maps checkpoint sequence number to an accumulator with accumulated state
+    // Maps commit index to an accumulator with accumulated state
     // only for the checkpoint that the key references. Append-only, i.e.,
-    // the accumulator is complete wrt the checkpoint
-    pub state_hash_by_checkpoint: RwLock<BTreeMap<CheckpointSequenceNumber, Accumulator>>,
+    // the accumulator is complete wrt the commit
+    pub state_hash_by_commit: RwLock<BTreeMap<CommitIndex, Accumulator>>,
 
-    /// Maps checkpoint sequence number to the running (non-finalized) root state
-    /// accumulator up th that checkpoint. This should be equivalent to the root
-    /// state hash at end of epoch. Guaranteed to be written to in checkpoint
-    /// sequence number order.
-    pub running_root_accumulators: RwLock<BTreeMap<CheckpointSequenceNumber, Accumulator>>,
+    /// Maps commit index to the running (non-finalized) root state
+    /// accumulator up to that commit. Guaranteed to be written to in commit
+    /// index order.
+    pub running_root_accumulators: RwLock<BTreeMap<CommitIndex, Accumulator>>,
 }
 
 impl AuthorityEpochTables {
@@ -449,45 +448,45 @@ impl AuthorityPerEpochStore {
         self.committee.epoch
     }
 
-    pub fn get_state_hash_for_checkpoint(
+    pub fn get_state_hash_for_commit(
         &self,
-        checkpoint: &CheckpointSequenceNumber,
+        commit: &CommitIndex,
     ) -> SomaResult<Option<Accumulator>> {
         Ok(self
             .tables()?
-            .state_hash_by_checkpoint
+            .state_hash_by_commit
             .read()
-            .get(checkpoint)
+            .get(commit)
             .cloned())
     }
 
-    pub fn insert_state_hash_for_checkpoint(
+    pub fn insert_state_hash_for_commit(
         &self,
-        checkpoint: &CheckpointSequenceNumber,
+        commit: &CommitIndex,
         accumulator: &Accumulator,
     ) -> SomaResult {
         self.tables()?
-            .state_hash_by_checkpoint
+            .state_hash_by_commit
             .write()
-            .insert(*checkpoint, accumulator.clone());
+            .insert(*commit, accumulator.clone());
         Ok(())
     }
 
     pub fn get_running_root_accumulator(
         &self,
-        checkpoint: &CheckpointSequenceNumber,
+        commit: &CommitIndex,
     ) -> SomaResult<Option<Accumulator>> {
         Ok(self
             .tables()?
             .running_root_accumulators
             .read()
-            .get(checkpoint)
+            .get(commit)
             .cloned())
     }
 
     pub fn get_highest_running_root_accumulator(
         &self,
-    ) -> SomaResult<Option<(CheckpointSequenceNumber, Accumulator)>> {
+    ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
         Ok(self
             .tables()?
             .running_root_accumulators
@@ -499,7 +498,7 @@ impl AuthorityPerEpochStore {
 
     pub fn insert_running_root_accumulator(
         &self,
-        checkpoint: &CheckpointSequenceNumber,
+        checkpoint: &CommitIndex,
         acc: &Accumulator,
     ) -> SomaResult {
         self.tables()?
@@ -511,16 +510,13 @@ impl AuthorityPerEpochStore {
         Ok(())
     }
 
-    pub async fn notify_read_running_root(
-        &self,
-        checkpoint: CheckpointSequenceNumber,
-    ) -> SomaResult<Accumulator> {
-        let registration = self.running_root_notify_read.register_one(&checkpoint);
+    pub async fn notify_read_running_root(&self, commit: CommitIndex) -> SomaResult<Accumulator> {
+        let registration = self.running_root_notify_read.register_one(&commit);
         let acc = self
             .tables()?
             .running_root_accumulators
             .read()
-            .get(&checkpoint)
+            .get(&commit)
             .cloned();
 
         let result = match acc {

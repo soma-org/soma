@@ -1,3 +1,4 @@
+use crate::state_accumulator::CommitIndex;
 use crate::{
     epoch_store::AuthorityPerEpochStore, output::ConsensusOutputAPI, state::AuthorityState,
     throughput::ConsensusThroughputCalculator, tx_manager::TransactionManager,
@@ -234,13 +235,13 @@ impl ConsensusHandler {
             .add_transactions(timestamp, transactions_to_schedule.len() as u64);
 
         self.transaction_scheduler
-            .schedule(transactions_to_schedule)
+            .schedule(transactions_to_schedule, commit_sub_dag_index)
             .await;
     }
 }
 
 struct AsyncTransactionScheduler {
-    sender: tokio::sync::mpsc::Sender<Vec<VerifiedExecutableTransaction>>,
+    sender: tokio::sync::mpsc::Sender<(Vec<VerifiedExecutableTransaction>, CommitIndex)>,
 }
 
 impl AsyncTransactionScheduler {
@@ -253,17 +254,21 @@ impl AsyncTransactionScheduler {
         Self { sender }
     }
 
-    pub async fn schedule(&self, transactions: Vec<VerifiedExecutableTransaction>) {
-        self.sender.send(transactions).await.ok();
+    pub async fn schedule(
+        &self,
+        transactions: Vec<VerifiedExecutableTransaction>,
+        commit: CommitIndex,
+    ) {
+        self.sender.send((transactions, commit)).await.ok();
     }
 
     pub async fn run(
-        mut recv: tokio::sync::mpsc::Receiver<Vec<VerifiedExecutableTransaction>>,
+        mut recv: tokio::sync::mpsc::Receiver<(Vec<VerifiedExecutableTransaction>, CommitIndex)>,
         transaction_manager: Arc<TransactionManager>,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) {
-        while let Some(transactions) = recv.recv().await {
-            transaction_manager.enqueue(transactions, &epoch_store);
+        while let Some((transactions, commit)) = recv.recv().await {
+            transaction_manager.enqueue(transactions, &epoch_store, Some(commit));
         }
     }
 }
