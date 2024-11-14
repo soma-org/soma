@@ -1,4 +1,3 @@
-use crate::state_accumulator::CommitIndex;
 use crate::{
     epoch_store::AuthorityPerEpochStore, output::ConsensusOutputAPI, state::AuthorityState,
     throughput::ConsensusThroughputCalculator, tx_manager::TransactionManager,
@@ -12,6 +11,7 @@ use tracing::{error, info, instrument, warn};
 use types::committee::AuthorityIndex;
 use types::system_state::EpochStartSystemStateTrait;
 use types::{
+    accumulator::CommitIndex,
     base::AuthorityName,
     committee::{Committee, EpochId},
     consensus::{ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind},

@@ -2,8 +2,8 @@ use std::{collections::BTreeSet, iter, sync::Arc, time::Duration};
 
 use crate::{
     block::{
-        Block, BlockAPI as _, BlockRef, BlockTimestampMs, SignedBlock, Slot, VerifiedBlock,
-        GENESIS_ROUND,
+        Block, BlockAPI as _, BlockRef, BlockTimestampMs, SignedBlock, Slot, StateCommit,
+        VerifiedBlock, GENESIS_ROUND,
     },
     block_manager::BlockManager,
     block_verifier::NoopBlockVerifier,
@@ -31,8 +31,11 @@ use tokio::sync::{
     watch,
 };
 use tracing::{debug, info, warn};
-use types::committee::{AuthorityIndex, Stake};
-use types::crypto::ProtocolKeyPair;
+use types::{
+    accumulator::AccumulatorStore,
+    committee::{AuthorityIndex, Stake},
+};
+use types::{accumulator::TestAccumulatorStore, crypto::ProtocolKeyPair};
 
 // Maximum number of commit votes to include in a block.
 // TODO: Move to protocol config, and verify in BlockVerifier.
@@ -76,6 +79,9 @@ pub(crate) struct Core {
     /// This is currently being used to avoid equivocations during a node recovering from amnesia. When value is None it means that
     /// the last block sync mechanism is enabled, but it hasn't been initialised yet.
     last_known_proposed_round: Option<Round>,
+
+    // Store for state hashes by commit for inclusion in blocks.
+    accumulator_store: Arc<dyn AccumulatorStore>,
 }
 
 impl Core {
@@ -88,6 +94,7 @@ impl Core {
         signals: CoreSignals,
         block_signer: ProtocolKeyPair,
         dag_state: Arc<RwLock<DagState>>,
+        accumulator_store: Arc<dyn AccumulatorStore>,
     ) -> Self {
         let last_decided_leader = dag_state.read().last_commit_leader();
         let number_of_leaders = 1; // TODO: context.parameters.mysticeti_num_leaders_per_round();
@@ -139,6 +146,7 @@ impl Core {
             committer,
             dag_state,
             last_known_proposed_round: min_propose_round,
+            accumulator_store,
         }
         .recover()
     }
@@ -353,6 +361,17 @@ impl Core {
             .write()
             .take_commit_votes(MAX_COMMIT_VOTES_PER_BLOCK);
 
+        // Get the state hash for the highest commit.
+        let state_commit;
+        if let Ok(Some((commit, state_hash))) = self
+            .accumulator_store
+            .get_root_state_accumulator_for_highest_commit()
+        {
+            state_commit = Some(StateCommit::new(commit, state_hash));
+        } else {
+            state_commit = None;
+        }
+
         // Create the block and insert to storage.
         let block = Block::new(
             self.context.committee.epoch(),
@@ -362,6 +381,7 @@ impl Core {
             ancestors.iter().map(|b| b.reference()).collect(),
             transactions,
             commit_votes,
+            state_commit,
         );
         let signed_block =
             SignedBlock::new(block, &self.block_signer).expect("Block signing failed.");
@@ -679,6 +699,7 @@ impl CoreTextFixture {
             signals,
             block_signer,
             dag_state,
+            Arc::new(TestAccumulatorStore::default()),
         );
 
         Self {
@@ -780,6 +801,7 @@ mod test {
             signals,
             key_pairs.remove(context.own_index.value()).1,
             dag_state.clone(),
+            Arc::new(TestAccumulatorStore::default()),
         );
 
         // New round should be 5
@@ -893,6 +915,7 @@ mod test {
             signals,
             key_pairs.remove(context.own_index.value()).1,
             dag_state.clone(),
+            Arc::new(TestAccumulatorStore::default()),
         );
 
         // New round should be 4
@@ -975,6 +998,7 @@ mod test {
             signals,
             key_pairs.remove(context.own_index.value()).1,
             dag_state.clone(),
+            Arc::new(TestAccumulatorStore::default()),
         );
 
         // Send some transactions
@@ -1075,6 +1099,7 @@ mod test {
             signals,
             key_pairs.remove(context.own_index.value()).1,
             dag_state.clone(),
+            Arc::new(TestAccumulatorStore::default()),
         );
 
         let mut expected_ancestors = BTreeSet::new();
@@ -1159,6 +1184,7 @@ mod test {
             signals,
             key_pairs.remove(context.own_index.value()).1,
             dag_state.clone(),
+            Arc::new(TestAccumulatorStore::default()),
         );
 
         // No new block should have been produced

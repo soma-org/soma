@@ -22,6 +22,7 @@ use types::transaction::{EndOfEpochTransactionKind, SenderSignedData};
 use types::tx_outputs::{TransactionOutputs, WrittenObjects};
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
+    accumulator::{AccumulatorStore, CommitIndex},
     base::AuthorityName,
     committee::{Committee, EpochId},
     crypto::{AuthoritySignInfo, AuthoritySignature, Signer},
@@ -42,7 +43,7 @@ use crate::cache::{
 use crate::epoch_store::CertTxGuard;
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
-use crate::state_accumulator::{AccumulatorStore, CommitIndex, StateAccumulator};
+use crate::state_accumulator::StateAccumulator;
 use crate::{
     client::NetworkAuthorityClient, committee_store::CommitteeStore,
     epoch_store::AuthorityPerEpochStore, start_epoch::EpochStartConfiguration,

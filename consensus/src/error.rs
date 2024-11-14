@@ -1,4 +1,4 @@
-use fastcrypto::error::FastCryptoError;
+use fastcrypto::{error::FastCryptoError, hash::Digest};
 use thiserror::Error;
 
 use crate::{block::BlockRef, commit::Commit, CommitIndex, Round};
@@ -162,6 +162,12 @@ pub(crate) enum ConsensusError {
 
     #[error("Consensus has shut down!")]
     Shutdown,
+
+    #[error("Invalid state hash: {expected:?} != {actual:?}")]
+    InvalidStateHash {
+        expected: Digest<32>,
+        actual: Digest<32>,
+    },
 }
 
 pub type ConsensusResult<T> = Result<T, ConsensusError>;

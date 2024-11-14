@@ -531,3 +531,34 @@ impl ObjectInfo {
         }
     }
 }
+
+#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash)]
+pub enum LiveObject {
+    Normal(Object),
+}
+
+impl LiveObject {
+    pub fn object_id(&self) -> ObjectID {
+        match self {
+            LiveObject::Normal(obj) => obj.id(),
+        }
+    }
+
+    pub fn version(&self) -> Version {
+        match self {
+            LiveObject::Normal(obj) => obj.version(),
+        }
+    }
+
+    pub fn object_reference(&self) -> ObjectRef {
+        match self {
+            LiveObject::Normal(obj) => obj.compute_object_reference(),
+        }
+    }
+
+    pub fn to_normal(self) -> Option<Object> {
+        match self {
+            LiveObject::Normal(object) => Some(object),
+        }
+    }
+}

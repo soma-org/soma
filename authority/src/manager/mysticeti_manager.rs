@@ -11,12 +11,13 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::Mutex;
 use tracing::info;
-use types::parameters::Parameters;
-use types::{committee::EpochId, node_config::NodeConfig};
+use types::{accumulator, parameters::Parameters};
 use types::{
+    accumulator::AccumulatorStore,
     crypto::{NetworkKeyPair, ProtocolKeyPair},
     system_state::EpochStartSystemStateTrait,
 };
+use types::{committee::EpochId, node_config::NodeConfig};
 
 use super::{mysticeti_client::LazyMysticetiClient, ConsensusManagerTrait, Running};
 
@@ -30,6 +31,7 @@ pub struct MysticetiManager {
     // client that gets created for every new epoch.
     client: Arc<LazyMysticetiClient>,
     consensus_handler: Mutex<Option<MysticetiConsensusHandler>>,
+    accumulator_store: Arc<dyn AccumulatorStore>,
 }
 
 impl MysticetiManager {
@@ -40,6 +42,7 @@ impl MysticetiManager {
         network_keypair: Ed25519KeyPair,
         storage_base_path: PathBuf,
         client: Arc<LazyMysticetiClient>,
+        accumulator_store: Arc<dyn AccumulatorStore>,
     ) -> Self {
         Self {
             protocol_keypair: ProtocolKeyPair::new(protocol_keypair),
@@ -49,6 +52,7 @@ impl MysticetiManager {
             authority: ArcSwapOption::empty(),
             client,
             consensus_handler: Mutex::new(None),
+            accumulator_store,
         }
     }
 
@@ -104,6 +108,7 @@ impl ConsensusManagerTrait for MysticetiManager {
             self.network_keypair.clone(),
             Arc::new(tx_validator.clone()),
             consumer,
+            self.accumulator_store.clone(),
         )
         .await;
         let client = authority.transaction_client();

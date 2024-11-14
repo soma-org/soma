@@ -11,6 +11,7 @@ use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
 use types::{
     accumulator::Accumulator,
+    accumulator::{AccumulatorStore, CommitIndex},
     committee::{Committee, EpochId},
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::{TransactionEffects, TransactionEffectsAPI},
@@ -19,7 +20,7 @@ use types::{
     genesis::Genesis,
     mutex_table::{MutexGuard, MutexTable, RwLockGuard, RwLockTable},
     node_config::NodeConfig,
-    object::{self, Object, ObjectID, ObjectRef, Version},
+    object::{self, LiveObject, Object, ObjectID, ObjectRef, Version},
     storage::{object_store::ObjectStore, ObjectKey, ObjectOrTombstone},
     system_state::{get_system_state, SystemState, SystemStateTrait},
     transaction::{VerifiedSignedTransaction, VerifiedTransaction},
@@ -29,8 +30,7 @@ use types::{
 use crate::{
     epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration,
-    state_accumulator::{AccumulatorStore, CommitIndex},
-    store_tables::{AuthorityPerpetualTables, LiveObject, StoreObject},
+    store_tables::{AuthorityPerpetualTables, StoreObject},
 };
 
 pub struct AuthorityStore {

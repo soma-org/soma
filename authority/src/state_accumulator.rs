@@ -3,39 +3,19 @@ use std::sync::Arc;
 use fastcrypto::hash::MultisetHash;
 use tracing::{debug, info};
 use types::{
-    accumulator::Accumulator,
+    accumulator::{Accumulator, AccumulatorStore, CommitIndex},
     committee::EpochId,
     digests::{ECMHLiveObjectSetDigest, ObjectDigest},
     effects::{TransactionEffects, TransactionEffectsAPI},
     error::SomaResult,
+    object::LiveObject,
     storage::object_store::ObjectStore,
 };
 
-use crate::{epoch_store::AuthorityPerEpochStore, store_tables::LiveObject};
-
-pub type CommitIndex = u64;
+use crate::epoch_store::AuthorityPerEpochStore;
 
 pub struct StateAccumulator {
     store: Arc<dyn AccumulatorStore>,
-}
-
-pub trait AccumulatorStore: ObjectStore + Send + Sync {
-    fn get_root_state_accumulator_for_commit(
-        &self,
-        commit: CommitIndex,
-    ) -> SomaResult<Option<Accumulator>>;
-
-    fn get_root_state_accumulator_for_highest_commit(
-        &self,
-    ) -> SomaResult<Option<(CommitIndex, Accumulator)>>;
-
-    fn insert_state_accumulator_for_commit(
-        &self,
-        commit: &CommitIndex,
-        acc: &Accumulator,
-    ) -> SomaResult;
-
-    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_>;
 }
 
 impl StateAccumulator {

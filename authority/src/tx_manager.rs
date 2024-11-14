@@ -8,15 +8,13 @@ use parking_lot::RwLock;
 use tokio::{sync::mpsc::UnboundedSender, time::Instant};
 use tracing::{instrument, trace, warn};
 use types::{
+    accumulator::CommitIndex,
     committee::EpochId,
     digests::{TransactionDigest, TransactionEffectsDigest},
     transaction::{VerifiedCertificate, VerifiedExecutableTransaction},
 };
 
-use crate::{
-    cache::TransactionCacheRead, epoch_store::AuthorityPerEpochStore,
-    state_accumulator::CommitIndex,
-};
+use crate::{cache::TransactionCacheRead, epoch_store::AuthorityPerEpochStore};
 
 /// Minimum capacity of HashMaps used in TransactionManager.
 const MIN_HASHMAP_CAPACITY: usize = 1000;

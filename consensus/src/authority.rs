@@ -24,9 +24,15 @@ use crate::{
     synchronizer::{Synchronizer, SynchronizerHandle},
     transaction::{TransactionClient, TransactionConsumer, TransactionVerifier},
 };
-use types::committee::{AuthorityIndex, ConsensusCommittee as Committee};
-use types::crypto::{NetworkKeyPair, ProtocolKeyPair};
 use types::parameters::Parameters;
+use types::{
+    accumulator,
+    committee::{AuthorityIndex, ConsensusCommittee as Committee},
+};
+use types::{
+    accumulator::AccumulatorStore,
+    crypto::{NetworkKeyPair, ProtocolKeyPair},
+};
 
 pub struct ConsensusAuthority {
     context: Arc<Context>,
@@ -51,6 +57,7 @@ impl ConsensusAuthority {
         network_keypair: NetworkKeyPair,
         transaction_verifier: Arc<dyn TransactionVerifier>,
         commit_consumer: CommitConsumer,
+        accumulator_store: Arc<dyn AccumulatorStore>,
     ) -> Self {
         info!(
             "Starting consensus authority {}\n{:#?}\n{:#?}",
@@ -88,6 +95,7 @@ impl ConsensusAuthority {
         let block_verifier = Arc::new(SignedBlockVerifier::new(
             context.clone(),
             transaction_verifier,
+            accumulator_store.clone(),
         ));
 
         let block_manager =
@@ -114,6 +122,7 @@ impl ConsensusAuthority {
             core_signals,
             protocol_keypair,
             dag_state.clone(),
+            accumulator_store.clone(),
         );
 
         let (core_dispatcher, core_thread_handle) =
@@ -205,6 +214,7 @@ mod tests {
     use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
     use crate::local_committee_and_keys;
+    use accumulator::TestAccumulatorStore;
     use tempfile::TempDir;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
     use tokio::time::sleep;
@@ -241,6 +251,7 @@ mod tests {
             network_keypair,
             Arc::new(txn_verifier),
             commit_consumer,
+            Arc::new(TestAccumulatorStore::default()),
         )
         .await;
 
@@ -503,6 +514,7 @@ mod tests {
             network_keypair,
             Arc::new(txn_verifier),
             commit_consumer,
+            Arc::new(TestAccumulatorStore::default()),
         )
         .await;
         (authority, receiver)

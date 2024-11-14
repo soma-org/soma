@@ -14,12 +14,15 @@ use crate::{
     ensure,
     error::{ConsensusError, ConsensusResult},
 };
-use types::committee::{AuthorityIndex, Epoch};
 use types::crypto::{
     DefaultHash as DefaultHashFunction, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey,
     DIGEST_LENGTH,
 };
 use types::intent::{Intent, IntentMessage, IntentScope};
+use types::{
+    accumulator::{Accumulator, CommitIndex},
+    committee::{AuthorityIndex, Epoch},
+};
 
 pub type Round = u32;
 
@@ -47,6 +50,26 @@ impl Transaction {
     }
 }
 
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+pub struct StateCommit {
+    commit: CommitIndex,
+    state_hash: Accumulator,
+}
+
+impl StateCommit {
+    pub fn new(commit: CommitIndex, state_hash: Accumulator) -> Self {
+        Self { commit, state_hash }
+    }
+
+    pub fn commit(&self) -> CommitIndex {
+        self.commit
+    }
+
+    pub fn state_hash(&self) -> &Accumulator {
+        &self.state_hash
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Block {
     epoch: Epoch,
@@ -56,6 +79,7 @@ pub struct Block {
     ancestors: Vec<BlockRef>,
     transactions: Vec<Transaction>,
     commit_votes: Vec<CommitVote>,
+    state_commit: Option<StateCommit>,
 }
 
 impl Block {
@@ -67,6 +91,7 @@ impl Block {
         ancestors: Vec<BlockRef>,
         transactions: Vec<Transaction>,
         commit_votes: Vec<CommitVote>,
+        state_commit: Option<StateCommit>,
     ) -> Block {
         Self {
             epoch,
@@ -76,6 +101,7 @@ impl Block {
             ancestors,
             transactions,
             commit_votes,
+            state_commit,
         }
     }
 
@@ -88,6 +114,7 @@ impl Block {
             ancestors: vec![],
             transactions: vec![],
             commit_votes: vec![],
+            state_commit: None,
         }
     }
 }
@@ -101,6 +128,7 @@ pub trait BlockAPI {
     fn ancestors(&self) -> &[BlockRef];
     fn transactions(&self) -> &[Transaction];
     fn commit_votes(&self) -> &[CommitVote];
+    fn state_commit(&self) -> Option<&StateCommit>;
 }
 
 impl BlockAPI for Block {
@@ -134,6 +162,10 @@ impl BlockAPI for Block {
 
     fn commit_votes(&self) -> &[CommitVote] {
         &self.commit_votes
+    }
+
+    fn state_commit(&self) -> Option<&StateCommit> {
+        self.state_commit.as_ref()
     }
 }
 

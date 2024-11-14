@@ -368,7 +368,12 @@ impl SomaNode {
             epoch_store.protocol_config().clone(),
             client.clone(),
         ));
-        let consensus_manager = ConsensusManager::new(&config, consensus_config, client);
+        let consensus_manager = ConsensusManager::new(
+            &config,
+            consensus_config,
+            client,
+            state.get_accumulator_store().clone(),
+        );
 
         // This only gets started up once, not on every epoch. (Make call to remove every epoch.)
         // let consensus_store_pruner = ConsensusStorePruner::new(

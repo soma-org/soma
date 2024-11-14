@@ -6,12 +6,12 @@ use std::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use types::{
-    accumulator::Accumulator,
+    accumulator::{Accumulator, CommitIndex},
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
     error::{SomaError, SomaResult},
-    object::{Object, ObjectID, ObjectInner, ObjectRef, Version},
+    object::{LiveObject, Object, ObjectID, ObjectInner, ObjectRef, Version},
     storage::{object_store::ObjectStore, ObjectKey},
     system_state::EpochStartSystemStateTrait,
     transaction::TrustedTransaction,
@@ -19,7 +19,6 @@ use types::{
 
 use crate::{
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    state_accumulator::CommitIndex,
     store::LockDetails,
 };
 
@@ -362,37 +361,6 @@ pub struct LiveSetIter<'a> {
     iter: BTreeMap<ObjectKey, StoreObject>,
     tables: &'a AuthorityPerpetualTables,
     prev: Option<(ObjectKey, StoreObject)>,
-}
-
-#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash)]
-pub enum LiveObject {
-    Normal(Object),
-}
-
-impl LiveObject {
-    pub fn object_id(&self) -> ObjectID {
-        match self {
-            LiveObject::Normal(obj) => obj.id(),
-        }
-    }
-
-    pub fn version(&self) -> Version {
-        match self {
-            LiveObject::Normal(obj) => obj.version(),
-        }
-    }
-
-    pub fn object_reference(&self) -> ObjectRef {
-        match self {
-            LiveObject::Normal(obj) => obj.compute_object_reference(),
-        }
-    }
-
-    pub fn to_normal(self) -> Option<Object> {
-        match self {
-            LiveObject::Normal(object) => Some(object),
-        }
-    }
 }
 
 impl LiveSetIter<'_> {

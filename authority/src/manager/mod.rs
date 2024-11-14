@@ -7,6 +7,7 @@ use mysticeti_manager::MysticetiManager;
 use tokio::time::{sleep, timeout};
 use tracing::info;
 use types::{
+    accumulator::AccumulatorStore,
     committee::EpochId,
     consensus::ConsensusTransaction,
     error::SomaResult,
@@ -56,6 +57,7 @@ impl ConsensusManager {
         node_config: &NodeConfig,
         consensus_config: &ConsensusConfig,
         consensus_client: Arc<ConsensusClient>,
+        accumulator_store: Arc<dyn AccumulatorStore>,
     ) -> Self {
         let mysticeti_client = Arc::new(LazyMysticetiClient::new());
         let mysticeti_manager = MysticetiManager::new(
@@ -63,6 +65,7 @@ impl ConsensusManager {
             node_config.network_key_pair().into_inner(),
             consensus_config.db_path().to_path_buf(),
             mysticeti_client.clone(),
+            accumulator_store,
         );
         Self {
             consensus_config: consensus_config.clone(),

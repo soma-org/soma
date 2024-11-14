@@ -17,9 +17,7 @@
 
 use crate::{
     epoch_store::AuthorityPerEpochStore,
-    state_accumulator::{AccumulatorStore, CommitIndex},
     store::{AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus},
-    store_tables::LiveObject,
 };
 use core::hash::Hash;
 use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};
@@ -30,13 +28,13 @@ use std::sync::Arc;
 use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
-    accumulator::Accumulator,
+    accumulator::{Accumulator, AccumulatorStore, CommitIndex},
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
     envelope::Message,
     error::{SomaError, SomaResult},
-    object::{Object, ObjectID, ObjectRef, Version},
+    object::{LiveObject, Object, ObjectID, ObjectRef, Version},
     storage::{object_store::ObjectStore, ObjectKey, ObjectOrTombstone},
     system_state::{get_system_state, SystemState},
     transaction::VerifiedTransaction,

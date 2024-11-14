@@ -539,20 +539,20 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 tokio::pin!(timer);
 
                 let process_blocks = |blocks: Vec<Bytes>, authority_index: AuthorityIndex| -> ConsensusResult<Vec<VerifiedBlock>> {
-                                    let mut result = Vec::new();
-                                    for serialized_block in blocks {
-                                        let signed_block = bcs::from_bytes(&serialized_block).map_err(ConsensusError::MalformedBlock)?;
-                                        block_verifier.verify(&signed_block).tap_err(|err|{
-                                            warn!("Invalid block received from {}: {}", authority_index, err);
-                                        })?;
+                    let mut result = Vec::new();
+                    for serialized_block in blocks {
+                        let signed_block = bcs::from_bytes(&serialized_block).map_err(ConsensusError::MalformedBlock)?;
+                        block_verifier.verify(&signed_block).tap_err(|err|{
+                            warn!("Invalid block received from {}: {}", authority_index, err);
+                        })?;
 
-                                        let verified_block = VerifiedBlock::new_verified(signed_block, serialized_block);
-                                        if verified_block.author() != context.own_index {
-                                            return Err(ConsensusError::UnexpectedLastOwnBlock { index: authority_index, block_ref: verified_block.reference()});
-                                        }
-                                        result.push(verified_block);
-                                    }
-                                    Ok(result)
+                        let verified_block = VerifiedBlock::new_verified(signed_block, serialized_block);
+                        if verified_block.author() != context.own_index {
+                            return Err(ConsensusError::UnexpectedLastOwnBlock { index: authority_index, block_ref: verified_block.reference()});
+                        }
+                        result.push(verified_block);
+                    }
+                    Ok(result)
                 };
 
                 // Get the highest of all the results

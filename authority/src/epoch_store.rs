@@ -16,7 +16,7 @@ use futures::{
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, info, instrument, warn};
 use types::{
-    accumulator::Accumulator,
+    accumulator::{Accumulator, CommitIndex},
     base::{AuthorityName, ConciseableName, Round, SomaAddress},
     committee::{Committee, EpochId},
     consensus::{
@@ -57,7 +57,6 @@ use crate::{
     signature_verifier::SignatureVerifier,
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    state_accumulator::CommitIndex,
     store::LockDetails,
 };
 

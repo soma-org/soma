@@ -3,6 +3,7 @@ use std::sync::Arc;
 use futures::{future::BoxFuture, FutureExt};
 use tracing::debug;
 use types::{
+    accumulator::AccumulatorStore,
     committee::EpochId,
     digests::{TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
@@ -17,7 +18,6 @@ use writeback_cache::WritebackCache;
 
 use crate::{
     epoch_store::AuthorityPerEpochStore,
-    state_accumulator::AccumulatorStore,
     store::{AuthorityStore, LockResult},
 };
 

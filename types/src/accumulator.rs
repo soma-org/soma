@@ -1,4 +1,73 @@
+use crate::{
+    error::SomaResult,
+    object::{LiveObject, Object, ObjectID, Version},
+    storage::{object_store::ObjectStore, storage_error},
+};
+
 pub type Accumulator = fastcrypto::hash::EllipticCurveMultisetHash;
+pub type CommitIndex = u64;
+pub trait AccumulatorStore: ObjectStore + Send + Sync {
+    fn get_root_state_accumulator_for_commit(
+        &self,
+        commit: CommitIndex,
+    ) -> SomaResult<Option<Accumulator>>;
+
+    fn get_root_state_accumulator_for_highest_commit(
+        &self,
+    ) -> SomaResult<Option<(CommitIndex, Accumulator)>>;
+
+    fn insert_state_accumulator_for_commit(
+        &self,
+        commit: &CommitIndex,
+        acc: &Accumulator,
+    ) -> SomaResult;
+
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_>;
+}
+
+#[derive(Default, Clone)]
+pub struct TestAccumulatorStore {}
+
+impl ObjectStore for TestAccumulatorStore {
+    fn get_object(&self, object_id: &ObjectID) -> storage_error::Result<Option<Object>> {
+        Ok(None)
+    }
+
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: Version,
+    ) -> storage_error::Result<Option<Object>> {
+        Ok(None)
+    }
+}
+
+impl AccumulatorStore for TestAccumulatorStore {
+    fn get_root_state_accumulator_for_commit(
+        &self,
+        _commit: CommitIndex,
+    ) -> SomaResult<Option<Accumulator>> {
+        Ok(None)
+    }
+
+    fn get_root_state_accumulator_for_highest_commit(
+        &self,
+    ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
+        Ok(None)
+    }
+
+    fn insert_state_accumulator_for_commit(
+        &self,
+        _commit: &CommitIndex,
+        _acc: &Accumulator,
+    ) -> SomaResult {
+        Ok(())
+    }
+
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        Box::new(std::iter::empty())
+    }
+}
 
 #[cfg(test)]
 mod tests {

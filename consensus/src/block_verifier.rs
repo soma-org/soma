@@ -1,5 +1,10 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+use fastcrypto::hash::MultisetHash;
+use tokio::task::watch::error;
+use tracing::{error, info};
+use types::accumulator::{self, AccumulatorStore};
+
 use crate::{
     block::{
         genesis_blocks, BlockAPI as _, BlockRef, BlockTimestampMs, SignedBlock, VerifiedBlock,
@@ -36,12 +41,14 @@ pub(crate) struct SignedBlockVerifier {
     context: Arc<Context>,
     genesis: BTreeSet<BlockRef>,
     transaction_verifier: Arc<dyn TransactionVerifier>,
+    accumulator_store: Arc<dyn AccumulatorStore>,
 }
 
 impl SignedBlockVerifier {
     pub(crate) fn new(
         context: Arc<Context>,
         transaction_verifier: Arc<dyn TransactionVerifier>,
+        accumulator_store: Arc<dyn AccumulatorStore>,
     ) -> Self {
         let genesis = genesis_blocks(context.clone())
             .into_iter()
@@ -51,6 +58,7 @@ impl SignedBlockVerifier {
             context,
             genesis,
             transaction_verifier,
+            accumulator_store,
         }
     }
 }
@@ -79,6 +87,33 @@ impl BlockVerifier for SignedBlockVerifier {
 
         // Verify the block's signature.
         block.verify_signature(&self.context)?;
+
+        // If the block contains a state commit, verify the accumulator.
+        if let Some(state_commit) = block.state_commit() {
+            let accumulator = self
+                .accumulator_store
+                .get_root_state_accumulator_for_commit(state_commit.commit());
+            if let Ok(Some(stored_state_hash)) = accumulator {
+                if stored_state_hash != *state_commit.state_hash() {
+                    error!(
+                        "State hash mismatch: expected {:?}, actual {:?}",
+                        stored_state_hash.digest(),
+                        state_commit.state_hash().digest()
+                    );
+                    return Err(ConsensusError::InvalidStateHash {
+                        expected: stored_state_hash.digest(),
+                        actual: state_commit.state_hash().digest(),
+                    });
+                } else {
+                    info!(
+                        "State hash matches the stored state hash. {:?}",
+                        stored_state_hash.digest()
+                    );
+                }
+            } else {
+                info!("State hash not found in the accumulator store.");
+            }
+        }
 
         // Verify the block's ancestor refs are consistent with the block's round,
         // and total parent stakes reach quorum.
