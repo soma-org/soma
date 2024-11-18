@@ -25,73 +25,70 @@ impl PythonInterpreter {
         project_root: &Path,
         python_interpreter: &Path,
     ) -> ShardResult<Self> {
-
-    let site_packages_path = find_site_packages_path(virtual_environment).ok_or_else(|| {
-        ShardError::PathError("Invalid UTF-8 in site-packages path".to_string())
-    })?;
-
-    let python_path = format!(
-        "{}:{}",
-        site_packages_path
-            .to_str()
-            .ok_or_else(|| ShardError::PathError(
-                "Invalid UTF-8 in site-packages path".to_string()
-            ))?,
-        project_root.to_str().ok_or_else(|| ShardError::PathError(
-            "Invalid UTF-8 in project root path".to_string()
-        ))?
-    );
-    // SAFETY: setting environment variables in multi-threaded programs is considered unsafe.
-    // since this is called prior to any multi-threaded execution of the program, usage is acceptable.
-    #[allow(unsafe_code)]
-    unsafe {
-        // sets the python interpreter to the interpreter in the virtual environment
-        env::set_var("PYO3_PYTHON", &python_interpreter);
-        // sets where the interpreter should look when importing in python
-        env::set_var("PYTHONPATH", python_path);
-    }
-    // initialize py03
-    pyo3::prepare_freethreaded_python();
-
-    Ok(Self{})
-}
-
-fn new_module(
-    &self,
-    entry_point: &Path,
-) -> ShardResult<PythonModule> {
-    let entry_point_code = std::fs::read_to_string(&entry_point).map_err(|e| {
-        ShardError::FailedLoadingPythonModule(format!("Failed to read entry point file: {}", e))
-    })?;
-
-    let module: GILOnceCell<PyObject> = GILOnceCell::new();
-
-    Python::with_gil(|py| -> ShardResult<()> {
-        module.get_or_try_init(py, || -> Result<PyObject, ShardError> {
-            // TODO: change file name module to match the file provided by the 3rd party developer
-            let py_module = PyModule::from_code_bound(py, &entry_point_code, "", "main")
-                .map_err(|e| {
-                    ShardError::FailedLoadingPythonModule(format!("Failed to load module: {}", e))
-                })?;
-
-            let attr = py_module.getattr(REGISTERED_MODULE_ATTR).map_err(|e| {
-                ShardError::FailedLoadingPythonModule(format!("Failed to get attribute: {}", e))
-            })?;
-
-            let result = attr.call0().map_err(|e| {
-                ShardError::FailedLoadingPythonModule(format!("Constructor failed: {}", e))
-            })?;
-
-            Ok(result.into())
+        let site_packages_path = find_site_packages_path(virtual_environment).ok_or_else(|| {
+            ShardError::PathError("Invalid UTF-8 in site-packages path".to_string())
         })?;
 
-        Ok(())
-    })?;
+        let python_path = format!(
+            "{}:{}",
+            site_packages_path
+                .to_str()
+                .ok_or_else(|| ShardError::PathError(
+                    "Invalid UTF-8 in site-packages path".to_string()
+                ))?,
+            project_root.to_str().ok_or_else(|| ShardError::PathError(
+                "Invalid UTF-8 in project root path".to_string()
+            ))?
+        );
+        // SAFETY: setting environment variables in multi-threaded programs is considered unsafe.
+        // since this is called prior to any multi-threaded execution of the program, usage is acceptable.
+        #[allow(unsafe_code)]
+        unsafe {
+            // sets the python interpreter to the interpreter in the virtual environment
+            env::set_var("PYO3_PYTHON", &python_interpreter);
+            // sets where the interpreter should look when importing in python
+            env::set_var("PYTHONPATH", python_path);
+        }
+        // initialize py03
+        pyo3::prepare_freethreaded_python();
 
-    Ok(PythonModule { module })
+        Ok(Self {})
+    }
 
-}
+    fn new_module(&self, entry_point: &Path) -> ShardResult<PythonModule> {
+        let entry_point_code = std::fs::read_to_string(&entry_point).map_err(|e| {
+            ShardError::FailedLoadingPythonModule(format!("Failed to read entry point file: {}", e))
+        })?;
 
+        let module: GILOnceCell<PyObject> = GILOnceCell::new();
+
+        Python::with_gil(|py| -> ShardResult<()> {
+            module.get_or_try_init(py, || -> Result<PyObject, ShardError> {
+                // TODO: change file name module to match the file provided by the 3rd party developer
+                let py_module = PyModule::from_code_bound(py, &entry_point_code, "", "main")
+                    .map_err(|e| {
+                        ShardError::FailedLoadingPythonModule(format!(
+                            "Failed to load module: {}",
+                            e
+                        ))
+                    })?;
+
+                let attr = py_module.getattr(REGISTERED_MODULE_ATTR).map_err(|e| {
+                    ShardError::FailedLoadingPythonModule(format!("Failed to get attribute: {}", e))
+                })?;
+
+                let result = attr.call0().map_err(|e| {
+                    ShardError::FailedLoadingPythonModule(format!("Constructor failed: {}", e))
+                })?;
+
+                Ok(result.into())
+            })?;
+
+            Ok(())
+        })?;
+
+        Ok(PythonModule { module })
+    }
 }
 pub struct PythonModule {
     module: GILOnceCell<PyObject>,
@@ -117,11 +114,15 @@ impl PythonModule {
             let array = result.downcast_bound::<PyArrayDyn<f32>>(py).map_err(|e| {
                 ShardError::FailedCallingPythonModule(format!("Failed to convert result: {}", e))
             })?;
-            let input_batch_size: &usize = input.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
+            let input_batch_size: &usize =
+                input.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
             let output_batch_size = array.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
 
             if input_batch_size != output_batch_size {
-                return Err(ShardError::BatchSizeMismatch(format!("got: {}, expected: {}", output_batch_size, input_batch_size)))
+                return Err(ShardError::BatchSizeMismatch(format!(
+                    "got: {}, expected: {}",
+                    output_batch_size, input_batch_size
+                )));
             }
             // TODO: add runtime check to ensure the size of the embedding is correct
             Ok(array.to_owned_array())

@@ -23,10 +23,10 @@ impl Module {
 }
 
 #[pyfunction]
-fn register<'py, 'a>(class: &'a Bound<'py, PyType>) -> PyResult<&'a Bound<'py, PyType>> {    
+fn register<'py, 'a>(class: &'a Bound<'py, PyType>) -> PyResult<&'a Bound<'py, PyType>> {
     if !class.is_subclass_of::<Module>()? {
         return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-            "Class must be a subclass of soma Module"
+            "Class must be a subclass of soma Module",
         ));
     }
 
