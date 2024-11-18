@@ -1,4 +1,4 @@
-mod python;
+pub(crate) mod python;
 
 use crate::{error::ShardResult, types::checksum::Checksum};
 

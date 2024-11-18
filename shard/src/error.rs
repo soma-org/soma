@@ -49,8 +49,17 @@ pub(crate) enum ShardError {
     #[error("Contacting peer is unauthorized")]
     UnauthorizedPeer,
 
+
     #[error("Failed loading python code: {0}")]
-    FailedLoadingPythonCode(String),
+    FailedLoadingPythonModule(String),
+    #[error("Provided path failed: {0}")]
+    PathError(String),
+    #[error("Calling module failed: {0}")]
+    FailedCallingPythonModule(String),
+    #[error("Input batch size does not match output batch size: {0}")]
+    BatchSizeMismatch(String),
+    #[error("Could not get the shape of the array")]
+    ArrayShapeError,
     // #[error(
     //     "Expected {requested} but received {received} blocks returned from authority {authority}"
     // )]

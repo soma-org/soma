@@ -30,6 +30,7 @@ tower.workspace = true
 aes.workspace = true
 crypto-common.workspace = true
 pyo3.workspace = true
+numpy.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

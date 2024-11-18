@@ -1,134 +1,147 @@
-use std::env;
-use std::path::{Path, PathBuf};
+use pyo3::{
+    sync::GILOnceCell,
+    types::{PyAnyMethods, PyModule},
+    PyObject, Python,
+};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
-use pyo3::prelude::*;
-use pyo3::{sync::GILOnceCell, PyAny};
+use numpy::{
+    ndarray::{Array, ArrayD},
+    IxDyn, PyArrayDyn, PyArrayMethods, PyUntypedArrayMethods,
+};
 
 use crate::error::{ShardError, ShardResult};
 
-use super::{DataRefs, Model};
+pub const REGISTERED_MODULE_ATTR: &str = "__REGISTERED_MODULE__";
 
-/// Selects the storage backend to be used
-pub(crate) enum StorageBackend {
-    /// contains the specific path to use
-    Filesystem(String),
-}
+pub(crate) struct PythonInterpreter {}
 
-/// Python related details for interfacing uniquely
-pub(crate) struct PythonModel {
-    /// Specifies where data is physically stored. Since data is passed via
-    /// the storage backend, it is crucial that both the rust and python programs
-    /// have the same storage backend.
-    storage_backend: StorageBackend,
-    /// The path to the .venv directory
-    virtual_environment: PathBuf,
-    /// The root of the python project
-    project_root: PathBuf,
-    /// The file that contains the correctly wrapped python class
-    entry_point: PathBuf,
-    /// The python interpreter using the specified virtual env
-    python_interpreter: PathBuf,
-    /// contains an active module wrapper after initialization
-    module_wrapper: Option<GILOnceCell<Option<Py<PyAny>>>>,
-}
-
-impl PythonModel {
-    /// creates a new python model adapter
+impl PythonInterpreter {
     fn new(
-        storage_backend: StorageBackend,
-        virtual_environment: PathBuf,
-        project_root: PathBuf,
-        entry_point: PathBuf,
-        python_interpreter: PathBuf,
-    ) -> Self {
-        // TODO: find site packages using the .venv location and add to python path
-        let python_path = &project_root;
+        virtual_environment: &Path,
+        project_root: &Path,
+        python_interpreter: &Path,
+    ) -> ShardResult<Self> {
 
-        // SAFETY: setting environment variables in multi-threaded programs is considered unsafe.
-        // since this is called prior to any multi-threaded execution of the program, usage is acceptable.
-        #[allow(unsafe_code)]
-        unsafe {
-            // sets the python interpreter to the interpreter in the virtual environment
-            env::set_var("PYO3_PYTHON", &python_interpreter);
-            // sets where the interpreter should look when importing in python
-            env::set_var("PYTHONPATH", python_path);
-        }
+    let site_packages_path = find_site_packages_path(virtual_environment).ok_or_else(|| {
+        ShardError::PathError("Invalid UTF-8 in site-packages path".to_string())
+    })?;
 
-        // initialize py03
-        pyo3::prepare_freethreaded_python();
-
-        Self {
-            storage_backend,
-            virtual_environment,
-            project_root,
-            entry_point,
-            python_interpreter,
-            module_wrapper: None,
-        }
+    let python_path = format!(
+        "{}:{}",
+        site_packages_path
+            .to_str()
+            .ok_or_else(|| ShardError::PathError(
+                "Invalid UTF-8 in site-packages path".to_string()
+            ))?,
+        project_root.to_str().ok_or_else(|| ShardError::PathError(
+            "Invalid UTF-8 in project root path".to_string()
+        ))?
+    );
+    // SAFETY: setting environment variables in multi-threaded programs is considered unsafe.
+    // since this is called prior to any multi-threaded execution of the program, usage is acceptable.
+    #[allow(unsafe_code)]
+    unsafe {
+        // sets the python interpreter to the interpreter in the virtual environment
+        env::set_var("PYO3_PYTHON", &python_interpreter);
+        // sets where the interpreter should look when importing in python
+        env::set_var("PYTHONPATH", python_path);
     }
+    // initialize py03
+    pyo3::prepare_freethreaded_python();
+
+    Ok(Self{})
 }
 
-// TODO: improve the concrete typing of the python class / methods / args
-// TODO: add more specific shard error types
-// TODO: define the attribute / method names as constants defined outside of the functions
-impl Model for PythonModel {
-    fn init(&mut self) -> ShardResult<()> {
-        let entry_point_code = std::fs::read_to_string(&self.entry_point).map_err(|e| {
-            ShardError::FailedLoadingPythonCode(format!("Failed to read entry point file: {}", e))
-        })?;
+fn new_module(
+    &self,
+    entry_point: &Path,
+) -> ShardResult<PythonModule> {
+    let entry_point_code = std::fs::read_to_string(&entry_point).map_err(|e| {
+        ShardError::FailedLoadingPythonModule(format!("Failed to read entry point file: {}", e))
+    })?;
 
-        let module_wrapper = GILOnceCell::new();
+    let module: GILOnceCell<PyObject> = GILOnceCell::new();
 
-        Python::with_gil(|py| -> ShardResult<()> {
-            module_wrapper.get_or_init(py, || {
-                // Use Option to represent potential failure
-                PyModule::from_code_bound(py, &entry_point_code, "", "")
-                    .and_then(|py_module| py_module.getattr("Wrapper"))
-                    .and_then(|wrapper| wrapper.call0())
-                    .map(|instance| Some(instance.into()))
-                    .unwrap_or(None)
-            });
-
-            // Check if we got a valid wrapper
-            match module_wrapper.get(py).and_then(|w| w.as_ref()) {
-                Some(_) => {
-                    self.module_wrapper = Some(module_wrapper);
-                    Ok(())
-                }
-                None => Err(ShardError::FailedLoadingPythonCode(
-                    "Module wrapper initialization failed".to_string(),
-                )),
-            }
-        })
-    }
-
-    fn call(&self, input: DataRefs) -> ShardResult<DataRefs> {
-        Python::with_gil(|py| {
-            //TODO: have concrete typing rather than using the PyAny
-            let _py_result = self
-                .module_wrapper
-                .as_ref()
-                .ok_or_else(|| {
-                    ShardError::FailedLoadingPythonCode("Module wrapper not initialized".into())
-                })?
-                .get(py)
-                .and_then(|wrapper| wrapper.as_ref())
-                .ok_or_else(|| {
-                    ShardError::FailedLoadingPythonCode("Python instance not available".into())
-                })?
-                //TODO: change method and add args
-                .call_method0(py, "process_data")
+    Python::with_gil(|py| -> ShardResult<()> {
+        module.get_or_try_init(py, || -> Result<PyObject, ShardError> {
+            // TODO: change file name module to match the file provided by the 3rd party developer
+            let py_module = PyModule::from_code_bound(py, &entry_point_code, "", "main")
                 .map_err(|e| {
-                    ShardError::FailedLoadingPythonCode(format!(
-                        "Failed to call Python method: {}",
-                        e
-                    ))
+                    ShardError::FailedLoadingPythonModule(format!("Failed to load module: {}", e))
                 })?;
 
-            // map the result to data refs
+            let attr = py_module.getattr(REGISTERED_MODULE_ATTR).map_err(|e| {
+                ShardError::FailedLoadingPythonModule(format!("Failed to get attribute: {}", e))
+            })?;
 
-            // Ok(result)
-            Ok(DataRefs::default())
+            let result = attr.call0().map_err(|e| {
+                ShardError::FailedLoadingPythonModule(format!("Constructor failed: {}", e))
+            })?;
+
+            Ok(result.into())
+        })?;
+
+        Ok(())
+    })?;
+
+    Ok(PythonModule { module })
+
+}
+
+}
+pub struct PythonModule {
+    module: GILOnceCell<PyObject>,
+}
+
+impl PythonModule {
+    fn call(&self, input: &ArrayD<f32>) -> ShardResult<ArrayD<f32>> {
+        Python::with_gil(|py| -> ShardResult<ArrayD<f32>> {
+            let module = self.module.get(py).ok_or_else(|| {
+                ShardError::FailedCallingPythonModule(
+                    "Could not get registered module from GIL".to_string(),
+                )
+            })?;
+
+            let py_input = PyArrayDyn::from_array_bound(py, input);
+
+            let result = module
+                .call_method1(py, "__call__", (py_input,))
+                .map_err(|e| {
+                    ShardError::FailedCallingPythonModule(format!("call_method1 failed: {}", e))
+                })?;
+
+            let array = result.downcast_bound::<PyArrayDyn<f32>>(py).map_err(|e| {
+                ShardError::FailedCallingPythonModule(format!("Failed to convert result: {}", e))
+            })?;
+            let input_batch_size: &usize = input.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
+            let output_batch_size = array.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
+
+            if input_batch_size != output_batch_size {
+                return Err(ShardError::BatchSizeMismatch(format!("got: {}, expected: {}", output_batch_size, input_batch_size)))
+            }
+            // TODO: add runtime check to ensure the size of the embedding is correct
+            Ok(array.to_owned_array())
         })
     }
+}
+
+fn find_site_packages_path(venv_path: &Path) -> Option<PathBuf> {
+    let lib_path = venv_path.join("lib");
+    let entries = std::fs::read_dir(&lib_path).ok()?;
+
+    for entry in entries {
+        let entry = entry.ok()?;
+        if entry.file_type().ok()?.is_dir() {
+            let site_packages_path = entry.path().join("site-packages");
+            if site_packages_path.exists() {
+                return Some(site_packages_path);
+            }
+        }
+    }
+
+    None
 }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["cli", "shard"]
+members = ["cli", "shard", "soma-python"]
 
 [workspace.lints.rust]
 unsafe_code = "warn"
@@ -21,9 +21,7 @@ broken_intra_doc_links = "deny"
 private_intra_doc_links = "warn"
 
 [workspace.dependencies]
-# workspace deps
-macros = { path = "macros" }
-
+shard = { path = "shard" }
 # external deps
 tokio = { version = "1.0", features = ["full"] }
 bcs = "0.1.6"
@@ -51,4 +49,6 @@ tower-http = { version = "0.5.1", features = ["full"] }
 tonic-build = "0.12.2"
 aes = "0.8.4"
 crypto-common = "0.1.6"
-pyo3 = "0.22.6"
+pyo3 = "0.22"
+numpy = "0.22.1"
+
