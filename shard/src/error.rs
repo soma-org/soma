@@ -49,7 +49,6 @@ pub(crate) enum ShardError {
     #[error("Contacting peer is unauthorized")]
     UnauthorizedPeer,
 
-
     #[error("Failed loading python code: {0}")]
     FailedLoadingPythonModule(String),
     #[error("Provided path failed: {0}")]
@@ -179,6 +178,8 @@ pub(crate) enum ShardError {
     //     requested: BlockRef,
     //     received: BlockRef,
     // },
+    #[error("Error with IO: {0}")]
+    IOError(String),
 
     // #[error("RocksDB failure: {0}")]
     // RocksDBFailure(#[from] TypedStoreError),
