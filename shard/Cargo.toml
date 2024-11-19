@@ -28,6 +28,7 @@ tower-http.workspace = true
 parking_lot.workspace = true
 tower.workspace = true
 aes.workspace = true
+ctr.workspace = true
 crypto-common.workspace = true
 pyo3.workspace = true
 numpy.workspace = true
