@@ -101,6 +101,12 @@ pub(crate) enum ShardError {
     #[error("Failed to verify the block's signature: {0}")]
     SignatureVerificationFailure(FastCryptoError),
 
+    #[error("Failed building reqwest client")]
+    FailedBuildingHttpClient,
+
+    #[error("Failed to parse URL: {0}")]
+    UrlParseError(String),
+
     // #[error("Synchronizer for fetching blocks directly from {0} is saturated")]
     // SynchronizerSaturated(AuthorityIndex),
 

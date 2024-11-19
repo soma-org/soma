@@ -31,6 +31,8 @@ aes.workspace = true
 crypto-common.workspace = true
 pyo3.workspace = true
 numpy.workspace = true
+reqwest.workspace = true
+axum.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

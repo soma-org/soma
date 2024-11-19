@@ -51,4 +51,5 @@ aes = "0.8.4"
 crypto-common = "0.1.6"
 pyo3 = "0.22"
 numpy = "0.22.1"
-
+reqwest = "0.12.9"
+axum = "0.7.9"
