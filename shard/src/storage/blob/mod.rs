@@ -3,10 +3,19 @@ mod filesystem;
 use crate::error::ShardResult;
 use async_trait::async_trait;
 use bytes::Bytes;
-use std::path::Path;
 
 pub(crate) struct BlobPath {
-    path: Path,
+    // TODO: make this better
+    path: String,
+}
+
+impl BlobPath {
+    pub(crate) fn new(path: String) -> ShardResult<Self> {
+        // TODO: add path validation according to a protocol
+        Ok(Self {
+            path
+        })
+    }
 }
 
 #[async_trait]

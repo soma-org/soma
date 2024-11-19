@@ -6,13 +6,13 @@ use crate::{
     types::network_committee::NetworkingIndex,
 };
 use async_trait::async_trait;
-use axum::{http::Response, routing::get, Router};
+use axum::{extract::{Path, State}, http::Response, routing::get, Router};
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 use tokio::sync::oneshot;
 use url::Url;
 
-use super::{BlobNetworkClient, BlobNetworkManager, BlobNetworkService};
+use super::{BlobNetworkClient, BlobNetworkManager, BlobNetworkService, BlobStorageNetworkService};
 
 pub(crate) struct BlobHttpClient {
     client: Client,
@@ -22,7 +22,7 @@ impl BlobHttpClient {
     pub fn new() -> ShardResult<Self> {
         Ok(Self {
             client: Client::builder()
-                .pool_idle_timeout(Duration::from_secs(90))
+                .pool_idle_timeout(Duration::from_secs(60 * 5))
                 .build()
                 .map_err(|_| ShardError::FailedBuildingHttpClient)?,
         })
@@ -69,39 +69,32 @@ impl BlobHttpManager {
 }
 
 
-
-struct BlobHttpServiceProxy<S: BlobNetworkService> {
+#[derive(Clone)]
+struct BlobHttpServiceProxy<S: BlobNetworkService + Clone> {
     service: Arc<S>,
 }
 
-impl<S: BlobNetworkService> BlobHttpServiceProxy<S> {
+impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
     /// Creates the tonic service proxy using pre-established context and service
     const fn new(service: Arc<S>) -> Self {
         Self { service }
     }
 
-    fn router(&self) -> Router {
+    fn router(self) -> Router {
         Router::new()
         // .route("/", get(Self::get_object()))
+        .with_state(self)
+
+    }
+
+    pub async fn get_object(Path(path): Path<String>, State(Self { service, .. }): State<Self>) -> Result<Bytes, StatusCode> {
+        let peer = NetworkingIndex::default();
+        let path = BlobPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
+        Ok(service.handle_get_object(peer, &path).await.map_err(|_| StatusCode::NOT_FOUND)?)
     }
 }
 
-impl<S: BlobNetworkService> BlobHttpServiceProxy<S> {
-    fn get_object(&self) -> Result<Response, StatusCode>  {
-
-        self.service.handle_get_object(peer, path)
-
-        let response = Response::builder()
-        .status(StatusCode::OK)
-        .header("content-type", "application/octet-stream")
-        .body(axum::body::Full::from(bytes))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-
-    }
-}
-
-impl BlobNetworkManager for BlobHttpManager {
+impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager {
     type Client = BlobHttpClient;
 
     fn new() -> Self {
@@ -112,12 +105,13 @@ impl BlobNetworkManager for BlobHttpManager {
         self.client.clone()
     }
 
-    async fn start(&mut self) {
+    async fn start(&mut self, service: Arc<S>) {
         let (tx, rx) = oneshot::channel();
         self.shutdown_tx = Some(tx);
         // TODO: fix to include context and look this up via that rather than hard coding
         let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-        axum::serve(listener, app)
+
+        axum::serve(listener,         BlobHttpServiceProxy::new(service).router())
         .with_graceful_shutdown(async {
             rx.await.ok();
         })
