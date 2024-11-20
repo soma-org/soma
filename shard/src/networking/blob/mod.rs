@@ -5,7 +5,9 @@ use bytes::Bytes;
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    error::ShardResult, storage::blob::{BlobPath, BlobStorage}, types::network_committee::NetworkingIndex,
+    error::ShardResult,
+    storage::blob::{BlobPath, BlobStorage},
+    types::network_committee::NetworkingIndex,
 };
 
 #[async_trait]
@@ -24,12 +26,11 @@ pub(crate) trait BlobNetworkService: Send + Sync + Sized + 'static {
         -> ShardResult<Bytes>;
 }
 
-
 pub(crate) struct BlobStorageNetworkService<S: BlobStorage> {
     blob_storage: Arc<S>,
 }
 
-impl<S:BlobStorage> BlobStorageNetworkService<S> {
+impl<S: BlobStorage> BlobStorageNetworkService<S> {
     fn new(blob_storage: Arc<S>) -> Self {
         Self { blob_storage }
     }
@@ -37,8 +38,11 @@ impl<S:BlobStorage> BlobStorageNetworkService<S> {
 
 #[async_trait]
 impl<S: BlobStorage> BlobNetworkService for BlobStorageNetworkService<S> {
-    async fn handle_get_object(&self, peer: NetworkingIndex, path: &BlobPath)
-    -> ShardResult<Bytes> {
+    async fn handle_get_object(
+        &self,
+        peer: NetworkingIndex,
+        path: &BlobPath,
+    ) -> ShardResult<Bytes> {
         // TODO: handle verification?
         self.blob_storage.get_object(path).await
     }

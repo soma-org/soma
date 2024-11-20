@@ -35,6 +35,7 @@ numpy.workspace = true
 reqwest.workspace = true
 axum.workspace = true
 zstd.workspace = true
+tokio-util.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

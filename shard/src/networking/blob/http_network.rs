@@ -6,7 +6,12 @@ use crate::{
     types::network_committee::NetworkingIndex,
 };
 use async_trait::async_trait;
-use axum::{extract::{Path, State}, http::Response, routing::get, Router};
+use axum::{
+    extract::{Path, State},
+    http::Response,
+    routing::get,
+    Router,
+};
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 use tokio::sync::oneshot;
@@ -68,7 +73,6 @@ impl BlobHttpManager {
     }
 }
 
-
 #[derive(Clone)]
 struct BlobHttpServiceProxy<S: BlobNetworkService + Clone> {
     service: Arc<S>,
@@ -82,15 +86,20 @@ impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
 
     fn router(self) -> Router {
         Router::new()
-        // .route("/", get(Self::get_object()))
-        .with_state(self)
-
+            // .route("/", get(Self::get_object()))
+            .with_state(self)
     }
 
-    pub async fn get_object(Path(path): Path<String>, State(Self { service, .. }): State<Self>) -> Result<Bytes, StatusCode> {
+    pub async fn get_object(
+        Path(path): Path<String>,
+        State(Self { service, .. }): State<Self>,
+    ) -> Result<Bytes, StatusCode> {
         let peer = NetworkingIndex::default();
         let path = BlobPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
-        Ok(service.handle_get_object(peer, &path).await.map_err(|_| StatusCode::NOT_FOUND)?)
+        Ok(service
+            .handle_get_object(peer, &path)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?)
     }
 }
 
@@ -111,13 +120,12 @@ impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager {
         // TODO: fix to include context and look this up via that rather than hard coding
         let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
-        axum::serve(listener,         BlobHttpServiceProxy::new(service).router())
-        .with_graceful_shutdown(async {
-            rx.await.ok();
-        })
-        .await
-        .unwrap();
-
+        axum::serve(listener, BlobHttpServiceProxy::new(service).router())
+            .with_graceful_shutdown(async {
+                rx.await.ok();
+            })
+            .await
+            .unwrap();
     }
 
     async fn stop(&mut self) {
@@ -125,5 +133,4 @@ impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager {
             let _ = tx.send(());
         }
     }
-
 }

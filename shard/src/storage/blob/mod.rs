@@ -1,6 +1,6 @@
-mod filesystem;
-mod encryption;
 mod compression;
+mod encryption;
+mod filesystem;
 
 use crate::error::ShardResult;
 use async_trait::async_trait;
@@ -14,9 +14,7 @@ pub(crate) struct BlobPath {
 impl BlobPath {
     pub(crate) fn new(path: String) -> ShardResult<Self> {
         // TODO: add path validation according to a protocol
-        Ok(Self {
-            path
-        })
+        Ok(Self { path })
     }
 }
 

@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+mod actors;
 mod core;
 mod crypto;
 mod error;
