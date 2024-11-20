@@ -1,3 +1,5 @@
+use std::io;
+
 // use consensus_config::{AuthorityIndex, Epoch, Stake};
 use fastcrypto::error::FastCryptoError;
 use strum_macros::IntoStaticStr;
@@ -14,6 +16,9 @@ use crate::types::authority_committee::AuthorityIndex;
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub(crate) enum ShardError {
+    #[error("Compression failed: {0}")]
+    CompressionFailed(String),
+
     #[error("Error deserializing block: {0}")]
     MalformedBlock(bcs::Error),
 
