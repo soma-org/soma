@@ -86,7 +86,7 @@ impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
 
     fn router(self) -> Router {
         Router::new()
-            // .route("/", get(Self::get_object()))
+            .route("/:path", get(Self::get_object))
             .with_state(self)
     }
 

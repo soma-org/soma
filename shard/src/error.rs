@@ -19,6 +19,12 @@ pub(crate) enum ShardError {
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
 
+    #[error("BlobStorage: {0}")]
+    BlobStorage(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
     #[error("Error deserializing block: {0}")]
     MalformedBlock(bcs::Error),
 
