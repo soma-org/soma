@@ -64,6 +64,7 @@ pub enum IntentScope {
     ConsensusBlock = 1, // Used for consensus authority signature on block's digest
     SenderSignedTransaction = 2, // Used for an authority signature on a user signed transaction.
     TransactionEffects = 3, // Used for an authority signature on transaction effects.
+    DiscoveryPeers = 4, // Used for a signature on a discovery message.
 }
 
 impl TryFrom<u8> for IntentScope {

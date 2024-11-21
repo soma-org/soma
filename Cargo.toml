@@ -7,6 +7,7 @@ members = [
     "node",
     "test-cluster",
     "e2e-tests",
+    "p2p",
 ]
 
 [workspace.package]
@@ -54,6 +55,7 @@ authority = { path = "authority" }
 utils = { path = "utils" }
 node = { path = "node" }
 test-cluster = { path = "test-cluster" }
+p2p = { path = "p2p" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99", package = "msim-macros" }
@@ -92,7 +94,26 @@ tower = { version = "0.4.12", features = [
     "load-shed",
     "limit",
 ] }
-
+hyper = "1.4.1"
+hyper-util = "0.1.6"
+tokio-rustls = { version = "0.26", default-features = false, features = [
+    "tls12",
+    "ring",
+] }
+tower-http = { version = "0.5", features = [
+    "cors",
+    "full",
+    "trace",
+    "set-header",
+    "propagate-header",
+] }
+hyper-rustls = { version = "0.27", default-features = false, features = [
+    "webpki-roots",
+    "http2",
+    "ring",
+    "tls12",
+] }
+cfg-if = "1.0.0"
 
 [patch.crates-io]
 tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99" }

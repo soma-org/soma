@@ -11,6 +11,7 @@ use crate::{
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::ExecutionFailureStatus,
     object::{ObjectID, ObjectRef, Version},
+    peer_id::PeerId,
 };
 pub type SomaResult<T = ()> = Result<T, SomaError>;
 
@@ -191,6 +192,18 @@ pub enum SomaError {
 
     #[error("Failed to read or deserialize system state related data structures on-chain: {0}")]
     SystemStateReadError(String),
+
+    #[error("Network config error: {0:?}")]
+    NetworkConfig(String),
+
+    #[error("Failed to connect as client: {0:?}")]
+    NetworkClientConnection(String),
+
+    #[error("Failed to connect as server: {0:?}")]
+    NetworkServerConnection(String),
+
+    #[error("Peer {0} not found")]
+    PeerNotFound(PeerId),
 }
 
 impl From<Status> for SomaError {

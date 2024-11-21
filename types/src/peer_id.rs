@@ -1,3 +1,7 @@
+use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
+
+use crate::crypto::NetworkPublicKey;
+
 /// Length of a PeerId, based on the length of an ed25519 public key
 const PEER_ID_LENGTH: usize = 32;
 
@@ -78,4 +82,52 @@ impl<'a> std::fmt::Display for ShortPeerId<'a> {
 pub enum ConnectionStatus {
     Connected,
     Disconnected,
+}
+// NetworkPublicKey conversions
+impl From<Ed25519PublicKey> for NetworkPublicKey {
+    fn from(pk: Ed25519PublicKey) -> Self {
+        Self::new(pk)
+    }
+}
+
+// Conversions to PeerId
+impl From<&Ed25519PublicKey> for PeerId {
+    fn from(pk: &Ed25519PublicKey) -> Self {
+        let bytes: [u8; PEER_ID_LENGTH] = pk.as_ref()[..PEER_ID_LENGTH]
+            .try_into()
+            .expect("Ed25519PublicKey should be 32 bytes");
+        Self(bytes)
+    }
+}
+
+impl From<Ed25519PublicKey> for PeerId {
+    fn from(pk: Ed25519PublicKey) -> Self {
+        Self::from(&pk)
+    }
+}
+
+impl From<&NetworkPublicKey> for PeerId {
+    fn from(pk: &NetworkPublicKey) -> Self {
+        Self::from(pk.clone().into_inner())
+    }
+}
+
+impl From<NetworkPublicKey> for PeerId {
+    fn from(pk: NetworkPublicKey) -> Self {
+        Self::from(pk.into_inner())
+    }
+}
+
+// Conversions from PeerId
+impl From<PeerId> for Ed25519PublicKey {
+    fn from(peer_id: PeerId) -> Self {
+        Ed25519PublicKey::from_bytes(&peer_id.0)
+            .expect("PeerId bytes should always be valid Ed25519PublicKey")
+    }
+}
+
+impl From<PeerId> for NetworkPublicKey {
+    fn from(peer_id: PeerId) -> Self {
+        Self::new(peer_id.into())
+    }
 }

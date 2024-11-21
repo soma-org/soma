@@ -1,3 +1,5 @@
+use std::net::{IpAddr, SocketAddr};
+
 use super::local_ip_utils;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -19,6 +21,7 @@ pub struct ValidatorGenesisConfig {
     pub network_key_pair: NetworkKeyPair,
     pub network_address: Multiaddr,
     pub consensus_address: Multiaddr,
+    pub p2p_address: Multiaddr,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -135,19 +138,20 @@ impl ValidatorGenesisConfigBuilder {
             NetworkKeyPair::new(get_key_pair_from_rng(rng).1),
         );
 
-        let (network_address, consensus_address) = if let Some(offset) = self.port_offset {
-            (
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
-                // local_ip_utils::new_deterministic_udp_address_for_testing(&ip, offset + 1),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
-            )
-        } else {
-            (
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-                // local_ip_utils::new_udp_address_for_testing(&ip),
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-            )
-        };
+        let (network_address, consensus_address, p2p_address) =
+            if let Some(offset) = self.port_offset {
+                (
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
+                )
+            } else {
+                (
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                )
+            };
 
         ValidatorGenesisConfig {
             key_pair: protocol_key_pair,
@@ -156,6 +160,7 @@ impl ValidatorGenesisConfigBuilder {
             network_key_pair,
             network_address,
             consensus_address,
+            p2p_address,
         }
     }
 }

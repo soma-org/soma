@@ -1,0 +1,21 @@
+[package]
+name = "p2p"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+types.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+tokio.workspace = true
+futures.workspace = true
+tonic.workspace = true
+prost.workspace = true
+utils.workspace = true
+rand.workspace = true
+fastcrypto.workspace = true
+bcs.workspace = true
+tap.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true

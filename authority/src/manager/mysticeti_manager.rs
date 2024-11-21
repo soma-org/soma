@@ -17,7 +17,7 @@ use types::{
     crypto::{NetworkKeyPair, ProtocolKeyPair},
     system_state::EpochStartSystemStateTrait,
 };
-use types::{committee::EpochId, node_config::NodeConfig};
+use types::{committee::EpochId, config::node_config::NodeConfig};
 
 use super::{mysticeti_client::LazyMysticetiClient, ConsensusManagerTrait, Running};
 

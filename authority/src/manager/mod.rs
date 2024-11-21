@@ -9,9 +9,9 @@ use tracing::info;
 use types::{
     accumulator::AccumulatorStore,
     committee::EpochId,
+    config::node_config::{ConsensusConfig, NodeConfig},
     consensus::ConsensusTransaction,
     error::SomaResult,
-    node_config::{ConsensusConfig, NodeConfig},
 };
 
 use crate::{

@@ -16,15 +16,15 @@ use tonic::{async_trait, transport::Server, Request, Response};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
-    block::{BlockRef, VerifiedBlock}, commit::CommitRange, context::Context, error::{ConsensusError, ConsensusResult}, network::{
-       tls::{create_rustls_client_config, create_rustls_server_config, public_key_from_certificate}, tonic_gen::consensus_service_server::ConsensusServiceServer
-    },  CommitIndex, Round
+    block::{BlockRef, VerifiedBlock}, commit::CommitRange, context::Context, error::{ConsensusError, ConsensusResult}, network::tonic_gen::consensus_service_server::ConsensusServiceServer
+    ,  CommitIndex, Round
 };
+use types::tls::{create_rustls_client_config, create_rustls_server_config, public_key_from_certificate, AllowedPublicKeys};
 use types::committee::AuthorityIndex;
 use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use utils::notify_once::NotifyOnce;
 use types::multiaddr::{Multiaddr, Protocol};
-
+use types::p2p::{to_host_port_str, to_socket_addr};
 use super::{
     tonic_gen::{
         consensus_service_client::ConsensusServiceClient,
@@ -303,7 +303,11 @@ impl ChannelPool {
             .user_agent("soma-mysticeti")
             .unwrap();
 
-        let client_tls_config = create_rustls_client_config(&self.context, network_keypair, peer);
+        let client_tls_config = create_rustls_client_config(self.context.committee
+                .authority(peer)
+                .network_key
+                .clone()
+                .into_inner(),certificate_server_name(&self.context), network_keypair);
         let https_connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(client_tls_config)
             .https_only()
@@ -555,8 +559,13 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                 .http2_only();
         let http = Arc::new(http);
 
+        let allower = AllowedPublicKeys::new(self.context
+                .committee
+                .authorities()
+                .map(|(_, authority)| authority.network_key.clone().into_inner())
+                .collect());
         let tls_server_config =
-            create_rustls_server_config(&self.context, self.network_keypair.clone());
+            create_rustls_server_config(allower, certificate_server_name(&self.context), self.network_keypair.clone());
         let tls_acceptor = TlsAcceptor::from(Arc::new(tls_server_config));
 
         // Create listener to incoming connections.
@@ -836,29 +845,6 @@ pub(crate) struct FetchLatestBlocksResponse {
     blocks: Vec<Bytes>,
 }
 
-/// Attempts to convert a multiaddr of the form `/[ip4,ip6,dns]/{}/udp/{port}` into
-/// a host:port string.
-fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
-    let mut iter = addr.iter();
-
-    match (iter.next(), iter.next()) {
-        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
-            Ok(format!("{}:{}", ipaddr, port))
-        }
-        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
-            Ok(format!("{}:{}", ipaddr, port))
-        }
-        (Some(Protocol::Dns(hostname)), Some(Protocol::Tcp(port))) => {
-            Ok(format!("{}:{}", hostname, port))
-        }
-
-        _ => {
-            tracing::warn!("unsupported multiaddr: '{addr}'");
-            Err("invalid address")
-        }
-    }
-}
-
 fn chunk_blocks(blocks: Vec<Bytes>, chunk_limit: usize) -> Vec<Vec<Bytes>> {
     let mut chunks = vec![];
     let mut chunk = vec![];
@@ -879,28 +865,6 @@ fn chunk_blocks(blocks: Vec<Bytes>, chunk_limit: usize) -> Vec<Vec<Bytes>> {
     chunks
 }
 
-/// Attempts to convert a multiaddr of the form `/[ip4,ip6]/{}/[udp,tcp]/{port}` into
-/// a SocketAddr value.
-fn to_socket_addr(addr: &Multiaddr) -> Result<SocketAddr, &'static str> {
-    let mut iter = addr.iter();
-
-    match (iter.next(), iter.next()) {
-        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port)))
-        | (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
-            Ok(SocketAddr::V4(SocketAddrV4::new(ipaddr, port)))
-        }
-
-        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port)))
-        | (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
-            Ok(SocketAddr::V6(SocketAddrV6::new(ipaddr, port, 0, 0)))
-        }
-
-        _ => {
-            tracing::warn!("unsupported multiaddr: '{addr}'");
-            Err("invalid address")
-        }
-    }
-}
 
 #[cfg(not(msim))]
 fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
@@ -919,4 +883,8 @@ fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
         info!("Failed to set SO_REUSEADDR: {e:?}");
     }
     socket
+}
+
+fn certificate_server_name(context: &Context) -> String {
+    format!("consensus_epoch_{}", context.committee.epoch())
 }

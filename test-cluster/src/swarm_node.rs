@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 use tracing::info;
 use types::{
     base::{AuthorityName, ConciseableName},
-    node_config::NodeConfig,
+    config::node_config::NodeConfig,
 };
 
 use super::container::Container;

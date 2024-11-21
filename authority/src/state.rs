@@ -25,12 +25,12 @@ use types::{
     accumulator::{AccumulatorStore, CommitIndex},
     base::AuthorityName,
     committee::{Committee, EpochId},
+    config::node_config::NodeConfig,
     crypto::{AuthoritySignInfo, AuthoritySignature, Signer},
     digests::TransactionDigest,
     error::{SomaError, SomaResult},
     grpc::{HandleTransactionResponse, TransactionStatus},
     intent::{Intent, IntentScope},
-    node_config::NodeConfig,
     transaction::{
         VerifiedCertificate, VerifiedExecutableTransaction, VerifiedSignedTransaction,
         VerifiedTransaction,

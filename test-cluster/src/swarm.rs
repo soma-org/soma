@@ -13,7 +13,7 @@ use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
 use std::{collections::HashMap, net::SocketAddr, num::NonZeroUsize};
 use tracing::info;
-use types::{base::AuthorityName, node_config::NodeConfig};
+use types::{base::AuthorityName, config::node_config::NodeConfig};
 
 /// A handle to an in-memory Sui Network.
 #[derive(Debug)]

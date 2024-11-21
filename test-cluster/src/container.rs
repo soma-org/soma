@@ -6,7 +6,7 @@ use std::{
 };
 use tokio::sync::watch;
 use tracing::{info, trace};
-use types::{base::ConciseableName, node_config::NodeConfig};
+use types::{base::ConciseableName, config::node_config::NodeConfig};
 
 #[derive(Debug)]
 pub(crate) struct Container {

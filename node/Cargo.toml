@@ -4,6 +4,7 @@ edition = "2021"
 version.workspace = true
 
 [dependencies]
+p2p.workspace = true
 authority.workspace = true
 tokio.workspace = true
 anyhow.workspace = true

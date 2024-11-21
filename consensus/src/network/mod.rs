@@ -21,7 +21,7 @@ mod tonic_gen {
 mod network_tests;
 #[cfg(test)]
 pub(crate) mod test_network;
-pub(crate) mod tls;
+
 pub(crate) mod tonic_network;
 
 #[async_trait]

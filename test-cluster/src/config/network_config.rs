@@ -5,12 +5,12 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use types::{
     committee::{Committee, CommitteeWithNetworkMetadata},
+    config::node_config::NodeConfig,
     crypto::{get_key_pair_from_rng, SomaKeyPair},
     digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
-    node_config::NodeConfig,
     object::{Object, ObjectData, ObjectType, Version},
     system_state::{SystemParameters, SystemState, Validator},
     temporary_store::TemporaryStore,

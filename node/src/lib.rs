@@ -27,14 +27,21 @@ use authority::{
 use core::time;
 use futures::TryFutureExt;
 use msim::task::NodeId;
+use p2p::{
+    discovery::{
+        builder::{DiscoveryBuilder, DiscoveryHandle},
+        server::P2pService,
+    },
+    tonic_gen::p2p_server::P2pServer,
+};
 use simulator::SimState;
 use std::{
-    sync::Arc,
-    sync::Weak,
+    collections::HashMap,
+    sync::{Arc, Weak},
     time::{Duration, SystemTime},
 };
 use tokio::{
-    sync::{broadcast, Mutex},
+    sync::{broadcast, mpsc::Sender, Mutex},
     task::JoinHandle,
     time::sleep,
 };
@@ -43,9 +50,14 @@ use types::{
     base::AuthorityName,
     client::Config,
     committee::Committee,
+    config::node_config::{ConsensusConfig, NodeConfig},
     crypto::KeypairTraits,
     error::{SomaError, SomaResult},
-    node_config::{ConsensusConfig, NodeConfig},
+    p2p::{
+        active_peers::{self, ActivePeers},
+        channel_manager::{ChannelManager, ChannelManagerRequest},
+    },
+    peer_id::PeerId,
     protocol::ProtocolConfig,
     quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
     system_state::{
@@ -80,6 +92,11 @@ pub struct ValidatorComponents {
     consensus_manager: ConsensusManager,
     // consensus_store_pruner: ConsensusStorePruner,
     consensus_adapter: Arc<ConsensusAdapter>,
+}
+
+pub struct P2pComponents {
+    channel_manager_tx: Sender<ChannelManagerRequest>,
+    discovery_handle: DiscoveryHandle,
 }
 
 pub struct SomaNode {
@@ -178,16 +195,14 @@ impl SomaNode {
         // );
 
         // let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
-        // let (p2p_network, discovery_handle, state_sync_handle, randomness_handle) =
-        //     Self::create_p2p_network(
-        //         &config,
-        //         state_sync_store.clone(),
-        //         chain_identifier,
-        //         trusted_peer_change_rx,
-        //         archive_readers.clone(),
-        //         randomness_tx,
-        //         &prometheus_registry,
-        //     )?;
+        let P2pComponents {
+            channel_manager_tx,
+            discovery_handle,
+        } = Self::create_p2p_network(
+            &config,
+            // state_sync_store.clone(),
+            // trusted_peer_change_rx,
+        )?;
 
         // We must explicitly send this instead of relying on the initial value to trigger
         // watch value change, so that state-sync is able to process it.
@@ -340,6 +355,52 @@ impl SomaNode {
             .consensus_adapter
             .close_epoch(epoch_store);
         Ok(())
+    }
+
+    fn create_p2p_network(
+        config: &NodeConfig,
+        // state_sync_store: RocksDbStore,
+    ) -> Result<P2pComponents> {
+        // let (state_sync, state_sync_server) = state_sync::Builder::new()
+        //     .config(config.p2p_config.state_sync.clone().unwrap_or_default())
+        //     .store(state_sync_store)
+        //     .archive_readers(archive_readers)
+        //     .with_metrics(prometheus_registry)
+        //     .build();
+
+        let (discovery, p2p_server) = DiscoveryBuilder::new()
+            .config(config.p2p_config.clone())
+            .build();
+
+        let own_address = config
+            .p2p_config
+            .external_address
+            .clone()
+            .expect("External address must be set");
+
+        let active_peers = ActivePeers::new(1000);
+        let (channel_manager, channel_manager_tx) = ChannelManager::new(
+            own_address,
+            config.network_key_pair().clone(),
+            p2p_server,
+            active_peers.clone(),
+        );
+
+        tokio::spawn(channel_manager.start());
+
+        info!("P2p network started");
+
+        let discovery_handle = discovery.start(
+            active_peers,
+            channel_manager_tx.clone(),
+            config.network_key_pair().clone(),
+        );
+        // let state_sync_handle = state_sync.start(p2p_network.clone());
+
+        Ok(P2pComponents {
+            channel_manager_tx,
+            discovery_handle,
+        })
     }
 
     async fn construct_validator_components(

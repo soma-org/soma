@@ -1,12 +1,16 @@
 use fastcrypto::encoding::{Encoding, Hex};
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf};
 use types::{
+    config::{
+        node_config::{AuthorityKeyPairWithPath, ConsensusConfig, KeyPairWithPath, NodeConfig},
+        p2p_config::{P2pConfig, SeedPeer},
+    },
     crypto::{
         AuthorityKeyPair, AuthorityPublicKeyBytes, KeypairTraits, NetworkKeyPair, SomaKeyPair,
     },
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
-    node_config::{AuthorityKeyPairWithPath, ConsensusConfig, KeyPairWithPath, NodeConfig},
+    peer_id::PeerId,
 };
 
 use super::{
@@ -59,6 +63,18 @@ impl ValidatorConfigBuilder {
             parameters: None,
         };
 
+        let p2p_config = P2pConfig {
+            // listen_address: Some(validator.p2p_listen_address),
+            external_address: Some(validator.p2p_address),
+            // Set a shorter timeout for checkpoint content download in tests, since
+            // checkpoint pruning also happens much faster, and network is local.
+            // state_sync: Some(StateSyncConfig {
+            //     checkpoint_content_timeout_ms: Some(10_000),
+            //     ..Default::default()
+            // }),
+            ..Default::default()
+        };
+
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
             network_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
@@ -73,6 +89,7 @@ impl ValidatorConfigBuilder {
             genesis: genesis,
             consensus_config: Some(consensus_config),
             end_of_epoch_broadcast_channel_capacity: 128,
+            p2p_config,
         }
     }
 
@@ -93,6 +110,8 @@ pub struct FullnodeConfigBuilder {
     network_address: Option<Multiaddr>,
     genesis: Option<Genesis>,
     network_key_pair: Option<KeyPairWithPath>,
+    p2p_external_address: Option<Multiaddr>,
+    // p2p_listen_address: Option<Multiaddr>,
 }
 
 impl FullnodeConfigBuilder {
@@ -119,6 +138,16 @@ impl FullnodeConfigBuilder {
         self.genesis = Some(genesis);
         self
     }
+
+    pub fn with_p2p_external_address(mut self, p2p_external_address: Multiaddr) -> Self {
+        self.p2p_external_address = Some(p2p_external_address);
+        self
+    }
+
+    // pub fn with_p2p_listen_address(mut self, p2p_listen_address: Multiaddr) -> Self {
+    //     self.p2p_listen_address = Some(p2p_listen_address);
+    //     self
+    // }
 
     pub fn with_network_key_pair(mut self, network_key_pair: Option<NetworkKeyPair>) -> Self {
         if let Some(network_key_pair) = network_key_pair {
@@ -149,6 +178,37 @@ impl FullnodeConfigBuilder {
             .config_directory
             .unwrap_or_else(|| tempfile::tempdir().unwrap().into_path());
 
+        let p2p_config = {
+            let seed_peers = network_config
+                .validator_configs
+                .iter()
+                .map(|config| SeedPeer {
+                    peer_id: Some(PeerId(
+                        config.network_key_pair().public().into_inner().0.to_bytes(),
+                    )),
+                    address: config.p2p_config.external_address.clone().unwrap(),
+                })
+                .collect();
+
+            P2pConfig {
+                // listen_address: Some(
+                //     self.p2p_listen_address
+                //         .unwrap_or_else(|| validator_config.p2p_listen_address),
+                // ),
+                external_address: self
+                    .p2p_external_address
+                    .or(Some(validator_config.p2p_address.clone())),
+                seed_peers,
+                // Set a shorter timeout for checkpoint content download in tests, since
+                // checkpoint pruning also happens much faster, and network is local.
+                // state_sync: Some(StateSyncConfig {
+                //     checkpoint_content_timeout_ms: Some(10_000),
+                //     ..Default::default()
+                // }),
+                ..Default::default()
+            }
+        };
+
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator_config.key_pair),
             account_key_pair: KeyPairWithPath::new(validator_config.account_key_pair),
@@ -167,6 +227,7 @@ impl FullnodeConfigBuilder {
             consensus_config: None,
             genesis: self.genesis.unwrap_or(network_config.genesis.clone()),
             end_of_epoch_broadcast_channel_capacity: 128,
+            p2p_config,
         }
     }
 }
