@@ -93,7 +93,9 @@ impl NetworkCommittee {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NetworkIdentity {
     /// Network address for communicating with the authority.
-    pub address: Multiaddr,
+    pub messaging_address: Multiaddr,
+    /// address for downloading files
+    pub blob_address: Multiaddr,
     /// The authority's hostname, for metrics and logging.
     pub hostname: String,
     /// The authority's public key for verifying blocks.

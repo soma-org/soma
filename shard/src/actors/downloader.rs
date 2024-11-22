@@ -1,34 +1,53 @@
+use std::sync::Arc;
+
 use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
     networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
-    types::manifest::Manifest,
+    storage::blob::BlobPath,
+    types::{
+        checksum::Checksum,
+        manifest::{Batch, BatchAPI},
+        network_committee::NetworkingIndex,
+    },
 };
+use async_trait::async_trait;
 
 use super::{ActorMessage, Processor};
 
-pub(crate) struct Downloader {
-    semaphore: Semaphore,
-    client: BlobHttpClient,
+pub(crate) struct DownloaderInput {
+    peer: NetworkingIndex,
+    batch: Batch,
 }
 
+pub(crate) struct Downloader {
+    semaphore: Arc<Semaphore>,
+    client: Arc<BlobHttpClient>,
+}
+
+#[async_trait]
 impl Processor for Downloader {
-    type Input = Manifest;
+    type Input = DownloaderInput;
     type Output = Bytes;
 
     async fn process(&self, msg: ActorMessage<Self>) {
-        let permit = self.semaphore.acquire().await.unwrap();
-        tokio::spawn(async move {
-            let input = msg.input;
-            let object = self
-                .client
-                .get_object(peer, path, GET_OBJECT_TIMEOUT)
-                .await
-                .unwrap();
-            msg.sender.send(object);
-            drop(permit);
-        });
+        let client = self.client.clone();
+        if let Ok(permit) = self.semaphore.clone().acquire_owned().await {
+            tokio::spawn(async move {
+                let input = msg.input;
+                let object = client
+                    .get_object(
+                        input.peer,
+                        &BlobPath::from_checksum(input.batch.checksum()),
+                        GET_OBJECT_TIMEOUT,
+                    )
+                    .await
+                    .unwrap();
+                msg.sender.send(object);
+                drop(permit);
+            });
+        }
     }
 
     fn shutdown(&mut self) {

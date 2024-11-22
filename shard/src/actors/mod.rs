@@ -1,16 +1,18 @@
 mod downloader;
 mod model;
 
+use async_trait::async_trait;
 use tokio::{
     select,
     sync::{mpsc, oneshot},
 };
 use tokio_util::sync::CancellationToken;
 
+#[async_trait]
 trait Processor: Send + Sync + Sized + 'static {
     type Input: Send + Sync + Sized + 'static;
     type Output: Send + Sync + Sized + 'static;
-    fn process(&self, input: ActorMessage<Self>) -> impl std::future::Future<Output = ()> + Send;
+    async fn process(&self, input: ActorMessage<Self>);
     fn shutdown(&mut self);
 }
 

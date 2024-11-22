@@ -21,7 +21,7 @@ type SizeInElements = u64;
 
 /// `ManifestAPI` describes the API for interacting with versioned Manifests
 #[enum_dispatch]
-trait ManifestAPI {
+pub(crate) trait ManifestAPI {
     fn modality(&self) -> Modality;
     fn compression(&self) -> Compression;
     fn encryption(&self) -> Option<Encryption>;
@@ -91,7 +91,7 @@ pub(crate) struct BatchIndex(u32);
 
 /// The API to interact with versioned chunks
 #[enum_dispatch]
-trait BatchAPI {
+pub(crate) trait BatchAPI {
     /// Returns the signed transaction
     fn checksum(&self) -> Checksum;
     fn shape(&self) -> &[SizeInElements];
@@ -101,8 +101,8 @@ trait BatchAPI {
 
 /// Version switch for the chunk versions
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[enum_dispatch(ChunkAPI)]
-enum Batch {
+#[enum_dispatch(BatchAPI)]
+pub(crate) enum Batch {
     V1(BatchV1),
 }
 

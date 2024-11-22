@@ -682,10 +682,10 @@ impl<S: EncoderNetworkService> EncoderNetworkManager<S> for EncoderTonicManager 
         let own_network_index = self.context.own_network_index;
         // By default, bind to the unspecified address to allow the actual address to be assigned.
         // But bind to localhost if it is requested.
-        let own_address = if network_identity.address.is_localhost_ip() {
-            network_identity.address.clone()
+        let own_address = if network_identity.messaging_address.is_localhost_ip() {
+            network_identity.messaging_address.clone()
         } else {
-            network_identity.address.with_zero_ip()
+            network_identity.messaging_address.with_zero_ip()
         };
         let own_address = to_socket_addr(&own_address).unwrap();
         let svc =

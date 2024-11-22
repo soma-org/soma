@@ -57,7 +57,7 @@ impl ChannelPool {
         }
         let network_identity = self.context.network_committee().identity(peer);
 
-        let address = to_host_port_str(&network_identity.address).map_err(|e| {
+        let address = to_host_port_str(&network_identity.messaging_address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address = format!("http://{address}");

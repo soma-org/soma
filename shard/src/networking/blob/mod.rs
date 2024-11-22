@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     error::ShardResult,
-    storage::blob::{BlobPath, BlobStorage},
+    storage::blob::{BlobPath, BlobSignedUrl, BlobStorage},
     types::{context::EncoderContext, network_committee::NetworkingIndex},
 };
 
@@ -22,31 +22,49 @@ pub(crate) trait BlobNetworkClient: Send + Sync + Sized + 'static {
     ) -> ShardResult<Bytes>;
 }
 
+#[derive(Debug)]
+pub enum GetObjectResponse {
+    Direct(Bytes),
+    Redirect(String),
+}
+
 #[async_trait]
 pub(crate) trait BlobNetworkService: Send + Sync + Sized + 'static {
-    async fn handle_get_object(&self, peer: NetworkingIndex, path: &BlobPath)
-        -> ShardResult<Bytes>;
-}
-
-pub(crate) struct BlobStorageNetworkService<S: BlobStorage> {
-    blob_storage: Arc<S>,
-}
-
-impl<S: BlobStorage> BlobStorageNetworkService<S> {
-    fn new(blob_storage: Arc<S>) -> Self {
-        Self { blob_storage }
-    }
-}
-
-#[async_trait]
-impl<S: BlobStorage> BlobNetworkService for BlobStorageNetworkService<S> {
     async fn handle_get_object(
         &self,
         peer: NetworkingIndex,
         path: &BlobPath,
-    ) -> ShardResult<Bytes> {
-        // TODO: handle verification?
-        self.blob_storage.get_object(path).await
+    ) -> ShardResult<GetObjectResponse>;
+}
+
+pub struct DirectNetworkService<S: BlobStorage> {
+    storage: Arc<S>,
+}
+pub struct SignedNetworkService<S: BlobStorage + BlobSignedUrl> {
+    storage: Arc<S>,
+}
+
+#[async_trait]
+impl<S: BlobStorage> BlobNetworkService for DirectNetworkService<S> {
+    async fn handle_get_object(
+        &self,
+        peer: NetworkingIndex,
+        path: &BlobPath,
+    ) -> ShardResult<GetObjectResponse> {
+        let bytes = self.storage.get_object(path).await?;
+        Ok(GetObjectResponse::Direct(bytes))
+    }
+}
+
+#[async_trait]
+impl<S: BlobStorage + BlobSignedUrl> BlobNetworkService for SignedNetworkService<S> {
+    async fn handle_get_object(
+        &self,
+        peer: NetworkingIndex,
+        path: &BlobPath,
+    ) -> ShardResult<GetObjectResponse> {
+        let url = self.storage.get_signed_url(path).await?;
+        Ok(GetObjectResponse::Redirect(url))
     }
 }
 

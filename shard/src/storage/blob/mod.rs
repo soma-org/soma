@@ -2,7 +2,7 @@ mod compression;
 mod encryption;
 mod filesystem;
 
-use crate::error::ShardResult;
+use crate::{error::ShardResult, types::checksum::Checksum};
 use async_trait::async_trait;
 use bytes::Bytes;
 
@@ -17,6 +17,12 @@ impl BlobPath {
         Ok(Self { path })
     }
 
+    pub(crate) fn from_checksum(checksum: Checksum) -> Self {
+        Self {
+            path: checksum.to_string(),
+        }
+    }
+
     pub(crate) fn path(&self) -> String {
         self.path.clone()
     }
@@ -27,6 +33,11 @@ pub(crate) trait BlobStorage: Send + Sync + Sized + 'static {
     async fn put_object(&self, path: &BlobPath, contents: Bytes) -> ShardResult<()>;
     async fn get_object(&self, path: &BlobPath) -> ShardResult<Bytes>;
     async fn delete_object(&self, path: &BlobPath) -> ShardResult<()>;
+}
+
+#[async_trait]
+pub(crate) trait BlobSignedUrl: Send + Sync + 'static {
+    async fn get_signed_url(&self, path: &BlobPath) -> ShardResult<String>;
 }
 
 pub(crate) trait BlobEncryption<T>: Send + Sync + Sized + 'static {
