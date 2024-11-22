@@ -2,8 +2,12 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::{
     error::{ShardError, ShardResult},
+    networking::messaging::{to_host_port_str, to_socket_addr},
     storage::blob::BlobPath,
-    types::network_committee::NetworkingIndex,
+    types::{
+        context::{EncoderContext, NetworkingContext},
+        network_committee::NetworkingIndex,
+    },
 };
 use async_trait::async_trait;
 use axum::{
@@ -21,15 +25,18 @@ use super::{BlobNetworkClient, BlobNetworkManager, BlobNetworkService, BlobStora
 
 pub(crate) struct BlobHttpClient {
     client: Client,
+    context: Arc<EncoderContext>,
 }
 
 impl BlobHttpClient {
-    pub fn new() -> ShardResult<Self> {
+    pub fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
         Ok(Self {
             client: Client::builder()
                 .pool_idle_timeout(Duration::from_secs(60 * 5))
                 .build()
                 .map_err(|_| ShardError::FailedBuildingHttpClient)?,
+
+            context,
         })
     }
 }
@@ -42,9 +49,15 @@ impl BlobNetworkClient for BlobHttpClient {
         path: &BlobPath,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
-        // TODO: construct URL from peer and path
-        let url = Url::from_str("https://github.com")
-            .map_err(|e| ShardError::UrlParseError(e.to_string()))?;
+        let network_identity = self.context.network_committee().identity(peer);
+
+        let address = to_host_port_str(&network_identity.address).map_err(|e| {
+            ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
+        })?;
+        let address = format!("http://{address}/{}", path.path());
+        // TODO: configure the port correctly to match with the changed identity
+
+        let url = Url::from_str(&address).map_err(|e| ShardError::UrlParseError(e.to_string()))?;
         let response = self
             .client
             .get(url.clone())
@@ -60,14 +73,16 @@ impl BlobNetworkClient for BlobHttpClient {
 }
 
 pub struct BlobHttpManager {
+    context: Arc<EncoderContext>,
     client: Arc<BlobHttpClient>,
     shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl BlobHttpManager {
-    pub fn new() -> ShardResult<Self> {
+    pub fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
         Ok(Self {
-            client: Arc::new(BlobHttpClient::new()?),
+            context: context.clone(),
+            client: Arc::new(BlobHttpClient::new(context)?),
             shutdown_tx: None,
         })
     }
@@ -95,6 +110,8 @@ impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
         State(Self { service, .. }): State<Self>,
     ) -> Result<Bytes, StatusCode> {
         let peer = NetworkingIndex::default();
+        // TODO: get peer correctly
+        // TODO: change this to handle redirection?
         let path = BlobPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
         Ok(service
             .handle_get_object(peer, &path)
@@ -106,8 +123,8 @@ impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
 impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager {
     type Client = BlobHttpClient;
 
-    fn new() -> Self {
-        Self::new().unwrap()
+    fn new(context: Arc<EncoderContext>) -> Self {
+        Self::new(context).unwrap()
     }
 
     fn client(&self) -> Arc<Self::Client> {
@@ -117,8 +134,20 @@ impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager {
     async fn start(&mut self, service: Arc<S>) {
         let (tx, rx) = oneshot::channel();
         self.shutdown_tx = Some(tx);
-        // TODO: fix to include context and look this up via that rather than hard coding
-        let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+
+        let network_identity = self
+            .context
+            .network_committee
+            .identity(self.context.own_network_index);
+        let own_address = if network_identity.address.is_localhost_ip() {
+            network_identity.address.clone()
+        } else {
+            network_identity.address.with_zero_ip()
+        };
+
+        // TODO: fix the identity address to support different ports for different services?
+        let own_address = to_socket_addr(&own_address).unwrap();
+        let listener = tokio::net::TcpListener::bind(own_address).await.unwrap();
 
         axum::serve(listener, BlobHttpServiceProxy::new(service).router())
             .with_graceful_shutdown(async {

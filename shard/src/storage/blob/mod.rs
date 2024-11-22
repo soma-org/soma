@@ -16,6 +16,10 @@ impl BlobPath {
         // TODO: add path validation according to a protocol
         Ok(Self { path })
     }
+
+    pub(crate) fn path(&self) -> String {
+        self.path.clone()
+    }
 }
 
 #[async_trait]

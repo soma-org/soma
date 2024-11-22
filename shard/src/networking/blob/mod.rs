@@ -7,8 +7,10 @@ use std::{sync::Arc, time::Duration};
 use crate::{
     error::ShardResult,
     storage::blob::{BlobPath, BlobStorage},
-    types::network_committee::NetworkingIndex,
+    types::{context::EncoderContext, network_committee::NetworkingIndex},
 };
+
+pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(60 * 2);
 
 #[async_trait]
 pub(crate) trait BlobNetworkClient: Send + Sync + Sized + 'static {
@@ -55,7 +57,7 @@ where
     /// type alias
     type Client: BlobNetworkClient;
 
-    fn new() -> Self;
+    fn new(context: Arc<EncoderContext>) -> Self;
     /// Returns a client
     fn client(&self) -> Arc<Self::Client>;
     /// Starts the network services

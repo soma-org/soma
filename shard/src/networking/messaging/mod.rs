@@ -294,7 +294,7 @@ where
 }
 
 /// Converts a multiaddress to a host:port string handling both TCP and UDP
-fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
+pub(crate) fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
     let mut iter = addr.iter();
 
     match (iter.next(), iter.next()) {
@@ -324,7 +324,7 @@ fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
     }
 }
 /// Converts multiaddress to socket address
-fn to_socket_addr(addr: &Multiaddr) -> Result<SocketAddr, &'static str> {
+pub(crate) fn to_socket_addr(addr: &Multiaddr) -> Result<SocketAddr, &'static str> {
     let mut iter = addr.iter();
     match (iter.next(), iter.next()) {
         (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port))) => {
