@@ -13,7 +13,9 @@ use numpy::{
     IxDyn, PyArrayDyn, PyArrayMethods, PyUntypedArrayMethods,
 };
 
+use super::Model;
 use crate::error::{ShardError, ShardResult};
+use async_trait::async_trait;
 
 pub const REGISTERED_MODULE_ATTR: &str = "__REGISTERED_MODULE__";
 
@@ -94,39 +96,60 @@ pub struct PythonModule {
     module: GILOnceCell<PyObject>,
 }
 
-impl PythonModule {
-    fn call(&self, input: &ArrayD<f32>) -> ShardResult<ArrayD<f32>> {
-        Python::with_gil(|py| -> ShardResult<ArrayD<f32>> {
-            let module = self.module.get(py).ok_or_else(|| {
-                ShardError::FailedCallingPythonModule(
-                    "Could not get registered module from GIL".to_string(),
-                )
-            })?;
+#[async_trait]
+impl Model for PythonModule {
+    async fn call(&self, input: &ArrayD<f32>) -> ShardResult<ArrayD<f32>> {
+        // Clone or get what we need before the spawn_blocking
+        let input = input.clone(); // Clone the input
 
-            let py_input = PyArrayDyn::from_array_bound(py, input);
+        // Get the module reference before spawning the blocking task
+        let module = Python::with_gil(|py| -> ShardResult<PyObject> {
+            Ok(self
+                .module
+                .get(py)
+                .ok_or_else(|| {
+                    ShardError::FailedCallingPythonModule(
+                        "Could not get registered module from GIL".to_string(),
+                    )
+                })?
+                .clone_ref(py))
+        })?;
 
-            let result = module
-                .call_method1(py, "__call__", (py_input,))
-                .map_err(|e| {
-                    ShardError::FailedCallingPythonModule(format!("call_method1 failed: {}", e))
+        let result = tokio::task::spawn_blocking(move || {
+            Python::with_gil(|py| -> ShardResult<ArrayD<f32>> {
+                // Use the cloned module inside the blocking task
+                let py_input = PyArrayDyn::from_array_bound(py, &input);
+
+                let result = module
+                    .call_method1(py, "__call__", (py_input,))
+                    .map_err(|e| {
+                        ShardError::FailedCallingPythonModule(format!("call_method1 failed: {}", e))
+                    })?;
+
+                let array = result.downcast_bound::<PyArrayDyn<f32>>(py).map_err(|e| {
+                    ShardError::FailedCallingPythonModule(format!(
+                        "Failed to convert result: {}",
+                        e
+                    ))
                 })?;
 
-            let array = result.downcast_bound::<PyArrayDyn<f32>>(py).map_err(|e| {
-                ShardError::FailedCallingPythonModule(format!("Failed to convert result: {}", e))
-            })?;
-            let input_batch_size: &usize =
-                input.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
-            let output_batch_size = array.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
+                let input_batch_size = input.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
+                let output_batch_size = array.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
 
-            if input_batch_size != output_batch_size {
-                return Err(ShardError::BatchSizeMismatch(format!(
-                    "got: {}, expected: {}",
-                    output_batch_size, input_batch_size
-                )));
-            }
-            // TODO: add runtime check to ensure the size of the embedding is correct
-            Ok(array.to_owned_array())
+                if input_batch_size != output_batch_size {
+                    return Err(ShardError::BatchSizeMismatch(format!(
+                        "got: {}, expected: {}",
+                        output_batch_size, input_batch_size
+                    )));
+                }
+
+                Ok(array.to_owned_array())
+            })
         })
+        .await
+        .map_err(|e| ShardError::ThreadError(e.to_string()))??;
+
+        Ok(result)
     }
 }
 

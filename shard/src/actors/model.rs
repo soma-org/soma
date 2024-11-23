@@ -1,35 +1,49 @@
-// use std::sync::Arc;
+use super::{ActorMessage, Processor};
+use crate::intelligence::model::{python::PythonModule, Model};
+use async_trait::async_trait;
+use numpy::ndarray::ArrayD;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
-// use bytes::Bytes;
-// use tokio::sync::Semaphore;
+pub(crate) struct ModelProcessor<M: Model> {
+    model: Arc<M>,
+    semaphore: Option<Arc<Semaphore>>,
+}
 
-// use crate::{
-//     networking::blob::{http_network::BlobHttpClient, BlobNetworkClient},
-//     types::checksum::Checksum,
-// };
+impl<M: Model> ModelProcessor<M> {
+    pub fn new(model: M, concurrency: Option<usize>) -> Self {
+        let semaphore = concurrency.map(|n| Arc::new(Semaphore::new(n)));
+        Self {
+            model: Arc::new(model),
+            semaphore,
+        }
+    }
+}
 
-// use super::{ActorMessage, Processor};
+#[async_trait]
+impl Processor for ModelProcessor<PythonModule> {
+    type Input = ArrayD<f32>;
+    type Output = ArrayD<f32>;
 
-// pub(crate) struct Models {
-//     semaphore: Arc<Semaphore>,
-//     client: BlobHttpClient,
-// }
+    async fn process(&self, msg: ActorMessage<Self>) {
+        if let Some(sem) = &self.semaphore {
+            let model = self.model.clone();
+            if let Ok(permit) = sem.clone().acquire_owned().await {
+                tokio::spawn(async move {
+                    if let Ok(embeddings) = model.call(&msg.input).await {
+                        let _ = msg.sender.send(embeddings);
+                    }
+                    drop(permit)
+                });
+            }
+        } else {
+            if let Ok(embeddings) = self.model.call(&msg.input).await {
+                let _ = msg.sender.send(embeddings);
+            }
+        }
+    }
 
-// impl Processor for Models {
-//     type Input = Checksum;
-//     type Output = Bytes;
-
-//     async fn process(&self, msg: ActorMessage<Self>) {
-//         let permit = self.semaphore.acquire().await.unwrap();
-//         tokio::spawn(async move {
-//             // let input = msg.input;
-//             // let object = self.client.get_object(peer, path, timeout).await.unwrap();
-//             // msg.sender.send(object);
-//             drop(permit);
-//         });
-//     }
-
-//     fn shutdown(&mut self) {
-//         // TODO: check whether to do anything for client shutdown
-//     }
-// }
+    fn shutdown(&mut self) {
+        // TODO: check whether to do anything for client shutdown
+    }
+}

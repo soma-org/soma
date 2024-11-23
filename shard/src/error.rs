@@ -16,6 +16,9 @@ use crate::types::authority_committee::AuthorityIndex;
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub(crate) enum ShardError {
+    #[error("Thread error: {0}")]
+    ThreadError(String),
+
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
 
