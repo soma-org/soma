@@ -41,11 +41,11 @@ pub(crate) trait BlobSignedUrl: Send + Sync + 'static {
 }
 
 pub(crate) trait BlobEncryption<T>: Send + Sync + Sized + 'static {
-    fn encrypt(key: T, contents: Bytes) -> Bytes;
-    fn decrypt(key: T, contents: Bytes) -> Bytes;
+    fn encrypt(&self, key: T, contents: Bytes) -> Bytes;
+    fn decrypt(&self, key: T, contents: Bytes) -> Bytes;
 }
 
 pub(crate) trait BlobCompression: Send + Sync + Sized + 'static {
-    fn compress(contents: Bytes) -> ShardResult<Bytes>;
-    fn decompress(contents: Bytes) -> ShardResult<Bytes>;
+    fn compress(&self, contents: Bytes) -> ShardResult<Bytes>;
+    fn decompress(&self, contents: Bytes) -> ShardResult<Bytes>;
 }

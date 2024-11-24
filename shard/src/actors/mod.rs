@@ -1,4 +1,6 @@
+mod compression;
 mod downloader;
+mod encryption;
 mod model;
 
 use async_trait::async_trait;

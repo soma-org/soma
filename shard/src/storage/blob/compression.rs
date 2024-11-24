@@ -14,13 +14,13 @@ impl ZstdCompressor {
 }
 
 impl BlobCompression for ZstdCompressor {
-    fn compress(contents: Bytes) -> ShardResult<Bytes> {
+    fn compress(&self, contents: Bytes) -> ShardResult<Bytes> {
         let compressed = compress(contents.as_ref(), zstd::DEFAULT_COMPRESSION_LEVEL)
             .map_err(|e| ShardError::CompressionFailed(e.to_string()))?;
         Ok(Bytes::from(compressed))
     }
 
-    fn decompress(contents: Bytes) -> ShardResult<Bytes> {
+    fn decompress(&self, contents: Bytes) -> ShardResult<Bytes> {
         let decompressed = decompress(contents.as_ref(), MAX_CHUNK_SIZE)
             .map_err(|e| ShardError::CompressionFailed(e.to_string()))?;
         Ok(Bytes::from(decompressed))

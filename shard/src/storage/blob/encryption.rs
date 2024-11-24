@@ -19,7 +19,7 @@ impl AesEncryptor {
 }
 
 impl BlobEncryption<AesKey> for AesEncryptor {
-    fn encrypt(key: AesKey, contents: Bytes) -> Bytes {
+    fn encrypt(&self, key: AesKey, contents: Bytes) -> Bytes {
         let mut cipher = Aes256Ctr64LE::new(&key, &Self::NONCE.into());
         let mut buffer = BytesMut::with_capacity(contents.len());
         buffer.extend_from_slice(&contents);
@@ -27,8 +27,8 @@ impl BlobEncryption<AesKey> for AesEncryptor {
         buffer.freeze()
     }
 
-    fn decrypt(key: AesKey, contents: Bytes) -> Bytes {
+    fn decrypt(&self, key: AesKey, contents: Bytes) -> Bytes {
         // CTR mode is symmetric, so encryption and decryption are the same
-        Self::encrypt(key, contents)
+        self.encrypt(key, contents)
     }
 }
