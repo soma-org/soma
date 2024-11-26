@@ -4,6 +4,7 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
+    error::ShardResult,
     networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
     storage::blob::BlobPath,
     types::{
@@ -44,7 +45,7 @@ impl Processor for Downloader {
                     )
                     .await
                     .unwrap();
-                msg.sender.send(object);
+                let _ = msg.sender.send(Ok(object));
                 drop(permit);
             });
         }

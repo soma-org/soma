@@ -4,6 +4,7 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
+    error::ShardResult,
     networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
     storage::blob::{BlobCompression, BlobPath},
     types::{
@@ -35,11 +36,11 @@ impl<B: BlobCompression> Processor for Compressor<B> {
         let _ = tokio::task::spawn_blocking(move || match msg.input {
             CompressorInput::Compress(contents) => {
                 let compressed = compressor.compress(contents).unwrap();
-                msg.sender.send(compressed);
+                let _ = msg.sender.send(Ok(compressed));
             }
             CompressorInput::Decompress(contents) => {
                 let decompressed = compressor.decompress(contents).unwrap();
-                msg.sender.send(decompressed);
+                let _ = msg.sender.send(Ok(decompressed));
             }
         })
         .await;

@@ -10,6 +10,8 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
+use crate::error::{ShardError, ShardResult};
+
 #[async_trait]
 trait Processor: Send + Sync + Sized + 'static {
     type Input: Send + Sync + Sized + 'static;
@@ -26,7 +28,7 @@ struct Actor<P: Processor> {
 
 struct ActorMessage<P: Processor> {
     input: P::Input,
-    sender: oneshot::Sender<P::Output>,
+    sender: oneshot::Sender<ShardResult<P::Output>>,
     cancellation: CancellationToken,
 }
 
@@ -46,6 +48,7 @@ impl<P: Processor> Actor<P> {
                     match msg {
                         Some(msg) => {
                             if msg.cancellation.is_cancelled() {
+                                let _ = msg.sender.send(Err(ShardError::ActorError("task cancelled".to_string())));
                                 continue;
                             }
                             self.processor.process(msg).await;
@@ -68,15 +71,24 @@ pub struct ActorHandle<P: Processor> {
 }
 
 impl<P: Processor> ActorHandle<P> {
-    pub async fn send(&self, input: P::Input, cancellation: CancellationToken) -> P::Output {
+    pub async fn send(
+        &self,
+        input: P::Input,
+        cancellation: CancellationToken,
+    ) -> ShardResult<P::Output> {
         let (sender, receiver) = oneshot::channel();
         let msg = ActorMessage {
             input,
             sender,
             cancellation,
         };
-        let _ = self.sender.send(msg).await;
-        receiver.await.expect("Actor task has been killed")
+        match self.sender.send(msg).await {
+            Ok(_) => match receiver.await {
+                Ok(res) => res,
+                Err(_) => Err(ShardError::ActorError("channel closed".to_string())),
+            },
+            Err(_) => Err(ShardError::ActorError("channel closed".to_string())),
+        }
     }
 }
 

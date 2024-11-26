@@ -1,5 +1,8 @@
 use super::{ActorMessage, Processor};
-use crate::intelligence::model::{python::PythonModule, Model};
+use crate::{
+    error::ShardResult,
+    intelligence::model::{python::PythonModule, Model},
+};
 use async_trait::async_trait;
 use numpy::ndarray::ArrayD;
 use std::sync::Arc;
@@ -21,7 +24,7 @@ impl<M: Model> ModelProcessor<M> {
 }
 
 #[async_trait]
-impl Processor for ModelProcessor<PythonModule> {
+impl<M: Model> Processor for ModelProcessor<M> {
     type Input = ArrayD<f32>;
     type Output = ArrayD<f32>;
 
@@ -31,14 +34,14 @@ impl Processor for ModelProcessor<PythonModule> {
             if let Ok(permit) = sem.clone().acquire_owned().await {
                 tokio::spawn(async move {
                     if let Ok(embeddings) = model.call(&msg.input).await {
-                        let _ = msg.sender.send(embeddings);
+                        let _ = msg.sender.send(Ok(embeddings));
                     }
                     drop(permit)
                 });
             }
         } else {
             if let Ok(embeddings) = self.model.call(&msg.input).await {
-                let _ = msg.sender.send(embeddings);
+                let _ = msg.sender.send(Ok(embeddings));
             }
         }
     }

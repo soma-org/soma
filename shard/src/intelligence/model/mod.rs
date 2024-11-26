@@ -8,7 +8,7 @@ use numpy::ndarray::ArrayD;
 /// the model, and call to trigger processing.
 
 #[async_trait]
-pub(crate) trait Model: Send + Sync {
+pub(crate) trait Model: Send + Sync + 'static {
     /// call takes some data references, sends the data to the model, and receives data references
     /// for the model output in return. Model implementations are expected to interface with the storage
     /// backend directly and only supply references in return.

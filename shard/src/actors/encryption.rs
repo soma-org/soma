@@ -4,6 +4,7 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
+    error::ShardResult,
     networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
     storage::blob::{BlobCompression, BlobEncryption, BlobPath},
     types::{
@@ -37,11 +38,11 @@ impl<K: Sync + Send + 'static, B: BlobEncryption<K>> Processor for Encryptor<K, 
         let _ = tokio::task::spawn_blocking(move || match msg.input {
             EncryptionInput::Encrypt(key, contents) => {
                 let encrypted = encryptor.encrypt(key, contents);
-                msg.sender.send(encrypted);
+                let _ = msg.sender.send(Ok(encrypted));
             }
             EncryptionInput::Decrypt(key, contents) => {
                 let decrypted = encryptor.decrypt(key, contents);
-                msg.sender.send(decrypted);
+                let _ = msg.sender.send(Ok(decrypted));
             }
         })
         .await;
