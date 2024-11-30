@@ -1,6 +1,6 @@
-mod compression;
-mod encryption;
-mod filesystem;
+pub(crate) mod compression;
+pub(crate) mod encryption;
+pub(crate) mod filesystem;
 
 use crate::{error::ShardResult, types::checksum::Checksum};
 use async_trait::async_trait;

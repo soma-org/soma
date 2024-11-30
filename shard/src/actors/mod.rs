@@ -1,7 +1,8 @@
-mod compression;
-mod downloader;
-mod encryption;
-mod model;
+pub(crate) mod blob;
+pub(crate) mod compression;
+pub(crate) mod downloader;
+pub(crate) mod encryption;
+pub(crate) mod model;
 
 use async_trait::async_trait;
 use tokio::{
@@ -16,6 +17,10 @@ use crate::error::{ShardError, ShardResult};
 trait Processor: Send + Sync + Sized + 'static {
     type Input: Send + Sync + Sized + 'static;
     type Output: Send + Sync + Sized + 'static;
+    // Tried returning a result here, except it seemed to be more confusing than beneficial.
+    // in most cases error handling was being passed back via the sender in a spawned task, and
+    // error handling can still work inside the process but outside of a spawned task via the sender.
+    // Keeping this fn without a return type makes it more obvious that the return should occur via the sender.
     async fn process(&self, input: ActorMessage<Self>);
     fn shutdown(&mut self);
 }
@@ -65,9 +70,16 @@ impl<P: Processor> Actor<P> {
     }
 }
 
-#[derive(Clone)]
 pub struct ActorHandle<P: Processor> {
     sender: mpsc::Sender<ActorMessage<P>>,
+}
+
+impl<P: Processor> Clone for ActorHandle<P> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone()
+        }
+    }
 }
 
 impl<P: Processor> ActorHandle<P> {

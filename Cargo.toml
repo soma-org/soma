@@ -52,6 +52,7 @@ ctr = "0.9.2"
 crypto-common = "0.1.6"
 pyo3 = "0.22"
 numpy = "0.22.1"
+ndarray = { version = "0.16", features = ["serde"] }
 reqwest = "0.12.9"
 axum = "0.7.9"
 zstd = "0.13.2"

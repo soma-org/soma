@@ -44,6 +44,8 @@ impl<B: BlobCompression> Processor for Compressor<B> {
             }
         })
         .await;
+        // NOTE: await here causes the program to only operate sequentially because the actor run loop
+        // also awaits when calling a processors process fn
     }
 
     fn shutdown(&mut self) {

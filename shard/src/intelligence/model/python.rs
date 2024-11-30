@@ -102,7 +102,10 @@ impl Model for PythonModule {
         // Clone or get what we need before the spawn_blocking
         let input = input.clone(); // Clone the input
 
-        // Get the module reference before spawning the blocking task
+        // TODO: figure out how to improve this? I probably shouldn't aquire the gil twice?
+        // potentially run this using a dedicated OS thread and not using tokio spawn blocking
+
+
         let module = Python::with_gil(|py| -> ShardResult<PyObject> {
             Ok(self
                 .module

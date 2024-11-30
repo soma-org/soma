@@ -2,15 +2,12 @@ use async_trait::async_trait;
 use tracing::warn;
 
 use crate::{
-    core::encoder_core::EncoderCore,
-    error::ShardResult,
-    networking::messaging::EncoderNetworkClient,
-    types::{
+    core::encoder_core::EncoderCore, error::ShardResult, intelligence::model::Model, networking::messaging::EncoderNetworkClient, storage::blob::BlobStorage, types::{
         certificate::ShardCertificate, shard_commit::ShardCommit,
         shard_completion_proof::ShardCompletionProof, shard_endorsement::ShardEndorsement,
         shard_input::ShardInput, shard_removal::ShardRemoval, shard_reveal::ShardReveal,
         signed::Signed, verified::Verified,
-    },
+    }
 };
 use tokio::{sync::mpsc, task::JoinSet};
 
@@ -68,8 +65,8 @@ impl TaskManagerHandle {
     }
 }
 
-struct TaskManager<C: EncoderNetworkClient> {
-    core: EncoderCore<C>,
+struct TaskManager<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
+    core: EncoderCore<C, M, B>,
     shard_input_receiver: mpsc::Receiver<Verified<Signed<ShardInput>>>,
     shard_commit_certificate_receiver:
         mpsc::Receiver<Verified<ShardCertificate<Signed<ShardCommit>>>>,
@@ -81,7 +78,7 @@ struct TaskManager<C: EncoderNetworkClient> {
     shard_completion_proof_receiver: mpsc::Receiver<Verified<ShardCompletionProof>>,
 }
 
-impl<C: EncoderNetworkClient> TaskManager<C> {
+impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> TaskManager<C, M, B> {
     fn spawn_tasks(self, join_set: &mut JoinSet<()>) {
         let TaskManager {
             core,
@@ -199,8 +196,8 @@ pub(crate) struct ChannelTaskDispatcher {
 }
 
 impl ChannelTaskDispatcher {
-    pub(crate) fn start<C: EncoderNetworkClient>(
-        core: EncoderCore<C>,
+    pub(crate) fn start<C: EncoderNetworkClient, M: Model, B: BlobStorage>(
+        core: EncoderCore<C, M, B>,
     ) -> (Self, TaskManagerHandle) {
         let (shard_input_sender, shard_input_receiver) =
             mpsc::channel(CORE_THREAD_COMMANDS_CHANNEL_SIZE);

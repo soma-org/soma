@@ -32,6 +32,7 @@ ctr.workspace = true
 crypto-common.workspace = true
 pyo3.workspace = true
 numpy.workspace = true
+ndarray.workspace = true
 reqwest.workspace = true
 axum.workspace = true
 zstd.workspace = true

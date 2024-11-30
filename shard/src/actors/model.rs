@@ -30,8 +30,8 @@ impl<M: Model> Processor for ModelProcessor<M> {
 
     async fn process(&self, msg: ActorMessage<Self>) {
         if let Some(sem) = &self.semaphore {
-            let model = self.model.clone();
             if let Ok(permit) = sem.clone().acquire_owned().await {
+                let model = self.model.clone();
                 tokio::spawn(async move {
                     if let Ok(embeddings) = model.call(&msg.input).await {
                         let _ = msg.sender.send(Ok(embeddings));

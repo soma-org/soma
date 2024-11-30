@@ -22,6 +22,12 @@ pub(crate) struct DownloaderInput {
     batch: Batch,
 }
 
+impl DownloaderInput {
+    pub(crate) fn new(peer: NetworkingIndex, batch: Batch) -> Self {
+        Self { peer, batch }
+    }
+}
+
 pub(crate) struct Downloader {
     semaphore: Arc<Semaphore>,
     client: Arc<BlobHttpClient>,

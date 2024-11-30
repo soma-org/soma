@@ -21,6 +21,7 @@ impl BlobCompression for ZstdCompressor {
     }
 
     fn decompress(&self, contents: Bytes) -> ShardResult<Bytes> {
+        // TODO: switch to explicitly setting the size
         let decompressed = decompress(contents.as_ref(), MAX_CHUNK_SIZE)
             .map_err(|e| ShardError::CompressionFailed(e.to_string()))?;
         Ok(Bytes::from(decompressed))
