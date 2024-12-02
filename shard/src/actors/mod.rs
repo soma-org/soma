@@ -77,7 +77,7 @@ pub struct ActorHandle<P: Processor> {
 impl<P: Processor> Clone for ActorHandle<P> {
     fn clone(&self) -> Self {
         Self {
-            sender: self.sender.clone()
+            sender: self.sender.clone(),
         }
     }
 }

@@ -105,7 +105,6 @@ impl Model for PythonModule {
         // TODO: figure out how to improve this? I probably shouldn't aquire the gil twice?
         // potentially run this using a dedicated OS thread and not using tokio spawn blocking
 
-
         let module = Python::with_gil(|py| -> ShardResult<PyObject> {
             Ok(self
                 .module

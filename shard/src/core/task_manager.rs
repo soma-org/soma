@@ -2,12 +2,17 @@ use async_trait::async_trait;
 use tracing::warn;
 
 use crate::{
-    core::encoder_core::EncoderCore, error::ShardResult, intelligence::model::Model, networking::messaging::EncoderNetworkClient, storage::blob::BlobStorage, types::{
+    core::encoder_core::EncoderCore,
+    error::ShardResult,
+    intelligence::model::Model,
+    networking::messaging::EncoderNetworkClient,
+    storage::blob::BlobStorage,
+    types::{
         certificate::ShardCertificate, shard_commit::ShardCommit,
         shard_completion_proof::ShardCompletionProof, shard_endorsement::ShardEndorsement,
         shard_input::ShardInput, shard_removal::ShardRemoval, shard_reveal::ShardReveal,
         signed::Signed, verified::Verified,
-    }
+    },
 };
 use tokio::{sync::mpsc, task::JoinSet};
 

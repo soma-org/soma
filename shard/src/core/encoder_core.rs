@@ -1,8 +1,22 @@
 // use crate::networking::messaging::MESSAGE_TIMEOUT;
 use crate::{
     actors::{
-        blob::{StorageProcessor, StorageProcessorInput}, compression::{Compressor, CompressorInput}, downloader::{Downloader, DownloaderInput}, encryption::{EncryptionInput, Encryptor}, model::ModelProcessor, ActorHandle
-    }, crypto::AesKey, error::{ShardError, ShardResult}, intelligence::model::Model, networking::messaging::EncoderNetworkClient, storage::blob::{compression::ZstdCompressor, encryption::AesEncryptor, BlobEncryption, BlobPath, BlobStorage}, types::{
+        blob::{StorageProcessor, StorageProcessorInput},
+        compression::{Compressor, CompressorInput},
+        downloader::{Downloader, DownloaderInput},
+        encryption::{EncryptionInput, Encryptor},
+        model::ModelProcessor,
+        ActorHandle,
+    },
+    crypto::AesKey,
+    error::{ShardError, ShardResult},
+    intelligence::model::Model,
+    networking::messaging::EncoderNetworkClient,
+    storage::blob::{
+        compression::ZstdCompressor, encryption::AesEncryptor, BlobEncryption, BlobPath,
+        BlobStorage,
+    },
+    types::{
         certificate::ShardCertificate,
         manifest::ManifestAPI,
         network_committee::NetworkingIndex,
@@ -14,15 +28,15 @@ use crate::{
         shard_reveal::ShardReveal,
         signed::Signed,
         verified::Verified,
-    }
+    },
 };
-use std::sync::Arc;
 use bytes::Bytes;
 use ndarray::ArrayD;
+use rand::rngs::OsRng;
+use rand::RngCore;
+use std::sync::Arc;
 use tokio::{sync::Semaphore, task::JoinSet};
 use tokio_util::sync::CancellationToken;
-use rand::RngCore;
-use rand::rngs::OsRng;
 
 pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
     shard_input_semaphore: Arc<Semaphore>,
@@ -105,20 +119,40 @@ where
                         // Process the batch through each actor in sequence
                         let downloader_input =
                             DownloaderInput::new(NetworkingIndex::default(), batch.to_owned());
-                        let download_result = downloader.send(downloader_input, cancellation.clone()).await?;
-                        let decompressed = compressor.send(CompressorInput::Decompress(download_result), cancellation.clone()).await?;
-                        let array: ArrayD<f32> = bcs::from_bytes(&decompressed).map_err(ShardError::MalformedType)?;
+                        let download_result = downloader
+                            .send(downloader_input, cancellation.clone())
+                            .await?;
+                        let decompressed = compressor
+                            .send(
+                                CompressorInput::Decompress(download_result),
+                                cancellation.clone(),
+                            )
+                            .await?;
+                        let array: ArrayD<f32> =
+                            bcs::from_bytes(&decompressed).map_err(ShardError::MalformedType)?;
                         let model_output = model.send(array, cancellation.clone()).await?;
-                        let model_bytes = bcs::to_bytes(&model_output).map_err(ShardError::SerializationFailure)?;
+                        let model_bytes = bcs::to_bytes(&model_output)
+                            .map_err(ShardError::SerializationFailure)?;
                         let model_bytes = Bytes::copy_from_slice(&model_bytes);
-                        let compressed_embeddings = compressor.send(CompressorInput::Compress(model_bytes), cancellation.clone()).await?;
-                        let encrypted_embeddings = encryptor.send(EncryptionInput::Encrypt(key, compressed_embeddings), cancellation.clone()).await?;
+                        let compressed_embeddings = compressor
+                            .send(CompressorInput::Compress(model_bytes), cancellation.clone())
+                            .await?;
+                        let encrypted_embeddings = encryptor
+                            .send(
+                                EncryptionInput::Encrypt(key, compressed_embeddings),
+                                cancellation.clone(),
+                            )
+                            .await?;
                         // TODO: generate a path using the checksum of encrypted data, or make the storage actor generate the path and return it.
                         let path = BlobPath::new("change me".to_string())?;
-                        let checksum = storage.send(StorageProcessorInput::Store(path, encrypted_embeddings), cancellation.clone()).await?;
+                        let checksum = storage
+                            .send(
+                                StorageProcessorInput::Store(path, encrypted_embeddings),
+                                cancellation.clone(),
+                            )
+                            .await?;
                         // return checksums to package into a commit
                         Ok(())
-
                     });
                 }
 
