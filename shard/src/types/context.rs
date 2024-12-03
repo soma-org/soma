@@ -24,6 +24,9 @@ pub(crate) struct EncoderContext {
     pub(crate) modality_committees: ModalityCommittee,
     /// The services own index for each respective modality
     pub(crate) own_modality_indices: OwnModalityIndices,
+
+    // TODO change this quorum to be better
+    pub(crate) quorum: usize,
     // TODO: add configs
     // TODO: add metrics back
 }

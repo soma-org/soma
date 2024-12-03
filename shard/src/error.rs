@@ -16,6 +16,9 @@ use crate::types::authority_committee::AuthorityIndex;
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub(crate) enum ShardError {
+    #[error("Quorum failed")]
+    QuorumFailed,
+
     #[error("Actor error: {0}")]
     ActorError(String),
 
