@@ -66,7 +66,7 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
                         Ok(signature) => {
                             // assume signature validation occurs inside of the generic function
                             valid_signatures.push(signature);
-                            if valid_signatures.len() >= self.context.quorum {
+                            if valid_signatures.len() >= self.context.shard_quorum {
                                 // We hit quorum, can exit early
                                 join_set.abort_all();
                                 return Ok(valid_signatures);

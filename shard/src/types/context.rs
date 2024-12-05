@@ -10,6 +10,8 @@ pub(crate) trait NetworkingContext: Send + Sync + 'static {
     fn own_network_index(&self) -> NetworkingIndex;
 }
 
+type Quorum = usize;
+
 #[derive(Clone)]
 /// EncoderContext is updated each epoch and provides the various services running
 /// information on committeees, configurations, and access to common metric reporting
@@ -26,7 +28,7 @@ pub(crate) struct EncoderContext {
     pub(crate) own_modality_indices: OwnModalityIndices,
 
     // TODO change this quorum to be better
-    pub(crate) quorum: usize,
+    pub(crate) shard_quorum: Quorum,
     // TODO: add configs
     // TODO: add metrics back
 }
@@ -38,6 +40,7 @@ impl EncoderContext {
         own_network_index: NetworkingIndex,
         modality_committees: ModalityCommittee,
         own_modality_indices: OwnModalityIndices,
+        shard_quorum: Quorum,
     ) -> Self {
         Self {
             authority_committee,
@@ -45,6 +48,7 @@ impl EncoderContext {
             own_network_index,
             modality_committees,
             own_modality_indices,
+            shard_quorum,
         }
     }
 }
