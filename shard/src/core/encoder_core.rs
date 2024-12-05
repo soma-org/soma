@@ -181,6 +181,10 @@ where
             .await
         {
             tokio::spawn(async move {
+                // download the commit data
+                // download the probe
+                // mark complete when those steps are done
+                // track the completion of these things and trigger actions after a certain timeout for instance
                 println!("{:?}", shard_commit_certificate);
                 drop(permit);
             });
@@ -198,6 +202,9 @@ where
             .await
         {
             tokio::spawn(async move {
+                // decrypt the data
+                // decompress the data
+                // mark complete when data has been applied to every probe and store the intermediate responses
                 println!("{:?}", shard_reveal_certificate);
                 drop(permit);
             });

@@ -5,7 +5,7 @@ use crate::{
     networking::messaging::{tonic_network::EncoderTonicManager, EncoderNetworkManager},
     storage::datastore::mem_store::MemStore,
     types::context::EncoderContext,
-    ProtocolKeyPair, ProtocolPublicKey,
+    ProtocolKeyPair,
 };
 
 use super::{
