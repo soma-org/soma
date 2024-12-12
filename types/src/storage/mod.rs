@@ -3,6 +3,7 @@ use serde_with::serde_as;
 
 use crate::object::{Object, ObjectID, ObjectRef, Version};
 
+pub mod consensus;
 pub mod object_store;
 pub mod read_store;
 pub mod storage_error;

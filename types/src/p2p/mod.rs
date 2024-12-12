@@ -9,7 +9,7 @@ use crate::{multiaddr::Multiaddr, peer_id::PeerId};
 pub mod active_peers;
 pub mod channel_manager;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PeerEvent {
     NewPeer {
         peer_id: PeerId,
@@ -21,7 +21,7 @@ pub enum PeerEvent {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DisconnectReason {
     ConnectionLost,
     Shutdown,

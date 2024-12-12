@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
+    accumulator::CommitIndex,
     committee::{Committee, EpochId},
-    digests::TransactionDigest,
+    digests::{CommitContentsDigest, CommitSummaryDigest, TransactionDigest},
     effects::TransactionEffects,
+    state_sync::{CommitContents, FullCommitContents, VerifiedCommitSummary},
     transaction::VerifiedTransaction,
 };
 
@@ -15,6 +17,31 @@ pub trait ReadStore: ObjectStore {
     //
 
     fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>>;
+
+    //
+    // Commit Getters
+    //
+
+    /// Get the highest verified commit. This is the highest commit summary that has been
+    /// verified, generally by state-sync.
+    fn get_highest_verified_commit(&self) -> Result<VerifiedCommitSummary>;
+
+    /// Get the highest synced commit. This is the highest commit that has been synced from
+    /// state-sync.
+    fn get_highest_synced_commit(&self) -> Result<VerifiedCommitSummary>;
+
+    /// Lowest available commit for which transaction data can be requested.
+    fn get_lowest_available_commit(&self) -> Result<CommitIndex>;
+
+    fn get_commit_by_digest(&self, digest: &CommitSummaryDigest) -> Option<VerifiedCommitSummary>;
+
+    fn get_commit_by_index(&self, index: CommitIndex) -> Option<VerifiedCommitSummary>;
+
+    /// Get a "full" commit for purposes of state-sync
+    fn get_full_commit_contents(&self, digest: &CommitContentsDigest)
+        -> Option<FullCommitContents>;
+
+    fn get_full_commit_contents_by_index(&self, index: CommitIndex) -> Option<FullCommitContents>;
 
     //
     // Transaction Getters
@@ -48,5 +75,70 @@ pub trait ReadStore: ObjectStore {
             .iter()
             .map(|digest| self.get_transaction_effects(digest))
             .collect::<Result<Vec<_>, _>>()
+    }
+}
+
+impl<T: ReadStore + ?Sized> ReadStore for &T {
+    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
+        (*self).get_committee(epoch)
+    }
+
+    fn get_highest_verified_commit(&self) -> Result<VerifiedCommitSummary> {
+        (*self).get_highest_verified_commit()
+    }
+
+    fn get_highest_synced_commit(&self) -> Result<VerifiedCommitSummary> {
+        (*self).get_highest_synced_commit()
+    }
+
+    fn get_lowest_available_commit(&self) -> Result<CommitIndex> {
+        (*self).get_lowest_available_commit()
+    }
+
+    fn get_commit_by_digest(&self, digest: &CommitSummaryDigest) -> Option<VerifiedCommitSummary> {
+        (*self).get_commit_by_digest(digest)
+    }
+
+    fn get_commit_by_index(&self, index: CommitIndex) -> Option<VerifiedCommitSummary> {
+        (*self).get_commit_by_index(index)
+    }
+
+    fn get_full_commit_contents_by_index(&self, index: CommitIndex) -> Option<FullCommitContents> {
+        (**self).get_full_commit_contents_by_index(index)
+    }
+
+    fn get_transaction(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> Result<Option<Arc<VerifiedTransaction>>> {
+        (*self).get_transaction(tx_digest)
+    }
+
+    fn multi_get_transactions(
+        &self,
+        tx_digests: &[TransactionDigest],
+    ) -> Result<Vec<Option<Arc<VerifiedTransaction>>>> {
+        (*self).multi_get_transactions(tx_digests)
+    }
+
+    fn get_transaction_effects(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> Result<Option<TransactionEffects>> {
+        (*self).get_transaction_effects(tx_digest)
+    }
+
+    fn multi_get_transaction_effects(
+        &self,
+        tx_digests: &[TransactionDigest],
+    ) -> Result<Vec<Option<TransactionEffects>>> {
+        (*self).multi_get_transaction_effects(tx_digests)
+    }
+
+    fn get_full_commit_contents(
+        &self,
+        digest: &CommitContentsDigest,
+    ) -> Option<FullCommitContents> {
+        (*self).get_full_commit_contents(digest)
     }
 }

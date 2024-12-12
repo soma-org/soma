@@ -15,9 +15,12 @@ use tokio::{
 use tonic::{async_trait, transport::Server, Request, Response};
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{
-    block::{BlockRef, VerifiedBlock}, commit::CommitRange, context::Context, error::{ConsensusError, ConsensusResult}, network::tonic_gen::consensus_service_server::ConsensusServiceServer
-    ,  CommitIndex, Round
+use crate::network::tonic_gen::consensus_service_server::ConsensusServiceServer;
+use types::{
+    consensus:: {
+        block::{BlockRef, VerifiedBlock, Round}, commit::{CommitRange, CommitIndex}, context::Context,
+    },
+    error::{ConsensusError, ConsensusResult}
 };
 use types::tls::{create_rustls_client_config, create_rustls_server_config, public_key_from_certificate, AllowedPublicKeys};
 use types::committee::AuthorityIndex;
@@ -533,7 +536,9 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
     async fn install_service(&mut self, service: Arc<S>) {
         info!("Starting tonic service");
 
-        let authority = self.context.committee.authority(self.context.own_index);
+        let own_index = self.context.own_index.expect("Own index not found");
+
+        let authority = self.context.committee.authority(own_index);
         // By default, bind to the unspecified address to allow the actual address to be assigned.
         // But bind to localhost if it is requested.
         // let own_address = if authority.address.is_localhost_ip() {

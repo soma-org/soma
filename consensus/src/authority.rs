@@ -1,29 +1,21 @@
 use std::{sync::Arc, time::Instant};
 
-use parking_lot::RwLock;
-use tracing::info;
-
 use crate::{
-    block_manager::BlockManager,
-    block_verifier::SignedBlockVerifier,
     broadcaster::Broadcaster,
     commit_observer::{CommitConsumer, CommitObserver},
     commit_syncer::{CommitSyncer, CommitVoteMonitor},
-    context::{Clock, Context},
     core::{Core, CoreSignals},
     core_thread::{ChannelCoreThreadDispatcher, CoreThreadDispatcher, CoreThreadHandle},
-    dag::DagState,
-    leader_schedule::LeaderSchedule,
     leader_timeout::{LeaderTimeoutTask, LeaderTimeoutTaskHandle},
     network::{
         tonic_network::{TonicClient, TonicManager},
         NetworkManager, NetworkService,
     },
     service::AuthorityService,
-    storage::mem_store::MemStore,
     synchronizer::{Synchronizer, SynchronizerHandle},
-    transaction::{TransactionClient, TransactionConsumer, TransactionVerifier},
 };
+use parking_lot::RwLock;
+use tracing::info;
 use types::parameters::Parameters;
 use types::{
     accumulator,
@@ -32,6 +24,16 @@ use types::{
 use types::{
     accumulator::AccumulatorStore,
     crypto::{NetworkKeyPair, ProtocolKeyPair},
+};
+use types::{
+    consensus::{
+        block_verifier::SignedBlockVerifier,
+        context::{Clock, Context},
+        leader_schedule::LeaderSchedule,
+        transaction::{TransactionClient, TransactionConsumer, TransactionVerifier},
+    },
+    dag::{block_manager::BlockManager, dag_state::DagState},
+    storage::consensus::mem_store::MemStore,
 };
 
 pub struct ConsensusAuthority {
@@ -65,7 +67,7 @@ impl ConsensusAuthority {
         );
         assert!(committee.is_valid_index(own_index));
         let context = Arc::new(Context::new(
-            own_index,
+            Some(own_index),
             committee,
             parameters,
             Arc::new(Clock::new()),
@@ -213,7 +215,6 @@ mod tests {
     use std::sync::Mutex;
     use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
-    use crate::local_committee_and_keys;
     use accumulator::TestAccumulatorStore;
     use tempfile::TempDir;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
@@ -221,8 +222,9 @@ mod tests {
     use types::parameters::Parameters;
 
     use super::*;
-    use crate::{
-        block::BlockAPI as _, commit::CommittedSubDag, transaction::NoopTransactionVerifier,
+    use types::consensus::{
+        block::BlockAPI as _, commit::CommittedSubDag, committee::local_committee_and_keys,
+        transaction::NoopTransactionVerifier,
     };
 
     #[tokio::test]
@@ -255,7 +257,7 @@ mod tests {
         )
         .await;
 
-        assert_eq!(authority.context.own_index, own_index);
+        assert_eq!(authority.context.own_index, Some(own_index));
         assert_eq!(authority.context.committee.epoch(), 0);
         assert_eq!(authority.context.committee.size(), 1);
 

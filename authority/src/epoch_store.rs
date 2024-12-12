@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     future::Future,
-    ops::Deref,
+    ops::{Bound, Deref},
     path::PathBuf,
     sync::Arc,
     time::Instant,
@@ -14,7 +14,7 @@ use futures::{
     FutureExt,
 };
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, CommitIndex},
     base::{AuthorityName, ConciseableName, Round, SomaAddress},
@@ -32,6 +32,7 @@ use types::{
     mutex_table::{MutexGuard, MutexTable},
     object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Version},
     protocol::{Chain, ProtocolConfig},
+    state_sync::{CertifiedCommitSummary, CommitContents, CommitSummary},
     storage::object_store::ObjectStore,
     system_state::{
         self, get_system_state, EpochStartSystemState, EpochStartSystemStateTrait, SystemState,
@@ -49,6 +50,7 @@ use types::{
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
 
 use crate::{
+    commit::builder::{CommitHeight, PendingCommit},
     handler::{
         ConsensusCommitInfo, SequencedConsensusTransaction, SequencedConsensusTransactionKey,
         SequencedConsensusTransactionKind, VerifiedSequencedConsensusTransaction,
@@ -167,6 +169,14 @@ pub struct AuthorityPerEpochStore {
     // executed_in_epoch_table_enabled: once_cell::sync::OnceCell<bool>,
 
     // chain_identifier: ChainIdentifier,
+
+    // Subscribers will get notified when a transaction is executed via commit execution. (From State Sync)
+    executed_transactions_to_commit_notify_read: NotifyRead<TransactionDigest, CommitIndex>,
+
+    /// Caches the highest synced commit index as this has been notified from the CommitExecutor
+    highest_synced_commit: RwLock<CommitIndex>,
+    /// Get notified when a synced commit has reached CommitExecutor.
+    synced_commit_notify_read: NotifyRead<CommitIndex, ()>,
 }
 
 /// AuthorityEpochTables contains tables that contain data that is only valid within an epoch.
@@ -241,6 +251,22 @@ pub struct AuthorityEpochTables {
     /// accumulator up to that commit. Guaranteed to be written to in commit
     /// index order.
     pub running_root_accumulators: RwLock<BTreeMap<CommitIndex, Accumulator>>,
+
+    /// When transaction is executed via commit executor, we store association here
+    pub(crate) executed_transactions_to_commit: RwLock<BTreeMap<TransactionDigest, CommitIndex>>,
+
+    /// Maps index to commit summary, used by CommitBuilder to build commit within epoch
+    commit_summaries: RwLock<BTreeMap<CommitIndex, CommitSummary>>,
+
+    /// This table has information for the commits for which we constructed all the data
+    /// from consensus, but not yet constructed actual commit summary.
+    /// TODO: Put this in consensus instead of epoch store
+    /// Key in this table is the consensus commit height but should be a a commit index.
+    ///
+    /// Non-empty list of transactions here might result in empty list when we are forming commits.
+    /// Because we don't want to create commit summary with empty content(see CommitBuilder::write_commit),
+    /// the sequence number of commit does not match height here.
+    pending_commits: RwLock<BTreeMap<CommitHeight, PendingCommit>>,
 }
 
 impl AuthorityEpochTables {
@@ -380,6 +406,9 @@ impl AuthorityPerEpochStore {
             epoch_open_time: current_time,
             epoch_close_time: Default::default(),
             epoch_start_configuration,
+            executed_transactions_to_commit_notify_read: NotifyRead::new(),
+            highest_synced_commit: RwLock::new(0),
+            synced_commit_notify_read: NotifyRead::new(),
         });
         s
     }
@@ -672,6 +701,14 @@ impl AuthorityPerEpochStore {
 
         join_all(unprocessed_keys_registrations).await;
         Ok(())
+    }
+
+    /// Notifies that a synced commit of index `index` is available. The source of the notification
+    /// is the CommitExecutor. The consumer here is guaranteed to be notified in index order.
+    pub fn notify_synced_commit(&self, index: CommitIndex) {
+        let mut highest_synced_commit = self.highest_synced_commit.write();
+        *highest_synced_commit = index;
+        self.synced_commit_notify_read.notify(&index, &());
     }
 
     pub fn has_sent_end_of_publish(&self, authority: &AuthorityName) -> SomaResult<bool> {
@@ -1216,6 +1253,37 @@ impl AuthorityPerEpochStore {
         Ok(())
     }
 
+    /// Called when transaction outputs are committed to disk
+    #[instrument(level = "trace", skip_all)]
+    pub fn handle_committed_transactions(&self, digests: &[TransactionDigest]) -> SomaResult<()> {
+        let tables = match self.tables() {
+            Ok(tables) => tables,
+            // After Epoch ends, it is no longer necessary to remove pending transactions
+            // because the table will not be used anymore and be deleted eventually.
+            Err(SomaError::EpochEnded(_)) => return Ok(()),
+            Err(e) => return Err(e),
+        };
+
+        // pending_execution stores transactions received from consensus which may not have
+        // been executed yet. At this point, they have been committed to the db durably and
+        // can be removed.
+        // After end-to-end quarantining, we will not need pending_execution since the consensus
+        // log itself will be used for recovery.
+        tables
+            .pending_execution
+            .write()
+            .retain(|k, _| !digests.contains(k));
+
+        // Now that the transaction effects are committed, we will never re-execute, so we
+        // don't need to worry about equivocating.
+        tables
+            .signed_effects_digests
+            .write()
+            .retain(|d, _| !digests.contains(d));
+
+        Ok(())
+    }
+
     /// Verifies transaction signatures and other data
     /// Important: This function can potentially be called in parallel and you can not rely on order of transactions to perform verification
     /// If this function return an error, transaction is skipped and is not passed to handle_consensus_transaction
@@ -1467,6 +1535,132 @@ impl AuthorityPerEpochStore {
         let tables = self.tables()?;
         let signed_effects_digests = tables.signed_effects_digests.read();
         Ok(signed_effects_digests.get(tx_digest).cloned())
+    }
+
+    pub fn insert_finalized_transactions(
+        &self,
+        digests: &[TransactionDigest],
+        index: CommitIndex,
+    ) -> SomaResult {
+        self.tables()?
+            .executed_transactions_to_commit
+            .write()
+            .extend(digests.iter().map(|digest| (*digest, index)));
+        trace!("Transactions {digests:?} finalized at commit {index}");
+
+        // Notify all readers that the transactions have been finalized as part of a checkpoint execution.
+        for digest in digests {
+            self.executed_transactions_to_commit_notify_read
+                .notify(digest, &index);
+        }
+
+        Ok(())
+    }
+
+    pub fn last_built_commit_summary(&self) -> SomaResult<Option<(CommitIndex, CommitSummary)>> {
+        let tables = self.tables()?;
+        let guard = tables.commit_summaries.read();
+        let summary = guard.iter().last().map(|(seq, s)| (*seq, s.clone()));
+        Ok(summary)
+    }
+
+    pub fn get_pending_commits(
+        &self,
+        last: Option<CommitHeight>,
+    ) -> SomaResult<Vec<(CommitHeight, PendingCommit)>> {
+        let tables = self.tables()?;
+        let guard = tables.pending_commits.read();
+        let start_bound = last
+            .map(|height| Bound::Excluded(height))
+            .unwrap_or(Bound::Unbounded);
+
+        Ok(guard
+            .range((start_bound, Bound::Unbounded))
+            .map(|(k, v)| (*k, v.clone()))
+            .collect())
+    }
+
+    pub fn process_pending_commit(
+        &self,
+        commit_height: CommitHeight,
+        content_info: (CertifiedCommitSummary, CommitContents),
+    ) -> SomaResult<()> {
+        let tables = self.tables()?;
+        // Created commit is inserted in commit_summaries.
+        // This means that upon restart we can use BuilderCommitSummary::commit_height
+        // from the last built summary to resume building commits.
+
+        let index = content_info.0.data().index;
+
+        tables
+            .commit_summaries
+            .write()
+            .insert(index, content_info.0.data().clone());
+
+        // find all pending commits <= commit_height and remove them
+        // Get all keys <= commit_height
+        let keys: Vec<CommitHeight> = tables
+            .pending_commits
+            .read()
+            .range(..=commit_height) // Range up to and including commit_height
+            .map(|(k, _)| *k)
+            .collect();
+
+        // Delete all the collected keys
+        for key in keys {
+            tables.pending_commits.write().remove(&key);
+        }
+
+        Ok(())
+    }
+
+    // Converts transaction keys to digests, waiting for digests to become available for any
+    // non-digest keys.
+    pub async fn notify_read_executed_digests(
+        &self,
+        keys: &[TransactionKey],
+    ) -> SomaResult<Vec<TransactionDigest>> {
+        // TODO: is this function necessary? in resolve_commit_transactions before create_commit
+
+        // TODO: decide if TransactionKey will ever not be a transaction digest, i.e. a randomnous round
+        // let non_digest_keys: Vec<_> = keys
+        //     .iter()
+        //     .filter_map(|key| {
+        //         if matches!(key, TransactionKey::Digest(_)) {
+        //             None
+        //         } else {
+        //             Some(*key)
+        //         }
+        //     })
+        //     .collect();
+
+        // let registrations = self
+        //     .executed_digests_notify_read
+        //     .register_all(&non_digest_keys);
+        // let executed_digests = self
+        //     .tables()?
+        //     .transaction_key_to_digest
+        //     .multi_get(&non_digest_keys)?;
+        // let futures = executed_digests
+        //     .into_iter()
+        //     .zip(registrations)
+        //     .map(|(d, r)| match d {
+        //         // Note that Some() clause also drops registration that is already fulfilled
+        //         Some(ready) => Either::Left(futures::future::ready(ready)),
+        //         None => Either::Right(r),
+        //     });
+        // let mut results = VecDeque::from(join_all(futures).await);
+
+        Ok(keys
+            .iter()
+            .filter_map(|key| {
+                if let TransactionKey::Digest(digest) = key {
+                    Some(*digest)
+                } else {
+                    None
+                }
+            })
+            .collect())
     }
 }
 

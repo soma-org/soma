@@ -65,6 +65,10 @@ impl TransactionEffectsAPI for TransactionEffects {
         &self.transaction_digest
     }
 
+    fn transaction_digest_owned(&self) -> TransactionDigest {
+        self.transaction_digest.clone()
+    }
+
     fn old_object_metadata(&self) -> Vec<ObjectRef> {
         self.changed_objects
             .iter()
@@ -206,6 +210,7 @@ pub trait TransactionEffectsAPI {
     fn executed_epoch(&self) -> EpochId;
     fn modified_at_versions(&self) -> Vec<(ObjectID, Version)>;
     fn transaction_digest(&self) -> &TransactionDigest;
+    fn transaction_digest_owned(&self) -> TransactionDigest;
 
     /// The version assigned to all output objects
     fn version(&self) -> Version;

@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
-use consensus::{BlockAPI, CommittedSubDag};
 use types::committee::AuthorityIndex;
+use types::consensus::{block::BlockAPI, commit::CommittedSubDag};
 use types::{
     consensus::ConsensusTransaction, digests::ConsensusCommitDigest, protocol::ProtocolConfig,
 };

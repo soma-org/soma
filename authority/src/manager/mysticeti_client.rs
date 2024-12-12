@@ -15,7 +15,7 @@ use crate::{
     adapter::SubmitToConsensus, epoch_store::AuthorityPerEpochStore,
     handler::SequencedConsensusTransactionKey,
 };
-use consensus::TransactionClient;
+use types::consensus::transaction::TransactionClient;
 
 /// Gets a client to submit transactions to Mysticeti, or waits for one to be available.
 /// This hides the complexities of async consensus initialization and submitting to different

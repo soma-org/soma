@@ -3,18 +3,21 @@ use std::{sync::Arc, time::Duration};
 use parking_lot::RwLock;
 use tokio::{sync::mpsc::UnboundedSender, time::Instant};
 use tracing::{debug, info};
-
-use crate::{
-    block::{BlockAPI, VerifiedBlock},
-    commit::{CommitAPI, CommittedSubDag, TrustedCommit},
-    context::Context,
-    dag::DagState,
+use types::{
+    consensus::{
+        block::{BlockAPI, Round, VerifiedBlock},
+        commit::{
+            load_committed_subdag_from_store, CommitAPI, CommitIndex, CommittedSubDag,
+            TrustedCommit,
+        },
+        context::Context,
+        leader_schedule::LeaderSchedule,
+    },
+    dag::{dag_state::DagState, linearizer::Linearizer},
     error::{ConsensusError, ConsensusResult},
-    leader_schedule::LeaderSchedule,
-    linearizer::Linearizer,
-    storage::Store,
-    CommitIndex, Round,
+    storage::consensus::Store,
 };
+
 use types::committee::AuthorityIndex;
 /// Role of CommitObserver
 /// - Called by core when try_commit() returns newly committed leaders.
@@ -137,37 +140,6 @@ impl CommitObserver {
     }
 }
 
-// Recovers the full CommittedSubDag from block store, based on Commit.
-pub fn load_committed_subdag_from_store(
-    store: &dyn Store,
-    commit: TrustedCommit,
-) -> CommittedSubDag {
-    let mut leader_block_idx = None;
-    let commit_blocks = store
-        .read_blocks(commit.blocks())
-        .expect("We should have the block referenced in the commit data");
-    let blocks = commit_blocks
-        .into_iter()
-        .enumerate()
-        .map(|(idx, commit_block_opt)| {
-            let commit_block =
-                commit_block_opt.expect("We should have the block referenced in the commit data");
-            if commit_block.reference() == commit.leader() {
-                leader_block_idx = Some(idx);
-            }
-            commit_block
-        })
-        .collect::<Vec<_>>();
-    let leader_block_idx = leader_block_idx.expect("Leader block must be in the sub-dag");
-    let leader_block_ref = blocks[leader_block_idx].reference();
-    CommittedSubDag::new(
-        leader_block_ref,
-        blocks,
-        commit.timestamp_ms(),
-        commit.reference(),
-    )
-}
-
 pub struct CommitConsumer {
     // A channel to send the committed sub dags through
     pub sender: UnboundedSender<CommittedSubDag>,
@@ -200,13 +172,14 @@ mod tests {
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
     use super::*;
-    use crate::{
-        block::{BlockRef, Round},
-        commit::DEFAULT_WAVE_LENGTH,
-        context::Context,
-        dag::DagState,
-        storage::mem_store::MemStore,
-        test_dag::DagBuilder,
+    use types::{
+        consensus::{
+            block::{BlockRef, Round},
+            commit::DEFAULT_WAVE_LENGTH,
+            context::Context,
+        },
+        dag::{dag_state::DagState, test_dag::DagBuilder},
+        storage::consensus::mem_store::MemStore,
     };
 
     #[tokio::test]

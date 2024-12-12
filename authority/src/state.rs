@@ -8,7 +8,6 @@ use tap::TapFallible;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, warn, Instrument};
-use types::checkpoint::CheckpointTimestamp;
 use types::digests::{ECMHLiveObjectSetDigest, TransactionEffectsDigest};
 use types::effects::{
     self, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
@@ -16,6 +15,7 @@ use types::effects::{
 };
 use types::envelope::Message;
 use types::error::ExecutionError;
+use types::state_sync::CommitTimestamp;
 use types::storage::object_store::ObjectStore;
 use types::system_state::{EpochStartSystemStateTrait, SystemState};
 use types::transaction::{EndOfEpochTransactionKind, SenderSignedData};
@@ -38,7 +38,8 @@ use types::{
 };
 
 use crate::cache::{
-    ExecutionCacheTraitPointers, ExecutionCacheWrite, ObjectCacheRead, TransactionCacheRead,
+    ExecutionCacheCommit, ExecutionCacheTraitPointers, ExecutionCacheWrite, ObjectCacheRead,
+    TransactionCacheRead,
 };
 use crate::epoch_store::CertTxGuard;
 use crate::execution_driver::execution_process;
@@ -154,6 +155,10 @@ impl AuthorityState {
 
     pub fn get_accumulator_store(&self) -> &Arc<dyn AccumulatorStore> {
         &self.execution_cache_trait_pointers.accumulator_store
+    }
+
+    pub fn get_cache_commit(&self) -> &Arc<dyn ExecutionCacheCommit> {
+        &self.execution_cache_trait_pointers.cache_commit
     }
 
     /// This is a private method and should be kept that way. It doesn't check whether
@@ -734,7 +739,7 @@ impl AuthorityState {
     pub async fn create_and_execute_advance_epoch_tx(
         &self,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-        epoch_start_timestamp_ms: CheckpointTimestamp,
+        // epoch_start_timestamp_ms: CommitTimestamp,
     ) -> anyhow::Result<(SystemState, TransactionEffects)> {
         let next_epoch = epoch_store.epoch() + 1;
 

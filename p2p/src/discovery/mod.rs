@@ -27,14 +27,14 @@ use types::{
 
 use crate::tonic_gen::p2p_client::P2pClient;
 
-pub mod builder;
-pub mod server;
+// #[cfg(test)]
+// mod tests;
 
 /// The internal discovery state shared between the main event loop and the request handler
 pub struct DiscoveryState {
-    our_info: Option<SignedNodeInfo>,
-    connected_peers: HashMap<PeerId, ()>,
-    known_peers: HashMap<PeerId, VerifiedSignedNodeInfo>,
+    pub our_info: Option<SignedNodeInfo>,
+    // pub connected_peers: HashMap<PeerId, ()>,
+    pub known_peers: HashMap<PeerId, VerifiedSignedNodeInfo>,
 }
 
 // #[derive(Clone, Debug, Default)]
@@ -42,7 +42,7 @@ pub struct DiscoveryState {
 //     pub new_peers: Vec<NodeInfo>,
 // }
 
-struct DiscoveryEventLoop {
+pub struct DiscoveryEventLoop {
     config: P2pConfig,
     discovery_config: Arc<DiscoveryConfig>,
     allowlisted_peers: Arc<HashMap<PeerId, Option<Multiaddr>>>,
@@ -60,6 +60,32 @@ const INTERVAL_PERIOD_MS: u64 = 5_000;
 const PEER_QUERY_TIMEOUT_SECS: u64 = 10;
 
 impl DiscoveryEventLoop {
+    pub fn new(
+        config: P2pConfig,
+        discovery_config: DiscoveryConfig,
+        allowlisted_peers: Arc<HashMap<PeerId, Option<Multiaddr>>>,
+        active_peers: ActivePeers,
+        keypair: NetworkKeyPair,
+        channel_manager_tx: mpsc::Sender<ChannelManagerRequest>,
+        state: Arc<RwLock<DiscoveryState>>,
+        // trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
+    ) -> Self {
+        DiscoveryEventLoop {
+            config,
+            discovery_config: Arc::new(discovery_config),
+            allowlisted_peers,
+            active_peers,
+            keypair,
+            tasks: JoinSet::new(),
+            pending_dials: Default::default(),
+            dial_seed_peers_task: None,
+            channel_manager_tx,
+            // shutdown_handle,
+            state,
+            // trusted_peer_change_rx,
+        }
+    }
+
     pub async fn start(mut self) {
         info!("Discovery started");
 
@@ -192,20 +218,18 @@ impl DiscoveryEventLoop {
             .known_peers
             .iter()
             .filter(|(peer_id, info)| {
-                !state.connected_peers.contains_key(peer_id) // We're not already connected
-                    && !self.pending_dials.contains_key(peer_id) // There is no pending dial to this node
+                // (!state.connected_peers.contains_key(peer_id)) && // TODO We're not already connected
+                !self.pending_dials.contains_key(peer_id) // There is no pending dial to this node
             })
             .map(|(k, v)| (*k, v.clone()))
             .collect::<Vec<_>>();
 
         drop(state);
 
-        let number_of_connections = self.state.read().connected_peers.len();
+        // let number_of_connections = self.state.read().connected_peers.len();
         let number_to_dial = std::cmp::min(
             eligible.len(),
-            self.discovery_config
-                .target_concurrent_connections()
-                .saturating_sub(number_of_connections),
+            self.discovery_config.target_concurrent_connections(), // .saturating_sub(number_of_connections),
         );
 
         // Use as_slice() to get a slice reference
@@ -225,7 +249,7 @@ impl DiscoveryEventLoop {
         // If we aren't connected to anything and we aren't presently trying to connect to anyone
         // we need to try the seed peers
         if self.dial_seed_peers_task.is_none()
-            && self.state.read().connected_peers.is_empty()
+            // && self.state.read().connected_peers.is_empty()
             && self.pending_dials.is_empty()
             && !self.config.seed_peers.is_empty()
         {
@@ -240,7 +264,7 @@ impl DiscoveryEventLoop {
     }
 }
 
-fn now_unix() -> u64 {
+pub fn now_unix() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

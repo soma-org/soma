@@ -44,7 +44,7 @@ use utils::notify_read::NotifyRead;
 
 use super::{
     cache_types::CachedVersionMap, object_locks::ObjectLocks, ExecutionCacheCommit,
-    ExecutionCacheWrite, ObjectCacheRead, TransactionCacheRead,
+    ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TransactionCacheRead,
 };
 
 enum CacheResult<T> {
@@ -1239,5 +1239,11 @@ impl AccumulatorStore for WritebackCache {
             "cannot iterate live object set with dirty data"
         );
         self.store.iter_live_object_set()
+    }
+}
+
+impl StateSyncAPI for WritebackCache {
+    fn multi_insert_transactions(&self, transactions: &[VerifiedTransaction]) -> SomaResult {
+        Ok(self.store.multi_insert_transactions(transactions.iter())?)
     }
 }

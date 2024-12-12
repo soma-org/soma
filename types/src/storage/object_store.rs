@@ -34,3 +34,21 @@ impl ObjectStore for &[Object] {
             .cloned())
     }
 }
+
+impl<T: ObjectStore + ?Sized> ObjectStore for &T {
+    fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>> {
+        (*self).get_object(object_id)
+    }
+
+    fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Result<Option<Object>> {
+        (*self).get_object_by_key(object_id, version)
+    }
+
+    fn multi_get_objects(&self, object_ids: &[ObjectID]) -> Result<Vec<Option<Object>>> {
+        (*self).multi_get_objects(object_ids)
+    }
+
+    fn multi_get_objects_by_key(&self, object_keys: &[ObjectKey]) -> Result<Vec<Option<Object>>> {
+        (*self).multi_get_objects_by_key(object_keys)
+    }
+}

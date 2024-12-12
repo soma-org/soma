@@ -1,17 +1,8 @@
 use crate::{
-    block::{BlockAPI, BlockRef, SignedBlock, VerifiedBlock, GENESIS_ROUND},
-    block_verifier::BlockVerifier,
-    commit::{CommitAPI, CommitRange, TrustedCommit},
     commit_syncer::CommitVoteMonitor,
-    context::Context,
     core_thread::CoreThreadDispatcher,
-    dag::DagState,
-    error::{ConsensusError, ConsensusResult},
     network::NetworkService,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-    storage::Store,
     synchronizer::{SynchronizerHandle, COMMIT_LAG_MULTIPLIER},
-    CommitIndex, Round,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -20,6 +11,18 @@ use std::{sync::Arc, time::Duration};
 use tokio::time::sleep;
 use tracing::{debug, info, trace, warn};
 use types::committee::AuthorityIndex;
+use types::{
+    consensus::{
+        block::{BlockAPI, BlockRef, Round, SignedBlock, VerifiedBlock, GENESIS_ROUND},
+        block_verifier::BlockVerifier,
+        commit::{CommitAPI, CommitIndex, CommitRange, TrustedCommit},
+        context::Context,
+        stake_aggregator::{QuorumThreshold, StakeAggregator},
+    },
+    dag::dag_state::DagState,
+    error::{ConsensusError, ConsensusResult},
+    storage::consensus::Store,
+};
 
 pub(crate) struct AuthorityService<C: CoreThreadDispatcher> {
     context: Arc<Context>,
@@ -312,22 +315,15 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
 
 #[cfg(test)]
 mod tests {
-    use crate::commit::CommitRange;
-    use crate::test_dag::DagBuilder;
+
     use crate::{
-        block::BlockAPI,
-        block::{BlockRef, SignedBlock, TestBlock, VerifiedBlock},
         commit_syncer::CommitVoteMonitor,
-        context::Context,
         core_thread::{CoreError, CoreThreadDispatcher},
-        dag::DagState,
-        error::ConsensusResult,
         network::{NetworkClient, NetworkService},
         service::AuthorityService,
-        storage::mem_store::MemStore,
         synchronizer::Synchronizer,
-        Round,
     };
+
     use async_trait::async_trait;
     use bytes::Bytes;
     use parking_lot::{Mutex, RwLock};
@@ -336,6 +332,17 @@ mod tests {
     use std::time::Duration;
     use tokio::time::sleep;
     use types::committee::AuthorityIndex;
+    use types::{
+        consensus::{
+            block::BlockAPI,
+            block::{BlockRef, Round, SignedBlock, TestBlock, VerifiedBlock},
+            commit::CommitRange,
+            context::Context,
+        },
+        dag::{dag_state::DagState, test_dag::DagBuilder},
+        error::ConsensusResult,
+        storage::consensus::mem_store::MemStore,
+    };
 
     struct FakeCoreThreadDispatcher {
         blocks: Mutex<Vec<VerifiedBlock>>,
@@ -424,7 +431,7 @@ mod tests {
     async fn test_handle_send_block() {
         let (context, _keys) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let block_verifier = Arc::new(crate::block_verifier::NoopBlockVerifier {});
+        let block_verifier = Arc::new(types::consensus::block_verifier::NoopBlockVerifier {});
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());
         let network_client = Arc::new(FakeNetworkClient::default());
         let store = Arc::new(MemStore::new());
@@ -480,7 +487,7 @@ mod tests {
         // GIVEN
         let (context, _keys) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let block_verifier = Arc::new(crate::block_verifier::NoopBlockVerifier {});
+        let block_verifier = Arc::new(types::consensus::block_verifier::NoopBlockVerifier {});
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());
         let network_client = Arc::new(FakeNetworkClient::default());
         let store = Arc::new(MemStore::new());

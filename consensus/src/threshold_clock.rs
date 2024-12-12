@@ -1,10 +1,9 @@
 use std::{cmp::Ordering, sync::Arc, time::Instant};
 
-use crate::{
-    block::BlockRef,
+use types::consensus::{
+    block::{BlockRef, Round},
     context::Context,
     stake_aggregator::{QuorumThreshold, StakeAggregator},
-    Round,
 };
 
 pub(crate) struct ThresholdClock {
@@ -71,8 +70,8 @@ impl ThresholdClock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block::BlockDigest;
     use types::committee::AuthorityIndex;
+    use types::consensus::block::BlockDigest;
 
     #[tokio::test]
     async fn test_threshold_clock_add_block() {

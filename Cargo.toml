@@ -66,7 +66,9 @@ tokio-stream = { version = "0.1.14", features = ["sync", "net"] }
 
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "5f2c63266a065996d53f98156f0412782b468597" }
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "5f2c63266a065996d53f98156f0412782b468597", features = [
+    "copy_key",
+] }
 bytes = { version = "1.7.1", features = ["serde"] }
 async-trait = "0.1.81"
 bcs = "0.1.6"
@@ -114,6 +116,8 @@ hyper-rustls = { version = "0.27", default-features = false, features = [
     "tls12",
 ] }
 cfg-if = "1.0.0"
+base64 = "0.22.1"
+tempfile = "3.12.0"
 
 [patch.crates-io]
 tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99" }

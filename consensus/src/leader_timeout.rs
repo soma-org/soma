@@ -6,10 +6,9 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, Instant};
 use tracing::{debug, warn};
 
-use crate::context::Context;
 use crate::core::CoreSignalsReceivers;
 use crate::core_thread::CoreThreadDispatcher;
-use crate::Round;
+use types::consensus::{block::Round, context::Context};
 
 pub(crate) struct LeaderTimeoutTaskHandle {
     handle: JoinHandle<()>,
@@ -127,8 +126,11 @@ mod tests {
     use tokio::time::{sleep, Instant};
     use types::parameters::Parameters;
 
-    use crate::block::{BlockRef, Round, VerifiedBlock};
-    use crate::context::Context;
+    use types::consensus::{
+        block::{BlockRef, Round, VerifiedBlock},
+        context::Context,
+    };
+
     use crate::core::CoreSignals;
     use crate::core_thread::{CoreError, CoreThreadDispatcher};
     use crate::leader_timeout::LeaderTimeoutTask;

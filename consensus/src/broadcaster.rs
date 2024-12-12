@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use crate::{core::CoreSignalsReceivers, network::NetworkClient};
 use futures::{stream::FuturesUnordered, StreamExt as _};
 use tokio::{
     sync::broadcast,
@@ -11,12 +12,14 @@ use tokio::{
     time::{error::Elapsed, sleep_until, timeout, Instant},
 };
 use tracing::{trace, warn};
-
-use crate::{
-    block::VerifiedBlock, context::Context, core::CoreSignalsReceivers, error::ConsensusResult,
-    network::NetworkClient, BlockAPI,
-};
 use types::committee::AuthorityIndex;
+use types::{
+    consensus::{
+        block::{BlockAPI, VerifiedBlock},
+        context::Context,
+    },
+    error::ConsensusResult,
+};
 /// Number of blocks that can be inflight sending to a peer.
 const BROADCAST_CONCURRENCY: usize = 10;
 
@@ -41,7 +44,7 @@ impl Broadcaster {
         let mut senders = JoinSet::new();
         for (index, _authority) in context.committee.authorities() {
             // Skip sending Block to self.
-            if index == context.own_index {
+            if Some(index) == context.own_index {
                 continue;
             }
             senders.spawn(Self::push_blocks(
@@ -171,17 +174,15 @@ impl Broadcaster {
 mod test {
     use std::{collections::BTreeMap, ops::DerefMut, time::Duration};
 
+    use super::*;
+    use crate::core::CoreSignals;
     use async_trait::async_trait;
     use bytes::Bytes;
     use parking_lot::Mutex;
     use tokio::time::sleep;
-
-    use super::*;
-    use crate::{
-        block::{BlockRef, TestBlock},
+    use types::consensus::{
+        block::{BlockRef, Round, TestBlock},
         commit::CommitRange,
-        core::CoreSignals,
-        Round,
     };
 
     struct FakeNetworkClient {
@@ -265,7 +266,7 @@ mod test {
         sleep(Duration::from_millis(1)).await;
         let blocks_sent = network_client.blocks_sent();
         for (index, _) in context.committee.authorities() {
-            if index == context.own_index {
+            if Some(index) == context.own_index {
                 continue;
             }
             assert_eq!(blocks_sent.get(&index).unwrap(), &vec![block.serialized()]);
@@ -275,7 +276,7 @@ mod test {
         sleep(Broadcaster::LAST_BLOCK_RETRY_INTERVAL / 2).await;
         let blocks_sent = network_client.blocks_sent();
         for (index, _) in context.committee.authorities() {
-            if index == context.own_index {
+            if Some(index) == context.own_index {
                 continue;
             }
             assert!(blocks_sent.get(&index).is_none());
@@ -285,7 +286,7 @@ mod test {
         sleep(Broadcaster::LAST_BLOCK_RETRY_INTERVAL / 2).await;
         let blocks_sent = network_client.blocks_sent();
         for (index, _) in context.committee.authorities() {
-            if index == context.own_index {
+            if Some(index) == context.own_index {
                 continue;
             }
             assert_eq!(blocks_sent.get(&index).unwrap(), &vec![block.serialized()]);

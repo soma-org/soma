@@ -1,13 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::{
-    block::{TestBlock, VerifiedBlock},
-    context::Context,
-    Round,
-};
 use bytes::Bytes;
 use parking_lot::Mutex;
 use tokio::time::sleep;
+use types::consensus::{
+    block::{Round, TestBlock, VerifiedBlock},
+    context::Context,
+};
 use types::crypto::NetworkKeyPair;
 
 use super::{

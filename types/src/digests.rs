@@ -1,4 +1,4 @@
-use crate::{accumulator::Accumulator, error::SomaError, serde::Readable};
+use crate::{accumulator::Accumulator, crypto::DIGEST_LENGTH, error::SomaError, serde::Readable};
 use fastcrypto::{
     encoding::{Base58, Encoding},
     hash::MultisetHash,
@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
 use std::fmt::{self, Debug, Display, Formatter};
+use std::hash::{Hash, Hasher};
 /// A representation of a 32 byte digest
 #[serde_as]
 #[derive(
@@ -487,5 +488,192 @@ impl From<fastcrypto::hash::Digest<32>> for ECMHLiveObjectSetDigest {
 impl Default for ECMHLiveObjectSetDigest {
     fn default() -> Self {
         Accumulator::default().digest().into()
+    }
+}
+
+/// Representation of a Checkpoint's digest
+#[derive(
+    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub struct CommitSummaryDigest(Digest);
+
+impl CommitSummaryDigest {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn generate<R: rand::RngCore + rand::CryptoRng>(rng: R) -> Self {
+        Self(Digest::generate(rng))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+
+    pub fn next_lexicographical(&self) -> Option<Self> {
+        self.0.next_lexicographical().map(Self)
+    }
+}
+
+impl AsRef<[u8]> for CommitSummaryDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for CommitSummaryDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<CommitSummaryDigest> for [u8; 32] {
+    fn from(digest: CommitSummaryDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for CommitSummaryDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl TryFrom<Vec<u8>> for CommitSummaryDigest {
+    type Error = SomaError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+        Digest::try_from(bytes).map(CommitSummaryDigest)
+    }
+}
+
+impl fmt::Display for CommitSummaryDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for CommitSummaryDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CommitSummaryDigest").field(&self.0).finish()
+    }
+}
+
+impl std::str::FromStr for CommitSummaryDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(CommitSummaryDigest::new(result))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct CommitContentsDigest(Digest);
+
+impl CommitContentsDigest {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn generate<R: rand::RngCore + rand::CryptoRng>(rng: R) -> Self {
+        Self(Digest::generate(rng))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+
+    pub fn next_lexicographical(&self) -> Option<Self> {
+        self.0.next_lexicographical().map(Self)
+    }
+}
+
+impl AsRef<[u8]> for CommitContentsDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for CommitContentsDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<Vec<u8>> for CommitContentsDigest {
+    type Error = SomaError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+        Digest::try_from(bytes).map(CommitContentsDigest)
+    }
+}
+
+impl From<CommitContentsDigest> for [u8; 32] {
+    fn from(digest: CommitContentsDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for CommitContentsDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for CommitContentsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for CommitContentsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CommitContentsDigest")
+            .field(&self.0)
+            .finish()
+    }
+}
+
+impl std::str::FromStr for CommitContentsDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(CommitContentsDigest::new(result))
     }
 }

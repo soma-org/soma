@@ -1,3 +1,5 @@
+use crate::error::SomaError;
+
 pub type Result<T, E = Error> = ::std::result::Result<T, E>;
 
 #[derive(Debug)]
@@ -57,5 +59,11 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: change output based on kind?
         write!(f, "{:?}", self)
+    }
+}
+
+impl From<SomaError> for Error {
+    fn from(error: SomaError) -> Self {
+        Error::custom(error)
     }
 }

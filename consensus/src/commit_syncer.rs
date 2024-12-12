@@ -23,21 +23,7 @@
 //!
 //!
 
-use crate::{
-    block::{BlockAPI as _, BlockRef, SignedBlock, VerifiedBlock},
-    block_verifier::BlockVerifier,
-    commit::{
-        Commit, CommitAPI as _, CommitDigest, CommitRange, CommitRef, TrustedCommit,
-        GENESIS_COMMIT_INDEX,
-    },
-    context::Context,
-    core_thread::CoreThreadDispatcher,
-    dag::DagState,
-    error::{ConsensusError, ConsensusResult},
-    network::NetworkClient,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-    CommitIndex,
-};
+use crate::{core_thread::CoreThreadDispatcher, network::NetworkClient};
 use bytes::Bytes;
 use futures::{stream::FuturesOrdered, StreamExt};
 use itertools::Itertools as _;
@@ -55,6 +41,20 @@ use tokio::{
 };
 use tracing::{debug, info, warn};
 use types::committee::AuthorityIndex;
+use types::{
+    consensus::{
+        block::{BlockAPI as _, BlockRef, SignedBlock, VerifiedBlock},
+        block_verifier::BlockVerifier,
+        commit::{
+            Commit, CommitAPI as _, CommitDigest, CommitIndex, CommitRange, CommitRef,
+            TrustedCommit, GENESIS_COMMIT_INDEX,
+        },
+        context::Context,
+        stake_aggregator::{QuorumThreshold, StakeAggregator},
+    },
+    dag::dag_state::DagState,
+    error::{ConsensusError, ConsensusResult},
+};
 
 pub(crate) struct CommitSyncer<C: NetworkClient> {
     schedule_task: JoinHandle<()>,
@@ -601,7 +601,7 @@ impl FetchState {
             .committee
             .authorities()
             .filter_map(|(index, _)| {
-                if index != context.own_index {
+                if Some(index) != context.own_index {
                     Some(index)
                 } else {
                     None
@@ -623,7 +623,7 @@ mod test {
     use std::sync::Arc;
 
     use super::CommitVoteMonitor;
-    use crate::{
+    use types::consensus::{
         block::{TestBlock, VerifiedBlock},
         commit::{CommitDigest, CommitRef},
         context::Context,

@@ -1,16 +1,17 @@
-use crate::{
-    block::{BlockRef, VerifiedBlock},
-    commit::{CommitRange, TrustedCommit},
-    context::Context,
-    error::ConsensusResult,
-    Round,
-};
 use bytes::Bytes;
 use std::sync::Arc;
 use std::time::Duration;
 use tonic::async_trait;
 use types::committee::AuthorityIndex;
 use types::crypto::NetworkKeyPair;
+use types::{
+    consensus::{
+        block::{BlockRef, Round, VerifiedBlock},
+        commit::{CommitRange, TrustedCommit},
+        context::Context,
+    },
+    error::ConsensusResult,
+};
 
 // Tonic generated RPC stubs.
 mod tonic_gen {

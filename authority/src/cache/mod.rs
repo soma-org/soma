@@ -31,10 +31,9 @@ pub struct ExecutionCacheTraitPointers {
     pub cache_writer: Arc<dyn ExecutionCacheWrite>,
     pub object_cache_reader: Arc<dyn ObjectCacheRead>,
     pub object_store: Arc<dyn ObjectStore + Send + Sync>,
-    // pub backing_store: Arc<dyn BackingStore + Send + Sync>,
     // pub reconfig_api: Arc<dyn ExecutionCacheReconfigAPI>,
     pub accumulator_store: Arc<dyn AccumulatorStore>,
-    // pub state_sync_store: Arc<dyn StateSyncAPI>,
+    pub state_sync_store: Arc<dyn StateSyncAPI>,
     pub cache_commit: Arc<dyn ExecutionCacheCommit>,
 }
 
@@ -47,7 +46,7 @@ impl ExecutionCacheTraitPointers {
             + ObjectStore
             // + ExecutionCacheReconfigAPI
             + AccumulatorStore
-            // + StateSyncAPI
+            + StateSyncAPI
             + ExecutionCacheCommit
             + 'static,
     {
@@ -59,7 +58,7 @@ impl ExecutionCacheTraitPointers {
             // backing_store: cache.clone(),
             // reconfig_api: cache.clone(),
             accumulator_store: cache.clone(),
-            // state_sync_store: cache.clone(),
+            state_sync_store: cache.clone(),
             cache_commit: cache.clone(),
         }
     }
@@ -264,4 +263,11 @@ pub trait ObjectCacheRead: Send + Sync {
     fn get_lock(&self, obj_ref: ObjectRef, epoch_store: &AuthorityPerEpochStore) -> LockResult;
 
     fn get_system_state_object(&self) -> SomaResult<SystemState>;
+}
+
+// StateSyncAPI is for writing any data that was not the result of transaction execution,
+// but that arrived via state sync. The fact that it came via state sync implies that it
+// is certified output, and can be immediately persisted to the store.
+pub trait StateSyncAPI: Send + Sync {
+    fn multi_insert_transactions(&self, transactions: &[VerifiedTransaction]) -> SomaResult;
 }

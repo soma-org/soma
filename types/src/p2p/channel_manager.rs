@@ -1,5 +1,6 @@
 use std::{
     convert::Infallible,
+    net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -12,7 +13,12 @@ use http_body::Body;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper_util::{rt::TokioIo, service::TowerToHyperService};
 use parking_lot::RwLock;
-use tokio::{pin, sync::mpsc, sync::oneshot, task::JoinSet};
+use tokio::{
+    pin,
+    sync::oneshot,
+    sync::{broadcast, mpsc},
+    task::JoinSet,
+};
 use tokio_rustls::TlsAcceptor;
 use tonic::{
     codegen::{Service, StdError},
@@ -20,6 +26,7 @@ use tonic::{
 };
 use tonic::{server::NamedService, transport::Server};
 use tower::ServiceBuilder;
+use tower_http::ServiceBuilderExt;
 use tracing::{debug, error, info, trace, warn};
 
 type BoxBody = UnsyncBoxBody<Bytes, Status>;
@@ -36,9 +43,10 @@ use crate::{
     },
 };
 
-use super::{active_peers::ActivePeers, DisconnectReason};
+use super::{active_peers::ActivePeers, DisconnectReason, PeerEvent};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_CONNECTIONS_BACKLOG: u32 = 1024;
 
 #[derive(Debug)]
 pub enum ChannelManagerRequest {
@@ -74,6 +82,7 @@ pub struct ChannelManager<S> {
 
     // Service factory for peer handlers
     service: S,
+    event_sender: broadcast::Sender<PeerEvent>,
 }
 
 impl<S> ChannelManager<S>
@@ -90,7 +99,7 @@ where
         active_peers: ActivePeers,
     ) -> (Self, mpsc::Sender<ChannelManagerRequest>) {
         let (sender, receiver) = mpsc::channel(1000);
-
+        let (event_sender, _) = broadcast::channel(1000);
         (
             Self {
                 own_address,
@@ -100,9 +109,14 @@ where
                 connection_handlers: JoinSet::new(),
                 server_handle: None,
                 service,
+                event_sender,
             },
             sender,
         )
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<PeerEvent> {
+        self.event_sender.subscribe()
     }
 
     pub async fn start(mut self) {
@@ -142,6 +156,11 @@ where
                             warn!("Connection handler failed: {}", e);
                         }
                     }
+                }
+
+                else => {
+                    warn!("ChannelManager mailbox closed");
+                    break;
                 }
             }
         }
@@ -297,7 +316,12 @@ where
     ) -> SomaResult<bool> {
         // Add the new connection
         self.active_peers
-            .insert(peer_id, address, channel, public_key);
+            .insert(peer_id, address.clone(), channel, public_key);
+
+        let _ = self
+            .event_sender
+            .send(PeerEvent::NewPeer { peer_id, address });
+
         Ok(true)
     }
 
@@ -310,8 +334,10 @@ where
             .active_peers
             .remove(&peer_id, DisconnectReason::RequestedDisconnect)
         {
-            // Optionally perform any cleanup specific to the channel
-            // For example, you might want to send a goodbye message
+            let _ = self.event_sender.send(PeerEvent::LostPeer {
+                peer_id,
+                reason: DisconnectReason::RequestedDisconnect,
+            });
             Ok(())
         } else {
             Err(SomaError::PeerNotFound(peer_id))
@@ -429,6 +455,10 @@ where
                 .active_peers
                 .remove(&peer_id, DisconnectReason::Shutdown)
             {
+                let _ = self.event_sender.send(PeerEvent::LostPeer {
+                    peer_id,
+                    reason: DisconnectReason::Shutdown,
+                });
                 debug!("Removed peer {} from active peers", peer_id);
             }
         }
@@ -472,8 +502,16 @@ async fn handle_connection(
     let (peer_id, client_public_key) = extract_peer_info_from_tls(&tls_stream)?;
     // TODO: check that client_public_key is in the list of allowed peers
 
+    // TODO: process new peers on incoming connection
+    // let _ = event_sender.send(PeerEvent::NewPeer {
+    //     peer_id,
+    //     address: peer_addr.to_string().parse()?, // Convert SocketAddr to Multiaddr
+    // });
+
     // Setup service stack
-    let svc = ServiceBuilder::new().service(service.clone());
+    let svc = ServiceBuilder::new()
+        .add_extension(PeerInfo { peer_id })
+        .service(service.clone());
 
     // Handle HTTP/2 connection
     pin! {
@@ -484,6 +522,11 @@ async fn handle_connection(
     loop {
         tokio::select! {
             result = &mut connection => {
+                // TODO: Emit LostPeer event when connection ends
+                // let _ = event_sender.send(PeerEvent::LostPeer {
+                //     peer_id,
+                //     reason: DisconnectReason::ConnectionLost,
+                // });
                 match result {
                     Ok(()) => {
                         trace!("Connection closed for {}", peer_addr);
@@ -541,4 +584,27 @@ fn extract_peer_info_from_tls(
 
 fn certificate_server_name() -> String {
     format!("p2p")
+}
+
+fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
+    let socket = if address.is_ipv4() {
+        tokio::net::TcpSocket::new_v4()
+    } else if address.is_ipv6() {
+        tokio::net::TcpSocket::new_v6()
+    } else {
+        panic!("Invalid own address: {address:?}");
+    }
+    .unwrap_or_else(|e| panic!("Cannot create TCP socket: {e:?}"));
+    // if let Err(e) = socket.set_nodelay(true) {
+    //     info!("Failed to set TCP_NODELAY: {e:?}");
+    // }
+    if let Err(e) = socket.set_reuseaddr(true) {
+        info!("Failed to set SO_REUSEADDR: {e:?}");
+    }
+    socket
+}
+
+#[derive(Clone, Debug)]
+pub struct PeerInfo {
+    pub peer_id: PeerId,
 }

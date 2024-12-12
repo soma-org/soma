@@ -1,13 +1,14 @@
-use crate::{
-    block::{BlockRef, VerifiedBlock},
-    commit::{CommitRange, TrustedCommit},
-    error::ConsensusResult,
-    Round,
-};
 use async_trait::async_trait;
 use bytes::Bytes;
 use parking_lot::Mutex;
 use types::committee::AuthorityIndex;
+use types::{
+    consensus::{
+        block::{BlockRef, Round, VerifiedBlock},
+        commit::{CommitRange, TrustedCommit},
+    },
+    error::ConsensusResult,
+};
 
 use super::NetworkService;
 

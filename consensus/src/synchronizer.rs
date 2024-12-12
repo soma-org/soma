@@ -4,6 +4,9 @@ use std::{
     time::Duration,
 };
 
+use crate::{
+    commit_syncer::CommitVoteMonitor, core_thread::CoreThreadDispatcher, network::NetworkClient,
+};
 use bytes::Bytes;
 use futures::{stream::FuturesUnordered, StreamExt};
 use itertools::Itertools;
@@ -20,19 +23,17 @@ use tokio::{
     time::{sleep, sleep_until, timeout, Instant},
 };
 use tracing::{debug, error, info, trace, warn};
-
-use crate::{
-    block::{BlockAPI as _, BlockRef, SignedBlock, VerifiedBlock},
-    block_verifier::BlockVerifier,
-    commit_syncer::CommitVoteMonitor,
-    context::Context,
-    core_thread::CoreThreadDispatcher,
-    dag::DagState,
-    error::{ConsensusError, ConsensusResult},
-    network::NetworkClient,
-    CommitIndex, Round,
-};
 use types::committee::AuthorityIndex;
+use types::{
+    consensus::{
+        block::{BlockAPI as _, BlockRef, Round, SignedBlock, VerifiedBlock},
+        block_verifier::BlockVerifier,
+        commit::CommitIndex,
+        context::Context,
+    },
+    dag::dag_state::DagState,
+    error::{ConsensusError, ConsensusResult},
+};
 
 pub(crate) const COMMIT_LAG_MULTIPLIER: u32 = 5;
 
@@ -97,7 +98,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         let mut fetch_block_senders = BTreeMap::new();
         let mut tasks = JoinSet::new();
         for (index, _) in context.committee.authorities() {
-            if index == context.own_index {
+            if Some(index) == context.own_index {
                 continue;
             }
             let (sender, receiver) = channel(FETCH_BLOCKS_CONCURRENCY);
@@ -167,7 +168,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 Some(command) = self.commands_receiver.recv() => {
                     match command {
                         Command::FetchBlocks{ missing_block_refs, peer_index, result } => {
-                            if peer_index == self.context.own_index {
+                            if Some(peer_index) == self.context.own_index {
                                 error!("We should never attempt to fetch blocks from our own node");
                                 continue;
                             }
@@ -522,13 +523,13 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     let context_cloned = context.clone();
                     async move {
                         sleep(fetch_own_block_delay).await;
-                        let r = network_client_cloned.fetch_latest_blocks(authority_index, vec![context_cloned.own_index], FETCH_REQUEST_TIMEOUT).await;
+                        let r = network_client_cloned.fetch_latest_blocks(authority_index, vec![context_cloned.own_index.unwrap()], FETCH_REQUEST_TIMEOUT).await;
                         (r, authority_index)
                     }
                 };
 
                 for (authority_index, _authority) in context.committee.authorities() {
-                    if authority_index != context.own_index {
+                    if Some(authority_index) != context.own_index {
                         results.push(fetch_own_block(authority_index, Duration::from_millis(0)));
                     }
                 }
@@ -547,7 +548,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                         })?;
 
                         let verified_block = VerifiedBlock::new_verified(signed_block, serialized_block);
-                        if verified_block.author() != context.own_index {
+                        if Some(verified_block.author()) != context.own_index {
                             return Err(ConsensusError::UnexpectedLastOwnBlock { index: authority_index, block_ref: verified_block.reference()});
                         }
                         result.push(verified_block);
@@ -711,7 +712,9 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         let mut peers = context
             .committee
             .authorities()
-            .filter_map(|(peer_index, _)| (peer_index != context.own_index).then_some(peer_index))
+            .filter_map(|(peer_index, _)| {
+                (Some(peer_index) != context.own_index).then_some(peer_index)
+            })
             .collect::<Vec<_>>();
 
         // TODO: probably inject the RNG to allow unit testing - this is a work around for now.
@@ -963,21 +966,25 @@ mod tests {
     use types::committee::AuthorityIndex;
     use types::parameters::Parameters;
 
-    use crate::commit::{CommitVote, TrustedCommit};
     use crate::commit_syncer::CommitVoteMonitor;
     use crate::{
-        block::{BlockDigest, BlockRef, Round, TestBlock, VerifiedBlock},
-        block_verifier::NoopBlockVerifier,
-        commit::{CommitDigest, CommitIndex, CommitRange},
-        context::Context,
         core_thread::{CoreError, CoreThreadDispatcher},
-        dag::DagState,
-        error::{ConsensusError, ConsensusResult},
         network::NetworkClient,
-        storage::mem_store::MemStore,
         synchronizer::{
             InflightBlocksMap, Synchronizer, FETCH_BLOCKS_CONCURRENCY, FETCH_REQUEST_TIMEOUT,
         },
+    };
+    use types::{
+        consensus::{
+            block::{BlockDigest, BlockRef, Round, TestBlock, VerifiedBlock},
+            block_verifier::NoopBlockVerifier,
+            commit::{CommitDigest, CommitIndex, CommitRange},
+            commit::{CommitVote, TrustedCommit},
+            context::Context,
+        },
+        dag::dag_state::DagState,
+        error::{ConsensusError, ConsensusResult},
+        storage::consensus::mem_store::MemStore,
     };
 
     // TODO: create a complete Mock for thread dispatcher to be used from several tests

@@ -1,30 +1,10 @@
-use std::{collections::BTreeSet, iter, sync::Arc, time::Duration};
-
 use crate::{
-    block::{
-        Block, BlockAPI as _, BlockRef, BlockTimestampMs, SignedBlock, Slot, StateCommit,
-        VerifiedBlock, GENESIS_ROUND,
-    },
-    block_manager::BlockManager,
-    block_verifier::NoopBlockVerifier,
-    commit::CommittedSubDag,
     commit_observer::{CommitConsumer, CommitObserver},
-    committer::universal_committer::{
-        universal_committer_builder::UniversalCommitterBuilder, UniversalCommitter,
-    },
-    context::Context,
-    dag::DagState,
-    error::{ConsensusError, ConsensusResult},
-    leader_schedule::LeaderSchedule,
-    local_committee_and_keys,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-    storage::mem_store::MemStore,
     threshold_clock::ThresholdClock,
-    transaction::{TransactionClient, TransactionConsumer},
-    Round,
 };
 use itertools::Itertools;
 use parking_lot::RwLock;
+use std::{collections::BTreeSet, iter, sync::Arc, time::Duration};
 use tokio::sync::{
     broadcast,
     mpsc::{unbounded_channel, UnboundedReceiver},
@@ -36,6 +16,30 @@ use types::{
     committee::{AuthorityIndex, Stake},
 };
 use types::{accumulator::TestAccumulatorStore, crypto::ProtocolKeyPair};
+use types::{
+    consensus::{
+        block::{
+            Block, BlockAPI as _, BlockRef, BlockTimestampMs, Round, SignedBlock, Slot,
+            StateCommit, VerifiedBlock, GENESIS_ROUND,
+        },
+        block_verifier::NoopBlockVerifier,
+        commit::CommittedSubDag,
+        committee::local_committee_and_keys,
+        context::Context,
+        leader_schedule::LeaderSchedule,
+        stake_aggregator::{QuorumThreshold, StakeAggregator},
+        transaction::{TransactionClient, TransactionConsumer},
+    },
+    dag::{
+        block_manager::BlockManager,
+        committer::universal_committer::{
+            universal_committer_builder::UniversalCommitterBuilder, UniversalCommitter,
+        },
+        dag_state::DagState,
+    },
+    error::{ConsensusError, ConsensusResult},
+    storage::consensus::mem_store::MemStore,
+};
 
 // Maximum number of commit votes to include in a block.
 // TODO: Move to protocol config, and verify in BlockVerifier.
@@ -109,7 +113,7 @@ impl Core {
         // Recover the last proposed block
         let last_proposed_block = dag_state
             .read()
-            .get_last_block_for_authority(context.own_index);
+            .get_last_block_for_authority(context.own_index.unwrap());
 
         // Recover the last included ancestor rounds based on the last proposed block. That will allow
         // to perform the next block proposal by using ancestor blocks of higher rounds and avoid
@@ -376,7 +380,7 @@ impl Core {
         let block = Block::new(
             self.context.committee.epoch(),
             clock_round,
-            self.context.own_index,
+            self.context.own_index.unwrap(),
             now,
             ancestors.iter().map(|b| b.reference()).collect(),
             transactions,
@@ -481,7 +485,7 @@ impl Core {
             .chain(
                 ancestors
                     .into_iter()
-                    .filter(|block| block.author() != self.context.own_index)
+                    .filter(|block| Some(block.author()) != self.context.own_index)
                     .flat_map(|block| {
                         if let Some(last_block_ref) = self.last_included_ancestors[block.author()] {
                             return (last_block_ref.round < block.round()).then_some(block);
@@ -722,16 +726,18 @@ mod test {
     use types::parameters::Parameters;
 
     use super::*;
-    use crate::test_dag::DagBuilder;
-    use crate::{
-        block::{genesis_blocks, TestBlock},
-        block_verifier::NoopBlockVerifier,
-        commit::CommitAPI as _,
-        commit_observer::CommitConsumer,
-        storage::{mem_store::MemStore, Store, WriteBatch},
-        transaction::TransactionClient,
-        CommitIndex,
+    use types::{
+        consensus::{
+            block::{genesis_blocks, TestBlock},
+            block_verifier::NoopBlockVerifier,
+            commit::{CommitAPI as _, CommitIndex},
+            transaction::TransactionClient,
+        },
+        dag::test_dag::DagBuilder,
+        storage::consensus::{mem_store::MemStore, Store, WriteBatch},
     };
+
+    use crate::commit_observer::CommitConsumer;
 
     /// Recover Core and continue proposing from the last round which forms a quorum.
     #[tokio::test]
@@ -799,7 +805,7 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.value()).1,
+            key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
         );
@@ -913,7 +919,7 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.value()).1,
+            key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
         );
@@ -932,7 +938,7 @@ mod test {
 
         assert_eq!(ancestors.len(), 4);
         for ancestor in ancestors {
-            if ancestor.author == context.own_index {
+            if Some(ancestor.author) == context.own_index {
                 assert_eq!(ancestor.round, 0);
             } else {
                 assert_eq!(ancestor.round, 3);
@@ -996,7 +1002,7 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.value()).1,
+            key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
         );
@@ -1097,7 +1103,7 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.value()).1,
+            key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
         );
@@ -1129,7 +1135,7 @@ mod test {
 
         let proposed_block = core.last_proposed_block();
         assert_eq!(proposed_block.round(), 2);
-        assert_eq!(proposed_block.author(), context.own_index);
+        assert_eq!(Some(proposed_block.author()), context.own_index);
         assert_eq!(proposed_block.ancestors().len(), 3);
         let ancestors = proposed_block.ancestors();
         let ancestors = ancestors.iter().cloned().collect::<BTreeSet<_>>();
@@ -1182,7 +1188,7 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.value()).1,
+            key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
         );
@@ -1220,7 +1226,7 @@ mod test {
         // Our last ancestored included should be genesis. We do not update the last proposed block via the
         // normal block processing path to keep it simple.
         let our_ancestor_included = block.ancestors().iter().find(|block_ref: &&BlockRef| {
-            block_ref.author == context.own_index && block_ref.round == GENESIS_ROUND
+            Some(block_ref.author) == context.own_index && block_ref.round == GENESIS_ROUND
         });
         assert!(our_ancestor_included.is_some());
     }
@@ -1370,7 +1376,7 @@ mod test {
                 .unwrap()
                 .unwrap();
                 assert_eq!(block.round(), round);
-                assert_eq!(block.author(), core_fixture.core.context.own_index);
+                assert_eq!(Some(block.author()), core_fixture.core.context.own_index);
 
                 // append the new block to this round blocks
                 this_round_blocks.push(core_fixture.core.last_proposed_block().clone());
@@ -1459,7 +1465,7 @@ mod test {
                 .unwrap()
                 .unwrap();
                 assert_eq!(block.round(), round);
-                assert_eq!(block.author(), core_fixture.core.context.own_index);
+                assert_eq!(Some(block.author()), core_fixture.core.context.own_index);
 
                 // append the new block to this round blocks
                 this_round_blocks.push(core_fixture.core.last_proposed_block().clone());
@@ -1525,7 +1531,7 @@ mod test {
 
             for core_fixture in &mut cores {
                 // do not produce any block for authority 3
-                if core_fixture.core.context.own_index == excluded_authority {
+                if core_fixture.core.context.own_index == Some(excluded_authority) {
                     continue;
                 }
 

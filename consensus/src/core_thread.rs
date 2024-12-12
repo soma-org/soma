@@ -1,10 +1,4 @@
-use crate::{
-    block::{BlockRef, VerifiedBlock},
-    context::Context,
-    core::Core,
-    error::{ConsensusError, ConsensusResult},
-    Round,
-};
+use crate::core::Core;
 use async_trait::async_trait;
 use std::{collections::BTreeSet, sync::Arc};
 use thiserror::Error;
@@ -13,6 +7,13 @@ use tokio::sync::{
     oneshot, watch,
 };
 use tracing::warn;
+use types::{
+    consensus::{
+        block::{BlockRef, Round, VerifiedBlock},
+        context::Context,
+    },
+    error::{ConsensusError, ConsensusResult},
+};
 
 const CORE_THREAD_COMMANDS_CHANNEL_SIZE: usize = 2000;
 
@@ -206,15 +207,18 @@ mod test {
 
     use super::*;
     use crate::{
-        block_manager::BlockManager,
-        block_verifier::NoopBlockVerifier,
         commit_observer::{CommitConsumer, CommitObserver},
-        context::Context,
         core::CoreSignals,
-        dag::DagState,
-        leader_schedule::LeaderSchedule,
-        storage::mem_store::MemStore,
-        transaction::{TransactionClient, TransactionConsumer},
+    };
+    use types::{
+        consensus::{
+            block_verifier::NoopBlockVerifier,
+            context::Context,
+            leader_schedule::LeaderSchedule,
+            transaction::{TransactionClient, TransactionConsumer},
+        },
+        dag::{block_manager::BlockManager, dag_state::DagState},
+        storage::consensus::mem_store::MemStore,
     };
 
     #[tokio::test]
@@ -250,7 +254,7 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.value()).1,
+            key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state,
             Arc::new(TestAccumulatorStore::default()),
         );

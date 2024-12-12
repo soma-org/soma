@@ -5,6 +5,7 @@ use authority::{
     aggregator::AuthorityAggregator,
     cache::build_execution_cache,
     client::NetworkAuthorityClient,
+    commit::{executor::CommitExecutor, CommitStore},
     committee_store::CommitteeStore,
     epoch_store::AuthorityPerEpochStore,
     handler::ConsensusHandlerInitializer,
@@ -14,8 +15,9 @@ use authority::{
     server::ServerBuilder,
     service::ValidatorService,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    state::AuthorityState,
+    state::{self, AuthorityState},
     state_accumulator::StateAccumulator,
+    state_sync_store::StateSyncStore,
     store::AuthorityStore,
     store_tables::AuthorityPerpetualTables,
     throughput::{
@@ -28,10 +30,7 @@ use core::time;
 use futures::TryFutureExt;
 use msim::task::NodeId;
 use p2p::{
-    discovery::{
-        builder::{DiscoveryBuilder, DiscoveryHandle},
-        server::P2pService,
-    },
+    builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle},
     tonic_gen::p2p_server::P2pServer,
 };
 use simulator::SimState;
@@ -60,6 +59,7 @@ use types::{
     peer_id::PeerId,
     protocol::ProtocolConfig,
     quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
+    storage::write_store::WriteStore,
     system_state::{
         EpochStartSystemState, EpochStartSystemStateTrait, SystemState, SystemStateTrait,
     },
@@ -97,6 +97,7 @@ pub struct ValidatorComponents {
 pub struct P2pComponents {
     channel_manager_tx: Sender<ChannelManagerRequest>,
     discovery_handle: DiscoveryHandle,
+    state_sync_handle: StateSyncHandle,
 }
 
 pub struct SomaNode {
@@ -110,8 +111,8 @@ pub struct SomaNode {
     // trusted_peer_change_tx: watch::Sender<TrustedPeerChangeEvent>,
     state: Arc<AuthorityState>,
     transaction_orchestrator: Option<Arc<TransactiondOrchestrator<NetworkAuthorityClient>>>,
-    // state_sync_handle: state_sync::Handle,
-    // checkpoint_store: Arc<CheckpointStore>,
+    state_sync_handle: StateSyncHandle,
+    commit_store: Arc<CommitStore>,
     accumulator: Mutex<Option<Arc<StateAccumulator>>>,
     // connection_monitor_status: Arc<ConnectionMonitorStatus>,
     // AuthorityAggregator of the network, created at start and beginning of each epoch.
@@ -178,29 +179,30 @@ impl SomaNode {
 
         info!("created epoch store");
 
-        // info!("creating checkpoint store");
+        info!("creating commit store");
 
-        // let checkpoint_store = CheckpointStore::new(&config.db_path().join("checkpoints"));
-        // checkpoint_store.insert_genesis_checkpoint(
-        //     genesis.checkpoint(),
-        //     genesis.checkpoint_contents().clone(),
+        let commit_store = CommitStore::new();
+        // TODO: commit_store.insert_genesis_commit(
+        //     genesis.commit(),
+        //     genesis.commit_contents().clone(),
         //     &epoch_store,
         // );
 
-        // info!("creating state sync store");
-        // let state_sync_store = RocksDbStore::new(
-        //     cache_traits.clone(),
-        //     committee_store.clone(),
-        //     checkpoint_store.clone(),
-        // );
+        info!("creating state sync store");
+        let state_sync_store = StateSyncStore::new(
+            cache_traits.clone(),
+            committee_store.clone(),
+            commit_store.clone(),
+        );
 
         // let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
         let P2pComponents {
             channel_manager_tx,
             discovery_handle,
+            state_sync_handle,
         } = Self::create_p2p_network(
             &config,
-            // state_sync_store.clone(),
+            state_sync_store.clone(),
             // trusted_peer_change_rx,
         )?;
 
@@ -325,6 +327,8 @@ impl SomaNode {
             transaction_orchestrator,
             auth_agg, // shutdown_channel_tx: shutdown_channel,
             accumulator: Mutex::new(Some(accumulator)),
+            state_sync_handle,
+            commit_store,
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -359,17 +363,11 @@ impl SomaNode {
 
     fn create_p2p_network(
         config: &NodeConfig,
-        // state_sync_store: RocksDbStore,
+        state_sync_store: StateSyncStore,
     ) -> Result<P2pComponents> {
-        // let (state_sync, state_sync_server) = state_sync::Builder::new()
-        //     .config(config.p2p_config.state_sync.clone().unwrap_or_default())
-        //     .store(state_sync_store)
-        //     .archive_readers(archive_readers)
-        //     .with_metrics(prometheus_registry)
-        //     .build();
-
-        let (discovery, p2p_server) = DiscoveryBuilder::new()
+        let (discovery, state_sync, p2p_server) = P2pBuilder::new()
             .config(config.p2p_config.clone())
+            .store(state_sync_store)
             .build();
 
         let own_address = config
@@ -386,20 +384,23 @@ impl SomaNode {
             active_peers.clone(),
         );
 
+        let peer_event_receiver = channel_manager.subscribe();
+
         tokio::spawn(channel_manager.start());
 
         info!("P2p network started");
 
         let discovery_handle = discovery.start(
-            active_peers,
+            active_peers.clone(),
             channel_manager_tx.clone(),
             config.network_key_pair().clone(),
         );
-        // let state_sync_handle = state_sync.start(p2p_network.clone());
+        let state_sync_handle = state_sync.start(active_peers, peer_event_receiver);
 
         Ok(P2pComponents {
             channel_manager_tx,
             discovery_handle,
+            state_sync_handle,
         })
     }
 
@@ -623,14 +624,21 @@ impl SomaNode {
             let mut accumulator_guard = self.accumulator.lock().await;
             let accumulator = accumulator_guard.take().unwrap();
 
-            // TODO: start checkpoint executor here to run schedule checkpoint execution loop
-            let timestamp_ms = self.run_epoch(Duration::from_secs(15)).await; // TODO: make this configurable
+            let mut commit_executor = CommitExecutor::new(
+                self.state_sync_handle.subscribe_to_synced_commits(),
+                self.commit_store.clone(),
+                self.state.clone(),
+            );
+            // let timestamp_ms = self.run_epoch(Duration::from_secs(15)).await; // TODO: make this configurable
 
             let cur_epoch_store = self.state.load_epoch_store_one_call_per_task();
 
+            let stop_condition = commit_executor.run_epoch(cur_epoch_store.clone()).await;
+            drop(commit_executor);
+
             let (latest_system_state, _) = self
                 .state
-                .create_and_execute_advance_epoch_tx(&cur_epoch_store, timestamp_ms)
+                .create_and_execute_advance_epoch_tx(&cur_epoch_store)
                 .await?;
 
             if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone()) {

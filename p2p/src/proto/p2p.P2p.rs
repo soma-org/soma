@@ -105,6 +105,103 @@ pub mod p2p_client {
             req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "GetKnownPeers"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn get_commit_summary(
+            &mut self,
+            request: impl tonic::IntoRequest<types::state_sync::GetCommitSummaryRequest>,
+        ) -> std::result::Result<
+            tonic::Response<Option<types::state_sync::CertifiedCommitSummary>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/p2p.P2p/GetCommitSummary");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "GetCommitSummary"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_commit_contents(
+            &mut self,
+            request: impl tonic::IntoRequest<types::digests::CommitContentsDigest>,
+        ) -> std::result::Result<
+            tonic::Response<Option<types::state_sync::FullCommitContents>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/p2p.P2p/GetCommitContents",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "GetCommitContents"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_commit_availability(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                types::state_sync::GetCommitAvailabilityRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<types::state_sync::GetCommitAvailabilityResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/p2p.P2p/GetCommitAvailability",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("p2p.P2p", "GetCommitAvailability"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn push_commit_summary(
+            &mut self,
+            request: impl tonic::IntoRequest<types::state_sync::CertifiedCommitSummary>,
+        ) -> std::result::Result<
+            tonic::Response<types::state_sync::PushCommitSummaryResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/p2p.P2p/PushCommitSummary",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "PushCommitSummary"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -119,6 +216,34 @@ pub mod p2p_server {
             request: tonic::Request<types::discovery::GetKnownPeersRequest>,
         ) -> std::result::Result<
             tonic::Response<types::discovery::GetKnownPeersResponse>,
+            tonic::Status,
+        >;
+        async fn get_commit_summary(
+            &self,
+            request: tonic::Request<types::state_sync::GetCommitSummaryRequest>,
+        ) -> std::result::Result<
+            tonic::Response<Option<types::state_sync::CertifiedCommitSummary>>,
+            tonic::Status,
+        >;
+        async fn get_commit_contents(
+            &self,
+            request: tonic::Request<types::digests::CommitContentsDigest>,
+        ) -> std::result::Result<
+            tonic::Response<Option<types::state_sync::FullCommitContents>>,
+            tonic::Status,
+        >;
+        async fn get_commit_availability(
+            &self,
+            request: tonic::Request<types::state_sync::GetCommitAvailabilityRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::state_sync::GetCommitAvailabilityResponse>,
+            tonic::Status,
+        >;
+        async fn push_commit_summary(
+            &self,
+            request: tonic::Request<types::state_sync::CertifiedCommitSummary>,
+        ) -> std::result::Result<
+            tonic::Response<types::state_sync::PushCommitSummaryResponse>,
             tonic::Status,
         >;
     }
@@ -230,6 +355,197 @@ pub mod p2p_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = GetKnownPeersSvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/p2p.P2p/GetCommitSummary" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetCommitSummarySvc<T: P2p>(pub Arc<T>);
+                    impl<
+                        T: P2p,
+                    > tonic::server::UnaryService<
+                        types::state_sync::GetCommitSummaryRequest,
+                    > for GetCommitSummarySvc<T> {
+                        type Response = Option<
+                            types::state_sync::CertifiedCommitSummary,
+                        >;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::state_sync::GetCommitSummaryRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as P2p>::get_commit_summary(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetCommitSummarySvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/p2p.P2p/GetCommitContents" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetCommitContentsSvc<T: P2p>(pub Arc<T>);
+                    impl<
+                        T: P2p,
+                    > tonic::server::UnaryService<types::digests::CommitContentsDigest>
+                    for GetCommitContentsSvc<T> {
+                        type Response = Option<types::state_sync::FullCommitContents>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<types::digests::CommitContentsDigest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as P2p>::get_commit_contents(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetCommitContentsSvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/p2p.P2p/GetCommitAvailability" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetCommitAvailabilitySvc<T: P2p>(pub Arc<T>);
+                    impl<
+                        T: P2p,
+                    > tonic::server::UnaryService<
+                        types::state_sync::GetCommitAvailabilityRequest,
+                    > for GetCommitAvailabilitySvc<T> {
+                        type Response = types::state_sync::GetCommitAvailabilityResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::state_sync::GetCommitAvailabilityRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as P2p>::get_commit_availability(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetCommitAvailabilitySvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/p2p.P2p/PushCommitSummary" => {
+                    #[allow(non_camel_case_types)]
+                    struct PushCommitSummarySvc<T: P2p>(pub Arc<T>);
+                    impl<
+                        T: P2p,
+                    > tonic::server::UnaryService<
+                        types::state_sync::CertifiedCommitSummary,
+                    > for PushCommitSummarySvc<T> {
+                        type Response = types::state_sync::PushCommitSummaryResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::state_sync::CertifiedCommitSummary,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as P2p>::push_commit_summary(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = PushCommitSummarySvc(inner);
                         let codec = utils::codec::BcsCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

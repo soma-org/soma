@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{multiaddr::Multiaddr, peer_id::PeerId};
 
+use super::state_sync_config::StateSyncConfig;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct P2pConfig {
     // /// The address that the p2p network will bind on.
@@ -17,8 +19,9 @@ pub struct P2pConfig {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub seed_peers: Vec<SeedPeer>,
 
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub state_sync: Option<StateSyncConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_sync: Option<StateSyncConfig>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub discovery: Option<DiscoveryConfig>,
 }
@@ -30,6 +33,7 @@ impl Default for P2pConfig {
             external_address: Default::default(),
             seed_peers: Default::default(),
             discovery: None,
+            state_sync: None,
         }
     }
 }

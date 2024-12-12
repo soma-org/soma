@@ -9,6 +9,7 @@ use fastcrypto::traits::Signer;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
+    accumulator::CommitIndex,
     base::AuthorityName,
     committee::{Committee, EpochId},
     crypto::{
@@ -228,6 +229,17 @@ impl<T: Message, S> DerefMut for Envelope<T, S> {
     }
 }
 
+impl<T: Message, S> PartialEq for VerifiedEnvelope<T, S>
+where
+    Envelope<T, S>: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0 .0 == other.0 .0
+    }
+}
+
+impl<T: Message, S> Eq for VerifiedEnvelope<T, S> where Envelope<T, S>: Eq {}
+
 impl<T: Message, S> VerifiedEnvelope<T, S> {
     /// This API should only be called when the input is already verified.
     pub fn new_from_verified(inner: Envelope<T, S>) -> Self {
@@ -300,6 +312,24 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
             digest,
             data,
             auth_signature: CertificateProof::new_from_cert_sig(auth_signature),
+        })
+    }
+
+    pub fn new_from_commit(
+        transaction: VerifiedEnvelope<T, EmptySignInfo>,
+        epoch: EpochId,
+        commit: CommitIndex,
+    ) -> Self {
+        let inner = transaction.into_inner();
+        let Envelope {
+            digest,
+            data,
+            auth_signature: _,
+        } = inner;
+        VerifiedEnvelope::new_unchecked(Envelope {
+            digest,
+            data,
+            auth_signature: CertificateProof::new_from_commit(epoch, commit),
         })
     }
 

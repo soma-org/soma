@@ -8,8 +8,8 @@ use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    accumulator::CommitIndex,
     base::{AuthorityName, SizeOneVec, SomaAddress},
-    checkpoint::CheckpointTimestamp,
     committee::{Committee, EpochId},
     consensus::ConsensusCommitPrologue,
     crypto::{
@@ -22,6 +22,7 @@ use crate::{
     error::{SomaError, SomaResult},
     intent::{Intent, IntentMessage, IntentScope},
     object::Object,
+    state_sync::CommitTimestamp,
 };
 use tap::Pipe;
 
@@ -103,11 +104,11 @@ impl EndOfEpochTransactionKind {
 }
 
 /// CertificateProof is a proof that a transaction certs existed at a given epoch and hence can be executed.
-/// There are two types of proofs: one that is proven by inclusion in a checkpoint and one that is proven by quorum signature.
+/// There are two types of proofs: one that is proven by inclusion in a commit and one that is proven by quorum signature.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum CertificateProof {
-    /// Validity was proven by inclusion in the given checkpoint
-    // Checkpoint(EpochId, CheckpointSequenceNumber),
+    /// Validity was proven by inclusion in the given commit
+    Commit(EpochId, CommitIndex),
     /// Validity was proven by transaction certificate signature
     Certified(AuthorityStrongQuorumSignInfo),
     /// At least f+1 validators have executed this transaction.
@@ -123,9 +124,9 @@ impl CertificateProof {
         Self::Certified(sig)
     }
 
-    // pub fn new_from_checkpoint(epoch: EpochId, checkpoint: CheckpointSequenceNumber) -> Self {
-    //     Self::Checkpoint(epoch, checkpoint)
-    // }
+    pub fn new_from_commit(epoch: EpochId, commit: CommitIndex) -> Self {
+        Self::Commit(epoch, commit)
+    }
 
     pub fn new_system(epoch: EpochId) -> Self {
         Self::SystemTransaction(epoch)
@@ -133,8 +134,9 @@ impl CertificateProof {
 
     pub fn epoch(&self) -> EpochId {
         match self {
-            // Self::Checkpoint(epoch, _)
-            Self::QuorumExecuted(epoch) | Self::SystemTransaction(epoch) => *epoch,
+            Self::Commit(epoch, _)
+            | Self::QuorumExecuted(epoch)
+            | Self::SystemTransaction(epoch) => *epoch,
             Self::Certified(sig) => sig.epoch,
         }
     }
@@ -245,7 +247,7 @@ impl TransactionData {
         (self.kind().clone(), self.sender())
     }
 
-    fn kind(&self) -> &TransactionKind {
+    pub fn kind(&self) -> &TransactionKind {
         &self.kind
     }
 
@@ -413,7 +415,7 @@ impl VerifiedTransaction {
     pub fn new_consensus_commit_prologue(
         epoch: u64,
         round: u64,
-        commit_timestamp_ms: CheckpointTimestamp,
+        commit_timestamp_ms: CommitTimestamp,
         consensus_commit_digest: ConsensusCommitDigest,
     ) -> Self {
         ConsensusCommitPrologue {

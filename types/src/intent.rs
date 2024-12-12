@@ -55,8 +55,6 @@ impl Default for AppId {
 #[repr(u8)]
 pub enum IntentScope {
     TransactionData = 0, // Used for a user signature on a transaction data.
-
-    // CheckpointSummary = 2,       // Used for an authority signature on a checkpoint summary.
     // PersonalMessage = 3,         // Used for a user signature on a personal message.
     // ProofOfPossession = 5, // Used as a signature representing an authority's proof of possession of its authority protocol key.
     // HeaderDigest = 6,      // Used for narwhal authority signature on header digest.
@@ -65,6 +63,7 @@ pub enum IntentScope {
     SenderSignedTransaction = 2, // Used for an authority signature on a user signed transaction.
     TransactionEffects = 3, // Used for an authority signature on transaction effects.
     DiscoveryPeers = 4, // Used for a signature on a discovery message.
+    CommitSummary = 5,  // Used for a signature on a commit summary.
 }
 
 impl TryFrom<u8> for IntentScope {

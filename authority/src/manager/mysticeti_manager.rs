@@ -5,12 +5,13 @@ use crate::{
 };
 use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
-use consensus::{CommitConsumer, CommitIndex, ConsensusAuthority, Round};
+use consensus::{CommitConsumer, ConsensusAuthority};
 use fastcrypto::ed25519::Ed25519KeyPair;
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::Mutex;
 use tracing::info;
+use types::consensus::{block::Round, commit::CommitIndex};
 use types::{accumulator, parameters::Parameters};
 use types::{
     accumulator::AccumulatorStore,

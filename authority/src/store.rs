@@ -274,6 +274,20 @@ impl AuthorityStore {
         Ok(())
     }
 
+    pub fn multi_insert_transactions<'a>(
+        &self,
+        transactions: impl Iterator<Item = &'a VerifiedTransaction>,
+    ) -> Result<(), TypedStoreError> {
+        for tx in transactions {
+            self.perpetual_tables
+                .transactions
+                .write()
+                .insert(*tx.digest(), tx.serializable_ref().clone());
+        }
+
+        Ok(())
+    }
+
     pub fn multi_get_transaction_blocks(
         &self,
         tx_digests: &[TransactionDigest],
@@ -1044,5 +1058,11 @@ pub enum TypedStoreError {
 impl From<TypedStoreError> for SomaError {
     fn from(e: TypedStoreError) -> Self {
         Self::Storage(e.to_string())
+    }
+}
+
+impl From<TypedStoreError> for types::storage::storage_error::Error {
+    fn from(error: TypedStoreError) -> Self {
+        types::storage::storage_error::Error::custom(error)
     }
 }

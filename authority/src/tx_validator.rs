@@ -5,7 +5,7 @@ use tap::TapFallible;
 use tracing::{info, warn};
 use types::consensus::{ConsensusTransaction, ConsensusTransactionKind};
 
-use consensus::{TransactionVerifier, ValidationError};
+use types::consensus::transaction::{TransactionVerifier, ValidationError};
 
 use crate::epoch_store::AuthorityPerEpochStore;
 

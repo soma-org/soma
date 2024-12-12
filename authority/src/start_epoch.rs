@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use types::{
-    checkpoint::CheckpointTimestamp,
+    state_sync::CommitTimestamp,
     system_state::{EpochStartSystemState, EpochStartSystemStateTrait},
 };
 
@@ -44,7 +44,7 @@ impl EpochStartConfiguration {
         }
     }
 
-    pub fn epoch_start_timestamp_ms(&self) -> CheckpointTimestamp {
+    pub fn epoch_start_timestamp_ms(&self) -> CommitTimestamp {
         self.epoch_start_state().epoch_start_timestamp_ms()
     }
 }

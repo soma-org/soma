@@ -15,9 +15,9 @@ pub struct ActivePeers {
 
 #[derive(Debug, Clone)]
 pub struct PeerState {
-    channel: Channel,
+    pub channel: Channel,
     address: Multiaddr,
-    public_key: NetworkPublicKey,
+    pub public_key: NetworkPublicKey,
     connected_since: Instant,
 }
 

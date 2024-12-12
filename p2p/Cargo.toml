@@ -16,6 +16,7 @@ rand.workspace = true
 fastcrypto.workspace = true
 bcs.workspace = true
 tap.workspace = true
+anyhow.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

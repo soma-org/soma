@@ -2,13 +2,13 @@ use crate::{
     epoch_store::AuthorityPerEpochStore, output::ConsensusOutputAPI, state::AuthorityState,
     throughput::ConsensusThroughputCalculator, tx_manager::TransactionManager,
 };
-use consensus::CommittedSubDag;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, num::NonZeroUsize, sync::Arc};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{error, info, instrument, warn};
 use types::committee::AuthorityIndex;
+use types::consensus::commit::CommittedSubDag;
 use types::system_state::EpochStartSystemStateTrait;
 use types::{
     accumulator::CommitIndex,
