@@ -5,6 +5,7 @@ use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, HashFunction};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -16,8 +17,8 @@ use url::Url;
 use super::modality::Modality;
 
 /// size of a chunk in bytes
-type SizeInBytes = u64;
-type SizeInElements = u64;
+type SizeInBytes = usize;
+type SizeInElements = usize;
 
 /// `ManifestAPI` describes the API for interacting with versioned Manifests
 #[enum_dispatch]
@@ -47,7 +48,7 @@ pub enum Manifest {
 
 impl Manifest {
     /// new constructs a new transaction certificate
-    fn new_v1(
+    pub(crate) fn new_v1(
         modality: Modality,
         compression: Compression,
         encryption: Option<Encryption>,
@@ -86,7 +87,7 @@ impl ManifestAPI for ManifestV1 {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct BatchIndex(u32);
 
 /// The API to interact with versioned chunks
@@ -104,6 +105,22 @@ pub(crate) trait BatchAPI {
 #[enum_dispatch(BatchAPI)]
 pub(crate) enum Batch {
     V1(BatchV1),
+}
+
+impl Batch {
+    pub(crate) fn new_v1(
+        checksum: Checksum,
+        shape: Vec<SizeInElements>,
+        download_size: SizeInBytes,
+        batch_index: BatchIndex,
+    ) -> Self {
+        Batch::V1(BatchV1 {
+            checksum,
+            shape,
+            download_size,
+            batch_index,
+        })
+    }
 }
 
 /// First version of the chunk
@@ -127,5 +144,36 @@ impl BatchAPI for BatchV1 {
     }
     fn batch_index(&self) -> BatchIndex {
         self.batch_index.clone()
+    }
+}
+
+
+impl PartialEq for Batch {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Batch::V1(a), Batch::V1(b)) => {
+                a.checksum == b.checksum &&
+                a.shape == b.shape &&
+                a.download_size == b.download_size &&
+                a.batch_index == b.batch_index
+            }
+        }
+    }
+}
+
+impl Eq for Batch {}
+
+
+impl PartialOrd for Batch {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Batch {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Batch::V1(a), Batch::V1(b)) => a.batch_index.cmp(&b.batch_index),
+        }
     }
 }

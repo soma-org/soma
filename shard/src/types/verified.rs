@@ -38,6 +38,14 @@ impl<T: Serialize> Verified<T> {
     pub(crate) fn serialized(&self) -> Serialized<T> {
         Serialized::new(self.serialized.clone())
     }
+
+    pub(crate) fn bytes(&self) -> Bytes {
+        self.serialized.clone()
+    }
+
+    pub(crate) fn trusted(input: &T) -> ShardResult<()> {
+        Ok(())
+    }
 }
 
 impl<T: Serialize> std::ops::Deref for Verified<T> {

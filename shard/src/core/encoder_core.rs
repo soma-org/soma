@@ -13,31 +13,22 @@ use crate::{
     intelligence::model::Model,
     networking::messaging::EncoderNetworkClient,
     storage::blob::{
-        compression::ZstdCompressor, encryption::AesEncryptor, BlobEncryption, BlobPath,
+        compression::ZstdCompressor, encryption::AesEncryptor, BlobPath,
         BlobStorage,
     },
     types::{
-        certificate::ShardCertificate,
-        checksum::Checksum,
-        manifest::{BatchAPI, ManifestAPI},
-        network_committee::NetworkingIndex,
-        shard_commit::{ShardCommit, ShardCommitAPI},
-        shard_completion_proof::ShardCompletionProof,
-        shard_endorsement::ShardEndorsement,
-        shard_input::{ShardInput, ShardInputAPI},
-        shard_removal::ShardRemoval,
-        shard_reveal::ShardReveal,
-        signed::Signed,
-        verified::Verified,
+        certificate::ShardCertificate, checksum::Checksum, manifest::{Batch, BatchAPI, Compression, Encryption, Manifest, ManifestAPI}, network_committee::NetworkingIndex, shard_commit::{ShardCommit, ShardCommitAPI}, shard_completion_proof::ShardCompletionProof, shard_endorsement::ShardEndorsement, shard_input::{ShardInput, ShardInputAPI}, shard_removal::ShardRemoval, shard_reveal::ShardReveal, signed::Signed, verified::Verified
     },
 };
 use bytes::Bytes;
 use ndarray::ArrayD;
 use rand::rngs::OsRng;
 use rand::RngCore;
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 use tokio::{sync::Semaphore, task::JoinSet};
 use tokio_util::sync::CancellationToken;
+
+use super::broadcaster::Broadcaster;
 
 pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
     shard_input_semaphore: Arc<Semaphore>,
@@ -47,6 +38,7 @@ pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
     shard_endorsement_certificate_semaphore: Arc<Semaphore>,
     shard_completion_proof_semaphore: Arc<Semaphore>,
     client: Arc<C>,
+    broadcaster: Arc<Broadcaster<C>>,
     downloader: ActorHandle<Downloader>,
     // TODO: potentially change this to be a generic
     encryptor: ActorHandle<Encryptor<AesKey, AesEncryptor>>,
@@ -65,6 +57,7 @@ where
     pub fn new(
         max_concurrent_tasks: usize,
         client: Arc<C>,
+        broadcaster: Arc<Broadcaster<C>>,
         downloader: ActorHandle<Downloader>,
         encryptor: ActorHandle<Encryptor<AesKey, AesEncryptor>>,
         compressor: ActorHandle<Compressor<ZstdCompressor>>,
@@ -79,6 +72,7 @@ where
             shard_endorsement_certificate_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
             shard_completion_proof_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
             client,
+            broadcaster,
             downloader,
             encryptor,
             compressor,
@@ -94,13 +88,14 @@ where
             let model = self.model.clone();
             let encryptor = self.encryptor.clone();
             let storage = self.storage.clone();
+            let broadcaster = self.broadcaster.clone();
             tokio::spawn(async move {
                 // println!("{:?}", shard_input);
                 let cancellation = CancellationToken::new();
                 let manifest = shard_input.manifest();
                 let batches = manifest.batches().to_owned();
 
-                let mut set: JoinSet<ShardResult<()>> = JoinSet::new();
+                let mut join_set: JoinSet<ShardResult<Batch>> = JoinSet::new();
 
                 // TODO: sign the shard and hash the signature. Simple, easily reproducible, random, secure
                 let mut key = [0u8; 32];
@@ -116,7 +111,7 @@ where
                     let encryptor = encryptor.clone();
                     let storage = storage.clone();
 
-                    set.spawn(async move {
+                    join_set.spawn(async move {
                         // Process the batch through each actor in sequence
                         // TODO: fix the networking index peer
                         let downloader_input = DownloaderInput::new(
@@ -136,6 +131,8 @@ where
                         let array: ArrayD<f32> =
                             bcs::from_bytes(&decompressed).map_err(ShardError::MalformedType)?;
                         let model_output = model.send(array, cancellation.clone()).await?;
+
+                        let shape = model_output.shape();
                         let model_bytes = bcs::to_bytes(&model_output)
                             .map_err(ShardError::SerializationFailure)?;
                         let model_bytes = Bytes::copy_from_slice(&model_bytes);
@@ -148,24 +145,60 @@ where
                                 cancellation.clone(),
                             )
                             .await?;
+                        // figure out the hash?
+
+                        let download_size = encrypted_embeddings.len();
+
+                        let checksum = Checksum::new_from_bytes(&encrypted_embeddings);
                         // TODO: generate a path using the checksum of encrypted data, or make the storage actor generate the path and return it.
-                        let path = BlobPath::new("change me".to_string())?;
-                        let checksum = storage
+                        let path = BlobPath::new(checksum.to_string())?;
+
+                        storage
                             .send(
                                 StorageProcessorInput::Store(path, encrypted_embeddings),
                                 cancellation.clone(),
                             )
                             .await?;
-                        // return checksums to package into a commit
-                        Ok(())
+
+
+                        let new_batch = Batch::new_v1(checksum, shape.to_vec(), download_size, batch.batch_index());
+
+                        Ok(new_batch)
                     });
                 }
 
-                // Collect all results
-                // let mut all_results = Vec::new();
-                // while let Some(result) = set.join_next().await {
-                //     all_results.push(result??);
+                let mut new_batches = Vec::new();
+                while let Some(result) = join_set.join_next().await {
+                    match result {
+                        Ok(Ok(batch)) => {
+                            new_batches.push(batch);
+                        }
+
+                        Ok(Err(e)) => {
+                            // log error
+                            // abort everything because we need all the batches to be processed correctly
+                            join_set.abort_all();
+                        }
+
+                        Err(e) => {
+                            // log error
+                            // abort everything because we need all the batches to be processed correctly
+                            join_set.abort_all();
+                        }
+                        
+                    }
+                }
+
+                new_batches.sort();
+                let new_manifest = Manifest::new_v1(shard_input.modality().to_owned(), Compression::ZSTD, Some(Encryption::Aes256Ctr64LE), new_batches);
+                // create shard commit type
+
+                // should I move this function defition elsewhere?
+                // async fn network_fn<C: EncoderNetworkClient>(client: Arc<C>, peer: NetworkingIndex) -> ShardResult<Si> {
+
                 // }
+
+                // let signatures = broadcaster.collect_signatures(new_manifest, peers, network_fn).await?;
 
                 // package into a commit
                 // broadcast to everyone in the shard
@@ -371,6 +404,7 @@ impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> Clone for EncoderCore<C,
             compressor: self.compressor.clone(),
             model: self.model.clone(),
             storage: self.storage.clone(),
+            broadcaster: self.broadcaster.clone()
         }
     }
 }

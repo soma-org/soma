@@ -9,6 +9,7 @@ mod tonic_gen {
 
 use crate::types::certificate::ShardCertificate;
 use crate::types::multiaddr::{Multiaddr, Protocol};
+use crate::types::serialized::Serialized;
 use crate::types::shard::ShardRef;
 use crate::types::shard_commit::ShardCommit;
 use crate::types::shard_completion_proof::ShardCompletionProof;
@@ -18,7 +19,8 @@ use crate::types::shard_removal::ShardRemoval;
 use crate::types::shard_reveal::ShardReveal;
 use crate::types::shard_slots::ShardSlots;
 use crate::types::signed::Signature;
-use crate::types::{serialized::Serialized, signed::Signed};
+use crate::types::verified::Verified;
+use crate::types::signed::Signed;
 use crate::{
     crypto::keys::NetworkKeyPair,
     error::ShardResult,
@@ -33,11 +35,11 @@ use std::{sync::Arc, time::Duration};
 // TODO: make timeout configurable and tune the default timeout based on measured network latency
 pub(crate) const MESSAGE_TIMEOUT: std::time::Duration = Duration::from_secs(60);
 
-/// The Encoder Network client takes pre-serialized versions of the data. E.g. in the case of loading data from a database the serialized data is already
-/// available so it would be redundant to deserialized + re-serialized the type. The response from a client fn is always in the form
+/// The Encoder Network client takes pre-Verified versions of the data. E.g. in the case of loading data from a database the Verified data is already
+/// available so it would be redundant to deVerified + re-Verified the type. The response from a client fn is always in the form
 /// of bytes due to the fact that verification of types for each specific networking implementation would be redundant and would require
 /// maintaining multiple versions of the same codebase.
-//TODO: to enforce type verification, it should be impossible to create a serialized type without going through verification first
+//TODO: to enforce type verification, it should be impossible to create a Verified type without going through verification first
 #[async_trait]
 pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     /// Send shard input is used by the client to send an input to the shard.
@@ -50,7 +52,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn send_shard_input(
         &self,
         peer: NetworkingIndex,
-        shard_input: &Serialized<Signed<ShardInput>>,
+        shard_input: &Verified<Signed<ShardInput>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -61,7 +63,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn get_shard_input(
         &self,
         peer: NetworkingIndex,
-        shard_ref: &Serialized<ShardRef>,
+        shard_ref: &Verified<ShardRef>,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
@@ -75,7 +77,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn get_shard_commit_signature(
         &self,
         peer: NetworkingIndex,
-        shard_commit: &Serialized<Signed<ShardCommit>>,
+        shard_commit: &Verified<Signed<ShardCommit>>,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
@@ -84,7 +86,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn send_shard_commit_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_commit_certificate: &Serialized<ShardCertificate<Signed<ShardCommit>>>,
+        shard_commit_certificate: &Verified<ShardCertificate<Signed<ShardCommit>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -94,7 +96,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn batch_get_shard_commit_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_slots: &Serialized<ShardSlots>,
+        shard_slots: &Verified<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>>;
 
@@ -103,7 +105,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn get_shard_reveal_signature(
         &self,
         peer: NetworkingIndex,
-        shard_reveal: &Serialized<Signed<ShardReveal>>,
+        shard_reveal: &Verified<Signed<ShardReveal>>,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
@@ -111,7 +113,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn send_shard_reveal_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_reveal_certificate: &Serialized<ShardCertificate<Signed<ShardReveal>>>,
+        shard_reveal_certificate: &Verified<ShardCertificate<Signed<ShardReveal>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -120,7 +122,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn batch_get_shard_reveal_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_slots: &Serialized<ShardSlots>,
+        shard_slots: &Verified<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>>;
 
@@ -132,7 +134,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn batch_send_shard_removal_signatures(
         &self,
         peer: NetworkingIndex,
-        shard_removal_signatures: &Vec<Serialized<Signed<ShardRemoval>>>,
+        shard_removal_signatures: &Vec<Verified<Signed<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -144,7 +146,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn batch_send_shard_removal_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_removal_certificates: &Vec<Serialized<ShardCertificate<ShardRemoval>>>,
+        shard_removal_certificates: &Vec<Verified<ShardCertificate<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -154,7 +156,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn send_shard_endorsement(
         &self,
         peer: NetworkingIndex,
-        shard_endorsement: &Serialized<Signed<ShardEndorsement>>,
+        shard_endorsement: &Verified<Signed<ShardEndorsement>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -167,14 +169,14 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn send_shard_completion_proof(
         &self,
         peer: NetworkingIndex,
-        shard_completion_proof: &Serialized<ShardCompletionProof>,
+        shard_completion_proof: &Verified<ShardCompletionProof>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
 
-/// The network service takes bytes as an input, since these types have come over the wire they are already serialized, but verification should
+/// The network service takes bytes as an input, since these types have come over the wire they are already Verified, but verification should
 /// occur inside the network service rather than the networking specific implementations due to redundant verification code for all networking protocols.
-/// The return types are verified types so that serialization is non-redundant and handle in one place, where the verified type has the serialized form of the type
+/// The return types are verified types so that serialization is non-redundant and handle in one place, where the verified type has the Verified form of the type
 /// allowing the networking specific implementations. The type inside the verified type is Arc'd so the copy is relatively
 /// lightweight, giving the network specific implementation access to any additional information from the type, digest, etc. It's also a way to enforce some type
 /// safety on the output of each handled function.

@@ -37,8 +37,8 @@ use super::{
 };
 
 use crate::types::{
-    serialized::Serialized,
-    signed::{Signature, Signed},
+    verified::Verified,
+    signed::Signed,
 };
 
 // Implements Tonic RPC client for Encoders.
@@ -81,7 +81,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_input(
         &self,
         peer: NetworkingIndex,
-        shard_input: &Serialized<Signed<ShardInput>>,
+        shard_input: &Verified<Signed<ShardInput>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendShardInputRequest {
@@ -99,7 +99,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn get_shard_input(
         &self,
         peer: NetworkingIndex,
-        shard_ref: &Serialized<ShardRef>,
+        shard_ref: &Verified<ShardRef>,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
         let mut request = Request::new(GetShardInputRequest {
@@ -119,7 +119,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn get_shard_commit_signature(
         &self,
         peer: NetworkingIndex,
-        shard_commit: &Serialized<Signed<ShardCommit>>,
+        shard_commit: &Verified<Signed<ShardCommit>>,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
         let mut request = Request::new(GetShardCommitSignatureRequest {
@@ -141,7 +141,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_commit_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_commit_certificate: &Serialized<ShardCertificate<Signed<ShardCommit>>>,
+        shard_commit_certificate: &Verified<ShardCertificate<Signed<ShardCommit>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendShardCommitCertificateRequest {
@@ -161,7 +161,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn batch_get_shard_commit_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_slots: &Serialized<ShardSlots>,
+        shard_slots: &Verified<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>> {
         let mut request = Request::new(BatchGetShardCommitCertificatesRequest {
@@ -185,7 +185,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn get_shard_reveal_signature(
         &self,
         peer: NetworkingIndex,
-        shard_reveal: &Serialized<Signed<ShardReveal>>,
+        shard_reveal: &Verified<Signed<ShardReveal>>,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
         let mut request = Request::new(GetShardRevealSignatureRequest {
@@ -207,7 +207,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_reveal_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_reveal_certificate: &Serialized<ShardCertificate<Signed<ShardReveal>>>,
+        shard_reveal_certificate: &Verified<ShardCertificate<Signed<ShardReveal>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendShardRevealCertificateRequest {
@@ -227,7 +227,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn batch_get_shard_reveal_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_slots: &Serialized<ShardSlots>,
+        shard_slots: &Verified<ShardSlots>,
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>> {
         let mut request = Request::new(BatchGetShardRevealCertificatesRequest {
@@ -251,7 +251,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn batch_send_shard_removal_signatures(
         &self,
         peer: NetworkingIndex,
-        shard_removal_signatures: &Vec<Serialized<Signed<ShardRemoval>>>,
+        shard_removal_signatures: &Vec<Verified<Signed<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let shard_removal_signatures_bytes = shard_removal_signatures
@@ -278,7 +278,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn batch_send_shard_removal_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_removal_certificates: &Vec<Serialized<ShardCertificate<ShardRemoval>>>,
+        shard_removal_certificates: &Vec<Verified<ShardCertificate<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let shard_removal_certificates_bytes = shard_removal_certificates
@@ -304,7 +304,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_endorsement(
         &self,
         peer: NetworkingIndex,
-        shard_endorsement: &Serialized<Signed<ShardEndorsement>>,
+        shard_endorsement: &Verified<Signed<ShardEndorsement>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendShardEndorsementRequest {
@@ -323,7 +323,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_completion_proof(
         &self,
         peer: NetworkingIndex,
-        shard_completion_proof: &Serialized<ShardCompletionProof>,
+        shard_completion_proof: &Verified<ShardCompletionProof>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendShardCompletionProofRequest {
