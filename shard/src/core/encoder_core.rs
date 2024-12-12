@@ -18,9 +18,10 @@ use crate::{
     },
     types::{
         certificate::ShardCertificate,
-        manifest::ManifestAPI,
+        checksum::Checksum,
+        manifest::{BatchAPI, ManifestAPI},
         network_committee::NetworkingIndex,
-        shard_commit::ShardCommit,
+        shard_commit::{ShardCommit, ShardCommitAPI},
         shard_completion_proof::ShardCompletionProof,
         shard_endorsement::ShardEndorsement,
         shard_input::{ShardInput, ShardInputAPI},
@@ -34,7 +35,7 @@ use bytes::Bytes;
 use ndarray::ArrayD;
 use rand::rngs::OsRng;
 use rand::RngCore;
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 use tokio::{sync::Semaphore, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
@@ -117,8 +118,12 @@ where
 
                     set.spawn(async move {
                         // Process the batch through each actor in sequence
-                        let downloader_input =
-                            DownloaderInput::new(NetworkingIndex::default(), batch.to_owned());
+                        // TODO: fix the networking index peer
+                        let downloader_input = DownloaderInput::new(
+                            NetworkingIndex::default(),
+                            BlobPath::from_checksum(batch.checksum()),
+                        );
+
                         let download_result = downloader
                             .send(downloader_input, cancellation.clone())
                             .await?;
@@ -180,11 +185,91 @@ where
             .acquire_owned()
             .await
         {
+            let downloader = self.downloader.clone();
+            let compressor = self.compressor.clone();
+            let storage = self.storage.clone();
+
+            // TODO: fix this
+            let peer = NetworkingIndex::default();
+
             tokio::spawn(async move {
+                let manifest = shard_commit_certificate.manifest();
+                let cancellation = CancellationToken::new();
+                let mut set: JoinSet<ShardResult<()>> = JoinSet::new();
+
+                let probe_downloader_handle = downloader.clone();
+                let probe_compressor_handle: ActorHandle<Compressor<ZstdCompressor>> =
+                    compressor.clone();
+                let probe_storage_handle = storage.clone();
+                let probe_cancellation = cancellation.clone();
+                // TODO: fix this
+                let probe_checksum = Checksum::default();
+                let probe_path = BlobPath::from_checksum(probe_checksum);
+
+                set.spawn(async move {
+                    let downloaded_bytes = probe_downloader_handle
+                        .send(
+                            DownloaderInput::new(peer, probe_path.clone()),
+                            probe_cancellation.clone(),
+                        )
+                        .await?;
+                    // maybe cancel here instead?
+
+                    let decompressed_probe_bytes = probe_compressor_handle
+                        .send(
+                            CompressorInput::Decompress(downloaded_bytes),
+                            probe_cancellation.clone(),
+                        )
+                        .await?;
+                    let _ = probe_storage_handle
+                        .send(
+                            StorageProcessorInput::Store(probe_path, decompressed_probe_bytes),
+                            probe_cancellation.clone(),
+                        )
+                        .await?;
+
+                    Ok(())
+                });
+
+                let batches = manifest.batches().to_owned();
+
+                for batch in batches {
+                    let storage = storage.clone();
+                    let downloader = downloader.clone();
+                    let cancellation = cancellation.clone();
+
+                    set.spawn(async move { 
+
+                        let path = BlobPath::from_checksum(batch.checksum());
+                        
+                        
+                        let downloader_input = DownloaderInput::new(
+                            peer,
+                            path.clone(),
+                        );
+
+                        let download_result = downloader
+                            .send(downloader_input, cancellation.clone())
+                            .await?;
+                        let _ = storage
+                            .send(
+                                StorageProcessorInput::Store(path, download_result),
+                                cancellation.clone(),
+                            )
+                            .await?;
+                        
+                        Ok(())
+                    
+                    
+                    });
+                }
+
                 // download the commit data
                 // download the probe
                 // mark complete when those steps are done
                 // track the completion of these things and trigger actions after a certain timeout for instance
+                // downloader.send(DownloaderInput, cancellation)
+
                 println!("{:?}", shard_commit_certificate);
                 drop(permit);
             });

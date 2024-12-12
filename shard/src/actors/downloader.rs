@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path, sync::Arc};
 
 use bytes::Bytes;
 use tokio::sync::Semaphore;
@@ -19,12 +19,12 @@ use super::{ActorMessage, Processor};
 
 pub(crate) struct DownloaderInput {
     peer: NetworkingIndex,
-    batch: Batch,
+    path: BlobPath,
 }
 
 impl DownloaderInput {
-    pub(crate) fn new(peer: NetworkingIndex, batch: Batch) -> Self {
-        Self { peer, batch }
+    pub(crate) fn new(peer: NetworkingIndex, path: BlobPath) -> Self {
+        Self { peer, path }
     }
 }
 
@@ -44,11 +44,7 @@ impl Processor for Downloader {
             tokio::spawn(async move {
                 let input = msg.input;
                 let object = client
-                    .get_object(
-                        input.peer,
-                        &BlobPath::from_checksum(input.batch.checksum()),
-                        GET_OBJECT_TIMEOUT,
-                    )
+                    .get_object(input.peer, &input.path, GET_OBJECT_TIMEOUT)
                     .await
                     .unwrap();
                 let _ = msg.sender.send(Ok(object));

@@ -6,6 +6,7 @@ use crate::{error::ShardResult, types::checksum::Checksum};
 use async_trait::async_trait;
 use bytes::Bytes;
 
+#[derive(Clone)]
 pub(crate) struct BlobPath {
     // TODO: make this better
     path: String,

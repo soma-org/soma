@@ -58,3 +58,13 @@ impl<T> ShardCertificateAPI for ShardCertificateV1<T> {
         &self.aggregate_signature
     }
 }
+
+impl<T> std::ops::Deref for ShardCertificate<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ShardCertificate::V1(cert) => &cert.inner,
+        }
+    }
+}

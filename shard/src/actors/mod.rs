@@ -88,6 +88,7 @@ impl<P: Processor> ActorHandle<P> {
         input: P::Input,
         cancellation: CancellationToken,
     ) -> ShardResult<P::Output> {
+        // TODO: make this more explicitly the actor response 
         let (sender, receiver) = oneshot::channel();
         let msg = ActorMessage {
             input,
