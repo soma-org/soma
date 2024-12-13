@@ -19,8 +19,8 @@ use crate::types::shard_removal::ShardRemoval;
 use crate::types::shard_reveal::ShardReveal;
 use crate::types::shard_slots::ShardSlots;
 use crate::types::signed::Signature;
-use crate::types::verified::Verified;
 use crate::types::signed::Signed;
+use crate::types::verified::Verified;
 use crate::{
     crypto::keys::NetworkKeyPair,
     error::ShardResult,

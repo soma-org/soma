@@ -3,6 +3,7 @@ pub(crate) mod compression;
 pub(crate) mod downloader;
 pub(crate) mod encryption;
 pub(crate) mod model;
+pub(crate) mod shard_input;
 
 use async_trait::async_trait;
 use tokio::{
@@ -83,12 +84,12 @@ impl<P: Processor> Clone for ActorHandle<P> {
 }
 
 impl<P: Processor> ActorHandle<P> {
-    pub async fn send(
+    pub async fn process(
         &self,
         input: P::Input,
         cancellation: CancellationToken,
     ) -> ShardResult<P::Output> {
-        // TODO: make this more explicitly the actor response 
+        // TODO: make this more explicitly the actor response
         let (sender, receiver) = oneshot::channel();
         let msg = ActorMessage {
             input,
@@ -100,6 +101,25 @@ impl<P: Processor> ActorHandle<P> {
                 Ok(res) => res,
                 Err(_) => Err(ShardError::ActorError("channel closed".to_string())),
             },
+            Err(_) => Err(ShardError::ActorError("channel closed".to_string())),
+        }
+    }
+
+    pub async fn background_process(
+        &self,
+        input: P::Input,
+        cancellation: CancellationToken,
+    ) -> ShardResult<()> {
+        // TODO: make this more explicitly the actor response
+        // TODO: make this an option? or figure out a good way to handle the error?
+        let (sender, _receiver) = oneshot::channel();
+        let msg = ActorMessage {
+            input,
+            sender,
+            cancellation,
+        };
+        match self.sender.send(msg).await {
+            Ok(_) => Ok(()),
             Err(_) => Err(ShardError::ActorError("channel closed".to_string())),
         }
     }

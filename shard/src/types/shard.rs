@@ -4,29 +4,39 @@ use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 
 use super::authority_committee::Epoch;
+use super::data::Data;
 use super::digest::Digest;
 use super::manifest::Manifest;
 use super::modality::Modality;
 use super::network_committee::NetworkingIndex;
 use super::transaction::SignedTransaction;
 
+pub(crate) struct Shard {
+    members: Vec<NetworkingIndex>,
+}
+
+impl Shard {
+    pub(crate) fn new(members: Vec<NetworkingIndex>) -> Self {
+        Self { members }
+    }
+
+    pub(crate) fn members(&self) -> Vec<NetworkingIndex> {
+        self.members.clone()
+    }
+}
+
 /// Contains the manifest digest and leader. By keeping these details
 /// secret from the broader network and only sharing with selected shard members
 /// we can reduce censorship related attacks that target specific users
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct ShardSecret {
-    manifest_digest: Digest<Manifest>, //TODO: switch to a manifest ref to be more in-line?
-    /// the node that will be coordinating communication and selecting the commits
-    pub(crate) leader: NetworkingIndex,
+    data_digest: Digest<Data>, //TODO: switch to a manifest ref to be more in-line?
 }
 
 impl ShardSecret {
     /// creates a new shard secret given a manifest digest and leader
-    const fn new(manifest_digest: Digest<Manifest>, leader: NetworkingIndex) -> Self {
-        Self {
-            manifest_digest,
-            leader,
-        }
+    const fn new(data_digest: Digest<Data>) -> Self {
+        Self { data_digest }
     }
 }
 

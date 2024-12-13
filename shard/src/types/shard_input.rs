@@ -18,7 +18,10 @@ use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, HashFunction};
 use serde::{Deserialize, Serialize};
 
-use super::scope::{Scope, ScopedMessage};
+use super::{
+    data::Data,
+    scope::{Scope, ScopedMessage},
+};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -34,7 +37,7 @@ pub enum ShardInput {
 pub trait ShardInputAPI {
     fn transaction_certificate(&self) -> &TransactionCertificate;
     fn shard_secret(&self) -> &ShardSecret;
-    fn manifest(&self) -> &Manifest;
+    fn data(&self) -> &Data;
     fn modality(&self) -> &Modality;
 }
 
@@ -42,7 +45,7 @@ pub trait ShardInputAPI {
 pub struct ShardInputV1 {
     transaction_certificate: TransactionCertificate,
     shard_secret: ShardSecret,
-    manifest: Manifest,
+    data: Data,
     modality: Modality,
 }
 
@@ -50,13 +53,13 @@ impl ShardInputV1 {
     pub(crate) fn new(
         transaction_certificate: TransactionCertificate,
         shard_secret: ShardSecret,
-        manifest: Manifest,
+        data: Data,
         modality: Modality,
     ) -> Self {
         Self {
             transaction_certificate,
             shard_secret,
-            manifest,
+            data,
             modality,
         }
     }
@@ -69,8 +72,8 @@ impl ShardInputAPI for ShardInputV1 {
     fn shard_secret(&self) -> &ShardSecret {
         &self.shard_secret
     }
-    fn manifest(&self) -> &Manifest {
-        &self.manifest
+    fn data(&self) -> &Data {
+        &self.data
     }
     fn modality(&self) -> &Modality {
         &self.modality

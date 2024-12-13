@@ -4,6 +4,7 @@ pub(crate) mod certificate;
 pub(crate) mod checksum;
 pub(crate) mod commit;
 pub(crate) mod context;
+pub(crate) mod data;
 pub(crate) mod digest;
 pub(crate) mod encoder_committee;
 pub(crate) mod manifest;

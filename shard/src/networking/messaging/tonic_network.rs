@@ -36,10 +36,7 @@ use super::{
     EncoderNetworkClient, EncoderNetworkManager, EncoderNetworkService,
 };
 
-use crate::types::{
-    verified::Verified,
-    signed::Signed,
-};
+use crate::types::{signed::Signed, verified::Verified};
 
 // Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderTonicClient {

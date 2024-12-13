@@ -147,22 +147,20 @@ impl BatchAPI for BatchV1 {
     }
 }
 
-
 impl PartialEq for Batch {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Batch::V1(a), Batch::V1(b)) => {
-                a.checksum == b.checksum &&
-                a.shape == b.shape &&
-                a.download_size == b.download_size &&
-                a.batch_index == b.batch_index
+                a.checksum == b.checksum
+                    && a.shape == b.shape
+                    && a.download_size == b.download_size
+                    && a.batch_index == b.batch_index
             }
         }
     }
 }
 
 impl Eq for Batch {}
-
 
 impl PartialOrd for Batch {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

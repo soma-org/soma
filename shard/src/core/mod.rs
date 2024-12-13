@@ -1,5 +1,5 @@
-mod broadcaster;
-mod encoder_core;
+pub(crate) mod broadcaster;
+pub(crate) mod encoder_core;
 mod encoder_node;
 mod encoder_service;
 mod task_manager;
