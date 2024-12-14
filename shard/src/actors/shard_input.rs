@@ -2,13 +2,17 @@ use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 
-use crate::{core::encoder_core::EncoderCore, intelligence::model::Model, networking::messaging::EncoderNetworkClient, storage::blob::BlobStorage, types::{shard::Shard, shard_input::ShardInput, signed::Signed, verified::Verified}};
+use crate::{
+    core::encoder_core::EncoderCore,
+    intelligence::model::Model,
+    networking::messaging::EncoderNetworkClient,
+    storage::blob::BlobStorage,
+    types::{shard::Shard, shard_input::ShardInput, signed::Signed, verified::Verified},
+};
 
 use super::{ActorMessage, Processor};
 
 use async_trait::async_trait;
-
-
 
 pub(crate) struct ShardInputProcessor<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
     core: EncoderCore<C, M, B>,
@@ -16,15 +20,9 @@ pub(crate) struct ShardInputProcessor<C: EncoderNetworkClient, M: Model, B: Blob
 }
 
 impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> ShardInputProcessor<C, M, B> {
-    pub fn new(
-        core: EncoderCore<C, M, B>,
-        concurrency: usize,
-    ) -> Self {
+    pub fn new(core: EncoderCore<C, M, B>, concurrency: usize) -> Self {
         let semaphore = Arc::new(Semaphore::new(concurrency));
-        Self {
-            core,
-            semaphore,
-        }
+        Self { core, semaphore }
     }
 }
 

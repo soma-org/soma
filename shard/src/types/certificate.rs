@@ -35,12 +35,12 @@ impl<T> ShardCertificate<T> {
         inner: T,
         indices: Vec<NetworkingIndex>,
         aggregate_signature: ProtocolKeySignature,
-    ) -> ShardCertificateV1<T> {
-        ShardCertificateV1 {
+    ) -> ShardCertificate<T> {
+        ShardCertificate::V1(ShardCertificateV1 {
             inner,
             indices,
             aggregate_signature,
-        }
+        })
     }
 }
 

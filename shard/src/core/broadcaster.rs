@@ -8,7 +8,10 @@ use tokio::time::sleep;
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::EncoderNetworkClient,
-    types::{context::EncoderContext, network_committee::NetworkingIndex, signed::Signature},
+    types::{
+        context::EncoderContext, network_committee::NetworkingIndex, signed::Signature,
+        verified::Verified,
+    },
 };
 
 const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(10);
@@ -28,18 +31,18 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
 
     pub(crate) async fn collect_signatures<T, F, Fut>(
         &self,
-        input: T,
+        input: Verified<T>,
         peers: Vec<NetworkingIndex>,
         network_fn: F,
-    ) -> ShardResult<Vec<Signature<T>>>
+    ) -> ShardResult<Vec<Verified<Signature<T>>>>
     where
         T: Serialize + Send + Sync + 'static,
-        F: FnOnce(Arc<C>, NetworkingIndex) -> Fut + Copy + Send + Sync + 'static,
-        Fut: Future<Output = ShardResult<Signature<T>>> + Send + Sync + 'static,
+        F: FnOnce(Arc<C>, NetworkingIndex, Verified<T>) -> Fut + Copy + Send + Sync + 'static,
+        Fut: Future<Output = ShardResult<Verified<Signature<T>>>> + Send + 'static,
     {
         struct NetworkingResult<T: Serialize + Send + 'static> {
             peer: NetworkingIndex,
-            result: ShardResult<Signature<T>>,
+            result: ShardResult<Verified<Signature<T>>>,
             retries: u64,
         }
 
@@ -49,8 +52,9 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
         // for each shard member
         for peer in peers {
             let client = self.network_client.clone();
+            let cloned_input = input.clone();
             join_set.spawn(async move {
-                let result = network_fn(client, peer).await;
+                let result = network_fn(client, peer, cloned_input).await;
                 NetworkingResult {
                     peer,
                     result,
@@ -87,9 +91,11 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
                                     // TODO: potentially change retry increase to be exponential backoff
                                     let retry_interval = Duration::from_secs(retries);
                                     if retry_interval <= MAX_RETRY_INTERVAL {
+                                        let cloned_input = input.clone();
                                         join_set.spawn(async move {
                                             sleep(retry_interval).await;
-                                            let result = network_fn(client, peer).await;
+                                            let result =
+                                                network_fn(client, peer, cloned_input).await;
                                             NetworkingResult {
                                                 peer,
                                                 result,
@@ -114,13 +120,13 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
 
     pub(crate) async fn broadcast<T, F, Fut>(
         &self,
-        input: T,
+        input: Verified<T>,
         peers: Vec<NetworkingIndex>,
         network_fn: F,
     ) -> ShardResult<()>
     where
-        T: Serialize + Send + 'static,
-        F: FnOnce(Arc<C>, NetworkingIndex) -> Fut + Copy + Send + 'static,
+        T: Serialize + Send + Sync + 'static,
+        F: FnOnce(Arc<C>, NetworkingIndex, Verified<T>) -> Fut + Copy + Send + 'static,
         Fut: Future<Output = ShardResult<()>> + Send + 'static,
     {
         struct NetworkingResult {
@@ -134,8 +140,9 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
         // for each shard member
         for peer in peers {
             let client = self.network_client.clone();
+            let cloned_input = input.clone();
             join_set.spawn(async move {
-                let result = network_fn(client, peer).await;
+                let result = network_fn(client, peer, cloned_input).await;
                 NetworkingResult {
                     peer,
                     result,
@@ -157,9 +164,11 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
                             // TODO: potentially change retry increase to be exponential backoff
                             let retry_interval = Duration::from_secs(retries);
                             if retry_interval <= MAX_RETRY_INTERVAL {
+                                let cloned_input = input.clone();
+
                                 join_set.spawn(async move {
                                     sleep(retry_interval).await;
-                                    let result = network_fn(client, peer).await;
+                                    let result = network_fn(client, peer, cloned_input).await;
                                     NetworkingResult {
                                         peer,
                                         result,

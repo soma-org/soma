@@ -10,8 +10,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::types::{
-    manifest::Manifest, modality::Modality, shard::ShardSecret,
-    transaction_certificate::TransactionCertificate,
+    modality::Modality, shard::ShardSecret, transaction_certificate::TransactionCertificate,
 };
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use super::{serialized::Serialized, signed::Signed};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Verified<T: Serialize> {
     inner: Arc<T>,
     digest: Digest<T>,
@@ -25,8 +25,20 @@ impl<T: Serialize> Verified<T> {
         let digest = Digest::<T>::new_from_bytes(&serialized);
 
         Ok(Self {
-            inner: std::sync::Arc::new(inner),
+            inner: Arc::new(inner),
             digest,
+            serialized,
+        })
+    }
+
+    pub(crate) fn new_from_trusted(inner: T) -> ShardResult<Self> {
+        let serialized = Bytes::copy_from_slice(
+            &bcs::to_bytes(&inner).map_err(ShardError::SerializationFailure)?,
+        );
+
+        Ok(Self {
+            inner: Arc::new(inner),
+            digest: Digest::<T>::new_from_bytes(&serialized),
             serialized,
         })
     }
@@ -42,10 +54,6 @@ impl<T: Serialize> Verified<T> {
     pub(crate) fn bytes(&self) -> Bytes {
         self.serialized.clone()
     }
-
-    pub(crate) fn trusted(input: &T) -> ShardResult<()> {
-        Ok(())
-    }
 }
 
 impl<T: Serialize> std::ops::Deref for Verified<T> {
@@ -59,5 +67,15 @@ impl<T: Serialize> std::ops::Deref for Verified<T> {
 impl<T: Serialize> PartialEq for Verified<T> {
     fn eq(&self, other: &Self) -> bool {
         self.digest() == other.digest()
+    }
+}
+
+impl<T: Serialize> Clone for Verified<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            digest: self.digest.clone(),
+            serialized: self.serialized.clone(),
+        }
     }
 }

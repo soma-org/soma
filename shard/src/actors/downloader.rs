@@ -7,11 +7,7 @@ use crate::{
     error::ShardResult,
     networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
     storage::blob::BlobPath,
-    types::{
-        checksum::Checksum,
-        manifest::{Batch, BatchAPI},
-        network_committee::NetworkingIndex,
-    },
+    types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 

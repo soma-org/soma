@@ -6,22 +6,26 @@ use std::hash::{Hash, Hasher};
 use super::authority_committee::Epoch;
 use super::data::Data;
 use super::digest::Digest;
-use super::manifest::Manifest;
 use super::modality::Modality;
 use super::network_committee::NetworkingIndex;
 use super::transaction::SignedTransaction;
 
 pub(crate) struct Shard {
     members: Vec<NetworkingIndex>,
+    shard_ref: ShardRef,
 }
 
 impl Shard {
-    pub(crate) fn new(members: Vec<NetworkingIndex>) -> Self {
-        Self { members }
+    pub(crate) fn new(members: Vec<NetworkingIndex>, shard_ref: ShardRef) -> Self {
+        Self { members, shard_ref }
     }
 
     pub(crate) fn members(&self) -> Vec<NetworkingIndex> {
         self.members.clone()
+    }
+
+    pub(crate) fn shard_ref(&self) -> &ShardRef {
+        &self.shard_ref
     }
 }
 
