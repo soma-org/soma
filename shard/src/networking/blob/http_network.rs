@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 
 use crate::{
     error::{ShardError, ShardResult},
@@ -118,27 +118,23 @@ impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
     }
 }
 
-pub struct BlobHttpManager {
+pub struct BlobHttpManager<S: BlobNetworkService + Clone> {
     context: Arc<EncoderContext>,
     client: Arc<BlobHttpClient>,
     shutdown_tx: Option<oneshot::Sender<()>>,
+    marker: PhantomData<S>,
 }
 
-impl BlobHttpManager {
-    pub fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
+impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager<S> {
+    type Client = BlobHttpClient;
+
+    fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
         Ok(Self {
             context: context.clone(),
             client: Arc::new(BlobHttpClient::new(context)?),
             shutdown_tx: None,
+            marker: PhantomData,
         })
-    }
-}
-
-impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager {
-    type Client = BlobHttpClient;
-
-    fn new(context: Arc<EncoderContext>) -> Self {
-        Self::new(context).unwrap()
     }
 
     fn client(&self) -> Arc<Self::Client> {

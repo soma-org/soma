@@ -1,9 +1,9 @@
-pub(crate) mod blob;
 pub(crate) mod compression;
 pub(crate) mod downloader;
 pub(crate) mod encryption;
 pub(crate) mod model;
 pub(crate) mod shard_input;
+pub(crate) mod storage;
 
 use async_trait::async_trait;
 use tokio::{
@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use crate::error::{ShardError, ShardResult};
 
 #[async_trait]
-trait Processor: Send + Sync + Sized + 'static {
+pub(crate) trait Processor: Send + Sync + Sized + 'static {
     type Input: Send + Sync + Sized + 'static;
     type Output: Send + Sync + Sized + 'static;
     // Tried returning a result here, except it seemed to be more confusing than beneficial.

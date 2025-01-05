@@ -18,6 +18,15 @@ pub(crate) struct Encryptor<K, B: BlobEncryption<K>> {
     marker: PhantomData<K>,
 }
 
+impl<K, B: BlobEncryption<K>> Encryptor<K, B> {
+    pub(crate) fn new(encryptor: Arc<B>) -> Self {
+        Self {
+            encryptor,
+            marker: PhantomData,
+        }
+    }
+}
+
 pub(crate) enum EncryptionInput<K> {
     Encrypt(K, Bytes),
     Decrypt(K, Bytes),

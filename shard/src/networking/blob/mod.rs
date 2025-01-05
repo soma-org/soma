@@ -37,8 +37,15 @@ pub(crate) trait BlobNetworkService: Send + Sync + Sized + 'static {
     ) -> ShardResult<GetObjectResponse>;
 }
 
+#[derive(Clone)]
 pub struct DirectNetworkService<S: BlobStorage> {
     storage: Arc<S>,
+}
+
+impl<S: BlobStorage> DirectNetworkService<S> {
+    pub(crate) fn new(storage: Arc<S>) -> Self {
+        Self { storage }
+    }
 }
 pub struct SignedNetworkService<S: BlobStorage + BlobSignedUrl> {
     storage: Arc<S>,
@@ -68,14 +75,14 @@ impl<S: BlobStorage + BlobSignedUrl> BlobNetworkService for SignedNetworkService
     }
 }
 
-pub(crate) trait BlobNetworkManager<S>: Send + Sync
+pub(crate) trait BlobNetworkManager<S>: Send + Sync + Sized
 where
     S: BlobNetworkService,
 {
     /// type alias
     type Client: BlobNetworkClient;
 
-    fn new(context: Arc<EncoderContext>) -> Self;
+    fn new(context: Arc<EncoderContext>) -> ShardResult<Self>;
     /// Returns a client
     fn client(&self) -> Arc<Self::Client>;
     /// Starts the network services

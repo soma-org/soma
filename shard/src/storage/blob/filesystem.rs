@@ -7,6 +7,7 @@ use crate::error::{ShardError, ShardResult};
 
 use super::{BlobPath, BlobStorage};
 
+#[derive(Clone)]
 pub struct FilesystemBlobStorage {
     base_path: PathBuf,
 }
@@ -67,6 +68,44 @@ impl BlobStorage for FilesystemBlobStorage {
                     e
                 ))),
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+    use tempdir::TempDir;
+
+    #[tokio::test]
+    async fn test_filesystem_blob_storage() -> ShardResult<()> {
+        // Create a temporary directory that will be automatically cleaned up
+        let temp_dir = TempDir::new("blob_storage_test").expect("Failed to create temp dir");
+
+        // Initialize the storage with temp directory
+        let storage = FilesystemBlobStorage::new(temp_dir.path());
+
+        // Create test data
+        let test_path = BlobPath::from_str("test/path/file.txt").unwrap();
+        let test_contents = Bytes::from("Hello, World!");
+
+        // Test put_object
+        storage
+            .put_object(&test_path, test_contents.clone())
+            .await?;
+
+        // Test get_object
+        let retrieved_contents = storage.get_object(&test_path).await?;
+        assert_eq!(retrieved_contents, test_contents);
+
+        // Test delete_object
+        storage.delete_object(&test_path).await?;
+
+        // Verify the object is deleted by attempting to get it
+        match storage.get_object(&test_path).await {
+            Err(ShardError::NotFound(_)) => Ok(()),
+            _ => panic!("Expected NotFound error after deletion"),
         }
     }
 }

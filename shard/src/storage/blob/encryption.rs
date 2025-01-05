@@ -13,7 +13,7 @@ pub(crate) struct AesEncryptor {}
 impl AesEncryptor {
     const NONCE: [u8; 16] = [0u8; 16];
 
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {}
     }
 }

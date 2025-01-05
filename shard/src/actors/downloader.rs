@@ -2,6 +2,7 @@ use std::{path, sync::Arc};
 
 use bytes::Bytes;
 use tokio::sync::Semaphore;
+use tower::limit::concurrency;
 
 use crate::{
     error::ShardResult,
@@ -24,13 +25,22 @@ impl DownloaderInput {
     }
 }
 
-pub(crate) struct Downloader {
+pub(crate) struct Downloader<B: BlobNetworkClient> {
     semaphore: Arc<Semaphore>,
-    client: Arc<BlobHttpClient>,
+    client: Arc<B>,
+}
+
+impl<B: BlobNetworkClient> Downloader<B> {
+    pub(crate) fn new(concurrency: usize, client: Arc<B>) -> Self {
+        Self {
+            semaphore: Arc::new(Semaphore::new(concurrency)),
+            client,
+        }
+    }
 }
 
 #[async_trait]
-impl Processor for Downloader {
+impl<B: BlobNetworkClient> Processor for Downloader<B> {
     type Input = DownloaderInput;
     type Output = Bytes;
 

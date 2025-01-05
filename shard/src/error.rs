@@ -20,6 +20,9 @@ pub(crate) enum ShardError {
     QuorumFailed,
 
     #[error("Actor error: {0}")]
+    ShardNotFound(String),
+
+    #[error("Actor error: {0}")]
     ActorError(String),
 
     #[error("Thread error: {0}")]

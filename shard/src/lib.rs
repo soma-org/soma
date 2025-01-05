@@ -11,4 +11,5 @@ mod types;
 pub use intelligence::model::python::REGISTERED_MODULE_ATTR;
 pub use types::scope::{Scope, ScopedMessage};
 
+pub use core::encoder_node::Encoder;
 pub use crypto::keys::{ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey};

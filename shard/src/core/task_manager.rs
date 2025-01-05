@@ -5,7 +5,7 @@ use crate::{
     core::encoder_core::EncoderCore,
     error::ShardResult,
     intelligence::model::Model,
-    networking::messaging::EncoderNetworkClient,
+    networking::{blob::BlobNetworkClient, messaging::EncoderNetworkClient},
     storage::blob::BlobStorage,
     types::{
         certificate::ShardCertificate, shard_commit::ShardCommit,
@@ -70,8 +70,8 @@ impl TaskManagerHandle {
     }
 }
 
-struct TaskManager<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
-    core: EncoderCore<C, M, B>,
+struct TaskManager<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient> {
+    core: EncoderCore<C, M, B, BC>,
     shard_input_receiver: mpsc::Receiver<Verified<Signed<ShardInput>>>,
     shard_commit_certificate_receiver:
         mpsc::Receiver<Verified<ShardCertificate<Signed<ShardCommit>>>>,
@@ -83,7 +83,9 @@ struct TaskManager<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
     shard_completion_proof_receiver: mpsc::Receiver<Verified<ShardCompletionProof>>,
 }
 
-impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> TaskManager<C, M, B> {
+impl<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient>
+    TaskManager<C, M, B, BC>
+{
     fn spawn_tasks(self, join_set: &mut JoinSet<()>) {
         let TaskManager {
             core,
@@ -103,7 +105,7 @@ impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> TaskManager<C, M, B> {
                     tokio::select! {
                         shard_input = shard_input_receiver.recv() => {
                             let Some(shard_input) = shard_input else { break };
-                            core.process_shard_input(shard_input).await;
+                            // core.process_shard_input(shard_input).await;
                         }
                     }
                 }
@@ -118,7 +120,7 @@ impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> TaskManager<C, M, B> {
                     tokio::select! {
                         cert = shard_commit_certificate_receiver.recv() => {
                             let Some(cert) = cert else { break };
-                            core.process_shard_commit_certificate(cert).await;
+                            // core.process_shard_commit_certificate(cert).await;
                         }
                     }
                 }
@@ -133,7 +135,7 @@ impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> TaskManager<C, M, B> {
                     tokio::select! {
                         cert = shard_reveal_certificate_receiver.recv() => {
                             let Some(cert) = cert else { break };
-                            core.process_shard_reveal_certificate(cert).await;
+                            // core.process_shard_reveal_certificate(cert).await;
                         }
                     }
                 }
@@ -201,8 +203,13 @@ pub(crate) struct ChannelTaskDispatcher {
 }
 
 impl ChannelTaskDispatcher {
-    pub(crate) fn start<C: EncoderNetworkClient, M: Model, B: BlobStorage>(
-        core: EncoderCore<C, M, B>,
+    pub(crate) fn start<
+        C: EncoderNetworkClient,
+        M: Model,
+        B: BlobStorage,
+        BC: BlobNetworkClient,
+    >(
+        core: EncoderCore<C, M, B, BC>,
     ) -> (Self, TaskManagerHandle) {
         let (shard_input_sender, shard_input_receiver) =
             mpsc::channel(CORE_THREAD_COMMANDS_CHANNEL_SIZE);

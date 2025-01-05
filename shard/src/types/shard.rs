@@ -2,6 +2,7 @@ use crate::ProtocolKeySignature;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
+use strum_macros::Display;
 
 use super::authority_committee::Epoch;
 use super::data::Data;
@@ -52,7 +53,7 @@ pub struct ShardEntropy {
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Display)]
 #[enum_dispatch(ShardRefAPI)]
 pub enum ShardRef {
     V1(ShardRefV1),

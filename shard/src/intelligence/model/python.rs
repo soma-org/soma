@@ -22,14 +22,12 @@ pub const REGISTERED_MODULE_ATTR: &str = "__REGISTERED_MODULE__";
 pub(crate) struct PythonInterpreter {}
 
 impl PythonInterpreter {
-    fn new(
-        virtual_environment: &Path,
-        project_root: &Path,
-        python_interpreter: &Path,
-    ) -> ShardResult<Self> {
-        let site_packages_path = find_site_packages_path(virtual_environment).ok_or_else(|| {
+    pub(crate) fn new(project_root: &Path) -> ShardResult<Self> {
+        let site_packages_path = find_site_packages_path(project_root).ok_or_else(|| {
             ShardError::PathError("Invalid UTF-8 in site-packages path".to_string())
         })?;
+
+        let python_interpreter = interpreter_path(project_root);
 
         let python_path = format!(
             "{}:{}",
@@ -57,7 +55,7 @@ impl PythonInterpreter {
         Ok(Self {})
     }
 
-    fn new_module(&self, entry_point: &Path) -> ShardResult<PythonModule> {
+    pub(crate) fn new_module(&self, entry_point: &Path) -> ShardResult<PythonModule> {
         let entry_point_code = std::fs::read_to_string(&entry_point).map_err(|e| {
             ShardError::FailedLoadingPythonModule(format!("Failed to read entry point file: {}", e))
         })?;
@@ -155,8 +153,12 @@ impl Model for PythonModule {
     }
 }
 
-fn find_site_packages_path(venv_path: &Path) -> Option<PathBuf> {
-    let lib_path = venv_path.join("lib");
+pub fn interpreter_path(python_root: &Path) -> PathBuf {
+    python_root.join(".venv").join("bin").join("python")
+}
+
+pub fn find_site_packages_path(python_root: &Path) -> Option<PathBuf> {
+    let lib_path = python_root.join(".venv").join("lib");
     let entries = std::fs::read_dir(&lib_path).ok()?;
 
     for entry in entries {

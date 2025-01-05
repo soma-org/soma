@@ -5,6 +5,7 @@ pub(crate) mod filesystem;
 use crate::{error::ShardResult, types::checksum::Checksum};
 use async_trait::async_trait;
 use bytes::Bytes;
+use std::str::FromStr;
 
 #[derive(Clone)]
 pub(crate) struct BlobPath {
@@ -26,6 +27,14 @@ impl BlobPath {
 
     pub(crate) fn path(&self) -> String {
         self.path.clone()
+    }
+}
+
+impl FromStr for BlobPath {
+    type Err = crate::error::ShardError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        BlobPath::new(s.to_string())
     }
 }
 

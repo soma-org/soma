@@ -10,7 +10,7 @@ pub(crate) trait NetworkingContext: Send + Sync + 'static {
     fn own_network_index(&self) -> NetworkingIndex;
 }
 
-type Quorum = usize;
+pub(crate) type Quorum = usize;
 
 #[derive(Clone)]
 /// EncoderContext is updated each epoch and provides the various services running

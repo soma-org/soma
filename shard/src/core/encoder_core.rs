@@ -1,22 +1,25 @@
 // use crate::networking::messaging::MESSAGE_TIMEOUT;
 use crate::{
     actors::{
-        blob::{StorageProcessor, StorageProcessorInput},
         compression::{Compressor, CompressorInput},
         downloader::{Downloader, DownloaderInput},
         encryption::{EncryptionInput, Encryptor},
         model::ModelProcessor,
+        storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput},
         ActorHandle,
     },
     crypto::AesKey,
     error::{ShardError, ShardResult},
     intelligence::model::Model,
-    networking::messaging::{EncoderNetworkClient, MESSAGE_TIMEOUT},
+    networking::{
+        blob::BlobNetworkClient,
+        messaging::{EncoderNetworkClient, MESSAGE_TIMEOUT},
+    },
     storage::blob::{compression::ZstdCompressor, encryption::AesEncryptor, BlobPath, BlobStorage},
     types::{
         certificate::ShardCertificate,
         checksum::Checksum,
-        data::{Compression, Data, DataAPI, Encryption},
+        data::{self, Compression, Data, DataAPI, Encryption},
         network_committee::NetworkingIndex,
         shard::Shard,
         shard_commit::{self, ShardCommit, ShardCommitAPI},
@@ -24,7 +27,7 @@ use crate::{
         shard_endorsement::ShardEndorsement,
         shard_input::{ShardInput, ShardInputAPI},
         shard_removal::ShardRemoval,
-        shard_reveal::ShardReveal,
+        shard_reveal::{ShardReveal, ShardRevealAPI},
         signed::{Signature, Signed},
         verified::Verified,
     },
@@ -40,43 +43,37 @@ use tokio_util::sync::CancellationToken;
 
 use super::broadcaster::Broadcaster;
 
-pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: BlobStorage> {
+pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient> {
     client: Arc<C>,
     broadcaster: Arc<Broadcaster<C>>,
-    downloader: ActorHandle<Downloader>,
+    downloader: ActorHandle<Downloader<BC>>,
     // TODO: potentially change this to be a generic
     encryptor: ActorHandle<Encryptor<AesKey, AesEncryptor>>,
     // TODO: potentially change this to be a generic
     compressor: ActorHandle<Compressor<ZstdCompressor>>,
     model: ActorHandle<ModelProcessor<M>>,
     storage: ActorHandle<StorageProcessor<B>>,
-    keypair: ProtocolKeyPair,
+    keypair: Arc<ProtocolKeyPair>,
 }
 
-impl<C, M, B> EncoderCore<C, M, B>
+impl<C, M, B, BC> EncoderCore<C, M, B, BC>
 where
     C: EncoderNetworkClient,
     M: Model,
     B: BlobStorage,
+    BC: BlobNetworkClient,
 {
     pub fn new(
-        max_concurrent_tasks: usize,
         client: Arc<C>,
         broadcaster: Arc<Broadcaster<C>>,
-        downloader: ActorHandle<Downloader>,
+        downloader: ActorHandle<Downloader<BC>>,
         encryptor: ActorHandle<Encryptor<AesKey, AesEncryptor>>,
         compressor: ActorHandle<Compressor<ZstdCompressor>>,
         model: ActorHandle<ModelProcessor<M>>,
         storage: ActorHandle<StorageProcessor<B>>,
-        keypair: ProtocolKeyPair,
+        keypair: Arc<ProtocolKeyPair>,
     ) -> Self {
         Self {
-            shard_input_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
-            shard_commit_certificate_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
-            shard_reveal_certificate_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
-            shard_removal_certificate_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
-            shard_endorsement_certificate_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
-            shard_completion_proof_semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
             client,
             broadcaster,
             downloader,
@@ -203,21 +200,25 @@ where
             Ok(())
         }
 
-        // TODO: add a binder that converts a
-        let shard_commit_certificate = Verified::new_from_trusted(ShardCertificate::new_v1(
-            inner,
-            indices,
-            aggregate_signature,
-        ))?;
+        // // TODO: add a binder that converts a
+        // let shard_commit_certificate = Verified::new_from_trusted(ShardCertificate::new_v1(
+        //     inner,
+        //     indices,
+        //     aggregate_signature,
+        // ))?;
 
-        let _ = self
-            .broadcaster
-            .broadcast(
-                shard_commit_certificate,
-                shard.members(),
-                send_shard_commit_certificates,
-            )
-            .await?;
+        // let _ = self
+        //     .broadcaster
+        //     .broadcast(
+        //         shard_commit_certificate,
+        //         shard.members(),
+        //         send_shard_commit_certificates,
+        //     )
+        //     .await?;
+
+        // WHAT IS LEFT:
+        // 1. convert commit to certificate
+        // 2. broadcast the certificate
 
         Ok(())
     }
@@ -230,13 +231,12 @@ where
     ) -> ShardResult<()> {
         let data = shard_commit_certificate.data();
         let cancellation = CancellationToken::new();
-        let mut set: JoinSet<ShardResult<()>> = JoinSet::new();
 
         // TODO: fix this
         let probe_checksum = Checksum::default();
         let probe_path = BlobPath::from_checksum(probe_checksum);
 
-        let downloaded_bytes = self
+        let probe_bytes = self
             .downloader
             .process(
                 DownloaderInput::new(peer, probe_path.clone()),
@@ -247,7 +247,7 @@ where
         let decompressed_probe_bytes = self
             .compressor
             .process(
-                CompressorInput::Decompress(downloaded_bytes),
+                CompressorInput::Decompress(probe_bytes),
                 cancellation.clone(),
             )
             .await?;
@@ -260,38 +260,73 @@ where
             )
             .await?;
 
-        let data_path = BlobPath::from_checksum(data.checksum());
+        let data_path: BlobPath = BlobPath::from_checksum(data.checksum());
 
         let downloader_input = DownloaderInput::new(peer, data_path.clone());
 
-        let download_result = self
+        let encrypted_embedding_bytes = self
             .downloader
             .process(downloader_input, cancellation.clone())
             .await?;
         let _ = self
             .storage
             .process(
-                StorageProcessorInput::Store(data_path, download_result),
+                StorageProcessorInput::Store(data_path, encrypted_embedding_bytes),
                 cancellation.clone(),
             )
             .await?;
 
-        // download the commit data
-        // download the probe
-        // mark complete when those steps are done
-        // track the completion of these things and trigger actions after a certain timeout for instance
+        // TODO:
+        // 1. mark completed
+        // 2. when all completed, reveal your own encryption key
+        // 3. check if reveal already exists, if yes, proceed to processing the reveal
 
         Ok(())
     }
 
     pub async fn process_shard_reveal_certificate(
         &self,
+        peer: NetworkingIndex,
+        shard: Shard,
+        encrypted_data_checksum: Checksum,
         shard_reveal_certificate: Verified<ShardCertificate<Signed<ShardReveal>>>,
-    ) {
+    ) -> ShardResult<()> {
+        let cancellation = CancellationToken::new();
+        let data_path: BlobPath = BlobPath::from_checksum(encrypted_data_checksum);
+        if let StorageProcessorOutput::Get(encrypted_bytes) = self
+            .storage
+            .process(StorageProcessorInput::Get(data_path), cancellation.clone())
+            .await?
+        {
+            let decrypted_bytes = self
+                .encryptor
+                .process(
+                    EncryptionInput::Encrypt(
+                        shard_reveal_certificate.key().clone(),
+                        encrypted_bytes,
+                    ),
+                    cancellation.clone(),
+                )
+                .await?;
+
+            let embedding = self
+                .compressor
+                .process(
+                    CompressorInput::Decompress(decrypted_bytes),
+                    cancellation.clone(),
+                )
+                .await?;
+        }
+
         // decrypt the data
         // decompress the data
         // mark complete when data has been applied to every probe and store the intermediate responses
+
+        // schedule the embedding to be probed by all
+
+        // when all have been completed, trigger the calculation of the final endorsement and broadcast to all
         println!("{:?}", shard_reveal_certificate);
+        Ok(())
     }
 
     pub async fn process_shard_removal_certificate(
@@ -305,6 +340,8 @@ where
         &self,
         shard_endorsement_certificate: Verified<ShardCertificate<Signed<ShardEndorsement>>>,
     ) {
+        // print the endorsement certificate
+        // just reach this point
         println!("{:?}", shard_endorsement_certificate);
     }
 
@@ -316,7 +353,9 @@ where
     }
 }
 
-impl<C: EncoderNetworkClient, M: Model, B: BlobStorage> Clone for EncoderCore<C, M, B> {
+impl<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient> Clone
+    for EncoderCore<C, M, B, BC>
+{
     fn clone(&self) -> Self {
         Self {
             client: Arc::clone(&self.client),
