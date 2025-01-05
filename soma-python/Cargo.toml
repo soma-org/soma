@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-shard.workspace = true
+encoder.workspace = true
 numpy.workspace = true
 
 

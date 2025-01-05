@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 clap.workspace = true
 tokio.workspace = true
-shard.workspace = true
+encoder.workspace = true
 
 [lints]
 workspace = true
