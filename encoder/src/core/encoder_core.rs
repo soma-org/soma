@@ -12,10 +12,10 @@ use crate::{
     error::{ShardError, ShardResult},
     intelligence::model::Model,
     networking::{
-        blob::BlobNetworkClient,
+        blob::ObjectNetworkClient,
         messaging::{EncoderNetworkClient, MESSAGE_TIMEOUT},
     },
-    storage::blob::{compression::ZstdCompressor, encryption::AesEncryptor, BlobPath, BlobStorage},
+    storage::blob::{compression::ZstdCompressor, encryption::AesEncryptor, ObjectPath, ObjectStorage},
     types::{
         certificate::ShardCertificate,
         checksum::Checksum,
@@ -43,7 +43,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::broadcaster::Broadcaster;
 
-pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient> {
+pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> {
     client: Arc<C>,
     broadcaster: Arc<Broadcaster<C>>,
     downloader: ActorHandle<Downloader<BC>>,
@@ -60,8 +60,8 @@ impl<C, M, B, BC> EncoderCore<C, M, B, BC>
 where
     C: EncoderNetworkClient,
     M: Model,
-    B: BlobStorage,
-    BC: BlobNetworkClient,
+    B: ObjectStorage,
+    BC: ObjectNetworkClient,
 {
     pub fn new(
         client: Arc<C>,
@@ -103,7 +103,7 @@ where
 
         // Process the batch through each actor in sequence
         // TODO: fix the networking index peer
-        let downloader_input = DownloaderInput::new(peer, BlobPath::from_checksum(data.checksum()));
+        let downloader_input = DownloaderInput::new(peer, ObjectPath::from_checksum(data.checksum()));
 
         let download_result = self
             .downloader
@@ -141,7 +141,7 @@ where
 
         let checksum = Checksum::new_from_bytes(&encrypted_embeddings);
         // TODO: generate a path using the checksum of encrypted data, or make the storage actor generate the path and return it.
-        let path = BlobPath::new(checksum.to_string())?;
+        let path = ObjectPath::new(checksum.to_string())?;
 
         self.storage
             .process(
@@ -160,7 +160,7 @@ where
         );
         let shard_commit = ShardCommit::new_v1(shard.shard_ref().clone(), commit_data);
         let signed_commit = Signed::new(shard_commit, Scope::ShardCommit, &self.keypair)?;
-        let verified_signed_commit = Verified::new_from_trusted(signed_commit)?;
+        let verified_signed_commit = Verified::from_trusted(signed_commit)?;
 
         async fn get_shard_commit_signatures<C: EncoderNetworkClient>(
             client: Arc<C>,
@@ -234,7 +234,7 @@ where
 
         // TODO: fix this
         let probe_checksum = Checksum::default();
-        let probe_path = BlobPath::from_checksum(probe_checksum);
+        let probe_path = ObjectPath::from_checksum(probe_checksum);
 
         let probe_bytes = self
             .downloader
@@ -260,7 +260,7 @@ where
             )
             .await?;
 
-        let data_path: BlobPath = BlobPath::from_checksum(data.checksum());
+        let data_path: ObjectPath = ObjectPath::from_checksum(data.checksum());
 
         let downloader_input = DownloaderInput::new(peer, data_path.clone());
 
@@ -292,7 +292,7 @@ where
         shard_reveal_certificate: Verified<ShardCertificate<Signed<ShardReveal>>>,
     ) -> ShardResult<()> {
         let cancellation = CancellationToken::new();
-        let data_path: BlobPath = BlobPath::from_checksum(encrypted_data_checksum);
+        let data_path: ObjectPath = ObjectPath::from_checksum(encrypted_data_checksum);
         if let StorageProcessorOutput::Get(encrypted_bytes) = self
             .storage
             .process(StorageProcessorInput::Get(data_path), cancellation.clone())
@@ -353,7 +353,7 @@ where
     }
 }
 
-impl<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient> Clone
+impl<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> Clone
     for EncoderCore<C, M, B, BC>
 {
     fn clone(&self) -> Self {

@@ -1,0 +1,15 @@
+encoder_service: Encoder Service
+core: Encoder Core
+
+encoder_service {
+    handle_send_commit_certificate
+    handle_send_reveal_certificate
+}
+
+core {
+    process_commit_certificate
+    process_reveal_certificate
+}
+
+encoder_service.handle_send_commit_certificate -> core.process_commit_certificate
+encoder_service.handle_send_reveal_certificate -> core.process_reveal_certificate

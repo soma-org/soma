@@ -3,7 +3,7 @@ use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::{to_host_port_str, to_socket_addr},
-    storage::blob::BlobPath,
+    storage::blob::ObjectPath,
     types::{
         context::{EncoderContext, NetworkingContext},
         network_committee::NetworkingIndex,
@@ -23,14 +23,14 @@ use reqwest::{Client, StatusCode};
 use tokio::sync::oneshot;
 use url::Url;
 
-use super::{BlobNetworkClient, BlobNetworkManager, BlobNetworkService, GetObjectResponse};
+use super::{ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService, GetObjectResponse};
 
-pub(crate) struct BlobHttpClient {
+pub(crate) struct ObjectHttpClient {
     client: Client,
     context: Arc<EncoderContext>,
 }
 
-impl BlobHttpClient {
+impl ObjectHttpClient {
     pub fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
         Ok(Self {
             client: Client::builder()
@@ -44,11 +44,11 @@ impl BlobHttpClient {
 }
 
 #[async_trait]
-impl BlobNetworkClient for BlobHttpClient {
+impl ObjectNetworkClient for ObjectHttpClient {
     async fn get_object(
         &self,
         peer: NetworkingIndex,
-        path: &BlobPath,
+        path: &ObjectPath,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
         let network_identity = self.context.network_committee().identity(peer);
@@ -74,7 +74,7 @@ impl BlobNetworkClient for BlobHttpClient {
 }
 
 #[derive(Clone)]
-struct BlobHttpServiceProxy<S: BlobNetworkService + Clone> {
+struct ObjectHttpServiceProxy<S: ObjectNetworkService + Clone> {
     service: Arc<S>,
 }
 
@@ -94,7 +94,7 @@ impl IntoResponse for GetObjectResponse {
     }
 }
 
-impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
+impl<S: ObjectNetworkService + Clone> ObjectHttpServiceProxy<S> {
     const fn new(service: Arc<S>) -> Self {
         Self { service }
     }
@@ -110,7 +110,7 @@ impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
         State(Self { service }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
         let peer = NetworkingIndex::default();
-        let path = BlobPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
+        let path = ObjectPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
         service
             .handle_get_object(peer, &path)
             .await
@@ -118,20 +118,20 @@ impl<S: BlobNetworkService + Clone> BlobHttpServiceProxy<S> {
     }
 }
 
-pub struct BlobHttpManager<S: BlobNetworkService + Clone> {
+pub struct ObjectHttpManager<S: ObjectNetworkService + Clone> {
     context: Arc<EncoderContext>,
-    client: Arc<BlobHttpClient>,
+    client: Arc<ObjectHttpClient>,
     shutdown_tx: Option<oneshot::Sender<()>>,
     marker: PhantomData<S>,
 }
 
-impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager<S> {
-    type Client = BlobHttpClient;
+impl<S: ObjectNetworkService + Clone> ObjectNetworkManager<S> for ObjectHttpManager<S> {
+    type Client = ObjectHttpClient;
 
     fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
         Ok(Self {
             context: context.clone(),
-            client: Arc::new(BlobHttpClient::new(context)?),
+            client: Arc::new(ObjectHttpClient::new(context)?),
             shutdown_tx: None,
             marker: PhantomData,
         })
@@ -159,7 +159,7 @@ impl<S: BlobNetworkService + Clone> BlobNetworkManager<S> for BlobHttpManager<S>
         let own_address = to_socket_addr(&own_address).unwrap();
         let listener = tokio::net::TcpListener::bind(own_address).await.unwrap();
 
-        axum::serve(listener, BlobHttpServiceProxy::new(service).router())
+        axum::serve(listener, ObjectHttpServiceProxy::new(service).router())
             .with_graceful_shutdown(async {
                 rx.await.ok();
             })

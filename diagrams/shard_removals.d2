@@ -1,0 +1,27 @@
+shape: sequence_diagram
+
+encoder: Individual Encoder
+shard: Rest of the Shard
+
+
+encoder."A timeout is triggered to remove a peer"
+
+encoder -> shard: Sends a removal signature which contains the shard, peer, and a signature
+
+shard."Shard members independently timeout and decide to remove a peer"
+
+encoder <- shard: Sends more removal signatures
+
+encoder."Once a quorum of signatures are aggregated, they are turned into a certificate"
+
+encoder."Checks if the certificate already exists in the encoders local removal set"
+
+encoder -> shard: Send certificate if it does not already exist in local set
+
+shard."If the certifcate is unknown, integrate it into their own local removal set"
+
+shard -> shard: Broadcast the new highest removal set + signature
+
+Removal set status is synced when the largest set of removal certificates receives a quorum number of votes {
+    encoder <-> shard
+}

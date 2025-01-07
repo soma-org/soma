@@ -9,7 +9,7 @@ use crate::{
     intelligence::model::python::{PythonInterpreter, PythonModule},
     networking::{
         blob::{
-            http_network::BlobHttpManager, BlobNetworkManager, BlobNetworkService,
+            http_network::ObjectHttpManager, ObjectNetworkManager, ObjectNetworkService,
             DirectNetworkService,
         },
         messaging::{tonic_network::EncoderTonicManager, EncoderNetworkManager},
@@ -17,7 +17,7 @@ use crate::{
     storage::{
         blob::{
             compression::ZstdCompressor, encryption::AesEncryptor,
-            filesystem::FilesystemBlobStorage,
+            filesystem::FilesystemObjectStorage,
         },
         datastore::mem_store::MemStore,
     },
@@ -83,11 +83,11 @@ where
             <N as EncoderNetworkManager<EncoderService<ChannelTaskDispatcher, MemStore>>>::Client,
         > = network_manager.client();
 
-        let blob_storage = Arc::new(FilesystemBlobStorage::new("base_path"));
-        let blob_network_service: DirectNetworkService<FilesystemBlobStorage> =
+        let blob_storage = Arc::new(FilesystemObjectStorage::new("base_path"));
+        let blob_network_service: DirectNetworkService<FilesystemObjectStorage> =
             DirectNetworkService::new(blob_storage.clone());
-        let mut blob_network_manager: BlobHttpManager<DirectNetworkService<FilesystemBlobStorage>> =
-            BlobHttpManager::new(encoder_context.clone()).unwrap();
+        let mut blob_network_manager: ObjectHttpManager<DirectNetworkService<FilesystemObjectStorage>> =
+            ObjectHttpManager::new(encoder_context.clone()).unwrap();
         // tokio::spawn(async move {
         //     blob_network_manager.start(Arc::new(blob_network_service)).await
         // });

@@ -31,7 +31,7 @@ impl<T: Serialize> Verified<T> {
         })
     }
 
-    pub(crate) fn new_from_trusted(inner: T) -> ShardResult<Self> {
+    pub(crate) fn from_trusted(inner: T) -> ShardResult<Self> {
         let serialized = Bytes::copy_from_slice(
             &bcs::to_bytes(&inner).map_err(ShardError::SerializationFailure)?,
         );

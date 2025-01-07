@@ -110,8 +110,7 @@ impl<P: Processor> ActorHandle<P> {
         input: P::Input,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        // TODO: make this more explicitly the actor response
-        // TODO: make this an option? or figure out a good way to handle the error?
+        // TODO: tokio spawn a task that listens on the receiver and handles any error or times out
         let (sender, _receiver) = oneshot::channel();
         let msg = ActorMessage {
             input,

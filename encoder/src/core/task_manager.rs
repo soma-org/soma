@@ -5,8 +5,8 @@ use crate::{
     core::encoder_core::EncoderCore,
     error::ShardResult,
     intelligence::model::Model,
-    networking::{blob::BlobNetworkClient, messaging::EncoderNetworkClient},
-    storage::blob::BlobStorage,
+    networking::{blob::ObjectNetworkClient, messaging::EncoderNetworkClient},
+    storage::blob::ObjectStorage,
     types::{
         certificate::ShardCertificate, shard_commit::ShardCommit,
         shard_completion_proof::ShardCompletionProof, shard_endorsement::ShardEndorsement,
@@ -70,7 +70,7 @@ impl TaskManagerHandle {
     }
 }
 
-struct TaskManager<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient> {
+struct TaskManager<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> {
     core: EncoderCore<C, M, B, BC>,
     shard_input_receiver: mpsc::Receiver<Verified<Signed<ShardInput>>>,
     shard_commit_certificate_receiver:
@@ -83,7 +83,7 @@ struct TaskManager<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNe
     shard_completion_proof_receiver: mpsc::Receiver<Verified<ShardCompletionProof>>,
 }
 
-impl<C: EncoderNetworkClient, M: Model, B: BlobStorage, BC: BlobNetworkClient>
+impl<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient>
     TaskManager<C, M, B, BC>
 {
     fn spawn_tasks(self, join_set: &mut JoinSet<()>) {
@@ -206,8 +206,8 @@ impl ChannelTaskDispatcher {
     pub(crate) fn start<
         C: EncoderNetworkClient,
         M: Model,
-        B: BlobStorage,
-        BC: BlobNetworkClient,
+        B: ObjectStorage,
+        BC: ObjectNetworkClient,
     >(
         core: EncoderCore<C, M, B, BC>,
     ) -> (Self, TaskManagerHandle) {

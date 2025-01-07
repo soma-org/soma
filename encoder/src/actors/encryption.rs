@@ -5,20 +5,20 @@ use tokio::sync::Semaphore;
 
 use crate::{
     error::ShardResult,
-    networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::blob::{BlobCompression, BlobEncryption, BlobPath},
+    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    storage::blob::{ObjectCompression, ObjectEncryption, ObjectPath},
     types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 
 use super::{ActorMessage, Processor};
 
-pub(crate) struct Encryptor<K, B: BlobEncryption<K>> {
+pub(crate) struct Encryptor<K, B: ObjectEncryption<K>> {
     encryptor: Arc<B>,
     marker: PhantomData<K>,
 }
 
-impl<K, B: BlobEncryption<K>> Encryptor<K, B> {
+impl<K, B: ObjectEncryption<K>> Encryptor<K, B> {
     pub(crate) fn new(encryptor: Arc<B>) -> Self {
         Self {
             encryptor,
@@ -33,7 +33,7 @@ pub(crate) enum EncryptionInput<K> {
 }
 
 #[async_trait]
-impl<K: Sync + Send + 'static, B: BlobEncryption<K>> Processor for Encryptor<K, B> {
+impl<K: Sync + Send + 'static, B: ObjectEncryption<K>> Processor for Encryptor<K, B> {
     type Input = EncryptionInput<K>;
     type Output = Bytes;
 

@@ -5,19 +5,19 @@ use tokio::sync::Semaphore;
 
 use crate::{
     error::ShardResult,
-    networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::blob::{BlobCompression, BlobPath},
+    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    storage::blob::{ObjectCompression, ObjectPath},
     types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 
 use super::{ActorMessage, Processor};
 
-pub(crate) struct Compressor<B: BlobCompression> {
+pub(crate) struct Compressor<B: ObjectCompression> {
     compressor: Arc<B>,
 }
 
-impl<B: BlobCompression> Compressor<B> {
+impl<B: ObjectCompression> Compressor<B> {
     pub(crate) fn new(compressor: Arc<B>) -> Self {
         Self { compressor }
     }
@@ -29,7 +29,7 @@ pub(crate) enum CompressorInput {
 }
 
 #[async_trait]
-impl<B: BlobCompression> Processor for Compressor<B> {
+impl<B: ObjectCompression> Processor for Compressor<B> {
     type Input = CompressorInput;
     type Output = Bytes;
 

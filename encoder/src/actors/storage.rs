@@ -3,17 +3,17 @@ use std::sync::Arc;
 use bytes::Bytes;
 use tokio::sync::Semaphore;
 
-use crate::storage::blob::{BlobPath, BlobStorage};
+use crate::storage::blob::{ObjectPath, ObjectStorage};
 use async_trait::async_trait;
 
 use super::{ActorMessage, Processor};
 
-pub(crate) struct StorageProcessor<B: BlobStorage> {
+pub(crate) struct StorageProcessor<B: ObjectStorage> {
     store: Arc<B>,
     semaphore: Option<Arc<Semaphore>>,
 }
 
-impl<B: BlobStorage> StorageProcessor<B> {
+impl<B: ObjectStorage> StorageProcessor<B> {
     pub fn new(store: Arc<B>, concurrency: Option<usize>) -> Self {
         let semaphore = concurrency.map(|n| Arc::new(Semaphore::new(n)));
         Self { store, semaphore }
@@ -21,8 +21,8 @@ impl<B: BlobStorage> StorageProcessor<B> {
 }
 
 pub(crate) enum StorageProcessorInput {
-    Store(BlobPath, Bytes),
-    Get(BlobPath),
+    Store(ObjectPath, Bytes),
+    Get(ObjectPath),
 }
 
 pub(crate) enum StorageProcessorOutput {
@@ -30,7 +30,7 @@ pub(crate) enum StorageProcessorOutput {
     Get(Bytes),
 }
 #[async_trait]
-impl<B: BlobStorage> Processor for StorageProcessor<B> {
+impl<B: ObjectStorage> Processor for StorageProcessor<B> {
     type Input = StorageProcessorInput;
     type Output = StorageProcessorOutput;
 

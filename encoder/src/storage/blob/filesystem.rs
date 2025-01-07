@@ -5,65 +5,65 @@ use tokio::fs;
 
 use crate::error::{ShardError, ShardResult};
 
-use super::{BlobPath, BlobStorage};
+use super::{ObjectPath, ObjectStorage};
 
 #[derive(Clone)]
-pub struct FilesystemBlobStorage {
+pub struct FilesystemObjectStorage {
     base_path: PathBuf,
 }
 
-impl FilesystemBlobStorage {
+impl FilesystemObjectStorage {
     pub fn new<P: AsRef<Path>>(base_path: P) -> Self {
         Self {
             base_path: base_path.as_ref().to_owned(),
         }
     }
 
-    fn get_full_path(&self, blob_path: &BlobPath) -> PathBuf {
+    fn get_full_path(&self, blob_path: &ObjectPath) -> PathBuf {
         self.base_path.join(&blob_path.path)
     }
 }
 
 #[async_trait]
-impl BlobStorage for FilesystemBlobStorage {
-    async fn put_object(&self, path: &BlobPath, contents: Bytes) -> ShardResult<()> {
+impl ObjectStorage for FilesystemObjectStorage {
+    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ShardResult<()> {
         let full_path = self.get_full_path(path);
 
         // Create parent directories if they don't exist
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent).await.map_err(|e| {
-                ShardError::BlobStorage(format!("Failed to create directories: {}", e))
+                ShardError::ObjectStorage(format!("Failed to create directories: {}", e))
             })?;
         }
 
         // Write the file contents
         fs::write(&full_path, contents)
             .await
-            .map_err(|e| ShardError::BlobStorage(format!("Failed to write file: {}", e)))?;
+            .map_err(|e| ShardError::ObjectStorage(format!("Failed to write file: {}", e)))?;
 
         Ok(())
     }
 
-    async fn get_object(&self, path: &BlobPath) -> ShardResult<Bytes> {
+    async fn get_object(&self, path: &ObjectPath) -> ShardResult<Bytes> {
         let full_path = self.get_full_path(path);
 
         // Read the file contents
         let contents = fs::read(&full_path).await.map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => ShardError::NotFound(path.path.clone()),
-            _ => ShardError::BlobStorage(format!("Failed to read file: {}", e)),
+            _ => ShardError::ObjectStorage(format!("Failed to read file: {}", e)),
         })?;
 
         Ok(Bytes::from(contents))
     }
 
-    async fn delete_object(&self, path: &BlobPath) -> ShardResult<()> {
+    async fn delete_object(&self, path: &ObjectPath) -> ShardResult<()> {
         let full_path = self.get_full_path(path);
 
         match fs::remove_file(&full_path).await {
             Ok(()) => Ok(()),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => Ok(()), // Consider file-not-found as success for idempotency
-                _ => Err(ShardError::BlobStorage(format!(
+                _ => Err(ShardError::ObjectStorage(format!(
                     "Failed to delete file: {}",
                     e
                 ))),
@@ -84,10 +84,10 @@ mod tests {
         let temp_dir = TempDir::new("blob_storage_test").expect("Failed to create temp dir");
 
         // Initialize the storage with temp directory
-        let storage = FilesystemBlobStorage::new(temp_dir.path());
+        let storage = FilesystemObjectStorage::new(temp_dir.path());
 
         // Create test data
-        let test_path = BlobPath::from_str("test/path/file.txt").unwrap();
+        let test_path = ObjectPath::from_str("test/path/file.txt").unwrap();
         let test_contents = Bytes::from("Hello, World!");
 
         // Test put_object

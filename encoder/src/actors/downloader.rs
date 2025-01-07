@@ -6,8 +6,8 @@ use tower::limit::concurrency;
 
 use crate::{
     error::ShardResult,
-    networking::blob::{http_network::BlobHttpClient, BlobNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::blob::BlobPath,
+    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    storage::blob::ObjectPath,
     types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
@@ -16,21 +16,21 @@ use super::{ActorMessage, Processor};
 
 pub(crate) struct DownloaderInput {
     peer: NetworkingIndex,
-    path: BlobPath,
+    path: ObjectPath,
 }
 
 impl DownloaderInput {
-    pub(crate) fn new(peer: NetworkingIndex, path: BlobPath) -> Self {
+    pub(crate) fn new(peer: NetworkingIndex, path: ObjectPath) -> Self {
         Self { peer, path }
     }
 }
 
-pub(crate) struct Downloader<B: BlobNetworkClient> {
+pub(crate) struct Downloader<B: ObjectNetworkClient> {
     semaphore: Arc<Semaphore>,
     client: Arc<B>,
 }
 
-impl<B: BlobNetworkClient> Downloader<B> {
+impl<B: ObjectNetworkClient> Downloader<B> {
     pub(crate) fn new(concurrency: usize, client: Arc<B>) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(concurrency)),
@@ -40,7 +40,7 @@ impl<B: BlobNetworkClient> Downloader<B> {
 }
 
 #[async_trait]
-impl<B: BlobNetworkClient> Processor for Downloader<B> {
+impl<B: ObjectNetworkClient> Processor for Downloader<B> {
     type Input = DownloaderInput;
     type Output = Bytes;
 

@@ -4,7 +4,7 @@ use aes::{cipher::BlockEncrypt, Aes256};
 use bytes::{Bytes, BytesMut};
 use crypto_common::KeyIvInit;
 
-use super::BlobEncryption;
+use super::ObjectEncryption;
 
 type Aes256Ctr64LE = ctr::Ctr64LE<aes::Aes256>;
 
@@ -18,7 +18,7 @@ impl AesEncryptor {
     }
 }
 
-impl BlobEncryption<AesKey> for AesEncryptor {
+impl ObjectEncryption<AesKey> for AesEncryptor {
     fn encrypt(&self, key: AesKey, contents: Bytes) -> Bytes {
         let mut cipher = Aes256Ctr64LE::new(&key, &Self::NONCE.into());
         let mut buffer = BytesMut::with_capacity(contents.len());

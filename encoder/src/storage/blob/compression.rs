@@ -1,4 +1,4 @@
-use super::BlobCompression;
+use super::ObjectCompression;
 use crate::error::{ShardError, ShardResult};
 use bytes::Bytes;
 use zstd::bulk::{compress, decompress};
@@ -13,7 +13,7 @@ impl ZstdCompressor {
     }
 }
 
-impl BlobCompression for ZstdCompressor {
+impl ObjectCompression for ZstdCompressor {
     fn compress(&self, contents: Bytes) -> ShardResult<Bytes> {
         let compressed = compress(contents.as_ref(), zstd::DEFAULT_COMPRESSION_LEVEL)
             .map_err(|e| ShardError::CompressionFailed(e.to_string()))?;

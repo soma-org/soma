@@ -8,12 +8,12 @@ use bytes::Bytes;
 use std::str::FromStr;
 
 #[derive(Clone)]
-pub(crate) struct BlobPath {
+pub(crate) struct ObjectPath {
     // TODO: make this better
     path: String,
 }
 
-impl BlobPath {
+impl ObjectPath {
     pub(crate) fn new(path: String) -> ShardResult<Self> {
         // TODO: add path validation according to a protocol
         Ok(Self { path })
@@ -30,32 +30,32 @@ impl BlobPath {
     }
 }
 
-impl FromStr for BlobPath {
+impl FromStr for ObjectPath {
     type Err = crate::error::ShardError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        BlobPath::new(s.to_string())
+        ObjectPath::new(s.to_string())
     }
 }
 
 #[async_trait]
-pub(crate) trait BlobStorage: Send + Sync + Sized + 'static {
-    async fn put_object(&self, path: &BlobPath, contents: Bytes) -> ShardResult<()>;
-    async fn get_object(&self, path: &BlobPath) -> ShardResult<Bytes>;
-    async fn delete_object(&self, path: &BlobPath) -> ShardResult<()>;
+pub(crate) trait ObjectStorage: Send + Sync + Sized + 'static {
+    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ShardResult<()>;
+    async fn get_object(&self, path: &ObjectPath) -> ShardResult<Bytes>;
+    async fn delete_object(&self, path: &ObjectPath) -> ShardResult<()>;
 }
 
 #[async_trait]
-pub(crate) trait BlobSignedUrl: Send + Sync + 'static {
-    async fn get_signed_url(&self, path: &BlobPath) -> ShardResult<String>;
+pub(crate) trait ObjectSignedUrl: Send + Sync + 'static {
+    async fn get_signed_url(&self, path: &ObjectPath) -> ShardResult<String>;
 }
 
-pub(crate) trait BlobEncryption<T>: Send + Sync + Sized + 'static {
+pub(crate) trait ObjectEncryption<T>: Send + Sync + Sized + 'static {
     fn encrypt(&self, key: T, contents: Bytes) -> Bytes;
     fn decrypt(&self, key: T, contents: Bytes) -> Bytes;
 }
 
-pub(crate) trait BlobCompression: Send + Sync + Sized + 'static {
+pub(crate) trait ObjectCompression: Send + Sync + Sized + 'static {
     fn compress(&self, contents: Bytes) -> ShardResult<Bytes>;
     fn decompress(&self, contents: Bytes) -> ShardResult<Bytes>;
 }

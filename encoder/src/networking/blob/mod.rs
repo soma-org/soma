@@ -6,18 +6,18 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     error::ShardResult,
-    storage::blob::{BlobPath, BlobSignedUrl, BlobStorage},
+    storage::blob::{ObjectPath, ObjectSignedUrl, ObjectStorage},
     types::{context::EncoderContext, network_committee::NetworkingIndex},
 };
 
 pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(60 * 2);
 
 #[async_trait]
-pub(crate) trait BlobNetworkClient: Send + Sync + Sized + 'static {
+pub(crate) trait ObjectNetworkClient: Send + Sync + Sized + 'static {
     async fn get_object(
         &self,
         peer: NetworkingIndex,
-        path: &BlobPath,
+        path: &ObjectPath,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 }
@@ -29,34 +29,34 @@ pub enum GetObjectResponse {
 }
 
 #[async_trait]
-pub(crate) trait BlobNetworkService: Send + Sync + Sized + 'static {
+pub(crate) trait ObjectNetworkService: Send + Sync + Sized + 'static {
     async fn handle_get_object(
         &self,
         peer: NetworkingIndex,
-        path: &BlobPath,
+        path: &ObjectPath,
     ) -> ShardResult<GetObjectResponse>;
 }
 
 #[derive(Clone)]
-pub struct DirectNetworkService<S: BlobStorage> {
+pub struct DirectNetworkService<S: ObjectStorage> {
     storage: Arc<S>,
 }
 
-impl<S: BlobStorage> DirectNetworkService<S> {
+impl<S: ObjectStorage> DirectNetworkService<S> {
     pub(crate) fn new(storage: Arc<S>) -> Self {
         Self { storage }
     }
 }
-pub struct SignedNetworkService<S: BlobStorage + BlobSignedUrl> {
+pub struct SignedNetworkService<S: ObjectStorage + ObjectSignedUrl> {
     storage: Arc<S>,
 }
 
 #[async_trait]
-impl<S: BlobStorage> BlobNetworkService for DirectNetworkService<S> {
+impl<S: ObjectStorage> ObjectNetworkService for DirectNetworkService<S> {
     async fn handle_get_object(
         &self,
         peer: NetworkingIndex,
-        path: &BlobPath,
+        path: &ObjectPath,
     ) -> ShardResult<GetObjectResponse> {
         let bytes = self.storage.get_object(path).await?;
         Ok(GetObjectResponse::Direct(bytes))
@@ -64,23 +64,23 @@ impl<S: BlobStorage> BlobNetworkService for DirectNetworkService<S> {
 }
 
 #[async_trait]
-impl<S: BlobStorage + BlobSignedUrl> BlobNetworkService for SignedNetworkService<S> {
+impl<S: ObjectStorage + ObjectSignedUrl> ObjectNetworkService for SignedNetworkService<S> {
     async fn handle_get_object(
         &self,
         peer: NetworkingIndex,
-        path: &BlobPath,
+        path: &ObjectPath,
     ) -> ShardResult<GetObjectResponse> {
         let url = self.storage.get_signed_url(path).await?;
         Ok(GetObjectResponse::Redirect(url))
     }
 }
 
-pub(crate) trait BlobNetworkManager<S>: Send + Sync + Sized
+pub(crate) trait ObjectNetworkManager<S>: Send + Sync + Sized
 where
-    S: BlobNetworkService,
+    S: ObjectNetworkService,
 {
     /// type alias
-    type Client: BlobNetworkClient;
+    type Client: ObjectNetworkClient;
 
     fn new(context: Arc<EncoderContext>) -> ShardResult<Self>;
     /// Returns a client

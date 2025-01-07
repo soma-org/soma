@@ -31,8 +31,8 @@ pub(crate) enum ShardError {
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
 
-    #[error("BlobStorage: {0}")]
-    BlobStorage(String),
+    #[error("ObjectStorage: {0}")]
+    ObjectStorage(String),
 
     #[error("Not found: {0}")]
     NotFound(String),
