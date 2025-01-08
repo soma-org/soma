@@ -2,8 +2,8 @@ use std::{path::Path, sync::Arc};
 
 use crate::{
     actors::{
-        compression::Compressor, downloader, encryption::Encryptor, model::ModelProcessor,
-        storage::StorageProcessor, ActorManager,
+        workers::compression::Compressor, workers::downloader, workers::encryption::Encryptor, workers::model::ModelProcessor,
+        workers::storage::StorageProcessor, ActorManager,
     },
     crypto::{keys::NetworkKeyPair, AesKey},
     intelligence::model::python::{PythonInterpreter, PythonModule},

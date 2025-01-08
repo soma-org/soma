@@ -1,9 +1,7 @@
-pub(crate) mod compression;
-pub(crate) mod downloader;
-pub(crate) mod encryption;
-pub(crate) mod model;
-pub(crate) mod shard_input;
-pub(crate) mod storage;
+#![doc = include_str!("README.md")]
+
+pub(crate) mod orchestrators;
+pub(crate) mod workers;
 
 use async_trait::async_trait;
 use tokio::{
@@ -11,7 +9,6 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 use tokio_util::sync::CancellationToken;
-
 use crate::error::{ShardError, ShardResult};
 
 #[async_trait]
@@ -26,13 +23,13 @@ pub(crate) trait Processor: Send + Sync + Sized + 'static {
     fn shutdown(&mut self);
 }
 
-struct Actor<P: Processor> {
+pub(crate) struct Actor<P: Processor> {
     receiver: mpsc::Receiver<ActorMessage<P>>,
     shutdown_rx: oneshot::Receiver<()>,
     processor: P,
 }
 
-struct ActorMessage<P: Processor> {
+pub(crate) struct ActorMessage<P: Processor> {
     input: P::Input,
     sender: oneshot::Sender<ShardResult<P::Output>>,
     cancellation: CancellationToken,
@@ -71,7 +68,7 @@ impl<P: Processor> Actor<P> {
     }
 }
 
-pub struct ActorHandle<P: Processor> {
+pub(crate) struct ActorHandle<P: Processor> {
     sender: mpsc::Sender<ActorMessage<P>>,
 }
 
@@ -124,7 +121,7 @@ impl<P: Processor> ActorHandle<P> {
     }
 }
 
-pub struct ActorManager<P: Processor> {
+pub(crate) struct ActorManager<P: Processor> {
     sender: mpsc::Sender<ActorMessage<P>>,
     shutdown_tx: oneshot::Sender<()>,
 }

@@ -1,4 +1,4 @@
-use super::{ActorMessage, Processor};
+use crate::actors::{ActorMessage, Processor};
 use crate::{
     error::ShardResult,
     intelligence::model::{python::PythonModule, Model},

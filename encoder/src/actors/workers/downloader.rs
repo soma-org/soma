@@ -12,7 +12,7 @@ use crate::{
 };
 use async_trait::async_trait;
 
-use super::{ActorMessage, Processor};
+use crate::actors::{ActorMessage, Processor};
 
 pub(crate) struct DownloaderInput {
     peer: NetworkingIndex,

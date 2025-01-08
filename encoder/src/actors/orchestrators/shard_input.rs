@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{ActorMessage, Processor};
+use crate::actors::{ActorMessage, Processor};
 
 use async_trait::async_trait;
 

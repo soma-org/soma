@@ -6,7 +6,7 @@ use tokio::sync::Semaphore;
 use crate::storage::blob::{ObjectPath, ObjectStorage};
 use async_trait::async_trait;
 
-use super::{ActorMessage, Processor};
+use crate::actors::{ActorMessage, Processor};
 
 pub(crate) struct StorageProcessor<B: ObjectStorage> {
     store: Arc<B>,

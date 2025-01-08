@@ -1,11 +1,11 @@
 // use crate::networking::messaging::MESSAGE_TIMEOUT;
 use crate::{
     actors::{
-        compression::{Compressor, CompressorInput},
-        downloader::{Downloader, DownloaderInput},
-        encryption::{EncryptionInput, Encryptor},
-        model::ModelProcessor,
-        storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput},
+        workers::compression::{Compressor, CompressorInput},
+        workers::downloader::{Downloader, DownloaderInput},
+        workers::encryption::{EncryptionInput, Encryptor},
+        workers::model::ModelProcessor,
+        workers::storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput},
         ActorHandle,
     },
     crypto::AesKey,
