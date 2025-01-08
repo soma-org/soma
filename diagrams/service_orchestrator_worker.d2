@@ -1,0 +1,34 @@
+Service {
+    HandleInput
+    HandleCommit
+    HandleReveal
+}
+
+Orchestrators {
+    ProcessInput
+    ProcessCommit
+    ProcessReveal
+}
+
+Workers {
+    DownloadActor
+    EmbeddingModelActor
+    CompressionActor
+    EncryptionActor
+}
+
+Service.HandleInput -> Orchestrators.ProcessInput
+Service.HandleCommit -> Orchestrators.ProcessCommit
+Service.HandleReveal -> Orchestrators.ProcessReveal
+
+
+Orchestrators.ProcessInput -> Workers.DownloadActor
+Orchestrators.ProcessInput -> Workers.EmbeddingModelActor
+Orchestrators.ProcessInput -> Workers.CompressionActor
+Orchestrators.ProcessInput -> Workers.EncryptionActor
+
+
+Orchestrators.ProcessCommit -> Workers.DownloadActor
+
+Orchestrators.ProcessReveal -> Workers.CompressionActor
+Orchestrators.ProcessReveal -> Workers.EncryptionActor
