@@ -1,3 +1,5 @@
+#![doc = include_str!("README.md")]
+
 use bytes::Bytes;
 
 use crate::error::ShardResult;
