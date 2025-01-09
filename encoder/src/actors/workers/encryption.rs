@@ -4,22 +4,19 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
-    error::ShardResult,
-    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::blob::{ObjectCompression, ObjectEncryption, ObjectPath},
-    types::{checksum::Checksum, network_committee::NetworkingIndex},
+     encryption::Encryptor, error::ShardResult, networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT}, storage::object::{ObjectPath}, types::{checksum::Checksum, network_committee::NetworkingIndex}
 };
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};
 
-pub(crate) struct Encryptor<K, B: ObjectEncryption<K>> {
-    encryptor: Arc<B>,
+pub(crate) struct EncryptionProcessor<K, E: Encryptor<K>> {
+    encryptor: Arc<E>,
     marker: PhantomData<K>,
 }
 
-impl<K, B: ObjectEncryption<K>> Encryptor<K, B> {
-    pub(crate) fn new(encryptor: Arc<B>) -> Self {
+impl<K, E: Encryptor<K>> EncryptionProcessor<K, E> {
+    pub(crate) fn new(encryptor: Arc<E>) -> Self {
         Self {
             encryptor,
             marker: PhantomData,
@@ -33,12 +30,12 @@ pub(crate) enum EncryptionInput<K> {
 }
 
 #[async_trait]
-impl<K: Sync + Send + 'static, B: ObjectEncryption<K>> Processor for Encryptor<K, B> {
+impl<K: Sync + Send + 'static, E: Encryptor<K>> Processor for EncryptionProcessor<K, E> {
     type Input = EncryptionInput<K>;
     type Output = Bytes;
 
     async fn process(&self, msg: ActorMessage<Self>) {
-        let encryptor: Arc<B> = self.encryptor.clone();
+        let encryptor: Arc<E> = self.encryptor.clone();
 
         let _ = tokio::task::spawn_blocking(move || match msg.input {
             EncryptionInput::Encrypt(key, contents) => {

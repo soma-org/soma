@@ -7,7 +7,7 @@ use tower::limit::concurrency;
 use crate::{
     error::ShardResult,
     networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::blob::ObjectPath,
+    storage::object::ObjectPath,
     types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;

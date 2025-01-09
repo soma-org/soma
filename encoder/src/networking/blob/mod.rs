@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     error::ShardResult,
-    storage::blob::{ObjectPath, ObjectSignedUrl, ObjectStorage},
+    storage::object::{ObjectPath, ObjectSignedUrl, ObjectStorage},
     types::{context::EncoderContext, network_committee::NetworkingIndex},
 };
 

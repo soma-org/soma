@@ -1,22 +1,12 @@
 // use crate::networking::messaging::MESSAGE_TIMEOUT;
 use crate::{
     actors::{
-        workers::compression::{Compressor, CompressorInput},
-        workers::downloader::{Downloader, DownloaderInput},
-        workers::encryption::{EncryptionInput, Encryptor},
-        workers::model::ModelProcessor,
-        workers::storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput},
+        workers::{compression::{CompressionProcessor, CompressorInput}, downloader::{Downloader, DownloaderInput}, encryption::{EncryptionInput, EncryptionProcessor}, model::ModelProcessor, storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput}},
         ActorHandle,
-    },
-    crypto::AesKey,
-    error::{ShardError, ShardResult},
-    intelligence::model::Model,
-    networking::{
+    }, compression::zstd_compressor::ZstdCompressor, crypto::AesKey, encryption::aes_encryptor::Aes256Ctr64LEEncryptor, error::{ShardError, ShardResult}, intelligence::model::Model, networking::{
         blob::ObjectNetworkClient,
         messaging::{EncoderNetworkClient, MESSAGE_TIMEOUT},
-    },
-    storage::blob::{compression::ZstdCompressor, encryption::AesEncryptor, ObjectPath, ObjectStorage},
-    types::{
+    }, storage::object::{ObjectPath, ObjectStorage}, types::{
         certificate::ShardCertificate,
         checksum::Checksum,
         data::{self, Compression, Data, DataAPI, Encryption},
@@ -30,8 +20,7 @@ use crate::{
         shard_reveal::{ShardReveal, ShardRevealAPI},
         signed::{Signature, Signed},
         verified::Verified,
-    },
-    ProtocolKeyPair, Scope,
+    }, ProtocolKeyPair, Scope
 };
 use bytes::Bytes;
 use ndarray::ArrayD;
@@ -48,9 +37,9 @@ pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: 
     broadcaster: Arc<Broadcaster<C>>,
     downloader: ActorHandle<Downloader<BC>>,
     // TODO: potentially change this to be a generic
-    encryptor: ActorHandle<Encryptor<AesKey, AesEncryptor>>,
+    encryptor: ActorHandle<EncryptionProcessor<AesKey, Aes256Ctr64LEEncryptor>>,
     // TODO: potentially change this to be a generic
-    compressor: ActorHandle<Compressor<ZstdCompressor>>,
+    compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     model: ActorHandle<ModelProcessor<M>>,
     storage: ActorHandle<StorageProcessor<B>>,
     keypair: Arc<ProtocolKeyPair>,
@@ -67,8 +56,8 @@ where
         client: Arc<C>,
         broadcaster: Arc<Broadcaster<C>>,
         downloader: ActorHandle<Downloader<BC>>,
-        encryptor: ActorHandle<Encryptor<AesKey, AesEncryptor>>,
-        compressor: ActorHandle<Compressor<ZstdCompressor>>,
+        encryptor: ActorHandle<EncryptionProcessor<AesKey, Aes256Ctr64LEEncryptor>>,
+        compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
         model: ActorHandle<ModelProcessor<M>>,
         storage: ActorHandle<StorageProcessor<B>>,
         keypair: Arc<ProtocolKeyPair>,

@@ -4,21 +4,18 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
-    error::ShardResult,
-    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::blob::{ObjectCompression, ObjectPath},
-    types::{checksum::Checksum, network_committee::NetworkingIndex},
+    compression::Compressor, error::ShardResult, networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT}, storage::object::ObjectPath, types::{checksum::Checksum, network_committee::NetworkingIndex}
 };
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};
 
-pub(crate) struct Compressor<B: ObjectCompression> {
-    compressor: Arc<B>,
+pub(crate) struct CompressionProcessor<C: Compressor> {
+    compressor: Arc<C>,
 }
 
-impl<B: ObjectCompression> Compressor<B> {
-    pub(crate) fn new(compressor: Arc<B>) -> Self {
+impl<C: Compressor> CompressionProcessor<C> {
+    pub(crate) fn new(compressor: Arc<C>) -> Self {
         Self { compressor }
     }
 }
@@ -29,7 +26,7 @@ pub(crate) enum CompressorInput {
 }
 
 #[async_trait]
-impl<B: ObjectCompression> Processor for Compressor<B> {
+impl<C: Compressor> Processor for CompressionProcessor<C> {
     type Input = CompressorInput;
     type Output = Bytes;
 
@@ -62,7 +59,7 @@ mod tests {
     use arbtest::arbtest;
     use tokio_util::sync::CancellationToken;
 
-    use crate::{actors::ActorManager, storage::blob::compression::ZstdCompressor};
+    use crate::{actors::ActorManager, compression::zstd_compressor::ZstdCompressor};
 
     use super::*;
 
@@ -70,7 +67,7 @@ mod tests {
     async fn test_compression_actor() -> ShardResult<()> {
 
         let compressor = ZstdCompressor::new();
-        let processor = Compressor::new(Arc::new(compressor));
+        let processor = CompressionProcessor::new(Arc::new(compressor));
         let manager = ActorManager::new(1, processor);
         let handle = manager.handle();
         let cancellation_token = CancellationToken::new();

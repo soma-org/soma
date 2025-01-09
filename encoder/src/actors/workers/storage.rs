@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use tokio::sync::Semaphore;
 
-use crate::storage::blob::{ObjectPath, ObjectStorage};
+use crate::storage::object::{ObjectPath, ObjectStorage};
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};

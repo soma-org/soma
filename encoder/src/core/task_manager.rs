@@ -6,7 +6,7 @@ use crate::{
     error::ShardResult,
     intelligence::model::Model,
     networking::{blob::ObjectNetworkClient, messaging::EncoderNetworkClient},
-    storage::blob::ObjectStorage,
+    storage::object::ObjectStorage,
     types::{
         certificate::ShardCertificate, shard_commit::ShardCommit,
         shard_completion_proof::ShardCompletionProof, shard_endorsement::ShardEndorsement,

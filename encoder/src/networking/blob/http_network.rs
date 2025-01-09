@@ -3,7 +3,7 @@ use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::{to_host_port_str, to_socket_addr},
-    storage::blob::ObjectPath,
+    storage::object::ObjectPath,
     types::{
         context::{EncoderContext, NetworkingContext},
         network_committee::NetworkingIndex,

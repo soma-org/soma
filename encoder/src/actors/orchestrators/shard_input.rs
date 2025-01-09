@@ -6,7 +6,7 @@ use crate::{
     core::encoder_core::EncoderCore,
     intelligence::model::Model,
     networking::{blob::ObjectNetworkClient, messaging::EncoderNetworkClient},
-    storage::blob::ObjectStorage,
+    storage::object::ObjectStorage,
     types::{
         network_committee::NetworkingIndex, shard::Shard, shard_input::ShardInput, signed::Signed,
         verified::Verified,

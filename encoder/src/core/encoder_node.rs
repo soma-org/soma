@@ -2,27 +2,15 @@ use std::{path::Path, sync::Arc};
 
 use crate::{
     actors::{
-        workers::compression::Compressor, workers::downloader, workers::encryption::Encryptor, workers::model::ModelProcessor,
-        workers::storage::StorageProcessor, ActorManager,
-    },
-    crypto::{keys::NetworkKeyPair, AesKey},
-    intelligence::model::python::{PythonInterpreter, PythonModule},
-    networking::{
+        workers::{ compression::CompressionProcessor, downloader, encryption::EncryptionProcessor, model::ModelProcessor, storage::StorageProcessor}, ActorManager,
+    }, compression::zstd_compressor::ZstdCompressor, crypto::{keys::NetworkKeyPair, AesKey}, encryption::{aes_encryptor::Aes256Ctr64LEEncryptor, Encryptor}, intelligence::model::python::{PythonInterpreter, PythonModule}, networking::{
         blob::{
-            http_network::ObjectHttpManager, ObjectNetworkManager, ObjectNetworkService,
-            DirectNetworkService,
+            http_network::ObjectHttpManager, DirectNetworkService, ObjectNetworkManager, ObjectNetworkService
         },
         messaging::{tonic_network::EncoderTonicManager, EncoderNetworkManager},
-    },
-    storage::{
-        blob::{
-            compression::ZstdCompressor, encryption::AesEncryptor,
-            filesystem::FilesystemObjectStorage,
-        },
-        datastore::mem_store::MemStore,
-    },
-    types::context::EncoderContext,
-    ProtocolKeyPair,
+    }, storage::{
+        datastore::mem_store::MemStore, object::filesystem::FilesystemObjectStorage
+    }, types::context::EncoderContext, ProtocolKeyPair
 };
 
 use self::downloader::Downloader;
@@ -107,12 +95,12 @@ where
         let downloader_manager = ActorManager::new(default_buffer, download_processor);
         let downloader_handle = downloader_manager.handle();
 
-        let encryptor_processor: Encryptor<AesKey, AesEncryptor> =
-            Encryptor::new(Arc::new(AesEncryptor::new()));
+        let encryptor_processor: EncryptionProcessor<AesKey, Aes256Ctr64LEEncryptor> =
+            EncryptionProcessor::new(Arc::new(Aes256Ctr64LEEncryptor::new()));
         let encryptor_manager = ActorManager::new(default_buffer, encryptor_processor);
         let encryptor_handle = encryptor_manager.handle();
 
-        let compressor_processor = Compressor::new(Arc::new(ZstdCompressor::new()));
+        let compressor_processor = CompressionProcessor::new(Arc::new(ZstdCompressor::new()));
         let compressor_manager = ActorManager::new(default_buffer, compressor_processor);
         let compressor_handle = compressor_manager.handle();
 

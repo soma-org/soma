@@ -1,5 +1,3 @@
-pub(crate) mod compression;
-pub(crate) mod encryption;
 pub(crate) mod filesystem;
 
 use crate::{error::ShardResult, types::checksum::Checksum};
@@ -48,14 +46,4 @@ pub(crate) trait ObjectStorage: Send + Sync + Sized + 'static {
 #[async_trait]
 pub(crate) trait ObjectSignedUrl: Send + Sync + 'static {
     async fn get_signed_url(&self, path: &ObjectPath) -> ShardResult<String>;
-}
-
-pub(crate) trait ObjectEncryption<T>: Send + Sync + Sized + 'static {
-    fn encrypt(&self, key: T, contents: Bytes) -> Bytes;
-    fn decrypt(&self, key: T, contents: Bytes) -> Bytes;
-}
-
-pub(crate) trait ObjectCompression: Send + Sync + Sized + 'static {
-    fn compress(&self, contents: Bytes) -> ShardResult<Bytes>;
-    fn decompress(&self, contents: Bytes) -> ShardResult<Bytes>;
 }
