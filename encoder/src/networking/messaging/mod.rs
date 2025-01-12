@@ -100,20 +100,11 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
         timeout: Duration,
     ) -> ShardResult<Vec<Bytes>>;
 
-    /// Reveals must also be certified with quorum number of signatures from shard members.
-    /// To get the signatures, the node reveals the key used to perform commit encryption.
-    async fn get_shard_reveal_signature(
-        &self,
-        peer: NetworkingIndex,
-        shard_reveal: &Verified<Signed<ShardReveal>>,
-        timeout: Duration,
-    ) -> ShardResult<Bytes>;
-
     /// Once a node has a certified reveal, they broadcast that to all their shard peers.
-    async fn send_shard_reveal_certificate(
+    async fn send_shard_reveal(
         &self,
         peer: NetworkingIndex,
-        shard_reveal_certificate: &Verified<ShardCertificate<Signed<ShardReveal>>>,
+        shard_reveal_certificate: &Verified<Signed<ShardReveal>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -220,14 +211,6 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
         peer: NetworkingIndex,
         shard_slots_bytes: Bytes,
     ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>>;
-
-    /// Checks validity of peer and message. In the case of no conflicting reveal messages from the peer, handler returns a
-    /// BLS aggregate signature for the certificate
-    async fn handle_get_shard_reveal_signature(
-        &self,
-        peer: NetworkingIndex,
-        shard_reveal_bytes: Bytes,
-    ) -> ShardResult<Serialized<Signature<Signed<ShardReveal>>>>;
 
     /// checks validity and then if there is no existing certificate, adds the reveal its corresponding slot. After receiving a quorum
     /// number of reveals, a countdown is triggered before asking peers for the missing reveal and then proceeding to broadcast a removal.

@@ -1,12 +1,26 @@
 // use crate::networking::messaging::MESSAGE_TIMEOUT;
 use crate::{
     actors::{
-        workers::{compression::{CompressionProcessor, CompressorInput}, downloader::{Downloader, DownloaderInput}, encryption::{EncryptionInput, EncryptionProcessor}, model::ModelProcessor, storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput}},
+        workers::{
+            compression::{CompressionProcessor, CompressorInput},
+            downloader::{Downloader, DownloaderInput},
+            encryption::{EncryptionInput, EncryptionProcessor},
+            model::ModelProcessor,
+            storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput},
+        },
         ActorHandle,
-    }, compression::zstd_compressor::ZstdCompressor, crypto::AesKey, encryption::aes_encryptor::Aes256Ctr64LEEncryptor, error::{ShardError, ShardResult}, intelligence::model::Model, networking::{
+    },
+    compression::zstd_compressor::ZstdCompressor,
+    crypto::AesKey,
+    encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
+    error::{ShardError, ShardResult},
+    intelligence::model::Model,
+    networking::{
         blob::ObjectNetworkClient,
         messaging::{EncoderNetworkClient, MESSAGE_TIMEOUT},
-    }, storage::object::{ObjectPath, ObjectStorage}, types::{
+    },
+    storage::object::{ObjectPath, ObjectStorage},
+    types::{
         certificate::ShardCertificate,
         checksum::Checksum,
         data::{self, Compression, Data, DataAPI, Encryption},
@@ -20,7 +34,8 @@ use crate::{
         shard_reveal::{ShardReveal, ShardRevealAPI},
         signed::{Signature, Signed},
         verified::Verified,
-    }, ProtocolKeyPair, Scope
+    },
+    ProtocolKeyPair, Scope,
 };
 use bytes::Bytes;
 use ndarray::ArrayD;
@@ -32,7 +47,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::broadcaster::Broadcaster;
 
-pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> {
+pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient>
+{
     client: Arc<C>,
     broadcaster: Arc<Broadcaster<C>>,
     downloader: ActorHandle<Downloader<BC>>,
@@ -92,7 +108,8 @@ where
 
         // Process the batch through each actor in sequence
         // TODO: fix the networking index peer
-        let downloader_input = DownloaderInput::new(peer, ObjectPath::from_checksum(data.checksum()));
+        let downloader_input =
+            DownloaderInput::new(peer, ObjectPath::from_checksum(data.checksum()));
 
         let download_result = self
             .downloader

@@ -4,7 +4,11 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
-    compression::Compressor, error::ShardResult, networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT}, storage::object::ObjectPath, types::{checksum::Checksum, network_committee::NetworkingIndex}
+    compression::Compressor,
+    error::ShardResult,
+    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    storage::object::ObjectPath,
+    types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 
@@ -52,8 +56,6 @@ impl<C: Compressor> Processor for CompressionProcessor<C> {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use arbtest::arbtest;
@@ -65,7 +67,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_compression_actor() -> ShardResult<()> {
-
         let compressor = ZstdCompressor::new();
         let processor = CompressionProcessor::new(Arc::new(compressor));
         let manager = ActorManager::new(1, processor);
@@ -73,8 +74,18 @@ mod tests {
         let cancellation_token = CancellationToken::new();
         let original = Bytes::from([0_u8; 2048].to_vec());
 
-        let compressed = handle.process(CompressorInput::Compress(original.clone()), cancellation_token.clone()).await?;
-        let decompressed = handle.process(CompressorInput::Decompress(compressed.clone()), cancellation_token.clone()).await?;
+        let compressed = handle
+            .process(
+                CompressorInput::Compress(original.clone()),
+                cancellation_token.clone(),
+            )
+            .await?;
+        let decompressed = handle
+            .process(
+                CompressorInput::Decompress(compressed.clone()),
+                cancellation_token.clone(),
+            )
+            .await?;
 
         assert_eq!(
             decompressed, original,
@@ -88,5 +99,4 @@ mod tests {
 
         Ok(())
     }
-
 }

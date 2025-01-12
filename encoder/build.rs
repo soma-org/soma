@@ -81,19 +81,19 @@ fn build_tonic_services(out_dir: &Path) {
                 .codec_path(codec_path)
                 .build(),
         )
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("get_shard_reveal_signature")
-                .route_name("GetShardRevealSignature")
-                .input_type(
-                    "crate::networking::messaging::tonic_network::GetShardRevealSignatureRequest",
-                )
-                .output_type(
-                    "crate::networking::messaging::tonic_network::GetShardRevealSignatureResponse",
-                )
-                .codec_path(codec_path)
-                .build(),
-        )
+        // .method(
+        //     tonic_build::manual::Method::builder()
+        //         .name("get_shard_reveal_signature")
+        //         .route_name("GetShardRevealSignature")
+        //         .input_type(
+        //             "crate::networking::messaging::tonic_network::GetShardRevealSignatureRequest",
+        //         )
+        //         .output_type(
+        //             "crate::networking::messaging::tonic_network::GetShardRevealSignatureResponse",
+        //         )
+        //         .codec_path(codec_path)
+        //         .build(),
+        // )
         .method(
             tonic_build::manual::Method::builder()
                 .name("send_shard_reveal_certificate")

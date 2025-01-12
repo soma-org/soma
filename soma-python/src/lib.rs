@@ -1,6 +1,6 @@
+use encoder::REGISTERED_MODULE_ATTR;
 use numpy::{PyArrayDyn, PyReadonlyArrayDyn};
 use pyo3::{prelude::*, types::PyType};
-use encoder::REGISTERED_MODULE_ATTR;
 
 #[pyclass(subclass)]
 pub struct Module {}

@@ -2,15 +2,26 @@ use std::{path::Path, sync::Arc};
 
 use crate::{
     actors::{
-        workers::{ compression::CompressionProcessor, downloader, encryption::EncryptionProcessor, model::ModelProcessor, storage::StorageProcessor}, ActorManager,
-    }, compression::zstd_compressor::ZstdCompressor, crypto::{keys::NetworkKeyPair, AesKey}, encryption::{aes_encryptor::Aes256Ctr64LEEncryptor, Encryptor}, intelligence::model::python::{PythonInterpreter, PythonModule}, networking::{
+        workers::{
+            compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
+            model::ModelProcessor, storage::StorageProcessor,
+        },
+        ActorManager,
+    },
+    compression::zstd_compressor::ZstdCompressor,
+    crypto::{keys::NetworkKeyPair, AesKey},
+    encryption::{aes_encryptor::Aes256Ctr64LEEncryptor, Encryptor},
+    intelligence::model::python::{PythonInterpreter, PythonModule},
+    networking::{
         blob::{
-            http_network::ObjectHttpManager, DirectNetworkService, ObjectNetworkManager, ObjectNetworkService
+            http_network::ObjectHttpManager, DirectNetworkService, ObjectNetworkManager,
+            ObjectNetworkService,
         },
         messaging::{tonic_network::EncoderTonicManager, EncoderNetworkManager},
-    }, storage::{
-        datastore::mem_store::MemStore, object::filesystem::FilesystemObjectStorage
-    }, types::context::EncoderContext, ProtocolKeyPair
+    },
+    storage::{datastore::mem_store::MemStore, object::filesystem::FilesystemObjectStorage},
+    types::context::EncoderContext,
+    ProtocolKeyPair,
 };
 
 use self::downloader::Downloader;
@@ -74,8 +85,9 @@ where
         let blob_storage = Arc::new(FilesystemObjectStorage::new("base_path"));
         let blob_network_service: DirectNetworkService<FilesystemObjectStorage> =
             DirectNetworkService::new(blob_storage.clone());
-        let mut blob_network_manager: ObjectHttpManager<DirectNetworkService<FilesystemObjectStorage>> =
-            ObjectHttpManager::new(encoder_context.clone()).unwrap();
+        let mut blob_network_manager: ObjectHttpManager<
+            DirectNetworkService<FilesystemObjectStorage>,
+        > = ObjectHttpManager::new(encoder_context.clone()).unwrap();
         // tokio::spawn(async move {
         //     blob_network_manager.start(Arc::new(blob_network_service)).await
         // });

@@ -33,7 +33,6 @@ impl Encryptor<AesKey> for Aes256Ctr64LEEncryptor {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

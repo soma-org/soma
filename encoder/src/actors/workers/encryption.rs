@@ -4,7 +4,11 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
-     encryption::Encryptor, error::ShardResult, networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT}, storage::object::{ObjectPath}, types::{checksum::Checksum, network_committee::NetworkingIndex}
+    encryption::Encryptor,
+    error::ShardResult,
+    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    storage::object::ObjectPath,
+    types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 

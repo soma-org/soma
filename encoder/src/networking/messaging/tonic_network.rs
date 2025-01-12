@@ -179,32 +179,32 @@ impl EncoderNetworkClient for EncoderTonicClient {
         Ok(response.into_inner().shard_commit_certificates)
     }
 
-    async fn get_shard_reveal_signature(
+    // async fn get_shard_reveal_signature(
+    //     &self,
+    //     peer: NetworkingIndex,
+    //     shard_reveal: &Verified<Signed<ShardReveal>>,
+    //     timeout: Duration,
+    // ) -> ShardResult<Bytes> {
+    //     let mut request = Request::new(GetShardRevealSignatureRequest {
+    //         shard_reveal: shard_reveal.bytes(),
+    //     });
+    //     request.set_timeout(timeout);
+    //     let response = self
+    //         .get_client(peer, timeout)
+    //         .await?
+    //         .get_shard_reveal_signature(request)
+    //         .await
+    //         .map_err(|e| {
+    //             ShardError::NetworkRequest(format!("get_shard_reveal_signature failed: {e:?}"))
+    //         })?;
+
+    //     Ok(response.into_inner().shard_reveal_signature)
+    // }
+
+    async fn send_shard_reveal(
         &self,
         peer: NetworkingIndex,
-        shard_reveal: &Verified<Signed<ShardReveal>>,
-        timeout: Duration,
-    ) -> ShardResult<Bytes> {
-        let mut request = Request::new(GetShardRevealSignatureRequest {
-            shard_reveal: shard_reveal.bytes(),
-        });
-        request.set_timeout(timeout);
-        let response = self
-            .get_client(peer, timeout)
-            .await?
-            .get_shard_reveal_signature(request)
-            .await
-            .map_err(|e| {
-                ShardError::NetworkRequest(format!("get_shard_reveal_signature failed: {e:?}"))
-            })?;
-
-        Ok(response.into_inner().shard_reveal_signature)
-    }
-
-    async fn send_shard_reveal_certificate(
-        &self,
-        peer: NetworkingIndex,
-        shard_reveal_certificate: &Verified<ShardCertificate<Signed<ShardReveal>>>,
+        shard_reveal_certificate: &Verified<Signed<ShardReveal>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendShardRevealCertificateRequest {
@@ -482,29 +482,29 @@ impl<S: EncoderNetworkService> EncoderService for EncoderTonicServiceProxy<S> {
             shard_commit_certificates,
         }))
     }
-    async fn get_shard_reveal_signature(
-        &self,
-        request: Request<GetShardRevealSignatureRequest>,
-    ) -> Result<Response<GetShardRevealSignatureResponse>, tonic::Status> {
-        let Some(peer_index) = request
-            .extensions()
-            .get::<PeerInfo>()
-            .map(|p| p.network_index)
-        else {
-            return Err(tonic::Status::internal("PeerInfo not found"));
-        };
-        let shard_reveal = request.into_inner().shard_reveal;
+    // async fn get_shard_reveal_signature(
+    //     &self,
+    //     request: Request<GetShardRevealSignatureRequest>,
+    // ) -> Result<Response<GetShardRevealSignatureResponse>, tonic::Status> {
+    //     let Some(peer_index) = request
+    //         .extensions()
+    //         .get::<PeerInfo>()
+    //         .map(|p| p.network_index)
+    //     else {
+    //         return Err(tonic::Status::internal("PeerInfo not found"));
+    //     };
+    //     let shard_reveal = request.into_inner().shard_reveal;
 
-        let shard_reveal_signature = self
-            .service
-            .handle_get_shard_reveal_signature(peer_index, shard_reveal)
-            .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+    //     let shard_reveal_signature = self
+    //         .service
+    //         .handle_get_shard_reveal_signature(peer_index, shard_reveal)
+    //         .await
+    //         .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
-        Ok(Response::new(GetShardRevealSignatureResponse {
-            shard_reveal_signature: shard_reveal_signature.bytes(),
-        }))
-    }
+    //     Ok(Response::new(GetShardRevealSignatureResponse {
+    //         shard_reveal_signature: shard_reveal_signature.bytes(),
+    //     }))
+    // }
     async fn send_shard_reveal_certificate(
         &self,
         request: Request<SendShardRevealCertificateRequest>,

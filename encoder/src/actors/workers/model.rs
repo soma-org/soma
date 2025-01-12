@@ -8,7 +8,7 @@ use numpy::ndarray::ArrayD;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-/// ModelProcessor takes a generic model that implements the 'Model' trait and an optional semaphore. 
+/// ModelProcessor takes a generic model that implements the 'Model' trait and an optional semaphore.
 #[derive(Clone)]
 pub(crate) struct ModelProcessor<M: Model> {
     model: Arc<M>,
@@ -16,7 +16,7 @@ pub(crate) struct ModelProcessor<M: Model> {
 }
 
 impl<M: Model> ModelProcessor<M> {
-    /// New takes a model that implements the 'Model' trait along with an optional semaphore to limit concurrency. 
+    /// New takes a model that implements the 'Model' trait along with an optional semaphore to limit concurrency.
     pub fn new(model: M, concurrency: Option<usize>) -> Self {
         let semaphore = concurrency.map(|n| Arc::new(Semaphore::new(n)));
         Self {
@@ -27,7 +27,7 @@ impl<M: Model> ModelProcessor<M> {
 }
 
 /// ModelProcessor adjusts concurrency depending on user settings. If concurrency is allowed, the processor will concurrently
-/// process data via the model up to the semaphore limit. Otherwise, the processor assumes synchronous operation. 
+/// process data via the model up to the semaphore limit. Otherwise, the processor assumes synchronous operation.
 #[async_trait]
 impl<M: Model> Processor for ModelProcessor<M> {
     type Input = ArrayD<f32>;
@@ -59,16 +59,15 @@ impl<M: Model> Processor for ModelProcessor<M> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::ShardError;
     use async_trait::async_trait;
     use numpy::ndarray::{Array, IxDyn};
-    use tokio_util::sync::CancellationToken;
     use std::time::Duration;
     use tokio::sync::oneshot;
+    use tokio_util::sync::CancellationToken;
 
     // Only testing the processor logic not model functionality
 
@@ -88,15 +87,15 @@ mod tests {
         let processor = ModelProcessor::new(MockModel, None);
         let input = Array::zeros(IxDyn(&[2, 2]));
         let (tx, rx) = oneshot::channel();
-        
+
         let message = ActorMessage {
             input: input.clone(),
             sender: tx,
-            cancellation: CancellationToken::new()
+            cancellation: CancellationToken::new(),
         };
 
         processor.process(message).await;
-        
+
         let result = rx.await.unwrap().unwrap();
         assert_eq!(result, input);
     }
@@ -105,7 +104,7 @@ mod tests {
     async fn test_concurrent_processing() {
         let processor = ModelProcessor::new(MockModel, Some(2));
         let input = Array::zeros(IxDyn(&[2, 2]));
-        
+
         // Create multiple concurrent requests
         let mut handles = vec![];
         for _ in 0..3 {
@@ -113,10 +112,9 @@ mod tests {
             let message = ActorMessage {
                 input: input.clone(),
                 sender: tx,
-                cancellation: CancellationToken::new()
-
+                cancellation: CancellationToken::new(),
             };
-            
+
             let proc = processor.clone();
             handles.push(tokio::spawn(async move {
                 proc.process(message).await;
@@ -135,23 +133,21 @@ mod tests {
     async fn test_semaphore_limit() {
         let processor = ModelProcessor::new(MockModel, Some(1));
         let input = Array::zeros(IxDyn(&[2, 2]));
-        
+
         // Create two concurrent requests
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
-        
+
         let message1 = ActorMessage {
             input: input.clone(),
             sender: tx1,
-            cancellation: CancellationToken::new()
-
+            cancellation: CancellationToken::new(),
         };
-        
+
         let message2 = ActorMessage {
             input: input.clone(),
             sender: tx2,
-            cancellation: CancellationToken::new()
-
+            cancellation: CancellationToken::new(),
         };
 
         // Process both messages concurrently
@@ -159,16 +155,16 @@ mod tests {
         tokio::spawn(async move {
             proc.process(message1).await;
         });
-        
+
         // Small delay to ensure first message starts processing
         tokio::time::sleep(Duration::from_millis(10)).await;
-        
+
         processor.process(message2).await;
 
         // Both should complete successfully despite the semaphore limit
         let result1 = rx1.await.unwrap().unwrap();
         let result2 = rx2.await.unwrap().unwrap();
-        
+
         assert_eq!(result1, input);
         assert_eq!(result2, input);
     }

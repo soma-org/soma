@@ -3,13 +3,13 @@
 pub(crate) mod orchestrators;
 pub(crate) mod workers;
 
+use crate::error::{ShardError, ShardResult};
 use async_trait::async_trait;
 use tokio::{
     select,
     sync::{mpsc, oneshot},
 };
 use tokio_util::sync::CancellationToken;
-use crate::error::{ShardError, ShardResult};
 
 #[async_trait]
 pub(crate) trait Processor: Send + Sync + Sized + 'static {
@@ -153,7 +153,6 @@ impl<P: Processor> ActorManager<P> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,15 +187,15 @@ mod tests {
     async fn test_basic_processing() {
         let counter = Arc::new(Mutex::new(0));
         let shutdown_called = Arc::new(Mutex::new(false));
-        
+
         let processor = TestProcessor {
             counter: counter.clone(),
             shutdown_called: shutdown_called.clone(),
         };
-        
+
         let manager = ActorManager::new(10, processor);
         let handle = manager.handle();
-        
+
         let result = handle.process(5, CancellationToken::new()).await.unwrap();
         assert_eq!(result, 10);
         assert_eq!(*counter.lock().unwrap(), 1);
@@ -206,21 +205,21 @@ mod tests {
     async fn test_multiple_messages() {
         let counter = Arc::new(Mutex::new(0));
         let shutdown_called = Arc::new(Mutex::new(false));
-        
+
         let processor = TestProcessor {
             counter: counter.clone(),
             shutdown_called: shutdown_called.clone(),
         };
-        
+
         let manager = ActorManager::new(10, processor);
         let handle = manager.handle();
-        
+
         let mut results = Vec::new();
         for i in 0..5 {
             let result = handle.process(i, CancellationToken::new()).await.unwrap();
             results.push(result);
         }
-        
+
         assert_eq!(results, vec![0, 2, 4, 6, 8]);
         assert_eq!(*counter.lock().unwrap(), 5);
     }
@@ -229,18 +228,18 @@ mod tests {
     async fn test_cancellation() {
         let counter = Arc::new(Mutex::new(0));
         let shutdown_called = Arc::new(Mutex::new(false));
-        
+
         let processor = TestProcessor {
             counter: counter.clone(),
             shutdown_called: shutdown_called.clone(),
         };
-        
+
         let manager = ActorManager::new(10, processor);
         let handle = manager.handle();
-        
+
         let token = CancellationToken::new();
         token.cancel();
-        
+
         let result = handle.process(5, token).await;
         assert!(matches!(result, Err(ShardError::ActorError(_))));
         assert_eq!(*counter.lock().unwrap(), 0);
@@ -250,25 +249,25 @@ mod tests {
     async fn test_shutdown() {
         let counter = Arc::new(Mutex::new(0));
         let shutdown_called = Arc::new(Mutex::new(false));
-        
+
         let processor = TestProcessor {
             counter: counter.clone(),
             shutdown_called: shutdown_called.clone(),
         };
-        
+
         let manager = ActorManager::new(10, processor);
         let handle = manager.handle();
-        
+
         // Send a message before shutdown
         let result = handle.process(5, CancellationToken::new()).await.unwrap();
         assert_eq!(result, 10);
-        
+
         // Initiate shutdown
         manager.shutdown();
-        
+
         // Wait a bit to ensure shutdown is processed
         sleep(Duration::from_millis(100)).await;
-        
+
         assert!(*shutdown_called.lock().unwrap());
     }
 
@@ -276,21 +275,24 @@ mod tests {
     async fn test_background_processing() {
         let counter = Arc::new(Mutex::new(0));
         let shutdown_called = Arc::new(Mutex::new(false));
-        
+
         let processor = TestProcessor {
             counter: counter.clone(),
             shutdown_called: shutdown_called.clone(),
         };
-        
+
         let manager = ActorManager::new(10, processor);
         let handle = manager.handle();
-        
+
         // Send background message
-        handle.background_process(5, CancellationToken::new()).await.unwrap();
-        
+        handle
+            .background_process(5, CancellationToken::new())
+            .await
+            .unwrap();
+
         // Wait a bit to ensure processing completes
         sleep(Duration::from_millis(100)).await;
-        
+
         assert_eq!(*counter.lock().unwrap(), 1);
     }
 
@@ -298,19 +300,22 @@ mod tests {
     async fn test_handle_clone() {
         let counter = Arc::new(Mutex::new(0));
         let shutdown_called = Arc::new(Mutex::new(false));
-        
+
         let processor = TestProcessor {
             counter: counter.clone(),
             shutdown_called: shutdown_called.clone(),
         };
-        
+
         let manager = ActorManager::new(10, processor);
         let handle = manager.handle();
         let handle_clone = handle.clone();
-        
+
         let result1 = handle.process(5, CancellationToken::new()).await.unwrap();
-        let result2 = handle_clone.process(6, CancellationToken::new()).await.unwrap();
-        
+        let result2 = handle_clone
+            .process(6, CancellationToken::new())
+            .await
+            .unwrap();
+
         assert_eq!(result1, 10);
         assert_eq!(result2, 12);
         assert_eq!(*counter.lock().unwrap(), 2);

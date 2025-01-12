@@ -178,55 +178,55 @@ impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S>
             .collect())
     }
 
-    async fn handle_get_shard_reveal_signature(
-        &self,
-        peer: NetworkingIndex,
-        shard_reveal_bytes: Bytes,
-    ) -> ShardResult<Serialized<Signature<Signed<ShardReveal>>>> {
-        let shard_reveal: Signed<ShardReveal> =
-            bcs::from_bytes(&shard_reveal_bytes).map_err(ShardError::MalformedType)?;
+    // async fn handle_get_shard_reveal_signature(
+    //     &self,
+    //     peer: NetworkingIndex,
+    //     shard_reveal_bytes: Bytes,
+    // ) -> ShardResult<Serialized<Signature<Signed<ShardReveal>>>> {
+    //     let shard_reveal: Signed<ShardReveal> =
+    //         bcs::from_bytes(&shard_reveal_bytes).map_err(ShardError::MalformedType)?;
 
-        //1. verify shard membersip
-        let shard = self.store.read_shard(shard_reveal.shard_ref())?;
-        if !shard.contains(&peer) {
-            return Err(ShardError::UnauthorizedPeer);
-        }
-        //2. verify signature
+    //     //1. verify shard membersip
+    //     let shard = self.store.read_shard(shard_reveal.shard_ref())?;
+    //     if !shard.contains(&peer) {
+    //         return Err(ShardError::UnauthorizedPeer);
+    //     }
+    //     //2. verify signature
 
-        shard_reveal.verify_signature(
-            crate::Scope::ShardReveal,
-            &self.context.network_committee.identity(peer).protocol_key,
-        )?;
+    //     shard_reveal.verify_signature(
+    //         crate::Scope::ShardReveal,
+    //         &self.context.network_committee.identity(peer).protocol_key,
+    //     )?;
 
-        //3. verify shard reveal
-        //TODO: fix verification
-        let verified_shard_reveal = Verified::new(shard_reveal, shard_reveal_bytes, unverified)?;
+    //     //3. verify shard reveal
+    //     //TODO: fix verification
+    //     let verified_shard_reveal = Verified::new(shard_reveal, shard_reveal_bytes, unverified)?;
 
-        //4. check for digest in store
-        if self
-            .store
-            .read_shard_reveal_digest(verified_shard_reveal.shard_ref(), peer)
-            .is_ok_and(|digest| digest != verified_shard_reveal.digest())
-        {
-            return Err(ShardError::ConflictingRequest);
-        }
+    //     //4. check for digest in store
+    //     if self
+    //         .store
+    //         .read_shard_reveal_digest(verified_shard_reveal.shard_ref(), peer)
+    //         .is_ok_and(|digest| digest != verified_shard_reveal.digest())
+    //     {
+    //         return Err(ShardError::ConflictingRequest);
+    //     }
 
-        // TODO: add digest to datastore
-        // TODO: clean up how signatures are created
+    //     // TODO: add digest to datastore
+    //     // TODO: clean up how signatures are created
 
-        let signature_bytes = bcs::to_bytes(
-            &Signed::new(
-                verified_shard_reveal.deref().to_owned(),
-                crate::Scope::ShardReveal,
-                &self.protocol_keypair,
-            )?
-            .signature(),
-        )
-        .map_err(ShardError::SerializationFailure)?;
-        Ok(Serialized::new(bytes::Bytes::copy_from_slice(
-            &signature_bytes,
-        )))
-    }
+    //     let signature_bytes = bcs::to_bytes(
+    //         &Signed::new(
+    //             verified_shard_reveal.deref().to_owned(),
+    //             crate::Scope::ShardReveal,
+    //             &self.protocol_keypair,
+    //         )?
+    //         .signature(),
+    //     )
+    //     .map_err(ShardError::SerializationFailure)?;
+    //     Ok(Serialized::new(bytes::Bytes::copy_from_slice(
+    //         &signature_bytes,
+    //     )))
+    // }
 
     async fn handle_send_shard_reveal_certificate(
         &self,

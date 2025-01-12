@@ -23,7 +23,7 @@ use reqwest::{Client, StatusCode};
 use tokio::sync::oneshot;
 use url::Url;
 
-use super::{ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService, GetObjectResponse};
+use super::{GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService};
 
 pub(crate) struct ObjectHttpClient {
     client: Client,
