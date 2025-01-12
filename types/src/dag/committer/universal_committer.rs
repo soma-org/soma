@@ -1,6 +1,6 @@
 use parking_lot::RwLock;
 
-use crate::committee::AuthorityIndex;
+use crate::committee::{AuthorityIndex, EpochId};
 use crate::consensus::{
     block::{Round, Slot, GENESIS_ROUND},
     commit::{DecidedLeader, Decision},
@@ -15,8 +15,6 @@ use super::base_committer::BaseCommitter;
 /// It can be configured to use a combination of different commit strategies, including
 /// multi-leaders, backup leaders, and pipelines.
 pub struct UniversalCommitter {
-    /// The per-epoch configuration of this authority.
-    context: Arc<Context>,
     /// In memory block store representing the dag state
     dag_state: Arc<RwLock<DagState>>,
     /// The list of committers for multi-leader or pipelining
@@ -27,7 +25,7 @@ impl UniversalCommitter {
     /// Try to decide part of the dag. This function is idempotent and returns an ordered list of
     /// decided leaders.
     #[tracing::instrument(skip_all, fields(last_decided = %last_decided))]
-    pub fn try_decide(&self, last_decided: Slot) -> Vec<DecidedLeader> {
+    pub fn try_decide(&self, last_decided: Slot, epoch: Option<EpochId>) -> Vec<DecidedLeader> {
         let highest_accepted_round = self.dag_state.read().highest_accepted_round();
 
         // Try to decide as many leaders as possible, starting with the highest round.
@@ -56,7 +54,7 @@ impl UniversalCommitter {
         'outer: for round in (last_round..=highest_accepted_round.saturating_sub(2)).rev() {
             for committer in self.committers.iter().rev() {
                 // Skip committers that don't have a leader for this round.
-                let Some(slot) = committer.elect_leader(round) else {
+                let Some(slot) = committer.elect_leader(round, epoch) else {
                     continue;
                 };
 
@@ -103,7 +101,7 @@ impl UniversalCommitter {
     pub fn get_leaders(&self, round: Round) -> Vec<AuthorityIndex> {
         self.committers
             .iter()
-            .filter_map(|committer| committer.elect_leader(round))
+            .filter_map(|committer| committer.elect_leader(round, None))
             .map(|l| l.authority)
             .collect()
     }
@@ -117,7 +115,6 @@ pub mod universal_committer_builder {
     use crate::dag::committer::base_committer::BaseCommitterOptions;
 
     pub struct UniversalCommitterBuilder {
-        context: Arc<Context>,
         leader_schedule: Arc<LeaderSchedule>,
         dag_state: Arc<RwLock<DagState>>,
         wave_length: Round,
@@ -126,13 +123,8 @@ pub mod universal_committer_builder {
     }
 
     impl UniversalCommitterBuilder {
-        pub fn new(
-            context: Arc<Context>,
-            leader_schedule: Arc<LeaderSchedule>,
-            dag_state: Arc<RwLock<DagState>>,
-        ) -> Self {
+        pub fn new(leader_schedule: Arc<LeaderSchedule>, dag_state: Arc<RwLock<DagState>>) -> Self {
             Self {
-                context,
                 leader_schedule,
                 dag_state,
                 wave_length: DEFAULT_WAVE_LENGTH,
@@ -168,7 +160,6 @@ pub mod universal_committer_builder {
                         leader_offset: leader_offset as Round,
                     };
                     let committer = BaseCommitter::new(
-                        self.context.clone(),
                         self.leader_schedule.clone(),
                         self.dag_state.clone(),
                         options,
@@ -178,7 +169,6 @@ pub mod universal_committer_builder {
             }
 
             UniversalCommitter {
-                context: self.context,
                 dag_state: self.dag_state,
                 committers,
             }

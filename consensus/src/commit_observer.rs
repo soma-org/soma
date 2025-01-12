@@ -15,7 +15,7 @@ use types::{
     },
     dag::{dag_state::DagState, linearizer::Linearizer},
     error::{ConsensusError, ConsensusResult},
-    storage::consensus::Store,
+    storage::consensus::ConsensusStore,
 };
 
 use types::committee::AuthorityIndex;
@@ -37,7 +37,7 @@ pub(crate) struct CommitObserver {
     /// An unbounded channel to send committed sub-dags to the consumer of consensus output.
     sender: UnboundedSender<CommittedSubDag>,
     /// Persistent storage for blocks, commits and other consensus data.
-    store: Arc<dyn Store>,
+    store: Arc<dyn ConsensusStore>,
     leader_schedule: Arc<LeaderSchedule>,
 }
 
@@ -46,7 +46,7 @@ impl CommitObserver {
         context: Arc<Context>,
         commit_consumer: CommitConsumer,
         dag_state: Arc<RwLock<DagState>>,
-        store: Arc<dyn Store>,
+        store: Arc<dyn ConsensusStore>,
         leader_schedule: Arc<LeaderSchedule>,
     ) -> Self {
         let mut observer = Self {
@@ -191,12 +191,13 @@ mod tests {
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
+            None,
         )));
         let last_processed_commit_round = 0;
         let last_processed_commit_index = 0;
         let (sender, mut receiver) = unbounded_channel();
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let mut observer = CommitObserver::new(
             context.clone(),
@@ -292,12 +293,13 @@ mod tests {
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
+            None,
         )));
         let last_processed_commit_round = 0;
         let last_processed_commit_index = 0;
         let (sender, mut receiver) = unbounded_channel();
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let mut observer = CommitObserver::new(
             context.clone(),
@@ -437,12 +439,13 @@ mod tests {
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
+            None,
         )));
         let last_processed_commit_round = 0;
         let last_processed_commit_index = 0;
         let (sender, mut receiver) = unbounded_channel();
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let mut observer = CommitObserver::new(
             context.clone(),

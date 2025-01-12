@@ -32,6 +32,7 @@ use types::{
     mutex_table::{MutexGuard, MutexTable},
     object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Version},
     protocol::{Chain, ProtocolConfig},
+    signature_verifier::SignatureVerifier,
     state_sync::{CertifiedCommitSummary, CommitContents, CommitSummary},
     storage::object_store::ObjectStore,
     system_state::{
@@ -56,7 +57,6 @@ use crate::{
         SequencedConsensusTransactionKind, VerifiedSequencedConsensusTransaction,
     },
     reconfiguration::ReconfigState,
-    signature_verifier::SignatureVerifier,
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
     store::LockDetails,
@@ -384,7 +384,7 @@ impl AuthorityPerEpochStore {
 
         let protocol_config = ProtocolConfig::default();
 
-        let signature_verifier = SignatureVerifier::new(committee.clone());
+        let signature_verifier = SignatureVerifier::new(committee.clone(), None);
 
         let s = Arc::new(Self {
             name,

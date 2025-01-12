@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -10,8 +10,7 @@ use tracing::error;
 use crate::{
     base::{AuthorityName, SomaAddress},
     committee::{
-        Authority, Committee, CommitteeWithNetworkMetadata, ConsensusCommittee, EpochId,
-        NetworkMetadata, VotingPower,
+        Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
     },
     crypto::{self, NetworkPublicKey, ProtocolPublicKey},
     error::{SomaError, SomaResult},
@@ -307,6 +306,13 @@ impl SystemStateTrait for SystemState {
                             consensus_address: verified_metadata.p2p_address.clone(),
                             network_address: verified_metadata.net_address.clone(),
                             primary_address: verified_metadata.primary_address.clone(),
+                            protocol_key: ProtocolPublicKey::new(
+                                verified_metadata.worker_pubkey.into_inner(),
+                            ),
+                            network_key: verified_metadata.network_pubkey,
+                            authority_key: verified_metadata.protocol_pubkey,
+                            // Use net_address as hostname if no explicit hostname is available
+                            hostname: verified_metadata.net_address.to_string(),
                         },
                     ),
                 )
@@ -427,6 +433,12 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
                             consensus_address: validator.p2p_address.clone(),
                             network_address: validator.net_address.clone(),
                             primary_address: validator.primary_address.clone(),
+                            protocol_key: ProtocolPublicKey::new(
+                                validator.worker_pubkey.clone().into_inner(),
+                            ),
+                            network_key: validator.network_pubkey.clone(),
+                            authority_key: validator.protocol_pubkey.clone(),
+                            hostname: validator.hostname.clone(),
                         },
                     ),
                 )
@@ -437,46 +449,31 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
     }
 
     fn get_committee(&self) -> Committee {
-        let voting_rights = self
+        let voting_rights: BTreeMap<_, _> = self
             .active_validators
             .iter()
-            .map(|validator| (validator.authority_name(), validator.voting_power))
+            .map(|v| (v.authority_name(), v.voting_power))
             .collect();
-        Committee::new(self.epoch, voting_rights)
-    }
 
-    fn get_mysticeti_committee(&self) -> ConsensusCommittee {
-        let mut authorities = vec![];
-        for validator in self.active_validators.iter() {
-            authorities.push(Authority {
-                stake: validator.voting_power,
-                // TODO(mysticeti): Add EpochStartValidatorInfoV2 with new field for mysticeti address.
-                address: validator.primary_address.clone(),
-                hostname: validator.hostname.clone(),
-                authority_key: validator.protocol_pubkey.clone(),
-                protocol_key: ProtocolPublicKey::new(validator.worker_pubkey.clone().into_inner()),
-                network_key: validator.network_pubkey.clone(),
-            });
-        }
-
-        // Sort the authorities by their protocol (public) key in ascending order, same as the order
-        // in the Sui committee returned from get_sui_committee().
-        authorities.sort_by(|a1, a2| a1.authority_key.cmp(&a2.authority_key));
-
-        for ((i, mysticeti_authority), sui_authority_name) in authorities
+        let authorities: BTreeMap<_, _> = self
+            .active_validators
             .iter()
-            .enumerate()
-            .zip(self.get_committee().names())
-        {
-            if sui_authority_name.0 != mysticeti_authority.authority_key.as_bytes() {
-                error!(
-                    "Mismatched authority order between Sui and Mysticeti! Index {}, Mysticeti authority {:?}\nSui authority name {}",
-                    i, mysticeti_authority, sui_authority_name
-                );
-            }
-        }
+            .map(|v| {
+                (
+                    v.authority_name(),
+                    Authority {
+                        stake: v.voting_power,
+                        address: v.primary_address.clone(),
+                        hostname: v.hostname.clone(),
+                        protocol_key: ProtocolPublicKey::new(v.worker_pubkey.clone().into_inner()),
+                        network_key: v.network_pubkey.clone(),
+                        authority_key: v.protocol_pubkey.clone(),
+                    },
+                )
+            })
+            .collect();
 
-        ConsensusCommittee::new(self.epoch, authorities)
+        Committee::new(self.epoch, voting_rights, authorities)
     }
 
     fn get_authority_names_to_peer_ids(&self) -> HashMap<AuthorityName, PeerId> {
@@ -513,7 +510,6 @@ pub trait EpochStartSystemStateTrait {
     fn get_committee_with_network_metadata(&self) -> CommitteeWithNetworkMetadata;
     fn get_authority_names_to_peer_ids(&self) -> HashMap<AuthorityName, PeerId>;
     fn get_authority_names_to_hostnames(&self) -> HashMap<AuthorityName, String>;
-    fn get_mysticeti_committee(&self) -> ConsensusCommittee;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

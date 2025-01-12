@@ -14,8 +14,9 @@ use super::block::{BlockAPI as _, BlockTimestampMs, Round, Slot};
 use super::block::{BlockRef, VerifiedBlock};
 #[cfg(test)]
 use crate::committee::AuthorityIndex;
+use crate::committee::Epoch;
 use crate::crypto::{DefaultHash as DefaultHashFunction, DIGEST_LENGTH};
-use crate::storage::consensus::Store;
+use crate::storage::consensus::ConsensusStore;
 
 pub type CommitIndex = u32;
 
@@ -47,6 +48,8 @@ pub struct Commit {
     leader: BlockRef,
     /// Refs to committed blocks, in the commit order.
     blocks: Vec<BlockRef>,
+    /// Epoch of commit
+    epoch: Epoch,
 }
 
 impl Commit {
@@ -57,6 +60,7 @@ impl Commit {
         timestamp_ms: BlockTimestampMs,
         leader: BlockRef,
         blocks: Vec<BlockRef>,
+        epoch: Epoch,
     ) -> Self {
         Self {
             index,
@@ -64,6 +68,7 @@ impl Commit {
             timestamp_ms,
             leader,
             blocks,
+            epoch,
         }
     }
 
@@ -80,6 +85,7 @@ pub trait CommitAPI {
     fn timestamp_ms(&self) -> BlockTimestampMs;
     fn leader(&self) -> BlockRef;
     fn blocks(&self) -> &[BlockRef];
+    fn epoch(&self) -> Epoch;
 }
 
 impl CommitAPI for Commit {
@@ -105,6 +111,10 @@ impl CommitAPI for Commit {
 
     fn blocks(&self) -> &[BlockRef] {
         &self.blocks
+    }
+
+    fn epoch(&self) -> Epoch {
+        self.epoch
     }
 }
 
@@ -158,8 +168,9 @@ impl TrustedCommit {
         timestamp_ms: BlockTimestampMs,
         leader: BlockRef,
         blocks: Vec<BlockRef>,
+        epoch: Epoch,
     ) -> Self {
-        let commit = Commit::new(index, previous_digest, timestamp_ms, leader, blocks);
+        let commit = Commit::new(index, previous_digest, timestamp_ms, leader, blocks, epoch);
         let serialized = commit.serialize().unwrap();
         Self::new_trusted(commit, serialized)
     }
@@ -428,13 +439,13 @@ impl Display for DecidedLeader {
 /// Only the latest version is needed for recovery, but more versions are stored for debugging,
 /// and potentially restoring from an earlier state.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct CommitInfo {
-    pub(crate) committed_rounds: Vec<Round>,
+pub struct CommitInfo {
+    pub committed_rounds: Vec<Round>,
 }
 
 impl CommitInfo {
     // Returns a new CommitInfo.
-    pub(crate) fn new(committed_rounds: Vec<Round>) -> Self {
+    pub fn new(committed_rounds: Vec<Round>) -> Self {
         CommitInfo { committed_rounds }
     }
 }
@@ -497,7 +508,7 @@ impl Debug for CommitRange {
 
 // Recovers the full CommittedSubDag from block store, based on Commit.
 pub fn load_committed_subdag_from_store(
-    store: &dyn Store,
+    store: &dyn ConsensusStore,
     commit: TrustedCommit,
 ) -> CommittedSubDag {
     let mut leader_block_idx = None;
@@ -533,7 +544,7 @@ mod tests {
     use super::super::{block::TestBlock, context::Context};
     use super::*;
 
-    use crate::storage::consensus::{mem_store::MemStore, Store, WriteBatch};
+    use crate::storage::consensus::{mem_store::MemStore, ConsensusStore, WriteBatch};
 
     #[tokio::test]
     async fn test_new_subdag_from_commit() {
@@ -597,6 +608,7 @@ mod tests {
             leader_block.timestamp_ms(),
             leader_ref,
             blocks.clone(),
+            0,
         );
         let subdag = load_committed_subdag_from_store(store.as_ref(), commit.clone());
         assert_eq!(subdag.leader, leader_ref);

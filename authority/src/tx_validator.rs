@@ -3,9 +3,9 @@ use std::sync::Arc;
 use eyre::Context;
 use tap::TapFallible;
 use tracing::{info, warn};
-use types::consensus::{ConsensusTransaction, ConsensusTransactionKind};
-
+use types::committee::Epoch;
 use types::consensus::transaction::{TransactionVerifier, ValidationError};
+use types::consensus::{ConsensusTransaction, ConsensusTransactionKind};
 
 use crate::epoch_store::AuthorityPerEpochStore;
 
@@ -53,7 +53,7 @@ impl TxValidator {
 
         self.epoch_store
             .signature_verifier
-            .verify_certs(cert_batch)
+            .verify_certs(cert_batch, None)
             .tap_err(|e| warn!("batch verification error: {}", e))
             .wrap_err("Malformed batch (failed to verify)")?;
 
@@ -82,7 +82,7 @@ fn tx_from_bytes(tx: &[u8]) -> Result<ConsensusTransaction, eyre::Report> {
 }
 
 impl TransactionVerifier for TxValidator {
-    fn verify_batch(&self, batch: &[&[u8]]) -> Result<(), ValidationError> {
+    fn verify_batch(&self, batch: &[&[u8]], epoch: Option<Epoch>) -> Result<(), ValidationError> {
         let txs = batch
             .iter()
             .map(|tx| {

@@ -73,7 +73,11 @@ impl Broadcaster {
         mut rx_block_broadcast: broadcast::Receiver<VerifiedBlock>,
         peer: AuthorityIndex,
     ) {
-        let peer_hostname = &context.committee.authority(peer).hostname;
+        let peer_hostname = &context
+            .committee
+            .authority_by_authority_index(peer)
+            .unwrap()
+            .hostname;
 
         // Record the last block to be broadcasted, to retry in case no new block is produced for awhile.
         // Even if the peer has acknowledged the last block, the block might have been dropped afterwards
@@ -180,9 +184,12 @@ mod test {
     use bytes::Bytes;
     use parking_lot::Mutex;
     use tokio::time::sleep;
-    use types::consensus::{
-        block::{BlockRef, Round, TestBlock},
-        commit::CommitRange,
+    use types::{
+        committee::Epoch,
+        consensus::{
+            block::{BlockRef, Round, TestBlock},
+            commit::CommitRange,
+        },
     };
 
     struct FakeNetworkClient {
@@ -221,6 +228,7 @@ mod test {
         async fn fetch_blocks(
             &self,
             _peer: AuthorityIndex,
+            _epoch: Epoch,
             _block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,

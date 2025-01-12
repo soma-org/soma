@@ -13,7 +13,7 @@ use crate::consensus::{
 use crate::committee::AuthorityIndex;
 use crate::error::ConsensusResult;
 
-use super::{Store, WriteBatch};
+use super::{ConsensusStore, WriteBatch};
 
 /// In-memory storage for testing.
 pub struct MemStore {
@@ -45,7 +45,7 @@ impl MemStore {
     }
 }
 
-impl Store for MemStore {
+impl ConsensusStore for MemStore {
     fn write(&self, write_batch: WriteBatch) -> ConsensusResult<()> {
         let mut inner = self.inner.write();
 

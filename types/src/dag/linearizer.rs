@@ -42,6 +42,7 @@ impl Linearizer {
         let mut committed = HashSet::new();
 
         let timestamp_ms = leader_block.timestamp_ms().max(last_commit_timestamp_ms);
+        let epoch = leader_block.epoch();
         let leader_block_ref = leader_block.reference();
         let mut buffer = vec![leader_block];
         assert!(committed.insert(leader_block_ref));
@@ -89,6 +90,7 @@ impl Linearizer {
                 .iter()
                 .map(|block| block.reference())
                 .collect::<Vec<_>>(),
+            epoch,
         );
         let serialized = commit
             .serialize()
@@ -157,8 +159,9 @@ mod tests {
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             Arc::new(MemStore::new()),
+            None,
         )));
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
         let mut linearizer = Linearizer::new(dag_state.clone(), leader_schedule);
 
         // Populate fully connected test blocks for round 0 ~ 10, authorities 0 ~ 3.
@@ -203,8 +206,9 @@ mod tests {
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             Arc::new(MemStore::new()),
+            None,
         )));
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
         let mut linearizer = Linearizer::new(dag_state.clone(), leader_schedule.clone());
         let wave_length = DEFAULT_WAVE_LENGTH;
 
@@ -236,6 +240,7 @@ mod tests {
             0,
             first_leader.reference(),
             blocks.into_iter().map(|block| block.reference()).collect(),
+            first_leader.epoch(),
         );
         dag_state.write().add_commit(first_commit_data);
 
@@ -244,7 +249,7 @@ mod tests {
         // Filter out leader block of round `leader_round_wave_1`
         blocks.retain(|block| {
             !(block.round() == leader_round_wave_1
-                && block.author() == leader_schedule.elect_leader(leader_round_wave_1, 0))
+                && block.author() == leader_schedule.elect_leader(leader_round_wave_1, 0, None))
         });
         // Add the leader block of round `leader_round_wave_2`
         blocks.push(
@@ -269,6 +274,7 @@ mod tests {
             0,
             leader.reference(),
             blocks.clone(),
+            leader.epoch(),
         );
 
         let commit = linearizer.handle_commit(vec![leader.clone()]);

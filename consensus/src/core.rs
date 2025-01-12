@@ -102,14 +102,10 @@ impl Core {
     ) -> Self {
         let last_decided_leader = dag_state.read().last_commit_leader();
         let number_of_leaders = 1; // TODO: context.parameters.mysticeti_num_leaders_per_round();
-        let committer = UniversalCommitterBuilder::new(
-            context.clone(),
-            leader_schedule.clone(),
-            dag_state.clone(),
-        )
-        .with_number_of_leaders(number_of_leaders)
-        .with_pipeline(true)
-        .build();
+        let committer = UniversalCommitterBuilder::new(leader_schedule.clone(), dag_state.clone())
+            .with_number_of_leaders(number_of_leaders)
+            .with_pipeline(true)
+            .build();
         // Recover the last proposed block
         let last_proposed_block = dag_state
             .read()
@@ -328,7 +324,8 @@ impl Core {
         let leader_authority = &self
             .context
             .committee
-            .authority(self.first_leader(quorum_round))
+            .authority_by_authority_index(self.first_leader(quorum_round))
+            .unwrap()
             .hostname;
 
         // TODO: produce the block for the clock_round. As the threshold clock can advance many rounds at once (ex
@@ -341,7 +338,12 @@ impl Core {
         let ancestors = self.ancestors_to_propose(clock_round);
 
         for ancestor in &ancestors {
-            let authority = &self.context.committee.authority(ancestor.author()).hostname;
+            let authority = &self
+                .context
+                .committee
+                .authority_by_authority_index(ancestor.author())
+                .unwrap()
+                .hostname;
         }
 
         // Ensure ancestor timestamps are not more advanced than the current time.
@@ -422,7 +424,7 @@ impl Core {
 
     /// Runs commit rule to attempt to commit additional blocks from the DAG.
     fn try_commit(&mut self) -> ConsensusResult<Vec<CommittedSubDag>> {
-        let decided_leaders = self.committer.try_decide(self.last_decided_leader);
+        let decided_leaders = self.committer.try_decide(self.last_decided_leader, None);
         if let Some(last) = decided_leaders.last() {
             self.last_decided_leader = last.slot();
         }
@@ -669,14 +671,14 @@ impl CoreTextFixture {
 
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-
-        let block_manager = BlockManager::new(
+        let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
-            dag_state.clone(),
-            Arc::new(NoopBlockVerifier),
-        );
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+            store.clone(),
+            None,
+        )));
+
+        let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);
         let (signals, signal_receivers) = CoreSignals::new(context.clone());
@@ -734,7 +736,7 @@ mod test {
             transaction::TransactionClient,
         },
         dag::test_dag::DagBuilder,
-        storage::consensus::{mem_store::MemStore, Store, WriteBatch},
+        storage::consensus::{mem_store::MemStore, ConsensusStore, WriteBatch},
     };
 
     use crate::commit_observer::CommitConsumer;
@@ -772,13 +774,13 @@ mod test {
             .expect("Storage error");
 
         // create dag state after all blocks have been written to store
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-        let block_manager = BlockManager::new(
+        let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
-            dag_state.clone(),
-            Arc::new(NoopBlockVerifier),
-        );
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+            store.clone(),
+            None,
+        )));
+        let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let (sender, _receiver) = unbounded_channel();
         let commit_observer = CommitObserver::new(
@@ -886,13 +888,13 @@ mod test {
             .expect("Storage error");
 
         // create dag state after all blocks have been written to store
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-        let block_manager = BlockManager::new(
+        let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
-            dag_state.clone(),
-            Arc::new(NoopBlockVerifier),
-        );
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+            store.clone(),
+            None,
+        )));
+        let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let (sender, _receiver) = unbounded_channel();
         let commit_observer = CommitObserver::new(
@@ -972,19 +974,19 @@ mod test {
             ..Default::default()
         }));
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-
-        let block_manager = BlockManager::new(
+        let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
-            dag_state.clone(),
-            Arc::new(NoopBlockVerifier),
-        );
+            store.clone(),
+            None,
+        )));
+
+        let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let (transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);
         let (signals, signal_receivers) = CoreSignals::new(context.clone());
         // Need at least one subscriber to the block broadcast channel.
         let mut block_receiver = signal_receivers.block_broadcast_receiver();
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let (sender, _receiver) = unbounded_channel();
         let commit_observer = CommitObserver::new(
@@ -1072,14 +1074,14 @@ mod test {
         let context = Arc::new(context);
 
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-
-        let block_manager = BlockManager::new(
+        let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
-            dag_state.clone(),
-            Arc::new(NoopBlockVerifier),
-        );
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+            store.clone(),
+            None,
+        )));
+
+        let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);
@@ -1157,14 +1159,14 @@ mod test {
         }));
 
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-
-        let block_manager = BlockManager::new(
+        let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
-            dag_state.clone(),
-            Arc::new(NoopBlockVerifier),
-        );
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+            store.clone(),
+            None,
+        )));
+
+        let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);

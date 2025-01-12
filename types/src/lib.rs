@@ -24,6 +24,7 @@ pub mod peer_id;
 pub mod protocol;
 pub mod quorum_driver;
 pub(crate) mod serde;
+pub mod signature_verifier;
 pub mod state_sync;
 pub mod storage;
 pub mod system_state;

@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::SystemTime};
 
 use super::{block::BlockTimestampMs, committee::local_committee_and_keys};
-use crate::committee::{AuthorityIndex, ConsensusCommittee as Committee};
+use crate::committee::{AuthorityIndex, Committee};
 use crate::crypto::{NetworkKeyPair, ProtocolKeyPair};
 use crate::parameters::Parameters;
 // #[cfg(test)]

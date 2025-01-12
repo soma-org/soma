@@ -11,7 +11,7 @@ use crate::{
 
 use super::{object_store::ObjectStore, storage_error::Result};
 
-pub trait ReadStore: ObjectStore {
+pub trait ReadStore: ObjectStore + Send + Sync {
     //
     // Committee Getters
     //
@@ -22,13 +22,9 @@ pub trait ReadStore: ObjectStore {
     // Commit Getters
     //
 
-    /// Get the highest verified commit. This is the highest commit summary that has been
-    /// verified, generally by state-sync.
-    fn get_highest_verified_commit(&self) -> Result<VerifiedCommitSummary>;
-
     /// Get the highest synced commit. This is the highest commit that has been synced from
     /// state-sync.
-    fn get_highest_synced_commit(&self) -> Result<VerifiedCommitSummary>;
+    fn get_highest_synced_commit(&self) -> Result<CommitIndex>;
 
     /// Lowest available commit for which transaction data can be requested.
     fn get_lowest_available_commit(&self) -> Result<CommitIndex>;
@@ -36,12 +32,6 @@ pub trait ReadStore: ObjectStore {
     fn get_commit_by_digest(&self, digest: &CommitSummaryDigest) -> Option<VerifiedCommitSummary>;
 
     fn get_commit_by_index(&self, index: CommitIndex) -> Option<VerifiedCommitSummary>;
-
-    /// Get a "full" commit for purposes of state-sync
-    fn get_full_commit_contents(&self, digest: &CommitContentsDigest)
-        -> Option<FullCommitContents>;
-
-    fn get_full_commit_contents_by_index(&self, index: CommitIndex) -> Option<FullCommitContents>;
 
     //
     // Transaction Getters
@@ -83,11 +73,7 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
         (*self).get_committee(epoch)
     }
 
-    fn get_highest_verified_commit(&self) -> Result<VerifiedCommitSummary> {
-        (*self).get_highest_verified_commit()
-    }
-
-    fn get_highest_synced_commit(&self) -> Result<VerifiedCommitSummary> {
+    fn get_highest_synced_commit(&self) -> Result<CommitIndex> {
         (*self).get_highest_synced_commit()
     }
 
@@ -101,10 +87,6 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
 
     fn get_commit_by_index(&self, index: CommitIndex) -> Option<VerifiedCommitSummary> {
         (*self).get_commit_by_index(index)
-    }
-
-    fn get_full_commit_contents_by_index(&self, index: CommitIndex) -> Option<FullCommitContents> {
-        (**self).get_full_commit_contents_by_index(index)
     }
 
     fn get_transaction(
@@ -133,12 +115,5 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
         tx_digests: &[TransactionDigest],
     ) -> Result<Vec<Option<TransactionEffects>>> {
         (*self).multi_get_transaction_effects(tx_digests)
-    }
-
-    fn get_full_commit_contents(
-        &self,
-        digest: &CommitContentsDigest,
-    ) -> Option<FullCommitContents> {
-        (*self).get_full_commit_contents(digest)
     }
 }

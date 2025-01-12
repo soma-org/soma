@@ -1,5 +1,6 @@
+use fastcrypto::ed25519::{Ed25519KeyPair, Ed25519PublicKey};
 use fastcrypto::traits::KeyPair;
-use rand::rngs::{StdRng, ThreadRng};
+use rand::rngs::{OsRng, StdRng, ThreadRng};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -10,9 +11,10 @@ use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
 
 use crate::base::{AuthorityName, ConciseableName};
+use crate::consensus::committee::get_available_local_address;
 use crate::crypto::{
-    random_committee_key_pairs_of_size, AuthorityKeyPair, AuthorityPublicKey, NetworkPublicKey,
-    ProtocolPublicKey,
+    get_key_pair_from_rng, random_committee_key_pairs_of_size, AuthorityKeyPair,
+    AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair, ProtocolPublicKey,
 };
 use crate::digests::TransactionDigest;
 use crate::error::{SomaError, SomaResult};
@@ -43,43 +45,70 @@ pub struct Committee {
     pub voting_rights: Vec<(AuthorityName, VotingPower)>,
     expanded_keys: HashMap<AuthorityName, AuthorityPublicKey>,
     index_map: HashMap<AuthorityName, usize>,
+
+    authorities: HashMap<AuthorityName, Authority>,
 }
 
 impl Committee {
-    pub fn new(epoch: EpochId, voting_rights: BTreeMap<AuthorityName, VotingPower>) -> Self {
-        let mut voting_rights: Vec<(AuthorityName, VotingPower)> =
+    pub fn new(
+        epoch: EpochId,
+        voting_rights: BTreeMap<AuthorityName, VotingPower>,
+        authorities: BTreeMap<AuthorityName, Authority>,
+    ) -> Self {
+        let mut voting_rights_vec: Vec<(AuthorityName, VotingPower)> =
             voting_rights.iter().map(|(a, s)| (*a, *s)).collect();
 
-        assert!(!voting_rights.is_empty());
-        assert!(voting_rights.iter().any(|(_, s)| *s != 0));
+        // Existing validation
+        assert!(!voting_rights_vec.is_empty());
+        assert!(voting_rights_vec.iter().any(|(_, s)| *s != 0));
 
-        voting_rights.sort_by_key(|(a, _)| *a);
-        let total_votes: VotingPower = voting_rights.iter().map(|(_, votes)| *votes).sum();
+        voting_rights_vec.sort_by_key(|(a, _)| *a);
+        let total_votes: VotingPower = voting_rights_vec.iter().map(|(_, votes)| *votes).sum();
         assert_eq!(total_votes, TOTAL_VOTING_POWER);
 
-        let (expanded_keys, index_map) = Self::load_inner(&voting_rights);
+        let (expanded_keys, index_map) = Self::load_inner(&voting_rights_vec);
 
         Committee {
             epoch,
-            voting_rights,
+            voting_rights: voting_rights_vec,
             expanded_keys,
             index_map,
+            authorities: authorities.into_iter().collect(),
         }
     }
 
     pub fn new_simple_test_committee_of_size(size: usize) -> (Self, Vec<AuthorityKeyPair>) {
-        let key_pairs: Vec<_> = random_committee_key_pairs_of_size(size)
-            .into_iter()
-            .collect();
-        let committee = Self::new_for_testing_with_normalized_voting_power(
-            0,
-            key_pairs
-                .iter()
-                .map(|key| {
-                    (AuthorityName::from(key.public()), /* voting right */ 1)
-                })
-                .collect(),
-        );
+        let mut rng = StdRng::from_seed([0; 32]); // Or keep random_committee_key_pairs_of_size
+        let mut authorities = BTreeMap::new();
+        let mut voting_weights = BTreeMap::new();
+        let mut key_pairs = Vec::new();
+
+        for i in 0..size {
+            let authority_keypair = AuthorityKeyPair::generate(&mut rng);
+            let protocol_keypair = ProtocolKeyPair::generate(&mut rng);
+            let network_keypair = NetworkKeyPair::generate(&mut rng);
+
+            let name = AuthorityName::from(authority_keypair.public());
+
+            authorities.insert(
+                name,
+                Authority {
+                    stake: 1, // Will be normalized
+                    address: get_available_local_address(),
+                    hostname: format!("test_host_{i}"),
+                    authority_key: authority_keypair.public().clone(),
+                    protocol_key: protocol_keypair.public(),
+                    network_key: network_keypair.public(),
+                },
+            );
+
+            voting_weights.insert(name, 1);
+            key_pairs.push(authority_keypair);
+        }
+
+        let committee =
+            Self::new_for_testing_with_normalized_voting_power(0, voting_weights, authorities);
+
         (committee, key_pairs)
     }
 
@@ -88,23 +117,24 @@ impl Committee {
     pub fn new_for_testing_with_normalized_voting_power(
         epoch: EpochId,
         mut voting_weights: BTreeMap<AuthorityName, VotingPower>,
+        authorities: BTreeMap<AuthorityName, Authority>,
     ) -> Self {
         let num_nodes = voting_weights.len();
         let total_votes: VotingPower = voting_weights.values().cloned().sum();
-
         let normalization_coef = TOTAL_VOTING_POWER as f64 / total_votes as f64;
         let mut total_sum = 0;
+
+        // Normalize voting weights first
         for (idx, (_auth, weight)) in voting_weights.iter_mut().enumerate() {
             if idx < num_nodes - 1 {
-                *weight = (*weight as f64 * normalization_coef).floor() as u64; // adjust the weights following the normalization coef
+                *weight = (*weight as f64 * normalization_coef).floor() as u64;
                 total_sum += *weight;
             } else {
-                // the last element is taking all the rest
                 *weight = TOTAL_VOTING_POWER - total_sum;
             }
         }
 
-        Self::new(epoch, voting_weights)
+        Self::new(epoch, voting_weights, authorities)
     }
 
     // We call this if these have not yet been computed
@@ -246,6 +276,68 @@ impl Committee {
         let mut rng = StdRng::from_seed(digest_bytes);
         self.shuffle_by_stake_with_rng(None, None, &mut rng)
     }
+
+    pub fn total_stake(&self) -> VotingPower {
+        self.total_votes()
+    }
+
+    pub fn stake(&self, authority: &AuthorityName) -> VotingPower {
+        self.weight(authority)
+    }
+
+    pub fn authority(&self, name: &AuthorityName) -> Option<&Authority> {
+        self.authorities.get(name)
+    }
+
+    pub fn authorities(&self) -> impl Iterator<Item = (AuthorityIndex, &Authority)> {
+        self.voting_rights
+            .iter()
+            .enumerate()
+            .map(|(idx, (name, _))| {
+                (
+                    AuthorityIndex(idx as u32),
+                    self.authorities.get(name).expect("Authority must exist"),
+                )
+            })
+    }
+
+    pub fn reached_quorum(&self, stake: VotingPower) -> bool {
+        stake >= self.quorum_threshold()
+    }
+
+    pub fn reached_validity(&self, stake: VotingPower) -> bool {
+        stake >= self.validity_threshold()
+    }
+
+    pub fn is_valid_index(&self, index: AuthorityIndex) -> bool {
+        (index.value() as usize) < self.voting_rights.len()
+    }
+
+    pub fn size(&self) -> usize {
+        self.voting_rights.len()
+    }
+
+    pub fn stake_by_index(&self, index: AuthorityIndex) -> VotingPower {
+        self.voting_rights
+            .get(index.value())
+            .map(|(_, stake)| *stake)
+            .unwrap_or(0)
+    }
+
+    pub fn authority_by_authority_index(&self, index: AuthorityIndex) -> Option<&Authority> {
+        self.voting_rights
+            .get(index.value())
+            .map(|(name, _)| self.authorities.get(name))
+            .flatten()
+    }
+
+    pub fn to_authority_index(&self, index: usize) -> Option<AuthorityIndex> {
+        if index < self.voting_rights.len() {
+            Some(AuthorityIndex(index as u32))
+        } else {
+            None
+        }
+    }
 }
 
 impl CommitteeTrait<AuthorityName> for Committee {
@@ -338,12 +430,18 @@ pub trait CommitteeTrait<K: Ord> {
 
     fn weight(&self, author: &K) -> VotingPower;
 }
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NetworkMetadata {
+    // Existing network fields
     pub consensus_address: Multiaddr,
     pub network_address: Multiaddr,
     pub primary_address: Multiaddr,
+
+    // Added fields from ValidatorMetadata
+    pub protocol_key: ProtocolPublicKey,
+    pub network_key: NetworkPublicKey,
+    pub authority_key: AuthorityPublicKey,
+    pub hostname: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -354,7 +452,6 @@ pub struct CommitteeWithNetworkMetadata {
     #[serde(skip)]
     committee: OnceCell<Committee>,
 }
-
 impl CommitteeWithNetworkMetadata {
     pub fn new(
         epoch_id: EpochId,
@@ -376,13 +473,31 @@ impl CommitteeWithNetworkMetadata {
 
     pub fn committee(&self) -> &Committee {
         self.committee.get_or_init(|| {
-            Committee::new(
-                self.epoch_id,
-                self.validators
-                    .iter()
-                    .map(|(name, (stake, _))| (*name, *stake))
-                    .collect(),
-            )
+            let voting_rights: BTreeMap<_, _> = self
+                .validators
+                .iter()
+                .map(|(name, (stake, _))| (*name, *stake))
+                .collect();
+
+            let authorities = self
+                .validators
+                .iter()
+                .map(|(name, (stake, meta))| {
+                    (
+                        *name,
+                        Authority {
+                            stake: *stake,
+                            address: meta.consensus_address.clone(),
+                            hostname: meta.hostname.clone(),
+                            protocol_key: meta.protocol_key.clone(),
+                            network_key: meta.network_key.clone(),
+                            authority_key: meta.authority_key.clone(),
+                        },
+                    )
+                })
+                .collect();
+
+            Committee::new(self.epoch_id, voting_rights, authorities)
         })
     }
 }
@@ -404,107 +519,7 @@ pub type Epoch = EpochId;
 /// Total stake / voting power of all authorities should sum to 10,000.
 pub type Stake = VotingPower;
 
-#[derive(Clone, Debug)]
-pub struct ConsensusCommittee {
-    /// The epoch number of this committee
-    epoch: Epoch,
-
-    /// Total stake in the committee.
-    total_stake: Stake,
-
-    /// Protocol and network info of each authority.
-    authorities: Vec<Authority>,
-
-    /// The quorum threshold (2f+1).
-    quorum_threshold: Stake,
-    /// The validity threshold (f+1).
-    validity_threshold: Stake,
-}
-
-impl ConsensusCommittee {
-    pub fn new(epoch: Epoch, authorities: Vec<Authority>) -> Self {
-        assert!(!authorities.is_empty(), "Committee cannot be empty!");
-        assert!(
-            authorities.len() < u32::MAX as usize,
-            "Too many authorities ({})!",
-            authorities.len()
-        );
-        let total_stake = authorities.iter().map(|a| a.stake).sum();
-        assert_ne!(total_stake, 0, "Total stake cannot be zero!");
-        let quorum_threshold = 2 * total_stake / 3 + 1;
-        let validity_threshold = (total_stake + 2) / 3;
-        Self {
-            epoch,
-            authorities,
-            total_stake,
-            quorum_threshold,
-            validity_threshold,
-        }
-    }
-
-    pub fn epoch(&self) -> Epoch {
-        self.epoch
-    }
-
-    pub fn total_stake(&self) -> Stake {
-        self.total_stake
-    }
-
-    pub fn quorum_threshold(&self) -> Stake {
-        self.quorum_threshold
-    }
-
-    pub fn validity_threshold(&self) -> Stake {
-        self.validity_threshold
-    }
-
-    pub fn stake(&self, authority_index: AuthorityIndex) -> Stake {
-        self.authorities[authority_index].stake
-    }
-
-    pub fn authority(&self, authority_index: AuthorityIndex) -> &Authority {
-        &self.authorities[authority_index]
-    }
-
-    pub fn authorities(&self) -> impl Iterator<Item = (AuthorityIndex, &Authority)> {
-        self.authorities
-            .iter()
-            .enumerate()
-            .map(|(i, a)| (AuthorityIndex(i as u32), a))
-    }
-
-    /// Returns true if the provided stake has reached quorum (2f+1).
-    pub fn reached_quorum(&self, stake: Stake) -> bool {
-        stake >= self.quorum_threshold()
-    }
-
-    /// Returns true if the provided stake has reached validity (f+1).
-    pub fn reached_validity(&self, stake: Stake) -> bool {
-        stake >= self.validity_threshold()
-    }
-
-    /// Coverts an index to an AuthorityIndex, if valid.
-    /// Returns None if index is out of bound.
-    pub fn to_authority_index(&self, index: usize) -> Option<AuthorityIndex> {
-        if index < self.authorities.len() {
-            Some(AuthorityIndex(index as u32))
-        } else {
-            None
-        }
-    }
-
-    /// Returns true if the provided index is valid.
-    pub fn is_valid_index(&self, index: AuthorityIndex) -> bool {
-        index.value() < self.size()
-    }
-
-    /// Returns number of authorities in the committee.
-    pub fn size(&self) -> usize {
-        self.authorities.len()
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Authority {
     /// Voting power of the authority in the committee.
     pub stake: Stake,
@@ -527,7 +542,7 @@ pub struct Authority {
 #[derive(
     Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize,
 )]
-pub struct AuthorityIndex(u32);
+pub struct AuthorityIndex(pub u32);
 
 impl AuthorityIndex {
     pub const ZERO: Self = Self(0);

@@ -1,17 +1,19 @@
+use crate::cache::ExecutionCacheTraitPointers;
 use crate::commit::CommitStore;
-use crate::{cache::ExecutionCacheTraitPointers, committee_store::CommitteeStore};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use types::state_sync::VerifiedCommitContents;
+use types::accumulator::AccumulatorStore;
+use types::storage::committee_store::CommitteeStore;
+use types::storage::consensus::ConsensusStore;
 use types::storage::storage_error::Error as StorageError;
 use types::storage::storage_error::Result;
 use types::{
     accumulator::CommitIndex,
     committee::{Committee, EpochId},
-    digests::{CommitContentsDigest, CommitSummaryDigest, TransactionDigest},
+    digests::{CommitSummaryDigest, TransactionDigest},
     effects::TransactionEffects,
     object::{Object, ObjectID, Version},
-    state_sync::{CommitContents, FullCommitContents, VerifiedCommitSummary},
+    state_sync::VerifiedCommitSummary,
     storage::{
         object_store::ObjectStore, read_store::ReadStore, write_store::WriteStore, ObjectKey,
     },
@@ -24,9 +26,9 @@ pub struct StateSyncStore {
 
     committee_store: Arc<CommitteeStore>,
     commit_store: Arc<CommitStore>,
+    consensus_store: Arc<dyn ConsensusStore>,
     // in memory commit watermark sequence numbers
-    highest_verified_commit: Arc<Mutex<Option<u64>>>,
-    highest_synced_commit: Arc<Mutex<Option<u64>>>,
+    highest_synced_commit: Arc<Mutex<Option<CommitIndex>>>,
 }
 
 impl StateSyncStore {
@@ -34,12 +36,13 @@ impl StateSyncStore {
         cache_traits: ExecutionCacheTraitPointers,
         committee_store: Arc<CommitteeStore>,
         commit_store: Arc<CommitStore>,
+        consensus_store: Arc<dyn ConsensusStore>,
     ) -> Self {
         Self {
             cache_traits,
             committee_store,
             commit_store,
-            highest_verified_commit: Arc::new(Mutex::new(None)),
+            consensus_store,
             highest_synced_commit: Arc::new(Mutex::new(None)),
         }
     }
@@ -71,16 +74,7 @@ impl ReadStore for StateSyncStore {
             .expect("db error")
     }
 
-    fn get_highest_verified_commit(&self) -> Result<VerifiedCommitSummary, StorageError> {
-        self.commit_store
-            .get_highest_verified_commit()
-            .map(|maybe_commit| {
-                maybe_commit.expect("storage should have been initialized with genesis commit")
-            })
-            .map_err(Into::into)
-    }
-
-    fn get_highest_synced_commit(&self) -> Result<VerifiedCommitSummary, StorageError> {
+    fn get_highest_synced_commit(&self) -> Result<CommitIndex, StorageError> {
         self.commit_store
             .get_highest_synced_commit()
             .map(|maybe_commit| {
@@ -90,6 +84,7 @@ impl ReadStore for StateSyncStore {
     }
 
     fn get_lowest_available_commit(&self) -> Result<CommitIndex, StorageError> {
+        // TODO: update this to work with pruning
         // let highest_pruned_cp = self
         //     .commit_store
         //     .get_highest_pruned_commit_seq_number()
@@ -102,55 +97,6 @@ impl ReadStore for StateSyncStore {
         // }
 
         Ok(0)
-    }
-
-    fn get_full_commit_contents_by_index(&self, index: CommitIndex) -> Option<FullCommitContents> {
-        self.commit_store
-            .get_full_commit_contents_by_index(index)
-            .expect("db error")
-    }
-
-    fn get_full_commit_contents(
-        &self,
-        digest: &CommitContentsDigest,
-    ) -> Option<FullCommitContents> {
-        // First look to see if we saved the complete contents already.
-        if let Some(seq_num) = self
-            .commit_store
-            .get_index_by_contents_digest(digest)
-            .expect("db error")
-        {
-            let contents = self
-                .commit_store
-                .get_full_commit_contents_by_index(seq_num)
-                .expect("db error");
-            if contents.is_some() {
-                return contents;
-            }
-        }
-
-        // Otherwise gather it from the individual components.
-        // Note we can't insert the constructed contents into `full_commit_content`,
-        // because it needs to be inserted along with `commit_sequence_by_contents_digest`
-        // and `commit_content`. However at this point it's likely we don't know the
-        // corresponding sequence number yet.
-        self.commit_store
-            .get_commit_contents(digest)
-            .expect("db error")
-            .and_then(|contents| {
-                let mut transactions = Vec::with_capacity(contents.size());
-                for tx in contents.iter() {
-                    if let Ok(Some(t)) = self.get_transaction(&tx) {
-                        transactions.push((*t).clone().into_inner())
-                    } else {
-                        return None;
-                    }
-                }
-                Some(FullCommitContents::from_contents_and_transactions(
-                    contents,
-                    transactions.into_iter(),
-                ))
-            })
     }
 
     fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
@@ -193,58 +139,16 @@ impl ObjectStore for StateSyncStore {
 }
 
 impl WriteStore for StateSyncStore {
-    fn insert_commit(&self, commit: &VerifiedCommitSummary) -> Result<()> {
-        // TODO: insert committee when inserting commit
-        // if let Some(EndOfEpochData {
-        //     next_epoch_committee,
-        //     ..
-        // }) = commit.end_of_epoch_data.as_ref()
-        // {
-        //     let next_committee = next_epoch_committee.iter().cloned().collect();
-        //     let committee = Committee::new(commit.epoch().checked_add(1).unwrap(), next_committee);
-        //     self.insert_committee(committee)?;
-        // }
-
-        self.commit_store
-            .insert_verified_commit(commit)
-            .map_err(Into::into)
-    }
-
-    fn update_highest_synced_commit(&self, commit: &VerifiedCommitSummary) -> Result<()> {
+    fn update_highest_synced_commit(&self, commit: CommitIndex) -> Result<()> {
         let mut locked = self.highest_synced_commit.lock();
-        if locked.is_some() && locked.unwrap() >= commit.index {
+        if locked.is_some() && locked.unwrap() >= commit {
             return Ok(());
         }
         self.commit_store
             .update_highest_synced_commit(commit)
             .map_err(StorageError::custom)?;
-        *locked = Some(commit.index);
+        *locked = Some(commit);
         Ok(())
-    }
-
-    fn update_highest_verified_commit(&self, commit: &VerifiedCommitSummary) -> Result<()> {
-        let mut locked = self.highest_verified_commit.lock();
-        if locked.is_some() && locked.unwrap() >= commit.index {
-            return Ok(());
-        }
-        self.commit_store
-            .update_highest_verified_commit(commit)
-            .map_err(StorageError::custom)?;
-        *locked = Some(commit.index);
-        Ok(())
-    }
-
-    fn insert_commit_contents(
-        &self,
-        commit: &VerifiedCommitSummary,
-        contents: VerifiedCommitContents,
-    ) -> Result<()> {
-        self.cache_traits
-            .state_sync_store
-            .multi_insert_transactions(contents.transactions());
-        self.commit_store
-            .insert_verified_commit_contents(commit, contents)
-            .map_err(Into::into)
     }
 
     fn insert_committee(&self, new_committee: Committee) -> Result<()> {
@@ -252,5 +156,118 @@ impl WriteStore for StateSyncStore {
             .insert_new_committee(new_committee)
             .unwrap();
         Ok(())
+    }
+}
+
+impl ConsensusStore for StateSyncStore {
+    fn write(
+        &self,
+        write_batch: types::storage::consensus::WriteBatch,
+    ) -> types::error::ConsensusResult<()> {
+        self.consensus_store.write(write_batch)
+    }
+
+    fn read_blocks(
+        &self,
+        refs: &[types::consensus::block::BlockRef],
+    ) -> types::error::ConsensusResult<Vec<Option<types::consensus::block::VerifiedBlock>>> {
+        self.consensus_store.read_blocks(refs)
+    }
+
+    fn contains_blocks(
+        &self,
+        refs: &[types::consensus::block::BlockRef],
+    ) -> types::error::ConsensusResult<Vec<bool>> {
+        self.consensus_store.contains_blocks(refs)
+    }
+
+    fn contains_block_at_slot(
+        &self,
+        slot: types::consensus::block::Slot,
+    ) -> types::error::ConsensusResult<bool> {
+        self.consensus_store.contains_block_at_slot(slot)
+    }
+
+    fn scan_blocks_by_author(
+        &self,
+        authority: types::committee::AuthorityIndex,
+        start_round: types::consensus::block::Round,
+    ) -> types::error::ConsensusResult<Vec<types::consensus::block::VerifiedBlock>> {
+        self.consensus_store
+            .scan_blocks_by_author(authority, start_round)
+    }
+
+    fn scan_last_blocks_by_author(
+        &self,
+        author: types::committee::AuthorityIndex,
+        num_of_rounds: u64,
+        before_round: Option<types::consensus::block::Round>,
+    ) -> types::error::ConsensusResult<Vec<types::consensus::block::VerifiedBlock>> {
+        self.consensus_store
+            .scan_last_blocks_by_author(author, num_of_rounds, before_round)
+    }
+
+    fn read_last_commit(
+        &self,
+    ) -> types::error::ConsensusResult<Option<types::consensus::commit::TrustedCommit>> {
+        self.consensus_store.read_last_commit()
+    }
+
+    fn scan_commits(
+        &self,
+        range: types::consensus::commit::CommitRange,
+    ) -> types::error::ConsensusResult<Vec<types::consensus::commit::TrustedCommit>> {
+        self.consensus_store.scan_commits(range)
+    }
+
+    fn read_commit_votes(
+        &self,
+        commit_index: types::consensus::commit::CommitIndex,
+    ) -> types::error::ConsensusResult<Vec<types::consensus::block::BlockRef>> {
+        self.consensus_store.read_commit_votes(commit_index)
+    }
+
+    fn read_last_commit_info(
+        &self,
+    ) -> types::error::ConsensusResult<
+        Option<(
+            types::consensus::commit::CommitRef,
+            types::consensus::commit::CommitInfo,
+        )>,
+    > {
+        self.consensus_store.read_last_commit_info()
+    }
+}
+
+impl AccumulatorStore for StateSyncStore {
+    fn get_root_state_accumulator_for_commit(
+        &self,
+        commit: CommitIndex,
+    ) -> types::error::SomaResult<Option<types::accumulator::Accumulator>> {
+        self.cache_traits
+            .accumulator_store
+            .get_root_state_accumulator_for_commit(commit)
+    }
+
+    fn get_root_state_accumulator_for_highest_commit(
+        &self,
+    ) -> types::error::SomaResult<Option<(CommitIndex, types::accumulator::Accumulator)>> {
+        self.cache_traits
+            .accumulator_store
+            .get_root_state_accumulator_for_highest_commit()
+    }
+
+    fn insert_state_accumulator_for_commit(
+        &self,
+        commit: &CommitIndex,
+        acc: &types::accumulator::Accumulator,
+    ) -> types::error::SomaResult {
+        self.cache_traits
+            .accumulator_store
+            .insert_state_accumulator_for_commit(commit, acc)
+    }
+
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = types::object::LiveObject> + '_> {
+        self.cache_traits.accumulator_store.iter_live_object_set()
     }
 }

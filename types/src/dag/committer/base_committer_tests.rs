@@ -24,6 +24,7 @@ async fn try_direct_commit() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -46,7 +47,7 @@ async fn try_direct_commit() {
     leader_rounds.sort_by(|a, b| b.cmp(a));
     for round in leader_rounds.into_iter() {
         let leader = committer
-            .elect_leader(round)
+            .elect_leader(round, None)
             .expect("should have elected leader");
         tracing::info!("Try direct commit for leader {leader}",);
         let leader_status = committer.try_direct_decide(leader);
@@ -80,6 +81,7 @@ async fn idempotence() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -91,7 +93,7 @@ async fn idempotence() {
     // Commit one leader.
     let leader_round_wave_1 = committer.leader_round(1);
     let leader = committer
-        .elect_leader(leader_round_wave_1)
+        .elect_leader(leader_round_wave_1, None)
         .expect("should have elected leader");
     tracing::info!("Try direct commit for leader {leader}",);
     let leader_status = committer.try_direct_decide(leader);
@@ -124,6 +126,7 @@ async fn multiple_direct_commit() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -142,7 +145,7 @@ async fn multiple_direct_commit() {
         // note: rounds are zero indexed.
         let leader_round = committer.leader_round(n);
         let leader = committer
-            .elect_leader(leader_round)
+            .elect_leader(leader_round, None)
             .expect("should have elected leader");
         tracing::info!("Try direct commit for leader {leader}",);
         let leader_status = committer.try_direct_decide(leader);
@@ -165,6 +168,7 @@ async fn direct_skip() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -180,7 +184,7 @@ async fn direct_skip() {
     // Votes in round 4 will not include the leader of wave 1.
     // Filter out that leader.
     let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
+        .elect_leader(leader_round_wave_1, None)
         .expect("should have elected leader");
     let references_without_leader_wave_1: Vec<_> = references_leader_round_wave_1
         .into_iter()
@@ -217,6 +221,7 @@ async fn indirect_commit() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -231,7 +236,7 @@ async fn indirect_commit() {
 
     // Filter out that leader.
     let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
+        .elect_leader(leader_round_wave_1, None)
         .expect("should have elected leader");
     let references_without_leader_wave_1: Vec<_> = references_leader_round_wave_1
         .iter()
@@ -304,7 +309,7 @@ async fn indirect_commit() {
 
     // Try direct commit leader from wave 2 which should result in Commit
     let leader_wave_2 = committer
-        .elect_leader(committer.leader_round(2))
+        .elect_leader(committer.leader_round(2), None)
         .expect("should have elected leader");
     tracing::info!("Try direct commit for leader {leader_wave_2}");
     let leader_status = committer.try_direct_decide(leader_wave_2);
@@ -359,6 +364,7 @@ async fn indirect_skip() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -373,7 +379,7 @@ async fn indirect_skip() {
 
     // Filter out that leader.
     let leader_wave_2 = committer
-        .elect_leader(leader_round_wave_2)
+        .elect_leader(leader_round_wave_2, None)
         .expect("should have elected leader");
     let references_without_leader_wave_2: Vec<_> = references_leader_round_wave_2
         .iter()
@@ -422,7 +428,7 @@ async fn indirect_skip() {
     // 1. Ensure we commit the leader of wave 3.
     let leader_round_wave_3 = committer.leader_round(3);
     let leader_wave_3 = committer
-        .elect_leader(leader_round_wave_3)
+        .elect_leader(leader_round_wave_3, None)
         .expect("should have elected leader");
     tracing::info!("Try direct commit for leader {leader_wave_3}");
     let leader_status = committer.try_direct_decide(leader_wave_3);
@@ -441,7 +447,7 @@ async fn indirect_skip() {
 
     // 2. Ensure we directly mark leader of wave 2 undecided.
     let leader_wave_2 = committer
-        .elect_leader(leader_round_wave_2)
+        .elect_leader(leader_round_wave_2, None)
         .expect("should have elected leader");
     tracing::info!("Try direct commit for leader {leader_wave_2}");
     let leader_status = committer.try_direct_decide(leader_wave_2);
@@ -467,7 +473,7 @@ async fn indirect_skip() {
     // Ensure we directly commit the leader of wave 1.
     let leader_round_wave_1 = committer.leader_round(1);
     let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
+        .elect_leader(leader_round_wave_1, None)
         .expect("should have elected leader");
     tracing::info!("Try direct commit for leader {leader_wave_1}");
     let leader_status = committer.try_direct_decide(leader_wave_1);
@@ -489,6 +495,7 @@ async fn undecided() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -503,7 +510,7 @@ async fn undecided() {
 
     // Filter out that leader.
     let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
+        .elect_leader(leader_round_wave_1, None)
         .expect("should have elected leader");
     let references_without_leader_wave_1: Vec<_> = references_leader_round_wave_1
         .iter()
@@ -577,6 +584,7 @@ async fn test_byzantine_direct_commit() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
@@ -609,7 +617,7 @@ async fn test_byzantine_direct_commit() {
 
     // Filter out leader from wave 4.
     let leader_wave_4 = committer
-        .elect_leader(leader_round_wave_4)
+        .elect_leader(leader_round_wave_4, None)
         .expect("should have elected leader");
 
     // B12 C12 D12

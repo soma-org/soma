@@ -17,6 +17,10 @@ fastcrypto.workspace = true
 bcs.workspace = true
 tap.workspace = true
 anyhow.workspace = true
+tokio-stream.workspace = true
+bytes.workspace = true
+eyre.workspace = true
+itertools.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

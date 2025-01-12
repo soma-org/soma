@@ -46,10 +46,10 @@ use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::state_accumulator::StateAccumulator;
 use crate::{
-    client::NetworkAuthorityClient, committee_store::CommitteeStore,
-    epoch_store::AuthorityPerEpochStore, start_epoch::EpochStartConfiguration,
-    tx_manager::TransactionManager,
+    client::NetworkAuthorityClient, epoch_store::AuthorityPerEpochStore,
+    start_epoch::EpochStartConfiguration, tx_manager::TransactionManager,
 };
+use types::storage::committee_store::CommitteeStore;
 
 /// a Trait object for `Signer` that is:
 /// - Pin, i.e. confined to one place in memory (we don't want to copy private keys).

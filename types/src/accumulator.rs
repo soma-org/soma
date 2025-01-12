@@ -5,7 +5,7 @@ use crate::{
 };
 
 pub type Accumulator = fastcrypto::hash::EllipticCurveMultisetHash;
-pub type CommitIndex = u64;
+pub type CommitIndex = crate::consensus::commit::CommitIndex;
 pub trait AccumulatorStore: ObjectStore + Send + Sync {
     fn get_root_state_accumulator_for_commit(
         &self,

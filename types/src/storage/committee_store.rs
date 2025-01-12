@@ -4,11 +4,11 @@ use std::{
     sync::Arc,
 };
 
-use parking_lot::RwLock;
-use types::{
+use crate::{
     committee::{Committee, EpochId},
     error::{SomaError, SomaResult},
 };
+use parking_lot::RwLock;
 
 pub struct CommitteeStore {
     tables: RwLock<CommitteeStoreTables>,

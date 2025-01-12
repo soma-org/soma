@@ -1,27 +1,29 @@
 use std::{sync::Arc, time::Duration};
 
+use crate::committee::Epoch;
+use crate::crypto::{AuthoritySignInfoTrait, VerificationObligation};
+use crate::envelope::Message;
+use crate::storage::read_store::ReadStore;
+use crate::transaction::verify_sender_signed_data_message_signatures;
+use crate::{
+    committee::{Committee, EpochId},
+    error::{SomaError, SomaResult},
+    intent::Intent,
+    transaction::{CertifiedTransaction, SenderSignedData, VerifiedCertificate},
+};
 use futures::{future::Either, pin_mut};
 use itertools::izip;
 use nonempty::NonEmpty;
 use parking_lot::{Mutex, MutexGuard};
 use tokio::{runtime::Handle, sync::oneshot, time::timeout};
 use tracing::info;
-use types::crypto::{AuthoritySignInfoTrait, VerificationObligation};
-use types::envelope::Message;
-use types::transaction::verify_sender_signed_data_message_signatures;
-use types::{
-    committee::{Committee, EpochId},
-    error::{SomaError, SomaResult},
-    intent::Intent,
-    transaction::{CertifiedTransaction, SenderSignedData, VerifiedCertificate},
-};
 // Maximum amount of time we wait for a batch to fill up before verifying a partial batch.
 const BATCH_TIMEOUT_MS: Duration = Duration::from_millis(10);
 
 // Maximum size of batch to verify. Increasing this value will slightly improve CPU utilization
 // (batching starts to hit steeply diminishing marginal returns around batch sizes of 16), at the
 // cost of slightly increasing latency (BATCH_TIMEOUT_MS will be hit more frequently if system is
-// not heavily loaded).
+// not heavily loaded).s
 const MAX_BATCH_SIZE: usize = 8;
 
 type Sender = oneshot::Sender<SomaResult<VerifiedCertificate>>;
@@ -71,40 +73,66 @@ impl CertBuffer {
 /// - User signed data - caching.
 pub struct SignatureVerifier {
     committee: Arc<Committee>,
+
+    committee_store: Option<Arc<dyn ReadStore>>,
     // certificate_cache: VerifiedDigestCache<CertificateDigest>,
     // signed_data_cache: VerifiedDigestCache<SenderSignedDataDigest>,
     queue: Mutex<CertBuffer>,
 }
 
 impl SignatureVerifier {
-    pub fn new_with_batch_size(committee: Arc<Committee>, batch_size: usize) -> Self {
+    pub fn new_with_batch_size(
+        committee: Arc<Committee>,
+        batch_size: usize,
+        committee_store: Option<Arc<dyn ReadStore>>,
+    ) -> Self {
         Self {
             committee,
             queue: Mutex::new(CertBuffer::new(batch_size)),
+            committee_store,
         }
     }
 
-    pub fn new(committee: Arc<Committee>) -> Self {
-        Self::new_with_batch_size(committee, MAX_BATCH_SIZE)
+    pub fn new(committee: Arc<Committee>, committee_store: Option<Arc<dyn ReadStore>>) -> Self {
+        Self::new_with_batch_size(committee, MAX_BATCH_SIZE, committee_store)
+    }
+
+    pub fn get_committee(&self, epoch: EpochId) -> Arc<Committee> {
+        if let Some(committee_store) = &self.committee_store {
+            if let Ok(Some(committee)) = committee_store.get_committee(epoch) {
+                committee
+            } else {
+                self.committee.clone()
+            }
+        } else {
+            self.committee.clone()
+        }
     }
 
     /// Verifies all certs, returns Ok only if all are valid.
-    pub fn verify_certs(&self, certs: Vec<CertifiedTransaction>) -> SomaResult {
+    pub fn verify_certs(
+        &self,
+        certs: Vec<CertifiedTransaction>,
+        epoch: Option<Epoch>,
+    ) -> SomaResult {
         let certs: Vec<_> = certs.into_iter().collect();
 
         // Verify only the user sigs of certificates that were not cached already, since whenever we
         // insert a certificate into the cache, it is already verified.
         for cert in &certs {
-            self.verify_tx(cert.data())?;
+            self.verify_tx(cert.data(), epoch.unwrap_or_else(|| self.committee.epoch()))?;
         }
-        batch_verify(&self.committee, &certs)?;
+
+        let committee = self.get_committee(epoch.unwrap_or_else(|| self.committee.epoch()));
+
+        batch_verify(&committee, &certs)?;
         Ok(())
     }
 
     /// Verifies one cert asynchronously, in a batch.
     pub async fn verify_cert(&self, cert: CertifiedTransaction) -> SomaResult<VerifiedCertificate> {
         let cert_digest = cert.certificate_digest();
-        self.verify_tx(cert.data())?;
+        self.verify_tx(cert.data(), cert.epoch())?;
         self.verify_cert_skip_cache(cert).await
     }
 
@@ -128,9 +156,10 @@ impl SignatureVerifier {
     ) -> SomaResult<VerifiedCertificate> {
         // this is the only innocent error we are likely to encounter - filter it before we poison
         // a whole batch.
-        if cert.auth_sig().epoch != self.committee.epoch() {
+        let committee = self.get_committee(cert.epoch());
+        if cert.auth_sig().epoch != committee.epoch() {
             return Err(SomaError::WrongEpoch {
-                expected_epoch: self.committee.epoch(),
+                expected_epoch: committee.epoch(),
                 actual_epoch: cert.auth_sig().epoch,
             });
         }
@@ -217,8 +246,8 @@ impl SignatureVerifier {
         });
     }
 
-    pub fn verify_tx(&self, signed_tx: &SenderSignedData) -> SomaResult {
-        verify_sender_signed_data_message_signatures(signed_tx, self.committee.epoch())
+    pub fn verify_tx(&self, signed_tx: &SenderSignedData, epoch: EpochId) -> SomaResult {
+        verify_sender_signed_data_message_signatures(signed_tx, epoch)
     }
 }
 

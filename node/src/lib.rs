@@ -59,7 +59,7 @@ use types::{
     peer_id::PeerId,
     protocol::ProtocolConfig,
     quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
-    storage::write_store::WriteStore,
+    storage::{consensus::mem_store::MemStore, write_store::WriteStore},
     system_state::{
         EpochStartSystemState, EpochStartSystemStateTrait, SystemState, SystemStateTrait,
     },
@@ -188,11 +188,15 @@ impl SomaNode {
         //     &epoch_store,
         // );
 
+        info!("creating long term consensus store");
+        let consensus_store = Arc::new(MemStore::new());
+
         info!("creating state sync store");
         let state_sync_store = StateSyncStore::new(
             cache_traits.clone(),
             committee_store.clone(),
             commit_store.clone(),
+            consensus_store.clone(),
         );
 
         // let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());

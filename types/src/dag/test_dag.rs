@@ -98,7 +98,7 @@ pub struct DagBuilder {
 #[allow(unused)]
 impl DagBuilder {
     pub fn new(context: Arc<Context>) -> Self {
-        let leader_schedule = LeaderSchedule::new(context.clone());
+        let leader_schedule = LeaderSchedule::new(context.clone(), None);
         let genesis_blocks = genesis_blocks(context.clone());
         let genesis: BTreeMap<BlockRef, VerifiedBlock> = genesis_blocks
             .into_iter()
@@ -141,6 +141,7 @@ impl DagBuilder {
 
         let timestamp_ms = leader_block.timestamp_ms();
         let leader_block_ref = leader_block.reference();
+        let epoch = leader_block.epoch();
         let mut buffer = vec![leader_block];
         assert!(committed.insert(leader_block_ref));
         while let Some(x) = buffer.pop() {
@@ -176,6 +177,7 @@ impl DagBuilder {
                 .iter()
                 .map(|block| block.reference())
                 .collect::<Vec<_>>(),
+            epoch,
         );
 
         let sub_dag = CommittedSubDag::new(
@@ -208,7 +210,7 @@ impl DagBuilder {
             .iter()
             .find(|(block_ref, block)| {
                 block_ref.round == round
-                    && block_ref.author == self.leader_schedule.elect_leader(round, 0)
+                    && block_ref.author == self.leader_schedule.elect_leader(round, 0, None)
             })
             .map(|(_block_ref, block)| block.clone())
     }
@@ -547,11 +549,11 @@ impl<'a> LayerBuilder<'a> {
             let leader_offsets = (0..self.dag_builder.number_of_leaders).collect::<Vec<_>>();
 
             for leader_offset in leader_offsets {
-                leaders.push(
-                    self.dag_builder
-                        .leader_schedule
-                        .elect_leader(leader_round, leader_offset),
-                );
+                leaders.push(self.dag_builder.leader_schedule.elect_leader(
+                    leader_round,
+                    leader_offset,
+                    None,
+                ));
             }
         }
 
@@ -606,11 +608,11 @@ impl<'a> LayerBuilder<'a> {
         }
 
         for leader_offset in specified_leader_offsets {
-            missing_leaders.push(
-                self.dag_builder
-                    .leader_schedule
-                    .elect_leader(leader_round, leader_offset),
-            );
+            missing_leaders.push(self.dag_builder.leader_schedule.elect_leader(
+                leader_round,
+                leader_offset,
+                None,
+            ));
         }
 
         self.configure_skipped_ancestor_links(authorities, missing_leaders)
@@ -711,10 +713,10 @@ impl<'a> LayerBuilder<'a> {
             }
 
             for leader_offset in specified_leader_offsets {
-                let leader = self
-                    .dag_builder
-                    .leader_schedule
-                    .elect_leader(round, leader_offset);
+                let leader =
+                    self.dag_builder
+                        .leader_schedule
+                        .elect_leader(round, leader_offset, None);
 
                 if leader == authority {
                     return true;

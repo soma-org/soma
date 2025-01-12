@@ -1,3 +1,10 @@
+use crate::{
+    aggregator::{
+        AggregatorProcessCertificateError, AggregatorProcessTransactionError, AuthorityAggregator,
+        ProcessTransactionResult,
+    },
+    client::{AuthorityAPI, NetworkAuthorityClient},
+};
 use arc_swap::ArcSwap;
 use std::fmt::Write;
 use std::{
@@ -19,6 +26,7 @@ use tokio::{
 };
 use tonic::async_trait;
 use tracing::{debug, error, info, instrument, trace_span, warn};
+use types::storage::committee_store::CommitteeStore;
 use types::system_state::EpochStartSystemStateTrait;
 use types::{
     base::AuthorityName,
@@ -34,15 +42,6 @@ use types::{
     transaction::{CertifiedTransaction, Transaction},
 };
 use utils::notify_read::{NotifyRead, Registration};
-
-use crate::{
-    aggregator::{
-        AggregatorProcessCertificateError, AggregatorProcessTransactionError, AuthorityAggregator,
-        ProcessTransactionResult,
-    },
-    client::{AuthorityAPI, NetworkAuthorityClient},
-    committee_store::CommitteeStore,
-};
 
 const TASK_QUEUE_SIZE: usize = 2000;
 const EFFECTS_QUEUE_SIZE: usize = 10000;

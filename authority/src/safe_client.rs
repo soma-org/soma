@@ -1,6 +1,8 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use crate::client::AuthorityAPI;
 use tracing::debug;
+use types::storage::committee_store::CommitteeStore;
 use types::{
     committee::{Committee, EpochId},
     crypto::AuthorityPublicKeyBytes,
@@ -11,8 +13,6 @@ use types::{
     quorum_driver::PlainTransactionInfoResponse,
     transaction::{CertifiedTransaction, SignedTransaction, Transaction},
 };
-
-use crate::{client::AuthorityAPI, committee_store::CommitteeStore};
 
 #[derive(Clone)]
 pub struct SafeClient<C>

@@ -37,7 +37,6 @@ impl SuspendedBlock {
 /// history we need to make sure that BlockManager takes care of that and avoid OOM (Out Of Memory)
 /// situations.
 pub struct BlockManager {
-    context: Arc<Context>,
     dag_state: Arc<RwLock<DagState>>,
     block_verifier: Arc<dyn BlockVerifier>,
 
@@ -55,13 +54,8 @@ pub struct BlockManager {
 }
 
 impl BlockManager {
-    pub fn new(
-        context: Arc<Context>,
-        dag_state: Arc<RwLock<DagState>>,
-        block_verifier: Arc<dyn BlockVerifier>,
-    ) -> Self {
+    pub fn new(dag_state: Arc<RwLock<DagState>>, block_verifier: Arc<dyn BlockVerifier>) -> Self {
         Self {
-            context,
             dag_state,
             block_verifier,
             suspended_blocks: BTreeMap::new(),
@@ -327,10 +321,13 @@ mod tests {
         let (context, _key_pairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
 
-        let mut block_manager =
-            BlockManager::new(context.clone(), dag_state, Arc::new(NoopBlockVerifier));
+        let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
         // create a DAG
         let mut dag_builder = DagBuilder::new(context.clone());
@@ -380,10 +377,13 @@ mod tests {
         let (context, _key_pairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
 
-        let mut block_manager =
-            BlockManager::new(context.clone(), dag_state, Arc::new(NoopBlockVerifier));
+        let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
         // create a DAG
         let mut dag_builder = DagBuilder::new(context.clone());
@@ -421,10 +421,13 @@ mod tests {
         let (context, _key_pairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
 
-        let mut block_manager =
-            BlockManager::new(context.clone(), dag_state, Arc::new(NoopBlockVerifier));
+        let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
         // create a DAG of 2 rounds
         let mut dag_builder = DagBuilder::new(context.clone());
@@ -471,10 +474,13 @@ mod tests {
             all_blocks.shuffle(&mut StdRng::from_seed([seed; 32]));
 
             let store = Arc::new(MemStore::new());
-            let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+            let dag_state = Arc::new(RwLock::new(DagState::new(
+                context.clone(),
+                store.clone(),
+                None,
+            )));
 
-            let mut block_manager =
-                BlockManager::new(context.clone(), dag_state, Arc::new(NoopBlockVerifier));
+            let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
             // WHEN
             let mut all_accepted_blocks = vec![];
@@ -550,9 +556,12 @@ mod tests {
 
         // Create BlockManager.
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-        let mut block_manager =
-            BlockManager::new(context.clone(), dag_state, Arc::new(test_verifier));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
+        let mut block_manager = BlockManager::new(dag_state, Arc::new(test_verifier));
 
         // Try to accept blocks from round 2 ~ 5 into block manager. All of them should be suspended.
         let (accepted_blocks, missing_refs) = block_manager.try_accept_blocks(

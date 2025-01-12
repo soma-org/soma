@@ -19,24 +19,6 @@ fn main() -> Result<()> {
         )
         .method(
             Method::builder()
-                .name("get_commit_summary")
-                .route_name("GetCommitSummary")
-                .input_type("types::state_sync::GetCommitSummaryRequest")
-                .output_type("Option<types::state_sync::CertifiedCommitSummary>")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            Method::builder()
-                .name("get_commit_contents")
-                .route_name("GetCommitContents")
-                .input_type("types::digests::CommitContentsDigest")
-                .output_type("Option<types::state_sync::FullCommitContents>")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            Method::builder()
                 .name("get_commit_availability")
                 .route_name("GetCommitAvailability")
                 .input_type("types::state_sync::GetCommitAvailabilityRequest")
@@ -44,12 +26,31 @@ fn main() -> Result<()> {
                 .codec_path(codec_path)
                 .build(),
         )
+        // .method(
+        //     Method::builder()
+        //         .name("push_commit_summary")
+        //         .route_name("PushCommitSummary")
+        //         .input_type("types::state_sync::CertifiedCommitSummary")
+        //         .output_type("types::state_sync::PushCommitSummaryResponse")
+        //         .codec_path(codec_path)
+        //         .build(),
+        // )
         .method(
-            Method::builder()
-                .name("push_commit_summary")
-                .route_name("PushCommitSummary")
-                .input_type("types::state_sync::CertifiedCommitSummary")
-                .output_type("types::state_sync::PushCommitSummaryResponse")
+            tonic_build::manual::Method::builder()
+                .name("fetch_blocks")
+                .route_name("FetchBlocks")
+                .input_type("types::state_sync::FetchBlocksRequest")
+                .output_type("types::state_sync::FetchBlocksResponse")
+                .codec_path(codec_path)
+                .server_streaming()
+                .build(),
+        )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("fetch_commits")
+                .route_name("FetchCommits")
+                .input_type("types::state_sync::FetchCommitsRequest")
+                .output_type("types::state_sync::FetchCommitsResponse")
                 .codec_path(codec_path)
                 .build(),
         )

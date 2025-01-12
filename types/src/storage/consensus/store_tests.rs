@@ -1,4 +1,4 @@
-use super::{mem_store::MemStore, Store, WriteBatch};
+use super::{mem_store::MemStore, ConsensusStore, WriteBatch};
 use crate::committee::AuthorityIndex;
 use crate::consensus::{
     block::{BlockAPI as _, BlockDigest, BlockRef, Slot, TestBlock, VerifiedBlock},
@@ -12,7 +12,7 @@ enum TestStore {
 }
 
 impl TestStore {
-    fn store(&self) -> &dyn Store {
+    fn store(&self) -> &dyn ConsensusStore {
         match self {
             // TestStore::RocksDB((store, _)) => store,
             TestStore::Mem(store) => store,
@@ -214,6 +214,7 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             1,
             BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::default()),
             vec![],
+            0,
         ),
         TrustedCommit::new_for_test(
             2,
@@ -221,6 +222,7 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             2,
             BlockRef::new(2, AuthorityIndex::new_for_test(0), BlockDigest::default()),
             vec![],
+            0,
         ),
         TrustedCommit::new_for_test(
             3,
@@ -228,6 +230,7 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             3,
             BlockRef::new(3, AuthorityIndex::new_for_test(0), BlockDigest::default()),
             vec![],
+            0,
         ),
         TrustedCommit::new_for_test(
             4,
@@ -235,6 +238,7 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             4,
             BlockRef::new(4, AuthorityIndex::new_for_test(0), BlockDigest::default()),
             vec![],
+            0,
         ),
     ];
     store

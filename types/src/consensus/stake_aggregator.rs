@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, marker::PhantomData};
 
-use crate::committee::{AuthorityIndex, ConsensusCommittee as Committee, Stake};
+use crate::committee::{AuthorityIndex, Committee, Stake};
 
 pub(crate) trait CommitteeThreshold {
     fn is_threshold(committee: &Committee, amount: Stake) -> bool;
@@ -42,7 +42,7 @@ impl<T: CommitteeThreshold> StakeAggregator<T> {
     /// been reached.
     pub fn add(&mut self, vote: AuthorityIndex, committee: &Committee) -> bool {
         if self.votes.insert(vote) {
-            self.stake += committee.stake(vote);
+            self.stake += committee.stake_by_index(vote);
         }
         T::is_threshold(committee, self.stake)
     }

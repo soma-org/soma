@@ -366,6 +366,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
                         .network_client
                         .fetch_blocks(
                             target_authority,
+                            inner.context.committee.epoch(),
                             request_block_refs.to_vec(),
                             vec![],
                             FETCH_BLOCKS_TIMEOUT,
@@ -374,7 +375,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
                     // 5. Verify the same number of blocks are returned as requested.
                     if request_block_refs.len() != serialized_blocks.len() {
                         return Err(ConsensusError::UnexpectedNumberOfBlocksFetched {
-                            authority: target_authority,
+                            peer: target_authority.to_string(),
                             requested: request_block_refs.len(),
                             received: serialized_blocks.len(),
                         });
@@ -404,7 +405,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
                         );
                         if *requested_block_ref != received_block_ref {
                             return Err(ConsensusError::UnexpectedBlockForCommit {
-                                peer: target_authority,
+                                peer: target_authority.value().to_string(),
                                 requested: *requested_block_ref,
                                 received: received_block_ref,
                             });
@@ -428,7 +429,12 @@ impl<C: NetworkClient> CommitSyncer<C> {
             if forward_drift == 0 {
                 continue;
             };
-            let peer_hostname = &inner.context.committee.authority(target_authority).hostname;
+            let peer_hostname = &inner
+                .context
+                .committee
+                .authority_by_authority_index(target_authority)
+                .unwrap()
+                .hostname;
 
             let forward_drift = Duration::from_millis(forward_drift);
             if forward_drift >= inner.context.parameters.max_forward_time_drift {
@@ -523,7 +529,7 @@ impl<C: NetworkClient> Inner<C> {
                 // start is inclusive, so first commit must be at the start index.
                 if commit.index() != commit_range.start() {
                     return Err(ConsensusError::UnexpectedStartCommit {
-                        peer,
+                        peer: peer.value().to_string(),
                         start: commit_range.start(),
                         commit: Box::new(commit),
                     });
@@ -536,7 +542,7 @@ impl<C: NetworkClient> Inner<C> {
                     || &commit.previous_digest() != last_commit_digest
                 {
                     return Err(ConsensusError::UnexpectedCommitSequence {
-                        peer,
+                        peer: peer.value().to_string(),
                         prev_commit: Box::new(last_commit.clone()),
                         curr_commit: Box::new(commit),
                     });
@@ -549,7 +555,9 @@ impl<C: NetworkClient> Inner<C> {
             commits.push((digest, commit));
         }
         let Some((end_commit_digest, end_commit)) = commits.last() else {
-            return Err(ConsensusError::NoCommitReceived { peer });
+            return Err(ConsensusError::NoCommitReceived {
+                peer: peer.value().to_string(),
+            });
         };
 
         // Parse and verify blocks. Then accumulate votes on the end commit.
@@ -571,7 +579,7 @@ impl<C: NetworkClient> Inner<C> {
         if !stake_aggregator.reached_threshold(&self.context.committee) {
             return Err(ConsensusError::NotEnoughCommitVotes {
                 stake: stake_aggregator.stake(),
-                peer,
+                peer: peer.value().to_string(),
                 commit: Box::new(end_commit.clone()),
             });
         }

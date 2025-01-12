@@ -311,7 +311,7 @@ impl fmt::Debug for Slot {
 ///
 /// Note: `BlockDigest` is computed over this struct, so any added field (without `#[serde(skip)]`)
 /// will affect the values of `BlockDigest` and `BlockRef`.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct SignedBlock {
     inner: Block,
     signature: Bytes,
@@ -350,7 +350,9 @@ impl SignedBlock {
                 max: committee.size() - 1
             }
         );
-        let authority = committee.authority(block.author());
+        let authority = committee
+            .authority_by_authority_index(block.author())
+            .unwrap();
         verify_block_signature(block, self.signature(), &authority.protocol_key)
     }
 

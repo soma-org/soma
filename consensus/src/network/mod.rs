@@ -2,7 +2,7 @@ use bytes::Bytes;
 use std::sync::Arc;
 use std::time::Duration;
 use tonic::async_trait;
-use types::committee::AuthorityIndex;
+use types::committee::{AuthorityIndex, Epoch};
 use types::crypto::NetworkKeyPair;
 use types::{
     consensus::{
@@ -42,6 +42,7 @@ pub(crate) trait NetworkClient: Send + Sync + Sized + 'static {
     async fn fetch_blocks(
         &self,
         peer: AuthorityIndex,
+        epoch: Epoch,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
         timeout: Duration,

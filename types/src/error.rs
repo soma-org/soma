@@ -12,6 +12,7 @@ use crate::consensus::{
     commit::{Commit, CommitIndex},
 };
 
+use crate::crypto::NetworkPublicKey;
 use crate::{
     base::AuthorityName,
     committee::{Committee, EpochId, VotingPower},
@@ -211,6 +212,9 @@ pub enum SomaError {
 
     #[error("Peer {0} not found")]
     PeerNotFound(PeerId),
+
+    #[error("Consensus error: {0}")]
+    Consensus(String),
 }
 
 impl From<Status> for SomaError {
@@ -249,6 +253,12 @@ impl From<&str> for SomaError {
         SomaError::GenericAuthorityError {
             error: error.to_string(),
         }
+    }
+}
+
+impl From<ConsensusError> for SomaError {
+    fn from(e: ConsensusError) -> Self {
+        Self::Consensus(e.to_string())
     }
 }
 
@@ -346,13 +356,13 @@ pub enum ConsensusError {
     MalformedCommit(bcs::Error),
 
     #[error("Received no commit from peer {peer}")]
-    NoCommitReceived { peer: AuthorityIndex },
+    NoCommitReceived { peer: String },
 
     #[error(
         "Received unexpected start commit from peer {peer}: requested {start}, received {commit:?}"
     )]
     UnexpectedStartCommit {
-        peer: AuthorityIndex,
+        peer: String,
         start: CommitIndex,
         commit: Box<Commit>,
     },
@@ -361,26 +371,27 @@ pub enum ConsensusError {
         "Received unexpected commit sequence from peer {peer}: {prev_commit:?}, {curr_commit:?}"
     )]
     UnexpectedCommitSequence {
-        peer: AuthorityIndex,
+        peer: String,
         prev_commit: Box<Commit>,
         curr_commit: Box<Commit>,
     },
 
-    #[error(
-        "Expected {requested} but received {received} blocks returned from authority {authority}"
-    )]
+    #[error("Expected {requested} but received {received} blocks returned from peer {peer}")]
     UnexpectedNumberOfBlocksFetched {
-        authority: AuthorityIndex,
+        peer: String,
         requested: usize,
         received: usize,
     },
 
     #[error("Received unexpected block from peer {peer}: {requested:?} vs {received:?}")]
     UnexpectedBlockForCommit {
-        peer: AuthorityIndex,
+        peer: String,
         requested: BlockRef,
         received: BlockRef,
     },
+
+    #[error("Received no blocks from peer's commit {peer}: {commit:?}")]
+    NoBlocksForCommit { peer: String, commit: Box<Commit> },
 
     #[error("No available authority to fetch commits")]
     NoAvailableAuthorityToFetchCommits,
@@ -388,7 +399,7 @@ pub enum ConsensusError {
     #[error("Not enough votes ({stake}) on end commit from peer {peer}: {commit:?}")]
     NotEnoughCommitVotes {
         stake: Stake,
-        peer: AuthorityIndex,
+        peer: String,
         commit: Box<Commit>,
     },
 
@@ -484,9 +495,21 @@ pub enum ConsensusError {
         expected: Digest<32>,
         actual: Digest<32>,
     },
+
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    #[error("No committee for epoch: {0}")]
+    NoCommitteeForEpoch(Epoch),
 }
 
 pub type ConsensusResult<T> = Result<T, ConsensusError>;
+
+impl From<crate::storage::storage_error::Error> for ConsensusError {
+    fn from(e: crate::storage::storage_error::Error) -> Self {
+        Self::Storage(e.to_string())
+    }
+}
 
 #[macro_export]
 macro_rules! bail {

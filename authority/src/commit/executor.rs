@@ -11,12 +11,7 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::{
-    accumulator::CommitIndex,
-    digests::TransactionDigest,
-    effects::TransactionEffects,
-    error::SomaResult,
-    state_sync::VerifiedCommitSummary,
-    transaction::{VerifiedExecutableTransaction, VerifiedTransaction},
+    accumulator::CommitIndex, consensus::commit::CommittedSubDag, digests::TransactionDigest, effects::TransactionEffects, error::SomaResult, state_sync::VerifiedCommitSummary, transaction::{VerifiedExecutableTransaction, VerifiedTransaction}
 };
 
 use crate::{
@@ -29,13 +24,13 @@ use crate::{
 use super::CommitStore;
 
 /// The interval to log commit progress, in # of commits processed.
-const COMMIT_PROGRESS_LOG_COUNT_INTERVAL: u64 = 5000;
+const COMMIT_PROGRESS_LOG_COUNT_INTERVAL: u32 = 5000;
 
 type CommitExecutionBuffer =
     FuturesOrdered<JoinHandle<(VerifiedCommitSummary, Vec<TransactionDigest>)>>;
 
 pub struct CommitExecutor {
-    mailbox: broadcast::Receiver<VerifiedCommitSummary>,
+    mailbox: broadcast::Receiver<CommittedSubDag>,
     commit_store: Arc<CommitStore>,
     state: Arc<AuthorityState>,
     object_cache_reader: Arc<dyn ObjectCacheRead>,
@@ -51,7 +46,7 @@ pub enum StopReason {
 
 impl CommitExecutor {
     pub fn new(
-        mailbox: broadcast::Receiver<VerifiedCommitSummary>,
+        mailbox: broadcast::Receiver<CommittedSubDag>,
         commit_store: Arc<CommitStore>,
         state: Arc<AuthorityState>,
     ) -> Self {
@@ -152,7 +147,7 @@ impl CommitExecutor {
                 received = self.mailbox.recv() => match received {
                     Ok(commit) => {
                         info!(
-                            index = ?commit.index,
+                            index = ?commit.commit_ref.index,
                             "Received commit summary from state sync"
                         );
                     },
@@ -441,7 +436,7 @@ impl CommitExecutor {
 
         // We store a fixed number of additional FullCommitContents after execution is complete
         // for use in state sync.
-        const NUM_SAVED_FULL_COMMIT_CONTENTS: u64 = 5_000;
+        const NUM_SAVED_FULL_COMMIT_CONTENTS: u32 = 5_000;
         if index >= NUM_SAVED_FULL_COMMIT_CONTENTS {
             let prune_index = index - NUM_SAVED_FULL_COMMIT_CONTENTS;
             if let Some(prune_commit) = self

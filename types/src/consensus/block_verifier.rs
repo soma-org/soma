@@ -7,6 +7,8 @@ use super::block::{
 use super::context::Context;
 use super::transaction::TransactionVerifier;
 use crate::accumulator::{self, AccumulatorStore};
+use crate::committee::{Committee, EpochId};
+use crate::storage::read_store::ReadStore;
 use fastcrypto::hash::MultisetHash;
 use tokio::task::watch::error;
 use tracing::{error, info};
@@ -37,6 +39,7 @@ pub trait BlockVerifier: Send + Sync + 'static {
 /// be accepted into the DAG.
 pub struct SignedBlockVerifier {
     context: Arc<Context>,
+    committee_store: Option<Arc<dyn ReadStore>>,
     genesis: BTreeSet<BlockRef>,
     transaction_verifier: Arc<dyn TransactionVerifier>,
     accumulator_store: Arc<dyn AccumulatorStore>,
@@ -47,6 +50,7 @@ impl SignedBlockVerifier {
         context: Arc<Context>,
         transaction_verifier: Arc<dyn TransactionVerifier>,
         accumulator_store: Arc<dyn AccumulatorStore>,
+        committee_store: Option<Arc<dyn ReadStore>>,
     ) -> Self {
         let genesis = genesis_blocks(context.clone())
             .into_iter()
@@ -57,6 +61,19 @@ impl SignedBlockVerifier {
             genesis,
             transaction_verifier,
             accumulator_store,
+            committee_store,
+        }
+    }
+
+    pub fn get_committee(&self, epoch: EpochId) -> Arc<Committee> {
+        if let Some(committee_store) = &self.committee_store {
+            if let Ok(Some(committee)) = committee_store.get_committee(epoch) {
+                committee
+            } else {
+                Arc::new(self.context.committee.clone())
+            }
+        } else {
+            Arc::new(self.context.committee.clone())
         }
     }
 }
@@ -64,7 +81,7 @@ impl SignedBlockVerifier {
 // All block verification logic are implemented below.
 impl BlockVerifier for SignedBlockVerifier {
     fn verify(&self, block: &SignedBlock) -> ConsensusResult<()> {
-        let committee = &self.context.committee;
+        let committee = self.get_committee(block.epoch());
         // The block must belong to the current epoch and have valid authority index,
         // before having its signature verified.
         if block.epoch() != committee.epoch() {
@@ -162,7 +179,7 @@ impl BlockVerifier for SignedBlockVerifier {
             seen_ancestors[ancestor.author] = true;
             // Block must have round >= 1 so checked_sub(1) should be safe.
             if ancestor.round == block.round().checked_sub(1).unwrap() {
-                parent_stakes += committee.stake(ancestor.author);
+                parent_stakes += committee.stake_by_index(ancestor.author);
             }
         }
         if !committee.reached_quorum(parent_stakes) {
@@ -175,7 +192,7 @@ impl BlockVerifier for SignedBlockVerifier {
         // TODO: check transaction size, total size and count.
         let batch: Vec<_> = block.transactions().iter().map(|t| t.data()).collect();
         self.transaction_verifier
-            .verify_batch(&batch)
+            .verify_batch(&batch, Some(block.epoch()))
             .map_err(|e| ConsensusError::InvalidTransaction(format!("{e:?}")))
     }
 

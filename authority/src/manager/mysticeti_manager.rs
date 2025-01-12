@@ -74,7 +74,7 @@ impl ConsensusManagerTrait for MysticetiManager {
         tx_validator: TxValidator,
     ) {
         let system_state = epoch_store.epoch_start_state();
-        let committee = system_state.get_mysticeti_committee();
+        let committee = system_state.get_committee();
         let epoch = epoch_store.epoch();
         let protocol_config = epoch_store.protocol_config();
 

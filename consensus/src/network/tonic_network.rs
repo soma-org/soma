@@ -17,10 +17,9 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::network::tonic_gen::consensus_service_server::ConsensusServiceServer;
 use types::{
-    consensus:: {
-        block::{BlockRef, VerifiedBlock, Round}, commit::{CommitRange, CommitIndex}, context::Context,
-    },
-    error::{ConsensusError, ConsensusResult}
+    committee::Epoch, consensus:: {
+        block::{BlockRef, Round, VerifiedBlock}, commit::{CommitIndex, CommitRange}, context::Context,
+    }, error::{ConsensusError, ConsensusResult}, state_sync::{FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse}
 };
 use types::tls::{create_rustls_client_config, create_rustls_server_config, public_key_from_certificate, AllowedPublicKeys};
 use types::committee::AuthorityIndex;
@@ -104,12 +103,14 @@ impl NetworkClient for TonicClient {
     async fn fetch_blocks(
         &self,
         peer: AuthorityIndex,
+        epoch: Epoch,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>> {
         let mut client = self.get_client(peer, timeout).await?;
         let mut request = Request::new(FetchBlocksRequest {
+            epoch,
             block_refs: block_refs
                 .iter()
                 .filter_map(|r| match bcs::to_bytes(r) {
@@ -293,7 +294,7 @@ impl ChannelPool {
             }
         }
 
-        let authority = self.context.committee.authority(peer);
+        let authority = self.context.committee.authority_by_authority_index(peer).unwrap();
         let address = to_host_port_str(&authority.address).map_err(|e| {
             ConsensusError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
@@ -307,7 +308,7 @@ impl ChannelPool {
             .unwrap();
 
         let client_tls_config = create_rustls_client_config(self.context.committee
-                .authority(peer)
+                .authority_by_authority_index(peer).unwrap()
                 .network_key
                 .clone()
                 .into_inner(),certificate_server_name(&self.context), network_keypair);
@@ -538,7 +539,7 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
 
         let own_index = self.context.own_index.expect("Own index not found");
 
-        let authority = self.context.committee.authority(own_index);
+        let authority = self.context.committee.authority_by_authority_index(own_index).unwrap();
         // By default, bind to the unspecified address to allow the actual address to be assigned.
         // But bind to localhost if it is requested.
         // let own_address = if authority.address.is_localhost_ip() {
@@ -801,41 +802,6 @@ pub(crate) struct SendBlockRequest {
 
 #[derive(Clone, prost::Message)]
 pub(crate) struct SendBlockResponse {}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct FetchBlocksRequest {
-    #[prost(bytes = "vec", repeated, tag = "1")]
-    block_refs: Vec<Vec<u8>>,
-    // The highest accepted round per authority. The vector represents the round for each authority
-    // and its length should be the same as the committee size.
-    #[prost(uint32, repeated, tag = "2")]
-    highest_accepted_rounds: Vec<Round>,
-}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct FetchBlocksResponse {
-    // The response of the requested blocks as Serialized SignedBlock.
-    #[prost(bytes = "bytes", repeated, tag = "1")]
-    blocks: Vec<Bytes>,
-}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct FetchCommitsRequest {
-    #[prost(uint32, tag = "1")]
-    start: CommitIndex,
-    #[prost(uint32, tag = "2")]
-    end: CommitIndex,
-}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct FetchCommitsResponse {
-    // Serialized consecutive Commit.
-    #[prost(bytes = "bytes", repeated, tag = "1")]
-    commits: Vec<Bytes>,
-    // Serialized SignedBlock that certify the last commit from above.
-    #[prost(bytes = "bytes", repeated, tag = "2")]
-    certifier_blocks: Vec<Bytes>,
-}
 
 #[derive(Clone, prost::Message)]
 pub(crate) struct FetchLatestBlocksRequest {

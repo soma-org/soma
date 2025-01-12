@@ -2,7 +2,7 @@ use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 
 use crate::{
     server::P2pService,
-    state_sync::{PeerHeights, StateSyncEventLoop, StateSyncMessage},
+    state_sync::{tx_verifier::TxVerifier, PeerHeights, StateSyncEventLoop, StateSyncMessage},
     tonic_gen::p2p_server::{P2p, P2pServer},
 };
 use fastcrypto::traits::ToFromBytes;
@@ -13,15 +13,36 @@ use tokio::{
     task::JoinSet,
 };
 use types::{
+    accumulator::AccumulatorStore,
     config::{p2p_config::P2pConfig, state_sync_config::StateSyncConfig},
+    consensus::{
+        block_verifier::{BlockVerifier, SignedBlockVerifier},
+        commit::CommittedSubDag,
+        context::{Clock, Context},
+        leader_schedule::LeaderSchedule,
+        transaction,
+    },
     crypto::NetworkKeyPair,
+    dag::{
+        block_manager::BlockManager,
+        committer::universal_committer::{
+            universal_committer_builder::UniversalCommitterBuilder, UniversalCommitter,
+        },
+        dag_state::DagState,
+        linearizer::Linearizer,
+    },
     p2p::{
         active_peers::{self, ActivePeers},
         channel_manager::{self, ChannelManager, ChannelManagerRequest},
         PeerEvent,
     },
+    parameters::Parameters,
+    signature_verifier::SignatureVerifier,
     state_sync::{self, VerifiedCommitSummary},
-    storage::write_store::WriteStore,
+    storage::{
+        consensus::{mem_store::MemStore, ConsensusStore},
+        write_store::WriteStore,
+    },
 };
 
 use crate::discovery::{DiscoveryEventLoop, DiscoveryState};
@@ -103,7 +124,7 @@ impl UnstartedDiscovery {
 #[derive(Clone, Debug)]
 pub struct StateSyncHandle {
     sender: mpsc::Sender<StateSyncMessage>,
-    commit_event_sender: broadcast::Sender<VerifiedCommitSummary>,
+    commit_event_sender: broadcast::Sender<CommittedSubDag>,
 }
 
 impl StateSyncHandle {
@@ -115,7 +136,7 @@ impl StateSyncHandle {
     /// Consensus must only notify StateSync of new commits that have been fully committed to
     /// persistent storage. This includes CommitContents and all Transactions and
     /// TransactionEffects included therein.
-    pub async fn send_commit(&self, commit: VerifiedCommitSummary) {
+    pub async fn send_commit(&self, commit: CommittedSubDag) {
         self.sender
             .send(StateSyncMessage::VerifiedCommit(Box::new(commit)))
             .await
@@ -123,7 +144,7 @@ impl StateSyncHandle {
     }
 
     /// Subscribe to the stream of commits that have been fully synchronized and downloaded.
-    pub fn subscribe_to_synced_commits(&self) -> broadcast::Receiver<VerifiedCommitSummary> {
+    pub fn subscribe_to_synced_commits(&self) -> broadcast::Receiver<CommittedSubDag> {
         self.commit_event_sender.subscribe()
     }
 }
@@ -134,12 +155,17 @@ pub struct UnstartedStateSync<S> {
     pub(super) mailbox: mpsc::Receiver<StateSyncMessage>,
     pub(super) store: S,
     pub(super) peer_heights: Arc<RwLock<PeerHeights>>,
-    pub(super) commit_event_sender: broadcast::Sender<VerifiedCommitSummary>,
+    pub(super) commit_event_sender: broadcast::Sender<CommittedSubDag>,
+    pub(super) block_verifier: Arc<SignedBlockVerifier>,
+    pub(super) dag_state: Arc<RwLock<DagState>>,
+    pub(super) block_manager: Arc<RwLock<BlockManager>>,
+    pub(super) committer: Arc<UniversalCommitter>,
+    pub(super) linearizer: Arc<RwLock<Linearizer>>,
 }
 
 impl<S> UnstartedStateSync<S>
 where
-    S: WriteStore + Clone + Send + Sync + 'static,
+    S: ConsensusStore + WriteStore + Clone + Send + Sync + 'static,
 {
     pub(super) fn build(
         self,
@@ -153,6 +179,11 @@ where
             store,
             peer_heights,
             commit_event_sender,
+            block_verifier,
+            dag_state,
+            block_manager,
+            committer,
+            linearizer,
         } = self;
 
         (
@@ -165,6 +196,11 @@ where
                 commit_event_sender,
                 active_peers,
                 peer_event_receiver,
+                block_verifier,
+                dag_state,
+                committer,
+                linearizer,
+                block_manager,
             ),
             handle,
         )
@@ -215,7 +251,7 @@ impl<S> P2pBuilder<S> {
 
 impl<S> P2pBuilder<S>
 where
-    S: WriteStore + Clone + Send + Sync + 'static,
+    S: ConsensusStore + WriteStore + AccumulatorStore + Clone + Send + Sync + 'static,
 {
     pub fn build(
         self,
@@ -234,6 +270,7 @@ where
         self,
     ) -> (UnstartedDiscovery, UnstartedStateSync<S>, P2pService<S>) {
         let store = self.store.unwrap();
+        let store_ref = Arc::new(store.clone());
         let config = self.config.unwrap();
         let state_sync_config = config.state_sync.clone().unwrap();
 
@@ -263,11 +300,65 @@ where
         .pipe(RwLock::new)
         .pipe(Arc::new);
 
+        let parameters = Parameters {
+            ..Default::default()
+        };
+
+        // Dummy context with genesis committee
+        let context = Arc::new(Context::new(
+            None,
+            (*store_ref.get_committee(0).unwrap().unwrap()).clone(),
+            parameters,
+            Arc::new(Clock::new()),
+        ));
+
+        let store_path = context.parameters.db_path.as_path().to_str().unwrap();
+
+        // let store = Arc::new(RocksDBStore::new(store_path));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store_ref.clone(),
+            Some(store_ref.clone()),
+        )));
+
+        let signature_verifier =
+            SignatureVerifier::new(Arc::new(context.committee.clone()), Some(store_ref.clone()));
+        let transaction_verifier = TxVerifier::new(Arc::new(signature_verifier));
+        let block_verifier = Arc::new(SignedBlockVerifier::new(
+            context.clone(),
+            Arc::new(transaction_verifier),
+            store_ref.clone(),
+            Some(store_ref.clone()),
+        ));
+
+        let block_manager = Arc::new(RwLock::new(BlockManager::new(
+            dag_state.clone(),
+            block_verifier.clone(),
+        )));
+
+        let leader_schedule = Arc::new(LeaderSchedule::new(
+            context.clone(),
+            Some(store_ref.clone()),
+        ));
+
+        let number_of_leaders = 1; // TODO: context.parameters.mysticeti_num_leaders_per_round();
+        let committer = Arc::new(
+            UniversalCommitterBuilder::new(leader_schedule.clone(), dag_state.clone())
+                .with_number_of_leaders(number_of_leaders)
+                .with_pipeline(true)
+                .build(),
+        );
+        let linearizer = Arc::new(RwLock::new(Linearizer::new(
+            dag_state.clone(),
+            leader_schedule.clone(),
+        )));
+
         let server = P2pService {
             discovery_state: discovery_state.clone(),
             store: store.clone(),
             peer_heights: peer_heights.clone(),
             sender: weak_sender,
+            dag_state: dag_state.clone(),
         };
 
         (
@@ -284,6 +375,11 @@ where
                 store,
                 peer_heights,
                 commit_event_sender,
+                block_verifier,
+                dag_state,
+                block_manager,
+                committer,
+                linearizer,
             },
             server,
         )

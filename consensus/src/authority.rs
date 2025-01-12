@@ -19,7 +19,7 @@ use tracing::info;
 use types::parameters::Parameters;
 use types::{
     accumulator,
-    committee::{AuthorityIndex, ConsensusCommittee as Committee},
+    committee::{AuthorityIndex, Committee},
 };
 use types::{
     accumulator::AccumulatorStore,
@@ -92,18 +92,22 @@ impl ConsensusAuthority {
         let store_path = context.parameters.db_path.as_path().to_str().unwrap();
         let store = Arc::new(MemStore::new());
         // let store = Arc::new(RocksDBStore::new(store_path));
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
 
         let block_verifier = Arc::new(SignedBlockVerifier::new(
             context.clone(),
             transaction_verifier,
             accumulator_store.clone(),
+            None,
         ));
 
-        let block_manager =
-            BlockManager::new(context.clone(), dag_state.clone(), block_verifier.clone());
+        let block_manager = BlockManager::new(dag_state.clone(), block_verifier.clone());
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
         let commit_observer = CommitObserver::new(
             context.clone(),

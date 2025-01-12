@@ -41,7 +41,7 @@ async fn direct_commit() {
     // The universal committer should mark the potential leaders in leader round 6 as
     // undecided because there is no way to get enough certificates for leaders of
     // leader round 6 without completing wave 2.
-    let sequence = test_setup.committer.try_decide(last_decided);
+    let sequence = test_setup.committer.try_decide(last_decided, None);
     tracing::info!("Commit sequence: {sequence:#?}");
 
     assert_eq!(sequence.len(), 1);
@@ -72,7 +72,7 @@ async fn idempotence() {
 
     // Commit one leader.
     let last_decided = Slot::new_for_test(0, 0);
-    let first_sequence = committer.try_decide(last_decided);
+    let first_sequence = committer.try_decide(last_decided, None);
     assert_eq!(first_sequence.len(), 1);
 
     if let DecidedLeader::Commit(ref block) = first_sequence[0] {
@@ -87,7 +87,7 @@ async fn idempotence() {
 
     // Ensure that if try_commit is called again with the same last decided leader
     // input the commit decision will be the same.
-    let first_sequence = committer.try_decide(last_decided);
+    let first_sequence = committer.try_decide(last_decided, None);
 
     assert_eq!(first_sequence.len(), 1);
     if let DecidedLeader::Commit(ref block) = first_sequence[0] {
@@ -117,7 +117,7 @@ async fn idempotence() {
         leader_status_wave_1.authority(),
     );
     let leader_round_wave_2 = committer.committers[0].leader_round(2);
-    let second_sequence = committer.try_decide(last_decided);
+    let second_sequence = committer.try_decide(last_decided, None);
     tracing::info!("Commit sequence: {second_sequence:#?}");
 
     assert_eq!(second_sequence.len(), 1);
@@ -152,7 +152,7 @@ async fn multiple_direct_commit() {
 
         // After each wave is complete try commit the leader of that wave.
         let leader_round = committer.committers[0].leader_round(n);
-        let sequence = committer.try_decide(last_decided);
+        let sequence = committer.try_decide(last_decided, None);
         tracing::info!("Commit sequence: {sequence:#?}");
 
         assert_eq!(sequence.len(), 1);
@@ -186,7 +186,7 @@ async fn direct_commit_late_call() {
     );
 
     let last_decided = Slot::new_for_test(0, 0);
-    let sequence = committer.try_decide(last_decided);
+    let sequence = committer.try_decide(last_decided, None);
     tracing::info!("Commit sequence: {sequence:#?}");
 
     // With 11 waves completed, excluding wave 0 with genesis round as its leader
@@ -215,7 +215,7 @@ async fn no_genesis_commit() {
         ancestors = Some(build_dag(context.clone(), dag_state.clone(), ancestors, r));
 
         let last_committed = Slot::new_for_test(0, 0);
-        let sequence = committer.try_decide(last_committed);
+        let sequence = committer.try_decide(last_committed, None);
         tracing::info!("Commit sequence: {sequence:#?}");
         assert!(sequence.is_empty());
     }
@@ -257,7 +257,7 @@ async fn direct_skip_no_leader_votes() {
     // Ensure no blocks are committed because there are 2f+1 blame (non-votes) for
     // the leader of wave 1.
     let last_decided = Slot::new_for_test(0, 0);
-    let sequence = test_setup.committer.try_decide(last_decided);
+    let sequence = test_setup.committer.try_decide(last_decided, None);
     tracing::info!("Commit sequence: {sequence:#?}");
 
     assert_eq!(sequence.len(), 1);
@@ -305,7 +305,7 @@ async fn direct_skip_missing_leader_block() {
 
     // Ensure the leader is skipped because the leader is missing.
     let last_committed = Slot::new_for_test(0, 0);
-    let sequence = test_setup.committer.try_decide(last_committed);
+    let sequence = test_setup.committer.try_decide(last_committed, None);
     tracing::info!("Commit sequence: {sequence:#?}");
 
     assert_eq!(sequence.len(), 1);
@@ -357,26 +357,22 @@ async fn indirect_commit() {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         dag_builder.context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
-    let leader_schedule = Arc::new(LeaderSchedule::new(dag_builder.context.clone()));
+    let leader_schedule = Arc::new(LeaderSchedule::new(dag_builder.context.clone(), None));
 
     dag_builder.print();
     dag_builder.persist_all_blocks(dag_state.clone());
 
     // Create committer without pipelining and only 1 leader per leader round
-    let committer = UniversalCommitterBuilder::new(
-        dag_builder.context.clone(),
-        leader_schedule,
-        dag_state.clone(),
-    )
-    .build();
+    let committer = UniversalCommitterBuilder::new(leader_schedule, dag_state.clone()).build();
     // note: without pipelining or multi-leader enabled there should only be one committer.
     assert!(committer.committers.len() == 1);
 
     // Ensure we indirectly commit the leader of wave 1 via the directly committed
     // leader of wave 2.
     let last_decided = Slot::new_for_test(0, 0);
-    let sequence = committer.try_decide(last_decided);
+    let sequence = committer.try_decide(last_decided, None);
     tracing::info!("Commit sequence: {sequence:#?}");
     assert_eq!(sequence.len(), 2);
 
@@ -456,7 +452,7 @@ async fn indirect_skip() {
 
     // Ensure we make a commit decision for the leaders of wave 1 ~ 3
     let last_committed = Slot::new_for_test(0, 0);
-    let sequence = committer.try_decide(last_committed);
+    let sequence = committer.try_decide(last_committed, None);
     tracing::info!("Commit sequence: {sequence:#?}");
     assert_eq!(sequence.len(), 3);
 
@@ -544,7 +540,7 @@ async fn undecided() {
     // Ensure outcome of direct & indirect rule is undecided. So not commit decisions
     // should be returned.
     let last_committed = Slot::new_for_test(0, 0);
-    let sequence = committer.try_decide(last_committed);
+    let sequence = committer.try_decide(last_committed, None);
     tracing::info!("Commit sequence: {sequence:#?}");
     assert!(sequence.is_empty());
 }
@@ -687,7 +683,7 @@ async fn test_byzantine_direct_commit() {
 
     // Expect a successful direct commit of A12 and leaders at rounds 9, 6 & 3.
     let last_decided = Slot::new_for_test(0, 0);
-    let sequence = committer.try_decide(last_decided);
+    let sequence = committer.try_decide(last_decided, None);
     tracing::info!("Commit sequence: {sequence:#?}");
 
     assert_eq!(sequence.len(), 4);
@@ -710,12 +706,12 @@ fn basic_test_setup() -> (Arc<Context>, Arc<RwLock<DagState>>, UniversalCommitte
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
-    let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+    let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
     // Create committer without pipelining and only 1 leader per leader round
-    let committer =
-        UniversalCommitterBuilder::new(context.clone(), leader_schedule, dag_state.clone()).build();
+    let committer = UniversalCommitterBuilder::new(leader_schedule, dag_state.clone()).build();
 
     // note: without pipelining or multi-leader enabled there should only be one committer.
     assert!(committer.committers.len() == 1);
@@ -738,16 +734,12 @@ fn basic_dag_builder_test_setup() -> TestSetup {
     let dag_state = Arc::new(RwLock::new(DagState::new(
         dag_builder.context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
-    let leader_schedule = Arc::new(LeaderSchedule::new(dag_builder.context.clone()));
+    let leader_schedule = Arc::new(LeaderSchedule::new(dag_builder.context.clone(), None));
 
     // Create committer without pipelining and only 1 leader per leader round
-    let committer = UniversalCommitterBuilder::new(
-        dag_builder.context.clone(),
-        leader_schedule,
-        dag_state.clone(),
-    )
-    .build();
+    let committer = UniversalCommitterBuilder::new(leader_schedule, dag_state.clone()).build();
     // note: without pipelining or multi-leader enabled there should only be one committer.
     assert!(committer.committers.len() == 1);
 

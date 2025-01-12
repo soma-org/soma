@@ -21,7 +21,7 @@ use types::{
     },
     dag::dag_state::DagState,
     error::{ConsensusError, ConsensusResult},
-    storage::consensus::Store,
+    storage::consensus::ConsensusStore,
 };
 
 pub(crate) struct AuthorityService<C: CoreThreadDispatcher> {
@@ -31,7 +31,7 @@ pub(crate) struct AuthorityService<C: CoreThreadDispatcher> {
     synchronizer: Arc<SynchronizerHandle>,
     core_dispatcher: Arc<C>,
     dag_state: Arc<RwLock<DagState>>,
-    store: Arc<dyn Store>,
+    store: Arc<dyn ConsensusStore>,
 }
 
 impl<C: CoreThreadDispatcher> AuthorityService<C> {
@@ -42,7 +42,7 @@ impl<C: CoreThreadDispatcher> AuthorityService<C> {
         commit_vote_monitor: Arc<CommitVoteMonitor>,
         synchronizer: Arc<SynchronizerHandle>,
         dag_state: Arc<RwLock<DagState>>,
-        store: Arc<dyn Store>,
+        store: Arc<dyn ConsensusStore>,
     ) -> Self {
         Self {
             context,
@@ -331,7 +331,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::sleep;
-    use types::committee::AuthorityIndex;
+    use types::committee::{AuthorityIndex, Epoch};
     use types::{
         consensus::{
             block::BlockAPI,
@@ -401,6 +401,7 @@ mod tests {
         async fn fetch_blocks(
             &self,
             _peer: AuthorityIndex,
+            _epoch: Epoch,
             _block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,
@@ -435,7 +436,11 @@ mod tests {
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());
         let network_client = Arc::new(FakeNetworkClient::default());
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
         let synchronizer = Synchronizer::start(
             network_client,
@@ -491,7 +496,11 @@ mod tests {
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());
         let network_client = Arc::new(FakeNetworkClient::default());
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
         let synchronizer = Synchronizer::start(
             network_client,

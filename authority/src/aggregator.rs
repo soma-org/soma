@@ -16,8 +16,9 @@ use types::committee::CommitteeTrait;
 use crate::{
     client::{
         make_network_authority_clients_with_network_config, AuthorityAPI, NetworkAuthorityClient,
-    }, committee_store::CommitteeStore, safe_client::SafeClient, stake_aggregator::{InsertResult, MultiStakeAggregator, StakeAggregator}
+    }, safe_client::SafeClient, stake_aggregator::{InsertResult, MultiStakeAggregator, StakeAggregator}
 };
+use types::storage::committee_store::CommitteeStore;
 
 #[derive(Debug)]
 struct ProcessTransactionState {

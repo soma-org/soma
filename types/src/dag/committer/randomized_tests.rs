@@ -48,7 +48,7 @@ async fn test_randomized_dag_all_direct_commit() {
         );
 
         let last_decided = Slot::new_for_test(0, 0);
-        let sequence = authority.committer.try_decide(last_decided);
+        let sequence = authority.committer.try_decide(last_decided, None);
         tracing::debug!("Commit sequence: {sequence:#?}");
 
         assert_eq!(sequence.len(), (NUM_ROUNDS - 2) as usize);
@@ -115,7 +115,7 @@ async fn test_randomized_dag_and_decision_sequence() {
             let chunk = &all_blocks[i..i + chunk_size];
 
             let _ = authority_1.block_manager.try_accept_blocks(chunk.to_vec());
-            let sequence = authority_1.committer.try_decide(last_decided);
+            let sequence = authority_1.committer.try_decide(last_decided, None);
 
             if !sequence.is_empty() {
                 sequenced_leaders_1.extend(sequence.clone());
@@ -144,7 +144,7 @@ async fn test_randomized_dag_and_decision_sequence() {
             let chunk = &all_blocks[i..i + chunk_size];
 
             let _ = authority_2.block_manager.try_accept_blocks(chunk.to_vec());
-            let sequence = authority_2.committer.try_decide(last_decided);
+            let sequence = authority_2.committer.try_decide(last_decided, None);
 
             if !sequence.is_empty() {
                 sequenced_leaders_2.extend(sequence.clone());
@@ -176,23 +176,19 @@ fn authority_setup(num_authorities: usize, authority_index: u32) -> AuthorityTes
             .0
             .with_authority_index(AuthorityIndex::new_for_test(authority_index)),
     );
-    let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+    let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
         Arc::new(MemStore::new()),
+        None,
     )));
 
     // Create committer with pipelining and only 1 leader per leader round
-    let committer =
-        UniversalCommitterBuilder::new(context.clone(), leader_schedule, dag_state.clone())
-            .with_pipeline(true)
-            .build();
+    let committer = UniversalCommitterBuilder::new(leader_schedule, dag_state.clone())
+        .with_pipeline(true)
+        .build();
 
-    let block_manager = BlockManager::new(
-        context.clone(),
-        dag_state.clone(),
-        Arc::new(NoopBlockVerifier),
-    );
+    let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
 
     AuthorityTestFixture {
         context,

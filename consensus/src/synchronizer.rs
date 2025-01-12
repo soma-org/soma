@@ -286,7 +286,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     // get the highest accepted rounds
                     let highest_rounds = Self::get_highest_accepted_rounds(dag_state.clone(), &context);
 
-                    requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, FETCH_REQUEST_TIMEOUT, 1))
+                    requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, FETCH_REQUEST_TIMEOUT, context.clone(), 1))
                 },
                 Some((response, blocks_guard, retries, _peer, highest_rounds)) = requests.next() => {
                     match response {
@@ -305,7 +305,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                         },
                         Err(_) => {
                             if retries <= MAX_RETRIES {
-                                requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, FETCH_REQUEST_TIMEOUT, retries))
+                                requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, FETCH_REQUEST_TIMEOUT, context.clone(), retries))
                             } else {
                                 warn!("Max retries {retries} reached while trying to fetch blocks from peer {peer_index}.");
                                 // we don't necessarily need to do, but dropping the guard here to unlock the blocks
@@ -462,6 +462,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         blocks_guard: BlocksGuard,
         highest_rounds: Vec<Round>,
         request_timeout: Duration,
+        context: Arc<Context>,
         mut retries: u32,
     ) -> (
         ConsensusResult<Vec<Bytes>>,
@@ -475,6 +476,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             request_timeout,
             network_client.fetch_blocks(
                 peer,
+                context.committee.epoch(),
                 blocks_guard
                     .block_refs
                     .clone()
@@ -572,7 +574,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                             let max_round = blocks.into_iter().map(|b|b.round()).max().unwrap_or(0);
                                             highest_round = highest_round.max(max_round);
 
-                                            total_stake += context.committee.stake(authority_index);
+                                            total_stake += context.committee.stake_by_index(authority_index);
                                         },
                                         Err(err) => {
                                             warn!("Invalid result returned from {authority_index} while fetching last own block: {err}");
@@ -745,6 +747,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     blocks_guard,
                     highest_rounds.clone(),
                     FETCH_REQUEST_TIMEOUT,
+                    context.clone(),
                     1,
                 ));
             }
@@ -778,6 +781,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                         blocks_guard,
                                         highest_rounds,
                                         FETCH_REQUEST_TIMEOUT,
+                                        context.clone(),
                                         1,
                                     ));
                                 } else {
@@ -963,7 +967,7 @@ mod tests {
         time::Duration,
     };
     use tokio::{sync::Mutex, time::sleep};
-    use types::committee::AuthorityIndex;
+    use types::committee::{AuthorityIndex, Epoch};
     use types::parameters::Parameters;
 
     use crate::commit_syncer::CommitVoteMonitor;
@@ -1094,6 +1098,7 @@ mod tests {
         async fn fetch_blocks(
             &self,
             peer: AuthorityIndex,
+            epoch: Epoch,
             block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,
@@ -1231,7 +1236,7 @@ mod tests {
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         let handle = Synchronizer::start(
@@ -1278,7 +1283,7 @@ mod tests {
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         let handle = Synchronizer::start(
@@ -1336,7 +1341,7 @@ mod tests {
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         // Create some test blocks
@@ -1404,7 +1409,7 @@ mod tests {
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         // AND stub some missing blocks
@@ -1479,8 +1484,14 @@ mod tests {
         {
             let mut d = dag_state.write();
             for index in 1..=commit_index {
-                let commit =
-                    TrustedCommit::new_for_test(index, CommitDigest::MIN, 0, BlockRef::MIN, vec![]);
+                let commit = TrustedCommit::new_for_test(
+                    index,
+                    CommitDigest::MIN,
+                    0,
+                    BlockRef::MIN,
+                    vec![],
+                    0,
+                );
 
                 d.add_commit(commit);
             }
@@ -1511,7 +1522,7 @@ mod tests {
         let network_client = Arc::new(MockNetworkClient::default());
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
         let our_index = AuthorityIndex::new_for_test(0);
 
         // Create some test blocks

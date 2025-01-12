@@ -1,3 +1,5 @@
+use crate::committee::Epoch;
+
 use super::{
     block::{BlockRef, Transaction},
     context::Context,
@@ -217,7 +219,7 @@ impl TransactionClient {
 /// before acceptance of the block.
 pub trait TransactionVerifier: Send + Sync + 'static {
     /// Determines if this batch can be voted on
-    fn verify_batch(&self, batch: &[&[u8]]) -> Result<(), ValidationError>;
+    fn verify_batch(&self, batch: &[&[u8]], epoch: Option<Epoch>) -> Result<(), ValidationError>;
 }
 
 #[derive(Debug, Error)]
@@ -230,7 +232,7 @@ pub enum ValidationError {
 pub struct NoopTransactionVerifier;
 
 impl TransactionVerifier for NoopTransactionVerifier {
-    fn verify_batch(&self, _batch: &[&[u8]]) -> Result<(), ValidationError> {
+    fn verify_batch(&self, _batch: &[&[u8]], epoch: Option<Epoch>) -> Result<(), ValidationError> {
         Ok(())
     }
 }

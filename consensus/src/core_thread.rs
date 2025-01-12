@@ -227,18 +227,18 @@ mod test {
         let (context, mut key_pairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
-        let block_manager = BlockManager::new(
+        let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
-            dag_state.clone(),
-            Arc::new(NoopBlockVerifier),
-        );
+            store.clone(),
+            None,
+        )));
+        let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);
         let (signals, signal_receivers) = CoreSignals::new(context.clone());
         let _block_receiver = signal_receivers.block_broadcast_receiver();
         let (sender, _receiver) = unbounded_channel();
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
         let commit_observer = CommitObserver::new(
             context.clone(),
             CommitConsumer::new(sender.clone(), 0, 0),
@@ -246,7 +246,7 @@ mod test {
             store,
             leader_schedule.clone(),
         );
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
         let core = Core::new(
             context.clone(),
             leader_schedule,

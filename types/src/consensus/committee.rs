@@ -1,9 +1,11 @@
+use crate::base::AuthorityName;
 use crate::{committee::Authority, crypto::AuthorityKeyPair, multiaddr::Multiaddr};
 use crate::{
-    committee::{ConsensusCommittee as Committee, Epoch, Stake},
+    committee::{Committee, Epoch, Stake},
     crypto::{NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair, ProtocolPublicKey},
 };
 use fastcrypto::traits::KeyPair;
+use std::collections::BTreeMap;
 use std::{
     fmt::{Display, Formatter},
     net::{TcpListener, TcpStream},
@@ -18,30 +20,40 @@ pub fn local_committee_and_keys(
     epoch: Epoch,
     authorities_stake: Vec<Stake>,
 ) -> (Committee, Vec<(NetworkKeyPair, ProtocolKeyPair)>) {
-    let mut authorities = vec![];
+    let mut authorities = BTreeMap::new();
+    let mut voting_weights = BTreeMap::new();
     let mut key_pairs = vec![];
     let mut rng = StdRng::from_seed([0; 32]);
+
     for (i, stake) in authorities_stake.into_iter().enumerate() {
         let authority_keypair = AuthorityKeyPair::generate(&mut rng);
         let protocol_keypair = ProtocolKeyPair::generate(&mut rng);
         let network_keypair = NetworkKeyPair::generate(&mut rng);
-        authorities.push(Authority {
-            stake,
-            address: get_available_local_address(),
-            hostname: format!("test_host_{i}").to_string(),
-            authority_key: authority_keypair.public().clone(),
-            protocol_key: protocol_keypair.public(),
-            network_key: network_keypair.public(),
-        });
+
+        let name = AuthorityName::from(authority_keypair.public());
+
+        authorities.insert(
+            name,
+            Authority {
+                stake,
+                address: get_available_local_address(),
+                hostname: format!("test_host_{i}").to_string(),
+                authority_key: authority_keypair.public().clone(),
+                protocol_key: protocol_keypair.public(),
+                network_key: network_keypair.public(),
+            },
+        );
+
+        voting_weights.insert(name, stake);
         key_pairs.push((network_keypair, protocol_keypair));
     }
 
-    let committee = Committee::new(epoch, authorities);
+    let committee = Committee::new(epoch, voting_weights, authorities);
     (committee, key_pairs)
 }
 
 /// Returns a local address with an ephemeral port.
-fn get_available_local_address() -> Multiaddr {
+pub fn get_available_local_address() -> Multiaddr {
     let host = "127.0.0.1";
     let port = get_available_port(host);
     format!("/ip4/{}/udp/{}", host, port).parse().unwrap()

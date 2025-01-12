@@ -10,7 +10,7 @@ pub mod mem_store;
 mod store_tests;
 
 /// A common interface for consensus storage.
-pub trait Store: Send + Sync {
+pub trait ConsensusStore: Send + Sync {
     /// Writes blocks, consensus commits and other data to store atomically.
     fn write(&self, write_batch: WriteBatch) -> ConsensusResult<()>;
 

@@ -1,35 +1,54 @@
+use bytes::Bytes;
+use futures::{stream::FuturesOrdered, FutureExt, StreamExt};
+use itertools::Itertools;
+use parking_lot::RwLock;
+use rand::Rng;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    ops::RangeInclusive,
     sync::Arc,
     time::Duration,
 };
-
-use futures::{stream::FuturesOrdered, FutureExt, StreamExt};
-use parking_lot::RwLock;
-use rand::Rng;
 use tap::{Pipe, TapFallible, TapOptional};
 use tokio::{
     sync::{broadcast, mpsc},
     task::{watch, AbortHandle, JoinSet},
+    time::sleep,
 };
 use tonic::{transport::Channel, Request, Response};
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::CommitIndex,
-    committee::Committee,
+    committee::{Committee, Epoch, EpochId},
     config::state_sync_config::StateSyncConfig,
+    consensus::{
+        block::{Block, BlockAPI, BlockRef, SignedBlock, VerifiedBlock},
+        block_verifier::{self, BlockVerifier, SignedBlockVerifier},
+        commit::{
+            Commit, CommitAPI, CommitDigest, CommitRange, CommitRef, CommittedSubDag, TrustedCommit,
+        },
+        stake_aggregator::{QuorumThreshold, StakeAggregator},
+    },
+    crypto::NetworkPublicKey,
+    dag::{
+        block_manager::BlockManager,
+        committer::universal_committer::{
+            universal_committer_builder::UniversalCommitterBuilder, UniversalCommitter,
+        },
+        dag_state::DagState,
+        linearizer::Linearizer,
+    },
     digests::CommitSummaryDigest,
     envelope::Message,
-    error::{SomaError, SomaResult},
+    error::{ConsensusError, SomaError, SomaResult},
     p2p::{
         active_peers::{self, ActivePeers, PeerState},
         PeerEvent,
     },
     peer_id::{self, PeerId},
     state_sync::{
-        CertifiedCommitSummary, FullCommitContents, GetCommitAvailabilityRequest,
-        GetCommitAvailabilityResponse, GetCommitSummaryRequest, VerifiedCommitContents,
-        VerifiedCommitSummary,
+        FetchBlocksRequest, FetchCommitsRequest, FetchCommitsResponse,
+        GetCommitAvailabilityRequest, GetCommitAvailabilityResponse, GetCommitSummaryRequest,
     },
     storage::write_store::WriteStore,
 };
@@ -39,14 +58,16 @@ use crate::{
     tonic_gen::{p2p_client::P2pClient, p2p_server::P2p},
 };
 
+pub mod tx_verifier;
+
 const COMMIT_SUMMARY_DOWNLOAD_CONCURRENCY: usize = 400;
+
+// Maximum total bytes fetched in a single fetch_blocks() call, after combining the responses.
+const MAX_TOTAL_FETCHED_BYTES: usize = 128 * 1024 * 1024;
 
 pub struct PeerHeights {
     /// Table used to track the highest commit for each of our peers.
     peers: HashMap<PeerId, PeerStateSyncInfo>,
-    unprocessed_commits: HashMap<CommitSummaryDigest, CertifiedCommitSummary>,
-    index_to_digest: HashMap<CommitIndex, CommitSummaryDigest>,
-
     // The amount of time to wait before retry if there are no peers to sync content from.
     wait_interval_when_no_peer_to_sync_content: Duration,
 }
@@ -68,16 +89,8 @@ impl PeerHeights {
     pub fn new(wait_interval_when_no_peer_to_sync_content: Duration) -> Self {
         Self {
             peers: HashMap::new(),
-            unprocessed_commits: HashMap::new(),
-            index_to_digest: HashMap::new(),
             wait_interval_when_no_peer_to_sync_content,
         }
-    }
-
-    pub fn highest_known_commit(&self) -> Option<&CertifiedCommitSummary> {
-        self.highest_known_commit_index()
-            .and_then(|s| self.index_to_digest.get(&s))
-            .and_then(|digest| self.unprocessed_commits.get(digest))
     }
 
     pub fn highest_known_commit_index(&self) -> Option<CommitIndex> {
@@ -90,11 +103,11 @@ impl PeerHeights {
     // Returns a bool that indicates if the update was done successfully.
     //
     // This will return false if the given peer doesn't have an entry
-    #[instrument(level = "debug", skip_all, fields(peer_id=?peer_id, commit=?commit.index()))]
+    #[instrument(level = "debug", skip_all, fields(peer_id=?peer_id, commit=?commit))]
     pub fn update_peer_info(
         &mut self,
         peer_id: PeerId,
-        commit: CertifiedCommitSummary,
+        commit: CommitIndex,
         low_watermark: Option<CommitIndex>,
     ) -> bool {
         debug!("Update peer info");
@@ -104,11 +117,10 @@ impl PeerHeights {
             _ => return false,
         };
 
-        info.height = std::cmp::max(*commit.index(), info.height);
+        info.height = std::cmp::max(commit, info.height);
         if let Some(low_watermark) = low_watermark {
             info.lowest = low_watermark;
         }
-        self.insert_commit(commit);
 
         true
     }
@@ -135,39 +147,6 @@ impl PeerHeights {
         }
     }
 
-    pub fn cleanup_old_commits(&mut self, index: CommitIndex) {
-        self.unprocessed_commits
-            .retain(|_digest: &_, commit: &mut _| *commit.index() > index);
-        self.index_to_digest.retain(|&i, _digest| i > index);
-    }
-
-    // TODO: also record who gives this commit info for peer quality measurement?
-    pub fn insert_commit(&mut self, commit: CertifiedCommitSummary) {
-        let digest = commit.digest();
-        let index = *commit.index();
-        self.unprocessed_commits.insert(*digest, commit.clone());
-        self.index_to_digest.insert(index, *digest);
-    }
-
-    pub fn remove_commit(&mut self, digest: &CommitSummaryDigest) {
-        if let Some(commit) = self.unprocessed_commits.remove(digest) {
-            self.index_to_digest.remove(commit.index());
-        }
-    }
-
-    pub fn get_commit_by_index(&self, index: CommitIndex) -> Option<&CertifiedCommitSummary> {
-        self.index_to_digest
-            .get(&index)
-            .and_then(|digest| self.get_commit_by_digest(digest))
-    }
-
-    pub fn get_commit_by_digest(
-        &self,
-        digest: &CommitSummaryDigest,
-    ) -> Option<&CertifiedCommitSummary> {
-        self.unprocessed_commits.get(digest)
-    }
-
     #[cfg(test)]
     pub fn set_wait_interval_when_no_peer_to_sync_content(&mut self, duration: Duration) {
         self.wait_interval_when_no_peer_to_sync_content = duration;
@@ -183,11 +162,11 @@ pub enum StateSyncMessage {
     StartSyncJob,
     // Validators will send this to the StateSyncEventLoop in order to kick off notifying our peers
     // of the new commit.
-    VerifiedCommit(Box<VerifiedCommitSummary>),
+    VerifiedCommit(Box<CommittedSubDag>),
     // Notification that the commit content sync task will send to the event loop in the event
     // it was able to successfully sync a commit's contents. If multiple commits were
     // synced at the same time, only the highest commit is sent.
-    SyncedCommit(Box<VerifiedCommitSummary>),
+    SyncedCommit(CommitIndex),
 }
 
 // PeerBalancer is an Iterator that selects peers based on RTT with some added randomness.
@@ -195,21 +174,10 @@ pub enum StateSyncMessage {
 struct PeerBalancer {
     peers: VecDeque<(PeerState, PeerStateSyncInfo)>,
     requested_commit: Option<CommitIndex>,
-    request_type: PeerCommitRequestType,
-}
-
-#[derive(Clone)]
-enum PeerCommitRequestType {
-    Summary,
-    Content,
 }
 
 impl PeerBalancer {
-    pub fn new(
-        active_peers: ActivePeers,
-        peer_heights: Arc<RwLock<PeerHeights>>,
-        request_type: PeerCommitRequestType,
-    ) -> Self {
+    pub fn new(active_peers: ActivePeers, peer_heights: Arc<RwLock<PeerHeights>>) -> Self {
         let peers: Vec<_> = peer_heights
             .read()
             .peers
@@ -225,7 +193,6 @@ impl PeerBalancer {
                 .filter_map(|peer| peer.is_some().then(|| peer.unwrap()))
                 .collect(),
             requested_commit: None,
-            request_type,
         }
     }
 
@@ -245,17 +212,8 @@ impl Iterator for PeerBalancer {
                 rand::thread_rng().gen_range(0..std::cmp::min(SELECTION_WINDOW, self.peers.len()));
             let (peer, info) = self.peers.remove(idx).unwrap();
             let requested_commit = self.requested_commit.unwrap_or(0);
-            match &self.request_type {
-                // Summary will never be pruned
-                PeerCommitRequestType::Summary if info.height >= requested_commit => {
-                    return Some(peer);
-                }
-                PeerCommitRequestType::Content
-                    if info.height >= requested_commit && info.lowest <= requested_commit =>
-                {
-                    return Some(peer);
-                }
-                _ => {}
+            if info.height >= requested_commit && info.lowest <= requested_commit {
+                return Some(peer);
             }
         }
         None
@@ -270,15 +228,19 @@ pub struct StateSyncEventLoop<S> {
     weak_sender: mpsc::WeakSender<StateSyncMessage>,
 
     tasks: JoinSet<()>,
-    sync_commit_summaries_task: Option<AbortHandle>,
-    sync_commit_contents_task: Option<AbortHandle>,
 
     store: S,
     peer_heights: Arc<RwLock<PeerHeights>>,
-    commit_event_sender: broadcast::Sender<VerifiedCommitSummary>,
+    commit_event_sender: broadcast::Sender<CommittedSubDag>,
 
     active_peers: ActivePeers,
     peer_event_receiver: broadcast::Receiver<PeerEvent>,
+    block_verifier: Arc<SignedBlockVerifier>,
+
+    dag_state: Arc<RwLock<DagState>>,
+    committer: Arc<UniversalCommitter>,
+    linearizer: Arc<RwLock<Linearizer>>,
+    block_manager: Arc<RwLock<BlockManager>>,
 }
 
 impl<S> StateSyncEventLoop<S>
@@ -291,22 +253,30 @@ where
         weak_sender: mpsc::WeakSender<StateSyncMessage>,
         store: S,
         peer_heights: Arc<RwLock<PeerHeights>>,
-        commit_event_sender: broadcast::Sender<VerifiedCommitSummary>,
+        commit_event_sender: broadcast::Sender<CommittedSubDag>,
         active_peers: ActivePeers,
         peer_event_receiver: broadcast::Receiver<PeerEvent>,
+        block_verifier: Arc<SignedBlockVerifier>,
+        dag_state: Arc<RwLock<DagState>>,
+        committer: Arc<UniversalCommitter>,
+        linearizer: Arc<RwLock<Linearizer>>,
+        block_manager: Arc<RwLock<BlockManager>>,
     ) -> Self {
         Self {
             config,
             mailbox,
             weak_sender,
             tasks: JoinSet::new(),
-            sync_commit_summaries_task: None,
-            sync_commit_contents_task: None,
             store,
             peer_heights,
             commit_event_sender,
             active_peers,
             peer_event_receiver,
+            block_verifier,
+            dag_state,
+            committer,
+            linearizer,
+            block_manager,
         }
     }
 
@@ -321,26 +291,6 @@ where
         for peer_id in self.active_peers.peers().iter() {
             self.spawn_get_latest_from_peer(*peer_id);
         }
-
-        let (target_commit_contents_index_sender, target_commit_contents_index_receiver) =
-            watch::channel(0);
-        // Start commit contents sync loop.
-        let task = sync_commit_contents(
-            self.active_peers.clone(),
-            self.store.clone(),
-            self.peer_heights.clone(),
-            self.weak_sender.clone(),
-            self.commit_event_sender.clone(),
-            self.config
-                .commit_content_download_concurrency()
-                .try_into()
-                .unwrap(),
-            self.config.commit_content_download_concurrency(),
-            self.config.commit_content_timeout(),
-            target_commit_contents_index_receiver,
-        );
-        let task_handle = self.tasks.spawn(task);
-        self.sync_commit_contents_task = Some(task_handle);
 
         // Start main loop.
         loop {
@@ -374,109 +324,125 @@ where
                             }
                         },
                     };
-
-                    if matches!(&self.sync_commit_contents_task, Some(t) if t.is_finished()) {
-                        panic!("sync_commit_contents task unexpectedly terminated")
-                    }
-
-                    if matches!(&self.sync_commit_summaries_task, Some(t) if t.is_finished()) {
-                        self.sync_commit_summaries_task = None;
-                    }
-
-
                 },
             }
 
-            self.maybe_start_commit_summary_sync_task();
-            self.maybe_trigger_commit_contents_sync_task(&target_commit_contents_index_sender);
+            // Schedule new fetches if we're behind
+            self.maybe_start_sync_task();
         }
 
         info!("State-Synchronizer ended");
     }
 
+    fn maybe_start_sync_task(&mut self) {
+        let highest_synced_commit = self
+            .store
+            .get_highest_synced_commit()
+            .expect("store operation should not fail");
+
+        let highest_known_commit = self.peer_heights.read().highest_known_commit_index();
+
+        if Some(highest_synced_commit) < highest_known_commit {
+            let task = sync_from_peer(
+                self.active_peers.clone(),
+                self.store.clone(),
+                self.peer_heights.clone(),
+                self.commit_event_sender.clone(),
+                self.weak_sender.clone(),
+                self.block_verifier.clone(),
+                self.config.timeout(),
+                // The if condition ensures this is Some
+                highest_known_commit.unwrap(),
+                self.dag_state.clone(),
+                self.block_manager.clone(),
+                self.committer.clone(),
+                self.linearizer.clone(),
+            );
+            self.tasks.spawn(task);
+        }
+    }
+
     fn handle_message(&mut self, message: StateSyncMessage) {
         debug!("Received message: {:?}", message);
         match message {
-            StateSyncMessage::StartSyncJob => self.maybe_start_commit_summary_sync_task(),
+            StateSyncMessage::StartSyncJob => self.maybe_start_sync_task(),
             StateSyncMessage::VerifiedCommit(commit) => self.handle_commit_from_consensus(commit),
             // After we've successfully synced a commit we can notify our peers
-            StateSyncMessage::SyncedCommit(commit) => self.spawn_notify_peers_of_commit(*commit),
+            StateSyncMessage::SyncedCommit(commit) => {
+                // self.spawn_notify_peers_of_commit(commit)
+            }
         }
     }
 
     // Handle a commit that we received from consensus
     #[instrument(level = "debug", skip_all)]
-    fn handle_commit_from_consensus(&mut self, commit: Box<VerifiedCommitSummary>) {
+    fn handle_commit_from_consensus(&mut self, commit: Box<CommittedSubDag>) {
         // Always check previous_digest matches in case there is a gap between
         // state sync and consensus.
-        let prev_digest = *self
-            .store
-            .get_commit_by_index(commit.index() - 1)
-            .unwrap_or_else(|| {
-                panic!(
-                    "Got commit {} from consensus but cannot find commit {} in certified_commits",
-                    commit.index(),
-                    commit.index() - 1
-                )
-            })
-            .digest();
-        if commit.previous_digest != Some(prev_digest) {
-            panic!("Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: {:?}", commit.index(), Some(prev_digest), commit.previous_digest);
-        }
+        // let prev_digest = *self
+        //     .store
+        //     .get_commit_by_index(commit.commit_ref.index - 1)
+        //     .unwrap_or_else(|| {
+        //         panic!(
+        //             "Got commit {} from consensus but cannot find commit {} in certified_commits",
+        //             commit.commit_ref.index,
+        //             commit.commit_ref.index - 1
+        //         )
+        //     })
+        //     .digest();
+        // if commit.previous_digest != Some(prev_digest) {
+        //     panic!("Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: {:?}", commit.index(), Some(prev_digest), commit.previous_digest);
+        // }
 
-        let latest_commit = self
-            .store
-            .get_highest_verified_commit()
-            .expect("store operation should not fail");
+        // let latest_commit = self
+        //     .store
+        //     .get_highest_verified_commit()
+        //     .expect("store operation should not fail");
 
-        // If this is an older commit, just ignore it
-        if latest_commit.index() >= commit.index() {
-            return;
-        }
+        // // If this is an older commit, just ignore it
+        // if latest_commit.index() >= commit.commit_ref.index {
+        //     return;
+        // }
 
-        let commit = *commit;
-        let next_index = latest_commit.index().checked_add(1).unwrap();
-        if *commit.index() > next_index {
-            debug!(
-                "consensus sent too new of a commit, expecting: {}, got: {}",
-                next_index,
-                commit.index()
-            );
-        }
+        // let commit = *commit;
+        // let next_index = latest_commit.index().checked_add(1).unwrap();
+        // if commit.commit_ref.index > next_index {
+        //     debug!(
+        //         "consensus sent too new of a commit, expecting: {}, got: {}",
+        //         next_index, commit.commit_ref.index
+        //     );
+        // }
 
-        // Because commit from consensus sends in order, when we have commit n,
-        // we must have all of the commits before n from either state sync or consensus.
-        #[cfg(debug_assertions)]
-        {
-            let _ = (next_index..=*commit.index())
-                .map(|n| {
-                    let commit = self
-                        .store
-                        .get_commit_by_index(n)
-                        .unwrap_or_else(|| panic!("store should contain commit {n}"));
-                    self.store
-                        .get_full_commit_contents(&commit.content_digest)
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "store should contain commit contents for {:?}",
-                                commit.content_digest
-                            )
-                        });
-                })
-                .collect::<Vec<_>>();
-        }
+        // // Because commit from consensus sends in order, when we have commit n,
+        // // we must have all of the commits before n from either state sync or consensus.
+        // #[cfg(debug_assertions)]
+        // {
+        //     let _ = (next_index..=commit.commit_ref.index)
+        //         .map(|n| {
+        //             let commit = self
+        //                 .store
+        //                 .get_commit_by_index(n)
+        //                 .unwrap_or_else(|| panic!("store should contain commit {n}"));
+        //             self.store
+        //                 .get_full_commit_contents(&commit.content_digest)
+        //                 .unwrap_or_else(|| {
+        //                     panic!(
+        //                         "store should contain commit contents for {:?}",
+        //                         commit.content_digest
+        //                     )
+        //                 });
+        //         })
+        //         .collect::<Vec<_>>();
+        // }
 
-        self.store
-            .update_highest_verified_commit(&commit)
-            .expect("store operation should not fail");
-        self.store
-            .update_highest_synced_commit(&commit)
-            .expect("store operation should not fail");
+        // self.store
+        //     .update_highest_synced_commit(commit.commit_ref.index)
+        //     .expect("store operation should not fail");
 
-        // We don't care if no one is listening as this is a broadcast channel
-        let _ = self.commit_event_sender.send(commit.clone());
+        // // We don't care if no one is listening as this is a broadcast channel
+        // let _ = self.commit_event_sender.send(commit.clone());
 
-        self.spawn_notify_peers_of_commit(commit);
+        // self.spawn_notify_peers_of_commit(commit);
     }
 
     fn handle_peer_event(
@@ -530,107 +496,39 @@ where
         self.tasks.spawn(task);
     }
 
-    fn maybe_start_commit_summary_sync_task(&mut self) {
-        // Only run one sync task at a time
-        if self.sync_commit_summaries_task.is_some() {
-            return;
-        }
-
-        let highest_processed_commit = self
-            .store
-            .get_highest_verified_commit()
-            .expect("store operation should not fail");
-
-        let highest_known_commit = self.peer_heights.read().highest_known_commit().cloned();
-
-        if Some(highest_processed_commit.index()) < highest_known_commit.as_ref().map(|x| x.index())
-        {
-            // start sync job
-            let task = sync_to_commit(
-                self.active_peers.clone(),
-                self.store.clone(),
-                self.peer_heights.clone(),
-                self.config.timeout(),
-                // The if condition should ensure that this is Some
-                highest_known_commit.unwrap(),
-            )
-            .map(|result| match result {
-                Ok(()) => {}
-                Err(e) => {
-                    debug!("error syncing commit {e}");
-                }
-            });
-            let task_handle = self.tasks.spawn(task);
-            self.sync_commit_summaries_task = Some(task_handle);
-        }
-    }
-
-    fn maybe_trigger_commit_contents_sync_task(
-        &mut self,
-        target_index_channel: &watch::Sender<CommitIndex>,
-    ) {
-        let highest_verified_commit = self
-            .store
-            .get_highest_verified_commit()
-            .expect("store operation should not fail");
-        let highest_synced_commit = self
-            .store
-            .get_highest_synced_commit()
-            .expect("store operation should not fail");
-
-        if highest_verified_commit.index()
-            > highest_synced_commit.index()
-            // skip if we aren't connected to any peers that can help
-            && self
-                .peer_heights
-                .read()
-                .highest_known_commit_index()
-                > Some(*highest_synced_commit.index())
-        {
-            let _ = target_index_channel.send_if_modified(|num| {
-                let new_num = *highest_verified_commit.index();
-                if *num == new_num {
-                    return false;
-                }
-                *num = new_num;
-                true
-            });
-        }
-    }
-
-    fn spawn_notify_peers_of_commit(&mut self, commit: VerifiedCommitSummary) {
-        let task = notify_peers_of_commit(
-            self.active_peers.clone(),
-            self.peer_heights.clone(),
-            commit,
-            self.config.timeout(),
-        );
-        self.tasks.spawn(task);
-    }
+    // fn spawn_notify_peers_of_commit(&mut self, commit: VerifiedCommitSummary) {
+    //     let task = notify_peers_of_commit(
+    //         self.active_peers.clone(),
+    //         self.peer_heights.clone(),
+    //         commit,
+    //         self.config.timeout(),
+    //     );
+    //     self.tasks.spawn(task);
+    // }
 }
 
 async fn notify_peers_of_commit(
     active_peers: ActivePeers,
     peer_heights: Arc<RwLock<PeerHeights>>,
-    commit: VerifiedCommitSummary,
+    // commit: VerifiedCommitSummary,
     timeout: Duration,
 ) {
-    let futs = peer_heights
-        .read()
-        .peers
-        .iter()
-        // Filter out any peers who we know already have a commit higher than this one
-        .filter_map(|(peer_id, info)| (*commit.index() > info.height).then_some(peer_id))
-        // Filter out any peers who we aren't connected with
-        .flat_map(|peer_id| active_peers.get(peer_id))
-        .map(P2pClient::new)
-        .map(|mut client| {
-            let mut request = Request::new(commit.inner().clone());
-            request.set_timeout(timeout);
-            async move { client.push_commit_summary(request).await }
-        })
-        .collect::<Vec<_>>();
-    futures::future::join_all(futs).await;
+    // let futs = peer_heights
+    //     .read()
+    //     .peers
+    //     .iter()
+    //     // Filter out any peers who we know already have a commit higher than this one
+    //     .filter_map(|(peer_id, info)| (*commit.index() > info.height).then_some(peer_id))
+    //     // Filter out any peers who we aren't connected with
+    //     .flat_map(|peer_id| active_peers.get(peer_id))
+    //     .map(P2pClient::new)
+    //     .map(|mut client| {
+    //         let mut request = Request::new(commit.inner().clone());
+    //         request.set_timeout(timeout);
+    //         async move { client.push_commit_summary(request).await }
+    //     })
+    //     .collect::<Vec<_>>();
+    // futures::future::join_all(futs).await;
 }
 
 async fn get_latest_from_peer(
@@ -639,65 +537,65 @@ async fn get_latest_from_peer(
     peer_heights: Arc<RwLock<PeerHeights>>,
     timeout: Duration,
 ) {
-    let peer_id = peer.public_key.into();
-    let mut client = P2pClient::new(peer.channel);
+    // let peer_id = peer.public_key.into();
+    // let mut client = P2pClient::new(peer.channel);
 
-    let info = {
-        let maybe_info = peer_heights.read().peers.get(&peer_id).copied();
+    // let info = {
+    //     let maybe_info = peer_heights.read().peers.get(&peer_id).copied();
 
-        if let Some(info) = maybe_info {
-            info
-        } else {
-            // TODO do we want to create a new API just for querying a node's chainid?
-            //
-            // We need to query this node's genesis commit to see if they're on the same chain
-            // as us
-            let mut request = Request::new(GetCommitSummaryRequest::ByIndex(0));
-            request.set_timeout(timeout);
-            let response = client
-                .get_commit_summary(request)
-                .await
-                .map(Response::into_inner);
+    //     if let Some(info) = maybe_info {
+    //         info
+    //     } else {
+    //         // TODO do we want to create a new API just for querying a node's chainid?
+    //         //
+    //         // We need to query this node's genesis commit to see if they're on the same chain
+    //         // as us
+    //         let mut request = Request::new(GetCommitSummaryRequest::ByIndex(0));
+    //         request.set_timeout(timeout);
+    //         let response = client
+    //             .get_commit_summary(request)
+    //             .await
+    //             .map(Response::into_inner);
 
-            let info = match response {
-                Ok(Some(commit)) => {
-                    let digest = *commit.digest();
-                    PeerStateSyncInfo {
-                        genesis_commit_digest: digest,
-                        height: *commit.index(),
-                        lowest: CommitIndex::default(),
-                    }
-                }
-                Ok(None) => PeerStateSyncInfo {
-                    genesis_commit_digest: CommitSummaryDigest::default(),
-                    height: CommitIndex::default(),
-                    lowest: CommitIndex::default(),
-                },
-                Err(status) => {
-                    trace!("get_latest_commit_summary request failed: {status:?}");
-                    return;
-                }
-            };
-            peer_heights.write().insert_peer_info(peer_id, info);
-            info
-        }
-    };
+    //         let info = match response {
+    //             Ok(Some(commit)) => {
+    //                 let digest = *commit.digest();
+    //                 PeerStateSyncInfo {
+    //                     genesis_commit_digest: digest,
+    //                     height: *commit.index(),
+    //                     lowest: CommitIndex::default(),
+    //                 }
+    //             }
+    //             Ok(None) => PeerStateSyncInfo {
+    //                 genesis_commit_digest: CommitSummaryDigest::default(),
+    //                 height: CommitIndex::default(),
+    //                 lowest: CommitIndex::default(),
+    //             },
+    //             Err(status) => {
+    //                 trace!("get_latest_commit_summary request failed: {status:?}");
+    //                 return;
+    //             }
+    //         };
+    //         peer_heights.write().insert_peer_info(peer_id, info);
+    //         info
+    //     }
+    // };
 
-    let Some((highest_commit, low_watermark)) =
-        query_peer_for_latest_info(&mut client, timeout).await
-    else {
-        return;
-    };
-    peer_heights
-        .write()
-        .update_peer_info(peer_id, highest_commit, Some(low_watermark));
+    // let Some((highest_commit, low_watermark)) =
+    //     query_peer_for_latest_info(&mut client, timeout).await
+    // else {
+    //     return;
+    // };
+    // peer_heights
+    //     .write()
+    //     .update_peer_info(peer_id, highest_commit, Some(low_watermark));
 }
 
 /// Queries a peer for their highest_synced_commit and low commit watermark
 async fn query_peer_for_latest_info(
     client: &mut P2pClient<Channel>,
     timeout: Duration,
-) -> Option<(CertifiedCommitSummary, CommitIndex)> {
+) -> Option<(CommitIndex, CommitIndex)> {
     let mut request = Request::new(GetCommitAvailabilityRequest {
         timestamp_ms: now_unix(),
     });
@@ -742,7 +640,7 @@ async fn query_peers_for_their_latest_commit(
                 match response {
                     Some((highest_commit, low_watermark)) => peer_heights
                         .write()
-                        .update_peer_info(peer_id, highest_commit.clone(), Some(low_watermark))
+                        .update_peer_info(peer_id, highest_commit, Some(low_watermark))
                         .then_some(highest_commit),
                     None => None,
                 }
@@ -754,19 +652,19 @@ async fn query_peers_for_their_latest_commit(
 
     let commits = futures::future::join_all(futs).await.into_iter().flatten();
 
-    let highest_commit = commits.max_by_key(|commit| *commit.index());
+    let highest_commit = commits.max_by_key(|commit| *commit);
 
-    let our_highest_commit = peer_heights.read().highest_known_commit().cloned();
+    let our_highest_commit = peer_heights.read().highest_known_commit_index();
 
     debug!(
         "Our highest commit {:?}, peers highest commit {:?}",
-        our_highest_commit.as_ref().map(|c| c.index()),
-        highest_commit.as_ref().map(|c| c.index())
+        our_highest_commit.as_ref(),
+        highest_commit.as_ref()
     );
 
     let _new_commit = match (highest_commit, our_highest_commit) {
         (Some(theirs), None) => theirs,
-        (Some(theirs), Some(ours)) if theirs.index() > ours.index() => theirs,
+        (Some(theirs), Some(ours)) if theirs > ours => theirs,
         _ => return,
     };
 
@@ -775,399 +673,453 @@ async fn query_peers_for_their_latest_commit(
     }
 }
 
-async fn sync_to_commit<S>(
+async fn sync_from_peer<S>(
     active_peers: ActivePeers,
     store: S,
     peer_heights: Arc<RwLock<PeerHeights>>,
+    commit_event_sender: broadcast::Sender<CommittedSubDag>,
+    weak_sender: mpsc::WeakSender<StateSyncMessage>,
+    block_verifier: Arc<SignedBlockVerifier>,
     timeout: Duration,
-    commit: CertifiedCommitSummary,
-) -> anyhow::Result<()>
-where
-    S: WriteStore,
-{
-    let mut current = store
-        .get_highest_verified_commit()
-        .expect("store operation should not fail");
-    if current.index() >= commit.index() {
-        return Err(anyhow::anyhow!(
-            "target commit {} is older than highest verified commit {}",
-            commit.index(),
-            current.index(),
-        ));
-    }
-
-    let peer_balancer: PeerBalancer = PeerBalancer::new(
-        active_peers,
-        peer_heights.clone(),
-        PeerCommitRequestType::Summary,
-    );
-    // range of the next indexs to fetch
-    let mut request_stream = (current.index().checked_add(1).unwrap()
-        ..=*commit.index())
-        .map(|next| {
-            let peers = peer_balancer.clone().with_commit(next);
-            let peer_heights = peer_heights.clone();
-
-            async move {
-                if let Some(commit) = peer_heights
-                    .read()
-                    .get_commit_by_index(next)
-                {
-                    return (Some(commit.to_owned()), next, None::<PeerId>);
-                }
-
-                // Iterate through peers trying each one in turn until we're able to
-                // successfully get the target commit
-                for peer in peers {
-                    let mut request = Request::new(GetCommitSummaryRequest::ByIndex(next));
-                    request.set_timeout(timeout);
-                    if let Some(commit) = P2pClient::new(peer.channel)
-                        .get_commit_summary(request)
-                        .await
-                        .tap_err(|e| trace!("{e:?}"))
-                        .ok()
-                        .and_then(Response::into_inner)
-                        .tap_none(|| trace!("peer unable to help sync"))
-                    {
-                        // peer didn't give us a commit with the height that we requested
-                        if *commit.index() != next {
-                            tracing::debug!(
-                                "peer returned commit with wrong index number: expected {next}, got {}",
-                                commit.index()
-                            );
-                            continue;
-                        }
-
-                        // Insert in our store in the event that things fail and we need to retry
-                        peer_heights
-                            .write()
-                            .insert_commit(commit.clone());
-                        return (Some(commit), next, Some(peer.public_key.into()));
-                    }
-                }
-                (None, next, None)
-            }
-        })
-        .pipe(futures::stream::iter).buffered(COMMIT_SUMMARY_DOWNLOAD_CONCURRENCY);
-
-    while let Some((maybe_commit, next, maybe_peer_id)) = request_stream.next().await {
-        assert_eq!(current.index().checked_add(1).expect("exhausted u64"), next);
-
-        // Verify the commit
-        let commit = 'cp: {
-            let commit = maybe_commit
-                .ok_or_else(|| anyhow::anyhow!("no peers were able to help sync commit {next}"))?;
-
-            match verify_commit(&current, &store, commit) {
-                Ok(verified_commit) => verified_commit,
-                Err(commit) => {
-                    let mut peer_heights = peer_heights.write();
-                    // Remove the commit from our temporary store so that we can try querying
-                    // another peer for a different one
-                    peer_heights.remove_commit(commit.digest());
-
-                    return Err(anyhow::anyhow!("unable to verify commit {commit:?}"));
-                }
-            }
-        };
-
-        debug!(commit_seq = ?commit.index(), "verified commit summary");
-
-        current = commit.clone();
-        // Insert the newly verified commit into our store, which will bump our highest
-        // verified commit watermark as well.
-        store
-            .insert_commit(&commit)
-            .expect("store operation should not fail");
-    }
-
-    peer_heights.write().cleanup_old_commits(*commit.index());
-
-    Ok(())
-}
-
-async fn sync_commit_contents<S>(
-    active_peers: ActivePeers,
-    store: S,
-    peer_heights: Arc<RwLock<PeerHeights>>,
-    sender: mpsc::WeakSender<StateSyncMessage>,
-    commit_event_sender: broadcast::Sender<VerifiedCommitSummary>,
-    commit_content_download_concurrency: u64,
-    commit_content_download_tx_concurrency: u64,
-    timeout: Duration,
-    mut target_index_channel: watch::Receiver<CommitIndex>,
+    target_commit: CommitIndex,
+    dag_state: Arc<RwLock<DagState>>,
+    block_manager: Arc<RwLock<BlockManager>>,
+    committer: Arc<UniversalCommitter>,
+    commit_interpreter: Arc<RwLock<Linearizer>>,
 ) where
     S: WriteStore + Clone,
 {
-    let mut highest_synced = store
+    let current_highest_synced_commit_index = store
         .get_highest_synced_commit()
         .expect("store operation should not fail");
 
-    let mut current_index = highest_synced.index().checked_add(1).unwrap();
-    let mut target_index_cursor = 0;
-    let mut commit_contents_tasks = FuturesOrdered::new();
+    let peer_balancer = PeerBalancer::new(active_peers.clone(), peer_heights.clone());
 
-    let mut tx_concurrency_remaining = commit_content_download_tx_concurrency;
-
-    loop {
-        tokio::select! {
-            result = target_index_channel.changed() => {
-                match result {
-                    Ok(()) => {
-                        target_index_cursor = (*target_index_channel.borrow_and_update()).checked_add(1).unwrap();
-                    }
-                    Err(_) => {
-                        // Watch channel is closed, exit loop.
-                        return
-                    }
-                }
-            },
-            Some(maybe_commit) = commit_contents_tasks.next() => {
-                match maybe_commit {
-                    Ok(commit) => {
-                        let _: &VerifiedCommitSummary = &commit;  // type hint
-
-                        store
-                            .update_highest_synced_commit(&commit)
-                            .expect("store operation should not fail");
-                        // We don't care if no one is listening as this is a broadcast channel
-                        let _ = commit_event_sender.send(commit.clone());
-
-                        highest_synced = commit;
-
-                    }
-                    Err(commit) => {
-                        let _: &VerifiedCommitSummary = &commit;  // type hint
-                        if let Some(lowest_peer_commit) =
-                            peer_heights.read().peers.iter().map(|(_, state_sync_info)|  state_sync_info.lowest).min() {
-                            if commit.index() >= &lowest_peer_commit {
-                                info!("unable to sync contents of commit through state sync {} with lowest peer commit: {}", commit.index(), lowest_peer_commit);
-                            }
-                        } else {
-                            info!("unable to sync contents of commit through state sync {}", commit.index());
-
-                        }
-                        // Retry contents sync on failure.
-                        commit_contents_tasks.push_front(sync_one_commit_contents(
-                            active_peers.clone(),
-                            &store,
-                            peer_heights.clone(),
-                            timeout,
-                            commit,
-                        ));
-                    }
-                }
-            },
-        }
-
-        // Start new tasks up to configured concurrency limits.
-        while current_index < target_index_cursor
-            && commit_contents_tasks.len() < commit_content_download_concurrency as usize
-        {
-            let next_commit = store
-                .get_commit_by_index(current_index)
-                .expect("BUG: store should have all commits older than highest_verified_commit");
-
-            current_index += 1;
-            commit_contents_tasks.push_back(sync_one_commit_contents(
-                active_peers.clone(),
+    // Keep retrying with different peers until we succeed
+    'retry: loop {
+        for peer in peer_balancer.clone() {
+            match fetch_commits_and_blocks_from_peer(
+                &peer,
+                current_highest_synced_commit_index..=target_commit,
                 &store,
-                peer_heights.clone(),
+                &block_verifier,
                 timeout,
-                next_commit,
-            ));
-        }
-
-        if highest_synced.index() % commit_content_download_concurrency as u64 == 0
-            || commit_contents_tasks.is_empty()
-        {
-            // Periodically notify event loop to notify our peers that we've synced to a new commit height
-            if let Some(sender) = sender.upgrade() {
-                let message = StateSyncMessage::SyncedCommit(Box::new(highest_synced.clone()));
-                let _ = sender.send(message).await;
-            }
-        }
-    }
-}
-
-#[instrument(level = "debug", skip_all, fields(index = ?commit.index()))]
-async fn sync_one_commit_contents<S>(
-    active_peers: ActivePeers,
-    store: S,
-    peer_heights: Arc<RwLock<PeerHeights>>,
-    timeout: Duration,
-    commit: VerifiedCommitSummary,
-) -> Result<VerifiedCommitSummary, VerifiedCommitSummary>
-where
-    S: WriteStore + Clone,
-{
-    debug!("syncing commit contents");
-
-    // Check if we already have produced this commit locally. If so, we don't need
-    // to get it from peers anymore.
-    if store
-        .get_highest_synced_commit()
-        .expect("store operation should not fail")
-        .index()
-        >= commit.index()
-    {
-        debug!("commit was already created via consensus output");
-        return Ok(commit);
-    }
-
-    // Request commit contents from peers.
-    let peers = PeerBalancer::new(
-        active_peers,
-        peer_heights.clone(),
-        PeerCommitRequestType::Content,
-    )
-    .with_commit(*commit.index());
-    let now = tokio::time::Instant::now();
-    let Some(_contents) = get_full_commit_contents(peers, &store, &commit, timeout).await else {
-        // Delay completion in case of error so we don't hammer the network with retries.
-        let duration = peer_heights
-            .read()
-            .wait_interval_when_no_peer_to_sync_content();
-        if now.elapsed() < duration {
-            let duration = duration - now.elapsed();
-            info!("retrying commit sync after {:?}", duration);
-            tokio::time::sleep(duration).await;
-        }
-        return Err(commit);
-    };
-    debug!("completed commit contents sync");
-    Ok(commit)
-}
-
-#[instrument(level = "debug", skip_all)]
-async fn get_full_commit_contents<S>(
-    peers: PeerBalancer,
-    store: S,
-    commit: &VerifiedCommitSummary,
-    timeout: Duration,
-) -> Option<FullCommitContents>
-where
-    S: WriteStore,
-{
-    let digest = commit.content_digest;
-    if let Some(contents) = store
-        .get_full_commit_contents_by_index(*commit.index())
-        .or_else(|| store.get_full_commit_contents(&digest))
-    {
-        debug!("store already contains commit contents");
-        return Some(contents);
-    }
-
-    // Iterate through our selected peers trying each one in turn until we're able to
-    // successfully get the target commit
-    for peer in peers {
-        debug!(
-            ?timeout,
-            "requesting commit contents from {}",
-            PeerId::from(peer.public_key),
-        );
-        let mut request = Request::new(digest);
-        request.set_timeout(timeout);
-        if let Some(contents) = P2pClient::new(peer.channel)
-            .get_commit_contents(request)
-            .await
-            .tap_err(|e| trace!("{e:?}"))
-            .ok()
-            .and_then(Response::into_inner)
-            .tap_none(|| trace!("peer unable to help sync"))
-        {
-            if contents.verify_digests(digest).is_ok() {
-                let verified_contents = VerifiedCommitContents::new_unchecked(contents.clone());
-                store
-                    .insert_commit_contents(commit, verified_contents)
-                    .expect("store operation should not fail");
-                return Some(contents);
-            }
-        }
-    }
-    debug!("no peers had commit contents");
-    None
-}
-
-pub fn verify_commit_with_committee(
-    committee: Arc<Committee>,
-    current: &VerifiedCommitSummary,
-    commit: CertifiedCommitSummary,
-) -> Result<VerifiedCommitSummary, CertifiedCommitSummary> {
-    assert_eq!(*commit.index(), current.index().checked_add(1).unwrap());
-
-    if Some(*current.digest()) != commit.previous_digest {
-        debug!(
-            current_commit_seq = current.index(),
-            current_digest =% current.digest(),
-            commit_seq = commit.index(),
-            commit_digest =% commit.digest(),
-            commit_previous_digest =? commit.previous_digest,
-            "commit not on same chain"
-        );
-        return Err(commit);
-    }
-
-    let current_epoch = current.epoch();
-    if commit.epoch() != current_epoch && commit.epoch() != current_epoch.checked_add(1).unwrap() {
-        debug!(
-            commit_seq = commit.index(),
-            commit_epoch = commit.epoch(),
-            current_commit_seq = current.index(),
-            current_epoch = current_epoch,
-            "cannot verify commit with too high of an epoch",
-        );
-        return Err(commit);
-    }
-
-    if commit.epoch() == current_epoch.checked_add(1).unwrap()
-    // TODO: && current.next_epoch_committee().is_none()
-    {
-        debug!(
-            commit_seq = commit.index(),
-            commit_epoch = commit.epoch(),
-            current_commit_seq = current.index(),
-            current_epoch = current_epoch,
-            "next commit claims to be from the next epoch but the latest verified \
-            commit does not indicate that it is the last commit of an epoch"
-        );
-        return Err(commit);
-    }
-
-    commit
-        .verify_authority_signatures(&committee)
-        .map_err(|e| {
-            debug!("error verifying commit: {e}");
-            commit.clone()
-        })?;
-    Ok(VerifiedCommitSummary::new_unchecked(commit))
-}
-
-pub fn verify_commit<S>(
-    current: &VerifiedCommitSummary,
-    store: S,
-    commit: CertifiedCommitSummary,
-) -> Result<VerifiedCommitSummary, CertifiedCommitSummary>
-where
-    S: WriteStore,
-{
-    let committee = store
-        .get_committee(commit.epoch())
-        .unwrap_or_else(|e| {
-            panic!(
-            "BUG: should have committee for epoch {} before we try to verify commit {} - error {}",
-            commit.epoch(),
-            commit.index(),
-            e
-        )
-        })
-        .unwrap_or_else(|| {
-            panic!(
-                "BUG: should have committee for epoch {} before we try to verify commit {}",
-                commit.epoch(),
-                commit.index()
             )
+            .await
+            {
+                Ok((synced_commit, commits, blocks)) => {
+                    assert!(!commits.is_empty());
+
+                    let (commit_start, commit_end) = (
+                        commits.first().unwrap().index(),
+                        commits.last().unwrap().index(),
+                    );
+
+                    // Ensure that the fetched blocks have no gaps and are contiguous with the current synced commit.
+                    if commit_start > current_highest_synced_commit_index + 1 {
+                        warn!(
+                            "Gap detected in fetched commits. Expected {}, got {}",
+                            current_highest_synced_commit_index + 1,
+                            commit_start
+                        );
+                        continue;
+                    }
+
+                    if commit_end < target_commit {
+                        warn!(
+                            "Fetched commits ended at {} but target was {}. Retrying...",
+                            commit_end, target_commit
+                        );
+                        continue;
+                    }
+
+                    // Group blocks by epoch
+                    let mut blocks_by_epoch: BTreeMap<EpochId, Vec<VerifiedBlock>> =
+                        BTreeMap::new();
+                    for block in blocks {
+                        blocks_by_epoch
+                            .entry(block.epoch())
+                            .or_default()
+                            .push(block);
+                    }
+
+                    for (epoch, epoch_blocks) in blocks_by_epoch {
+                        // Try accept blocks via the block manager.
+                        let (accepted_blocks, missing_blocks) =
+                            block_manager.write().try_accept_blocks(epoch_blocks);
+
+                        if !accepted_blocks.is_empty() {
+                            debug!(
+                                "Accepted blocks: {}",
+                                accepted_blocks
+                                    .iter()
+                                    .map(|b| b.reference().to_string())
+                                    .join(",")
+                            );
+
+                            // Try to decide on commits using the committer and commit interpreter.
+                            let decided_leaders = committer
+                                .try_decide(dag_state.read().last_commit_leader(), Some(epoch));
+                            // TODO: updating last_decided_leader is done in Linearizer, but maybe needs to be done here if fetching is faster than linearizer can update
+                            // if let Some(last) = decided_leaders.last() {
+                            //     dag_state.write().last_decided_leader = last.slot();
+                            // }
+
+                            let committed_leaders = decided_leaders
+                                .into_iter()
+                                .filter_map(|leader| leader.into_committed_block())
+                                .collect::<Vec<_>>();
+
+                            if !committed_leaders.is_empty() {
+                                debug!(
+                                    "Committing leaders: {}",
+                                    committed_leaders
+                                        .iter()
+                                        .map(|b| b.reference().to_string())
+                                        .join(",")
+                                );
+                            }
+
+                            let committed_sub_dags =
+                                commit_interpreter.write().handle_commit(committed_leaders);
+
+                            // Send committed sub-dags through the commit event sender.
+                            for committed_sub_dag in committed_sub_dags.into_iter() {
+                                if let Err(err) =
+                                    commit_event_sender.send(committed_sub_dag.clone())
+                                {
+                                    tracing::error!(
+                                        "Failed to send committed sub-dag, probably due to shutdown: {err:?}"
+                                    );
+                                }
+                                tracing::debug!(
+                                    "Sending to execution commit {} leader {}",
+                                    committed_sub_dag.commit_ref,
+                                    committed_sub_dag.leader
+                                );
+                            }
+                        }
+
+                        if !missing_blocks.is_empty() {
+                            debug!("Missing blocks: {:?}", missing_blocks);
+                            // TODO: Trigger fetching of missing blocks.
+                        }
+                    }
+                    // Update the highest synced commit in the store.
+                    store.update_highest_synced_commit(commit_end);
+                    // Notify that we've synced to a new commit
+                    if let Some(sender) = weak_sender.upgrade() {
+                        let _ = sender
+                            .send(StateSyncMessage::SyncedCommit(synced_commit))
+                            .await;
+                    }
+                    break 'retry;
+                }
+                Err(e) => {
+                    warn!("Failed to sync from peer: {}", e);
+                    continue;
+                }
+            }
+        }
+        sleep(Duration::from_secs(1)).await;
+    }
+}
+
+// Core sync function that fetches and processes commits from a single peer
+async fn fetch_commits_and_blocks_from_peer<S>(
+    peer: &PeerState,
+    commit_range: RangeInclusive<CommitIndex>,
+    store: &S,
+    block_verifier: &SignedBlockVerifier,
+    timeout: Duration,
+) -> Result<(CommitIndex, Vec<TrustedCommit>, Vec<VerifiedBlock>), SomaError>
+where
+    S: WriteStore,
+{
+    const FETCH_COMMITS_TIMEOUT: Duration = Duration::from_secs(30);
+    const FETCH_BLOCKS_TIMEOUT: Duration = Duration::from_secs(120);
+    const MAX_BLOCKS_PER_FETCH: usize = if cfg!(msim) {
+        // Exercise hitting blocks per fetch limit.
+        10
+    } else {
+        1000
+    };
+
+    let mut client = P2pClient::new(peer.channel.clone());
+    // 1. Fetch commits in the commit range from the selected peer.
+    let response = client
+        .fetch_commits(FetchCommitsRequest {
+            start: *commit_range.start(),
+            end: *commit_range.end(),
+        })
+        .await?;
+    let FetchCommitsResponse {
+        commits: serialized_commits,
+        certifier_blocks: serialized_certifier_blocks,
+    } = response.into_inner();
+
+    let public_key = peer.public_key.clone();
+
+    // 2. Verify the commits.
+    let commits = verify_commits(
+        public_key.clone(),
+        commit_range.clone(),
+        serialized_commits,
+        serialized_certifier_blocks,
+        store,
+        block_verifier,
+    )?;
+
+    let block_refs: Vec<_> = commits.iter().flat_map(|c| c.blocks()).cloned().collect();
+    let mut requests: FuturesOrdered<_> = block_refs
+        .chunks(MAX_BLOCKS_PER_FETCH)
+        .enumerate()
+        .map(|(i, request_block_refs)| {
+            let i = i as u32;
+            let mut client = P2pClient::new(peer.channel.clone());
+            let public_key = public_key.clone();
+
+            async move {
+                // Pipeline the requests to avoid overloading the target.
+                sleep(Duration::from_millis(200) * i).await;
+                // TODO: add some retries.
+                let mut stream = client
+                    .fetch_blocks(FetchBlocksRequest {
+                        block_refs: request_block_refs
+                            .iter()
+                            .filter_map(|r| match bcs::to_bytes(r) {
+                                Ok(serialized) => Some(serialized),
+                                Err(e) => {
+                                    debug!("Failed to serialize block ref {:?}: {e:?}", r);
+                                    None
+                                }
+                            })
+                            .collect(),
+                        highest_accepted_rounds: vec![],
+                        epoch: 0,
+                    })
+                    .await.map_err(|e| ConsensusError::NetworkRequest(format!("Network error while streaming blocks")))?
+                    .into_inner();
+
+                let mut chunk_serialized_blocks = vec![];
+                let mut total_fetched_bytes = 0;
+                loop {
+                    match stream.message().await {
+                        Ok(Some(response)) => {
+                            for b in &response.blocks {
+                                total_fetched_bytes += b.len();
+                            }
+                            chunk_serialized_blocks.extend(response.blocks);
+                            if total_fetched_bytes > MAX_TOTAL_FETCHED_BYTES {
+                                info!(
+                                    "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating stream.",
+                                    total_fetched_bytes, MAX_TOTAL_FETCHED_BYTES,
+                                );
+                                break;
+                            }
+                        }
+                        Ok(None) => {
+                            break;
+                        }
+                        Err(e) => {
+                            if chunk_serialized_blocks.is_empty() {
+                                return Err(ConsensusError::NetworkRequest(format!(
+                                    "fetch_blocks failed mid-stream: {e:?}"
+                                )));
+                            } else {
+                                warn!("fetch_blocks failed mid-stream: {e:?}");
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 4. Verify the same number of blocks are returned as requested.
+                if request_block_refs.len() != chunk_serialized_blocks.len() {
+                    return Err(ConsensusError::UnexpectedNumberOfBlocksFetched {
+                        peer: public_key.into_inner().to_string(),
+                        requested: request_block_refs.len(),
+                        received: chunk_serialized_blocks.len(),
+                    }.into());
+                }
+
+                let mut verified_blocks = Vec::new();
+                for (requested_block_ref, serialized) in
+                    request_block_refs.iter().zip(chunk_serialized_blocks.into_iter())
+                {
+                    let signed_block: SignedBlock =
+                        bcs::from_bytes(&serialized).map_err(ConsensusError::MalformedBlock)?;
+
+                    let signed_block_digest = VerifiedBlock::compute_digest(&serialized);
+                    let received_block_ref =
+                        BlockRef::new(signed_block.round(), signed_block.author(), signed_block_digest);
+
+                    if *requested_block_ref != received_block_ref {
+                        return Err(ConsensusError::UnexpectedBlockForCommit {
+                            peer: public_key.into_inner().to_string(),
+                            requested: *requested_block_ref,
+                            received: received_block_ref,
+                        }.into());
+                    }
+
+                    verified_blocks.push(VerifiedBlock::new_verified(signed_block, serialized));
+                }
+
+                Ok(verified_blocks)
+            }
+        })
+        .collect();
+
+    let mut fetched_blocks: Vec<VerifiedBlock> = Vec::new();
+    while let Some(result) = requests.next().await {
+        fetched_blocks.extend(result?);
+    }
+
+    Ok((*commit_range.end(), commits, fetched_blocks))
+}
+
+fn verify_commits<S>(
+    peer: NetworkPublicKey,
+    commit_range: RangeInclusive<CommitIndex>,
+    serialized_commits: Vec<Bytes>,
+    serialized_blocks: Vec<Bytes>,
+    store: &S,
+    block_verifier: &dyn BlockVerifier,
+) -> Result<Vec<TrustedCommit>, SomaError>
+where
+    S: WriteStore,
+{
+    let mut commits = Vec::new();
+    for serialized in &serialized_commits {
+        let commit: Commit =
+            bcs::from_bytes(serialized).map_err(ConsensusError::MalformedCommit)?;
+        let digest = TrustedCommit::compute_digest(serialized);
+        if commits.is_empty() {
+            // start is inclusive, so first commit must be at the start index.
+            if commit.index() != *commit_range.start() {
+                return Err(ConsensusError::UnexpectedStartCommit {
+                    peer: peer.into_inner().to_string(),
+                    start: *commit_range.start(),
+                    commit: Box::new(commit),
+                }
+                .into());
+            }
+        } else {
+            // Verify next commit increments index and references the previous digest.
+            let (last_commit_digest, last_commit): &(CommitDigest, Commit) =
+                commits.last().unwrap();
+            if commit.index() != last_commit.index() + 1
+                || &commit.previous_digest() != last_commit_digest
+            {
+                return Err(ConsensusError::UnexpectedCommitSequence {
+                    peer: peer.into_inner().to_string(),
+                    prev_commit: Box::new(last_commit.clone()),
+                    curr_commit: Box::new(commit),
+                }
+                .into());
+            }
+        }
+        // Do not process more commits past the end index.
+        if commit.index() > *commit_range.end() {
+            break;
+        }
+        commits.push((digest, commit));
+    }
+
+    if commits.is_empty() {
+        return Err(ConsensusError::NoCommitReceived {
+            peer: peer.into_inner().to_string(),
+        }
+        .into());
+    }
+
+    // Group commits by epoch and collect relevant blocks.
+    let mut commits_by_epoch: BTreeMap<Epoch, Vec<(CommitDigest, &Commit)>> = BTreeMap::new();
+    for (digest, commit) in &commits {
+        commits_by_epoch
+            .entry(commit.epoch())
+            .or_default()
+            .push((*digest, commit));
+    }
+
+    // Parse and verify blocks.
+    let blocks_by_commit_index: BTreeMap<CommitIndex, Vec<SignedBlock>> = serialized_blocks
+        .iter()
+        .filter_map(|serialized_block| {
+            let block = bcs::from_bytes::<SignedBlock>(serialized_block)
+                .map_err(|err| ConsensusError::MalformedBlock)
+                .ok()?;
+
+            Some(block)
+        })
+        .flat_map(|signed_block| {
+            let votes = signed_block
+                .commit_votes()
+                .iter()
+                .map(|vote| vote.index)
+                .collect::<Vec<_>>();
+
+            votes
+                .into_iter()
+                .map(move |index| (index, signed_block.clone()))
+                .collect::<Vec<_>>()
+        })
+        .fold(BTreeMap::new(), |mut acc, (index, signed_block)| {
+            acc.entry(index).or_default().push(signed_block);
+            acc
         });
 
-    verify_commit_with_committee(committee, current, commit)
+    // 3. Verify commits for each epoch.
+    for (epoch, epoch_commits) in commits_by_epoch {
+        let Some(committee) = store.get_committee(epoch).unwrap_or_else(|e| {
+            panic!(
+                "BUG: should have committee for epoch {epoch} before we try to verify commits in that epoch- error {e}"
+            )
+        }) else {
+            panic!(
+                "BUG: should have committee for epoch {epoch} before we try to verify commits in that epoch"
+            )
+        };
+
+        for (digest, commit) in epoch_commits {
+            let commit_ref = CommitRef {
+                index: commit.index(),
+                digest,
+            };
+
+            if let Some(blocks) = blocks_by_commit_index.get(&commit.index()) {
+                let mut stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+                for block in blocks {
+                    block_verifier.verify(block)?;
+                    for vote in block.commit_votes() {
+                        if *vote == commit_ref {
+                            stake_aggregator.add(block.author(), &committee);
+                        }
+                    }
+                }
+
+                // Check if the commit has enough votes.
+                if !stake_aggregator.reached_threshold(&committee) {
+                    return Err(ConsensusError::NotEnoughCommitVotes {
+                        stake: stake_aggregator.stake(),
+                        peer: peer.into_inner().to_string(),
+                        commit: Box::new(commit.clone()),
+                    }
+                    .into());
+                }
+            } else {
+                return Err(ConsensusError::NoBlocksForCommit {
+                    commit: Box::new(commit.clone()),
+                    peer: peer.into_inner().to_string(),
+                }
+                .into());
+            }
+        }
+    }
+
+    Ok(commits
+        .into_iter()
+        .zip(serialized_commits)
+        .map(|((_d, c), s)| TrustedCommit::new_trusted(c, s))
+        .collect())
 }

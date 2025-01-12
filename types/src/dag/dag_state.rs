@@ -1,6 +1,6 @@
 use tracing::{debug, error};
 
-use crate::committee::AuthorityIndex;
+use crate::committee::{AuthorityIndex, Committee, EpochId};
 use crate::consensus::{
     block::{
         genesis_blocks, BlockAPI as _, BlockDigest, BlockRef, BlockTimestampMs, Round, Slot,
@@ -14,7 +14,10 @@ use crate::consensus::{
     stake_aggregator::{QuorumThreshold, StakeAggregator},
 };
 
-use crate::storage::consensus::{Store, WriteBatch};
+use crate::storage::committee_store::CommitteeStore;
+use crate::storage::consensus::{ConsensusStore, WriteBatch};
+use crate::storage::read_store::ReadStore;
+use crate::storage::write_store::WriteStore;
 use itertools::Itertools as _;
 use std::{
     cmp::max,
@@ -22,6 +25,12 @@ use std::{
     ops::Bound::{Excluded, Included, Unbounded},
     sync::Arc,
 };
+
+struct EpochData {
+    last_committed_rounds: Vec<Round>,
+    recent_refs: Vec<BTreeSet<BlockRef>>,
+}
+
 /// DagState provides the API to write and read accepted blocks from the DAG.
 /// Only uncommitted and last committed blocks are cached in memory.
 /// The rest of blocks are stored on disk.
@@ -32,6 +41,8 @@ use std::{
 pub struct DagState {
     context: Arc<Context>,
 
+    committee_store: Option<Arc<dyn ReadStore>>,
+
     // The genesis blocks
     genesis: BTreeMap<BlockRef, VerifiedBlock>,
 
@@ -39,9 +50,10 @@ pub struct DagState {
     // Note: all uncommitted blocks are kept in memory.
     recent_blocks: BTreeMap<BlockRef, VerifiedBlock>,
 
-    // Contains block refs of recent_blocks.
-    // Each element in the Vec corresponds to the authority with the index.
-    recent_refs: Vec<BTreeSet<BlockRef>>,
+    // Map epoch -> epoch-specific data
+    epoch_data: BTreeMap<EpochId, EpochData>,
+
+    round_to_epoch: BTreeMap<Round, EpochId>,
 
     // Highest round of blocks accepted.
     highest_accepted_round: Round,
@@ -51,9 +63,6 @@ pub struct DagState {
 
     // Last wall time when commit round advanced. Does not persist across restarts.
     last_commit_round_advancement_time: Option<std::time::Instant>,
-
-    // Last committed rounds per authority.
-    last_committed_rounds: Vec<Round>,
 
     // Commit votes pending to be included in new blocks.
     // TODO: limit to 1st commit per round with multi-leader.
@@ -69,15 +78,18 @@ pub struct DagState {
     commit_info_to_write: Vec<(CommitRef, CommitInfo)>,
 
     // Persistent storage for blocks, commits and other consensus data.
-    store: Arc<dyn Store>,
+    store: Arc<dyn ConsensusStore>,
 
     // The number of cached rounds
     cached_rounds: Round,
 }
 
 impl DagState {
-    pub fn new(context: Arc<Context>, store: Arc<dyn Store>) -> Self {
-        let num_authorities = context.committee.size();
+    pub fn new(
+        context: Arc<Context>,
+        store: Arc<dyn ConsensusStore>,
+        committee_store: Option<Arc<dyn ReadStore>>,
+    ) -> Self {
         let cached_rounds = context.parameters.dag_state_cached_rounds;
         let genesis = genesis_blocks(context.clone())
             .into_iter()
@@ -91,67 +103,125 @@ impl DagState {
         let commit_info = store
             .read_last_commit_info()
             .unwrap_or_else(|e| panic!("Failed to read from storage: {:?}", e));
-        let (mut last_committed_rounds, commit_recovery_start_index) =
-            if let Some((commit_ref, commit_info)) = commit_info {
-                tracing::info!("Recovering committed state from {commit_ref} {commit_info:?}");
-                (commit_info.committed_rounds, commit_ref.index + 1)
-            } else {
-                tracing::info!("Found no stored CommitInfo to recover from");
-                (vec![0; num_authorities], GENESIS_COMMIT_INDEX + 1)
-            };
-
-        if let Some(last_commit) = last_commit.as_ref() {
-            store
-                .scan_commits((commit_recovery_start_index..=last_commit.index()).into())
-                .unwrap_or_else(|e| panic!("Failed to read from storage: {:?}", e))
-                .iter()
-                .for_each(|commit| {
-                    for block_ref in commit.blocks() {
-                        last_committed_rounds[block_ref.author] =
-                            max(last_committed_rounds[block_ref.author], block_ref.round);
-                    }
-                });
-        }
-
-        tracing::info!(
-            "DagState was initialized with the following state: \
-                {last_commit:?}; {last_committed_rounds:?}"
-        );
 
         let mut state = Self {
             context,
             genesis,
             recent_blocks: BTreeMap::new(),
-            recent_refs: vec![BTreeSet::new(); num_authorities],
             highest_accepted_round: 0,
-            last_commit,
+            last_commit: last_commit.clone(),
             last_commit_round_advancement_time: None,
-            last_committed_rounds: last_committed_rounds.clone(),
+            epoch_data: BTreeMap::new(),
+            round_to_epoch: BTreeMap::new(),
             pending_commit_votes: VecDeque::new(),
             blocks_to_write: vec![],
             commits_to_write: vec![],
             commit_info_to_write: vec![],
-            store,
+            store: store.clone(),
             cached_rounds,
+            committee_store,
         };
 
-        for (i, round) in last_committed_rounds.into_iter().enumerate() {
-            let authority_index = state.context.committee.to_authority_index(i).unwrap();
-            let blocks = state
-                .store
-                .scan_blocks_by_author(
-                    authority_index,
-                    Self::eviction_round(round, cached_rounds) + 1,
-                )
-                .unwrap();
-            for block in blocks {
-                state.update_block_metadata(&block);
+        // Get commit recovery start index
+        let commit_recovery_start_index = commit_info
+            .map(|(commit_ref, _)| commit_ref.index + 1)
+            .unwrap_or(GENESIS_COMMIT_INDEX + 1);
+
+        // Initialize epoch data from commits
+        if let Some(last_commit_ref) = last_commit.as_ref() {
+            let commits = store
+                .scan_commits((commit_recovery_start_index..=last_commit_ref.index()).into())
+                .unwrap_or_else(|e| panic!("Failed to read from storage: {:?}", e));
+
+            for commit in commits {
+                let epoch = commit.epoch();
+                for block_ref in commit.blocks() {
+                    state.round_to_epoch.insert(block_ref.round, epoch);
+                }
+
+                let epoch_data = state.get_or_create_epoch_data(commit.epoch());
+                for block_ref in commit.blocks() {
+                    epoch_data.last_committed_rounds[block_ref.author.value()] = max(
+                        epoch_data.last_committed_rounds[block_ref.author.value()],
+                        block_ref.round,
+                    );
+                }
             }
+        }
+
+        // Load historical blocks
+        let blocks_to_add = state
+            .epoch_data
+            .iter()
+            .flat_map(|(&epoch, epoch_data)| {
+                epoch_data
+                    .last_committed_rounds
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, round)| {
+                        let authority_index = AuthorityIndex(i as u32);
+                        store
+                            .scan_blocks_by_author(
+                                authority_index,
+                                Self::eviction_round(*round, cached_rounds) + 1,
+                            )
+                            .unwrap()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        for block in blocks_to_add {
+            state.update_block_metadata(&block);
         }
 
         state
     }
 
+    pub fn get_committee(&self, epoch: EpochId) -> Arc<Committee> {
+        if let Some(committee_store) = &self.committee_store {
+            if let Ok(Some(committee)) = committee_store.get_committee(epoch) {
+                committee
+            } else {
+                Arc::new(self.context.committee.clone())
+            }
+        } else {
+            Arc::new(self.context.committee.clone())
+        }
+    }
+
+    fn get_or_create_epoch_data(&mut self, epoch: EpochId) -> &mut EpochData {
+        if !self.epoch_data.contains_key(&epoch) {
+            let committee = self.get_committee(epoch);
+            let size = committee.size();
+            let data = EpochData {
+                last_committed_rounds: vec![0; size],
+                recent_refs: vec![BTreeSet::new(); size],
+            };
+            self.epoch_data.insert(epoch, data);
+        }
+        self.epoch_data.get_mut(&epoch).unwrap()
+    }
+
+    pub fn get_epoch_for_round(&self, round: Round) -> EpochId {
+        // Get highest round less than or equal to target round
+        if let Some((&r, &epoch)) = self.round_to_epoch.range(..=round).next_back() {
+            epoch
+        } else {
+            // Default to epoch 0 if no earlier round found
+            0
+        }
+    }
+
+    fn is_own_authority(&self, index: AuthorityIndex, epoch: EpochId) -> bool {
+        let committee = self.get_committee(epoch);
+        if let Some(name) = committee.authority_by_index(index.value() as u32) {
+            if let Some(own_index) = self.context.own_index {
+                return committee.authority_by_index(own_index.value() as u32) == Some(name);
+            }
+        }
+        false
+    }
     /// Accepts a block into DagState and keeps it in memory.
     pub(crate) fn accept_block(&mut self, block: VerifiedBlock) {
         assert_ne!(
@@ -173,8 +243,10 @@ impl DagState {
             );
         }
 
+        let epoch = block.epoch();
+
         // Ensure we don't write multiple blocks per slot for our own index
-        if Some(block_ref.author) == self.context.own_index {
+        if self.is_own_authority(block_ref.author, epoch) {
             let existing_blocks = self.get_uncommitted_blocks_at_slot(block_ref.into());
             assert!(
                 existing_blocks.is_empty(),
@@ -182,9 +254,10 @@ impl DagState {
                 block(s) {existing_blocks:#?} already exists."
             );
         }
+
         self.update_block_metadata(&block);
         self.blocks_to_write.push(block);
-        let source = if self.context.own_index == Some(block_ref.author) {
+        let source = if self.is_own_authority(block_ref.author, epoch) {
             "own"
         } else {
             "others"
@@ -193,9 +266,14 @@ impl DagState {
 
     /// Updates internal metadata for a block.
     fn update_block_metadata(&mut self, block: &VerifiedBlock) {
+        let epoch = block.epoch();
+        let epoch_data = self.get_or_create_epoch_data(epoch);
         let block_ref = block.reference();
+
+        epoch_data.recent_refs[block_ref.author.value()].insert(block_ref);
+        self.round_to_epoch.insert(block.round(), block.epoch());
+
         self.recent_blocks.insert(block_ref, block.clone());
-        self.recent_refs[block_ref.author].insert(block_ref);
         self.highest_accepted_round = max(self.highest_accepted_round, block.round());
     }
 
@@ -341,7 +419,16 @@ impl DagState {
     /// Retrieves the last block proposed for the specified `authority`. If no block is found in cache
     /// then the genesis block is returned as no other block has been received from that authority.
     pub fn get_last_block_for_authority(&self, authority: AuthorityIndex) -> VerifiedBlock {
-        if let Some(last) = self.recent_refs[authority].last() {
+        let mut last_ref: Option<&BlockRef> = None;
+        let latest_epoch = self.epoch_data.keys().last().copied().unwrap_or(0);
+        let epoch_data = self.epoch_data.get(&latest_epoch).unwrap();
+        if let Some(latest) = epoch_data.recent_refs[authority.value()].last() {
+            if last_ref.is_none() || latest.round > last_ref.unwrap().round {
+                last_ref = Some(latest);
+            }
+        }
+
+        if let Some(last) = last_ref {
             return self
                 .recent_blocks
                 .get(last)
@@ -369,15 +456,19 @@ impl DagState {
         start: Round,
     ) -> Vec<VerifiedBlock> {
         let mut blocks = vec![];
-        for block_ref in self.recent_refs[authority].range((
-            Included(BlockRef::new(start, authority, BlockDigest::MIN)),
-            Unbounded,
-        )) {
-            let block = self
-                .recent_blocks
-                .get(block_ref)
-                .expect("Block should exist in recent blocks");
-            blocks.push(block.clone());
+        // Need epoch for this round
+        let epoch = self.get_epoch_for_round(start);
+        if let Some(epoch_data) = self.epoch_data.get(&epoch) {
+            for block_ref in epoch_data.recent_refs[authority.value()].range((
+                Included(BlockRef::new(start, authority, BlockDigest::MIN)),
+                Unbounded,
+            )) {
+                let block = self
+                    .recent_blocks
+                    .get(block_ref)
+                    .expect("Block should exist in recent blocks");
+                blocks.push(block.clone());
+            }
         }
         blocks
     }
@@ -401,14 +492,18 @@ impl DagState {
             return blocks;
         }
 
-        for (authority_index, block_refs) in self.recent_refs.iter().enumerate() {
-            let authority_index = self
-                .context
-                .committee
-                .to_authority_index(authority_index)
-                .unwrap();
+        let epoch = self.get_epoch_for_round(end_round);
 
-            let last_evicted_round = self.authority_eviction_round(authority_index);
+        let epoch_data = self.epoch_data.get(&epoch).expect("Epoch data must exist");
+
+        for (index, block_refs) in epoch_data.recent_refs.iter().enumerate() {
+            // let authority_index = self
+            //     .context
+            //     .committee
+            //     .to_authority_index(authority_index)
+            //     .unwrap();
+            let authority_index = AuthorityIndex(index as u32);
+            let last_evicted_round = self.authority_eviction_round(epoch, authority_index);
             if end_round.saturating_sub(1) <= last_evicted_round {
                 panic!("Attempted to request for blocks of rounds < {end_round}, when the last evicted round is {last_evicted_round} for authority {authority_index}", );
             }
@@ -439,23 +534,28 @@ impl DagState {
     /// Checks whether a block exists in the slot. The method checks only against the cached data.
     /// If the user asks for a slot that is not within the cached data then a panic is thrown.
     pub fn contains_cached_block_at_slot(&self, slot: Slot) -> bool {
+        let epoch = self.get_epoch_for_round(slot.round);
         // Always return true for genesis slots.
         if slot.round == GENESIS_ROUND {
             return true;
         }
 
-        if slot.round <= self.authority_eviction_round(slot.authority) {
+        if slot.round <= self.authority_eviction_round(epoch, slot.authority) {
             panic!(
                 "Attempted to check for slot {slot} that is <= the last evicted round {}",
-                self.authority_eviction_round(slot.authority)
+                self.authority_eviction_round(epoch, slot.authority)
             );
         }
 
-        let mut result = self.recent_refs[slot.authority].range((
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MIN)),
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MAX)),
-        ));
-        result.next().is_some()
+        let epoch_data = self.epoch_data.get(&epoch).unwrap();
+
+        epoch_data.recent_refs[slot.authority.value()]
+            .range((
+                Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MIN)),
+                Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MAX)),
+            ))
+            .next()
+            .is_some()
     }
 
     /// Checks whether the required blocks are in cache, if exist, or otherwise will check in store. The method is not caching
@@ -465,14 +565,17 @@ impl DagState {
         let mut missing = Vec::new();
 
         for (index, block_ref) in block_refs.into_iter().enumerate() {
-            let recent_refs = &self.recent_refs[block_ref.author];
+            let epoch = self.get_epoch_for_round(block_ref.round);
+            let Some(epoch_data) = self.epoch_data.get(&epoch) else {
+                missing.push((index, block_ref));
+                continue;
+            };
+
+            let recent_refs = &epoch_data.recent_refs[block_ref.author.value()];
             if recent_refs.contains(&block_ref) || self.genesis.contains_key(&block_ref) {
                 exist[index] = true;
             } else if recent_refs.is_empty() || recent_refs.last().unwrap().round < block_ref.round
             {
-                // Optimization: recent_refs contain the most recent blocks known to this authority.
-                // If a block ref is not found there and has a higher round, it definitely is
-                // missing from this authority and there is no need to check disk.
                 exist[index] = false;
             } else {
                 missing.push((index, block_ref));
@@ -538,16 +641,21 @@ impl DagState {
             self.last_commit_round_advancement_time = Some(now);
         }
 
-        for block_ref in commit.blocks().iter() {
-            self.last_committed_rounds[block_ref.author] = max(
-                self.last_committed_rounds[block_ref.author],
-                block_ref.round,
-            );
+        let epoch = commit.epoch();
+        // Collect block rounds first
+        let blocks: Vec<_> = commit.blocks().iter().collect();
+
+        // Update round -> epoch mapping
+        for block_ref in &blocks {
+            self.round_to_epoch.insert(block_ref.round, epoch);
         }
 
-        for (i, round) in self.last_committed_rounds.iter().enumerate() {
-            let index = self.context.committee.to_authority_index(i).unwrap();
-            let hostname = &self.context.committee.authority(index).hostname;
+        let epoch_data = self.get_or_create_epoch_data(epoch);
+
+        for block_ref in commit.blocks().iter() {
+            let idx = block_ref.author.value();
+            epoch_data.last_committed_rounds[idx] =
+                max(epoch_data.last_committed_rounds[idx], block_ref.round);
         }
 
         self.pending_commit_votes.push_back(commit.reference());
@@ -555,15 +663,22 @@ impl DagState {
     }
 
     pub(crate) fn add_commit_info(&mut self) {
-        let commit_info = CommitInfo {
-            committed_rounds: self.last_committed_rounds.clone(),
-        };
         let last_commit = self
             .last_commit
             .as_ref()
             .expect("Last commit should already be set.");
-        self.commit_info_to_write
-            .push((last_commit.reference(), commit_info));
+        let epoch = last_commit.epoch();
+        let commit_ref = last_commit.reference();
+
+        // Get the committed rounds before creating commit info
+        let committed_rounds = {
+            let epoch_data = self.get_or_create_epoch_data(epoch);
+            epoch_data.last_committed_rounds.clone()
+        };
+
+        let commit_info = CommitInfo { committed_rounds };
+
+        self.commit_info_to_write.push((commit_ref, commit_info));
     }
 
     pub fn take_commit_votes(&mut self, limit: usize) -> Vec<CommitVote> {
@@ -622,7 +737,11 @@ impl DagState {
 
     /// Last committed round per authority.
     pub(crate) fn last_committed_rounds(&self) -> Vec<Round> {
-        self.last_committed_rounds.clone()
+        let latest_epoch = self.epoch_data.keys().last().copied().unwrap_or(0);
+        self.epoch_data
+            .get(&latest_epoch)
+            .map(|data| data.last_committed_rounds.clone())
+            .unwrap_or_default()
     }
 
     /// After each flush, DagState becomes persisted in storage and it expected to recover
@@ -665,24 +784,23 @@ impl DagState {
             .write(WriteBatch::new(blocks, commits, commit_info_to_write))
             .unwrap_or_else(|e| panic!("Failed to write to storage: {:?}", e));
 
-        // Clean up old cached data. After flushing, all cached blocks are guaranteed to be persisted.
-        let mut total_recent_refs = 0;
-        for (authority_refs, last_committed_round) in self
-            .recent_refs
-            .iter_mut()
-            .zip(self.last_committed_rounds.iter())
-        {
-            while let Some(block_ref) = authority_refs.first() {
-                if block_ref.round
-                    <= Self::eviction_round(*last_committed_round, self.cached_rounds)
-                {
-                    self.recent_blocks.remove(block_ref);
-                    authority_refs.pop_first();
-                } else {
-                    break;
+        for (epoch, epoch_data) in self.epoch_data.iter_mut() {
+            for (authority_refs, last_committed_round) in epoch_data
+                .recent_refs
+                .iter_mut()
+                .zip(epoch_data.last_committed_rounds.iter())
+            {
+                while let Some(block_ref) = authority_refs.first() {
+                    if block_ref.round
+                        <= Self::eviction_round(*last_committed_round, self.cached_rounds)
+                    {
+                        self.recent_blocks.remove(block_ref);
+                        authority_refs.pop_first();
+                    } else {
+                        break;
+                    }
                 }
             }
-            total_recent_refs += authority_refs.len();
         }
     }
 
@@ -697,12 +815,14 @@ impl DagState {
             if round == GENESIS_ROUND {
                 return self.genesis_blocks();
             }
+            let epoch = self.get_epoch_for_round(round);
+            let committee = self.get_committee(epoch);
             let mut quorum = StakeAggregator::<QuorumThreshold>::new();
 
             // Since the minimum wave length is 3 we expect to find a quorum in the uncommitted rounds.
             let blocks = self.get_uncommitted_blocks_at_round(round);
             for block in &blocks {
-                if quorum.add(block.author(), &self.context.committee) {
+                if quorum.add(block.author(), &committee) {
                     return blocks;
                 }
             }
@@ -724,8 +844,9 @@ impl DagState {
     /// The last round that got evicted after a cache clean up operation. After this round we are
     /// guaranteed to have all the produced blocks from that authority. For any round that is
     /// <= `last_evicted_round` we don't have such guarantees as out of order blocks might exist.
-    fn authority_eviction_round(&self, authority_index: AuthorityIndex) -> Round {
-        let commit_round = self.last_committed_rounds[authority_index];
+    fn authority_eviction_round(&self, epoch: EpochId, authority_index: AuthorityIndex) -> Round {
+        let epoch_data = self.epoch_data.get(&epoch).expect("Epoch data must exist");
+        let commit_round = epoch_data.last_committed_rounds[authority_index.value()];
         Self::eviction_round(commit_round, self.cached_rounds)
     }
 
@@ -759,7 +880,7 @@ mod test {
         let (context, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
         let own_index = AuthorityIndex::new_for_test(0);
 
         // Populate test blocks for round 1 ~ 10, authorities 0 ~ 2.
@@ -866,7 +987,7 @@ mod test {
         let (context, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Populate DagState.
 
@@ -1027,7 +1148,7 @@ mod test {
 
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create test blocks for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1087,7 +1208,7 @@ mod test {
 
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create test blocks for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1151,7 +1272,7 @@ mod test {
 
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create test blocks for round 1 ~ 10 for authority 0
         let mut blocks = Vec::new();
@@ -1160,17 +1281,19 @@ mod test {
             blocks.push(block.clone());
             dag_state.accept_block(block);
         }
-
+        let leader = blocks.last();
         // Now add a commit to trigger an eviction
         dag_state.add_commit(TrustedCommit::new_for_test(
             1 as CommitIndex,
             CommitDigest::MIN,
             0,
-            blocks.last().unwrap().reference(),
+            leader.unwrap().reference(),
             blocks
+                .clone()
                 .into_iter()
                 .map(|block| block.reference())
                 .collect::<Vec<_>>(),
+            leader.unwrap().epoch(),
         ));
 
         dag_state.flush();
@@ -1186,7 +1309,7 @@ mod test {
         let (context, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create test blocks for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1246,7 +1369,7 @@ mod test {
         let (context, _) = Context::new_for_test(num_authorities as usize);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create test blocks and commits for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1311,7 +1434,7 @@ mod test {
         drop(dag_state);
 
         // Recover the state from the store
-        let dag_state = DagState::new(context.clone(), store.clone());
+        let dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Blocks of first 5 rounds should be found in DagState.
         let blocks = dag_builder.blocks(1..=5);
@@ -1357,7 +1480,7 @@ mod test {
 
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create no blocks for authority 0
         // Create one block (round 10) for authority 1
@@ -1414,7 +1537,7 @@ mod test {
 
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create no blocks for authority 0
         // Create one block (round 1) for authority 1
@@ -1435,9 +1558,11 @@ mod test {
             context.clock.timestamp_utc_ms(),
             all_blocks.last().unwrap().reference(),
             all_blocks
+                .clone()
                 .into_iter()
                 .map(|block| block.reference())
                 .collect::<Vec<_>>(),
+            all_blocks.last().unwrap().epoch(),
         ));
 
         // WHEN search for the latest blocks
@@ -1477,7 +1602,7 @@ mod test {
 
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
 
         // Create no blocks for authority 0
         // Create one block (round 1) for authority 1
@@ -1498,9 +1623,11 @@ mod test {
             0,
             all_blocks.last().unwrap().reference(),
             all_blocks
+                .clone()
                 .into_iter()
                 .map(|block| block.reference())
                 .collect::<Vec<_>>(),
+            all_blocks.last().unwrap().epoch(),
         ));
 
         // Flush the store so we keep in memory only the last 1 round from the last commit for each
@@ -1518,7 +1645,11 @@ mod test {
         let (context, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
 
         // WHEN no blocks exist then genesis should be returned
         {
@@ -1570,7 +1701,11 @@ mod test {
         let (context, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            store.clone(),
+            None,
+        )));
 
         // WHEN no blocks exist then genesis should be returned
         {

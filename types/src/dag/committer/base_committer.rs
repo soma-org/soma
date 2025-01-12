@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 use parking_lot::RwLock;
 
-use crate::committee::{AuthorityIndex, Stake};
+use crate::committee::{AuthorityIndex, Committee, EpochId, Stake};
 use crate::consensus::{
     block::{BlockAPI as _, BlockRef, Round, Slot, VerifiedBlock},
     commit::{LeaderStatus, WaveNumber, DEFAULT_WAVE_LENGTH, MINIMUM_WAVE_LENGTH},
@@ -11,6 +11,7 @@ use crate::consensus::{
     stake_aggregator::{QuorumThreshold, StakeAggregator},
 };
 use crate::dag::dag_state::DagState;
+use crate::storage::committee_store::CommitteeStore;
 pub(crate) struct BaseCommitterOptions {
     /// The length of a wave (minimum 3)
     pub wave_length: u32,
@@ -39,8 +40,6 @@ impl Default for BaseCommitterOptions {
 /// time and any number of times (it is idempotent) to determine whether a leader
 /// can be committed or skipped.
 pub(crate) struct BaseCommitter {
-    /// The per-epoch configuration of this authority.
-    context: Arc<Context>,
     /// The consensus leader schedule to be used to resolve the leader for a
     /// given round.
     leader_schedule: Arc<LeaderSchedule>,
@@ -52,14 +51,12 @@ pub(crate) struct BaseCommitter {
 
 impl BaseCommitter {
     pub fn new(
-        context: Arc<Context>,
         leader_schedule: Arc<LeaderSchedule>,
         dag_state: Arc<RwLock<DagState>>,
         options: BaseCommitterOptions,
     ) -> Self {
         assert!(options.wave_length >= MINIMUM_WAVE_LENGTH);
         Self {
-            context,
             leader_schedule,
             dag_state,
             options,
@@ -128,7 +125,7 @@ impl BaseCommitter {
         LeaderStatus::Undecided(leader_slot)
     }
 
-    pub fn elect_leader(&self, round: Round) -> Option<Slot> {
+    pub fn elect_leader(&self, round: Round, epoch: Option<EpochId>) -> Option<Slot> {
         let wave = self.wave_number(round);
         tracing::trace!(
             "elect_leader: round={}, wave={}, leader_round={}, leader_offset={}",
@@ -144,7 +141,7 @@ impl BaseCommitter {
         Some(Slot::new(
             round,
             self.leader_schedule
-                .elect_leader(round, self.options.leader_offset),
+                .elect_leader(round, self.options.leader_offset, epoch),
         ))
     }
 
@@ -219,13 +216,13 @@ impl BaseCommitter {
         all_votes: &mut HashMap<BlockRef, bool>,
     ) -> bool {
         let mut votes_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        let dag_state = self.dag_state.read();
+
         for reference in potential_certificate.ancestors() {
             let is_vote = if let Some(is_vote) = all_votes.get(reference) {
                 *is_vote
             } else {
-                let potential_vote = self
-                    .dag_state
-                    .read()
+                let potential_vote = dag_state
                     .get_block(reference)
                     .unwrap_or_else(|| panic!("Block not found in storage: {:?}", reference));
                 let is_vote = self.is_vote(&potential_vote, leader_block);
@@ -235,7 +232,10 @@ impl BaseCommitter {
 
             if is_vote {
                 tracing::trace!("[{self}] {reference} is a vote for {leader_block}");
-                if votes_stake_aggregator.add(reference.author, &self.context.committee) {
+                if votes_stake_aggregator.add(
+                    reference.author,
+                    &dag_state.get_committee(leader_block.epoch()),
+                ) {
                     tracing::trace!(
                         "[{self}] {potential_certificate} is a certificate for leader {leader_block}"
                     );
@@ -306,10 +306,10 @@ impl BaseCommitter {
 
     /// Check whether the specified leader has 2f+1 non-votes (blames) to be directly skipped.
     fn enough_leader_blame(&self, voting_round: Round, leader: AuthorityIndex) -> bool {
-        let voting_blocks = self
-            .dag_state
-            .read()
-            .get_uncommitted_blocks_at_round(voting_round);
+        let dag_state = self.dag_state.read();
+        let voting_blocks = dag_state.get_uncommitted_blocks_at_round(voting_round);
+        let epoch = dag_state.get_epoch_for_round(voting_round);
+        let committee = dag_state.get_committee(epoch);
 
         let mut blame_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for voting_block in &voting_blocks {
@@ -323,7 +323,7 @@ impl BaseCommitter {
                     "[{self}] {voting_block} is a blame for leader {}",
                     Slot::new(voting_round - 1, leader)
                 );
-                if blame_stake_aggregator.add(voter, &self.context.committee) {
+                if blame_stake_aggregator.add(voter, &committee) {
                     return true;
                 }
             } else {
@@ -339,21 +339,20 @@ impl BaseCommitter {
     /// Check whether the specified leader has 2f+1 certificates to be directly
     /// committed.
     fn enough_leader_support(&self, decision_round: Round, leader_block: &VerifiedBlock) -> bool {
-        let decision_blocks = self
-            .dag_state
-            .read()
-            .get_uncommitted_blocks_at_round(decision_round);
+        let dag_state = self.dag_state.read();
+        let decision_blocks = dag_state.get_uncommitted_blocks_at_round(decision_round);
+        let committee = dag_state.get_committee(leader_block.epoch());
 
         // Quickly reject if there isn't enough stake to support the leader from
         // the potential certificates.
         let total_stake: Stake = decision_blocks
             .iter()
-            .map(|b| self.context.committee.stake(b.author()))
+            .map(|b| committee.stake_by_index(b.author()))
             .sum();
-        if !self.context.committee.reached_quorum(total_stake) {
+        if !committee.reached_quorum(total_stake) {
             tracing::debug!(
                 "Not enough support for {leader_block}. Stake not enough: {total_stake} < {}",
-                self.context.committee.quorum_threshold()
+                committee.quorum_threshold()
             );
             return false;
         }
@@ -363,7 +362,7 @@ impl BaseCommitter {
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().author;
             if self.is_certificate(decision_block, leader_block, &mut all_votes)
-                && certificate_stake_aggregator.add(authority, &self.context.committee)
+                && certificate_stake_aggregator.add(authority, &committee)
             {
                 return true;
             }
@@ -433,8 +432,7 @@ pub(crate) mod base_committer_builder {
                 round_offset: 0,
             };
             BaseCommitter::new(
-                self.context.clone(),
-                Arc::new(LeaderSchedule::new(self.context)),
+                Arc::new(LeaderSchedule::new(self.context, None)),
                 self.dag_state,
                 options,
             )
