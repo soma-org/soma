@@ -60,3 +60,4 @@ tokio-util = "0.7.12"
 clap = {version = "4.5", features = ["derive"]}
 tempdir = "0.3.7"
 arbtest = "0.3.2"
+mockall = "0.13.1"

@@ -25,26 +25,26 @@ use crate::{
 
 use crate::types::signed::Signed;
 
-use super::task_manager::TaskDispatcher;
+use super::pipeline_dispatcher::PipelineDispatcher;
 
-pub(crate) struct EncoderService<C: TaskDispatcher, S: Store> {
+pub(crate) struct EncoderService<PD: PipelineDispatcher, S: Store> {
     context: Arc<EncoderContext>,
-    task_dispatcher: Arc<C>,
+    pipeline_dispatcher: Arc<PD>, //TODO: confirm this needs an arc?
     store: Arc<S>,
     protocol_keypair: Arc<ProtocolKeyPair>,
 }
 
-impl<C: TaskDispatcher, S: Store> EncoderService<C, S> {
+impl<PD: PipelineDispatcher, S: Store> EncoderService<PD, S> {
     pub(crate) fn new(
         context: Arc<EncoderContext>,
-        task_dispatcher: Arc<C>,
+        pipeline_dispatcher: Arc<PD>,
         store: Arc<S>,
         protocol_keypair: Arc<ProtocolKeyPair>,
     ) -> Self {
         println!("configured core thread");
         Self {
             context,
-            task_dispatcher,
+            pipeline_dispatcher,
             store,
             protocol_keypair,
         }
@@ -56,7 +56,7 @@ fn unverified<T>(input: &T) -> ShardResult<()> {
 }
 
 #[async_trait]
-impl<C: TaskDispatcher, S: Store> EncoderNetworkService for EncoderService<C, S> {
+impl<PD: PipelineDispatcher, S: Store> EncoderNetworkService for EncoderService<PD, S> {
     async fn handle_send_shard_input(
         &self,
         peer: NetworkingIndex,

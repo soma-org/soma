@@ -1,6 +1,6 @@
 #![doc = include_str!("README.md")]
 
-pub(crate) mod orchestrators;
+pub(crate) mod pipelines;
 pub(crate) mod workers;
 
 use crate::error::{ShardError, ShardResult};

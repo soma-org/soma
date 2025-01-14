@@ -37,6 +37,7 @@ reqwest.workspace = true
 axum.workspace = true
 zstd.workspace = true
 tokio-util.workspace = true
+mockall.workspace = true
 
 [dev-dependencies]
 tempdir.workspace = true

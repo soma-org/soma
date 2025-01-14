@@ -238,13 +238,10 @@ impl EncoderKeyPair {
     }
 }
 
-
-
 impl EncoderSignature {
     /// Creates a new `EncoderSignature` from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, FastCryptoError> {
-        bls12381::min_sig::BLS12381Signature::from_bytes(bytes)
-            .map(EncoderSignature)
+        bls12381::min_sig::BLS12381Signature::from_bytes(bytes).map(EncoderSignature)
     }
 
     /// Returns the signature as bytes
