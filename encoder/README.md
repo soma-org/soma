@@ -7,6 +7,15 @@ data, and processing embeddings.
 
 Great care has been taken to secure the encoder network against attacks.
 
+### Collusion Resistance
+
+Collusion occurs when the probability of detection is low, and the reward is high. To combat collusion economically, the key is to adjust the system until the payoff function until the expected value of colluding costs more than the epected value of acting honestly. 
+
+Since the primary way of mining tokens is via submitting learnable data to a shard, and the shard reports back to the rest of the network, the potential for collusion is high. Especially when the mined tokens could be split with a shard that artificially reports a high learnability. 
+
+To tweak this system to make detection probabilty high and also the cost when caught high, we can make it so the entire network of encoders audits only the pieces of data that are eligible for rewards. This not only helps distribute the most learnable data across the network, but makes detection of incorrect probe values easy to detect since the network is recomputing the scores. As an encoder in the network reviews the scores, if a bad score is found, then that encoder tallies the responsible party. Furthermore if 2f+1 staked encoders tally that bad actor, they are slashed making the cost of lying very high. 
+
+
 ### DDoS
 
 There are multiple protections against DDoS attacks.

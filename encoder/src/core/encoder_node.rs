@@ -1,4 +1,5 @@
-use std::{marker::PhantomData, path::Path, sync::Arc};
+use std::{fs::File, marker::PhantomData, path::Path, sync::Arc};
+
 
 use crate::{
     actors::{
@@ -37,72 +38,44 @@ use crate::{
 use self::{downloader::Downloader, shard_input::ShardInputProcessor};
 
 use super::{
-    broadcaster::Broadcaster, encoder_core::EncoderCore, encoder_service::EncoderService,
-    pipeline_dispatcher::ActorPipelineDispatcher,
+    broadcaster::Broadcaster,
+    encoder_core::EncoderCore,
+    encoder_service::EncoderService,
+    pipeline_dispatcher::{ActorPipelineDispatcher, PipelineDispatcher},
 };
 
-pub struct Encoder<M: Model, OS: ObjectStorage>(
-    EncoderNode<EncoderTonicManager, EncoderTonicClient, M, OS, ObjectHttpClient>,
-);
+// pub struct Encoder(EncoderNode<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
 
-impl<M: Model, OS: ObjectStorage> Encoder<M, OS> {
-    pub async fn start(
-        encoder_context: Arc<EncoderContext>,
-        network_keypair: NetworkKeyPair,
-        protocol_keypair: ProtocolKeyPair,
-        project_root: &Path,
-        entry_point: &Path,
-    ) -> Self {
-        let encoder_node: EncoderNode<
-            EncoderTonicManager,
-            EncoderTonicClient,
-            M,
-            OS,
-            ObjectHttpClient,
-        > = EncoderNode::start(
-            encoder_context,
-            network_keypair,
-            protocol_keypair,
-            project_root,
-            entry_point,
-        )
-        .await;
-        Self(encoder_node)
-    }
-    pub async fn stop(self) {
-        self.0.stop().await;
-    }
+// impl Encoder {
+//     pub async fn start(
+//         encoder_context: Arc<EncoderContext>,
+//         network_keypair: NetworkKeyPair,
+//         protocol_keypair: ProtocolKeyPair,
+//         project_root: &Path,
+//         entry_point: &Path,
+//     ) -> Self {
+//         let encoder_node: EncoderNode<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager> =
+//             EncoderNode::start(
+//                 encoder_context,
+//                 network_keypair,
+//                 protocol_keypair,
+//                 project_root,
+//                 entry_point,
+//             )
+//             .await;
+//         Self(encoder_node)
+//     }
+//     pub async fn stop(self) {
+//         self.0.stop().await;
+//     }
+// }
+
+pub struct EncoderNode
+{
+    network_manager: EncoderTonicManager,
 }
 
-pub(crate) struct EncoderNode<N, SNC, M, OS, ONC>
-where
-    SNC: EncoderNetworkClient,
-    M: Model,
-    OS: ObjectStorage,
-    ONC: ObjectNetworkClient,
-    N: EncoderNetworkManager<
-        EncoderService<ActorPipelineDispatcher<SNC, M, OS, ONC>, MemStore>,
-        Client = SNC,
-    >,
-{
-    network_manager: N,
-    _snc: PhantomData<SNC>,
-    _m: PhantomData<M>,
-    _os: PhantomData<OS>,
-    _onc: PhantomData<ONC>,
-}
-
-impl<N, SNC, M, OS, ONC> EncoderNode<N, SNC, M, OS, ONC>
-where
-    SNC: EncoderNetworkClient,
-    M: Model,
-    OS: ObjectStorage,
-    ONC: ObjectNetworkClient,
-    N: EncoderNetworkManager<
-        EncoderService<ActorPipelineDispatcher<SNC, M, OS, ONC>, MemStore>,
-        Client = SNC,
-    >,
-{
+impl EncoderNode {
     pub(crate) async fn start(
         encoder_context: Arc<EncoderContext>,
         network_keypair: NetworkKeyPair,
@@ -110,12 +83,11 @@ where
         project_root: &Path,
         entry_point: &Path,
     ) -> Self {
-        let mut network_manager = N::new(encoder_context.clone(), network_keypair);
-        let messaging_client: Arc<
-            <N as EncoderNetworkManager<
-                EncoderService<ActorPipelineDispatcher<SNC, M, OS, ONC>, MemStore>,
-            >>::Client,
-        > = network_manager.client();
+        let mut network_manager= EncoderTonicManager::new(encoder_context.clone(), network_keypair);
+
+        let messaging_client = <EncoderTonicManager as EncoderNetworkManager<EncoderService<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, MemStore>>>::client(&network_manager);
+
+        // let messaging_client = network_manager.client();
 
         let blob_storage = Arc::new(FilesystemObjectStorage::new("base_path"));
         let blob_network_service: DirectNetworkService<FilesystemObjectStorage> =
@@ -187,10 +159,21 @@ where
             protocol_keypair,
         ));
         network_manager.start(network_service).await;
-        Self { network_manager, _m: PhantomData, _snc: PhantomData, _os: PhantomData, _onc: PhantomData }
+        Self {
+            network_manager,
+        }
     }
 
     pub(crate) async fn stop(mut self) {
-        self.network_manager.stop().await;
+        <EncoderTonicManager as EncoderNetworkManager<EncoderService<
+        ActorPipelineDispatcher<
+            EncoderTonicClient,
+            PythonModule,
+            FilesystemObjectStorage,
+            ObjectHttpClient
+        >,
+        MemStore
+    >>>::stop(&mut self.network_manager).await;
+
     }
 }

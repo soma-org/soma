@@ -1,6 +1,6 @@
 use clap::Parser;
 use cli::{Cli, Commands};
-use encoder::Encoder;
+// use encoder::Encoder;
 use tokio::signal;
 
 mod cli;
