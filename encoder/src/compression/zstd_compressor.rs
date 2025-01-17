@@ -2,7 +2,7 @@ use crate::error::{ShardError, ShardResult};
 use bytes::Bytes;
 use zstd::bulk::{compress, decompress};
 
-use super::Compressor;
+use super::{Compressor, SizeInBytes};
 
 const MAX_CHUNK_SIZE: usize = 10 * 1024 * 1024;
 
@@ -21,9 +21,9 @@ impl Compressor for ZstdCompressor {
         Ok(Bytes::from(compressed))
     }
 
-    fn decompress(&self, contents: Bytes) -> ShardResult<Bytes> {
+    fn decompress(&self, contents: Bytes, uncompressed_size: SizeInBytes) -> ShardResult<Bytes> {
         // TODO: switch to explicitly setting the size
-        let decompressed = decompress(contents.as_ref(), MAX_CHUNK_SIZE)
+        let decompressed = decompress(contents.as_ref(), uncompressed_size)
             .map_err(|e| ShardError::CompressionFailed(e.to_string()))?;
         Ok(Bytes::from(decompressed))
     }
@@ -47,7 +47,7 @@ mod tests {
             let compressed = compressor.compress(original_bytes.clone()).unwrap();
 
             // Decompress and verify
-            let decompressed = compressor.decompress(compressed).unwrap();
+            let decompressed = compressor.decompress(compressed, original.len()).unwrap();
             assert_eq!(
                 decompressed, original_bytes,
                 "Decompressed data should match original"

@@ -1,29 +1,13 @@
-use crate::{
-    crypto::{
-        keys::{AuthorityPublicKey, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey},
-        DefaultHashFunction, DIGEST_LENGTH,
-    },
-    error::{ShardError, ShardResult},
-};
 
-use std::ops::Deref;
-use std::sync::Arc;
 
-use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use fastcrypto::hash::{Digest, HashFunction};
 use serde::{Deserialize, Serialize};
 
 use super::{
     data::Data,
-    scope::{Scope, ScopedMessage},
     shard::ShardRef,
 };
 
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -47,8 +31,15 @@ impl ShardCommit {
     }
 }
 
+
+//Digest<Signed<ShardCommit>>
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ShardCommitV1 {
+    // transaction_proof
+    // data (encrypted obviously)
+    // the encryption option in the data will contain the hash of the encryption key
+    // this means that you do not need to certify the reveal key, its baked in
     data: Data,
     /// shard ref, this is important for protecting against replay attacks
     shard_ref: ShardRef,

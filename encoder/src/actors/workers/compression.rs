@@ -14,6 +14,8 @@ use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};
 
+type SizeInBytes = usize;
+
 pub(crate) struct CompressionProcessor<C: Compressor> {
     compressor: Arc<C>,
 }
@@ -26,7 +28,7 @@ impl<C: Compressor> CompressionProcessor<C> {
 
 pub(crate) enum CompressorInput {
     Compress(Bytes),
-    Decompress(Bytes),
+    Decompress(Bytes, SizeInBytes),
 }
 
 #[async_trait]
@@ -41,8 +43,8 @@ impl<C: Compressor> Processor for CompressionProcessor<C> {
                 let compression_result = compressor.compress(contents);
                 let _ = msg.sender.send(compression_result);
             }
-            CompressorInput::Decompress(contents) => {
-                let decompression_result = compressor.decompress(contents);
+            CompressorInput::Decompress(contents, uncompressed_size) => {
+                let decompression_result = compressor.decompress(contents, uncompressed_size);
                 let _ = msg.sender.send(decompression_result);
             }
         })
@@ -82,7 +84,7 @@ mod tests {
             .await?;
         let decompressed = handle
             .process(
-                CompressorInput::Decompress(compressed.clone()),
+                CompressorInput::Decompress(compressed.clone(), original.len()),
                 cancellation_token.clone(),
             )
             .await?;

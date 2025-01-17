@@ -21,19 +21,7 @@ use crate::{
     },
     storage::object::{ObjectPath, ObjectStorage},
     types::{
-        certificate::ShardCertificate,
-        checksum::Checksum,
-        data::{self, Compression, Data, DataAPI, Encryption},
-        network_committee::NetworkingIndex,
-        shard::Shard,
-        shard_commit::{self, ShardCommit, ShardCommitAPI},
-        shard_completion_proof::ShardCompletionProof,
-        shard_endorsement::ShardEndorsement,
-        shard_input::{ShardInput, ShardInputAPI},
-        shard_removal::ShardRemoval,
-        shard_reveal::{ShardReveal, ShardRevealAPI},
-        signed::{Signature, Signed},
-        verified::Verified,
+        certificate::ShardCertificate, checksum::Checksum, data::{self, Compression, CompressionAPI, CompressionV1, Data, DataAPI, Encryption, EncryptionV1}, digest::Digest, network_committee::NetworkingIndex, shard::Shard, shard_commit::{self, ShardCommit, ShardCommitAPI}, shard_completion_proof::ShardCompletionProof, shard_endorsement::ShardEndorsement, shard_input::{ShardInput, ShardInputAPI}, shard_removal::ShardRemoval, shard_reveal::{ShardReveal, ShardRevealAPI}, signed::{Signature, Signed}, verified::Verified
     },
     ProtocolKeyPair, Scope,
 };
@@ -101,6 +89,9 @@ where
         let cancellation = CancellationToken::new();
         let data = shard_input.data();
 
+        let uncompressed_size = data.compression().map(|c| c.uncompressed_size()).unwrap();
+
+
         // TODO: sign the shard and hash the signature. Simple, easily reproducible, random, secure
         let mut key = [0u8; 32];
         OsRng.fill_bytes(&mut key);
@@ -119,7 +110,7 @@ where
         let decompressed = self
             .compressor
             .process(
-                CompressorInput::Decompress(download_result),
+                CompressorInput::Decompress(download_result, uncompressed_size),
                 cancellation.clone(),
             )
             .await?;
@@ -130,6 +121,7 @@ where
         let shape = model_output.shape();
         let model_bytes = bcs::to_bytes(&model_output).map_err(ShardError::SerializationFailure)?;
         let model_bytes = Bytes::copy_from_slice(&model_bytes);
+        let uncompressed_size = model_bytes.len();
         let compressed_embeddings = self
             .compressor
             .process(CompressorInput::Compress(model_bytes), cancellation.clone())
@@ -156,10 +148,11 @@ where
             )
             .await?;
 
+        let key_digest = Digest::new(&key)?;
+
         let commit_data = Data::new_v1(
-            data.modality(),
-            Compression::ZSTD,
-            Some(Encryption::Aes256Ctr64LE),
+            Some(CompressionV1::new(data::CompressionAlgorithmV1::ZSTD, uncompressed_size)),
+            Some(EncryptionV1::Aes256Ctr64LE(key_digest)),
             checksum,
             shape.to_vec(),
             download_size,
@@ -250,10 +243,13 @@ where
             )
             .await?;
 
+        let PROBE_SIZE = 1024_usize * 10;
+        // TODO: fix this
+
         let decompressed_probe_bytes = self
             .compressor
             .process(
-                CompressorInput::Decompress(probe_bytes),
+                CompressorInput::Decompress(probe_bytes, PROBE_SIZE),
                 cancellation.clone(),
             )
             .await?;
@@ -299,6 +295,9 @@ where
     ) -> ShardResult<()> {
         let cancellation = CancellationToken::new();
         let data_path: ObjectPath = ObjectPath::from_checksum(encrypted_data_checksum);
+        let DATA_SIZE = 1024_usize * 10;
+        // TODO: need to 
+
         if let StorageProcessorOutput::Get(encrypted_bytes) = self
             .storage
             .process(StorageProcessorInput::Get(data_path), cancellation.clone())
@@ -318,7 +317,7 @@ where
             let embedding = self
                 .compressor
                 .process(
-                    CompressorInput::Decompress(decrypted_bytes),
+                    CompressorInput::Decompress(decrypted_bytes, DATA_SIZE),
                     cancellation.clone(),
                 )
                 .await?;
