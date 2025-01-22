@@ -38,7 +38,9 @@ use shared::{
     checksum::Checksum,
     crypto::{keys::ProtocolKeyPair, AesKey},
     digest::Digest,
-    metadata::{CompressionAPI, CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata, MetadataAPI},
+    metadata::{
+        CompressionAPI, CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata, MetadataAPI,
+    },
     network_committee::NetworkingIndex,
     scope::Scope,
     signed::{Signature, Signed},

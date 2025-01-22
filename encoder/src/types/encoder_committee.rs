@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use serde::{Deserialize, Serialize};
-use shared::{crypto::keys::{AuthorityPublicKey, NetworkPublicKey, ProtocolPublicKey}, multiaddr::Multiaddr};
+use shared::{
+    crypto::keys::{AuthorityPublicKey, NetworkPublicKey, ProtocolPublicKey},
+    multiaddr::Multiaddr,
+};
 use std::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},

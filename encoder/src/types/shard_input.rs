@@ -1,11 +1,8 @@
-
-
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::{metadata::Metadata, transaction_certificate::TransactionCertificate};
 
 use super::shard::ShardSecret;
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[enum_dispatch(ShardInputAPI)]

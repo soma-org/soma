@@ -1,12 +1,8 @@
-
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::metadata::Metadata;
 
-use crate::types::{
-    score::Score,
-    shard::ShardRef,
-};
+use crate::types::{score::Score, shard::ShardRef};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardEndorsementAPI)]

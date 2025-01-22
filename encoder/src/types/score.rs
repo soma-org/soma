@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use shared::crypto::keys::ProtocolPublicKey;
 
-
 /// Score is an encoder score for a given shard
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Score {
