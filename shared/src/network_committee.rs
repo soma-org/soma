@@ -6,9 +6,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::keys::{AuthorityPublicKey, NetworkPublicKey, ProtocolPublicKey};
-use crate::types::multiaddr::Multiaddr;
+use crate::multiaddr::Multiaddr;
 
-use crate::types::authority_committee::{Epoch, Stake};
+type Epoch = u64;
 
 /// The network identities that meet the minimum required amount of stake
 /// to communicate with other nodes.

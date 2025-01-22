@@ -1,6 +1,6 @@
-use crate::crypto::AesKey;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use shared::crypto::AesKey;
 
 use super::shard::ShardRef;
 

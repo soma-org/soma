@@ -1,15 +1,13 @@
-use crate::ProtocolKeySignature;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use shared::{
+    crypto::keys::ProtocolKeySignature, digest::Digest, metadata::Metadata,
+    network_committee::NetworkingIndex, transaction::SignedTransaction,
+};
 use std::hash::{Hash, Hasher};
 use strum_macros::Display;
 
-use super::authority_committee::Epoch;
-use super::data::Data;
-use super::digest::Digest;
-use super::modality::Modality;
-use super::network_committee::NetworkingIndex;
-use super::transaction::SignedTransaction;
+type Epoch = u64;
 
 pub(crate) struct Shard {
     members: Vec<NetworkingIndex>,
@@ -35,12 +33,12 @@ impl Shard {
 /// we can reduce censorship related attacks that target specific users
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct ShardSecret {
-    data_digest: Digest<Data>, //TODO: switch to a manifest ref to be more in-line?
+    data_digest: Digest<Metadata>, //TODO: switch to a manifest ref to be more in-line?
 }
 
 impl ShardSecret {
     /// creates a new shard secret given a manifest digest and leader
-    const fn new(data_digest: Digest<Data>) -> Self {
+    const fn new(data_digest: Digest<Metadata>) -> Self {
         Self { data_digest }
     }
 }
@@ -63,7 +61,6 @@ pub enum ShardRef {
 #[enum_dispatch]
 trait ShardRefAPI {
     fn epoch(&self) -> &Epoch;
-    fn modality(&self) -> &Modality;
     fn seed(&self) -> &Digest<ShardEntropy>;
 }
 
@@ -71,20 +68,14 @@ trait ShardRefAPI {
 struct ShardRefV1 {
     /// the epoch that this shard was sampled from, important since committees change each epoch
     epoch: Epoch,
-    /// modality
-    modality: Modality,
     /// the digest from the tbls threshold signature and data hash that when combined forms a unique source of randomness
     seed: Digest<ShardEntropy>,
 }
 
 impl ShardRefV1 {
     /// create a shard commit v1
-    pub(crate) const fn new(epoch: Epoch, modality: Modality, seed: Digest<ShardEntropy>) -> Self {
-        Self {
-            epoch,
-            modality,
-            seed,
-        }
+    pub(crate) const fn new(epoch: Epoch, seed: Digest<ShardEntropy>) -> Self {
+        Self { epoch, seed }
     }
 }
 
@@ -92,9 +83,7 @@ impl ShardRefAPI for ShardRefV1 {
     fn epoch(&self) -> &Epoch {
         &self.epoch
     }
-    fn modality(&self) -> &Modality {
-        &self.modality
-    }
+
     fn seed(&self) -> &Digest<ShardEntropy> {
         &self.seed
     }

@@ -1,4 +1,7 @@
-use crate::{crypto::{AesKey, EncryptionKey}, types::checksum::Checksum};
+use crate::{
+    checksum::Checksum,
+    crypto::{AesKey, EncryptionKey},
+};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
@@ -7,13 +10,13 @@ use super::digest::Digest;
 type SizeInBytes = usize;
 type SizeInElements = usize;
 
-/// DataAPI is built to at least contain the relevant queries on pieces of data
+/// MetadataAPI is built to at least contain the relevant queries on pieces of Metadata
 /// like their checksum, if compression was used the algorithm and uncompressed size,
 /// if encryption the algorithm and key digest. Lastly the size to download in bytes.
 /// Shape is currently contained for transferring embeddings? but perhaps a better approach
 /// can be taken
 #[enum_dispatch]
-pub(crate) trait DataAPI {
+pub trait MetadataAPI {
     fn compression(&self) -> Option<Compression>;
     fn encryption(&self) -> Option<Encryption>;
     fn checksum(&self) -> Checksum;
@@ -21,23 +24,23 @@ pub(crate) trait DataAPI {
     fn size(&self) -> SizeInBytes;
 }
 
-/// Data is the top level wrapper of different versions
+/// Metadata is the top level wrapper of different versions
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[enum_dispatch(DataAPI)]
-pub enum Data {
-    V1(DataV1),
+#[enum_dispatch(MetadataAPI)]
+pub enum Metadata {
+    V1(MetadataV1),
 }
 
-impl Data {
+impl Metadata {
     /// new constructs a new transaction certificate
-    pub(crate) fn new_v1(
+    pub fn new_v1(
         compression: Option<CompressionV1>,
         encryption: Option<EncryptionV1>,
         checksum: Checksum,
         shape: Vec<SizeInElements>,
         size: SizeInBytes,
-    ) -> Data {
-        Data::V1(DataV1 {
+    ) -> Metadata {
+        Metadata::V1(MetadataV1 {
             compression,
             encryption,
             checksum,
@@ -46,10 +49,10 @@ impl Data {
         })
     }
 }
-/// Version 1 of the data. Adding versioning here because while not currently sent over the wire,
+/// Version 1 of the Metadata. Adding versioning here because while not currently sent over the wire,
 /// it is reasonable to assume that it may be.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct DataV1 {
+struct MetadataV1 {
     // notice that we also version our compression and encryption fields
     compression: Option<CompressionV1>,
     encryption: Option<EncryptionV1>,
@@ -58,7 +61,7 @@ struct DataV1 {
     size: SizeInBytes,
 }
 
-impl DataAPI for DataV1 {
+impl MetadataAPI for MetadataV1 {
     fn compression(&self) -> Option<Compression> {
         self.compression.map(Compression::V1)
     }
@@ -76,7 +79,6 @@ impl DataAPI for DataV1 {
     }
 }
 
-
 /// The compressionAPI offers a way of accessing the uncompressed size
 /// if compression was used. This uncompressed size is useful when decompressing
 /// because a buffer can be allocated to the perfect size.
@@ -85,7 +87,7 @@ pub trait CompressionAPI {
     fn uncompressed_size(&self) -> SizeInBytes;
 }
 
-/// Compression is the top level type. Notice that the DataAPI returns
+/// Compression is the top level type. Notice that the MetadataAPI returns
 /// Compression not CompressionV1
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(CompressionAPI)]
@@ -93,7 +95,7 @@ pub enum Compression {
     V1(CompressionV1),
 }
 
-/// Algo is versioned independently 
+/// Algo is versioned independently
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub enum CompressionAlgorithmV1 {
     ZSTD,
@@ -110,7 +112,7 @@ impl CompressionV1 {
     pub fn new(algorithm: CompressionAlgorithmV1, uncompressed_size: SizeInBytes) -> Self {
         Self {
             algorithm,
-            uncompressed_size
+            uncompressed_size,
         }
     }
 }
@@ -121,13 +123,10 @@ impl CompressionAPI for CompressionV1 {
     }
 }
 
-
-
-
 /// EncryptionAPI allows us to get the digest (hash) of the encryption key
 /// that was used. This allows for authenticating that the right encryption key
 /// is being used which is especially useful in reducing networking for the reveal
-/// stage of the encoder shard 
+/// stage of the encoder shard
 #[enum_dispatch]
 pub trait EncryptionAPI {
     /// key digest only needs to return a type that impl EncryptionKey which allows
@@ -155,5 +154,3 @@ impl EncryptionAPI for EncryptionV1 {
         }
     }
 }
-
-

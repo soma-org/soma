@@ -1,7 +1,8 @@
 use crate::{
-    error::{ShardError, ShardResult},
-    types::digest::Digest,
-    ProtocolKeyPair, Scope,
+    crypto::keys::ProtocolKeyPair,
+    digest::Digest,
+    error::{SharedError, SharedResult},
+    scope::Scope,
 };
 use bytes::{Buf, Bytes};
 use serde::Serialize;
@@ -17,9 +18,9 @@ pub struct Verified<T: Serialize> {
 }
 
 impl<T: Serialize> Verified<T> {
-    pub(crate) fn new<F>(inner: T, serialized: Bytes, verifier: F) -> ShardResult<Self>
+    pub fn new<F>(inner: T, serialized: Bytes, verifier: F) -> SharedResult<Self>
     where
-        F: FnOnce(&T) -> ShardResult<()>,
+        F: FnOnce(&T) -> SharedResult<()>,
     {
         verifier(&inner)?;
         let digest = Digest::<T>::new_from_bytes(&serialized);
@@ -31,9 +32,9 @@ impl<T: Serialize> Verified<T> {
         })
     }
 
-    pub(crate) fn from_trusted(inner: T) -> ShardResult<Self> {
+    pub fn from_trusted(inner: T) -> SharedResult<Self> {
         let serialized = Bytes::copy_from_slice(
-            &bcs::to_bytes(&inner).map_err(ShardError::SerializationFailure)?,
+            &bcs::to_bytes(&inner).map_err(SharedError::SerializationFailure)?,
         );
 
         Ok(Self {
@@ -43,15 +44,24 @@ impl<T: Serialize> Verified<T> {
         })
     }
 
-    pub(crate) fn digest(&self) -> Digest<T> {
+    pub fn from_trusted_bytes(inner: T, serialized: Bytes) -> SharedResult<Self> {
+        let digest = Digest::<T>::new_from_bytes(&serialized);
+        Ok(Self {
+            inner: Arc::new(inner),
+            digest: digest,
+            serialized,
+        })
+    }
+
+    pub fn digest(&self) -> Digest<T> {
         self.digest.clone()
     }
 
-    pub(crate) fn serialized(&self) -> Serialized<T> {
+    pub fn serialized(&self) -> Serialized<T> {
         Serialized::new(self.serialized.clone())
     }
 
-    pub(crate) fn bytes(&self) -> Bytes {
+    pub fn bytes(&self) -> Bytes {
         self.serialized.clone()
     }
 }

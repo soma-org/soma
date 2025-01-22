@@ -1,21 +1,15 @@
-use crate::{
-    crypto::{address::Address, keys::ProtocolKeySignature, DefaultHashFunction, DIGEST_LENGTH},
-    error::{ShardError, ShardResult},
-};
-use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use fastcrypto::hash::HashFunction;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     hash::{Hash, Hasher},
-    str::FromStr,
-    sync::Arc,
 };
 
-use crate::types::authority_committee::Epoch;
+use crate::crypto::{address::Address, keys::ProtocolKeySignature};
 
-use super::{digest::Digest, scope::ScopedMessage, shard::ShardSecret};
+use super::{digest::Digest, scope::ScopedMessage};
+
+type Epoch = u64;
 
 /// TransactionData contains the details of a transaction. TransactionData is versioned
 /// at the top-level given that it is sent over the network.
@@ -85,7 +79,8 @@ impl TransactionDataAPI for TransactionDataV1 {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct ShardTransaction {
-    shard_secret_digest: Digest<ShardSecret>,
+    // TODO: need to actually fix this
+    shard_secret_digest: Digest<String>,
 }
 
 impl TransactionData {

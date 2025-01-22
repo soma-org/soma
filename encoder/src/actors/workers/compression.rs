@@ -6,9 +6,8 @@ use tokio::sync::Semaphore;
 use crate::{
     compression::Compressor,
     error::ShardResult,
-    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
     storage::object::ObjectPath,
-    types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 

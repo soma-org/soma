@@ -1,4 +1,3 @@
-use crate::crypto::{DefaultHashFunction, DIGEST_LENGTH};
 use fastcrypto::hash::{Digest, HashFunction};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -6,17 +5,19 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use crate::crypto::{DefaultHashFunction, DIGEST_LENGTH};
+
 /// Checksum is a bytes checksum for data. We use the same default hash function
 /// as the rest of the network. There are associated functions for new from bytes
 #[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Checksum(pub [u8; DIGEST_LENGTH]);
+pub struct Checksum(pub [u8; DIGEST_LENGTH]);
 
 impl Checksum {
     pub(crate) const MIN: Self = Self([u8::MIN; DIGEST_LENGTH]);
     pub(crate) const MAX: Self = Self([u8::MAX; DIGEST_LENGTH]);
 
     // TODO: make this work better for chunking intelligently
-    pub(crate) fn new_from_bytes(bytes: &[u8]) -> Self {
+    pub fn new_from_bytes(bytes: &[u8]) -> Self {
         let mut hasher = DefaultHashFunction::new();
         hasher.update(bytes);
         Self(hasher.finalize().into())

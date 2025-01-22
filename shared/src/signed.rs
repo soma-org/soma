@@ -4,8 +4,9 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{ShardError, ShardResult},
-    ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey, Scope, ScopedMessage,
+    crypto::keys::{ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey},
+    error::{SharedError, SharedResult},
+    scope::{Scope, ScopedMessage},
 };
 
 use super::digest::Digest;
@@ -23,10 +24,10 @@ pub struct Signature<T: Serialize> {
 }
 
 impl<T: Serialize> Signed<T> {
-    pub fn new(inner: T, scope: Scope, keypair: &ProtocolKeyPair) -> ShardResult<Self> {
+    pub fn new(inner: T, scope: Scope, keypair: &ProtocolKeyPair) -> SharedResult<Self> {
         let inner_digest: Digest<T> = Digest::new(&inner)?;
         let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
-            .map_err(ShardError::SerializationFailure)?;
+            .map_err(SharedError::SerializationFailure)?;
         let signature = keypair.sign(&message);
         Ok(Self {
             inner,
@@ -41,18 +42,18 @@ impl<T: Serialize> Signed<T> {
         &self,
         scope: Scope,
         public_key: &ProtocolPublicKey,
-    ) -> ShardResult<()> {
+    ) -> SharedResult<()> {
         let inner_digest: Digest<T> = Digest::new(&self.inner)?;
 
         let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
-            .map_err(ShardError::SerializationFailure)?;
+            .map_err(SharedError::SerializationFailure)?;
 
         let sig = ProtocolKeySignature::from_bytes(&self.signature.bytes)
-            .map_err(ShardError::MalformedSignature)?;
+            .map_err(SharedError::MalformedSignature)?;
 
         public_key
             .verify(&message, &sig)
-            .map_err(ShardError::SignatureVerificationFailure)?;
+            .map_err(SharedError::SignatureVerificationFailure)?;
 
         Ok(())
     }

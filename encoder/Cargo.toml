@@ -4,12 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# external deps
+shared.workspace = true
 tokio.workspace = true
 serde.workspace = true
 fastcrypto.workspace = true
 bcs.workspace = true
-# bs58.workspace = true
 enum_dispatch.workspace = true
 bytes.workspace = true
 strum_macros.workspace = true

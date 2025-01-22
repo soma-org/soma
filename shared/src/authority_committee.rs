@@ -5,26 +5,28 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::keys::{AuthorityPublicKey, NetworkPublicKey, ProtocolPublicKey};
-use crate::types::multiaddr::Multiaddr;
+use crate::{
+    crypto::keys::{AuthorityPublicKey, NetworkPublicKey, ProtocolPublicKey},
+    multiaddr::Multiaddr,
+};
 
 /// The Committees [`AuthorityCommittee`] [`NetworkCommittee`][net] [`EncoderCommittee`][enc] are updated each epoch.
 /// Epoch transitions are when all stake, registration, and reconfiguration related operations are applied.
 ///
 /// [net]: crate::types::network_committee::NetworkCommittee
 /// [enc]: crate::types::encoder_committee::EncoderCommittee
-pub(crate) type Epoch = u64;
+type Epoch = u64;
 
 /// Voting power of a given committee member, roughly proportional to the actual amount of Soma staked
 /// in a given member.
 /// Total stake / voting power of all authorities should sum to 10,000.
 //TODO: rename to voting power?
-pub(crate) type Stake = u64;
+type Stake = u64;
 
 /// Committee is the set of authorities that participate in the consensus protocol for this epoch.
 /// Its configuration is stored and computed on chain.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct AuthorityCommittee {
+pub struct AuthorityCommittee {
     /// The epoch number of this committee
     epoch: Epoch,
     /// Total stake in the committee.

@@ -3,14 +3,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     crypto::{DefaultHashFunction, DIGEST_LENGTH},
-    error::{ShardError, ShardResult},
-    // error::{ShardError, ShardResult},
+    error::{SharedError, SharedResult},
 };
 use fastcrypto::hash::HashFunction;
 use std::{cmp::Ordering, marker::PhantomData};
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Digest<T: Serialize> {
+pub struct Digest<T: Serialize> {
     inner: [u8; DIGEST_LENGTH],
     marker: PhantomData<T>,
 }
@@ -42,8 +41,8 @@ impl<T: Serialize> PartialOrd for Digest<T> {
 }
 
 impl<T: Serialize> Digest<T> {
-    pub fn new(inner: &T) -> ShardResult<Self> {
-        let serialized_inner = bcs::to_bytes(inner).map_err(ShardError::SerializationFailure)?;
+    pub fn new(inner: &T) -> SharedResult<Self> {
+        let serialized_inner = bcs::to_bytes(inner).map_err(SharedError::SerializationFailure)?;
         let mut hasher = DefaultHashFunction::new();
         hasher.update(serialized_inner);
         Ok(Self {

@@ -1,29 +1,25 @@
 //! Tonic Network contains all the code related to tonic-specific code implementing the network client, service, and manager traits.
 use async_trait::async_trait;
 use bytes::Bytes;
+use shared::{
+    crypto::keys::NetworkKeyPair, network_committee::NetworkingIndex, signed::Signed,
+    verified::Verified,
+};
 use std::{io::Read, sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 use tonic::{transport::Server, Request, Response};
 use tower_http::add_extension::AddExtensionLayer;
 
 use crate::{
-    crypto::keys::NetworkKeyPair,
     error::{ShardError, ShardResult},
     networking::messaging::{
         to_socket_addr, tonic_gen::encoder_service_server::EncoderServiceServer,
     },
     types::{
-        certificate::ShardCertificate,
-        context::{EncoderContext, NetworkingContext},
-        network_committee::NetworkingIndex,
-        shard::ShardRef,
-        shard_commit::ShardCommit,
-        shard_completion_proof::ShardCompletionProof,
-        shard_endorsement::ShardEndorsement,
-        shard_input::ShardInput,
-        shard_removal::ShardRemoval,
-        shard_reveal::ShardReveal,
-        shard_slots::ShardSlots,
+        certified::Certified, encoder_context::EncoderContext, shard::ShardRef,
+        shard_commit::ShardCommit, shard_completion_proof::ShardCompletionProof,
+        shard_endorsement::ShardEndorsement, shard_input::ShardInput, shard_removal::ShardRemoval,
+        shard_reveal::ShardReveal, shard_slots::ShardSlots,
     },
 };
 use tracing::info;
@@ -35,8 +31,6 @@ use super::{
     tonic_gen::encoder_service_server::EncoderService,
     EncoderNetworkClient, EncoderNetworkManager, EncoderNetworkService,
 };
-
-use crate::types::{signed::Signed, verified::Verified};
 
 // Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderTonicClient {
@@ -138,7 +132,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn send_shard_commit_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_commit_certificate: &Verified<ShardCertificate<Signed<ShardCommit>>>,
+        shard_commit_certificate: &Verified<Certified<Signed<ShardCommit>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendShardCommitCertificateRequest {
@@ -275,7 +269,7 @@ impl EncoderNetworkClient for EncoderTonicClient {
     async fn batch_send_shard_removal_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_removal_certificates: &Vec<Verified<ShardCertificate<ShardRemoval>>>,
+        shard_removal_certificates: &Vec<Verified<Certified<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let shard_removal_certificates_bytes = shard_removal_certificates

@@ -1,13 +1,10 @@
 use fastcrypto::{
-    bls12381::{self, min_pk::BLS12381AggregateSignature},
-    ed25519,
+    bls12381, ed25519,
     error::FastCryptoError,
     traits::{AggregateAuthenticator, KeyPair as _, Signer as _, ToFromBytes, VerifyingKey as _},
 };
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
-
-use crate::error::{ShardError, ShardResult};
 
 /// Network key is used for TLS and as the network identity of the authority.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -176,18 +173,15 @@ pub struct EncoderPublicKey(bls12381::min_sig::BLS12381PublicKey);
 pub struct EncoderKeyPair(bls12381::min_sig::BLS12381KeyPair);
 
 /// A BLS signature wrapper for encoding operations
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncoderSignature(bls12381::min_sig::BLS12381Signature);
 
 /// A BLS aggregate signature wrapper for encoding operations
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EncoderAggregateSignature(bls12381::min_sig::BLS12381AggregateSignature);
 
 impl EncoderPublicKey {
     /// Creates a new `EncoderPublicKey` from a BLS12381PublicKey
-    ///
-    /// # Arguments
-    /// * `key` - The BLS12381PublicKey to wrap
     pub fn new(key: bls12381::min_sig::BLS12381PublicKey) -> Self {
         Self(key)
     }
@@ -203,14 +197,6 @@ impl EncoderPublicKey {
     }
 
     /// Verifies a signature against a message
-    ///
-    /// # Arguments
-    /// * `msg` - The message that was signed
-    /// * `signature` - The signature to verify
-    ///
-    /// # Returns
-    /// * `Ok(())` if verification succeeds
-    /// * `Err(FastCryptoError)` if verification fails
     pub fn verify(&self, msg: &[u8], signature: &EncoderSignature) -> Result<(), FastCryptoError> {
         self.0.verify(msg, &signature.0)
     }

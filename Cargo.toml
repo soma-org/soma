@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["cli", "encoder", "soma-python"]
+members = [ "shared","cli", "encoder", "soma-python"]
 
 [workspace.lints.rust]
 unsafe_code = "warn"
@@ -22,6 +22,8 @@ private_intra_doc_links = "warn"
 
 [workspace.dependencies]
 encoder = { path = "encoder" }
+shared = { path = "shared" }
+
 # external deps
 tokio = { version = "1.0", features = ["full"] }
 bcs = "0.1.6"

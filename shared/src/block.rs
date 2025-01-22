@@ -72,17 +72,19 @@ use serde::{Deserialize, Serialize};
 // use shared_crypto::intent::{Intent, IntentMessage, IntentScope};
 
 use crate::{
+    authority_committee::AuthorityIndex,
+    commit::CommitVote,
     crypto::{DefaultHashFunction, DIGEST_LENGTH},
     ensure,
-    error::ShardError,
-    error::ShardResult,
-    types::authority_committee::{AuthorityIndex, Epoch},
-    types::commit::CommitVote,
+    error::SharedError,
+    error::SharedResult,
     // types::context::Context,
-    types::transaction::{SignedTransaction, TransactionRef},
+    transaction::{SignedTransaction, TransactionRef},
 };
 
-use crate::types::scope::{Scope, ScopedMessage, VersionedScope};
+use crate::scope::{Scope, ScopedMessage};
+
+type Epoch = u64;
 
 /// Round number of a block.
 type Round = u32;
@@ -240,7 +242,7 @@ impl SignedBlockHeader {
     }
 
     /// Creates a signed block header using a protocol keypair and a supplied block header
-    fn new(block_header: BlockHeader, protocol_keypair: &ProtocolKeyPair) -> ShardResult<Self> {
+    fn new(block_header: BlockHeader, protocol_keypair: &ProtocolKeyPair) -> SharedResult<Self> {
         let signature = compute_block_header_signature(&block_header, protocol_keypair)?;
         Ok(Self {
             inner: block_header,
@@ -255,12 +257,12 @@ impl SignedBlockHeader {
 
     /// This method only verifies this block's signature. Verification of the full block
     /// should be done via BlockVerifier.
-    // fn verify_signature(&self, context: &Context) -> ShardResult<()> {
+    // fn verify_signature(&self, context: &Context) -> SharedResult<()> {
     //     let block_header = &self.inner;
     //     let committee = &context.authority_committee;
     //     ensure!(
     //         committee.is_valid_index(block_header.author()),
-    //         ShardError::InvalidAuthorityIndex {
+    //         SharedError::InvalidAuthorityIndex {
     //             index: block_header.author(),
     //             max: committee.size() - 1
     //         }
@@ -289,9 +291,9 @@ impl SignedBlockHeader {
 struct InnerBlockHeaderDigest([u8; DIGEST_LENGTH]);
 
 /// Computes the digest of a Block, only for signing and verifications.
-fn compute_inner_block_header_digest(block: &BlockHeader) -> ShardResult<InnerBlockHeaderDigest> {
+fn compute_inner_block_header_digest(block: &BlockHeader) -> SharedResult<InnerBlockHeaderDigest> {
     let mut hasher = DefaultHashFunction::new();
-    hasher.update(bcs::to_bytes(block).map_err(ShardError::SerializationFailure)?);
+    hasher.update(bcs::to_bytes(block).map_err(SharedError::SerializationFailure)?);
     Ok(InnerBlockHeaderDigest(hasher.finalize().into()))
 }
 
@@ -309,10 +311,10 @@ fn to_consensus_block_header_scoped_message(
 fn compute_block_header_signature(
     block_header: &BlockHeader,
     protocol_keypair: &ProtocolKeyPair,
-) -> ShardResult<ProtocolKeySignature> {
+) -> SharedResult<ProtocolKeySignature> {
     let digest = compute_inner_block_header_digest(block_header)?;
     let message = bcs::to_bytes(&to_consensus_block_header_scoped_message(digest))
-        .map_err(ShardError::SerializationFailure)?;
+        .map_err(SharedError::SerializationFailure)?;
     Ok(protocol_keypair.sign(&message))
 }
 /// verifies a block header signature
@@ -320,15 +322,15 @@ fn verify_block_header_signature(
     block_header: &BlockHeader,
     signature: &[u8],
     protocol_pubkey: &ProtocolPublicKey,
-) -> ShardResult<()> {
+) -> SharedResult<()> {
     let digest = compute_inner_block_header_digest(block_header)?;
     let message = bcs::to_bytes(&to_consensus_block_header_scoped_message(digest))
-        .map_err(ShardError::SerializationFailure)?;
+        .map_err(SharedError::SerializationFailure)?;
     let sig =
-        ProtocolKeySignature::from_bytes(signature).map_err(ShardError::MalformedSignature)?;
+        ProtocolKeySignature::from_bytes(signature).map_err(SharedError::MalformedSignature)?;
     protocol_pubkey
         .verify(&message, &sig)
-        .map_err(ShardError::SignatureVerificationFailure)
+        .map_err(SharedError::SignatureVerificationFailure)
 }
 
 /// Allow quick access on the underlying Block without having to always refer to the inner block ref.
@@ -941,7 +943,7 @@ impl Hash for MisbehaviorReportRef {
 //     use fastcrypto::error::FastCryptoError;
 
 //     use crate::{
-//         error::ShardError,
+//         error::SharedError,
 //         types::block::{SignedBlock, TestBlock},
 //         types::context::Context,
 //     };
@@ -970,7 +972,7 @@ impl Hash for MisbehaviorReportRef {
 //         // Now verify the block, it should fail
 //         let result = signed_block.verify_signature(&context);
 //         match result.err().unwrap() {
-//             ShardError::SignatureVerificationFailure(err) => {
+//             SharedError::SignatureVerificationFailure(err) => {
 //                 assert_eq!(err, FastCryptoError::InvalidSignature);
 //             }
 //             err => panic!("Unexpected error: {err:?}"),

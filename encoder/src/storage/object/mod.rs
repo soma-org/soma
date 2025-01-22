@@ -1,9 +1,11 @@
 pub(crate) mod filesystem;
 
-use crate::{error::ShardResult, types::checksum::Checksum};
+use crate::error::ShardResult;
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::str::FromStr;
+
+use shared::checksum::Checksum;
 
 #[derive(Clone)]
 pub(crate) struct ObjectPath {

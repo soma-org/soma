@@ -4,12 +4,15 @@ use std::{
 };
 
 use parking_lot::RwLock;
+use shared::network_committee::NetworkingIndex;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::{ShardError, ShardResult},
-    types::{context::Quorum, digest::Digest, network_committee::NetworkingIndex, shard::ShardRef},
+    types::shard::ShardRef,
 };
+
+type Quorum = usize;
 
 pub(crate) struct Supervisor {
     // TODO: potentially switch to a B-Tree to allow for cancelling and cleaning all things that are

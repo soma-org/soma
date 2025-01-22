@@ -7,9 +7,7 @@ mod tonic_gen {
     include!(concat!(env!("OUT_DIR"), "/soma.EncoderService.rs"));
 }
 
-use crate::types::certificate::ShardCertificate;
-use crate::types::multiaddr::{Multiaddr, Protocol};
-use crate::types::serialized::Serialized;
+use crate::types::certified::Certified;
 use crate::types::shard::ShardRef;
 use crate::types::shard_commit::ShardCommit;
 use crate::types::shard_completion_proof::ShardCompletionProof;
@@ -18,16 +16,15 @@ use crate::types::shard_input::ShardInput;
 use crate::types::shard_removal::ShardRemoval;
 use crate::types::shard_reveal::ShardReveal;
 use crate::types::shard_slots::ShardSlots;
-use crate::types::signed::Signature;
-use crate::types::signed::Signed;
-use crate::types::verified::Verified;
-use crate::{
-    crypto::keys::NetworkKeyPair,
-    error::ShardResult,
-    types::{context::EncoderContext, network_committee::NetworkingIndex},
-};
+use crate::{error::ShardResult, types::encoder_context::EncoderContext};
 use async_trait::async_trait;
 use bytes::Bytes;
+use multiaddr::Protocol;
+use shared::crypto::keys::NetworkKeyPair;
+use shared::multiaddr::Multiaddr;
+use shared::serialized::Serialized;
+use shared::signed::Signature;
+use shared::{network_committee::NetworkingIndex, signed::Signed, verified::Verified};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::{sync::Arc, time::Duration};
 
@@ -86,7 +83,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn send_shard_commit_certificate(
         &self,
         peer: NetworkingIndex,
-        shard_commit_certificate: &Verified<ShardCertificate<Signed<ShardCommit>>>,
+        shard_commit_certificate: &Verified<Certified<Signed<ShardCommit>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -137,7 +134,7 @@ pub(crate) trait EncoderNetworkClient: Send + Sync + Sized + 'static {
     async fn batch_send_shard_removal_certificates(
         &self,
         peer: NetworkingIndex,
-        shard_removal_certificates: &Vec<Verified<ShardCertificate<ShardRemoval>>>,
+        shard_removal_certificates: &Vec<Verified<Certified<ShardRemoval>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -210,7 +207,7 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
         &self,
         peer: NetworkingIndex,
         shard_slots_bytes: Bytes,
-    ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>>;
+    ) -> ShardResult<Vec<Serialized<Certified<Signed<ShardCommit>>>>>;
 
     /// checks validity and then if there is no existing certificate, adds the reveal its corresponding slot. After receiving a quorum
     /// number of reveals, a countdown is triggered before asking peers for the missing reveal and then proceeding to broadcast a removal.
@@ -225,7 +222,7 @@ pub(crate) trait EncoderNetworkService: Send + Sync + Sized + 'static {
         &self,
         peer: NetworkingIndex,
         shard_slots_bytes: Bytes,
-    ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardReveal>>>>>;
+    ) -> ShardResult<Vec<Serialized<Certified<Signed<ShardReveal>>>>>;
 
     /// receives a removal signature from a peer. The removal signature is stored and checked whether quorum has been hit
     /// by the number of removal signatures.

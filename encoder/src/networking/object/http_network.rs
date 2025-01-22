@@ -1,13 +1,11 @@
 use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 
+use super::{GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService};
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::{to_host_port_str, to_socket_addr},
     storage::object::ObjectPath,
-    types::{
-        context::{EncoderContext, NetworkingContext},
-        network_committee::NetworkingIndex,
-    },
+    types::encoder_context::EncoderContext,
 };
 use async_trait::async_trait;
 use axum::{
@@ -20,10 +18,9 @@ use axum::{
 };
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
+use shared::network_committee::NetworkingIndex;
 use tokio::sync::oneshot;
 use url::Url;
-
-use super::{GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService};
 
 pub(crate) struct ObjectHttpClient {
     client: Client,
@@ -51,7 +48,7 @@ impl ObjectNetworkClient for ObjectHttpClient {
         path: &ObjectPath,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
-        let network_identity = self.context.network_committee().identity(peer);
+        let network_identity = self.context.network_committee.identity(peer);
 
         let address = to_host_port_str(&network_identity.blob_address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))

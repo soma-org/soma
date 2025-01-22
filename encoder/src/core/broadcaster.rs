@@ -1,4 +1,5 @@
 use serde::Serialize;
+use shared::{network_committee::NetworkingIndex, signed::Signature, verified::Verified};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,10 +9,7 @@ use tokio::time::sleep;
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::EncoderNetworkClient,
-    types::{
-        context::EncoderContext, network_committee::NetworkingIndex, signed::Signature,
-        verified::Verified,
-    },
+    types::encoder_context::EncoderContext,
 };
 
 const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(10);

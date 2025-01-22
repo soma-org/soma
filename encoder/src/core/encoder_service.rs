@@ -1,5 +1,13 @@
 use async_trait::async_trait;
 use bytes::Bytes;
+use shared::{
+    crypto::keys::ProtocolKeyPair,
+    network_committee::NetworkingIndex,
+    scope::Scope,
+    serialized::Serialized,
+    signed::{Signature, Signed},
+    verified::Verified,
+};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -8,22 +16,15 @@ use crate::{
     networking::messaging::EncoderNetworkService,
     storage::datastore::Store,
     types::{
-        certificate::ShardCertificate,
-        context::EncoderContext,
-        network_committee::NetworkingIndex,
-        serialized::Serialized,
+        certified::Certified,
+        encoder_context::EncoderContext,
         shard::ShardRef,
         shard_commit::{ShardCommit, ShardCommitAPI},
         shard_input::ShardInput,
         shard_reveal::{ShardReveal, ShardRevealAPI},
         shard_slots::{ShardSlots, ShardSlotsAPI},
-        signed::Signature,
-        verified::Verified,
     },
-    ProtocolKeyPair,
 };
-
-use crate::types::signed::Signed;
 
 use super::pipeline_dispatcher::PipelineDispatcher;
 
@@ -102,14 +103,19 @@ impl<PD: PipelineDispatcher, S: Store> EncoderNetworkService for EncoderService<
         }
         //2. verify signature
 
-        shard_commit.verify_signature(
-            crate::Scope::ShardCommit,
-            &self.context.network_committee.identity(peer).protocol_key,
-        )?;
+        shard_commit
+            .verify_signature(
+                Scope::ShardCommit,
+                &self.context.network_committee.identity(peer).protocol_key,
+            )
+            .unwrap();
 
         //3. verify shard commit
         //TODO: fix verification
-        let verified_shard_commit = Verified::new(shard_commit, shard_commit_bytes, unverified)?;
+        // TODO: remove unwraps
+
+        let verified_shard_commit =
+            Verified::from_trusted_bytes(shard_commit, shard_commit_bytes).unwrap();
 
         if self
             .store
@@ -124,9 +130,10 @@ impl<PD: PipelineDispatcher, S: Store> EncoderNetworkService for EncoderService<
         let signature_bytes = bcs::to_bytes(
             &Signed::new(
                 verified_shard_commit.deref().to_owned(),
-                crate::Scope::ShardReveal,
+                Scope::ShardReveal,
                 &self.protocol_keypair,
-            )?
+            )
+            .unwrap()
             .signature(),
         )
         .map_err(ShardError::SerializationFailure)?;
@@ -158,7 +165,7 @@ impl<PD: PipelineDispatcher, S: Store> EncoderNetworkService for EncoderService<
         &self,
         peer: NetworkingIndex,
         slots_bytes: Bytes,
-    ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardCommit>>>>> {
+    ) -> ShardResult<Vec<Serialized<Certified<Signed<ShardCommit>>>>> {
         let shard_slots: ShardSlots =
             bcs::from_bytes(&slots_bytes).map_err(ShardError::MalformedType)?;
         let shard = self.store.read_shard(shard_slots.shard_ref())?;
@@ -249,7 +256,7 @@ impl<PD: PipelineDispatcher, S: Store> EncoderNetworkService for EncoderService<
         &self,
         peer: NetworkingIndex,
         slots_bytes: Bytes,
-    ) -> ShardResult<Vec<Serialized<ShardCertificate<Signed<ShardReveal>>>>> {
+    ) -> ShardResult<Vec<Serialized<Certified<Signed<ShardReveal>>>>> {
         let shard_slots: ShardSlots =
             bcs::from_bytes(&slots_bytes).map_err(ShardError::MalformedType)?;
         let shard = self.store.read_shard(shard_slots.shard_ref())?;

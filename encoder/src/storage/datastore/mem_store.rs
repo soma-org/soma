@@ -1,12 +1,14 @@
 use parking_lot::RwLock;
+use shared::{
+    digest::Digest, network_committee::NetworkingIndex, signed::Signed, verified::Verified,
+};
 use std::collections::BTreeMap;
 
 use crate::{
     error::{ShardError, ShardResult},
     types::{
-        certificate::ShardCertificate, digest::Digest, network_committee::NetworkingIndex,
-        shard::ShardRef, shard_commit::ShardCommit, shard_input::ShardInput,
-        shard_reveal::ShardReveal, signed::Signed, verified::Verified,
+        certified::Certified, shard::ShardRef, shard_commit::ShardCommit, shard_input::ShardInput,
+        shard_reveal::ShardReveal,
     },
 };
 
@@ -24,10 +26,10 @@ struct Inner {
     shard_inputs: BTreeMap<ShardRef, Verified<Signed<ShardInput>>>,
     shard_commit_digests: BTreeMap<(ShardRef, NetworkingIndex), Digest<Signed<ShardCommit>>>,
     shard_commit_certificates:
-        BTreeMap<(ShardRef, NetworkingIndex), Verified<ShardCertificate<Signed<ShardCommit>>>>,
+        BTreeMap<(ShardRef, NetworkingIndex), Verified<Certified<Signed<ShardCommit>>>>,
     shard_reveal_digests: BTreeMap<(ShardRef, NetworkingIndex), Digest<Signed<ShardReveal>>>,
     shard_reveal_certificates:
-        BTreeMap<(ShardRef, NetworkingIndex), Verified<ShardCertificate<Signed<ShardReveal>>>>,
+        BTreeMap<(ShardRef, NetworkingIndex), Verified<Certified<Signed<ShardReveal>>>>,
 }
 
 impl MemStore {
@@ -101,7 +103,7 @@ impl Store for MemStore {
         &self,
         shard_ref: ShardRef,
         peers: &[NetworkingIndex],
-    ) -> ShardResult<Vec<Option<Verified<ShardCertificate<Signed<ShardCommit>>>>>> {
+    ) -> ShardResult<Vec<Option<Verified<Certified<Signed<ShardCommit>>>>>> {
         let inner = self.inner.read();
         let shard_commit_certificates = peers
             .iter()
@@ -136,7 +138,7 @@ impl Store for MemStore {
         &self,
         shard_ref: ShardRef,
         peers: &[NetworkingIndex],
-    ) -> ShardResult<Vec<Option<Verified<ShardCertificate<Signed<ShardReveal>>>>>> {
+    ) -> ShardResult<Vec<Option<Verified<Certified<Signed<ShardReveal>>>>>> {
         let inner = self.inner.read();
         let shard_commit_certificates = peers
             .iter()

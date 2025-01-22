@@ -11,9 +11,11 @@ use thiserror::Error;
 //     commit::{Commit, CommitIndex},
 // };
 
+use crate::authority_committee::AuthorityIndex;
+
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
-pub(crate) enum ShardError {
+pub enum SharedError {
     #[error("Quorum failed")]
     QuorumFailed,
 
@@ -114,6 +116,8 @@ pub(crate) enum ShardError {
     #[error("Provided size of highest accepted rounds parameter, {0}, is different than committee size, {1}")]
     InvalidSizeOfHighestAcceptedRounds(usize, usize),
 
+    #[error("Invalid authority index: {index} > {max}")]
+    InvalidAuthorityIndex { index: AuthorityIndex, max: usize },
     #[error("Failed to deserialize signature: {0}")]
     MalformedSignature(FastCryptoError),
 
@@ -236,7 +240,7 @@ pub(crate) enum ShardError {
     Shutdown,
 }
 
-pub type ShardResult<T> = Result<T, ShardError>;
+pub type SharedResult<T> = Result<T, SharedError>;
 
 #[macro_export]
 macro_rules! bail {

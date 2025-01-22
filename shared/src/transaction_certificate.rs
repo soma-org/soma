@@ -1,16 +1,7 @@
 use super::{block::SignedBlockHeader, transaction::SignedTransaction};
 use crate::crypto::keys::ProtocolKeySignature;
-use crate::crypto::{DefaultHashFunction, DIGEST_LENGTH};
-use crate::error::{ShardError, ShardResult};
-use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use fastcrypto::hash::{Digest, HashFunction};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
 
 /// Certificate is a generic transaction certificate that contains a signed
 /// transaction, a signed block_header, and a threshold signature. The verification

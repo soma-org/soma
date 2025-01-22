@@ -2,12 +2,15 @@
 
 pub(crate) mod mem_store;
 
+use shared::{
+    digest::Digest, network_committee::NetworkingIndex, signed::Signed, verified::Verified,
+};
+
 use crate::{
     error::ShardResult,
     types::{
-        certificate::ShardCertificate, digest::Digest, network_committee::NetworkingIndex,
-        shard::ShardRef, shard_commit::ShardCommit, shard_input::ShardInput,
-        shard_reveal::ShardReveal, signed::Signed, verified::Verified,
+        certified::Certified, shard::ShardRef, shard_commit::ShardCommit, shard_input::ShardInput,
+        shard_reveal::ShardReveal,
     },
 };
 
@@ -36,7 +39,7 @@ pub(crate) trait Store: Send + Sync + 'static {
         &self,
         shard_ref: ShardRef,
         peers: &[NetworkingIndex],
-    ) -> ShardResult<Vec<Option<Verified<ShardCertificate<Signed<ShardCommit>>>>>>;
+    ) -> ShardResult<Vec<Option<Verified<Certified<Signed<ShardCommit>>>>>>;
 
     /// retrieves the reveal digest for a shard/peer pair
     fn read_shard_reveal_digest(
@@ -50,5 +53,5 @@ pub(crate) trait Store: Send + Sync + 'static {
         &self,
         shard_ref: ShardRef,
         peers: &[NetworkingIndex],
-    ) -> ShardResult<Vec<Option<Verified<ShardCertificate<Signed<ShardReveal>>>>>>;
+    ) -> ShardResult<Vec<Option<Verified<Certified<Signed<ShardReveal>>>>>>;
 }

@@ -1,12 +1,9 @@
 //! `ChannelPool` stores tonic channels for re-use.
+use crate::error::{ShardError, ShardResult};
 use crate::networking::messaging::to_host_port_str;
-use crate::types::context::EncoderContext;
-use crate::types::network_committee::NetworkingIndex;
-use crate::{
-    error::{ShardError, ShardResult},
-    types::context::NetworkingContext,
-};
+use crate::types::encoder_context::EncoderContext;
 use parking_lot::RwLock;
+use shared::network_committee::NetworkingIndex;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{trace, warn};
@@ -55,7 +52,7 @@ impl ChannelPool {
                 return Ok(channel.clone());
             }
         }
-        let network_identity = self.context.network_committee().identity(peer);
+        let network_identity = self.context.network_committee.identity(peer);
 
         let address = to_host_port_str(&network_identity.messaging_address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))

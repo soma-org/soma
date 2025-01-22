@@ -11,24 +11,39 @@ use crate::{
         ActorHandle,
     },
     compression::zstd_compressor::ZstdCompressor,
-    crypto::AesKey,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
     intelligence::model::Model,
     networking::{
-        blob::ObjectNetworkClient,
         messaging::{EncoderNetworkClient, MESSAGE_TIMEOUT},
+        object::ObjectNetworkClient,
     },
     storage::object::{ObjectPath, ObjectStorage},
     types::{
-        certificate::ShardCertificate, checksum::Checksum, data::{self, Compression, CompressionAPI, CompressionV1, Data, DataAPI, Encryption, EncryptionV1}, digest::Digest, network_committee::NetworkingIndex, shard::Shard, shard_commit::{self, ShardCommit, ShardCommitAPI}, shard_completion_proof::ShardCompletionProof, shard_endorsement::ShardEndorsement, shard_input::{ShardInput, ShardInputAPI}, shard_removal::ShardRemoval, shard_reveal::{ShardReveal, ShardRevealAPI}, signed::{Signature, Signed}, verified::Verified
+        certified::Certified,
+        shard::Shard,
+        shard_commit::{ShardCommit, ShardCommitAPI},
+        shard_completion_proof::ShardCompletionProof,
+        shard_endorsement::ShardEndorsement,
+        shard_input::{ShardInput, ShardInputAPI},
+        shard_removal::ShardRemoval,
+        shard_reveal::{ShardReveal, ShardRevealAPI},
     },
-    ProtocolKeyPair, Scope,
 };
 use bytes::Bytes;
 use ndarray::ArrayD;
 use rand::rngs::OsRng;
 use rand::RngCore;
+use shared::{
+    checksum::Checksum,
+    crypto::{keys::ProtocolKeyPair, AesKey},
+    digest::Digest,
+    metadata::{CompressionAPI, CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata, MetadataAPI},
+    network_committee::NetworkingIndex,
+    scope::Scope,
+    signed::{Signature, Signed},
+    verified::Verified,
+};
 use std::sync::Arc;
 use tokio::{sync::Semaphore, task::JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -91,7 +106,6 @@ where
 
         let uncompressed_size = data.compression().map(|c| c.uncompressed_size()).unwrap();
 
-
         // TODO: sign the shard and hash the signature. Simple, easily reproducible, random, secure
         let mut key = [0u8; 32];
         OsRng.fill_bytes(&mut key);
@@ -148,18 +162,24 @@ where
             )
             .await?;
 
-        let key_digest = Digest::new(&key)?;
+        // TODO: remove unwraps
+        let key_digest = Digest::new(&key).unwrap();
 
-        let commit_data = Data::new_v1(
-            Some(CompressionV1::new(data::CompressionAlgorithmV1::ZSTD, uncompressed_size)),
+        let commit_data = Metadata::new_v1(
+            Some(CompressionV1::new(
+                CompressionAlgorithmV1::ZSTD,
+                uncompressed_size,
+            )),
             Some(EncryptionV1::Aes256Ctr64LE(key_digest)),
             checksum,
             shape.to_vec(),
             download_size,
         );
         let shard_commit = ShardCommit::new_v1(shard.shard_ref().clone(), commit_data);
-        let signed_commit = Signed::new(shard_commit, Scope::ShardCommit, &self.keypair)?;
-        let verified_signed_commit = Verified::from_trusted(signed_commit)?;
+        // TODO: remove unwraps
+        let signed_commit = Signed::new(shard_commit, Scope::ShardCommit, &self.keypair).unwrap();
+        // TODO: remove unwraps
+        let verified_signed_commit = Verified::from_trusted(signed_commit).unwrap();
 
         async fn get_shard_commit_signatures<C: EncoderNetworkClient>(
             client: Arc<C>,
@@ -175,7 +195,9 @@ where
                 // TODO: actually verify the signature
                 unimplemented!()
             };
-            let verified_signature = Verified::new(signature, signature_bytes, verification_fn)?;
+            // TODO: remove unwraps
+            let verified_signature =
+                Verified::new(signature, signature_bytes, verification_fn).unwrap();
             Ok(verified_signature)
         }
 
@@ -191,7 +213,7 @@ where
         async fn send_shard_commit_certificates<C: EncoderNetworkClient>(
             client: Arc<C>,
             peer: NetworkingIndex,
-            shard_commit_certificate: Verified<ShardCertificate<Signed<ShardCommit>>>,
+            shard_commit_certificate: Verified<Certified<Signed<ShardCommit>>>,
         ) -> ShardResult<()> {
             let _ = client
                 .send_shard_commit_certificate(peer, &shard_commit_certificate, MESSAGE_TIMEOUT)
@@ -226,7 +248,7 @@ where
         &self,
         peer: NetworkingIndex,
         shard: Shard,
-        shard_commit_certificate: Verified<ShardCertificate<Signed<ShardCommit>>>,
+        shard_commit_certificate: Verified<Certified<Signed<ShardCommit>>>,
     ) -> ShardResult<()> {
         let data = shard_commit_certificate.data();
         let cancellation = CancellationToken::new();
@@ -291,12 +313,12 @@ where
         peer: NetworkingIndex,
         shard: Shard,
         encrypted_data_checksum: Checksum,
-        shard_reveal_certificate: Verified<ShardCertificate<Signed<ShardReveal>>>,
+        shard_reveal_certificate: Verified<Certified<Signed<ShardReveal>>>,
     ) -> ShardResult<()> {
         let cancellation = CancellationToken::new();
         let data_path: ObjectPath = ObjectPath::from_checksum(encrypted_data_checksum);
         let DATA_SIZE = 1024_usize * 10;
-        // TODO: need to 
+        // TODO: need to
 
         if let StorageProcessorOutput::Get(encrypted_bytes) = self
             .storage
@@ -336,14 +358,14 @@ where
 
     pub async fn process_shard_removal_certificate(
         &self,
-        shard_removal_certificate: Verified<ShardCertificate<ShardRemoval>>,
+        shard_removal_certificate: Verified<Certified<ShardRemoval>>,
     ) {
         println!("{:?}", shard_removal_certificate);
     }
 
     pub async fn process_shard_endorsement_certificate(
         &self,
-        shard_endorsement_certificate: Verified<ShardCertificate<Signed<ShardEndorsement>>>,
+        shard_endorsement_certificate: Verified<Certified<Signed<ShardEndorsement>>>,
     ) {
         // print the endorsement certificate
         // just reach this point

@@ -4,13 +4,13 @@ use bytes::Bytes;
 use tokio::sync::Semaphore;
 
 use crate::{
-    encryption::Encryptor,
     error::ShardResult,
-    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
     storage::object::ObjectPath,
-    types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
+
 use async_trait::async_trait;
+use shared::crypto::Encryptor;
 
 use crate::actors::{ActorMessage, Processor};
 

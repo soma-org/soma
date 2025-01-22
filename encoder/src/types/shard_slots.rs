@@ -1,8 +1,8 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use shared::network_committee::NetworkingIndex;
 
 use super::shard::ShardRef;
-use crate::types::network_committee::NetworkingIndex;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardSlotsAPI)]
@@ -11,7 +11,7 @@ pub enum ShardSlots {
 }
 
 #[enum_dispatch]
-pub(crate) trait ShardSlotsAPI {
+pub trait ShardSlotsAPI {
     fn shard_ref(&self) -> &ShardRef;
     fn shard_members(&self) -> &Vec<NetworkingIndex>;
 }

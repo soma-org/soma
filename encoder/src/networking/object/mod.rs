@@ -2,12 +2,13 @@ pub(crate) mod http_network;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use shared::network_committee::NetworkingIndex;
 use std::{sync::Arc, time::Duration};
 
 use crate::{
     error::ShardResult,
     storage::object::{ObjectPath, ObjectSignedUrl, ObjectStorage},
-    types::{context::EncoderContext, network_committee::NetworkingIndex},
+    types::encoder_context::EncoderContext,
 };
 
 pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(60 * 2);

@@ -1,14 +1,14 @@
 use std::{path, sync::Arc};
 
 use bytes::Bytes;
+use shared::network_committee::NetworkingIndex;
 use tokio::sync::Semaphore;
 use tower::limit::concurrency;
 
 use crate::{
     error::ShardResult,
-    networking::blob::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
+    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
     storage::object::ObjectPath,
-    types::{checksum::Checksum, network_committee::NetworkingIndex},
 };
 use async_trait::async_trait;
 

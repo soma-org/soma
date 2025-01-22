@@ -1,15 +1,13 @@
+use shared::{network_committee::NetworkingIndex, signed::Signed, verified::Verified};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use crate::{
     core::encoder_core::EncoderCore,
     intelligence::model::Model,
-    networking::{blob::ObjectNetworkClient, messaging::EncoderNetworkClient},
+    networking::{messaging::EncoderNetworkClient, object::ObjectNetworkClient},
     storage::object::ObjectStorage,
-    types::{
-        network_committee::NetworkingIndex, shard::Shard, shard_input::ShardInput, signed::Signed,
-        verified::Verified,
-    },
+    types::{shard::Shard, shard_input::ShardInput},
 };
 
 use crate::actors::{ActorMessage, Processor};

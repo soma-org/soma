@@ -1,5 +1,9 @@
 use std::{fs::File, marker::PhantomData, path::Path, sync::Arc};
 
+use shared::crypto::{
+    keys::{NetworkKeyPair, ProtocolKeyPair},
+    AesKey,
+};
 
 use crate::{
     actors::{
@@ -11,28 +15,26 @@ use crate::{
         ActorManager,
     },
     compression::zstd_compressor::ZstdCompressor,
-    crypto::{keys::NetworkKeyPair, AesKey},
-    encryption::{aes_encryptor::Aes256Ctr64LEEncryptor, Encryptor},
+    encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     intelligence::model::{
         python::{PythonInterpreter, PythonModule},
         Model,
     },
     networking::{
-        blob::{
-            http_network::{ObjectHttpClient, ObjectHttpManager},
-            DirectNetworkService, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService,
-        },
         messaging::{
             tonic_network::{EncoderTonicClient, EncoderTonicManager},
             EncoderNetworkClient, EncoderNetworkManager,
+        },
+        object::{
+            http_network::{ObjectHttpClient, ObjectHttpManager},
+            DirectNetworkService, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService,
         },
     },
     storage::{
         datastore::mem_store::MemStore,
         object::{filesystem::FilesystemObjectStorage, ObjectStorage},
     },
-    types::{context::EncoderContext, shard},
-    ProtocolKeyPair,
+    types::{encoder_context::EncoderContext, shard},
 };
 
 use self::{downloader::Downloader, shard_input::ShardInputProcessor};
@@ -70,8 +72,7 @@ use super::{
 //     }
 // }
 
-pub struct EncoderNode
-{
+pub struct EncoderNode {
     network_manager: EncoderTonicManager,
 }
 
@@ -83,9 +84,20 @@ impl EncoderNode {
         project_root: &Path,
         entry_point: &Path,
     ) -> Self {
-        let mut network_manager= EncoderTonicManager::new(encoder_context.clone(), network_keypair);
+        let mut network_manager =
+            EncoderTonicManager::new(encoder_context.clone(), network_keypair);
 
-        let messaging_client = <EncoderTonicManager as EncoderNetworkManager<EncoderService<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, MemStore>>>::client(&network_manager);
+        let messaging_client = <EncoderTonicManager as EncoderNetworkManager<
+            EncoderService<
+                ActorPipelineDispatcher<
+                    EncoderTonicClient,
+                    PythonModule,
+                    FilesystemObjectStorage,
+                    ObjectHttpClient,
+                >,
+                MemStore,
+            >,
+        >>::client(&network_manager);
 
         // let messaging_client = network_manager.client();
 
@@ -159,21 +171,21 @@ impl EncoderNode {
             protocol_keypair,
         ));
         network_manager.start(network_service).await;
-        Self {
-            network_manager,
-        }
+        Self { network_manager }
     }
 
     pub(crate) async fn stop(mut self) {
-        <EncoderTonicManager as EncoderNetworkManager<EncoderService<
-        ActorPipelineDispatcher<
-            EncoderTonicClient,
-            PythonModule,
-            FilesystemObjectStorage,
-            ObjectHttpClient
-        >,
-        MemStore
-    >>>::stop(&mut self.network_manager).await;
-
+        <EncoderTonicManager as EncoderNetworkManager<
+            EncoderService<
+                ActorPipelineDispatcher<
+                    EncoderTonicClient,
+                    PythonModule,
+                    FilesystemObjectStorage,
+                    ObjectHttpClient,
+                >,
+                MemStore,
+            >,
+        >>::stop(&mut self.network_manager)
+        .await;
     }
 }

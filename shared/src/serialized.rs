@@ -7,13 +7,13 @@ pub struct Serialized<T> {
 }
 
 impl<T> Serialized<T> {
-    pub(crate) fn new(bytes: Bytes) -> Self {
+    pub fn new(bytes: Bytes) -> Self {
         Self {
             bytes,
             marker: PhantomData,
         }
     }
-    pub(crate) fn bytes(&self) -> bytes::Bytes {
+    pub fn bytes(&self) -> bytes::Bytes {
         self.bytes.clone()
     }
 }

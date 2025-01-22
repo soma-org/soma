@@ -1,7 +1,8 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use shared::network_committee::NetworkingIndex;
 
-use super::{network_committee::NetworkingIndex, shard::ShardRef};
+use super::{ shard::ShardRef};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardRemovalAPI)]

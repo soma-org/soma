@@ -1,30 +1,11 @@
-use crate::{
-    crypto::{
-        keys::{ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey},
-        DefaultHashFunction, DIGEST_LENGTH,
-    },
-    error::{ShardError, ShardResult},
-};
 
-use std::ops::Deref;
-use std::sync::Arc;
 
-use crate::types::{
-    modality::Modality, shard::ShardSecret, transaction_certificate::TransactionCertificate,
-};
-use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use fastcrypto::hash::{Digest, HashFunction};
 use serde::{Deserialize, Serialize};
+use shared::{metadata::Metadata, transaction_certificate::TransactionCertificate};
 
-use super::{
-    data::Data,
-    scope::{Scope, ScopedMessage},
-};
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
+use super::shard::ShardSecret;
+
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[enum_dispatch(ShardInputAPI)]
@@ -36,30 +17,26 @@ pub enum ShardInput {
 pub trait ShardInputAPI {
     fn transaction_certificate(&self) -> &TransactionCertificate;
     fn shard_secret(&self) -> &ShardSecret;
-    fn data(&self) -> &Data;
-    fn modality(&self) -> &Modality;
+    fn data(&self) -> &Metadata;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShardInputV1 {
     transaction_certificate: TransactionCertificate,
     shard_secret: ShardSecret,
-    data: Data,
-    modality: Modality,
+    data: Metadata,
 }
 
 impl ShardInputV1 {
     pub(crate) fn new(
         transaction_certificate: TransactionCertificate,
         shard_secret: ShardSecret,
-        data: Data,
-        modality: Modality,
+        data: Metadata,
     ) -> Self {
         Self {
             transaction_certificate,
             shard_secret,
             data,
-            modality,
         }
     }
 }
@@ -71,10 +48,7 @@ impl ShardInputAPI for ShardInputV1 {
     fn shard_secret(&self) -> &ShardSecret {
         &self.shard_secret
     }
-    fn data(&self) -> &Data {
+    fn data(&self) -> &Metadata {
         &self.data
-    }
-    fn modality(&self) -> &Modality {
-        &self.modality
     }
 }

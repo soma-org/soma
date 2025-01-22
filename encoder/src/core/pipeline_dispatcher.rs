@@ -1,16 +1,14 @@
 use async_trait::async_trait;
+use shared::{network_committee::NetworkingIndex, signed::Signed, verified::Verified};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     actors::{pipelines::shard_input::ShardInputProcessor, ActorHandle},
     error::ShardResult,
     intelligence::model::Model,
-    networking::{blob::ObjectNetworkClient, messaging::EncoderNetworkClient},
+    networking::{messaging::EncoderNetworkClient, object::ObjectNetworkClient},
     storage::object::ObjectStorage,
-    types::{
-        network_committee::NetworkingIndex, shard::Shard, shard_input::ShardInput, signed::Signed,
-        verified::Verified,
-    },
+    types::{shard::Shard, shard_input::ShardInput},
 };
 
 #[async_trait]

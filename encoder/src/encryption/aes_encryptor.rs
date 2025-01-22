@@ -1,10 +1,9 @@
-use crate::{crypto::AesKey, error::ShardResult};
 use aes::cipher::StreamCipher;
 use aes::{cipher::BlockEncrypt, Aes256};
 use bytes::{Bytes, BytesMut};
 use crypto_common::KeyIvInit;
 
-use crate::encryption::Encryptor;
+use shared::crypto::{AesKey, Encryptor};
 
 type Aes256Ctr64LE = ctr::Ctr64LE<aes::Aes256>;
 
