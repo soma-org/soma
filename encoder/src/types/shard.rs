@@ -1,53 +1,75 @@
+use std::hash::{Hash, Hasher};
+
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::ProtocolKeySignature, digest::Digest, metadata::Metadata,
-    network_committee::NetworkingIndex, transaction::SignedTransaction,
+    crypto::keys::EncoderAggregateSignature, digest::Digest, metadata::Metadata,
+transaction::SignedTransaction,
 };
-use std::hash::{Hash, Hasher};
 use strum_macros::Display;
 
+use super::encoder_committee::EncoderIndex;
+
 type Epoch = u64;
+type QuorumUnit = u32;
+
 
 pub(crate) struct Shard {
-    members: Vec<NetworkingIndex>,
-    shard_ref: ShardRef,
+    epoch: Epoch,
+    quorum_threshold: QuorumUnit,
+    encoders: Vec<EncoderIndex>,
 }
 
 impl Shard {
-    pub(crate) fn new(members: Vec<NetworkingIndex>, shard_ref: ShardRef) -> Self {
-        Self { members, shard_ref }
+    pub(crate) fn new(epoch: Epoch, quorum_threshold: QuorumUnit, encoders: Vec<EncoderIndex>) -> Self {
+        Self {
+            epoch,
+            quorum_threshold,
+            encoders
+        }
+    }
+    pub(crate) fn epoch(&self) -> Epoch {
+        self.epoch
+    }
+    pub(crate) fn encoders(&self) -> Vec<EncoderIndex> {
+        self.encoders.clone()
     }
 
-    pub(crate) fn members(&self) -> Vec<NetworkingIndex> {
-        self.members.clone()
+    pub(crate) fn size(&self) -> usize {
+        self.encoders.len()
     }
 
-    pub(crate) fn shard_ref(&self) -> &ShardRef {
-        &self.shard_ref
+    pub(crate) fn quorum_threshold(&self) -> QuorumUnit {
+        self.quorum_threshold
     }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(epoch: Epoch, quorum_threshold: QuorumUnit, encoders: Vec<EncoderIndex>) -> Self {
+        Self::new(epoch, quorum_threshold, encoders)
+    }
+
 }
 
-/// Contains the manifest digest and leader. By keeping these details
-/// secret from the broader network and only sharing with selected shard members
-/// we can reduce censorship related attacks that target specific users
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct ShardSecret {
-    data_digest: Digest<Metadata>, //TODO: switch to a manifest ref to be more in-line?
-}
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct ShardEntropy {
+    // Note: intentionally breaking the ordering of metadata and nonce due to serialization with BCS being
+    // sequential. 
 
-impl ShardSecret {
-    /// creates a new shard secret given a manifest digest and leader
-    const fn new(data_digest: Digest<Metadata>) -> Self {
-        Self { data_digest }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ShardEntropy {
-    signature: ProtocolKeySignature,
+    /// digest of the metadata, for valid inputs the data cannot be encrypted and the uncompressed
+    /// size should match. Digests without encryption keys should be consistent for the same bytes data every time.  
+    metadata_digest: Digest<Metadata>,
+    /// manipulation free randomness that cannot be biased or known beforehand
+    // TODO: need to change this to the proper signature type but will do later
+    threshold_block_signature: EncoderAggregateSignature,
+    /// ensures that two identical metadata/nonce combinations cannot overlap in the same block
+    /// unique for the individual + object version e.g. account balance
     transaction_digest: Digest<SignedTransaction>,
+    /// especially useful for batch processing when a single transaction can contain multiple metadata
+    /// commitments but they are not allowed to repeat commitment digests. The nonce is factored in
+    /// such that identical data inside a batch still gets a unique shard.
+    nonce: [u8;32],
 }
+
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data

@@ -1,20 +1,26 @@
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
-
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::{AuthorityPublicKey, NetworkPublicKey, ProtocolPublicKey},
-    multiaddr::Multiaddr,
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, NetworkKeyPair, NetworkPublicKey}, digest::Digest, multiaddr::Multiaddr
 };
 use std::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
 };
+use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 
-/// Count represents a count of shard members
-type Count = usize;
+
+use crate::error::{ShardError, ShardResult};
+
+use super::shard::{Shard, ShardEntropy};
+
+/// max of 10_000 
+type VotingPowerUnit = u16;
+/// Size of a shard, must not be larger than shard index size hence u32
+type ShardSizeUnit = u32;
+/// Count of nodes, valid between 1 and shard size
+type QuorumUnit = u32;
+/// Epoch associated with the committee
 type Epoch = u64;
-type Stake = u64;
 
 /// Holds a single encoder committee for a given modality. Each modality has a unique set of
 /// Encoders. A given encoder can register to multiple modalities, but are not required to
@@ -24,12 +30,10 @@ type Stake = u64;
 pub(crate) struct EncoderCommittee {
     /// committee changes with epoch
     epoch: Epoch,
-    /// total_stake of the committee
-    total_stake: Stake,
     /// current shard size requirement
-    shard_size: Count,
+    shard_size: ShardSizeUnit,
     /// the number required for quorum (can change with epoch)
-    quorum_threshold: Count,
+    quorum_threshold: QuorumUnit,
     /// all the encoders
     encoders: Vec<Encoder>,
 }
@@ -39,8 +43,8 @@ impl EncoderCommittee {
     fn new(
         epoch: Epoch,
         encoders: Vec<Encoder>,
-        shard_size: Count,
-        quorum_threshold: Count,
+        shard_size: ShardSizeUnit,
+        quorum_threshold: QuorumUnit,
     ) -> Self {
         assert!(!encoders.is_empty(), "Committee cannot be empty!");
         assert!(
@@ -49,11 +53,10 @@ impl EncoderCommittee {
             encoders.len()
         );
 
-        let total_stake = encoders.iter().map(|a| a.stake).sum();
-        assert_ne!(total_stake, 0, "Total stake cannot be zero!");
+        // let total_stake = encoders.iter().map(|a| a.stake).sum();
+        // assert_ne!(total_stake, 0, "Total stake cannot be zero!");
         Self {
             epoch,
-            total_stake,
             shard_size,
             quorum_threshold,
             encoders,
@@ -69,22 +72,22 @@ impl EncoderCommittee {
     }
 
     /// returns total stake
-    pub(crate) fn total_stake(&self) -> Stake {
-        self.total_stake
-    }
+    // pub(crate) fn total_stake(&self) -> Stake {
+    //     self.total_stake
+    // }
 
     /// returns selection threshold
-    pub(crate) fn shard_size(&self) -> Count {
+    pub(crate) fn shard_size(&self) -> ShardSizeUnit {
         self.shard_size
     }
     /// returns quorum threshold
-    pub(crate) fn quorum_threshold(&self) -> Count {
+    pub(crate) fn quorum_threshold(&self) -> QuorumUnit {
         self.quorum_threshold
     }
 
-    /// returns stake for a given encoder index (of the specific modality)
-    pub(crate) fn stake(&self, encoder_index: EncoderIndex) -> Stake {
-        self.encoders[encoder_index].stake
+    /// returns voting power for a given encoder index (of the specific modality)
+    pub(crate) fn voting_power(&self, encoder_index: EncoderIndex) -> VotingPowerUnit {
+        self.encoders[encoder_index].voting_power
     }
 
     /// returns the encoder at a specified encoder index
@@ -100,9 +103,9 @@ impl EncoderCommittee {
             .map(|(i, a)| (EncoderIndex(i as u32), a))
     }
 
-    /// Returns true if the provided stake has reached quorum (2f+1).
-    pub(crate) fn reached_quorum(&self, count: Count) -> bool {
-        count >= self.quorum_threshold()
+    /// Returns true if the provided count has reached quorum (2f+1).
+    pub(crate) fn reached_quorum(&self, count: QuorumUnit) -> bool {
+        count as u32 >= self.quorum_threshold()
     }
 
     /// Coverts an index to an EncoderIndex, if valid.
@@ -124,6 +127,56 @@ impl EncoderCommittee {
     pub(crate) fn size(&self) -> usize {
         self.encoders.len()
     }
+
+
+    pub(crate) fn sample_shard(&self, entropy: Digest<ShardEntropy>) -> ShardResult<Shard> {
+        let mut rng = StdRng::from_seed(entropy.into());
+        
+        let weight_fn = |index: usize| -> f64 {
+            let encoder_index = EncoderIndex(index as u32);
+            self.voting_power(encoder_index) as f64
+        };
+        
+        let index_vec = sample_weighted(&mut rng, self.size(), weight_fn, self.shard_size as usize).map_err(|e| ShardError::WeightedSampleError(e.to_string()))?;
+        let encoders = index_vec.into_iter().map(|index| EncoderIndex(index as u32)).collect();
+
+        Ok(Shard::new(self.epoch, self.quorum_threshold, encoders))
+    }
+}
+
+#[cfg(test)]
+impl EncoderCommittee {
+    pub fn local_test_committee(
+        epoch: Epoch,
+        voting_powers: Vec<VotingPowerUnit>,
+        shard_size: ShardSizeUnit,
+        quorum_threshold: QuorumUnit,
+        starting_port: u16,
+    ) -> (Self, Vec<(NetworkKeyPair, EncoderKeyPair)>) {
+        let mut rng = StdRng::from_seed([0; 32]);
+        let mut key_pairs = vec![];
+        let encoders = voting_powers
+            .into_iter()
+            .enumerate()
+            .map(|(i, power)| {
+                let encoder_keypair = EncoderKeyPair::generate(&mut rng);
+                let network_keypair = NetworkKeyPair::generate(&mut rng);
+                let port = starting_port + i as u16;
+                
+                key_pairs.push((network_keypair.clone(), encoder_keypair.clone()));
+                
+                Encoder {
+                    voting_power: power,
+                    address: format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap(),
+                    hostname: format!("test-encoder-{}", i),
+                    encoder_key: encoder_keypair.public(),
+                    network_key: network_keypair.public(),
+                }
+            })
+            .collect();
+
+        (Self::new(epoch, encoders, shard_size, quorum_threshold), key_pairs)
+    }
 }
 
 /// Holds all the data for a given Encoder modality
@@ -132,16 +185,14 @@ impl EncoderCommittee {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Encoder {
     /// Voting power of the authority in the committee.
-    stake: Stake,
+    voting_power: VotingPowerUnit,
     /// Network address for communicating with the authority.
     address: Multiaddr,
     /// The authority's hostname, for metrics and logging.
     hostname: String,
-    /// The authority's lic key as Sui identity.
-    authority_key: AuthorityPublicKey,
-    /// The authority's lic key for verifying blocks.
-    protocol_key: ProtocolPublicKey,
-    /// The authority's lic key for TLS and as network identity.
+    /// The authority's public key as Sui identity.
+    encoder_key: EncoderPublicKey,
+    /// The authority's public key for TLS and as network identity.
     network_key: NetworkPublicKey,
 }
 
@@ -165,9 +216,9 @@ impl EncoderIndex {
         self.0 as usize
     }
 
-    const fn new(index: u32) -> Self {
-        Self(index)
-    }
+    // const fn new(index: u32) -> Self {
+    //     Self(index)
+    // }
 }
 
 #[cfg(test)]
@@ -215,5 +266,80 @@ impl<T, const N: usize> IndexMut<EncoderIndex> for [T; N] {
 impl<T> IndexMut<EncoderIndex> for Vec<T> {
     fn index_mut(&mut self, index: EncoderIndex) -> &mut Self::Output {
         self.get_mut(index.value()).unwrap()
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use shared::digest::Digest;
+
+    #[test]
+    fn test_sample_shard() {
+        // Create a committee with different voting powers
+        let voting_powers = vec![100, 200, 300, 400, 500];
+        let shard_size = 3;
+        let quorum_threshold = 2;
+        let starting_port = 8000;
+        let epoch = 1;
+
+        let (committee, _keys) = EncoderCommittee::local_test_committee(
+            epoch,
+            voting_powers,
+            shard_size,
+            quorum_threshold,
+            starting_port,
+        );
+
+        // Sample a shard using test entropy
+        let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from("test_entropy".as_bytes().to_vec()));
+        let shard = committee.sample_shard(entropy).unwrap();
+
+        // Verify shard properties
+        assert_eq!(shard.epoch(), epoch);
+        assert_eq!(shard.quorum_threshold(), quorum_threshold);
+        assert_eq!(shard.size(), shard_size as usize);
+
+        // Verify all indices are valid
+        for encoder_index in shard.encoders() {
+            assert!(committee.is_valid_index(encoder_index));
+        }
+    }
+
+    #[test]
+    fn test_sample_shard_weighted_distribution() {
+        let voting_powers = vec![1000, 100, 100, 100, 100];  // First encoder has 10x voting power
+        let shard_size = 2;
+        let quorum_threshold = 2;
+        let starting_port = 8000;
+        let epoch = 1;
+        let trials = 1000;
+        
+        let (committee, _keys) = EncoderCommittee::local_test_committee(
+            epoch,
+            voting_powers.clone(),
+            shard_size,
+            quorum_threshold,
+            starting_port,
+        );
+
+        let mut selection_counts = vec![0; voting_powers.len()];
+        
+        for i in 0..trials {
+            let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from(format!("test_entropy_{}", i).as_bytes().to_vec()));
+            let shard = committee.sample_shard(entropy).unwrap();
+            
+            for encoder_index in shard.encoders() {
+                selection_counts[encoder_index.value()] += 1;
+            }
+        }
+
+        println!("{:?}", selection_counts);
+
+        // The first encoder (with 10x voting power) should be selected significantly more often
+        assert!(selection_counts[0] > selection_counts[1] * 2);
     }
 }

@@ -154,3 +154,13 @@ impl EncryptionAPI for EncryptionV1 {
         }
     }
 }
+
+
+/// The nonce makes it so that the same identical metadata cannot be detected based on hash lookup.
+/// Prior to landing on this solution, a double hash was going to be used except it is deterministic meaning
+/// that if a piece of metadata had been submitted earlier, the 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MetadataCommitment {
+    metadata_digest: Digest<Metadata>,
+    nonce: [u8; 32],
+}

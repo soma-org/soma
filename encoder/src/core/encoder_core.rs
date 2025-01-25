@@ -101,147 +101,148 @@ where
         shard: Shard,
         shard_input: Verified<Signed<ShardInput>>,
     ) -> ShardResult<()> {
-        // println!("{:?}", shard_input);
-        // TODO: look up or create cancellation token for the shard
-        let cancellation = CancellationToken::new();
-        let data = shard_input.data();
+        // // println!("{:?}", shard_input);
+        // // TODO: look up or create cancellation token for the shard
+        // let cancellation = CancellationToken::new();
+        // let data = shard_input.data();
 
-        let uncompressed_size = data.compression().map(|c| c.uncompressed_size()).unwrap();
+        // let uncompressed_size = data.compression().map(|c| c.uncompressed_size()).unwrap();
 
-        // TODO: sign the shard and hash the signature. Simple, easily reproducible, random, secure
-        let mut key = [0u8; 32];
-        OsRng.fill_bytes(&mut key);
-        let key = AesKey::from(key);
+        // // TODO: sign the shard and hash the signature. Simple, easily reproducible, random, secure
+        // let mut key = [0u8; 32];
+        // OsRng.fill_bytes(&mut key);
+        // let key = AesKey::from(key);
 
-        // Process the batch through each actor in sequence
-        // TODO: fix the networking index peer
-        let downloader_input =
-            DownloaderInput::new(peer, ObjectPath::from_checksum(data.checksum()));
+        // // Process the batch through each actor in sequence
+        // // TODO: fix the networking index peer
+        // let downloader_input =
+        //     DownloaderInput::new(peer, ObjectPath::from_checksum(data.checksum()));
 
-        let download_result = self
-            .downloader
-            .process(downloader_input, cancellation.clone())
-            .await?;
+        // let download_result = self
+        //     .downloader
+        //     .process(downloader_input, cancellation.clone())
+        //     .await?;
 
-        let decompressed = self
-            .compressor
-            .process(
-                CompressorInput::Decompress(download_result, uncompressed_size),
-                cancellation.clone(),
-            )
-            .await?;
-        let array: ArrayD<f32> =
-            bcs::from_bytes(&decompressed).map_err(ShardError::MalformedType)?;
-        let model_output = self.model.process(array, cancellation.clone()).await?;
+        // let decompressed = self
+        //     .compressor
+        //     .process(
+        //         CompressorInput::Decompress(download_result, uncompressed_size),
+        //         cancellation.clone(),
+        //     )
+        //     .await?;
+        // let array: ArrayD<f32> =
+        //     bcs::from_bytes(&decompressed).map_err(ShardError::MalformedType)?;
+        // let model_output = self.model.process(array, cancellation.clone()).await?;
 
-        let shape = model_output.shape();
-        let model_bytes = bcs::to_bytes(&model_output).map_err(ShardError::SerializationFailure)?;
-        let model_bytes = Bytes::copy_from_slice(&model_bytes);
-        let uncompressed_size = model_bytes.len();
-        let compressed_embeddings = self
-            .compressor
-            .process(CompressorInput::Compress(model_bytes), cancellation.clone())
-            .await?;
-        let encrypted_embeddings = self
-            .encryptor
-            .process(
-                EncryptionInput::Encrypt(key, compressed_embeddings),
-                cancellation.clone(),
-            )
-            .await?;
-        // figure out the hash?
+        // let shape = model_output.shape();
+        // let model_bytes = bcs::to_bytes(&model_output).map_err(ShardError::SerializationFailure)?;
+        // let model_bytes = Bytes::copy_from_slice(&model_bytes);
+        // let uncompressed_size = model_bytes.len();
+        // let compressed_embeddings = self
+        //     .compressor
+        //     .process(CompressorInput::Compress(model_bytes), cancellation.clone())
+        //     .await?;
+        // let encrypted_embeddings = self
+        //     .encryptor
+        //     .process(
+        //         EncryptionInput::Encrypt(key, compressed_embeddings),
+        //         cancellation.clone(),
+        //     )
+        //     .await?;
+        // // figure out the hash?
 
-        let download_size = encrypted_embeddings.len();
+        // let download_size = encrypted_embeddings.len();
 
-        let checksum = Checksum::new_from_bytes(&encrypted_embeddings);
-        // TODO: generate a path using the checksum of encrypted data, or make the storage actor generate the path and return it.
-        let path = ObjectPath::new(checksum.to_string())?;
+        // let checksum = Checksum::new_from_bytes(&encrypted_embeddings);
+        // // TODO: generate a path using the checksum of encrypted data, or make the storage actor generate the path and return it.
+        // let path = ObjectPath::new(checksum.to_string())?;
 
-        self.storage
-            .process(
-                StorageProcessorInput::Store(path, encrypted_embeddings),
-                cancellation.clone(),
-            )
-            .await?;
-
-        // TODO: remove unwraps
-        let key_digest = Digest::new(&key).unwrap();
-
-        let commit_data = Metadata::new_v1(
-            Some(CompressionV1::new(
-                CompressionAlgorithmV1::ZSTD,
-                uncompressed_size,
-            )),
-            Some(EncryptionV1::Aes256Ctr64LE(key_digest)),
-            checksum,
-            shape.to_vec(),
-            download_size,
-        );
-        let shard_commit = ShardCommit::new_v1(shard.shard_ref().clone(), commit_data);
-        // TODO: remove unwraps
-        let signed_commit = Signed::new(shard_commit, Scope::ShardCommit, &self.keypair).unwrap();
-        // TODO: remove unwraps
-        let verified_signed_commit = Verified::from_trusted(signed_commit).unwrap();
-
-        async fn get_shard_commit_signatures<C: EncoderNetworkClient>(
-            client: Arc<C>,
-            peer: NetworkingIndex,
-            shard_commit: Verified<Signed<ShardCommit>>,
-        ) -> ShardResult<Verified<Signature<Signed<ShardCommit>>>> {
-            let signature_bytes = client
-                .get_shard_commit_signature(peer, &shard_commit, MESSAGE_TIMEOUT)
-                .await?;
-            let signature: Signature<Signed<ShardCommit>> =
-                bcs::from_bytes(&signature_bytes).map_err(ShardError::MalformedType)?;
-            let verification_fn = |_signature: &Signature<Signed<ShardCommit>>| {
-                // TODO: actually verify the signature
-                unimplemented!()
-            };
-            // TODO: remove unwraps
-            let verified_signature =
-                Verified::new(signature, signature_bytes, verification_fn).unwrap();
-            Ok(verified_signature)
-        }
-
-        let signatures = self
-            .broadcaster
-            .collect_signatures(
-                verified_signed_commit,
-                shard.members(),
-                get_shard_commit_signatures,
-            )
-            .await?;
-
-        async fn send_shard_commit_certificates<C: EncoderNetworkClient>(
-            client: Arc<C>,
-            peer: NetworkingIndex,
-            shard_commit_certificate: Verified<Certified<Signed<ShardCommit>>>,
-        ) -> ShardResult<()> {
-            let _ = client
-                .send_shard_commit_certificate(peer, &shard_commit_certificate, MESSAGE_TIMEOUT)
-                .await?;
-            Ok(())
-        }
-
-        // // TODO: add a binder that converts a
-        // let shard_commit_certificate = Verified::new_from_trusted(ShardCertificate::new_v1(
-        //     inner,
-        //     indices,
-        //     aggregate_signature,
-        // ))?;
-
-        // let _ = self
-        //     .broadcaster
-        //     .broadcast(
-        //         shard_commit_certificate,
-        //         shard.members(),
-        //         send_shard_commit_certificates,
+        // self.storage
+        //     .process(
+        //         StorageProcessorInput::Store(path, encrypted_embeddings),
+        //         cancellation.clone(),
         //     )
         //     .await?;
 
-        // WHAT IS LEFT:
-        // 1. convert commit to certificate
-        // 2. broadcast the certificate
+        // // TODO: remove unwraps
+        // let key_digest = Digest::new(&key).unwrap();
+
+        // let commit_data = Metadata::new_v1(
+        //     Some(CompressionV1::new(
+        //         CompressionAlgorithmV1::ZSTD,
+        //         uncompressed_size,
+        //     )),
+        //     Some(EncryptionV1::Aes256Ctr64LE(key_digest)),
+        //     checksum,
+        //     shape.to_vec(),
+        //     download_size,
+        // );
+        // todo!();
+        // let shard_commit = ShardCommit::new_v1(shard.shard_ref().clone(), commit_data);
+        // // TODO: remove unwraps
+        // let signed_commit = Signed::new(shard_commit, Scope::ShardCommit, &self.keypair).unwrap();
+        // // TODO: remove unwraps
+        // let verified_signed_commit = Verified::from_trusted(signed_commit).unwrap();
+
+        // async fn get_shard_commit_signatures<C: EncoderNetworkClient>(
+        //     client: Arc<C>,
+        //     peer: NetworkingIndex,
+        //     shard_commit: Verified<Signed<ShardCommit>>,
+        // ) -> ShardResult<Verified<Signature<Signed<ShardCommit>>>> {
+        //     let signature_bytes = client
+        //         .get_shard_commit_signature(peer, &shard_commit, MESSAGE_TIMEOUT)
+        //         .await?;
+        //     let signature: Signature<Signed<ShardCommit>> =
+        //         bcs::from_bytes(&signature_bytes).map_err(ShardError::MalformedType)?;
+        //     let verification_fn = |_signature: &Signature<Signed<ShardCommit>>| {
+        //         // TODO: actually verify the signature
+        //         unimplemented!()
+        //     };
+        //     // TODO: remove unwraps
+        //     let verified_signature =
+        //         Verified::new(signature, signature_bytes, verification_fn).unwrap();
+        //     Ok(verified_signature)
+        // }
+
+        // let signatures = self
+        //     .broadcaster
+        //     .collect_signatures(
+        //         verified_signed_commit,
+        //         shard.encoders(),
+        //         get_shard_commit_signatures,
+        //     )
+        //     .await?;
+
+        // async fn send_shard_commit_certificates<C: EncoderNetworkClient>(
+        //     client: Arc<C>,
+        //     peer: NetworkingIndex,
+        //     shard_commit_certificate: Verified<Certified<Signed<ShardCommit>>>,
+        // ) -> ShardResult<()> {
+        //     let _ = client
+        //         .send_shard_commit_certificate(peer, &shard_commit_certificate, MESSAGE_TIMEOUT)
+        //         .await?;
+        //     Ok(())
+        // }
+
+        // // // TODO: add a binder that converts a
+        // // let shard_commit_certificate = Verified::new_from_trusted(ShardCertificate::new_v1(
+        // //     inner,
+        // //     indices,
+        // //     aggregate_signature,
+        // // ))?;
+
+        // // let _ = self
+        // //     .broadcaster
+        // //     .broadcast(
+        // //         shard_commit_certificate,
+        // //         shard.members(),
+        // //         send_shard_commit_certificates,
+        // //     )
+        // //     .await?;
+
+        // // WHAT IS LEFT:
+        // // 1. convert commit to certificate
+        // // 2. broadcast the certificate
 
         Ok(())
     }

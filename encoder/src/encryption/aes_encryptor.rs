@@ -1,5 +1,4 @@
 use aes::cipher::StreamCipher;
-use aes::{cipher::BlockEncrypt, Aes256};
 use bytes::{Bytes, BytesMut};
 use crypto_common::KeyIvInit;
 
@@ -48,12 +47,13 @@ mod tests {
             let aes_key = AesKey::from(key_bytes);
 
             // Generate random contents
-            let contents: Vec<u8> = u.arbitrary()?;
+            let contents: [u8; 32] = u.arbitrary()?;
+
 
             let encryptor = Aes256Ctr64LEEncryptor::new();
 
             // Encrypt
-            let encrypted = encryptor.encrypt(aes_key.clone(), Bytes::from(contents.clone()));
+            let encrypted = encryptor.encrypt(aes_key.clone(), Bytes::from(contents.to_vec()));
             // Decrypt
             let decrypted = encryptor.decrypt(aes_key, encrypted.clone());
 
@@ -65,7 +65,6 @@ mod tests {
             if contents.len() > 0 {
                 assert_ne!(encrypted.as_ref(), contents.as_slice());
             }
-
             Ok(())
         });
     }

@@ -85,6 +85,22 @@ impl<T: Serialize> From<Digest<T>> for fastcrypto::hash::Digest<{ DIGEST_LENGTH 
     }
 }
 
+impl<T: Serialize> From<Digest<T>> for [u8; 32] {
+    fn from(digest: Digest<T>) -> Self {
+        let mut seed = [0u8; 32];
+        match DIGEST_LENGTH.cmp(&32) {
+            Ordering::Equal => seed.copy_from_slice(&digest.inner),
+            Ordering::Greater => seed.copy_from_slice(&digest.inner[..32]),
+            Ordering::Less => {
+                for (i, byte) in digest.inner.iter().cycle().take(32).enumerate() {
+                    seed[i] = *byte;
+                }
+            }
+        }
+        seed
+    }
+}
+
 impl<T: Serialize> std::fmt::Display for Digest<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

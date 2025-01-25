@@ -17,6 +17,9 @@ pub(crate) enum ShardError {
     #[error("Quorum failed")]
     QuorumFailed,
 
+    #[error("weighted sample error: {0}")]
+    WeightedSampleError(String),
+
     #[error("Actor error: {0}")]
     ShardNotFound(String),
 

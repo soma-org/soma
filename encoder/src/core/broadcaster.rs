@@ -1,5 +1,5 @@
 use serde::Serialize;
-use shared::{network_committee::NetworkingIndex, signed::Signature, verified::Verified};
+use shared::{signed::Signature, verified::Verified};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,7 +9,7 @@ use tokio::time::sleep;
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::EncoderNetworkClient,
-    types::encoder_context::EncoderContext,
+    types::{encoder_committee::EncoderIndex, encoder_context::EncoderContext},
 };
 
 const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(10);
@@ -30,16 +30,16 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
     pub(crate) async fn collect_signatures<T, F, Fut>(
         &self,
         input: Verified<T>,
-        peers: Vec<NetworkingIndex>,
+        peers: Vec<EncoderIndex>,
         network_fn: F,
     ) -> ShardResult<Vec<Verified<Signature<T>>>>
     where
         T: Serialize + Send + Sync + 'static,
-        F: FnOnce(Arc<C>, NetworkingIndex, Verified<T>) -> Fut + Copy + Send + Sync + 'static,
+        F: FnOnce(Arc<C>, EncoderIndex, Verified<T>) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = ShardResult<Verified<Signature<T>>>> + Send + 'static,
     {
         struct NetworkingResult<T: Serialize + Send + 'static> {
-            peer: NetworkingIndex,
+            peer: EncoderIndex,
             result: ShardResult<Verified<Signature<T>>>,
             retries: u64,
         }
@@ -68,7 +68,7 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
                         Ok(signature) => {
                             // assume signature validation occurs inside of the generic function
                             valid_signatures.push(signature);
-                            if valid_signatures.len() >= self.context.shard_quorum {
+                            if valid_signatures.len() >= self.context.encoder_committee.quorum_threshold() as usize {
                                 // We hit quorum, can exit early
                                 join_set.abort_all();
                                 return Ok(valid_signatures);
@@ -119,16 +119,16 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
     pub(crate) async fn broadcast<T, F, Fut>(
         &self,
         input: Verified<T>,
-        peers: Vec<NetworkingIndex>,
+        peers: Vec<EncoderIndex>,
         network_fn: F,
     ) -> ShardResult<()>
     where
         T: Serialize + Send + Sync + 'static,
-        F: FnOnce(Arc<C>, NetworkingIndex, Verified<T>) -> Fut + Copy + Send + 'static,
+        F: FnOnce(Arc<C>, EncoderIndex, Verified<T>) -> Fut + Copy + Send + 'static,
         Fut: Future<Output = ShardResult<()>> + Send + 'static,
     {
         struct NetworkingResult {
-            peer: NetworkingIndex,
+            peer: EncoderIndex,
             result: ShardResult<()>,
             retries: u64,
         }

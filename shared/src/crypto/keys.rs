@@ -224,6 +224,12 @@ impl EncoderKeyPair {
     }
 }
 
+impl Clone for EncoderKeyPair {
+    fn clone(&self) -> Self {
+        Self(self.0.copy())
+    }
+}
+
 impl EncoderSignature {
     /// Creates a new `EncoderSignature` from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, FastCryptoError> {
