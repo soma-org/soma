@@ -49,7 +49,6 @@ mod tests {
             // Generate random contents
             let contents: [u8; 32] = u.arbitrary()?;
 
-
             let encryptor = Aes256Ctr64LEEncryptor::new();
 
             // Encrypt

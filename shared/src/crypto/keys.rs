@@ -126,37 +126,109 @@ impl Hash for ProtocolKeySignature {
     }
 }
 
-/// Authority key represents the identity of an authority. It is only used for identity sanity
-/// checks and not used for verification.
+// /////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////
+
+/// A BLS public key wrapper for encoding operations
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct AuthorityPublicKey(bls12381::min_sig::BLS12381PublicKey);
+
+/// A BLS keypair wrapper for encoding operations
+#[derive(Debug)]
 pub struct AuthorityKeyPair(bls12381::min_sig::BLS12381KeyPair);
 
+/// A BLS signature wrapper for encoding operations
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthoritySignature(bls12381::min_sig::BLS12381Signature);
+
+/// A BLS aggregate signature wrapper for encoding operations
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AuthorityAggregateSignature(bls12381::min_sig::BLS12381AggregateSignature);
+
 impl AuthorityPublicKey {
+    /// Creates a new `AuthorityPublicKey` from a BLS12381PublicKey
     pub fn new(key: bls12381::min_sig::BLS12381PublicKey) -> Self {
         Self(key)
     }
 
+    /// Returns a reference to the inner BLS12381PublicKey
     pub fn inner(&self) -> &bls12381::min_sig::BLS12381PublicKey {
         &self.0
     }
 
+    /// Returns the public key as a byte slice
+    pub fn to_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+
+    /// Verifies a signature against a message
+    pub fn verify(
+        &self,
+        msg: &[u8],
+        signature: &AuthoritySignature,
+    ) -> Result<(), FastCryptoError> {
+        self.0.verify(msg, &signature.0)
+    }
+}
+
+impl AuthorityKeyPair {
+    /// Creates a new `AuthorityKeyPair` from a BLS12381KeyPair
+    pub fn new(keypair: bls12381::min_sig::BLS12381KeyPair) -> Self {
+        Self(keypair)
+    }
+
+    /// Generates a new random keypair using the provided RNG
+    pub fn generate<R: rand::Rng + fastcrypto::traits::AllowedRng>(rng: &mut R) -> Self {
+        Self(bls12381::min_sig::BLS12381KeyPair::generate(rng))
+    }
+
+    /// Returns the public key associated with this keypair
+    pub fn public(&self) -> AuthorityPublicKey {
+        AuthorityPublicKey(self.0.public().clone())
+    }
+
+    /// Signs a message using this keypair
+    pub fn sign(&self, msg: &[u8]) -> AuthoritySignature {
+        AuthoritySignature(self.0.sign(msg))
+    }
+}
+
+impl Clone for AuthorityKeyPair {
+    fn clone(&self) -> Self {
+        Self(self.0.copy())
+    }
+}
+
+impl AuthoritySignature {
+    /// Creates a new `AuthoritySignature` from bytes
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, FastCryptoError> {
+        bls12381::min_sig::BLS12381Signature::from_bytes(bytes).map(AuthoritySignature)
+    }
+
+    /// Returns the signature as bytes
     pub fn to_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
 }
 
-impl AuthorityKeyPair {
-    pub fn new(keypair: bls12381::min_sig::BLS12381KeyPair) -> Self {
-        Self(keypair)
+impl AuthorityAggregateSignature {
+    /// Creates a new aggregate signature from a slice of signatures
+    pub fn new(signatures: &[AuthoritySignature]) -> Result<Self, FastCryptoError> {
+        Ok(Self(
+            bls12381::min_sig::BLS12381AggregateSignature::aggregate(
+                signatures.iter().map(|sig| &sig.0),
+            )?,
+        ))
     }
 
-    pub fn generate<R: rand::Rng + fastcrypto::traits::AllowedRng>(rng: &mut R) -> Self {
-        Self(bls12381::min_sig::BLS12381KeyPair::generate(rng))
-    }
-
-    pub fn public(&self) -> AuthorityPublicKey {
-        AuthorityPublicKey(self.0.public().clone())
+    /// Verifies the aggregate signature against multiple public keys and a message
+    pub fn verify(
+        &self,
+        pks: &[AuthorityPublicKey],
+        message: &[u8],
+    ) -> Result<(), FastCryptoError> {
+        let inner_keys: Vec<_> = pks.iter().map(|pk| pk.inner().to_owned()).collect();
+        self.0.verify(&inner_keys, message)
     }
 }
 

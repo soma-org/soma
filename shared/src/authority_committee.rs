@@ -233,6 +233,70 @@ impl<T> IndexMut<AuthorityIndex> for Vec<T> {
     }
 }
 
+pub struct AuthorityBitSet([u8; 32]); // 32 bytes = 256 authorities
+
+impl AuthorityBitSet {
+    pub fn new(authorities: &[AuthorityIndex]) -> Self {
+        let mut bits = [0u8; 32];
+        for idx in authorities {
+            let byte_idx = idx.value() / 8;
+            let bit_idx = idx.value() as usize % 8;
+            bits[byte_idx] |= 1 << bit_idx;
+        }
+        Self(bits)
+    }
+
+    pub fn get_indices(&self) -> Vec<AuthorityIndex> {
+        let mut authorities = Vec::new();
+        for (byte_idx, &byte) in self.0.iter().enumerate() {
+            for bit_idx in 0..8 {
+                if byte & (1 << bit_idx) != 0 {
+                    authorities.push(AuthorityIndex((byte_idx * 8 + bit_idx) as u32));
+                }
+            }
+        }
+        authorities
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bitset() {
+        let authorities = vec![
+            AuthorityIndex::new_for_test(0),
+            AuthorityIndex::new_for_test(7),
+            AuthorityIndex::new_for_test(8),
+            AuthorityIndex::new_for_test(254),
+        ];
+
+        let bitset = AuthorityBitSet::new(&authorities);
+
+        // First byte should be 10000001
+        assert_eq!(bitset.0[0], 0b10000001);
+        // Second byte should be 00000001
+        assert_eq!(bitset.0[1], 0b00000001);
+        // Last byte should be 01000000
+        assert_eq!(bitset.0[31], 0b01000000);
+    }
+
+    #[test]
+    fn test_bitset_roundtrip() {
+        let authorities = vec![
+            AuthorityIndex::new_for_test(0),
+            AuthorityIndex::new_for_test(7),
+            AuthorityIndex::new_for_test(8),
+            AuthorityIndex::new_for_test(254),
+        ];
+
+        let bitset = AuthorityBitSet::new(&authorities);
+        let recovered = bitset.get_indices();
+        assert_eq!(authorities, recovered);
+    }
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

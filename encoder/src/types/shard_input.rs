@@ -1,7 +1,9 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::{metadata::{Metadata, MetadataCommitment}, transaction_certificate::TransactionCertificate};
-
+use shared::{
+    metadata::{Metadata, MetadataCommitment},
+    transaction_certificate::TransactionCertificate,
+};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[enum_dispatch(ShardInputAPI)]

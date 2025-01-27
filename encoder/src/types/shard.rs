@@ -4,7 +4,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::{
     crypto::keys::EncoderAggregateSignature, digest::Digest, metadata::Metadata,
-transaction::SignedTransaction,
+    transaction::SignedTransaction,
 };
 use strum_macros::Display;
 
@@ -13,7 +13,6 @@ use super::encoder_committee::EncoderIndex;
 type Epoch = u64;
 type QuorumUnit = u32;
 
-
 pub(crate) struct Shard {
     epoch: Epoch,
     quorum_threshold: QuorumUnit,
@@ -21,11 +20,15 @@ pub(crate) struct Shard {
 }
 
 impl Shard {
-    pub(crate) fn new(epoch: Epoch, quorum_threshold: QuorumUnit, encoders: Vec<EncoderIndex>) -> Self {
+    pub(crate) fn new(
+        epoch: Epoch,
+        quorum_threshold: QuorumUnit,
+        encoders: Vec<EncoderIndex>,
+    ) -> Self {
         Self {
             epoch,
             quorum_threshold,
-            encoders
+            encoders,
         }
     }
     pub(crate) fn epoch(&self) -> Epoch {
@@ -44,17 +47,19 @@ impl Shard {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_for_test(epoch: Epoch, quorum_threshold: QuorumUnit, encoders: Vec<EncoderIndex>) -> Self {
+    pub(crate) fn new_for_test(
+        epoch: Epoch,
+        quorum_threshold: QuorumUnit,
+        encoders: Vec<EncoderIndex>,
+    ) -> Self {
         Self::new(epoch, quorum_threshold, encoders)
     }
-
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ShardEntropy {
     // Note: intentionally breaking the ordering of metadata and nonce due to serialization with BCS being
-    // sequential. 
-
+    // sequential.
     /// digest of the metadata, for valid inputs the data cannot be encrypted and the uncompressed
     /// size should match. Digests without encryption keys should be consistent for the same bytes data every time.  
     metadata_digest: Digest<Metadata>,
@@ -67,9 +72,8 @@ pub(crate) struct ShardEntropy {
     /// especially useful for batch processing when a single transaction can contain multiple metadata
     /// commitments but they are not allowed to repeat commitment digests. The nonce is factored in
     /// such that identical data inside a batch still gets a unique shard.
-    nonce: [u8;32],
+    nonce: [u8; 32],
 }
-
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data

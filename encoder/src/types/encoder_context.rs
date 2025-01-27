@@ -5,7 +5,6 @@ use shared::{
 
 use super::encoder_committee::{EncoderCommittee, EncoderIndex};
 
-
 #[derive(Clone)]
 /// EncoderContext is updated each epoch and provides the various services running
 /// information on committeees, configurations, and access to common metric reporting

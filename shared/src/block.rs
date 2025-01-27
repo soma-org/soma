@@ -64,7 +64,10 @@ use std::{
     sync::Arc,
 };
 
-use crate::crypto::keys::{ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey};
+use crate::crypto::keys::{
+    AuthorityAggregateSignature, AuthoritySignature, ProtocolKeyPair, ProtocolKeySignature,
+    ProtocolPublicKey,
+};
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, HashFunction};
@@ -99,13 +102,13 @@ type BlockTimestampMs = u64;
 /// over the wire, they need to be versioned seperately from Blocks.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(BlockHeaderAPI)]
-pub(crate) enum BlockHeader {
+pub enum BlockHeader {
     V1(BlockHeaderV1),
 }
 
 /// [`BlockHeader`] API exposes common fields. Functionality can be added, but should not be removed.
 #[enum_dispatch]
-trait BlockHeaderAPI {
+pub trait BlockHeaderAPI {
     /// Returns the epoch
     fn epoch(&self) -> Epoch;
     /// Returns the round
@@ -227,7 +230,7 @@ impl BlockHeaderAPI for BlockHeaderV1 {
 /// Note: `BlockHeaderDigest` is computed over this struct, so any added field (without `#[serde(skip)]`)
 /// will affect the values of `BlockHeaderDigest` and `BlockHeaderRef`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct SignedBlockHeader {
+pub struct SignedBlockHeader {
     inner: BlockHeader,
     signature: Bytes,
 }
@@ -345,7 +348,7 @@ impl Deref for SignedBlockHeader {
 /// VerifiedBlockHeader allows full access to its content.
 /// Note: clone() is relatively cheap with most underlying data refcounted.
 #[derive(Clone)]
-struct VerifiedBlockHeader {
+pub struct VerifiedBlockHeader {
     block_header: Arc<SignedBlockHeader>,
     digest: BlockHeaderDigest,
     serialized: Bytes,
@@ -364,8 +367,19 @@ impl VerifiedBlockHeader {
             serialized,
         }
     }
+
+    pub fn digest(&self) -> BlockHeaderDigest {
+        self.digest
+    }
 }
 
+impl Deref for VerifiedBlockHeader {
+    type Target = SignedBlockHeader;
+
+    fn deref(&self) -> &Self::Target {
+        &self.block_header
+    }
+}
 /// A block includes references to previous round blocks and transactions that the authority
 /// considers valid.
 /// Well behaved authorities produce at most one block per round, but malicious authorities can
@@ -414,7 +428,7 @@ struct BlockV1 {
     signed_header: SignedBlockHeader,
     /// contains the actual signatures from the block author which can be used to create agg signatures for
     /// the certificates of 2f+1 for a given block
-    signed_block_header_refs: Vec<ProtocolKeySignature>,
+    signed_block_header_refs: Vec<AuthoritySignature>,
     /// full non-referenced signed transactions
     transactions: Vec<SignedTransaction>,
     /// full non-referenced misbehavior reports
@@ -425,7 +439,7 @@ impl BlockV1 {
     /// creates a new blockv1, should switch to add new_v1 to Block enum impl
     fn new(
         signed_header: SignedBlockHeader,
-        signed_block_header_refs: Vec<ProtocolKeySignature>,
+        signed_block_header_refs: Vec<AuthoritySignature>,
         transactions: Vec<SignedTransaction>,
         misbehavior_reports: Vec<MisbehaviorReport>,
     ) -> BlockV1 {
@@ -491,7 +505,7 @@ impl BlockAPI for BlockV1 {
 /// `BlockHeaderRef` uniquely identifies a `BlockHeader` and indirectly a Block via `digest`. It also contains the slot
 /// info (round and author) so it can be used in logic such as aggregating stakes for a round.
 #[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-struct BlockHeaderRef {
+pub struct BlockHeaderRef {
     /// returns the round for the blockheader
     round: Round,
     /// returns the author
@@ -516,7 +530,7 @@ impl BlockHeaderRef {
     };
 
     /// creates a new block header ref
-    fn new(round: Round, author: AuthorityIndex, digest: BlockHeaderDigest) -> Self {
+    pub fn new(round: Round, author: AuthorityIndex, digest: BlockHeaderDigest) -> Self {
         Self {
             round,
             author,
@@ -550,7 +564,7 @@ impl Hash for BlockHeaderRef {
 /// Note: the signature algorithm is assumed to be non-malleable, so it is impossible for another
 /// party to create an altered but valid signature, producing an equivocating `BlockHeaderDigest`.
 #[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-struct BlockHeaderDigest([u8; DIGEST_LENGTH]);
+pub struct BlockHeaderDigest([u8; DIGEST_LENGTH]);
 
 impl BlockHeaderDigest {
     /// Lexicographic min & max digest.

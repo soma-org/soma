@@ -1,19 +1,20 @@
+use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, NetworkKeyPair, NetworkPublicKey}, digest::Digest, multiaddr::Multiaddr
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, NetworkKeyPair, NetworkPublicKey},
+    digest::Digest,
+    multiaddr::Multiaddr,
 };
 use std::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
 };
-use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
-
 
 use crate::error::{ShardError, ShardResult};
 
 use super::shard::{Shard, ShardEntropy};
 
-/// max of 10_000 
+/// max of 10_000
 type VotingPowerUnit = u16;
 /// Size of a shard, must not be larger than shard index size hence u32
 type ShardSizeUnit = u32;
@@ -128,17 +129,20 @@ impl EncoderCommittee {
         self.encoders.len()
     }
 
-
     pub(crate) fn sample_shard(&self, entropy: Digest<ShardEntropy>) -> ShardResult<Shard> {
         let mut rng = StdRng::from_seed(entropy.into());
-        
+
         let weight_fn = |index: usize| -> f64 {
             let encoder_index = EncoderIndex(index as u32);
             self.voting_power(encoder_index) as f64
         };
-        
-        let index_vec = sample_weighted(&mut rng, self.size(), weight_fn, self.shard_size as usize).map_err(|e| ShardError::WeightedSampleError(e.to_string()))?;
-        let encoders = index_vec.into_iter().map(|index| EncoderIndex(index as u32)).collect();
+
+        let index_vec = sample_weighted(&mut rng, self.size(), weight_fn, self.shard_size as usize)
+            .map_err(|e| ShardError::WeightedSampleError(e.to_string()))?;
+        let encoders = index_vec
+            .into_iter()
+            .map(|index| EncoderIndex(index as u32))
+            .collect();
 
         Ok(Shard::new(self.epoch, self.quorum_threshold, encoders))
     }
@@ -162,9 +166,9 @@ impl EncoderCommittee {
                 let encoder_keypair = EncoderKeyPair::generate(&mut rng);
                 let network_keypair = NetworkKeyPair::generate(&mut rng);
                 let port = starting_port + i as u16;
-                
+
                 key_pairs.push((network_keypair.clone(), encoder_keypair.clone()));
-                
+
                 Encoder {
                     voting_power: power,
                     address: format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap(),
@@ -175,7 +179,10 @@ impl EncoderCommittee {
             })
             .collect();
 
-        (Self::new(epoch, encoders, shard_size, quorum_threshold), key_pairs)
+        (
+            Self::new(epoch, encoders, shard_size, quorum_threshold),
+            key_pairs,
+        )
     }
 }
 
@@ -269,8 +276,6 @@ impl<T> IndexMut<EncoderIndex> for Vec<T> {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,7 +300,9 @@ mod tests {
         );
 
         // Sample a shard using test entropy
-        let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from("test_entropy".as_bytes().to_vec()));
+        let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from(
+            "test_entropy".as_bytes().to_vec(),
+        ));
         let shard = committee.sample_shard(entropy).unwrap();
 
         // Verify shard properties
@@ -311,13 +318,13 @@ mod tests {
 
     #[test]
     fn test_sample_shard_weighted_distribution() {
-        let voting_powers = vec![1000, 100, 100, 100, 100];  // First encoder has 10x voting power
+        let voting_powers = vec![1000, 100, 100, 100, 100]; // First encoder has 10x voting power
         let shard_size = 2;
         let quorum_threshold = 2;
         let starting_port = 8000;
         let epoch = 1;
         let trials = 1000;
-        
+
         let (committee, _keys) = EncoderCommittee::local_test_committee(
             epoch,
             voting_powers.clone(),
@@ -327,11 +334,13 @@ mod tests {
         );
 
         let mut selection_counts = vec![0; voting_powers.len()];
-        
+
         for i in 0..trials {
-            let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from(format!("test_entropy_{}", i).as_bytes().to_vec()));
+            let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from(
+                format!("test_entropy_{}", i).as_bytes().to_vec(),
+            ));
             let shard = committee.sample_shard(entropy).unwrap();
-            
+
             for encoder_index in shard.encoders() {
                 selection_counts[encoder_index.value()] += 1;
             }
