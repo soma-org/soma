@@ -11,12 +11,18 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::{
-    accumulator::CommitIndex, consensus::commit::CommittedSubDag, digests::TransactionDigest, effects::TransactionEffects, error::SomaResult, state_sync::VerifiedCommitSummary, transaction::{VerifiedExecutableTransaction, VerifiedTransaction}
+    accumulator::CommitIndex,
+    consensus::{block::BlockAPI, commit::CommittedSubDag, ConsensusTransactionKind},
+    digests::TransactionDigest,
+    effects::TransactionEffects,
+    error::SomaResult,
+    transaction::{VerifiedCertificate, VerifiedExecutableTransaction, VerifiedTransaction},
 };
 
 use crate::{
     cache::{ObjectCacheRead, TransactionCacheRead},
     epoch_store::AuthorityPerEpochStore,
+    output::ConsensusOutputAPI,
     state::AuthorityState,
     tx_manager::TransactionManager,
 };
@@ -26,8 +32,7 @@ use super::CommitStore;
 /// The interval to log commit progress, in # of commits processed.
 const COMMIT_PROGRESS_LOG_COUNT_INTERVAL: u32 = 5000;
 
-type CommitExecutionBuffer =
-    FuturesOrdered<JoinHandle<(VerifiedCommitSummary, Vec<TransactionDigest>)>>;
+type CommitExecutionBuffer = FuturesOrdered<JoinHandle<(CommittedSubDag, Vec<TransactionDigest>)>>;
 
 pub struct CommitExecutor {
     mailbox: broadcast::Receiver<CommittedSubDag>,
@@ -89,7 +94,7 @@ impl CommitExecutor {
 
         let mut next_to_schedule = highest_executed
             .as_ref()
-            .map(|c| c.index() + 1)
+            .map(|c| c.commit_ref.index + 1)
             .unwrap_or_else(|| {
                 // TODO this invariant may no longer hold once we introduce snapshots
                 assert_eq!(epoch_store.epoch(), 0);
@@ -183,81 +188,93 @@ impl CommitExecutor {
     pub async fn check_epoch_last_commit(
         &self,
         epoch_store: Arc<AuthorityPerEpochStore>,
-        commit: &Option<VerifiedCommitSummary>,
+        commit: &Option<CommittedSubDag>,
     ) -> bool {
         let cur_epoch = epoch_store.epoch();
 
         if let Some(commit) = commit {
-            if commit.epoch() == cur_epoch {
-                if let Some((change_epoch_tx_digest, change_epoch_tx)) =
-                    extract_end_of_epoch_tx(
-                        commit,
-                        self.transaction_cache_reader.as_ref(),
-                        self.commit_store.clone(),
-                        epoch_store.clone(),
-                    )
-                {
+            // We can get epoch from any authority's blocks since they should all match
+            if let Some((_, authority_transactions)) = commit.transactions().into_iter().next() {
+                if let Some((_, last_tx)) = authority_transactions.last() {
+                    if let ConsensusTransactionKind::UserTransaction(cert_tx) = &last_tx.kind {
+                        // Check if this is the last commit of current epoch
+                        if let Some((change_epoch_tx_digest, change_epoch_tx)) =
+                            extract_end_of_epoch_tx(
+                                commit,
+                                self.transaction_cache_reader.as_ref(),
+                                self.commit_store.clone(),
+                                epoch_store.clone(),
+                            )
+                        {
+                            info!(
+                                ended_epoch = cur_epoch,
+                                last_commit = commit.commit_ref.index,
+                                "Reached end of epoch, executing change_epoch transaction",
+                            );
 
-                    info!(
-                        ended_epoch = cur_epoch,
-                        last_commit = commit.index(),
-                        "Reached end of epoch, executing change_epoch transaction",
-                    );
+                            self.execute_change_epoch_tx(
+                                change_epoch_tx_digest,
+                                change_epoch_tx,
+                                epoch_store.clone(),
+                                commit.clone(),
+                            )
+                            .await;
 
-                    self.execute_change_epoch_tx(
-                        change_epoch_tx_digest,
-                        change_epoch_tx,
-                        epoch_store.clone(),
-                        commit.clone(),
-                    )
-                    .await;
+                            // Commit the change epoch transaction
+                            let cache_commit = self.state.get_cache_commit();
+                            cache_commit
+                                .commit_transaction_outputs(cur_epoch, &[change_epoch_tx_digest])
+                                .await
+                                .expect("commit_transaction_outputs cannot fail");
 
-                    let cache_commit = self.state.get_cache_commit();
-                    cache_commit
-                        .commit_transaction_outputs(cur_epoch, &[change_epoch_tx_digest])
-                        .await
-                        .expect("commit_transaction_outputs cannot fail");
+                            // Get all transaction digests for finalizing
+                            let all_tx_digests: Vec<_> = commit
+                                .transactions()
+                                .into_iter()
+                                .flat_map(|(_, txs)| {
+                                    // Clone the iterator of transactions since we can't return references
+                                    txs.into_iter().filter_map(|(_, tx)| {
+                                        if let ConsensusTransactionKind::UserTransaction(cert_tx) =
+                                            tx.kind
+                                        {
+                                            // Access digest from the owned cert_tx
+                                            Some(*cert_tx.digest())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                })
+                                .collect();
 
-                    // For finalizing the commit, we need to pass in all commit
-                    // transaction effects, not just the change_epoch tx effects. However,
-                    // we have already notify awaited all tx effects separately (once
-                    // for change_epoch tx, and once for all other txes). Therefore this
-                    // should be a fast operation
-                    let all_tx_digests: Vec<_> = self
-                        .commit_store
-                        .get_commit_contents(&commit.content_digest)
-                        .expect("read cannot fail")
-                        .expect("Commit contents should exist")
-                        .iter()
-                        .map(|tx| tx.clone())
-                        .collect();
+                            // Get effects for finalizing
+                            let effects = self
+                                .transaction_cache_reader
+                                .notify_read_executed_effects(&all_tx_digests)
+                                .await
+                                .expect("Failed to get executed effects for finalizing commit");
 
-                    let effects = self
-                        .transaction_cache_reader
-                        .notify_read_executed_effects(all_tx_digests.as_slice())
-                        .await
-                        .expect("Failed to get executed effects for finalizing commit");
+                            finalize_commit(
+                                &self.state,
+                                self.object_cache_reader.as_ref(),
+                                self.transaction_cache_reader.as_ref(),
+                                self.commit_store.clone(),
+                                &all_tx_digests,
+                                &epoch_store,
+                                commit.clone(),
+                                effects,
+                            )
+                            .await
+                            .expect("Finalizing commit cannot fail");
 
-                    finalize_commit(
-                        &self.state,
-                        self.object_cache_reader.as_ref(),
-                        self.transaction_cache_reader.as_ref(),
-                        self.commit_store.clone(),
-                        &all_tx_digests,
-                        &epoch_store,
-                        commit.clone(),
-                        effects,
-                    )
-                    .await
-                    .expect("Finalizing commit cannot fail");
+                            self.commit_store
+                                .insert_epoch_last_commit(cur_epoch, commit)
+                                .expect("Failed to insert epoch last commit");
 
-                    self.commit_store
-                        .insert_epoch_last_commit(cur_epoch, commit)
-                        .expect("Failed to insert epoch last commit");
+                            self.bump_highest_executed_commit(commit);
 
-                    self.bump_highest_executed_commit(commit);
-
-                    return true;
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -270,9 +287,8 @@ impl CommitExecutor {
         change_epoch_tx_digest: TransactionDigest,
         change_epoch_tx: VerifiedExecutableTransaction,
         epoch_store: Arc<AuthorityPerEpochStore>,
-        commit: VerifiedCommitSummary,
+        commit: CommittedSubDag,
     ) {
-
         // if change_epoch_tx.contains_shared_object() {
         //     epoch_store
         //         .acquire_shared_locks_from_effects(
@@ -287,7 +303,7 @@ impl CommitExecutor {
         self.tx_manager.enqueue(
             vec![change_epoch_tx.clone()],
             &epoch_store,
-            Some(*commit.index()),
+            Some(commit.commit_ref.index),
         );
         handle_execution_effects(
             &self.state,
@@ -301,7 +317,6 @@ impl CommitExecutor {
         )
         .await;
     }
-
 
     #[instrument(level = "debug", skip_all)]
     fn schedule_synced_commits(
@@ -319,7 +334,7 @@ impl CommitExecutor {
             return;
         };
 
-        while *next_to_schedule <= *latest_synced_commit.index()
+        while *next_to_schedule <= latest_synced_commit.commit_ref.index
         // && pending.len() < self.config.commit_execution_max_concurrency
         {
             let commit = self
@@ -332,16 +347,20 @@ impl CommitExecutor {
                         *next_to_schedule
                     )
                 });
-            if commit.epoch() > epoch_store.epoch() {
+            // Check if this commit belongs to current epoch
+            if commit.blocks.last().unwrap().epoch() > epoch_store.epoch() {
                 return;
             }
+
+            self.schedule_commit(commit, pending, epoch_store.clone());
+            *next_to_schedule += 1;
         }
     }
 
-    #[instrument(level = "error", skip_all, fields(index = ?commit.index(), epoch = ?epoch_store.epoch()))]
+    #[instrument(level = "error", skip_all, fields(index = ?commit.commit_ref.index, epoch = ?epoch_store.epoch()))]
     fn schedule_commit(
         &self,
-        commit: VerifiedCommitSummary,
+        commit: CommittedSubDag,
         pending: &mut CommitExecutionBuffer,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) {
@@ -349,7 +368,7 @@ impl CommitExecutor {
 
         // Mismatch between node epoch and commit epoch after startup
         // crash recovery is invalid
-        let commit_epoch = commit.epoch();
+        let commit_epoch = commit.blocks.last().unwrap().epoch();
         assert_eq!(
             commit_epoch,
             epoch_store.epoch(),
@@ -364,7 +383,7 @@ impl CommitExecutor {
         let tx_manager = self.tx_manager.clone();
         let state = self.state.clone();
 
-        epoch_store.notify_synced_commit(*commit.index());
+        epoch_store.notify_synced_commit(commit.commit_ref.index);
 
         pending.push_back(tokio::spawn(async move {
             let epoch_store = epoch_store.clone();
@@ -397,12 +416,12 @@ impl CommitExecutor {
     async fn process_executed_commit(
         &self,
         epoch_store: &AuthorityPerEpochStore,
-        commit: &VerifiedCommitSummary,
+        commit: &CommittedSubDag,
         all_tx_digests: &[TransactionDigest],
     ) {
         // Commit all transaction effects to disk
         let cache_commit = self.state.get_cache_commit();
-        debug!(index = ?commit.index, "committing commit transactions to disk");
+        debug!(index = ?commit.commit_ref.index, "committing commit transactions to disk");
         cache_commit
             .commit_transaction_outputs(epoch_store.epoch(), all_tx_digests)
             .await
@@ -412,14 +431,15 @@ impl CommitExecutor {
             .handle_committed_transactions(all_tx_digests)
             .expect("cannot fail");
 
-        if !commit.is_last_commit_of_epoch() {
-            self.bump_highest_executed_commit(commit);
-        }
+        // TODO: check if is last commit of epoch
+        // if !commit.is_last_commit_of_epoch() {
+        self.bump_highest_executed_commit(commit);
+        // }
     }
 
-    fn bump_highest_executed_commit(&self, commit: &VerifiedCommitSummary) {
+    fn bump_highest_executed_commit(&self, commit: &CommittedSubDag) {
         // Ensure that we are not skipping commits at any point
-        let index = *commit.index();
+        let index = commit.commit_ref.index;
         debug!("Bumping highest_executed_commit watermark to {index:?}");
         if let Some(prev_highest) = self
             .commit_store
@@ -445,19 +465,16 @@ impl CommitExecutor {
                 .expect("Failed to fetch commit")
             {
                 self.commit_store
-                    .delete_full_commit_contents(prune_index)
+                    .delete_commit(prune_index)
                     .expect("Failed to delete full commit contents");
                 self.commit_store
-                    .delete_contents_digest_index_mapping(&prune_commit.content_digest)
+                    .delete_digest_index_mapping(&prune_commit.commit_ref.digest)
                     .expect("Failed to delete contents digest -> index mapping");
             } else {
                 // If this is directly after a snapshot restore with skiplisting,
                 // this is expected for the first `NUM_SAVED_FULL_COMMIT_CONTENTS`
                 // commits.
-                debug!(
-                    "Failed to fetch commit with index {:?}",
-                    prune_index
-                );
+                debug!("Failed to fetch commit with index {:?}", prune_index);
             }
         }
 
@@ -469,9 +486,9 @@ impl CommitExecutor {
 
 // Logs within the function are annotated with the commit index and epoch,
 // from schedule_commit().
-#[instrument(level = "debug", skip_all, fields(index = ?commit.index(), epoch = ?epoch_store.epoch()))]
+#[instrument(level = "debug", skip_all, fields(index = ?commit.commit_ref.index, epoch = ?epoch_store.epoch()))]
 async fn execute_commit(
-    commit: VerifiedCommitSummary,
+    commit: CommittedSubDag,
     state: &AuthorityState,
     object_cache_reader: &dyn ObjectCacheRead,
     transaction_cache_reader: &dyn TransactionCacheRead,
@@ -491,7 +508,6 @@ async fn execute_commit(
     let (all_tx_digests, executable_txns) = get_unexecuted_transactions(
         commit.clone(),
         transaction_cache_reader,
-        commit_store.clone(),
         epoch_store.clone(),
     );
 
@@ -514,45 +530,28 @@ async fn execute_commit(
 
 // Given a commit, find the end of epoch transaction, if it exists
 fn extract_end_of_epoch_tx(
-    commit: &VerifiedCommitSummary,
+    commit: &CommittedSubDag,
     cache_reader: &dyn TransactionCacheRead,
     commit_store: Arc<CommitStore>,
     epoch_store: Arc<AuthorityPerEpochStore>,
 ) -> Option<(TransactionDigest, VerifiedExecutableTransaction)> {
-    // TODO: commit.end_of_epoch_data.as_ref()?;
+    // Check each authority's transactions in the commit
+    for (authority_index, authority_transactions) in commit.transactions() {
+        // Check the last transaction from this authority
+        if let Some((_, last_tx)) = authority_transactions.last() {
+            if let ConsensusTransactionKind::UserTransaction(cert_tx) = &last_tx.kind {
+                // Convert to executable transaction
+                let certificate = VerifiedCertificate::new_unchecked(*cert_tx.clone());
+                let executable = VerifiedExecutableTransaction::new_from_certificate(certificate);
 
-    // Last commit must have the end of epoch transaction as the last transaction.
-
-    let commit_index = commit.index();
-    let tx_digests = commit_store
-        .get_commit_contents(&commit.content_digest)
-        .expect("Failed to get commit contents from store")
-        .unwrap_or_else(|| {
-            panic!(
-                "Commit contents for digest {:?} does not exist",
-                commit.content_digest
-            )
-        })
-        .into_inner();
-
-    let digest = tx_digests
-        .last()
-        .expect("Final commit must have at least one transaction");
-
-    let change_epoch_tx = cache_reader
-        .get_transaction_block(&digest)
-        .expect("read cannot fail");
-
-    let change_epoch_tx = VerifiedExecutableTransaction::new_from_commit(
-        (*change_epoch_tx.unwrap_or_else(||
-            panic!(
-                "state-sync should have ensured that transaction with digest {:?} exists for commit: {commit:?}",
-                digest,
-            )
-        )).clone(),
-        epoch_store.epoch(),
-        *commit_index,
-    );
+                // TODO: Check if it's an end of epoch transaction
+                // if executable.is_end_of_epoch_tx() {
+                //     return Some((*executable.digest(), executable));
+                // }
+                return None;
+            }
+        }
+    }
 
     // assert!(change_epoch_tx
     //     .data()
@@ -560,43 +559,37 @@ fn extract_end_of_epoch_tx(
     //     .value
     //     .is_end_of_epoch_tx());
 
-    Some((*digest, change_epoch_tx))
+    None
 }
 
-
-// Given a commit, filter out any already executed transactions, then return the remaining
-// execution digests, transaction digests, transactions to be executed
-// (if any) included in the commit.
+// Given a commit, filter out any already executed transactions and return:
+// 1. All transaction digests in the commit
+// 2. Only the unexecuted transactions that need to be executed
 #[allow(clippy::type_complexity)]
 fn get_unexecuted_transactions(
-    commit: VerifiedCommitSummary,
+    commit: CommittedSubDag,
     cache_reader: &dyn TransactionCacheRead,
-    commit_store: Arc<CommitStore>,
     epoch_store: Arc<AuthorityPerEpochStore>,
 ) -> (Vec<TransactionDigest>, Vec<VerifiedExecutableTransaction>) {
-    let commit_index = commit.index();
-    let full_contents = commit_store
-        .get_full_commit_contents_by_index(*commit_index)
-        .expect("Failed to get commit contents from store")
-        .tap_some(|_| debug!("loaded full commit contents in bulk for index {commit_index}"));
+    // Collect transactions from CommittedSubDag
+    let mut tx_digests = Vec::new();
+    let mut transactions = Vec::new();
 
-    let tx_digests = commit_store
-        .get_commit_contents(&commit.content_digest)
-        .expect("Failed to get commit contents from store")
-        .unwrap_or_else(|| {
-            panic!(
-                "Commit contents for digest {:?} does not exist",
-                commit.content_digest
-            )
-        })
-        .into_inner();
+    for (_, authority_transactions) in commit.transactions() {
+        for (_, transaction) in authority_transactions {
+            if let ConsensusTransactionKind::UserTransaction(cert_tx) = transaction.kind {
+                tx_digests.push(*cert_tx.digest());
+                let certificate = VerifiedCertificate::new_unchecked(*cert_tx);
+                let executable = VerifiedExecutableTransaction::new_from_certificate(certificate);
+                transactions.push(executable);
+            }
+        }
+    }
 
-    let full_contents_txns = full_contents.map(|c| {
-        c.into_iter()
-            .zip(tx_digests.iter())
-            .map(|(txn, digest)| (digest, txn))
-            .collect::<HashMap<_, _>>()
-    });
+    // Check which transactions are already executed
+    let executed_effects_digests = cache_reader
+        .multi_get_executed_effects_digests(&tx_digests)
+        .expect("failed to read executed_effects from store");
 
     // TODO: Remove the change epoch transaction so that we can special case its execution.
     // commit.end_of_epoch_data.as_ref().tap_some(|_| {
@@ -617,62 +610,19 @@ fn get_unexecuted_transactions(
     //     assert!(change_epoch_tx.data().intent_message().value.is_end_of_epoch_tx());
     // });
 
-    let executed_effects_digests = cache_reader
-        .multi_get_executed_effects_digests(&tx_digests)
-        .expect("failed to read executed_effects from store");
-
-    let unexecuted_txns: Vec<_> = izip!(tx_digests.iter(), executed_effects_digests.iter())
-        .filter_map(|(tx_digest, effects_digest)| match effects_digest {
-            None => Some(*tx_digest),
-            Some(_effects_digest) => {
+    // Filter out already executed transactions
+    let executable_txns: Vec<_> = izip!(transactions.into_iter(), executed_effects_digests.iter())
+        .filter_map(|(tx, effects_digest)| match effects_digest {
+            None => Some(tx),
+            Some(_) => {
                 trace!(
                     "Transaction with digest {:?} has already been executed",
-                    tx_digest
+                    tx.digest()
                 );
-
                 None
             }
         })
         .collect();
-
-    // read remaining unexecuted transactions from store
-    let executable_txns: Vec<_> = if let Some(full_contents_txns) = full_contents_txns {
-        unexecuted_txns
-            .into_iter()
-            .map(|tx_digest| {
-                let tx = full_contents_txns.get(&tx_digest).unwrap();
-
-                VerifiedExecutableTransaction::new_from_commit(
-                    VerifiedTransaction::new_unchecked(tx.clone()),
-                    epoch_store.epoch(),
-                    *commit_index,
-                )
-            })
-            .collect()
-    } else {
-        cache_reader
-            .multi_get_transaction_blocks(unexecuted_txns.as_slice())
-            .expect("Failed to get commit txes from store")
-            .into_iter()
-            .enumerate()
-            .map(|(i, tx)| {
-                let tx = tx.unwrap_or_else(||
-                    panic!(
-                        "state-sync should have ensured that transaction with digest {:?} exists for commit: {commit:?}",
-                        unexecuted_txns[i]
-                    )
-                );
-                // TODO: change epoch tx is handled specially in check_epoch_last_commit
-                // assert!(!tx.data().intent_message().value.is_end_of_epoch_tx());
-                
-                VerifiedExecutableTransaction::new_from_commit(
-                    Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()),
-                    epoch_store.epoch(),
-                    *commit_index,
-                )
-            })
-            .collect()
-    };
 
     (tx_digests, executable_txns)
 }
@@ -689,7 +639,7 @@ async fn execute_transactions(
     commit_store: Arc<CommitStore>,
     epoch_store: Arc<AuthorityPerEpochStore>,
     transaction_manager: Arc<TransactionManager>,
-    commit: VerifiedCommitSummary,
+    commit: CommittedSubDag,
     prepare_start: Instant,
 ) -> SomaResult {
     // for tx in &executable_txns {
@@ -706,7 +656,7 @@ async fn execute_transactions(
 
     let prepare_elapsed = prepare_start.elapsed();
 
-    if commit.index % COMMIT_PROGRESS_LOG_COUNT_INTERVAL == 0 {
+    if commit.commit_ref.index % COMMIT_PROGRESS_LOG_COUNT_INTERVAL == 0 {
         info!(
             "Commit preparation for execution took {:?}",
             prepare_elapsed
@@ -714,7 +664,11 @@ async fn execute_transactions(
     }
 
     let exec_start = Instant::now();
-    transaction_manager.enqueue(executable_txns.clone(), &epoch_store, Some(*commit.index()));
+    transaction_manager.enqueue(
+        executable_txns.clone(),
+        &epoch_store,
+        Some(commit.commit_ref.index),
+    );
 
     handle_execution_effects(
         state,
@@ -729,19 +683,19 @@ async fn execute_transactions(
     .await;
 
     let exec_elapsed = exec_start.elapsed();
-    if commit.index % COMMIT_PROGRESS_LOG_COUNT_INTERVAL == 0 {
+    if commit.commit_ref.index % COMMIT_PROGRESS_LOG_COUNT_INTERVAL == 0 {
         info!("Commit execution took {:?}", exec_elapsed);
     }
 
     Ok(())
 }
 
-#[instrument(level = "error", skip_all, fields(index = ?commit.index(), epoch = ?epoch_store.epoch()))]
+#[instrument(level = "error", skip_all, fields(index = ?commit.commit_ref.index, epoch = ?epoch_store.epoch()))]
 async fn handle_execution_effects(
     state: &AuthorityState,
 
     all_tx_digests: Vec<TransactionDigest>,
-    commit: VerifiedCommitSummary,
+    commit: CommittedSubDag,
     commit_store: Arc<CommitStore>,
     object_cache_reader: &dyn ObjectCacheRead,
     transaction_cache_reader: &dyn TransactionCacheRead,
@@ -763,23 +717,23 @@ async fn handle_execution_effects(
                     .get_highest_executed_commit_index()
                     .unwrap()
                     .unwrap_or_default();
-                if commit.index <= highest_index {
+                if commit.commit_ref.index <= highest_index {
                     error!(
                         "Re-executing commit {} after higher commit {} has executed!",
-                        commit.index, highest_index
+                        commit.commit_ref.index, highest_index
                     );
                     continue;
                 }
-                if commit.index > highest_index + 1 {
+                if commit.commit_ref.index > highest_index + 1 {
                     trace!(
                         "Commit {} is still executing. Highest executed = {}",
-                        commit.index,
+                        commit.commit_ref.index,
                         highest_index
                     );
                     continue;
                 }
                 if !blocking_execution {
-                    trace!("Commit {} is next to execute.", commit.index);
+                    trace!("Commit {} is next to execute.", commit.commit_ref.index);
                     blocking_execution = true;
                     continue;
                 }
@@ -809,6 +763,7 @@ async fn handle_execution_effects(
 
                 // Print out more information for the 1st pending transaction, which should have
                 // all of its input available.
+                // TODO: get missing input if needed
                 let pending_digest = missing_digests.first().unwrap();
                 // if let Some(missing_input) = transaction_manager.get_missing_input(pending_digest) {
                 //     warn!(
@@ -819,28 +774,29 @@ async fn handle_execution_effects(
             }
             Ok(Err(err)) => panic!("Failed to notify_read_executed_effects: {:?}", err),
             Ok(Ok(effects)) => {
-                // TODO: if end of epoch commit, we must finalize the commit after executing
+                // TODO: if no end of epoch commit, we must finalize the commit after executing
                 // the change epoch tx, which is done after all other commit execution
                 // if commit.end_of_epoch_data.is_none() {
-                //     finalize_commit(
-                //         state,
-                //         object_cache_reader,
-                //         transaction_cache_reader,
-                //         commit_store.clone(),
-                //         &all_tx_digests,
-                //         &epoch_store,
-                //         commit.clone(),
-                //         effects,
-                //     )
-                //     .await
-                //     .expect("Finalizing commit cannot fail");
+                finalize_commit(
+                    state,
+                    object_cache_reader,
+                    transaction_cache_reader,
+                    commit_store.clone(),
+                    &all_tx_digests,
+                    &epoch_store,
+                    commit.clone(),
+                    effects,
+                )
+                .await
+                .expect("Finalizing commit cannot fail");
                 // }
+                break;
             }
         }
     }
 }
 
-#[instrument(level = "info", skip_all, fields(index = ?commit.index(), epoch = ?epoch_store.epoch()))]
+#[instrument(level = "info", skip_all, fields(index = ?commit.commit_ref.index, epoch = ?epoch_store.epoch()))]
 async fn finalize_commit(
     state: &AuthorityState,
     object_cache_reader: &dyn ObjectCacheRead,
@@ -848,11 +804,11 @@ async fn finalize_commit(
     commit_store: Arc<CommitStore>,
     tx_digests: &[TransactionDigest],
     epoch_store: &Arc<AuthorityPerEpochStore>,
-    commit: VerifiedCommitSummary,
+    commit: CommittedSubDag,
     effects: Vec<TransactionEffects>,
 ) -> SomaResult {
     debug!("finalizing commit");
-    epoch_store.insert_finalized_transactions(tx_digests, commit.index)?;
+    epoch_store.insert_finalized_transactions(tx_digests, commit.commit_ref.index)?;
 
     Ok(())
 }

@@ -322,6 +322,11 @@ impl CommitStore {
         Ok(self.commit_index_by_digest.read().get(digest).cloned())
     }
 
+    pub fn delete_commit(&self, index: CommitIndex) -> Result<(), TypedStoreError> {
+        self.certified_commits.write().remove(&index);
+        Ok(())
+    }
+
     pub fn delete_digest_index_mapping(
         &self,
         digest: &CommitDigest,
