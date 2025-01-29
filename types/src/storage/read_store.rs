@@ -3,9 +3,9 @@ use std::sync::Arc;
 use crate::{
     accumulator::CommitIndex,
     committee::{Committee, EpochId},
-    digests::{CommitContentsDigest, CommitSummaryDigest, TransactionDigest},
+    consensus::commit::{CommitDigest, CommittedSubDag},
+    digests::TransactionDigest,
     effects::TransactionEffects,
-    state_sync::{CommitContents, FullCommitContents, VerifiedCommitSummary},
     transaction::VerifiedTransaction,
 };
 
@@ -29,9 +29,9 @@ pub trait ReadStore: ObjectStore + Send + Sync {
     /// Lowest available commit for which transaction data can be requested.
     fn get_lowest_available_commit(&self) -> Result<CommitIndex>;
 
-    fn get_commit_by_digest(&self, digest: &CommitSummaryDigest) -> Option<VerifiedCommitSummary>;
+    fn get_commit_by_digest(&self, digest: &CommitDigest) -> Option<CommittedSubDag>;
 
-    fn get_commit_by_index(&self, index: CommitIndex) -> Option<VerifiedCommitSummary>;
+    fn get_commit_by_index(&self, index: CommitIndex) -> Option<CommittedSubDag>;
 
     //
     // Transaction Getters
@@ -81,11 +81,11 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
         (*self).get_lowest_available_commit()
     }
 
-    fn get_commit_by_digest(&self, digest: &CommitSummaryDigest) -> Option<VerifiedCommitSummary> {
+    fn get_commit_by_digest(&self, digest: &CommitDigest) -> Option<CommittedSubDag> {
         (*self).get_commit_by_digest(digest)
     }
 
-    fn get_commit_by_index(&self, index: CommitIndex) -> Option<VerifiedCommitSummary> {
+    fn get_commit_by_index(&self, index: CommitIndex) -> Option<CommittedSubDag> {
         (*self).get_commit_by_index(index)
     }
 

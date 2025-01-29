@@ -3,6 +3,8 @@ use crate::commit::CommitStore;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use types::accumulator::AccumulatorStore;
+use types::consensus::commit::CommitDigest;
+use types::consensus::commit::CommittedSubDag;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::consensus::ConsensusStore;
 use types::storage::storage_error::Error as StorageError;
@@ -28,7 +30,7 @@ pub struct StateSyncStore {
     commit_store: Arc<CommitStore>,
     consensus_store: Arc<dyn ConsensusStore>,
     // in memory commit watermark sequence numbers
-    highest_synced_commit: Arc<Mutex<Option<CommitIndex>>>,
+    // highest_synced_commit: Arc<Mutex<Option<CommitIndex>>>,
 }
 
 impl StateSyncStore {
@@ -43,7 +45,6 @@ impl StateSyncStore {
             committee_store,
             commit_store,
             consensus_store,
-            highest_synced_commit: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -54,7 +55,7 @@ impl StateSyncStore {
             .map_err(Into::into)
     }
 
-    pub fn get_last_executed_commit(&self) -> Option<VerifiedCommitSummary> {
+    pub fn get_last_executed_commit(&self) -> Option<CommittedSubDag> {
         self.commit_store
             .get_highest_executed_commit()
             .expect("db error")
@@ -62,25 +63,26 @@ impl StateSyncStore {
 }
 
 impl ReadStore for StateSyncStore {
-    fn get_commit_by_digest(&self, digest: &CommitSummaryDigest) -> Option<VerifiedCommitSummary> {
+    fn get_commit_by_digest(&self, digest: &CommitDigest) -> Option<CommittedSubDag> {
         self.commit_store
             .get_commit_by_digest(digest)
             .expect("db error")
     }
 
-    fn get_commit_by_index(&self, index: CommitIndex) -> Option<VerifiedCommitSummary> {
+    fn get_commit_by_index(&self, index: CommitIndex) -> Option<CommittedSubDag> {
         self.commit_store
             .get_commit_by_index(index)
             .expect("db error")
     }
 
     fn get_highest_synced_commit(&self) -> Result<CommitIndex, StorageError> {
-        self.commit_store
-            .get_highest_synced_commit()
-            .map(|maybe_commit| {
-                maybe_commit.expect("storage should have been initialized with genesis commit")
-            })
-            .map_err(Into::into)
+        // self.commit_store
+        //     .get_highest_synced_commit()
+        //     .map(|maybe_commit| {
+        //         maybe_commit.expect("storage should have been initialized with genesis commit")
+        //     })
+        //     .map_err(Into::into)
+        Ok((0))
     }
 
     fn get_lowest_available_commit(&self) -> Result<CommitIndex, StorageError> {
@@ -139,16 +141,23 @@ impl ObjectStore for StateSyncStore {
 }
 
 impl WriteStore for StateSyncStore {
-    fn update_highest_synced_commit(&self, commit: CommitIndex) -> Result<()> {
-        let mut locked = self.highest_synced_commit.lock();
-        if locked.is_some() && locked.unwrap() >= commit {
-            return Ok(());
-        }
-        self.commit_store
-            .update_highest_synced_commit(commit)
-            .map_err(StorageError::custom)?;
-        *locked = Some(commit);
-        Ok(())
+    fn insert_commit(
+        &self,
+        commit: CommittedSubDag,
+    ) -> Result<(), types::storage::storage_error::Error> {
+        // TODO: add the new committee to the store
+        // if let Some(EndOfEpochData {
+        //     next_epoch_committee,
+        //     ..
+        // }) = checkpoint.end_of_epoch_data.as_ref()
+        // {
+        //     let next_committee = next_epoch_committee.iter().cloned().collect();
+        //     let committee =
+        //         Committee::new(checkpoint.epoch().checked_add(1).unwrap(), next_committee);
+        //     self.insert_committee(committee)?;
+        // }
+
+        self.commit_store.insert_commit(commit).map_err(Into::into)
     }
 
     fn insert_committee(&self, new_committee: Committee) -> Result<()> {

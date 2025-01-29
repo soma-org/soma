@@ -235,7 +235,10 @@ impl ConsensusHandler {
             .add_transactions(timestamp, transactions_to_schedule.len() as u64);
 
         self.transaction_scheduler
-            .schedule(transactions_to_schedule, commit_sub_dag_index)
+            .schedule(
+                transactions_to_schedule,
+                commit_sub_dag_index.try_into().unwrap(),
+            )
             .await;
     }
 }

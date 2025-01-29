@@ -471,11 +471,12 @@ where
 
     fn spawn_get_latest_from_peer(&mut self, peer_id: PeerId) {
         if let Some(peer) = self.active_peers.get_state(&peer_id) {
-            let genesis_commit_digest = *self
+            let genesis_commit_digest = self
                 .store
                 .get_commit_by_index(0)
                 .expect("store should contain genesis commit")
-                .digest();
+                .commit_ref
+                .digest;
             let task = get_latest_from_peer(
                 genesis_commit_digest,
                 peer,
@@ -532,7 +533,7 @@ async fn notify_peers_of_commit(
 }
 
 async fn get_latest_from_peer(
-    our_genesis_commit_digest: CommitSummaryDigest,
+    our_genesis_commit_digest: CommitDigest,
     peer: PeerState,
     peer_heights: Arc<RwLock<PeerHeights>>,
     timeout: Duration,
@@ -792,11 +793,20 @@ async fn sync_from_peer<S>(
                                         "Failed to send committed sub-dag, probably due to shutdown: {err:?}"
                                     );
                                 }
+
                                 tracing::debug!(
                                     "Sending to execution commit {} leader {}",
                                     committed_sub_dag.commit_ref,
                                     committed_sub_dag.leader
                                 );
+
+                                // Insert CommittedSubDag and update the highest synced commit in the store.
+
+                                if let Err(err) = store.insert_commit(committed_sub_dag) {
+                                    tracing::error!(
+                                        "Failed to insert committed sub-dag to store: {err:?}"
+                                    );
+                                }
                             }
                         }
 
@@ -805,8 +815,7 @@ async fn sync_from_peer<S>(
                             // TODO: Trigger fetching of missing blocks.
                         }
                     }
-                    // Update the highest synced commit in the store.
-                    store.update_highest_synced_commit(commit_end);
+
                     // Notify that we've synced to a new commit
                     if let Some(sender) = weak_sender.upgrade() {
                         let _ = sender
