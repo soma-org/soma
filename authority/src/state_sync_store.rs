@@ -15,7 +15,6 @@ use types::{
     digests::{CommitSummaryDigest, TransactionDigest},
     effects::TransactionEffects,
     object::{Object, ObjectID, Version},
-    state_sync::VerifiedCommitSummary,
     storage::{
         object_store::ObjectStore, read_store::ReadStore, write_store::WriteStore, ObjectKey,
     },

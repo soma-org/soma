@@ -8,12 +8,10 @@ use types::{
     committee::EpochId,
     consensus::commit::{CommitDigest, CommittedSubDag},
     error::SomaResult,
-    state_sync::{CommitSummary, VerifiedCommitSummary},
 };
 
 use crate::store::TypedStoreError;
 
-pub mod builder;
 pub mod executor;
 pub mod output;
 
@@ -50,7 +48,7 @@ pub struct CommitStore {
     /// Store locally computed commit summaries so that we can detect forks and log useful
     /// information. Can be pruned as soon as we verify that we are in agreement with the latest
     /// certified commit.
-    pub(crate) locally_computed_commits: RwLock<BTreeMap<CommitIndex, CommitSummary>>,
+    pub(crate) locally_computed_commits: RwLock<BTreeMap<CommitIndex, CommittedSubDag>>,
 }
 
 impl CommitStore {
@@ -182,8 +180,8 @@ impl CommitStore {
 
     fn check_for_commit_fork(
         &self,
-        local_commit: &CommitSummary,
-        verified_commit: &VerifiedCommitSummary,
+        local_commit: &CommittedSubDag,
+        verified_commit: &CommittedSubDag,
     ) {
         // if local_commit != verified_commit.data() {
         //     let verified_contents = self

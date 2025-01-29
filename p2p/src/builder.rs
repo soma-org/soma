@@ -38,7 +38,7 @@ use types::{
     },
     parameters::Parameters,
     signature_verifier::SignatureVerifier,
-    state_sync::{self, VerifiedCommitSummary},
+    state_sync::{self},
     storage::{
         consensus::{mem_store::MemStore, ConsensusStore},
         write_store::WriteStore,

@@ -51,7 +51,6 @@ use types::{
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
 
 use crate::{
-    commit::builder::{CommitHeight, PendingCommit},
     handler::{
         ConsensusCommitInfo, SequencedConsensusTransaction, SequencedConsensusTransactionKey,
         SequencedConsensusTransactionKind, VerifiedSequencedConsensusTransaction,
@@ -254,19 +253,6 @@ pub struct AuthorityEpochTables {
 
     /// When transaction is executed via commit executor, we store association here
     pub(crate) executed_transactions_to_commit: RwLock<BTreeMap<TransactionDigest, CommitIndex>>,
-
-    /// Maps index to commit summary, used by CommitBuilder to build commit within epoch
-    commit_summaries: RwLock<BTreeMap<CommitIndex, CommitSummary>>,
-
-    /// This table has information for the commits for which we constructed all the data
-    /// from consensus, but not yet constructed actual commit summary.
-    /// TODO: Put this in consensus instead of epoch store
-    /// Key in this table is the consensus commit height but should be a a commit index.
-    ///
-    /// Non-empty list of transactions here might result in empty list when we are forming commits.
-    /// Because we don't want to create commit summary with empty content(see CommitBuilder::write_commit),
-    /// the sequence number of commit does not match height here.
-    pending_commits: RwLock<BTreeMap<CommitHeight, PendingCommit>>,
 }
 
 impl AuthorityEpochTables {
@@ -1552,63 +1538,6 @@ impl AuthorityPerEpochStore {
         for digest in digests {
             self.executed_transactions_to_commit_notify_read
                 .notify(digest, &index);
-        }
-
-        Ok(())
-    }
-
-    pub fn last_built_commit_summary(&self) -> SomaResult<Option<(CommitIndex, CommitSummary)>> {
-        let tables = self.tables()?;
-        let guard = tables.commit_summaries.read();
-        let summary = guard.iter().last().map(|(seq, s)| (*seq, s.clone()));
-        Ok(summary)
-    }
-
-    pub fn get_pending_commits(
-        &self,
-        last: Option<CommitHeight>,
-    ) -> SomaResult<Vec<(CommitHeight, PendingCommit)>> {
-        let tables = self.tables()?;
-        let guard = tables.pending_commits.read();
-        let start_bound = last
-            .map(|height| Bound::Excluded(height))
-            .unwrap_or(Bound::Unbounded);
-
-        Ok(guard
-            .range((start_bound, Bound::Unbounded))
-            .map(|(k, v)| (*k, v.clone()))
-            .collect())
-    }
-
-    pub fn process_pending_commit(
-        &self,
-        commit_height: CommitHeight,
-        content_info: (CertifiedCommitSummary, CommitContents),
-    ) -> SomaResult<()> {
-        let tables = self.tables()?;
-        // Created commit is inserted in commit_summaries.
-        // This means that upon restart we can use BuilderCommitSummary::commit_height
-        // from the last built summary to resume building commits.
-
-        let index = content_info.0.data().index;
-
-        tables
-            .commit_summaries
-            .write()
-            .insert(index, content_info.0.data().clone());
-
-        // find all pending commits <= commit_height and remove them
-        // Get all keys <= commit_height
-        let keys: Vec<CommitHeight> = tables
-            .pending_commits
-            .read()
-            .range(..=commit_height) // Range up to and including commit_height
-            .map(|(k, _)| *k)
-            .collect();
-
-        // Delete all the collected keys
-        for key in keys {
-            tables.pending_commits.write().remove(&key);
         }
 
         Ok(())

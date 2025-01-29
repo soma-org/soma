@@ -646,8 +646,6 @@ mod bcs_signable {
     impl BcsSignable for crate::committee::Committee {}
     impl BcsSignable for crate::effects::TransactionEffects {}
     impl BcsSignable for crate::object::ObjectInner {}
-    impl BcsSignable for crate::state_sync::CommitSummary {}
-    impl BcsSignable for crate::state_sync::CommitContents {}
 }
 
 impl<T, W> Signable<W> for T

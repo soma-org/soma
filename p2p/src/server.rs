@@ -17,10 +17,9 @@ use types::discovery::{GetKnownPeersRequest, GetKnownPeersResponse};
 use types::error::{ConsensusError, ConsensusResult};
 use types::p2p::channel_manager::PeerInfo;
 use types::state_sync::{
-    CertifiedCommitSummary, FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest,
-    FetchCommitsResponse, FullCommitContents, GetCommitAvailabilityRequest,
-    GetCommitAvailabilityResponse, GetCommitSummaryRequest, PushCommitSummaryResponse,
-    VerifiedCommitSummary,
+    FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse,
+    GetCommitAvailabilityRequest, GetCommitAvailabilityResponse, GetCommitSummaryRequest,
+    PushCommitSummaryResponse,
 };
 use types::storage::consensus::ConsensusStore;
 use types::storage::write_store::WriteStore;
