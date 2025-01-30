@@ -12,7 +12,7 @@ use types::storage::storage_error::Result;
 use types::{
     accumulator::CommitIndex,
     committee::{Committee, EpochId},
-    digests::{CommitSummaryDigest, TransactionDigest},
+    digests::TransactionDigest,
     effects::TransactionEffects,
     object::{Object, ObjectID, Version},
     storage::{
@@ -29,7 +29,7 @@ pub struct StateSyncStore {
     commit_store: Arc<CommitStore>,
     consensus_store: Arc<dyn ConsensusStore>,
     // in memory commit watermark sequence numbers
-    // highest_synced_commit: Arc<Mutex<Option<CommitIndex>>>,
+    highest_synced_commit: Arc<Mutex<Option<CommitIndex>>>,
 }
 
 impl StateSyncStore {
@@ -44,6 +44,7 @@ impl StateSyncStore {
             committee_store,
             commit_store,
             consensus_store,
+            highest_synced_commit: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -74,14 +75,13 @@ impl ReadStore for StateSyncStore {
             .expect("db error")
     }
 
-    fn get_highest_synced_commit(&self) -> Result<CommitIndex, StorageError> {
-        // self.commit_store
-        //     .get_highest_synced_commit()
-        //     .map(|maybe_commit| {
-        //         maybe_commit.expect("storage should have been initialized with genesis commit")
-        //     })
-        //     .map_err(Into::into)
-        Ok((0))
+    fn get_highest_synced_commit(&self) -> Result<CommittedSubDag, StorageError> {
+        self.commit_store
+            .get_highest_synced_commit()
+            .map(|maybe_commit| {
+                maybe_commit.expect("storage should have been initialized with genesis commit")
+            })
+            .map_err(Into::into)
     }
 
     fn get_lowest_available_commit(&self) -> Result<CommitIndex, StorageError> {
@@ -163,6 +163,21 @@ impl WriteStore for StateSyncStore {
         self.committee_store
             .insert_new_committee(new_committee)
             .unwrap();
+        Ok(())
+    }
+
+    fn update_highest_synced_commit(
+        &self,
+        commit: &CommittedSubDag,
+    ) -> Result<(), types::storage::storage_error::Error> {
+        let mut locked = self.highest_synced_commit.lock();
+        if locked.is_some() && locked.unwrap() >= commit.commit_ref.index {
+            return Ok(());
+        }
+        self.commit_store
+            .update_highest_synced_commit(commit)
+            .map_err(types::storage::storage_error::Error::custom)?;
+        *locked = Some(commit.commit_ref.index);
         Ok(())
     }
 }

@@ -1,54 +1,46 @@
 use bytes::Bytes;
-use futures::{stream::FuturesOrdered, FutureExt, StreamExt};
+use futures::{stream::FuturesOrdered, StreamExt};
 use itertools::Itertools;
 use parking_lot::RwLock;
 use rand::Rng;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     ops::RangeInclusive,
     sync::Arc,
     time::Duration,
 };
-use tap::{Pipe, TapFallible, TapOptional};
 use tokio::{
     sync::{broadcast, mpsc},
-    task::{watch, AbortHandle, JoinSet},
+    task::JoinSet,
     time::sleep,
 };
 use tonic::{transport::Channel, Request, Response};
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::CommitIndex,
-    committee::{Committee, Epoch, EpochId},
+    committee::{Epoch, EpochId},
     config::state_sync_config::StateSyncConfig,
     consensus::{
-        block::{Block, BlockAPI, BlockRef, SignedBlock, VerifiedBlock},
-        block_verifier::{self, BlockVerifier, SignedBlockVerifier},
-        commit::{
-            Commit, CommitAPI, CommitDigest, CommitRange, CommitRef, CommittedSubDag, TrustedCommit,
-        },
+        block::{BlockAPI, BlockRef, SignedBlock, VerifiedBlock},
+        block_verifier::{BlockVerifier, SignedBlockVerifier},
+        commit::{Commit, CommitAPI, CommitDigest, CommitRef, CommittedSubDag, TrustedCommit},
         stake_aggregator::{QuorumThreshold, StakeAggregator},
     },
     crypto::NetworkPublicKey,
     dag::{
-        block_manager::BlockManager,
-        committer::universal_committer::{
-            universal_committer_builder::UniversalCommitterBuilder, UniversalCommitter,
-        },
-        dag_state::DagState,
-        linearizer::Linearizer,
+        block_manager::BlockManager, committer::universal_committer::UniversalCommitter,
+        dag_state::DagState, linearizer::Linearizer,
     },
-    digests::CommitSummaryDigest,
-    envelope::Message,
-    error::{ConsensusError, SomaError, SomaResult},
+    error::{ConsensusError, SomaError},
     p2p::{
-        active_peers::{self, ActivePeers, PeerState},
+        active_peers::{ActivePeers, PeerState},
         PeerEvent,
     },
-    peer_id::{self, PeerId},
+    peer_id::PeerId,
     state_sync::{
         FetchBlocksRequest, FetchCommitsRequest, FetchCommitsResponse,
-        GetCommitAvailabilityRequest, GetCommitAvailabilityResponse, GetCommitSummaryRequest,
+        GetCommitAvailabilityRequest, GetCommitAvailabilityResponse, GetCommitInfoRequest,
+        PushCommitRequest,
     },
     storage::write_store::WriteStore,
 };
@@ -75,7 +67,7 @@ pub struct PeerHeights {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 struct PeerStateSyncInfo {
     /// The digest of the Peer's genesis commit.
-    genesis_commit_digest: CommitSummaryDigest,
+    genesis_commit_digest: CommitDigest,
     // Indicates if this Peer is on the same chain as us.
     // on_same_chain_as_us: bool,
     /// Highest commit index we know of for this Peer.
@@ -338,7 +330,9 @@ where
         let highest_synced_commit = self
             .store
             .get_highest_synced_commit()
-            .expect("store operation should not fail");
+            .expect("store operation should not fail")
+            .commit_ref
+            .index;
 
         let highest_known_commit = self.peer_heights.read().highest_known_commit_index();
 
@@ -368,18 +362,16 @@ where
             StateSyncMessage::StartSyncJob => self.maybe_start_sync_task(),
             StateSyncMessage::VerifiedCommit(commit) => self.handle_commit_from_consensus(commit),
             // After we've successfully synced a commit we can notify our peers
-            StateSyncMessage::SyncedCommit(commit) => {
-                // self.spawn_notify_peers_of_commit(commit)
-            }
+            StateSyncMessage::SyncedCommit(commit) => self.spawn_notify_peers_of_commit(commit),
         }
     }
 
     // Handle a commit that we received from consensus
     #[instrument(level = "debug", skip_all)]
     fn handle_commit_from_consensus(&mut self, commit: Box<CommittedSubDag>) {
-        // Always check previous_digest matches in case there is a gap between
+        // TODO: Always check previous_digest matches in case there is a gap between
         // state sync and consensus.
-        // let prev_digest = *self
+        // let prev_digest = self
         //     .store
         //     .get_commit_by_index(commit.commit_ref.index - 1)
         //     .unwrap_or_else(|| {
@@ -389,60 +381,74 @@ where
         //             commit.commit_ref.index - 1
         //         )
         //     })
-        //     .digest();
-        // if commit.previous_digest != Some(prev_digest) {
-        //     panic!("Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: {:?}", commit.index(), Some(prev_digest), commit.previous_digest);
+        //     .commit_ref
+        //     .digest;
+        // if commit.commit_ref.previous_digest != prev_digest {
+        //     panic!("Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: {:?}", commit.commit_ref.index, Some(prev_digest), commit.previous_digest);
         // }
 
-        // let latest_commit = self
-        //     .store
-        //     .get_highest_verified_commit()
-        //     .expect("store operation should not fail");
+        let latest_commit = self
+            .store
+            .get_highest_synced_commit()
+            .expect("store operation should not fail")
+            .commit_ref
+            .index;
 
-        // // If this is an older commit, just ignore it
-        // if latest_commit.index() >= commit.commit_ref.index {
-        //     return;
-        // }
+        // If this is an older commit, just ignore it
+        if latest_commit >= commit.commit_ref.index {
+            return;
+        }
 
-        // let commit = *commit;
-        // let next_index = latest_commit.index().checked_add(1).unwrap();
-        // if commit.commit_ref.index > next_index {
-        //     debug!(
-        //         "consensus sent too new of a commit, expecting: {}, got: {}",
-        //         next_index, commit.commit_ref.index
-        //     );
-        // }
+        let commit = *commit;
+        let next_index = latest_commit.checked_add(1).unwrap();
+        if commit.commit_ref.index > next_index {
+            debug!(
+                "consensus sent too new of a commit, expecting: {}, got: {}",
+                next_index, commit.commit_ref.index
+            );
+        }
 
-        // // Because commit from consensus sends in order, when we have commit n,
-        // // we must have all of the commits before n from either state sync or consensus.
-        // #[cfg(debug_assertions)]
+        // Because commit from consensus sends in order, when we have commit n,
+        // we must have all of the commits before n from either state sync or consensus.
+        #[cfg(debug_assertions)]
+        {
+            let _ = (next_index..=commit.commit_ref.index)
+                .map(|n| {
+                    let commit = self
+                        .store
+                        .get_commit_by_index(n)
+                        .unwrap_or_else(|| panic!("store should contain commit {n}"));
+                })
+                .collect::<Vec<_>>();
+        }
+
+        // TODO: If this is the last checkpoint of a epoch, we need to make sure
+        // new committee is in store before we verify newer checkpoints in next epoch.
+        // This could happen before this validator's reconfiguration finishes, because
+        // state sync does not reconfig.
+        // TODO: make CheckpointAggregator use WriteStore so we don't need to do this
+        // committee insertion in two places (only in `insert_checkpoint`).
+        // if let Some(EndOfEpochData {
+        //     next_epoch_committee,
+        //     ..
+        // }) = checkpoint.end_of_epoch_data.as_ref()
         // {
-        //     let _ = (next_index..=commit.commit_ref.index)
-        //         .map(|n| {
-        //             let commit = self
-        //                 .store
-        //                 .get_commit_by_index(n)
-        //                 .unwrap_or_else(|| panic!("store should contain commit {n}"));
-        //             self.store
-        //                 .get_full_commit_contents(&commit.content_digest)
-        //                 .unwrap_or_else(|| {
-        //                     panic!(
-        //                         "store should contain commit contents for {:?}",
-        //                         commit.content_digest
-        //                     )
-        //                 });
-        //         })
-        //         .collect::<Vec<_>>();
+        //     let next_committee = next_epoch_committee.iter().cloned().collect();
+        //     let committee =
+        //         Committee::new(checkpoint.epoch().checked_add(1).unwrap(), next_committee);
+        //     self.store
+        //         .insert_committee(committee)
+        //         .expect("store operation should not fail");
         // }
 
-        // self.store
-        //     .update_highest_synced_commit(commit.commit_ref.index)
-        //     .expect("store operation should not fail");
+        self.store
+            .update_highest_synced_commit(&commit)
+            .expect("store operation should not fail");
 
-        // // We don't care if no one is listening as this is a broadcast channel
-        // let _ = self.commit_event_sender.send(commit.clone());
+        // We don't care if no one is listening as this is a broadcast channel
+        let _ = self.commit_event_sender.send(commit.clone());
 
-        // self.spawn_notify_peers_of_commit(commit);
+        self.spawn_notify_peers_of_commit(commit.commit_ref.index);
     }
 
     fn handle_peer_event(
@@ -497,39 +503,39 @@ where
         self.tasks.spawn(task);
     }
 
-    // fn spawn_notify_peers_of_commit(&mut self, commit: VerifiedCommitSummary) {
-    //     let task = notify_peers_of_commit(
-    //         self.active_peers.clone(),
-    //         self.peer_heights.clone(),
-    //         commit,
-    //         self.config.timeout(),
-    //     );
-    //     self.tasks.spawn(task);
-    // }
+    fn spawn_notify_peers_of_commit(&mut self, commit: CommitIndex) {
+        let task = notify_peers_of_commit(
+            self.active_peers.clone(),
+            self.peer_heights.clone(),
+            commit,
+            self.config.timeout(),
+        );
+        self.tasks.spawn(task);
+    }
 }
 
 async fn notify_peers_of_commit(
     active_peers: ActivePeers,
     peer_heights: Arc<RwLock<PeerHeights>>,
-    // commit: VerifiedCommitSummary,
+    commit: CommitIndex,
     timeout: Duration,
 ) {
-    // let futs = peer_heights
-    //     .read()
-    //     .peers
-    //     .iter()
-    //     // Filter out any peers who we know already have a commit higher than this one
-    //     .filter_map(|(peer_id, info)| (*commit.index() > info.height).then_some(peer_id))
-    //     // Filter out any peers who we aren't connected with
-    //     .flat_map(|peer_id| active_peers.get(peer_id))
-    //     .map(P2pClient::new)
-    //     .map(|mut client| {
-    //         let mut request = Request::new(commit.inner().clone());
-    //         request.set_timeout(timeout);
-    //         async move { client.push_commit_summary(request).await }
-    //     })
-    //     .collect::<Vec<_>>();
-    // futures::future::join_all(futs).await;
+    let futs = peer_heights
+        .read()
+        .peers
+        .iter()
+        // Filter out any peers who we know already have a commit higher than this one
+        .filter_map(|(peer_id, info)| (commit > info.height).then_some(peer_id))
+        // Filter out any peers who we aren't connected with
+        .flat_map(|peer_id| active_peers.get(peer_id))
+        .map(P2pClient::new)
+        .map(|mut client| {
+            let mut request = Request::new(PushCommitRequest { commit });
+            request.set_timeout(timeout);
+            async move { client.push_commit(request).await }
+        })
+        .collect::<Vec<_>>();
+    futures::future::join_all(futs).await;
 }
 
 async fn get_latest_from_peer(
@@ -538,58 +544,59 @@ async fn get_latest_from_peer(
     peer_heights: Arc<RwLock<PeerHeights>>,
     timeout: Duration,
 ) {
-    // let peer_id = peer.public_key.into();
-    // let mut client = P2pClient::new(peer.channel);
+    let peer_id = peer.public_key.into();
+    let mut client = P2pClient::new(peer.channel);
 
-    // let info = {
-    //     let maybe_info = peer_heights.read().peers.get(&peer_id).copied();
+    let info = {
+        let maybe_info = peer_heights.read().peers.get(&peer_id).copied();
 
-    //     if let Some(info) = maybe_info {
-    //         info
-    //     } else {
-    //         // TODO do we want to create a new API just for querying a node's chainid?
-    //         //
-    //         // We need to query this node's genesis commit to see if they're on the same chain
-    //         // as us
-    //         let mut request = Request::new(GetCommitSummaryRequest::ByIndex(0));
-    //         request.set_timeout(timeout);
-    //         let response = client
-    //             .get_commit_summary(request)
-    //             .await
-    //             .map(Response::into_inner);
+        if let Some(info) = maybe_info {
+            info
+        } else {
+            // TODO do we want to create a new API just for querying a node's chainid?
+            //
+            // We need to query this node's genesis commit to see if they're on the same chain
+            // as us
+            let mut request = Request::new(GetCommitInfoRequest::ByIndex(0));
+            request.set_timeout(timeout);
+            let response = client
+                .get_commit_info(request)
+                .await
+                .map(Response::into_inner);
+            let response = response.map(|r| r.commit_info);
 
-    //         let info = match response {
-    //             Ok(Some(commit)) => {
-    //                 let digest = *commit.digest();
-    //                 PeerStateSyncInfo {
-    //                     genesis_commit_digest: digest,
-    //                     height: *commit.index(),
-    //                     lowest: CommitIndex::default(),
-    //                 }
-    //             }
-    //             Ok(None) => PeerStateSyncInfo {
-    //                 genesis_commit_digest: CommitSummaryDigest::default(),
-    //                 height: CommitIndex::default(),
-    //                 lowest: CommitIndex::default(),
-    //             },
-    //             Err(status) => {
-    //                 trace!("get_latest_commit_summary request failed: {status:?}");
-    //                 return;
-    //             }
-    //         };
-    //         peer_heights.write().insert_peer_info(peer_id, info);
-    //         info
-    //     }
-    // };
+            let info = match response {
+                Ok(Some(commit)) => {
+                    let digest = commit.digest;
+                    PeerStateSyncInfo {
+                        genesis_commit_digest: digest,
+                        height: commit.index,
+                        lowest: CommitIndex::default(),
+                    }
+                }
+                Ok(None) => PeerStateSyncInfo {
+                    genesis_commit_digest: CommitDigest::default(),
+                    height: CommitIndex::default(),
+                    lowest: CommitIndex::default(),
+                },
+                Err(status) => {
+                    trace!("get_latest_commit_summary request failed: {status:?}");
+                    return;
+                }
+            };
+            peer_heights.write().insert_peer_info(peer_id, info);
+            info
+        }
+    };
 
-    // let Some((highest_commit, low_watermark)) =
-    //     query_peer_for_latest_info(&mut client, timeout).await
-    // else {
-    //     return;
-    // };
-    // peer_heights
-    //     .write()
-    //     .update_peer_info(peer_id, highest_commit, Some(low_watermark));
+    let Some((highest_commit, low_watermark)) =
+        query_peer_for_latest_info(&mut client, timeout).await
+    else {
+        return;
+    };
+    peer_heights
+        .write()
+        .update_peer_info(peer_id, highest_commit, Some(low_watermark));
 }
 
 /// Queries a peer for their highest_synced_commit and low commit watermark
@@ -692,7 +699,9 @@ async fn sync_from_peer<S>(
 {
     let current_highest_synced_commit_index = store
         .get_highest_synced_commit()
-        .expect("store operation should not fail");
+        .expect("store operation should not fail")
+        .commit_ref
+        .index;
 
     let peer_balancer = PeerBalancer::new(active_peers.clone(), peer_heights.clone());
 

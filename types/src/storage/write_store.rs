@@ -5,6 +5,7 @@ use super::{read_store::ReadStore, storage_error::Result};
 pub trait WriteStore: ReadStore {
     fn insert_committee(&self, new_committee: Committee) -> Result<()>;
     fn insert_commit(&self, commit: CommittedSubDag) -> Result<()>;
+    fn update_highest_synced_commit(&self, commit: &CommittedSubDag) -> Result<()>;
 }
 
 impl<T: WriteStore + ?Sized> WriteStore for &T {
@@ -14,5 +15,9 @@ impl<T: WriteStore + ?Sized> WriteStore for &T {
 
     fn insert_committee(&self, new_committee: Committee) -> Result<()> {
         (*self).insert_committee(new_committee)
+    }
+
+    fn update_highest_synced_commit(&self, commit: &CommittedSubDag) -> Result<()> {
+        (*self).update_highest_synced_commit(commit)
     }
 }

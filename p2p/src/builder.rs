@@ -147,6 +147,16 @@ impl StateSyncHandle {
     pub fn subscribe_to_synced_commits(&self) -> broadcast::Receiver<CommittedSubDag> {
         self.commit_event_sender.subscribe()
     }
+
+    pub fn new_for_testing() -> Self {
+        let (sender, _) = mpsc::channel(50);
+        let (commit_event_sender, _) = broadcast::channel(50);
+
+        Self {
+            sender,
+            commit_event_sender,
+        }
+    }
 }
 
 pub struct UnstartedStateSync<S> {

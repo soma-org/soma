@@ -12,14 +12,13 @@ use types::consensus::block::{BlockAPI, BlockRef, Round, VerifiedBlock, GENESIS_
 use types::consensus::commit::{CommitAPI, CommitRange, TrustedCommit};
 use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use types::dag::dag_state::DagState;
-use types::digests::CommitContentsDigest;
 use types::discovery::{GetKnownPeersRequest, GetKnownPeersResponse};
 use types::error::{ConsensusError, ConsensusResult};
 use types::p2p::channel_manager::PeerInfo;
 use types::state_sync::{
-    FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse,
-    GetCommitAvailabilityRequest, GetCommitAvailabilityResponse, GetCommitSummaryRequest,
-    PushCommitSummaryResponse,
+    CommitInfo, FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse,
+    GetCommitAvailabilityRequest, GetCommitAvailabilityResponse, GetCommitInfoRequest,
+    GetCommitInfoResponse, PushCommitRequest, PushCommitResponse,
 };
 use types::storage::consensus::ConsensusStore;
 use types::storage::write_store::WriteStore;
@@ -227,43 +226,82 @@ where
         }))
     }
 
-    // async fn push_commit_summary(
-    //     &self,
-    //     request: Request<CertifiedCommitSummary>,
-    // ) -> Result<Response<PushCommitSummaryResponse>, tonic::Status> {
-    //     let Some(peer_id) = request.extensions().get::<PeerInfo>().map(|p| p.peer_id) else {
-    //         return Err(tonic::Status::internal("PeerInfo not found"));
-    //     };
+    async fn push_commit(
+        &self,
+        request: Request<PushCommitRequest>,
+    ) -> Result<Response<PushCommitResponse>, tonic::Status> {
+        let Some(peer_id) = request.extensions().get::<PeerInfo>().map(|p| p.peer_id) else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
 
-    //     let commit = request.into_inner();
-    //     if !self
-    //         .peer_heights
-    //         .write()
-    //         .update_peer_info(peer_id, commit.clone(), None)
-    //     {
-    //         return Ok(Response::new(PushCommitSummaryResponse {
-    //             timestamp_ms: now_unix(),
-    //         }));
-    //     }
+        let PushCommitRequest { commit } = request.into_inner();
+        if !self
+            .peer_heights
+            .write()
+            .update_peer_info(peer_id, commit, None)
+        {
+            return Ok(Response::new(PushCommitResponse {
+                timestamp_ms: now_unix(),
+            }));
+        }
 
-    //     let highest_verified_commit = *self
-    //         .store
-    //         .get_highest_verified_commit()
-    //         .map_err(|e| Status::internal(e.to_string()))?
-    //         .index();
+        let highest_synced_commit = self
+            .store
+            .get_highest_synced_commit()
+            .map_err(|e| Status::internal(e.to_string()))?
+            .commit_ref
+            .index;
 
-    //     // If this commit is higher than our highest verified commit notify the
-    //     // event loop to potentially sync it
-    //     if *commit.index() > highest_verified_commit {
-    //         if let Some(sender) = self.sender.upgrade() {
-    //             sender.send(StateSyncMessage::StartSyncJob).await.unwrap();
-    //         }
-    //     }
+        // If this commit is higher than our highest synced commit notify the
+        // event loop to potentially sync it
+        if commit > highest_synced_commit {
+            if let Some(sender) = self.sender.upgrade() {
+                sender.send(StateSyncMessage::StartSyncJob).await.unwrap();
+            }
+        }
 
-    //     Ok(Response::new(PushCommitSummaryResponse {
-    //         timestamp_ms: now_unix(),
-    //     }))
-    // }
+        Ok(Response::new(PushCommitResponse {
+            timestamp_ms: now_unix(),
+        }))
+    }
+
+    async fn get_commit_info(
+        &self,
+        request: Request<GetCommitInfoRequest>,
+    ) -> Result<Response<GetCommitInfoResponse>, tonic::Status> {
+        let commit_info = match request.into_inner() {
+            GetCommitInfoRequest::Latest => {
+                let latest = self
+                    .store
+                    .get_highest_synced_commit()
+                    .map(Some)
+                    .map_err(|e| Status::internal(e.to_string()))?;
+
+                if let Some(commit) = latest {
+                    Some(CommitInfo {
+                        digest: commit.commit_ref.digest,
+                        index: commit.commit_ref.index,
+                    })
+                } else {
+                    None
+                }
+            }
+            GetCommitInfoRequest::ByIndex(index) => {
+                let commit = self.store.get_commit_by_index(index);
+
+                if let Some(commit) = commit {
+                    Some(CommitInfo {
+                        digest: commit.commit_ref.digest,
+                        index: commit.commit_ref.index,
+                    })
+                } else {
+                    None
+                }
+            }
+        };
+
+        Ok(Response::new(GetCommitInfoResponse { commit_info }))
+    }
 
     async fn get_commit_availability(
         &self,
@@ -272,7 +310,9 @@ where
         let highest_synced_commit = self
             .store
             .get_highest_synced_commit()
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| Status::internal(e.to_string()))?
+            .commit_ref
+            .index;
         let lowest_available_commit = self
             .store
             .get_lowest_available_commit()

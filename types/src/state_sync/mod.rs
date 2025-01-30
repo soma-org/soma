@@ -5,16 +5,29 @@ use serde::{Deserialize, Serialize};
 use crate::{
     accumulator::CommitIndex,
     committee::EpochId,
-    consensus::{block::Round, commit::CommitDigest},
+    consensus::{
+        block::Round,
+        commit::{CommitDigest, CommittedSubDag},
+    },
 };
 
 pub type CommitTimestamp = u64;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum GetCommitSummaryRequest {
+pub enum GetCommitInfoRequest {
     Latest,
-    ByDigest(CommitDigest),
     ByIndex(CommitIndex),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GetCommitInfoResponse {
+    pub commit_info: Option<CommitInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CommitInfo {
+    pub digest: CommitDigest,
+    pub index: CommitIndex,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -24,7 +37,12 @@ pub struct GetCommitAvailabilityResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PushCommitSummaryResponse {
+pub struct PushCommitRequest {
+    pub commit: CommitIndex,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PushCommitResponse {
     pub timestamp_ms: CommitTimestamp,
 }
 

@@ -1,8 +1,10 @@
+use crate::state;
 use crate::{
     epoch_store::AuthorityPerEpochStore, output::ConsensusOutputAPI, state::AuthorityState,
     throughput::ConsensusThroughputCalculator, tx_manager::TransactionManager,
 };
 use lru::LruCache;
+use p2p::builder::StateSyncHandle;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, num::NonZeroUsize, sync::Arc};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -27,6 +29,7 @@ pub struct ConsensusHandlerInitializer {
     state: Arc<AuthorityState>,
     epoch_store: Arc<AuthorityPerEpochStore>,
     throughput_calculator: Arc<ConsensusThroughputCalculator>,
+    state_sync_handle: StateSyncHandle,
 }
 
 impl ConsensusHandlerInitializer {
@@ -34,11 +37,13 @@ impl ConsensusHandlerInitializer {
         state: Arc<AuthorityState>,
         epoch_store: Arc<AuthorityPerEpochStore>,
         throughput_calculator: Arc<ConsensusThroughputCalculator>,
+        state_sync_handle: StateSyncHandle,
     ) -> Self {
         Self {
             state,
             epoch_store,
             throughput_calculator,
+            state_sync_handle,
         }
     }
 
@@ -47,6 +52,7 @@ impl ConsensusHandlerInitializer {
             state: state.clone(),
             epoch_store: state.epoch_store_for_testing().clone(),
             throughput_calculator: Arc::new(ConsensusThroughputCalculator::new(None)),
+            state_sync_handle: StateSyncHandle::new_for_testing(),
         }
     }
     pub fn new_consensus_handler(&self) -> ConsensusHandler {
@@ -58,6 +64,7 @@ impl ConsensusHandlerInitializer {
             self.state.transaction_manager().clone(),
             committee,
             self.throughput_calculator.clone(),
+            self.state_sync_handle.clone(),
         )
     }
 }
@@ -77,6 +84,8 @@ pub struct ConsensusHandler {
     transaction_scheduler: AsyncTransactionScheduler,
     /// Using the throughput calculator to record the current consensus throughput
     throughput_calculator: Arc<ConsensusThroughputCalculator>,
+
+    state_sync_handle: StateSyncHandle,
 }
 
 const PROCESSED_CACHE_CAP: usize = 1024 * 1024;
@@ -87,6 +96,7 @@ impl ConsensusHandler {
         transaction_manager: Arc<TransactionManager>,
         committee: Committee,
         throughput_calculator: Arc<ConsensusThroughputCalculator>,
+        state_sync_handle: StateSyncHandle,
     ) -> Self {
         // Recover last_consensus_stats so it is consistent across validators.
         let last_consensus_stats = epoch_store
@@ -102,6 +112,7 @@ impl ConsensusHandler {
             transaction_scheduler,
             processed_cache: LruCache::new(NonZeroUsize::new(PROCESSED_CACHE_CAP).unwrap()),
             throughput_calculator,
+            state_sync_handle,
         }
     }
 }
@@ -292,7 +303,12 @@ impl MysticetiConsensusHandler {
         let handle = tokio::spawn(async move {
             while let Some(consensus_output) = receiver.recv().await {
                 consensus_handler
-                    .handle_consensus_output_internal(consensus_output)
+                    .handle_consensus_output_internal(consensus_output.clone())
+                    .await;
+                // Send CommittedSubDag to state sync
+                consensus_handler
+                    .state_sync_handle
+                    .send_commit(consensus_output)
                     .await;
             }
         });

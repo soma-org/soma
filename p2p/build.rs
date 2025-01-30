@@ -26,15 +26,24 @@ fn main() -> Result<()> {
                 .codec_path(codec_path)
                 .build(),
         )
-        // .method(
-        //     Method::builder()
-        //         .name("push_commit_summary")
-        //         .route_name("PushCommitSummary")
-        //         .input_type("types::state_sync::CertifiedCommitSummary")
-        //         .output_type("types::state_sync::PushCommitSummaryResponse")
-        //         .codec_path(codec_path)
-        //         .build(),
-        // )
+        .method(
+            Method::builder()
+                .name("push_commit")
+                .route_name("PushCommit")
+                .input_type("types::state_sync::PushCommitRequest")
+                .output_type("types::state_sync::PushCommitResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
+        .method(
+            Method::builder()
+                .name("get_commit_info")
+                .route_name("GetCommitInfo")
+                .input_type("types::state_sync::GetCommitInfoRequest")
+                .output_type("types::state_sync::GetCommitInfoResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
         .method(
             tonic_build::manual::Method::builder()
                 .name("fetch_blocks")

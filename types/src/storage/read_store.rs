@@ -24,7 +24,7 @@ pub trait ReadStore: ObjectStore + Send + Sync {
 
     /// Get the highest synced commit. This is the highest commit that has been synced from
     /// state-sync.
-    fn get_highest_synced_commit(&self) -> Result<CommitIndex>;
+    fn get_highest_synced_commit(&self) -> Result<CommittedSubDag>;
 
     /// Lowest available commit for which transaction data can be requested.
     fn get_lowest_available_commit(&self) -> Result<CommitIndex>;
@@ -73,7 +73,7 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
         (*self).get_committee(epoch)
     }
 
-    fn get_highest_synced_commit(&self) -> Result<CommitIndex> {
+    fn get_highest_synced_commit(&self) -> Result<CommittedSubDag> {
         (*self).get_highest_synced_commit()
     }
 
