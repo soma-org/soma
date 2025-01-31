@@ -439,6 +439,7 @@ impl SomaNode {
             consensus_config,
             client,
             state.get_accumulator_store().clone(),
+            consensus_adapter.clone(),
         );
 
         // This only gets started up once, not on every epoch. (Make call to remove every epoch.)
@@ -641,10 +642,12 @@ impl SomaNode {
             let stop_condition = commit_executor.run_epoch(cur_epoch_store.clone()).await;
             drop(commit_executor);
 
-            let (latest_system_state, _) = self
+            // Safe to call because we are in the middle of reconfiguration.
+            let latest_system_state = self
                 .state
-                .create_and_execute_advance_epoch_tx(&cur_epoch_store)
-                .await?;
+                .get_object_cache_reader()
+                .get_system_state_object()
+                .expect("Read System State object cannot fail");
 
             if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone()) {
                 if self.state.is_fullnode(&cur_epoch_store) {

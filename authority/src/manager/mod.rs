@@ -15,8 +15,10 @@ use types::{
 };
 
 use crate::{
-    adapter::SubmitToConsensus, epoch_store::AuthorityPerEpochStore,
-    handler::ConsensusHandlerInitializer, tx_validator::TxValidator,
+    adapter::{ConsensusAdapter, SubmitToConsensus},
+    epoch_store::AuthorityPerEpochStore,
+    handler::ConsensusHandlerInitializer,
+    tx_validator::TxValidator,
 };
 
 pub mod mysticeti_client;
@@ -58,6 +60,7 @@ impl ConsensusManager {
         consensus_config: &ConsensusConfig,
         consensus_client: Arc<ConsensusClient>,
         accumulator_store: Arc<dyn AccumulatorStore>,
+        consensus_adapter: Arc<ConsensusAdapter>,
     ) -> Self {
         let mysticeti_client = Arc::new(LazyMysticetiClient::new());
         let mysticeti_manager = MysticetiManager::new(
@@ -66,6 +69,7 @@ impl ConsensusManager {
             consensus_config.db_path().to_path_buf(),
             mysticeti_client.clone(),
             accumulator_store,
+            consensus_adapter,
         );
         Self {
             consensus_config: consensus_config.clone(),

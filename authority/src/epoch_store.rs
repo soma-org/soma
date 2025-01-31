@@ -1399,7 +1399,7 @@ impl AuthorityPerEpochStore {
             },
             TransactionKind::EndOfEpochTransaction(tx) => match tx {
                 EndOfEpochTransactionKind::ChangeEpoch(change_epoch) => {
-                    state.advance_epoch(change_epoch.epoch, 0) // TODO: figure out how to make epoch_start_timestamp_ms the same across all SystemState objects
+                    state.advance_epoch(change_epoch.epoch, change_epoch.epoch_start_timestamp_ms)
                 }
             },
             _ => Ok(()),

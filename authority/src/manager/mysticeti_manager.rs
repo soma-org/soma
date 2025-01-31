@@ -1,4 +1,5 @@
 use crate::{
+    adapter::ConsensusAdapter,
     epoch_store::AuthorityPerEpochStore,
     handler::{ConsensusHandlerInitializer, MysticetiConsensusHandler},
     tx_validator::TxValidator,
@@ -33,6 +34,7 @@ pub struct MysticetiManager {
     client: Arc<LazyMysticetiClient>,
     consensus_handler: Mutex<Option<MysticetiConsensusHandler>>,
     accumulator_store: Arc<dyn AccumulatorStore>,
+    consensus_adapter: Arc<ConsensusAdapter>,
 }
 
 impl MysticetiManager {
@@ -44,6 +46,7 @@ impl MysticetiManager {
         storage_base_path: PathBuf,
         client: Arc<LazyMysticetiClient>,
         accumulator_store: Arc<dyn AccumulatorStore>,
+        consensus_adapter: Arc<ConsensusAdapter>,
     ) -> Self {
         Self {
             protocol_keypair: ProtocolKeyPair::new(protocol_keypair),
@@ -54,6 +57,7 @@ impl MysticetiManager {
             client,
             consensus_handler: Mutex::new(None),
             accumulator_store,
+            consensus_adapter,
         }
     }
 
@@ -120,7 +124,11 @@ impl ConsensusManagerTrait for MysticetiManager {
         self.client.set(client);
 
         // spin up the new mysticeti consensus handler to listen for committed sub dags
-        let handler = MysticetiConsensusHandler::new(consensus_handler, commit_receiver);
+        let handler = MysticetiConsensusHandler::new(
+            consensus_handler,
+            commit_receiver,
+            self.consensus_adapter.clone(),
+        );
         let mut consensus_handler = self.consensus_handler.lock().await;
         *consensus_handler = Some(handler);
     }

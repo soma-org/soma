@@ -26,7 +26,7 @@ use crate::{
 
 pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
@@ -53,6 +53,21 @@ pub struct SystemParameters {
     /// A validator can have stake below `validator_low_stake_threshold`
     /// for this many epochs before being kicked out.
     pub validator_low_stake_grace_period: u64,
+}
+
+impl Default for SystemParameters {
+    // TODO: make this configurable
+    fn default() -> Self {
+        Self {
+            epoch_duration_ms: 1000 * 60, //1000 * 60 * 60 * 24, // 1 day
+            min_validator_count: 0,
+            max_validator_count: 0,
+            min_validator_joining_stake: 0,
+            validator_low_stake_threshold: 0,
+            validator_very_low_stake_threshold: 0,
+            validator_low_stake_grace_period: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, Hash)]

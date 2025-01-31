@@ -1,3 +1,5 @@
+use crate::adapter::ConsensusAdapter;
+use crate::reconfiguration::ReconfigurationInitiator;
 use crate::state;
 use crate::{
     epoch_store::AuthorityPerEpochStore, output::ConsensusOutputAPI, state::AuthorityState,
@@ -299,9 +301,12 @@ impl MysticetiConsensusHandler {
     pub fn new(
         mut consensus_handler: ConsensusHandler,
         mut receiver: UnboundedReceiver<CommittedSubDag>,
+        consensus_adapter: Arc<ConsensusAdapter>,
     ) -> Self {
         let handle = tokio::spawn(async move {
             while let Some(consensus_output) = receiver.recv().await {
+                let commit_timestamp_ms = consensus_output.timestamp_ms;
+
                 consensus_handler
                     .handle_consensus_output_internal(consensus_output.clone())
                     .await;
@@ -310,6 +315,23 @@ impl MysticetiConsensusHandler {
                     .state_sync_handle
                     .send_commit(consensus_output)
                     .await;
+
+                let epoch_start_timestamp_ms = consensus_handler
+                    .epoch_store
+                    .epoch_start_state()
+                    .epoch_start_timestamp_ms();
+                let epoch_duration_ms = consensus_handler
+                    .epoch_store
+                    .epoch_start_state()
+                    .epoch_duration_ms();
+                let next_reconfiguration_timestamp_ms = epoch_start_timestamp_ms
+                    .checked_add(epoch_duration_ms)
+                    .expect("Overflow calculating next_reconfiguration_timestamp_ms");
+
+                if commit_timestamp_ms >= next_reconfiguration_timestamp_ms {
+                    info!("Begin closing epoch.");
+                    consensus_adapter.close_epoch(&consensus_handler.epoch_store);
+                }
             }
         });
         Self {

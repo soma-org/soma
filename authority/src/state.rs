@@ -739,12 +739,12 @@ impl AuthorityState {
     pub async fn create_and_execute_advance_epoch_tx(
         &self,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-        // epoch_start_timestamp_ms: CommitTimestamp,
+        epoch_start_timestamp_ms: CommitTimestamp,
     ) -> anyhow::Result<(SystemState, TransactionEffects)> {
         let next_epoch = epoch_store.epoch() + 1;
 
         let tx = VerifiedTransaction::new_end_of_epoch_transaction(
-            EndOfEpochTransactionKind::new_change_epoch(next_epoch, 0), // TODO: change this to the correct value
+            EndOfEpochTransactionKind::new_change_epoch(next_epoch, epoch_start_timestamp_ms),
         );
 
         let executable_tx =
