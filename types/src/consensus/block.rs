@@ -11,6 +11,7 @@ use std::{
 use super::commit::CommitVote;
 use super::context::Context;
 use crate::crypto::{
+    AggregateAuthoritySignature, AuthorityPublicKeyBytes, AuthoritySignature,
     DefaultHash as DefaultHashFunction, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey,
     DIGEST_LENGTH,
 };
@@ -70,6 +71,20 @@ impl StateCommit {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EndOfEpochData {
+    /// The proposed validator set for next epoch, with each validator's public key and voting power
+    pub next_validator_set: Option<Vec<(AuthorityPublicKeyBytes, u64)>>,
+
+    /// BLS signature from this block's author on next_validator_set from blocks in ancestry
+    /// Only included if a valid validator set was found in ancestry
+    pub validator_set_signature: Option<AuthoritySignature>,
+
+    /// Aggregate BLS signature from ancestor blocks' signatures on next_validator_set
+    /// Only included if quorum of ancestor signatures found
+    pub aggregate_signature: Option<AggregateAuthoritySignature>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Block {
     epoch: Epoch,
@@ -80,6 +95,7 @@ pub struct Block {
     transactions: Vec<Transaction>,
     commit_votes: Vec<CommitVote>,
     state_commit: Option<StateCommit>,
+    end_of_epoch_data: Option<EndOfEpochData>,
 }
 
 impl Block {
@@ -92,6 +108,7 @@ impl Block {
         transactions: Vec<Transaction>,
         commit_votes: Vec<CommitVote>,
         state_commit: Option<StateCommit>,
+        end_of_epoch_data: Option<EndOfEpochData>,
     ) -> Block {
         Self {
             epoch,
@@ -102,6 +119,7 @@ impl Block {
             transactions,
             commit_votes,
             state_commit,
+            end_of_epoch_data,
         }
     }
 
@@ -115,6 +133,7 @@ impl Block {
             transactions: vec![],
             commit_votes: vec![],
             state_commit: None,
+            end_of_epoch_data: None,
         }
     }
 }
@@ -129,6 +148,7 @@ pub trait BlockAPI {
     fn transactions(&self) -> &[Transaction];
     fn commit_votes(&self) -> &[CommitVote];
     fn state_commit(&self) -> Option<&StateCommit>;
+    fn end_of_epoch_data(&self) -> Option<&EndOfEpochData>;
 }
 
 impl BlockAPI for Block {
@@ -166,6 +186,10 @@ impl BlockAPI for Block {
 
     fn state_commit(&self) -> Option<&StateCommit> {
         self.state_commit.as_ref()
+    }
+
+    fn end_of_epoch_data(&self) -> Option<&EndOfEpochData> {
+        self.end_of_epoch_data.as_ref()
     }
 }
 

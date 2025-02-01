@@ -16,7 +16,6 @@ use crate::{
 };
 use parking_lot::RwLock;
 use tracing::info;
-use types::parameters::Parameters;
 use types::{
     accumulator,
     committee::{AuthorityIndex, Committee},
@@ -25,6 +24,7 @@ use types::{
     accumulator::AccumulatorStore,
     crypto::{NetworkKeyPair, ProtocolKeyPair},
 };
+use types::{consensus::NextEpochCommitteeAPI, parameters::Parameters};
 use types::{
     consensus::{
         block_verifier::SignedBlockVerifier,
@@ -60,6 +60,7 @@ impl ConsensusAuthority {
         transaction_verifier: Arc<dyn TransactionVerifier>,
         commit_consumer: CommitConsumer,
         accumulator_store: Arc<dyn AccumulatorStore>,
+        epoch_store: Arc<dyn NextEpochCommitteeAPI>,
     ) -> Self {
         info!(
             "Starting consensus authority {}\n{:#?}\n{:#?}",
@@ -129,6 +130,7 @@ impl ConsensusAuthority {
             protocol_keypair,
             dag_state.clone(),
             accumulator_store.clone(),
+            epoch_store,
         );
 
         let (core_dispatcher, core_thread_handle) =
@@ -223,6 +225,7 @@ mod tests {
     use tempfile::TempDir;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
     use tokio::time::sleep;
+    use types::consensus::TestEpochStore;
     use types::parameters::Parameters;
 
     use super::*;
@@ -258,6 +261,7 @@ mod tests {
             Arc::new(txn_verifier),
             commit_consumer,
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         )
         .await;
 
@@ -521,6 +525,7 @@ mod tests {
             Arc::new(txn_verifier),
             commit_consumer,
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         )
         .await;
         (authority, receiver)

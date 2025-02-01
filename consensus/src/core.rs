@@ -14,6 +14,7 @@ use tracing::{debug, info, warn};
 use types::{
     accumulator::AccumulatorStore,
     committee::{AuthorityIndex, Stake},
+    consensus::{block::EndOfEpochData, NextEpochCommitteeAPI, TestEpochStore},
 };
 use types::{accumulator::TestAccumulatorStore, crypto::ProtocolKeyPair};
 use types::{
@@ -86,6 +87,8 @@ pub(crate) struct Core {
 
     // Store for state hashes by commit for inclusion in blocks.
     accumulator_store: Arc<dyn AccumulatorStore>,
+
+    epoch_store: Arc<dyn NextEpochCommitteeAPI>,
 }
 
 impl Core {
@@ -99,6 +102,7 @@ impl Core {
         block_signer: ProtocolKeyPair,
         dag_state: Arc<RwLock<DagState>>,
         accumulator_store: Arc<dyn AccumulatorStore>,
+        epoch_store: Arc<dyn NextEpochCommitteeAPI>,
     ) -> Self {
         let last_decided_leader = dag_state.read().last_commit_leader();
         let number_of_leaders = 1; // TODO: context.parameters.mysticeti_num_leaders_per_round();
@@ -147,6 +151,7 @@ impl Core {
             dag_state,
             last_known_proposed_round: min_propose_round,
             accumulator_store,
+            epoch_store,
         }
         .recover()
     }
@@ -378,6 +383,61 @@ impl Core {
             state_commit = None;
         }
 
+        // Check for end of epoch phase
+        let end_of_epoch_data =
+            if let Some(next_validator_set) = self.epoch_store.get_next_epoch_committee() {
+                // We have the next validator set after quorum of EndOfPublish reached
+                // Find first ancestor block proposing this validator set
+                let ancestor_with_validator_set = ancestors.iter().find(|block| {
+                    if let Some(eoe) = block.end_of_epoch_data() {
+                        eoe.next_validator_set.as_ref() == Some(&next_validator_set)
+                    } else {
+                        false
+                    }
+                });
+
+                Some(match ancestor_with_validator_set {
+                    // First block to propose validator set
+                    None => EndOfEpochData {
+                        next_validator_set: Some(next_validator_set),
+                        validator_set_signature: None,
+                        aggregate_signature: None,
+                    },
+
+                    // TODO: Ancestor proposed validator set, sign it
+                    Some(proposing_block) => {
+                        EndOfEpochData {
+                            next_validator_set: Some(next_validator_set),
+                            validator_set_signature: None,
+                            aggregate_signature: None,
+                        }
+                        // let sig = self.sign_validator_set(&next_validator_set)?;
+
+                        // // Check if we have quorum of ancestor signatures to aggregate
+                        // let ancestor_sigs =
+                        //     self.collect_validator_set_signatures(&ancestors, &next_validator_set);
+
+                        // if ancestor_sigs.len() >= self.context.committee.quorum_threshold() {
+                        //     // Aggregate signatures into proof
+                        //     EndOfEpochData {
+                        //         next_validator_set: Some(next_validator_set),
+                        //         validator_set_signature: Some(sig),
+                        //         aggregate_signature: Some(self.aggregate_signatures(ancestor_sigs)),
+                        //     }
+                        // } else {
+                        //     // Add our signature but not enough for aggregate yet
+                        //     EndOfEpochData {
+                        //         next_validator_set: Some(next_validator_set),
+                        //         validator_set_signature: Some(sig),
+                        //         aggregate_signature: None,
+                        //     }
+                        // }
+                    }
+                })
+            } else {
+                None // Not end of epoch yet
+            };
+
         // Create the block and insert to storage.
         let block = Block::new(
             self.context.committee.epoch(),
@@ -388,6 +448,7 @@ impl Core {
             transactions,
             commit_votes,
             state_commit,
+            end_of_epoch_data,
         );
         let signed_block =
             SignedBlock::new(block, &self.block_signer).expect("Block signing failed.");
@@ -706,6 +767,7 @@ impl CoreTextFixture {
             block_signer,
             dag_state,
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         );
 
         Self {
@@ -810,6 +872,7 @@ mod test {
             key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         );
 
         // New round should be 5
@@ -924,6 +987,7 @@ mod test {
             key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         );
 
         // New round should be 4
@@ -1007,6 +1071,7 @@ mod test {
             key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         );
 
         // Send some transactions
@@ -1108,6 +1173,7 @@ mod test {
             key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         );
 
         let mut expected_ancestors = BTreeSet::new();
@@ -1193,6 +1259,7 @@ mod test {
             key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         );
 
         // No new block should have been produced

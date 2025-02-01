@@ -1,5 +1,6 @@
 use crate::{
     base::{AuthorityName, ConciseableName},
+    crypto::AuthorityPublicKeyBytes,
     digests::{ConsensusCommitDigest, TransactionDigest},
     state_sync::CommitTimestamp,
     transaction::CertifiedTransaction,
@@ -118,4 +119,31 @@ pub struct ConsensusCommitPrologue {
     pub commit_timestamp_ms: CommitTimestamp,
     /// Digest of consensus output
     pub consensus_commit_digest: ConsensusCommitDigest,
+}
+
+pub trait NextEpochCommitteeAPI: Send + Sync + 'static {
+    /// Returns the committee for the next epoch if one has been computed
+    fn get_next_epoch_committee(&self) -> Option<Vec<(AuthorityPublicKeyBytes, u64)>>;
+}
+
+pub struct TestEpochStore {
+    pub next_epoch_committee: Option<Vec<(AuthorityPublicKeyBytes, u64)>>,
+}
+
+impl TestEpochStore {
+    pub fn new() -> Self {
+        Self {
+            next_epoch_committee: None,
+        }
+    }
+
+    pub fn set_next_epoch_committee(&mut self, committee: Vec<(AuthorityPublicKeyBytes, u64)>) {
+        self.next_epoch_committee = Some(committee);
+    }
+}
+
+impl NextEpochCommitteeAPI for TestEpochStore {
+    fn get_next_epoch_committee(&self) -> Option<Vec<(AuthorityPublicKeyBytes, u64)>> {
+        self.next_epoch_committee.clone()
+    }
 }

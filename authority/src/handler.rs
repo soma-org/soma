@@ -67,6 +67,7 @@ impl ConsensusHandlerInitializer {
             committee,
             self.throughput_calculator.clone(),
             self.state_sync_handle.clone(),
+            self.state.clone(),
         )
     }
 }
@@ -88,6 +89,8 @@ pub struct ConsensusHandler {
     throughput_calculator: Arc<ConsensusThroughputCalculator>,
 
     state_sync_handle: StateSyncHandle,
+
+    state: Arc<AuthorityState>,
 }
 
 const PROCESSED_CACHE_CAP: usize = 1024 * 1024;
@@ -99,6 +102,7 @@ impl ConsensusHandler {
         committee: Committee,
         throughput_calculator: Arc<ConsensusThroughputCalculator>,
         state_sync_handle: StateSyncHandle,
+        state: Arc<AuthorityState>,
     ) -> Self {
         // Recover last_consensus_stats so it is consistent across validators.
         let last_consensus_stats = epoch_store
@@ -115,6 +119,7 @@ impl ConsensusHandler {
             processed_cache: LruCache::new(NonZeroUsize::new(PROCESSED_CACHE_CAP).unwrap()),
             throughput_calculator,
             state_sync_handle,
+            state,
         }
     }
 }
@@ -233,7 +238,7 @@ impl ConsensusHandler {
             }
         }
 
-        let transactions_to_schedule = self
+        let (transactions_to_schedule, end_of_publish_quorum) = self
             .epoch_store
             .process_consensus_transactions_and_commit_boundary(
                 all_transactions,
@@ -242,6 +247,18 @@ impl ConsensusHandler {
             )
             .await
             .expect("Unrecoverable error in consensus handler");
+
+        if end_of_publish_quorum {
+            // Execute advance epoch tx
+            let (system_state, _effects) = self
+                .state
+                .create_and_execute_advance_epoch_tx(&self.epoch_store, timestamp) // next epoch timestamp
+                .await
+                .expect("Failed to execute advance epoch transaction");
+
+            // Store for Core to access when proposing next block
+            self.epoch_store.set_next_epoch_state(system_state);
+        }
 
         // update the calculated throughput
         self.throughput_calculator

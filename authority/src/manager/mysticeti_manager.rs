@@ -114,6 +114,7 @@ impl ConsensusManagerTrait for MysticetiManager {
             Arc::new(tx_validator.clone()),
             consumer,
             self.accumulator_store.clone(),
+            epoch_store.clone(),
         )
         .await;
         let client = authority.transaction_client();

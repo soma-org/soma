@@ -21,9 +21,9 @@ use types::{
     committee::{Committee, EpochId},
     consensus::{
         ConsensusCommitPrologue, ConsensusTransaction, ConsensusTransactionKey,
-        ConsensusTransactionKind,
+        ConsensusTransactionKind, NextEpochCommitteeAPI,
     },
-    crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
+    crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
     digests::{TransactionDigest, TransactionEffectsDigest},
     effects::{self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects},
     envelope::TrustedEnvelope,
@@ -33,10 +33,10 @@ use types::{
     object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Version},
     protocol::{Chain, ProtocolConfig},
     signature_verifier::SignatureVerifier,
-    state_sync::{CertifiedCommitSummary, CommitContents, CommitSummary},
     storage::object_store::ObjectStore,
     system_state::{
         self, get_system_state, EpochStartSystemState, EpochStartSystemStateTrait, SystemState,
+        SystemStateTrait,
     },
     temporary_store::TemporaryStore,
     transaction::{
@@ -176,6 +176,8 @@ pub struct AuthorityPerEpochStore {
     highest_synced_commit: RwLock<CommitIndex>,
     /// Get notified when a synced commit has reached CommitExecutor.
     synced_commit_notify_read: NotifyRead<CommitIndex, ()>,
+
+    next_epoch_state: RwLock<Option<SystemState>>,
 }
 
 /// AuthorityEpochTables contains tables that contain data that is only valid within an epoch.
@@ -395,6 +397,7 @@ impl AuthorityPerEpochStore {
             executed_transactions_to_commit_notify_read: NotifyRead::new(),
             highest_synced_commit: RwLock::new(0),
             synced_commit_notify_read: NotifyRead::new(),
+            next_epoch_state: RwLock::new(None),
         });
         s
     }
@@ -440,6 +443,7 @@ impl AuthorityPerEpochStore {
         let next_committee = Committee::new(
             next_epoch,
             self.committee.voting_rights.iter().cloned().collect(),
+            self.committee.authorities.clone().into_iter().collect(),
         );
 
         let epoch_start_configuration = self.epoch_start_configuration.as_ref().clone();
@@ -789,7 +793,8 @@ impl AuthorityPerEpochStore {
         // cache_reader: &dyn ObjectCacheRead,
         consensus_commit_info: &ConsensusCommitInfo,
         // authority_metrics: &Arc<AuthorityMetrics>,
-    ) -> SomaResult<Vec<VerifiedExecutableTransaction>> {
+    ) -> SomaResult<(Vec<VerifiedExecutableTransaction>, bool)> {
+        // Return if end of publish quorum reached to ConsensusHandler
         // Split transactions into different types for processing.
         let verified_transactions: Vec<_> = transactions
             .into_iter()
@@ -834,7 +839,7 @@ impl AuthorityPerEpochStore {
             transactions_to_schedule,
             notifications,
             lock,
-            final_round,
+            end_of_publish_quorum,
             consensus_commit_prologue_root,
         ) = self
             .process_consensus_transactions(
@@ -860,7 +865,7 @@ impl AuthorityPerEpochStore {
             // above, we know we won't be transitioning state for this commit.
             self.get_reconfig_state_read_lock_guard().should_accept_tx()
         };
-        let make_checkpoint = should_accept_tx || final_round;
+        let make_checkpoint = should_accept_tx || end_of_publish_quorum;
         if make_checkpoint {
             // TODO: Generate pending checkpoint for regular user tx.
         }
@@ -875,18 +880,18 @@ impl AuthorityPerEpochStore {
 
         self.process_notifications(&notifications, &end_of_publish_transactions);
 
-        if final_round {
+        if end_of_publish_quorum {
             info!(
                 epoch=?self.epoch(),
                 // Accessing lock on purpose so that the compiler ensures
                 // the lock is not yet dropped.
                 lock=?lock.as_ref(),
-                final_round=?final_round,
+                end_of_publish_quorum=?end_of_publish_quorum,
                 "Notified last checkpoint"
             );
         }
 
-        Ok(transactions_to_schedule)
+        Ok((transactions_to_schedule, end_of_publish_quorum))
     }
 
     // Adds the consensus commit prologue transaction to the beginning of input `transactions` to update
@@ -939,7 +944,7 @@ impl AuthorityPerEpochStore {
         Vec<VerifiedExecutableTransaction>,    // transactions to schedule
         Vec<SequencedConsensusTransactionKey>, // keys to notify as complete
         Option<RwLockWriteGuard<ReconfigState>>,
-        bool,                   // true if final round
+        bool,                   // true if end of publish quorum reached
         Option<TransactionKey>, // consensus commit prologue root
     )> {
         let mut verified_certificates = VecDeque::with_capacity(transactions.len() + 1);
@@ -988,7 +993,7 @@ impl AuthorityPerEpochStore {
 
         let verified_certificates: Vec<_> = verified_certificates.into();
 
-        let (lock, final_round) = self.process_end_of_publish_transactions_and_reconfig(
+        let (lock, end_of_publish_quorum) = self.process_end_of_publish_transactions_and_reconfig(
             output,
             end_of_publish_transactions,
         )?;
@@ -997,7 +1002,7 @@ impl AuthorityPerEpochStore {
             verified_certificates,
             notifications,
             lock,
-            final_round,
+            end_of_publish_quorum,
             consensus_commit_prologue_root,
         ))
     }
@@ -1008,7 +1013,7 @@ impl AuthorityPerEpochStore {
         transactions: &[VerifiedSequencedConsensusTransaction],
     ) -> SomaResult<(
         Option<RwLockWriteGuard<ReconfigState>>,
-        bool, // true if final round
+        bool, // true if end of publish quorum reached
     )> {
         let mut lock = None;
 
@@ -1054,6 +1059,7 @@ impl AuthorityPerEpochStore {
                         self.committee.epoch,
                         authority.concise(),
                     );
+
                     let mut l = self.get_reconfig_state_write_lock_guard();
                     l.close_all_certs();
                     output.store_reconfig_state(l.clone());
@@ -1204,7 +1210,7 @@ impl AuthorityPerEpochStore {
     #[instrument(level = "trace", skip_all)]
     pub fn verify_transaction(&self, tx: Transaction) -> SomaResult<VerifiedTransaction> {
         self.signature_verifier
-            .verify_tx(tx.data())
+            .verify_tx(tx.data(), self.epoch())
             .map(|_| VerifiedTransaction::new_from_verified(tx))
     }
 
@@ -1590,6 +1596,24 @@ impl AuthorityPerEpochStore {
                 }
             })
             .collect())
+    }
+
+    pub fn set_next_epoch_state(&self, system_state: SystemState) {
+        if self.next_epoch_state.read().is_none() {
+            *self.next_epoch_state.write() = Some(system_state);
+        }
+    }
+}
+
+impl NextEpochCommitteeAPI for AuthorityPerEpochStore {
+    fn get_next_epoch_committee(&self) -> Option<Vec<(AuthorityPublicKeyBytes, u64)>> {
+        self.next_epoch_state.read().as_ref().map(|state| {
+            state
+                .get_current_epoch_committee()
+                .committee()
+                .clone()
+                .voting_rights
+        })
     }
 }
 

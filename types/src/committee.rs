@@ -46,7 +46,7 @@ pub struct Committee {
     expanded_keys: HashMap<AuthorityName, AuthorityPublicKey>,
     index_map: HashMap<AuthorityName, usize>,
 
-    authorities: HashMap<AuthorityName, Authority>,
+    pub authorities: HashMap<AuthorityName, Authority>,
 }
 
 impl Committee {

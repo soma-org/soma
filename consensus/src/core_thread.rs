@@ -203,7 +203,7 @@ impl CoreThreadDispatcher for ChannelCoreThreadDispatcher {
 mod test {
     use parking_lot::RwLock;
     use tokio::sync::mpsc::unbounded_channel;
-    use types::accumulator::TestAccumulatorStore;
+    use types::{accumulator::TestAccumulatorStore, consensus::TestEpochStore};
 
     use super::*;
     use crate::{
@@ -257,6 +257,7 @@ mod test {
             key_pairs.remove(context.own_index.unwrap().value()).1,
             dag_state,
             Arc::new(TestAccumulatorStore::default()),
+            Arc::new(TestEpochStore::new()),
         );
 
         let (core_dispatcher, handle) = ChannelCoreThreadDispatcher::start(core, context);
