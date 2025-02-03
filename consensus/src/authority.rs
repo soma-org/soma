@@ -19,6 +19,7 @@ use tracing::info;
 use types::{
     accumulator,
     committee::{AuthorityIndex, Committee},
+    crypto::AuthorityKeyPair,
 };
 use types::{
     accumulator::AccumulatorStore,
@@ -57,6 +58,7 @@ impl ConsensusAuthority {
         // kept in Core.
         protocol_keypair: ProtocolKeyPair,
         network_keypair: NetworkKeyPair,
+        authority_keypair: AuthorityKeyPair,
         transaction_verifier: Arc<dyn TransactionVerifier>,
         commit_consumer: CommitConsumer,
         accumulator_store: Arc<dyn AccumulatorStore>,
@@ -128,6 +130,7 @@ impl ConsensusAuthority {
             commit_observer,
             core_signals,
             protocol_keypair,
+            authority_keypair,
             dag_state.clone(),
             accumulator_store.clone(),
             epoch_store,
@@ -222,11 +225,14 @@ mod tests {
     use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
     use accumulator::TestAccumulatorStore;
+    use fastcrypto::traits::KeyPair;
     use tempfile::TempDir;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
     use tokio::time::sleep;
     use types::consensus::TestEpochStore;
     use types::parameters::Parameters;
+
+    use crate::authority;
 
     use super::*;
     use types::consensus::{
@@ -236,7 +242,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_authority_start_and_stop() {
-        let (committee, keypairs) = local_committee_and_keys(0, vec![1]);
+        let (committee, keypairs, authority_keypairs) = local_committee_and_keys(0, vec![1]);
 
         let temp_dir = TempDir::new().unwrap();
         let parameters = Parameters {
@@ -248,6 +254,7 @@ mod tests {
         let own_index = committee.to_authority_index(0).unwrap();
         let protocol_keypair = keypairs[own_index].1.clone();
         let network_keypair = keypairs[own_index].0.clone();
+        let authority_keypair = authority_keypairs[own_index].copy();
 
         let (sender, _receiver) = unbounded_channel();
         let commit_consumer = CommitConsumer::new(sender, 0, 0);
@@ -258,6 +265,7 @@ mod tests {
             parameters,
             protocol_keypair,
             network_keypair,
+            authority_keypair,
             Arc::new(txn_verifier),
             commit_consumer,
             Arc::new(TestAccumulatorStore::default()),
@@ -275,7 +283,8 @@ mod tests {
     // TODO: build AuthorityFixture.
     #[tokio::test(flavor = "current_thread")]
     async fn test_authority_committee() {
-        let (committee, keypairs) = local_committee_and_keys(0, vec![1, 1, 1, 1]);
+        let (committee, keypairs, authority_keypairs) =
+            local_committee_and_keys(0, vec![1, 1, 1, 1]);
         let temp_dirs = (0..4).map(|_| TempDir::new().unwrap()).collect::<Vec<_>>();
 
         let mut output_receivers = Vec::with_capacity(committee.size());
@@ -287,6 +296,7 @@ mod tests {
                 &temp_dirs[index.value()],
                 committee.clone(),
                 keypairs.clone(),
+                authority_keypairs[index.value()].copy(),
             )
             .await;
             output_receivers.push(receiver);
@@ -339,7 +349,8 @@ mod tests {
             index,
             &temp_dirs[index.value()],
             committee.clone(),
-            keypairs.clone(),
+            keypairs,
+            authority_keypairs[index.value()].copy(),
         )
         .await;
         output_receivers[index] = receiver;
@@ -356,7 +367,8 @@ mod tests {
     async fn test_amnesia_success() {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let (committee, keypairs) = local_committee_and_keys(0, vec![1, 1, 1, 1]);
+        let (committee, keypairs, authority_keypairs) =
+            local_committee_and_keys(0, vec![1, 1, 1, 1]);
         let mut output_receivers = vec![];
         let mut authorities = vec![];
 
@@ -366,6 +378,7 @@ mod tests {
                 &TempDir::new().unwrap(),
                 committee.clone(),
                 keypairs.clone(),
+                authority_keypairs[index.value()].copy(),
             )
             .await;
             output_receivers.push(receiver);
@@ -416,8 +429,14 @@ mod tests {
 
         // now create a new directory to simulate amnesia. The node will start having participated previously
         // to consensus but now will attempt to synchronize the last own block and recover from there.
-        let (authority, mut receiver) =
-            make_authority(index, &TempDir::new().unwrap(), committee.clone(), keypairs).await;
+        let (authority, mut receiver) = make_authority(
+            index,
+            &TempDir::new().unwrap(),
+            committee.clone(),
+            keypairs,
+            authority_keypairs[index.value()].copy(),
+        )
+        .await;
         authorities.insert(index.value(), authority);
         sleep(Duration::from_secs(5)).await;
 
@@ -450,7 +469,8 @@ mod tests {
             default_panic_handler(panic);
         }));
 
-        let (committee, keypairs) = local_committee_and_keys(0, vec![1, 1, 1, 1]);
+        let (committee, keypairs, authority_keypairs) =
+            local_committee_and_keys(0, vec![1, 1, 1, 1]);
         let mut output_receivers = vec![];
         let mut authorities = vec![];
 
@@ -460,6 +480,7 @@ mod tests {
                 &TempDir::new().unwrap(),
                 committee.clone(),
                 keypairs.clone(),
+                authority_keypairs[index.value()].copy(),
             )
             .await;
             output_receivers.push(receiver);
@@ -477,8 +498,14 @@ mod tests {
         sleep(Duration::from_secs(2)).await;
 
         let index = AuthorityIndex::new_for_test(0);
-        let (_authority, _receiver) =
-            make_authority(index, &TempDir::new().unwrap(), committee, keypairs).await;
+        let (_authority, _receiver) = make_authority(
+            index,
+            &TempDir::new().unwrap(),
+            committee,
+            keypairs,
+            authority_keypairs[index.value()].copy(),
+        )
+        .await;
         sleep(Duration::from_secs(5)).await;
 
         // Now reset the panic hook
@@ -498,6 +525,7 @@ mod tests {
         db_dir: &TempDir,
         committee: Committee,
         keypairs: Vec<(NetworkKeyPair, ProtocolKeyPair)>,
+        authority_keypair: AuthorityKeyPair,
     ) -> (ConsensusAuthority, UnboundedReceiver<CommittedSubDag>) {
         // Cache less blocks to exercise commit sync.
         let parameters = Parameters {
@@ -522,6 +550,7 @@ mod tests {
             parameters,
             protocol_keypair,
             network_keypair,
+            authority_keypair,
             Arc::new(txn_verifier),
             commit_consumer,
             Arc::new(TestAccumulatorStore::default()),

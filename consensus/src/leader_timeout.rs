@@ -175,7 +175,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn basic_leader_timeout() {
-        let (context, _signers) = Context::new_for_test(4);
+        let (context, _signers, _) = Context::new_for_test(4);
         let dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let leader_timeout = Duration::from_millis(500);
         let min_round_delay = Duration::from_millis(50);
@@ -234,7 +234,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn multiple_leader_timeouts() {
-        let (context, _signers) = Context::new_for_test(4);
+        let (context, _signers, _) = Context::new_for_test(4);
         let dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let leader_timeout = Duration::from_millis(500);
         let min_round_delay = Duration::from_millis(50);

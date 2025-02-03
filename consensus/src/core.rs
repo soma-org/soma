@@ -13,8 +13,15 @@ use tokio::sync::{
 use tracing::{debug, info, warn};
 use types::{
     accumulator::AccumulatorStore,
+    base::AuthorityName,
     committee::{AuthorityIndex, Stake},
-    consensus::{block::EndOfEpochData, NextEpochCommitteeAPI, TestEpochStore},
+    consensus::{
+        block::EndOfEpochData, validator_set::ValidatorSet, NextEpochCommitteeAPI, TestEpochStore,
+    },
+    crypto::{
+        AggregateAuthenticator, AggregateAuthoritySignature, AuthorityKeyPair, AuthorityPublicKey,
+        AuthorityPublicKeyBytes, AuthoritySignature, Signer,
+    },
 };
 use types::{accumulator::TestAccumulatorStore, crypto::ProtocolKeyPair};
 use types::{
@@ -78,6 +85,8 @@ pub(crate) struct Core {
     signals: CoreSignals,
     /// The keypair to be used for block signing
     block_signer: ProtocolKeyPair,
+    /// The keypair to be used for signing the committee
+    committee_signer: AuthorityKeyPair,
     /// Keeping track of state of the DAG, including blocks, commits and last committed rounds.
     dag_state: Arc<RwLock<DagState>>,
     /// The last known round for which the node has proposed. Any proposal should be for a round > of this.
@@ -100,6 +109,7 @@ impl Core {
         commit_observer: CommitObserver,
         signals: CoreSignals,
         block_signer: ProtocolKeyPair,
+        committee_signer: AuthorityKeyPair,
         dag_state: Arc<RwLock<DagState>>,
         accumulator_store: Arc<dyn AccumulatorStore>,
         epoch_store: Arc<dyn NextEpochCommitteeAPI>,
@@ -146,6 +156,7 @@ impl Core {
             signals,
             block_manager,
             block_signer,
+            committee_signer,
             commit_observer,
             committer,
             dag_state,
@@ -386,7 +397,6 @@ impl Core {
         // Check for end of epoch phase
         let end_of_epoch_data =
             if let Some(next_validator_set) = self.epoch_store.get_next_epoch_committee() {
-                // We have the next validator set after quorum of EndOfPublish reached
                 // Find first ancestor block proposing this validator set
                 let ancestor_with_validator_set = ancestors.iter().find(|block| {
                     if let Some(eoe) = block.end_of_epoch_data() {
@@ -397,41 +407,41 @@ impl Core {
                 });
 
                 Some(match ancestor_with_validator_set {
-                    // First block to propose validator set
+                    // Case 1: First to propose validator set
                     None => EndOfEpochData {
                         next_validator_set: Some(next_validator_set),
                         validator_set_signature: None,
                         aggregate_signature: None,
                     },
 
-                    // TODO: Ancestor proposed validator set, sign it
-                    Some(proposing_block) => {
-                        EndOfEpochData {
-                            next_validator_set: Some(next_validator_set),
-                            validator_set_signature: None,
-                            aggregate_signature: None,
+                    // Case 2: Ancestor proposed matching validator set
+                    Some(_proposing_block) => {
+                        // Sign the validator set
+                        let sig = next_validator_set
+                            .sign(&self.committee_signer)
+                            .expect("Cannot sign validator set");
+
+                        // Collect all valid signatures including ours
+                        let mut ancestor_sigs =
+                            self.collect_validator_set_signatures(&ancestors, &next_validator_set);
+                        ancestor_sigs.push(sig.clone());
+
+                        // Case 4: Have quorum - include aggregate
+                        if ancestor_sigs.len() as u64 >= self.context.committee.quorum_threshold() {
+                            EndOfEpochData {
+                                next_validator_set: Some(next_validator_set),
+                                validator_set_signature: Some(sig),
+                                aggregate_signature: self
+                                    .aggregate_validator_set_signatures(ancestor_sigs),
+                            }
+                        } else {
+                            // Case 2 continued: Add our signature but not enough for aggregate yet
+                            EndOfEpochData {
+                                next_validator_set: Some(next_validator_set),
+                                validator_set_signature: Some(sig),
+                                aggregate_signature: None,
+                            }
                         }
-                        // let sig = self.sign_validator_set(&next_validator_set)?;
-
-                        // // Check if we have quorum of ancestor signatures to aggregate
-                        // let ancestor_sigs =
-                        //     self.collect_validator_set_signatures(&ancestors, &next_validator_set);
-
-                        // if ancestor_sigs.len() >= self.context.committee.quorum_threshold() {
-                        //     // Aggregate signatures into proof
-                        //     EndOfEpochData {
-                        //         next_validator_set: Some(next_validator_set),
-                        //         validator_set_signature: Some(sig),
-                        //         aggregate_signature: Some(self.aggregate_signatures(ancestor_sigs)),
-                        //     }
-                        // } else {
-                        //     // Add our signature but not enough for aggregate yet
-                        //     EndOfEpochData {
-                        //         next_validator_set: Some(next_validator_set),
-                        //         validator_set_signature: Some(sig),
-                        //         aggregate_signature: None,
-                        //     }
-                        // }
                     }
                 })
             } else {
@@ -548,6 +558,17 @@ impl Core {
             .chain(
                 ancestors
                     .into_iter()
+                    .filter(|block| {
+                        // Keep if no validator set or matching set
+                        if let Some(eoe) = block.end_of_epoch_data() {
+                            if let Some(validator_set) = eoe.next_validator_set.as_ref() {
+                                if let Some(our_set) = self.epoch_store.get_next_epoch_committee() {
+                                    return validator_set == &our_set;
+                                }
+                            }
+                        }
+                        true
+                    })
                     .filter(|block| Some(block.author()) != self.context.own_index)
                     .flat_map(|block| {
                         if let Some(last_block_ref) = self.last_included_ancestors[block.author()] {
@@ -618,6 +639,40 @@ impl Core {
     #[cfg(test)]
     fn last_proposed_block(&self) -> &VerifiedBlock {
         &self.last_proposed_block
+    }
+
+    fn collect_validator_set_signatures(
+        &self,
+        ancestors: &[VerifiedBlock],
+        validator_set: &ValidatorSet,
+    ) -> Vec<AuthoritySignature> {
+        ancestors
+            .iter()
+            .filter_map(|block| {
+                if let Some(eoe) = block.end_of_epoch_data() {
+                    if eoe.next_validator_set.as_ref() == Some(validator_set) {
+                        eoe.validator_set_signature.clone()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn aggregate_validator_set_signatures(
+        &self,
+        signatures: Vec<AuthoritySignature>,
+    ) -> Option<AggregateAuthoritySignature> {
+        let mut agg_sig = AggregateAuthoritySignature::default();
+        for sig in signatures {
+            agg_sig
+                .add_signature(sig)
+                .expect("Failed to add signature to aggregate");
+        }
+        Some(agg_sig)
     }
 }
 
@@ -724,7 +779,8 @@ pub(crate) struct CoreTextFixture {
 #[cfg(test)]
 impl CoreTextFixture {
     fn new(context: Context, authorities: Vec<Stake>, own_index: AuthorityIndex) -> Self {
-        let (committee, mut signers) = local_committee_and_keys(0, authorities.clone());
+        let (committee, mut signers, mut authority_keypairs) =
+            local_committee_and_keys(0, authorities.clone());
         let mut context = context.clone();
         context = context
             .with_committee(committee)
@@ -756,6 +812,7 @@ impl CoreTextFixture {
         );
 
         let block_signer = signers.remove(own_index.value()).1;
+        let committee_signer = authority_keypairs.remove(own_index.value());
 
         let core = Core::new(
             context,
@@ -765,6 +822,7 @@ impl CoreTextFixture {
             commit_observer,
             signals,
             block_signer,
+            committee_signer,
             dag_state,
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -801,13 +859,13 @@ mod test {
         storage::consensus::{mem_store::MemStore, ConsensusStore, WriteBatch},
     };
 
-    use crate::commit_observer::CommitConsumer;
+    use crate::{authority, commit_observer::CommitConsumer};
 
     /// Recover Core and continue proposing from the last round which forms a quorum.
     #[tokio::test]
     async fn test_core_recover_from_store_for_full_round() {
         let _ = tracing_subscriber::fmt::try_init();
-        let (context, mut key_pairs) = Context::new_for_test(4);
+        let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
@@ -870,6 +928,7 @@ mod test {
             commit_observer,
             signals,
             key_pairs.remove(context.own_index.unwrap().value()).1,
+            authority_keypairs.remove(context.own_index.unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -915,7 +974,7 @@ mod test {
     async fn test_core_recover_from_store_for_partial_round() {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let (context, mut key_pairs) = Context::new_for_test(4);
+        let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
@@ -985,6 +1044,7 @@ mod test {
             commit_observer,
             signals,
             key_pairs.remove(context.own_index.unwrap().value()).1,
+            authority_keypairs.remove(context.own_index.unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1031,7 +1091,7 @@ mod test {
     async fn test_core_propose_after_genesis() {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let (context, mut key_pairs) = Context::new_for_test(4);
+        let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context.with_parameters(Parameters {
             consensus_max_transactions_in_block_bytes: 2_000,
             consensus_max_transaction_size_bytes: 2_000,
@@ -1069,6 +1129,7 @@ mod test {
             commit_observer,
             signals,
             key_pairs.remove(context.own_index.unwrap().value()).1,
+            authority_keypairs.remove(context.own_index.unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1135,7 +1196,7 @@ mod test {
     #[tokio::test]
     async fn test_core_propose_once_receiving_a_quorum() {
         let _ = tracing_subscriber::fmt::try_init();
-        let (context, mut key_pairs) = Context::new_for_test(4);
+        let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
 
         let store = Arc::new(MemStore::new());
@@ -1171,6 +1232,7 @@ mod test {
             commit_observer,
             signals,
             key_pairs.remove(context.own_index.unwrap().value()).1,
+            authority_keypairs.remove(context.own_index.unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1218,7 +1280,7 @@ mod test {
     #[tokio::test]
     async fn test_core_set_min_propose_round() {
         let _ = tracing_subscriber::fmt::try_init();
-        let (context, mut key_pairs) = Context::new_for_test(4);
+        let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context.with_parameters(Parameters {
             sync_last_proposed_block_timeout: Duration::from_millis(2_000),
             ..Default::default()
@@ -1257,6 +1319,7 @@ mod test {
             commit_observer,
             signals,
             key_pairs.remove(context.own_index.unwrap().value()).1,
+            authority_keypairs.remove(context.own_index.unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1323,7 +1386,7 @@ mod test {
             sleep(wait_time).await;
         }
 
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         // Create the cores for all authorities
         let mut all_cores = create_cores(context, vec![1, 1, 1, 1]);
 
@@ -1409,7 +1472,7 @@ mod test {
         let _ = tracing_subscriber::fmt::try_init();
         let default_params = Parameters::default();
 
-        let (mut context, _) = Context::new_for_test(4);
+        let (mut context, _, _) = Context::new_for_test(4);
         // create the cores and their signals for all the authorities
         let mut cores = create_cores(context, vec![1, 1, 1, 1]);
 
@@ -1497,7 +1560,7 @@ mod test {
         let _ = tracing_subscriber::fmt::try_init();
         let default_params = Parameters::default();
 
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         // create the cores and their signals for all the authorities
         let mut cores = create_cores(context, vec![1, 1, 1, 1]);
 
@@ -1586,7 +1649,7 @@ mod test {
         let _ = tracing_subscriber::fmt::try_init();
         let default_params = Parameters::default();
 
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         // create the cores and their signals for all the authorities
         let mut cores = create_cores(context, vec![1, 1, 1, 1]);
 

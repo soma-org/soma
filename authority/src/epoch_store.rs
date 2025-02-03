@@ -20,8 +20,8 @@ use types::{
     base::{AuthorityName, ConciseableName, Round, SomaAddress},
     committee::{Committee, EpochId},
     consensus::{
-        ConsensusCommitPrologue, ConsensusTransaction, ConsensusTransactionKey,
-        ConsensusTransactionKind, NextEpochCommitteeAPI,
+        validator_set::ValidatorSet, ConsensusCommitPrologue, ConsensusTransaction,
+        ConsensusTransactionKey, ConsensusTransactionKind, NextEpochCommitteeAPI,
     },
     crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
     digests::{TransactionDigest, TransactionEffectsDigest},
@@ -1606,13 +1606,15 @@ impl AuthorityPerEpochStore {
 }
 
 impl NextEpochCommitteeAPI for AuthorityPerEpochStore {
-    fn get_next_epoch_committee(&self) -> Option<Vec<(AuthorityPublicKeyBytes, u64)>> {
+    fn get_next_epoch_committee(&self) -> Option<ValidatorSet> {
         self.next_epoch_state.read().as_ref().map(|state| {
-            state
-                .get_current_epoch_committee()
-                .committee()
-                .clone()
-                .voting_rights
+            ValidatorSet(
+                state
+                    .get_current_epoch_committee()
+                    .committee()
+                    .clone()
+                    .voting_rights,
+            )
         })
     }
 }

@@ -2,6 +2,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
+use fastcrypto::traits::KeyPair;
 use mysticeti_client::LazyMysticetiClient;
 use mysticeti_manager::MysticetiManager;
 use tokio::time::{sleep, timeout};
@@ -66,6 +67,7 @@ impl ConsensusManager {
         let mysticeti_manager = MysticetiManager::new(
             node_config.worker_key_pair().into_inner(),
             node_config.network_key_pair().into_inner(),
+            node_config.protocol_key_pair().copy(),
             consensus_config.db_path().to_path_buf(),
             mysticeti_client.clone(),
             accumulator_store,

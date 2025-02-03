@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::block::{
@@ -8,8 +9,10 @@ use super::context::Context;
 use super::transaction::TransactionVerifier;
 use crate::accumulator::{self, AccumulatorStore};
 use crate::committee::{Committee, EpochId};
+use crate::crypto::AuthorityPublicKey;
 use crate::storage::read_store::ReadStore;
 use fastcrypto::hash::MultisetHash;
+use fastcrypto::traits::AggregateAuthenticator;
 use tokio::task::watch::error;
 use tracing::{error, info};
 
@@ -130,6 +133,44 @@ impl BlockVerifier for SignedBlockVerifier {
             }
         }
 
+        // Verify EndOfEpochData if present
+        if let Some(eoe) = block.end_of_epoch_data() {
+            match (
+                &eoe.next_validator_set,
+                &eoe.validator_set_signature,
+                &eoe.aggregate_signature,
+            ) {
+                // Invalid combinations
+                (None, Some(_), _) => {
+                    return Err(ConsensusError::InvalidEndOfEpoch(
+                        "Validator set signature without validator set".into(),
+                    ));
+                }
+                (None, _, Some(_)) => {
+                    return Err(ConsensusError::InvalidEndOfEpoch(
+                        "Aggregate signature without validator set".into(),
+                    ));
+                }
+                (_, None, Some(_)) => {
+                    return Err(ConsensusError::InvalidEndOfEpoch(
+                        "Aggregate signature without block author signature".into(),
+                    ));
+                }
+
+                // Valid combinations with validation logic
+                (Some(validator_set), Some(signature), _) => {
+                    let authority = committee
+                        .authority_by_authority_index(block.author())
+                        .unwrap();
+                    validator_set.verify_signature(signature, &authority.authority_key)?;
+                }
+
+                // Other valid combinations
+                (None, None, None) => {}    // No end of epoch data
+                (Some(_), None, None) => {} // First proposal of validator set
+            }
+        }
+
         // Verify the block's ancestor refs are consistent with the block's round,
         // and total parent stakes reach quorum.
         if block.ancestors().len() > committee.size() {
@@ -214,6 +255,63 @@ impl BlockVerifier for SignedBlockVerifier {
                 block_timestamp_ms: block.timestamp_ms(),
             });
         }
+
+        if let Some(eoe) = block.end_of_epoch_data() {
+            if let Some(agg_sig) = &eoe.aggregate_signature {
+                // Use HashSet for uniqueness
+                let mut pubkey_set = HashSet::new();
+
+                // Add this block's key if it signed
+                if let Some(_) = &eoe.validator_set_signature {
+                    let authority = self
+                        .context
+                        .committee
+                        .authority_by_authority_index(block.author())
+                        .unwrap();
+                    pubkey_set.insert(authority.authority_key.clone());
+                }
+
+                // Add ancestor keys if they signed same validator set
+                for ancestor in ancestors {
+                    if let Some(ancestor_eoe) = ancestor.end_of_epoch_data() {
+                        if ancestor_eoe.next_validator_set == eoe.next_validator_set
+                            && ancestor_eoe.validator_set_signature.is_some()
+                        {
+                            let authority = self
+                                .context
+                                .committee
+                                .authority_by_authority_index(ancestor.author())
+                                .unwrap();
+                            pubkey_set.insert(authority.authority_key.clone());
+                        }
+                    }
+                }
+
+                // Verify quorum using unique keys
+                if !self
+                    .context
+                    .committee
+                    .reached_quorum(pubkey_set.len() as u64)
+                {
+                    return Err(ConsensusError::InvalidEndOfEpoch(
+                        "Insufficient signatures for aggregate".into(),
+                    ));
+                }
+
+                // Convert to Vec for BLS verification
+                let pubkeys: Vec<_> = pubkey_set.into_iter().collect();
+
+                // Verify the aggregate signature
+                let validator_set = eoe.next_validator_set.as_ref().unwrap();
+                let message =
+                    bcs::to_bytes(&validator_set).map_err(ConsensusError::SerializationFailure)?;
+
+                agg_sig.verify(&pubkeys, &message).map_err(|_| {
+                    ConsensusError::InvalidEndOfEpoch("Invalid aggregate signature".into())
+                })?;
+            }
+        }
+
         Ok(())
     }
 }

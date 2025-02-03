@@ -41,7 +41,7 @@ fn service_with_own_blocks() -> Arc<Mutex<TestService>> {
 async fn send_and_receive_blocks_with_auth() {
     let manager_builder = TonicManagerBuilder {};
 
-    let (context, keys) = Context::new_for_test(4);
+    let (context, keys, _) = Context::new_for_test(4);
 
     let context_0 = Arc::new(
         context
@@ -101,7 +101,7 @@ async fn send_and_receive_blocks_with_auth() {
 
     // `Committee` is generated with the same random seed in Context::new_for_test(),
     // so the first 4 authorities are the same.
-    let (context_4, keys_4) = Context::new_for_test(5);
+    let (context_4, keys_4, _) = Context::new_for_test(5);
     let context_4 = Arc::new(
         context_4
             .clone()

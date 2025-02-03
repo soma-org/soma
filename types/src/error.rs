@@ -501,6 +501,9 @@ pub enum ConsensusError {
 
     #[error("No committee for epoch: {0}")]
     NoCommitteeForEpoch(Epoch),
+
+    #[error("Invalid end of epoch data in block: {0}")]
+    InvalidEndOfEpoch(String),
 }
 
 pub type ConsensusResult<T> = Result<T, ConsensusError>;

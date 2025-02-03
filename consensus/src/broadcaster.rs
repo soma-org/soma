@@ -257,7 +257,7 @@ mod test {
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn test_broadcaster() {
-        let (context, _keys) = Context::new_for_test(4);
+        let (context, _keys, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let network_client = Arc::new(FakeNetworkClient::new());
         let (core_signals, signals_receiver) = CoreSignals::new(context.clone());

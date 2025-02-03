@@ -64,6 +64,7 @@ pub enum IntentScope {
     TransactionEffects = 3, // Used for an authority signature on transaction effects.
     DiscoveryPeers = 4, // Used for a signature on a discovery message.
     CommitSummary = 5,  // Used for a signature on a commit summary.
+    ValidatorSet = 6,   // Used for a signature on a validator set.
 }
 
 impl TryFrom<u8> for IntentScope {

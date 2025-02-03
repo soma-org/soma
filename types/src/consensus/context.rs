@@ -2,7 +2,7 @@ use std::{sync::Arc, time::SystemTime};
 
 use super::{block::BlockTimestampMs, committee::local_committee_and_keys};
 use crate::committee::{AuthorityIndex, Committee};
-use crate::crypto::{NetworkKeyPair, ProtocolKeyPair};
+use crate::crypto::{AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair};
 use crate::parameters::Parameters;
 // #[cfg(test)]
 use tempfile::TempDir;
@@ -45,8 +45,15 @@ impl Context {
 
     /// Create a test context with a committee of given size and even stake
     // #[cfg(test)]
-    pub fn new_for_test(committee_size: usize) -> (Self, Vec<(NetworkKeyPair, ProtocolKeyPair)>) {
-        let (committee, keypairs) = local_committee_and_keys(0, vec![1; committee_size]);
+    pub fn new_for_test(
+        committee_size: usize,
+    ) -> (
+        Self,
+        Vec<(NetworkKeyPair, ProtocolKeyPair)>,
+        Vec<AuthorityKeyPair>,
+    ) {
+        let (committee, keypairs, authority_keypairs) =
+            local_committee_and_keys(0, vec![1; committee_size]);
         let clock = Arc::new(Clock::new());
         let temp_dir = TempDir::new().unwrap();
         let context = Context::new(
@@ -60,7 +67,7 @@ impl Context {
             // metrics,
             clock,
         );
-        (context, keypairs)
+        (context, keypairs, authority_keypairs)
     }
 
     // #[cfg(test)]

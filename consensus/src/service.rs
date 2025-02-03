@@ -430,7 +430,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn test_handle_send_block() {
-        let (context, _keys) = Context::new_for_test(4);
+        let (context, _keys, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let block_verifier = Arc::new(types::consensus::block_verifier::NoopBlockVerifier {});
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());
@@ -490,7 +490,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn test_handle_fetch_latest_blocks() {
         // GIVEN
-        let (context, _keys) = Context::new_for_test(4);
+        let (context, _keys, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let block_verifier = Arc::new(types::consensus::block_verifier::NoopBlockVerifier {});
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());

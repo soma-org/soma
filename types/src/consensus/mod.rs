@@ -7,6 +7,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
+use validator_set::ValidatorSet;
 
 pub mod block;
 pub mod block_verifier;
@@ -16,6 +17,7 @@ pub mod context;
 pub mod leader_schedule;
 pub mod stake_aggregator;
 pub mod transaction;
+pub mod validator_set;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ConsensusTransaction {
@@ -123,11 +125,11 @@ pub struct ConsensusCommitPrologue {
 
 pub trait NextEpochCommitteeAPI: Send + Sync + 'static {
     /// Returns the committee for the next epoch if one has been computed
-    fn get_next_epoch_committee(&self) -> Option<Vec<(AuthorityPublicKeyBytes, u64)>>;
+    fn get_next_epoch_committee(&self) -> Option<ValidatorSet>;
 }
 
 pub struct TestEpochStore {
-    pub next_epoch_committee: Option<Vec<(AuthorityPublicKeyBytes, u64)>>,
+    pub next_epoch_committee: Option<ValidatorSet>,
 }
 
 impl TestEpochStore {
@@ -137,13 +139,13 @@ impl TestEpochStore {
         }
     }
 
-    pub fn set_next_epoch_committee(&mut self, committee: Vec<(AuthorityPublicKeyBytes, u64)>) {
+    pub fn set_next_epoch_committee(&mut self, committee: ValidatorSet) {
         self.next_epoch_committee = Some(committee);
     }
 }
 
 impl NextEpochCommitteeAPI for TestEpochStore {
-    fn get_next_epoch_committee(&self) -> Option<Vec<(AuthorityPublicKeyBytes, u64)>> {
+    fn get_next_epoch_committee(&self) -> Option<ValidatorSet> {
         self.next_epoch_committee.clone()
     }
 }

@@ -1230,7 +1230,7 @@ mod tests {
     #[tokio::test]
     async fn successful_fetch_blocks_from_peer() {
         // GIVEN
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
@@ -1277,7 +1277,7 @@ mod tests {
     #[tokio::test]
     async fn saturate_fetch_blocks_from_peer() {
         // GIVEN
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
@@ -1335,7 +1335,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn synchronizer_periodic_task_fetch_blocks() {
         // GIVEN
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
@@ -1403,7 +1403,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn synchronizer_periodic_task_skip_when_commit_lagging() {
         // GIVEN
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
@@ -1512,7 +1512,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn synchronizer_fetch_own_last_block() {
         // GIVEN
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context.with_parameters(Parameters {
             sync_last_proposed_block_timeout: Duration::from_millis(2_000),
             ..Default::default()

@@ -318,7 +318,7 @@ mod tests {
     #[tokio::test]
     async fn suspend_blocks_with_missing_ancestors() {
         // GIVEN
-        let (context, _key_pairs) = Context::new_for_test(4);
+        let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
@@ -374,7 +374,7 @@ mod tests {
 
     #[tokio::test]
     async fn try_accept_block_returns_missing_blocks() {
-        let (context, _key_pairs) = Context::new_for_test(4);
+        let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
@@ -418,7 +418,7 @@ mod tests {
     #[tokio::test]
     async fn accept_blocks_with_complete_causal_history() {
         // GIVEN
-        let (context, _key_pairs) = Context::new_for_test(4);
+        let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
@@ -459,7 +459,7 @@ mod tests {
     #[tokio::test]
     async fn accept_blocks_unsuspend_children_blocks() {
         // GIVEN
-        let (context, _key_pairs) = Context::new_for_test(4);
+        let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
 
         // create a DAG of rounds 1 ~ 3
@@ -536,7 +536,7 @@ mod tests {
 
     #[tokio::test]
     async fn reject_blocks_failing_verifications() {
-        let (context, _key_pairs) = Context::new_for_test(4);
+        let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
 
         // create a DAG of rounds 1 ~ 5.

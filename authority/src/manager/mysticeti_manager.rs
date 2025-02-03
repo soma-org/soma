@@ -7,12 +7,11 @@ use crate::{
 use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
 use consensus::{CommitConsumer, ConsensusAuthority};
-use fastcrypto::ed25519::Ed25519KeyPair;
+use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, ed25519::Ed25519KeyPair, traits::KeyPair};
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::Mutex;
 use tracing::info;
-use types::consensus::{block::Round, commit::CommitIndex};
 use types::{accumulator, parameters::Parameters};
 use types::{
     accumulator::AccumulatorStore,
@@ -20,12 +19,17 @@ use types::{
     system_state::EpochStartSystemStateTrait,
 };
 use types::{committee::EpochId, config::node_config::NodeConfig};
+use types::{
+    consensus::{block::Round, commit::CommitIndex},
+    crypto::AuthorityKeyPair,
+};
 
 use super::{mysticeti_client::LazyMysticetiClient, ConsensusManagerTrait, Running};
 
 pub struct MysticetiManager {
     protocol_keypair: ProtocolKeyPair,
     network_keypair: NetworkKeyPair,
+    authority_keypair: AuthorityKeyPair,
     storage_base_path: PathBuf,
     running: Mutex<Running>,
     authority: ArcSwapOption<ConsensusAuthority>,
@@ -43,6 +47,7 @@ impl MysticetiManager {
     pub fn new(
         protocol_keypair: Ed25519KeyPair,
         network_keypair: Ed25519KeyPair,
+        authority_keypair: BLS12381KeyPair,
         storage_base_path: PathBuf,
         client: Arc<LazyMysticetiClient>,
         accumulator_store: Arc<dyn AccumulatorStore>,
@@ -51,6 +56,7 @@ impl MysticetiManager {
         Self {
             protocol_keypair: ProtocolKeyPair::new(protocol_keypair),
             network_keypair: NetworkKeyPair::new(network_keypair),
+            authority_keypair,
             storage_base_path,
             running: Mutex::new(Running::False),
             authority: ArcSwapOption::empty(),
@@ -111,6 +117,7 @@ impl ConsensusManagerTrait for MysticetiManager {
             parameters.clone(),
             self.protocol_keypair.clone(),
             self.network_keypair.clone(),
+            self.authority_keypair.copy(),
             Arc::new(tx_validator.clone()),
             consumer,
             self.accumulator_store.clone(),

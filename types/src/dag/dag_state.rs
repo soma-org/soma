@@ -877,7 +877,7 @@ mod test {
 
     #[tokio::test]
     async fn test_get_blocks() {
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let mut dag_state = DagState::new(context.clone(), store.clone(), None);
@@ -984,7 +984,7 @@ mod test {
     #[tokio::test]
     async fn test_ancestors_at_uncommitted_round() {
         // Initialize DagState.
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let mut dag_state = DagState::new(context.clone(), store.clone(), None);
@@ -1143,7 +1143,7 @@ mod test {
         /// Only keep elements up to 2 rounds before the last committed round
         const CACHED_ROUNDS: Round = 2;
 
-        let (mut context, _) = Context::new_for_test(4);
+        let (mut context, _, _) = Context::new_for_test(4);
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
@@ -1203,7 +1203,7 @@ mod test {
         const CACHED_ROUNDS: Round = 2;
 
         let num_authorities: u32 = 4;
-        let (mut context, _) = Context::new_for_test(num_authorities as usize);
+        let (mut context, _, _) = Context::new_for_test(num_authorities as usize);
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
@@ -1267,7 +1267,7 @@ mod test {
         /// Only keep elements up to 2 rounds before the last committed round
         const CACHED_ROUNDS: Round = 2;
 
-        let (mut context, _) = Context::new_for_test(4);
+        let (mut context, _, _) = Context::new_for_test(4);
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
@@ -1306,7 +1306,7 @@ mod test {
 
     #[tokio::test]
     async fn test_get_blocks_in_cache_or_store() {
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let mut dag_state = DagState::new(context.clone(), store.clone(), None);
@@ -1366,7 +1366,7 @@ mod test {
     async fn test_flush_and_recovery() {
         let _ = tracing_subscriber::fmt::init();
         let num_authorities: u32 = 4;
-        let (context, _) = Context::new_for_test(num_authorities as usize);
+        let (context, _, _) = Context::new_for_test(num_authorities as usize);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let mut dag_state = DagState::new(context.clone(), store.clone(), None);
@@ -1475,7 +1475,7 @@ mod test {
 
     #[tokio::test]
     async fn test_get_cached_blocks() {
-        let (mut context, _) = Context::new_for_test(4);
+        let (mut context, _, _) = Context::new_for_test(4);
         context.parameters.dag_state_cached_rounds = 5;
 
         let context = Arc::new(context);
@@ -1532,7 +1532,7 @@ mod test {
     async fn test_get_cached_last_block_per_authority() {
         // GIVEN
         const CACHED_ROUNDS: Round = 2;
-        let (mut context, _) = Context::new_for_test(4);
+        let (mut context, _, _) = Context::new_for_test(4);
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
@@ -1597,7 +1597,7 @@ mod test {
     async fn test_get_cached_last_block_per_authority_requesting_out_of_round_range() {
         // GIVEN
         const CACHED_ROUNDS: Round = 1;
-        let (mut context, _) = Context::new_for_test(4);
+        let (mut context, _, _) = Context::new_for_test(4);
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
@@ -1642,7 +1642,7 @@ mod test {
     #[tokio::test]
     async fn test_last_quorum() {
         // GIVEN
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
@@ -1698,7 +1698,7 @@ mod test {
     #[tokio::test]
     async fn test_last_block_for_authority() {
         // GIVEN
-        let (context, _) = Context::new_for_test(4);
+        let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(

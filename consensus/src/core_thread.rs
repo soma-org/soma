@@ -201,6 +201,7 @@ impl CoreThreadDispatcher for ChannelCoreThreadDispatcher {
 
 #[cfg(test)]
 mod test {
+    use fastcrypto::traits::KeyPair;
     use parking_lot::RwLock;
     use tokio::sync::mpsc::unbounded_channel;
     use types::{accumulator::TestAccumulatorStore, consensus::TestEpochStore};
@@ -224,7 +225,7 @@ mod test {
     #[tokio::test]
     async fn test_core_thread() {
         let _ = tracing_subscriber::fmt::try_init();
-        let (context, mut key_pairs) = Context::new_for_test(4);
+        let (context, mut key_pairs, authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
@@ -255,6 +256,7 @@ mod test {
             commit_observer,
             signals,
             key_pairs.remove(context.own_index.unwrap().value()).1,
+            authority_keypairs[context.own_index.unwrap().value()].copy(),
             dag_state,
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),

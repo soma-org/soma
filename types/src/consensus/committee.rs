@@ -19,10 +19,15 @@ use serde::{Deserialize, Serialize};
 pub fn local_committee_and_keys(
     epoch: Epoch,
     authorities_stake: Vec<Stake>,
-) -> (Committee, Vec<(NetworkKeyPair, ProtocolKeyPair)>) {
+) -> (
+    Committee,
+    Vec<(NetworkKeyPair, ProtocolKeyPair)>,
+    Vec<AuthorityKeyPair>,
+) {
     let mut authorities = BTreeMap::new();
     let mut voting_weights = BTreeMap::new();
     let mut key_pairs = vec![];
+    let mut authority_key_pairs = vec![];
     let mut rng = StdRng::from_seed([0; 32]);
 
     for (i, stake) in authorities_stake.into_iter().enumerate() {
@@ -46,10 +51,11 @@ pub fn local_committee_and_keys(
 
         voting_weights.insert(name, stake);
         key_pairs.push((network_keypair, protocol_keypair));
+        authority_key_pairs.push(authority_keypair);
     }
 
     let committee = Committee::new(epoch, voting_weights, authorities);
-    (committee, key_pairs)
+    (committee, key_pairs, authority_key_pairs)
 }
 
 /// Returns a local address with an ephemeral port.

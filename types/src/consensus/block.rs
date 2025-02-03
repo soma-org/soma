@@ -8,8 +8,8 @@ use std::{
     sync::Arc,
 };
 
-use super::commit::CommitVote;
 use super::context::Context;
+use super::{commit::CommitVote, validator_set::ValidatorSet};
 use crate::crypto::{
     AggregateAuthoritySignature, AuthorityPublicKeyBytes, AuthoritySignature,
     DefaultHash as DefaultHashFunction, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey,
@@ -74,7 +74,7 @@ impl StateCommit {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EndOfEpochData {
     /// The proposed validator set for next epoch, with each validator's public key and voting power
-    pub next_validator_set: Option<Vec<(AuthorityPublicKeyBytes, u64)>>,
+    pub next_validator_set: Option<ValidatorSet>,
 
     /// BLS signature from this block's author on next_validator_set from blocks in ancestry
     /// Only included if a valid validator set was found in ancestry
@@ -640,7 +640,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sign_and_verify() {
-        let (context, key_pairs) = Context::new_for_test(4);
+        let (context, key_pairs, _) = Context::new_for_test(4);
         let context = Arc::new(context);
 
         // Create a block that authority 2 has created
