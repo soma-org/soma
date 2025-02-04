@@ -12,7 +12,10 @@ use std::{
 
 use crate::error::{ShardError, ShardResult};
 
-use super::shard::{Shard, ShardEntropy};
+use super::{
+    probe::Probe,
+    shard::{Shard, ShardEntropy},
+};
 
 /// max of 10_000
 type VotingPowerUnit = u16;
@@ -152,17 +155,17 @@ impl EncoderCommittee {
 impl EncoderCommittee {
     pub fn local_test_committee(
         epoch: Epoch,
-        voting_powers: Vec<VotingPowerUnit>,
+        encoder_details: Vec<(VotingPowerUnit, Digest<Probe>)>,
         shard_size: ShardSizeUnit,
         quorum_threshold: QuorumUnit,
         starting_port: u16,
     ) -> (Self, Vec<(NetworkKeyPair, EncoderKeyPair)>) {
         let mut rng = StdRng::from_seed([0; 32]);
         let mut key_pairs = vec![];
-        let encoders = voting_powers
+        let encoders = encoder_details
             .into_iter()
             .enumerate()
-            .map(|(i, power)| {
+            .map(|(i, (power, probe_digest))| {
                 let encoder_keypair = EncoderKeyPair::generate(&mut rng);
                 let network_keypair = NetworkKeyPair::generate(&mut rng);
                 let port = starting_port + i as u16;
@@ -175,6 +178,7 @@ impl EncoderCommittee {
                     hostname: format!("test-encoder-{}", i),
                     encoder_key: encoder_keypair.public(),
                     network_key: network_keypair.public(),
+                    probe_digest,
                 }
             })
             .collect();
@@ -201,6 +205,8 @@ pub(crate) struct Encoder {
     encoder_key: EncoderPublicKey,
     /// The authority's public key for TLS and as network identity.
     network_key: NetworkPublicKey,
+    /// The digest of the probes are locked in at epoch change.
+    probe_digest: Digest<Probe>,
 }
 
 /// Represents an EncoderIndex, also modality marked for type safety

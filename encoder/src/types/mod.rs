@@ -1,6 +1,7 @@
 pub(crate) mod certified;
 pub(crate) mod encoder_committee;
 pub(crate) mod encoder_context;
+pub(crate) mod probe;
 pub(crate) mod score;
 pub(crate) mod shard;
 pub(crate) mod shard_commit;
