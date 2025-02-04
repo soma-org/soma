@@ -13,5 +13,4 @@ pub mod scope;
 pub mod serialized;
 pub mod signed;
 pub mod transaction;
-pub mod transaction_certificate;
 pub mod verified;

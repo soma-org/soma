@@ -64,6 +64,16 @@ impl<T: Serialize> Signed<T> {
             marker: PhantomData,
         }
     }
+
+    pub fn map<U: Serialize, F: FnOnce(T) -> U>(self, f: F) -> Signed<U> {
+        Signed {
+            inner: f(self.inner),
+            signature: Signature {
+                bytes: self.signature.bytes,
+                marker: PhantomData,
+            },
+        }
+    }
 }
 
 impl<T: Serialize> std::ops::Deref for Signed<T> {

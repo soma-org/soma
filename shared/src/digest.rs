@@ -50,9 +50,9 @@ impl<T: Serialize> Digest<T> {
             marker: PhantomData,
         })
     }
-    pub fn new_from_bytes(bytes: &Bytes) -> Self {
+    pub fn new_from_bytes<Data: AsRef<[u8]>>(data: Data) -> Self {
         let mut hasher = DefaultHashFunction::new();
-        hasher.update(bytes);
+        hasher.update(data);
         Self {
             inner: hasher.finalize().into(),
             marker: PhantomData,

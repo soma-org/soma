@@ -88,5 +88,4 @@ impl fmt::Debug for CommitRef {
     }
 }
 
-/// Represents a vote on a Commit.
 pub(crate) type CommitVote = CommitRef;

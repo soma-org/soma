@@ -2,15 +2,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     authority_committee::{AuthorityBitSet, AuthorityCommittee, AuthorityIndex},
-    block::{BlockHeader, BlockHeaderAPI, BlockHeaderRef, SignedBlockHeader, VerifiedBlockHeader},
+    block::{BlockHeader, BlockHeaderAPI, BlockRef},
     crypto::keys::{AuthorityAggregateSignature, AuthorityPublicKey},
     digest::Digest,
     error::SharedResult,
+    signed::Signed,
     transaction::SignedTransaction,
+    verified::Verified,
 };
 
 pub struct FinalityProof {
-    verified_block_header: VerifiedBlockHeader,
+    signed_block_header: Verified<Signed<BlockHeader>>,
     signed_transaction: SignedTransaction,
     // First round
     first_round_digests: Vec<[u8; 32]>,
@@ -23,10 +25,11 @@ pub struct FinalityProof {
 
 impl FinalityProof {
     pub fn verify(&self, authority_committee: AuthorityCommittee) -> SharedResult<()> {
-        let round = self.verified_block_header.round();
-        let author = self.verified_block_header.author();
-        let digest = self.verified_block_header.digest();
-        let bref = BlockHeaderRef::new(round, author, digest);
+        let epoch = self.signed_block_header.epoch();
+        let round = self.signed_block_header.round();
+        let author = self.signed_block_header.author();
+        let digest = self.signed_block_header.digest();
+        let bref = BlockRef::new(round, author, digest);
 
         let authorities = self.first_round_authorities.get_indices();
         let pks: Vec<AuthorityPublicKey> = authorities
