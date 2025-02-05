@@ -18,10 +18,10 @@ use tonic::{transport::Channel, Request, Response};
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::CommitIndex,
-    committee::{Epoch, EpochId},
+    committee::{Authority, Committee, Epoch, EpochId},
     config::state_sync_config::StateSyncConfig,
     consensus::{
-        block::{BlockAPI, BlockRef, SignedBlock, VerifiedBlock},
+        block::{BlockAPI, BlockRef, EndOfEpochData, SignedBlock, VerifiedBlock},
         block_verifier::{BlockVerifier, SignedBlockVerifier},
         commit::{Commit, CommitAPI, CommitDigest, CommitRef, CommittedSubDag, TrustedCommit},
         stake_aggregator::{QuorumThreshold, StakeAggregator},
@@ -422,24 +422,57 @@ where
                 .collect::<Vec<_>>();
         }
 
-        // TODO: If this is the last checkpoint of a epoch, we need to make sure
-        // new committee is in store before we verify newer checkpoints in next epoch.
+        // TODO: If this is the last commit of a epoch, we need to make sure
+        // new committee is in store before we verify newer commits in next epoch.
         // This could happen before this validator's reconfiguration finishes, because
         // state sync does not reconfig.
-        // TODO: make CheckpointAggregator use WriteStore so we don't need to do this
-        // committee insertion in two places (only in `insert_checkpoint`).
-        // if let Some(EndOfEpochData {
-        //     next_epoch_committee,
-        //     ..
-        // }) = checkpoint.end_of_epoch_data.as_ref()
-        // {
-        //     let next_committee = next_epoch_committee.iter().cloned().collect();
-        //     let committee =
-        //         Committee::new(checkpoint.epoch().checked_add(1).unwrap(), next_committee);
-        //     self.store
-        //         .insert_committee(committee)
-        //         .expect("store operation should not fail");
-        // }
+        // TODO: maybe we don't need to do this committee insertion in two places (other in StateSyncStore::insert_commit)
+        if let Some(Some(EndOfEpochData {
+            next_validator_set, ..
+        })) = commit
+            .get_end_of_epoch_block()
+            .map(|b| b.end_of_epoch_data())
+        {
+            if let Some(next_validator_set) = next_validator_set {
+                let voting_rights: BTreeMap<_, _> = next_validator_set
+                    .0
+                    .iter()
+                    .map(|(name, stake, _)| (*name, *stake))
+                    .collect();
+
+                let authorities = next_validator_set
+                    .0
+                    .iter()
+                    .map(|(name, stake, meta)| {
+                        (
+                            *name,
+                            Authority {
+                                stake: *stake,
+                                address: meta.consensus_address.clone(),
+                                hostname: meta.hostname.clone(),
+                                protocol_key: meta.protocol_key.clone(),
+                                network_key: meta.network_key.clone(),
+                                authority_key: meta.authority_key.clone(),
+                            },
+                        )
+                    })
+                    .collect();
+                let committee = Committee::new(
+                    commit
+                        .blocks
+                        .last()
+                        .unwrap()
+                        .epoch()
+                        .checked_add(1)
+                        .unwrap(),
+                    voting_rights,
+                    authorities,
+                );
+                self.store
+                    .insert_committee(committee)
+                    .expect("insert committee operation should not fail");
+            }
+        }
 
         self.store
             .update_highest_synced_commit(&commit)

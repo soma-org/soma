@@ -5,6 +5,7 @@ use fastcrypto::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    committee::NetworkMetadata,
     crypto::{
         AuthorityKeyPair, AuthorityPublicKey, AuthorityPublicKeyBytes, AuthoritySignature,
         DefaultHash as DefaultHashFunction, DIGEST_LENGTH,
@@ -15,7 +16,7 @@ use crate::{
 
 /// Type for next epoch's validator set
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ValidatorSet(pub Vec<(AuthorityPublicKeyBytes, u64)>);
+pub struct ValidatorSet(pub Vec<(AuthorityPublicKeyBytes, u64, NetworkMetadata)>);
 
 /// Digest of validator set, used for signing
 #[derive(Serialize, Deserialize)]

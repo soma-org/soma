@@ -6,7 +6,10 @@ use tracing::{debug, info};
 use types::{
     accumulator::CommitIndex,
     committee::EpochId,
-    consensus::commit::{CommitDigest, CommittedSubDag},
+    consensus::{
+        block::BlockAPI,
+        commit::{CommitDigest, CommittedSubDag},
+    },
     error::SomaResult,
 };
 
@@ -257,13 +260,12 @@ impl CommitStore {
             .write()
             .insert(commit.commit_ref.digest, commit.clone());
 
-        // TODO: epoch last commit map for next_epoch_committee
-        // if commit.next_epoch_committee().is_some() {
-        //     batch.insert_batch(
-        //         &self.epoch_last_commit_map,
-        //         [(&commit.epoch(), commit.index())],
-        //     )?;
-        // }
+        if commit.is_last_commit_of_epoch() {
+            self.epoch_last_commit_map.write().insert(
+                commit.blocks.last().unwrap().epoch(),
+                commit.commit_ref.index,
+            );
+        }
 
         // TODO: check for commit forks
         // if let Some(local_commit) = self.locally_computed_commits.read().get(commit.index()) {

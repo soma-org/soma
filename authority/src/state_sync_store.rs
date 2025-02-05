@@ -1,8 +1,12 @@
 use crate::cache::ExecutionCacheTraitPointers;
 use crate::commit::CommitStore;
 use parking_lot::Mutex;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use types::accumulator::AccumulatorStore;
+use types::committee::Authority;
+use types::consensus::block::BlockAPI;
+use types::consensus::block::EndOfEpochData;
 use types::consensus::commit::CommitDigest;
 use types::consensus::commit::CommittedSubDag;
 use types::storage::committee_store::CommitteeStore;
@@ -144,17 +148,50 @@ impl WriteStore for StateSyncStore {
         &self,
         commit: CommittedSubDag,
     ) -> Result<(), types::storage::storage_error::Error> {
-        // TODO: add the new committee to the store
-        // if let Some(EndOfEpochData {
-        //     next_epoch_committee,
-        //     ..
-        // }) = checkpoint.end_of_epoch_data.as_ref()
-        // {
-        //     let next_committee = next_epoch_committee.iter().cloned().collect();
-        //     let committee =
-        //         Committee::new(checkpoint.epoch().checked_add(1).unwrap(), next_committee);
-        //     self.insert_committee(committee)?;
-        // }
+        if let Some(Some(EndOfEpochData {
+            next_validator_set, ..
+        })) = commit
+            .get_end_of_epoch_block()
+            .map(|b| b.end_of_epoch_data())
+        {
+            if let Some(next_validator_set) = next_validator_set {
+                let voting_rights: BTreeMap<_, _> = next_validator_set
+                    .0
+                    .iter()
+                    .map(|(name, stake, _)| (*name, *stake))
+                    .collect();
+
+                let authorities = next_validator_set
+                    .0
+                    .iter()
+                    .map(|(name, stake, meta)| {
+                        (
+                            *name,
+                            Authority {
+                                stake: *stake,
+                                address: meta.consensus_address.clone(),
+                                hostname: meta.hostname.clone(),
+                                protocol_key: meta.protocol_key.clone(),
+                                network_key: meta.network_key.clone(),
+                                authority_key: meta.authority_key.clone(),
+                            },
+                        )
+                    })
+                    .collect();
+                let committee = Committee::new(
+                    commit
+                        .blocks
+                        .last()
+                        .unwrap()
+                        .epoch()
+                        .checked_add(1)
+                        .unwrap(),
+                    voting_rights,
+                    authorities,
+                );
+                self.insert_committee(committee)?;
+            }
+        }
 
         self.commit_store.insert_commit(commit).map_err(Into::into)
     }

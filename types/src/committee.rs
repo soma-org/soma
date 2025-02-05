@@ -430,7 +430,7 @@ pub trait CommitteeTrait<K: Ord> {
 
     fn weight(&self, author: &K) -> VotingPower;
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct NetworkMetadata {
     // Existing network fields
     pub consensus_address: Multiaddr,

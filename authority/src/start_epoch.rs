@@ -13,7 +13,7 @@ pub struct EpochStartConfiguration {
     system_state: EpochStartSystemState,
     // epoch_digest is defined as following
     // (1) For the genesis epoch it is set to 0
-    // (2) For all other epochs it is a digest of the last checkpoint of a previous epoch
+    // (2) For all other epochs it is a digest of the last commit of a previous epoch
     // Note that this is in line with how epoch start timestamp is defined
     // epoch_digest: CheckpointDigest,
 }

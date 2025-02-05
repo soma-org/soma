@@ -887,7 +887,7 @@ impl AuthorityPerEpochStore {
                 // the lock is not yet dropped.
                 lock=?lock.as_ref(),
                 end_of_publish_quorum=?end_of_publish_quorum,
-                "Notified last checkpoint"
+                "Notified last commit"
             );
         }
 
@@ -1611,9 +1611,16 @@ impl NextEpochCommitteeAPI for AuthorityPerEpochStore {
             ValidatorSet(
                 state
                     .get_current_epoch_committee()
-                    .committee()
-                    .clone()
-                    .voting_rights,
+                    .validators()
+                    .iter()
+                    .map(|(authority_name, (voting_power, network_metadata))| {
+                        (
+                            authority_name.clone(),
+                            *voting_power,
+                            network_metadata.clone(),
+                        )
+                    })
+                    .collect(),
             )
         })
     }

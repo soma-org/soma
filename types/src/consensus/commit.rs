@@ -296,6 +296,43 @@ impl CommittedSubDag {
             commit_ref,
         }
     }
+
+    /// Returns true if this commit contains a block with complete end of epoch data
+    /// (validator set, validator signature, and aggregate signature)
+    pub fn is_last_commit_of_epoch(&self) -> bool {
+        self.blocks.iter().any(|block| {
+            if let Some(eoe) = block.end_of_epoch_data() {
+                matches!(
+                    (
+                        &eoe.next_validator_set,
+                        &eoe.validator_set_signature,
+                        &eoe.aggregate_signature
+                    ),
+                    (Some(_), Some(_), Some(_)) // All fields must be present
+                )
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Returns the block containing complete end of epoch data, if any
+    pub fn get_end_of_epoch_block(&self) -> Option<&VerifiedBlock> {
+        self.blocks.iter().find(|block| {
+            if let Some(eoe) = block.end_of_epoch_data() {
+                matches!(
+                    (
+                        &eoe.next_validator_set,
+                        &eoe.validator_set_signature,
+                        &eoe.aggregate_signature
+                    ),
+                    (Some(_), Some(_), Some(_))
+                )
+            } else {
+                false
+            }
+        })
+    }
 }
 
 // Sort the blocks of the sub-dag blocks by round number then authority index. Any

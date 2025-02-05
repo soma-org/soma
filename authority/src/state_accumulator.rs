@@ -114,12 +114,12 @@ impl StateAccumulator {
     ) -> SomaResult {
         tracing::info!("accumulating running root for commit {}", commit);
 
-        // For the last checkpoint of the epoch, this function will be called once by the
-        // checkpoint builder, and again by checkpoint executor.
+        // For the last commit of the epoch, this function will be called once by the
+        // commit builder, and again by commit executor.
         //
-        // Normally this is fine, since the notify_read_running_root(checkpoint_seq_num - 1) will
-        // work normally. But if there is only one checkpoint in the epoch, that call will hang
-        // forever, since the previous checkpoint belongs to the previous epoch.
+        // Normally this is fine, since the notify_read_running_root(commit_index - 1) will
+        // work normally. But if there is only one commit in the epoch, that call will hang
+        // forever, since the previous commit belongs to the previous epoch.
         if epoch_store.get_running_root_accumulator(&commit)?.is_some() {
             debug!(
                 "accumulate_running_root {:?} {:?} already exists",
@@ -177,7 +177,7 @@ impl StateAccumulator {
     ) -> SomaResult<Accumulator> {
         let running_root = epoch_store
             .get_running_root_accumulator(&commit)?
-            .expect("Expected running root accumulator to exist up to last checkpoint of epoch");
+            .expect("Expected running root accumulator to exist up to last commit of epoch");
 
         self.store
             .insert_state_accumulator_for_commit(&commit, &running_root)?;

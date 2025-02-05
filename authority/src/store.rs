@@ -728,7 +728,7 @@ impl AuthorityStore {
     }
 
     /// This function is called at the end of epoch for each transaction that's
-    /// executed locally on the validator but didn't make to the last checkpoint.
+    /// executed locally on the validator but didn't make to the last commit.
     /// The effects of the execution is reverted here.
     /// The following things are reverted:
     /// 1. All new object states are deleted.
@@ -737,8 +737,8 @@ impl AuthorityStore {
     /// NOTE: transaction and effects are intentionally not deleted. It's
     /// possible that if this node is behind, the network will execute the
     /// transaction in a later epoch. In that case, we need to keep it saved
-    /// so that when we receive the checkpoint that includes it from state
-    /// sync, we are able to execute the checkpoint.
+    /// so that when we receive the commit that includes it from state
+    /// sync, we are able to execute the commit.
     /// TODO: implement GC for transactions that are no longer needed.
     pub fn revert_state_update(&self, tx_digest: &TransactionDigest) -> SomaResult {
         let Some(effects) = self.get_executed_effects(tx_digest)? else {
