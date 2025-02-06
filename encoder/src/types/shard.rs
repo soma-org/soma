@@ -63,12 +63,8 @@ pub(crate) struct ShardEntropy {
     /// digest of the metadata, for valid inputs the data cannot be encrypted and the uncompressed
     /// size should match. Digests without encryption keys should be consistent for the same bytes data every time.  
     metadata_digest: Digest<Metadata>,
-    /// manipulation free randomness that cannot be biased or known beforehand
-    // TODO: need to change this to the proper signature type but will do later
-    threshold_block_signature: EncoderAggregateSignature,
-    /// ensures that two identical metadata/nonce combinations cannot overlap in the same block
-    /// unique for the individual + object version e.g. account balance
-    transaction_digest: Digest<SignedTransaction>,
+    // transaction entropy is the output of a VDF function that combines the digest of the
+    transaction_entropy: EncoderAggregateSignature,
     /// especially useful for batch processing when a single transaction can contain multiple metadata
     /// commitments but they are not allowed to repeat commitment digests. The nonce is factored in
     /// such that identical data inside a batch still gets a unique shard.

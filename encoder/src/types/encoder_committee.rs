@@ -291,7 +291,14 @@ mod tests {
     #[test]
     fn test_sample_shard() {
         // Create a committee with different voting powers
-        let voting_powers = vec![100, 200, 300, 400, 500];
+        let probe_digest = Digest::new(&Probe::new(Bytes::from("hello"))).unwrap();
+        let voting_powers = vec![
+            (100, probe_digest),
+            (200, probe_digest),
+            (300, probe_digest),
+            (400, probe_digest),
+            (500, probe_digest),
+        ];
         let shard_size = 3;
         let quorum_threshold = 2;
         let starting_port = 8000;
@@ -324,7 +331,14 @@ mod tests {
 
     #[test]
     fn test_sample_shard_weighted_distribution() {
-        let voting_powers = vec![1000, 100, 100, 100, 100]; // First encoder has 10x voting power
+        let probe_digest = Digest::new(&Probe::new(Bytes::from("hello"))).unwrap();
+        let voting_powers = vec![
+            (1000, probe_digest),
+            (100, probe_digest),
+            (100, probe_digest),
+            (100, probe_digest),
+            (100, probe_digest),
+        ];
         let shard_size = 2;
         let quorum_threshold = 2;
         let starting_port = 8000;

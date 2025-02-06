@@ -63,8 +63,16 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::{commit::CommitVote, digest::Digest, signed::Signed};
+use crate::{
+    commit::CommitVote,
+    digest::Digest,
+    error::{SharedError, SharedResult},
+    signed::Signed,
+    verified::Verified,
+};
+use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
+use fastcrypto_vdf::{class_group::discriminant::DISCRIMINANT_3072, vdf::wesolowski::DefaultVDF};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -240,7 +248,6 @@ enum Block {
 /// data e.g. transactions / misbehavior_reports / etc.
 #[enum_dispatch]
 trait BlockAPI {
-    /// returns the block header
     fn signed_header(&self) -> Signed<BlockHeader>;
     /// returns the block body
     fn body(&self) -> BlockBody;
@@ -249,13 +256,16 @@ trait BlockAPI {
 /// BlockV1 is the first implementation of block
 #[derive(Clone, Deserialize, Serialize)]
 struct BlockV1 {
-    signed_block_header: Signed<BlockHeaderV1>,
+    // TODO: make this blockheader situation cleaner since the signed / enum
+    // forces us to use a non-specific version which is less type safe. This
+    // should be the version. Same issue with the digest in block header
+    signed_block_header: Signed<BlockHeader>,
     block_body: BlockBodyV1,
 }
 
 impl BlockAPI for BlockV1 {
     fn signed_header(&self) -> Signed<BlockHeader> {
-        self.signed_block_header.clone().map(BlockHeader::V1)
+        self.signed_block_header.clone()
     }
 
     fn body(&self) -> BlockBody {

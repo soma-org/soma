@@ -15,7 +15,10 @@ numpy.workspace = true
 
 [dependencies.pyo3]
 workspace = true
-features = ["abi3-py38"]
+features = ["extension-module","abi3-py38"]
+
+[build-dependencies]
+pyo3-build-config.workspace = true
 
 [lints]
 workspace = true

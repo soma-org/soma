@@ -5,7 +5,10 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::crypto::{address::Address, keys::ProtocolKeySignature};
+use crate::{
+    crypto::{address::Address, keys::ProtocolKeySignature},
+    metadata::MetadataCommitment,
+};
 
 use super::{digest::Digest, scope::ScopedMessage};
 
@@ -79,8 +82,10 @@ impl TransactionDataAPI for TransactionDataV1 {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct ShardTransaction {
-    // TODO: need to actually fix this
-    shard_secret_digest: Digest<String>,
+    shard_secret_digest: Digest<MetadataCommitment>,
+    // TODO: value is just a placeholder this code was written
+    // pre account/balances
+    value: u64,
 }
 
 impl TransactionData {

@@ -5,3 +5,9 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct Probe {
     weights: Bytes,
 }
+
+impl Probe {
+    pub(crate) fn new(weights: Bytes) -> Self {
+        Self { weights }
+    }
+}

@@ -11,7 +11,7 @@ use thiserror::Error;
 //     commit::{Commit, CommitIndex},
 // };
 
-use crate::authority_committee::AuthorityIndex;
+use crate::{authority_committee::AuthorityIndex, block::TransactionIndex};
 
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
@@ -118,9 +118,12 @@ pub enum SharedError {
 
     #[error("Invalid authority index: {index} > {max}")]
     InvalidAuthorityIndex { index: AuthorityIndex, max: usize },
+    #[error("Invalid transaction index: {index}")]
+    InvalidTransactionIndex { index: TransactionIndex },
     #[error("Failed to deserialize signature: {0}")]
     MalformedSignature(FastCryptoError),
-
+    #[error("VDF failed: {0}")]
+    FailedVDF(String),
     #[error("Failed to verify the block's signature: {0}")]
     SignatureVerificationFailure(FastCryptoError),
 

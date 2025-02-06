@@ -4,6 +4,7 @@ pub mod checksum;
 pub mod commit;
 pub mod crypto;
 pub mod digest;
+pub mod entropy;
 pub mod error;
 pub mod finality_proof;
 pub mod metadata;
