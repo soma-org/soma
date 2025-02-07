@@ -3,7 +3,10 @@ use std::hash::{Hash, Hasher};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::EncoderAggregateSignature, digest::Digest, metadata::Metadata,
+    crypto::keys::EncoderAggregateSignature,
+    digest::Digest,
+    entropy::BlockEntropyOutput,
+    metadata::{Metadata, MetadataCommitment},
     transaction::SignedTransaction,
 };
 use strum_macros::Display;
@@ -56,19 +59,15 @@ impl Shard {
     }
 }
 
+/// The Digest<ShardEntropy> acts as a seed for random sampling from the encoder committee.
+/// Digest<MetadataCommitment> is included inside of a tx which is a one way fn whereas
+/// this entropy uses the actual values of the serialized type of MetadataCommitment to create the Digest.
+///
+/// BlockEntropy is derived from VDF(Epoch, BlockRef, iterations)
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ShardEntropy {
-    // Note: intentionally breaking the ordering of metadata and nonce due to serialization with BCS being
-    // sequential.
-    /// digest of the metadata, for valid inputs the data cannot be encrypted and the uncompressed
-    /// size should match. Digests without encryption keys should be consistent for the same bytes data every time.  
-    metadata_digest: Digest<Metadata>,
-    // transaction entropy is the output of a VDF function that combines the digest of the
-    transaction_entropy: EncoderAggregateSignature,
-    /// especially useful for batch processing when a single transaction can contain multiple metadata
-    /// commitments but they are not allowed to repeat commitment digests. The nonce is factored in
-    /// such that identical data inside a batch still gets a unique shard.
-    nonce: [u8; 32],
+    metadata_commitment: MetadataCommitment,
+    entropy: BlockEntropyOutput,
 }
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It

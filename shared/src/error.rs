@@ -19,6 +19,9 @@ pub enum SharedError {
     #[error("Quorum failed")]
     QuorumFailed,
 
+    #[error("wrong epoch")]
+    WrongEpoch,
+
     #[error("Actor error: {0}")]
     ShardNotFound(String),
 

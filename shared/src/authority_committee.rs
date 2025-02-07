@@ -3,10 +3,14 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use rand::{rngs::StdRng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    crypto::keys::{AuthorityPublicKey, NetworkPublicKey, ProtocolPublicKey},
+    crypto::keys::{
+        AuthorityKeyPair, AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair,
+        ProtocolPublicKey,
+    },
     multiaddr::Multiaddr,
 };
 
@@ -137,6 +141,41 @@ impl AuthorityCommittee {
     }
 }
 
+#[cfg(test)]
+impl AuthorityCommittee {
+    pub fn local_test_committee(
+        epoch: Epoch,
+        authorities_stake: Vec<Stake>,
+        starting_port: u16,
+    ) -> (
+        Self,
+        Vec<(NetworkKeyPair, ProtocolKeyPair, AuthorityKeyPair)>,
+    ) {
+        let mut authorities = vec![];
+        let mut key_pairs = vec![];
+        let mut rng = StdRng::from_seed([0; 32]);
+        for (i, stake) in authorities_stake.into_iter().enumerate() {
+            let authority_keypair = AuthorityKeyPair::generate(&mut rng);
+            let protocol_keypair = ProtocolKeyPair::generate(&mut rng);
+            let network_keypair = NetworkKeyPair::generate(&mut rng);
+            let port = starting_port + i as u16;
+            authorities.push(Authority {
+                stake,
+
+                address: format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap(),
+                hostname: format!("test_host_{i}").to_string(),
+                authority_key: authority_keypair.public(),
+                protocol_key: protocol_keypair.public(),
+                network_key: network_keypair.public(),
+            });
+            key_pairs.push((network_keypair, protocol_keypair, authority_keypair));
+        }
+
+        let committee = AuthorityCommittee::new(epoch, authorities);
+        (committee, key_pairs)
+    }
+}
+
 /// Represents one authority in the committee.
 ///
 /// NOTE: this is intentionally un-cloneable, to encourage only copying relevant fields.
@@ -233,6 +272,7 @@ impl<T> IndexMut<AuthorityIndex> for Vec<T> {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AuthorityBitSet([u8; 32]); // 32 bytes = 256 authorities
 
 impl AuthorityBitSet {

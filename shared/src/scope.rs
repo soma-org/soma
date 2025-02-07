@@ -13,9 +13,10 @@ const INTENT_PREFIX_LENGTH: usize = 2;
 /// The version is to distinguish between signing different versions of the struct
 /// or enum. Serialized output between two different versions of the same struct/enum
 /// might accidentally (or maliciously on purpose) match.
-#[derive(Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Serialize_repr, Deserialize_repr, Default, Copy, Clone, PartialEq, Eq, Debug, Hash)]
 #[repr(u8)]
 enum ScopeVersion {
+    #[default]
     V0 = 0,
 }
 
@@ -45,8 +46,6 @@ pub enum Scope {
     ShardCommit = 10,
     ShardReveal = 11,
     ShardEndorsement = 12,
-    // TODO: add cfg
-    MacroTest = 13,
 }
 
 impl TryFrom<u8> for Scope {

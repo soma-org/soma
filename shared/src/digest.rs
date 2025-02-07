@@ -128,3 +128,12 @@ impl<T: Serialize> AsRef<[u8]> for Digest<T> {
         &self.inner
     }
 }
+
+impl<T: Serialize> Default for Digest<T> {
+    fn default() -> Self {
+        Self {
+            inner: [0u8; DIGEST_LENGTH],
+            marker: PhantomData,
+        }
+    }
+}

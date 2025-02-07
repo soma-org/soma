@@ -82,10 +82,19 @@ impl TransactionDataAPI for TransactionDataV1 {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct ShardTransaction {
-    shard_secret_digest: Digest<MetadataCommitment>,
+    metadata_commitment_digest: Digest<MetadataCommitment>,
     // TODO: value is just a placeholder this code was written
     // pre account/balances
     value: u64,
+}
+
+impl ShardTransaction {
+    pub fn new(metadata_commitment_digest: Digest<MetadataCommitment>, value: u64) -> Self {
+        Self {
+            metadata_commitment_digest,
+            value,
+        }
+    }
 }
 
 impl TransactionData {
