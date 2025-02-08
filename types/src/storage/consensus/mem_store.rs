@@ -1,6 +1,7 @@
 use parking_lot::RwLock;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::Bound::Included;
+use std::sync::Arc;
 
 use crate::consensus::{
     block::{BlockAPI as _, BlockDigest, BlockRef, Round, Slot, VerifiedBlock},
@@ -10,14 +11,19 @@ use crate::consensus::{
     },
 };
 
-use crate::committee::AuthorityIndex;
-use crate::error::ConsensusResult;
+use crate::committee::{AuthorityIndex, Committee, EpochId};
+use crate::dag::dag_state::DagStore;
+use crate::error::{ConsensusResult, SomaResult};
+use crate::storage::committee_store::CommitteeStoreTables;
+use crate::storage::read_store::{ReadCommitteeStore, ReadStore};
 
 use super::{ConsensusStore, WriteBatch};
 
 /// In-memory storage for testing.
 pub struct MemStore {
     inner: RwLock<Inner>,
+    tables: RwLock<CommitteeStoreTables>,
+    cache: RwLock<HashMap<EpochId, Arc<Committee>>>,
 }
 
 struct Inner {
@@ -41,9 +47,62 @@ impl MemStore {
                 commit_votes: BTreeSet::new(),
                 commit_info: BTreeMap::new(),
             }),
+            tables: RwLock::new(CommitteeStoreTables {
+                committee_map: BTreeMap::new(),
+            }),
+            cache: RwLock::new(HashMap::new()),
         }
     }
+
+    pub fn new_with_committee(committee: Committee) -> Self {
+        let store = Self::new();
+        if store.database_is_empty() {
+            store
+                .insert_new_committee(committee.clone())
+                .expect("Init genesis committee data must not fail");
+        }
+        store
+    }
+
+    pub fn insert_new_committee(&self, new_committee: Committee) -> SomaResult {
+        if let Some(old_committee) = self.get_committee(&new_committee.epoch)? {
+            // If somehow we already have this committee in the store, they must be the same.
+            assert_eq!(*old_committee, new_committee);
+        } else {
+            let committee = new_committee.clone();
+            self.tables
+                .write()
+                .committee_map
+                .insert(new_committee.epoch, new_committee);
+            self.cache
+                .write()
+                .insert(committee.epoch, Arc::new(committee.clone()));
+        }
+        Ok(())
+    }
+
+    pub fn get_committee(&self, epoch_id: &EpochId) -> SomaResult<Option<Arc<Committee>>> {
+        if let Some(committee) = self.cache.read().get(epoch_id) {
+            return Ok(Some(Arc::clone(committee)));
+        }
+        let committee = self
+            .tables
+            .read()
+            .committee_map
+            .get(epoch_id)
+            .map(|committee| Arc::new(committee.clone()));
+        if let Some(ref committee) = committee {
+            self.cache.write().insert(*epoch_id, Arc::clone(committee));
+        }
+        Ok(committee)
+    }
+
+    fn database_is_empty(&self) -> bool {
+        self.tables.read().committee_map.iter().next().is_none()
+    }
 }
+
+impl DagStore for MemStore {}
 
 impl ConsensusStore for MemStore {
     fn write(&self, write_batch: WriteBatch) -> ConsensusResult<()> {
@@ -208,5 +267,14 @@ impl ConsensusStore for MemStore {
             .commit_info
             .last_key_value()
             .map(|(k, v)| (CommitRef::new(k.0, k.1), v.clone())))
+    }
+}
+
+impl ReadCommitteeStore for MemStore {
+    fn get_committee(
+        &self,
+        epoch: EpochId,
+    ) -> crate::storage::storage_error::Result<Option<Arc<Committee>>> {
+        todo!()
     }
 }

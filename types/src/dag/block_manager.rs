@@ -320,12 +320,8 @@ mod tests {
         // GIVEN
         let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
@@ -376,12 +372,8 @@ mod tests {
     async fn try_accept_block_returns_missing_blocks() {
         let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
@@ -420,12 +412,8 @@ mod tests {
         // GIVEN
         let (context, _key_pairs, _authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
@@ -473,12 +461,8 @@ mod tests {
         for seed in 0..100u8 {
             all_blocks.shuffle(&mut StdRng::from_seed([seed; 32]));
 
-            let store = Arc::new(MemStore::new());
-            let dag_state = Arc::new(RwLock::new(DagState::new(
-                context.clone(),
-                store.clone(),
-                None,
-            )));
+            let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+            let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
             let mut block_manager = BlockManager::new(dag_state, Arc::new(NoopBlockVerifier));
 
@@ -555,12 +539,8 @@ mod tests {
         );
 
         // Create BlockManager.
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
         let mut block_manager = BlockManager::new(dag_state, Arc::new(test_verifier));
 
         // Try to accept blocks from round 2 ~ 5 into block manager. All of them should be suspended.

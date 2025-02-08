@@ -11,13 +11,17 @@ use crate::{
 
 use super::{object_store::ObjectStore, storage_error::Result};
 
-pub trait ReadStore: ObjectStore + Send + Sync {
-    //
-    // Committee Getters
-    //
-
+pub trait ReadCommitteeStore {
     fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>>;
+}
 
+impl<T: ReadCommitteeStore + ?Sized> ReadCommitteeStore for &T {
+    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
+        (*self).get_committee(epoch)
+    }
+}
+
+pub trait ReadStore: ReadCommitteeStore + ObjectStore + Send + Sync {
     //
     // Commit Getters
     //
@@ -69,10 +73,6 @@ pub trait ReadStore: ObjectStore + Send + Sync {
 }
 
 impl<T: ReadStore + ?Sized> ReadStore for &T {
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
-        (*self).get_committee(epoch)
-    }
-
     fn get_highest_synced_commit(&self) -> Result<CommittedSubDag> {
         (*self).get_highest_synced_commit()
     }

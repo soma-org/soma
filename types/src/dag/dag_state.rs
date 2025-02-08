@@ -16,7 +16,7 @@ use crate::consensus::{
 
 use crate::storage::committee_store::CommitteeStore;
 use crate::storage::consensus::{ConsensusStore, WriteBatch};
-use crate::storage::read_store::ReadStore;
+use crate::storage::read_store::{ReadCommitteeStore, ReadStore};
 use crate::storage::write_store::WriteStore;
 use itertools::Itertools as _;
 use std::{
@@ -39,9 +39,7 @@ struct EpochData {
 /// Note: DagState should be wrapped with Arc<parking_lot::RwLock<_>>, to allow
 /// concurrent access from multiple components.
 pub struct DagState {
-    context: Arc<Context>,
-
-    committee_store: Option<Arc<dyn ReadStore>>,
+    pub context: Arc<Context>,
 
     // The genesis blocks
     genesis: BTreeMap<BlockRef, VerifiedBlock>,
@@ -78,18 +76,16 @@ pub struct DagState {
     commit_info_to_write: Vec<(CommitRef, CommitInfo)>,
 
     // Persistent storage for blocks, commits and other consensus data.
-    store: Arc<dyn ConsensusStore>,
+    pub store: Arc<dyn DagStore>,
 
     // The number of cached rounds
     cached_rounds: Round,
 }
 
+pub trait DagStore: ConsensusStore + ReadCommitteeStore {}
+
 impl DagState {
-    pub fn new(
-        context: Arc<Context>,
-        store: Arc<dyn ConsensusStore>,
-        committee_store: Option<Arc<dyn ReadStore>>,
-    ) -> Self {
+    pub fn new(context: Arc<Context>, store: Arc<dyn DagStore>) -> Self {
         let cached_rounds = context.parameters.dag_state_cached_rounds;
         let genesis = genesis_blocks(context.clone())
             .into_iter()
@@ -119,7 +115,6 @@ impl DagState {
             commit_info_to_write: vec![],
             store: store.clone(),
             cached_rounds,
-            committee_store,
         };
 
         // Get commit recovery start index
@@ -179,12 +174,8 @@ impl DagState {
     }
 
     pub fn get_committee(&self, epoch: EpochId) -> Arc<Committee> {
-        if let Some(committee_store) = &self.committee_store {
-            if let Ok(Some(committee)) = committee_store.get_committee(epoch) {
-                committee
-            } else {
-                Arc::new(self.context.committee.clone())
-            }
+        if let Ok(Some(committee)) = self.store.get_committee(epoch) {
+            committee
         } else {
             Arc::new(self.context.committee.clone())
         }
@@ -216,7 +207,7 @@ impl DagState {
     fn is_own_authority(&self, index: AuthorityIndex, epoch: EpochId) -> bool {
         let committee = self.get_committee(epoch);
         if let Some(name) = committee.authority_by_index(index.value() as u32) {
-            if let Some(own_index) = self.context.own_index {
+            if let Some(own_index) = self.context.own_index() {
                 return committee.authority_by_index(own_index.value() as u32) == Some(name);
             }
         }
@@ -879,8 +870,8 @@ mod test {
     async fn test_get_blocks() {
         let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
         let own_index = AuthorityIndex::new_for_test(0);
 
         // Populate test blocks for round 1 ~ 10, authorities 0 ~ 2.
@@ -986,8 +977,8 @@ mod test {
         // Initialize DagState.
         let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Populate DagState.
 
@@ -1147,8 +1138,8 @@ mod test {
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create test blocks for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1207,8 +1198,8 @@ mod test {
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create test blocks for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1271,8 +1262,8 @@ mod test {
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create test blocks for round 1 ~ 10 for authority 0
         let mut blocks = Vec::new();
@@ -1308,8 +1299,8 @@ mod test {
     async fn test_get_blocks_in_cache_or_store() {
         let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create test blocks for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1368,8 +1359,8 @@ mod test {
         let num_authorities: u32 = 4;
         let (context, _, _) = Context::new_for_test(num_authorities as usize);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create test blocks and commits for round 1 ~ 10
         let num_rounds: u32 = 10;
@@ -1434,7 +1425,7 @@ mod test {
         drop(dag_state);
 
         // Recover the state from the store
-        let dag_state = DagState::new(context.clone(), store.clone(), None);
+        let dag_state = DagState::new(context.clone(), store.clone());
 
         // Blocks of first 5 rounds should be found in DagState.
         let blocks = dag_builder.blocks(1..=5);
@@ -1479,8 +1470,8 @@ mod test {
         context.parameters.dag_state_cached_rounds = 5;
 
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create no blocks for authority 0
         // Create one block (round 10) for authority 1
@@ -1536,8 +1527,8 @@ mod test {
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create no blocks for authority 0
         // Create one block (round 1) for authority 1
@@ -1601,8 +1592,8 @@ mod test {
         context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
 
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let mut dag_state = DagState::new(context.clone(), store.clone(), None);
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mut dag_state = DagState::new(context.clone(), store.clone());
 
         // Create no blocks for authority 0
         // Create one block (round 1) for authority 1
@@ -1644,12 +1635,8 @@ mod test {
         // GIVEN
         let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         // WHEN no blocks exist then genesis should be returned
         {
@@ -1700,25 +1687,21 @@ mod test {
         // GIVEN
         let (context, _, _) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         // WHEN no blocks exist then genesis should be returned
         {
             let genesis = genesis_blocks(context.clone());
             let my_genesis = genesis
                 .into_iter()
-                .find(|block| Some(block.author()) == context.own_index)
+                .find(|block| Some(block.author()) == context.own_index())
                 .unwrap();
 
             assert_eq!(
                 dag_state
                     .read()
-                    .get_last_block_for_authority(context.own_index.unwrap()),
+                    .get_last_block_for_authority(context.own_index().unwrap()),
                 my_genesis
             );
         }

@@ -179,8 +179,7 @@ fn authority_setup(num_authorities: usize, authority_index: u32) -> AuthorityTes
     let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
-        Arc::new(MemStore::new()),
-        None,
+        Arc::new(MemStore::new_with_committee(context.committee.clone())),
     )));
 
     // Create committer with pipelining and only 1 leader per leader round

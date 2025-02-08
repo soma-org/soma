@@ -609,7 +609,7 @@ impl FetchState {
             .committee
             .authorities()
             .filter_map(|(index, _)| {
-                if Some(index) != context.own_index {
+                if Some(index) != context.own_index() {
                     Some(index)
                 } else {
                     None

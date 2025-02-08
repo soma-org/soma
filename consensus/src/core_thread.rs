@@ -227,12 +227,8 @@ mod test {
         let _ = tracing_subscriber::fmt::try_init();
         let (context, mut key_pairs, authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);
@@ -255,8 +251,8 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.unwrap().value()).1,
-            authority_keypairs[context.own_index.unwrap().value()].copy(),
+            key_pairs.remove(context.own_index().unwrap().value()).1,
+            authority_keypairs[context.own_index().unwrap().value()].copy(),
             dag_state,
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),

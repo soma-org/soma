@@ -98,7 +98,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         let mut fetch_block_senders = BTreeMap::new();
         let mut tasks = JoinSet::new();
         for (index, _) in context.committee.authorities() {
-            if Some(index) == context.own_index {
+            if Some(index) == context.own_index() {
                 continue;
             }
             let (sender, receiver) = channel(FETCH_BLOCKS_CONCURRENCY);
@@ -168,7 +168,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 Some(command) = self.commands_receiver.recv() => {
                     match command {
                         Command::FetchBlocks{ missing_block_refs, peer_index, result } => {
-                            if Some(peer_index) == self.context.own_index {
+                            if Some(peer_index) == self.context.own_index() {
                                 error!("We should never attempt to fetch blocks from our own node");
                                 continue;
                             }
@@ -525,13 +525,13 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     let context_cloned = context.clone();
                     async move {
                         sleep(fetch_own_block_delay).await;
-                        let r = network_client_cloned.fetch_latest_blocks(authority_index, vec![context_cloned.own_index.unwrap()], FETCH_REQUEST_TIMEOUT).await;
+                        let r = network_client_cloned.fetch_latest_blocks(authority_index, vec![context_cloned.own_index().unwrap()], FETCH_REQUEST_TIMEOUT).await;
                         (r, authority_index)
                     }
                 };
 
                 for (authority_index, _authority) in context.committee.authorities() {
-                    if Some(authority_index) != context.own_index {
+                    if Some(authority_index) != context.own_index() {
                         results.push(fetch_own_block(authority_index, Duration::from_millis(0)));
                     }
                 }
@@ -550,7 +550,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                         })?;
 
                         let verified_block = VerifiedBlock::new_verified(signed_block, serialized_block);
-                        if Some(verified_block.author()) != context.own_index {
+                        if Some(verified_block.author()) != context.own_index() {
                             return Err(ConsensusError::UnexpectedLastOwnBlock { index: authority_index, block_ref: verified_block.reference()});
                         }
                         result.push(verified_block);
@@ -715,7 +715,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             .committee
             .authorities()
             .filter_map(|(peer_index, _)| {
-                (Some(peer_index) != context.own_index).then_some(peer_index)
+                (Some(peer_index) != context.own_index()).then_some(peer_index)
             })
             .collect::<Vec<_>>();
 
@@ -1235,8 +1235,8 @@ mod tests {
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         let handle = Synchronizer::start(
@@ -1282,8 +1282,8 @@ mod tests {
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         let handle = Synchronizer::start(
@@ -1340,8 +1340,8 @@ mod tests {
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         // Create some test blocks
@@ -1408,8 +1408,8 @@ mod tests {
         let block_verifier = Arc::new(NoopBlockVerifier {});
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
 
         // AND stub some missing blocks
@@ -1521,8 +1521,8 @@ mod tests {
         let core_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
         let network_client = Arc::new(MockNetworkClient::default());
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store, None)));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
         let our_index = AuthorityIndex::new_for_test(0);
 
         // Create some test blocks

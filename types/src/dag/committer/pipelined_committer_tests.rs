@@ -772,8 +772,7 @@ fn basic_test_setup() -> (Arc<Context>, Arc<RwLock<DagState>>, UniversalCommitte
     let context = Arc::new(Context::new_for_test(4).0);
     let dag_state = Arc::new(RwLock::new(DagState::new(
         context.clone(),
-        Arc::new(MemStore::new()),
-        None,
+        Arc::new(MemStore::new_with_committee(context.committee.clone())),
     )));
     let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 

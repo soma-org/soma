@@ -537,7 +537,7 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
     async fn install_service(&mut self, service: Arc<S>) {
         info!("Starting tonic service");
 
-        let own_index = self.context.own_index.expect("Own index not found");
+        let own_index = self.context.own_index().expect("Own index not found");
 
         let authority = self.context.committee.authority_by_authority_index(own_index).unwrap();
         // By default, bind to the unspecified address to allow the actual address to be assigned.

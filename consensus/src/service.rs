@@ -435,12 +435,8 @@ mod tests {
         let block_verifier = Arc::new(types::consensus::block_verifier::NoopBlockVerifier {});
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());
         let network_client = Arc::new(FakeNetworkClient::default());
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
         let synchronizer = Synchronizer::start(
             network_client,
@@ -495,12 +491,8 @@ mod tests {
         let block_verifier = Arc::new(types::consensus::block_verifier::NoopBlockVerifier {});
         let core_dispatcher = Arc::new(FakeCoreThreadDispatcher::new());
         let network_client = Arc::new(FakeNetworkClient::default());
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
         let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
         let synchronizer = Synchronizer::start(
             network_client,

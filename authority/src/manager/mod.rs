@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
 use mysticeti_client::LazyMysticetiClient;
 use mysticeti_manager::MysticetiManager;
+use parking_lot::RwLock;
 use tokio::time::{sleep, timeout};
 use tracing::info;
 use types::{
@@ -12,7 +13,9 @@ use types::{
     committee::EpochId,
     config::node_config::{ConsensusConfig, NodeConfig},
     consensus::ConsensusTransaction,
+    dag::dag_state::DagState,
     error::SomaResult,
+    storage::consensus::ConsensusStore,
 };
 
 use crate::{
@@ -62,6 +65,8 @@ impl ConsensusManager {
         consensus_client: Arc<ConsensusClient>,
         accumulator_store: Arc<dyn AccumulatorStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
+        dag_state: Arc<RwLock<DagState>>,
+        consensus_store: Arc<dyn ConsensusStore>,
     ) -> Self {
         let mysticeti_client = Arc::new(LazyMysticetiClient::new());
         let mysticeti_manager = MysticetiManager::new(
@@ -72,6 +77,8 @@ impl ConsensusManager {
             mysticeti_client.clone(),
             accumulator_store,
             consensus_adapter,
+            dag_state,
+            consensus_store,
         );
         Self {
             consensus_config: consensus_config.clone(),

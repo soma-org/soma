@@ -24,6 +24,7 @@ use types::{
     },
     crypto::NetworkKeyPair,
     dag::{
+        self,
         block_manager::BlockManager,
         committer::universal_committer::{
             universal_committer_builder::UniversalCommitterBuilder, UniversalCommitter,
@@ -232,6 +233,7 @@ where
 pub struct P2pBuilder<S> {
     config: Option<P2pConfig>,
     store: Option<S>,
+    dag_state: Option<Arc<RwLock<DagState>>>,
     // trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
 }
 
@@ -241,6 +243,7 @@ impl P2pBuilder<()> {
         Self {
             store: None,
             config: None,
+            dag_state: None,
         }
     }
 }
@@ -250,7 +253,13 @@ impl<S> P2pBuilder<S> {
         P2pBuilder {
             store: Some(store),
             config: self.config,
+            dag_state: self.dag_state,
         }
+    }
+
+    pub fn dag_state(mut self, dag_state: Arc<RwLock<DagState>>) -> Self {
+        self.dag_state = Some(dag_state);
+        self
     }
 
     pub fn config(mut self, config: P2pConfig) -> Self {
@@ -280,6 +289,7 @@ where
         self,
     ) -> (UnstartedDiscovery, UnstartedStateSync<S>, P2pService<S>) {
         let store = self.store.unwrap();
+        let dag_state = self.dag_state.unwrap();
         let store_ref = Arc::new(store.clone());
         let config = self.config.unwrap();
         let state_sync_config = config.state_sync.clone().unwrap();
@@ -310,26 +320,7 @@ where
         .pipe(RwLock::new)
         .pipe(Arc::new);
 
-        let parameters = Parameters {
-            ..Default::default()
-        };
-
-        // Dummy context with genesis committee
-        let context = Arc::new(Context::new(
-            None,
-            (*store_ref.get_committee(0).unwrap().unwrap()).clone(),
-            parameters,
-            Arc::new(Clock::new()),
-        ));
-
-        let store_path = context.parameters.db_path.as_path().to_str().unwrap();
-
-        // let store = Arc::new(RocksDBStore::new(store_path));
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store_ref.clone(),
-            Some(store_ref.clone()),
-        )));
+        let context = dag_state.read().context.clone();
 
         let signature_verifier =
             SignatureVerifier::new(Arc::new(context.committee.clone()), Some(store_ref.clone()));

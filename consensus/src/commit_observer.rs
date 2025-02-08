@@ -187,11 +187,10 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
         let num_authorities = 4;
         let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let mem_store = Arc::new(MemStore::new());
+        let mem_store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
-            None,
         )));
         let last_processed_commit_round = 0;
         let last_processed_commit_index = 0;
@@ -289,11 +288,10 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
         let num_authorities = 4;
         let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let mem_store = Arc::new(MemStore::new());
+        let mem_store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
-            None,
         )));
         let last_processed_commit_round = 0;
         let last_processed_commit_index = 0;
@@ -435,11 +433,10 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
         let num_authorities = 4;
         let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let mem_store = Arc::new(MemStore::new());
+        let mem_store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
-            None,
         )));
         let last_processed_commit_round = 0;
         let last_processed_commit_index = 0;

@@ -19,7 +19,7 @@ pub struct CommitteeStore {
 pub struct CommitteeStoreTables {
     // Map from each epoch ID to the committee information.
     // #[default_options_override_fn = "committee_table_default_config"]
-    committee_map: BTreeMap<EpochId, Committee>, //TODO: use DBMap / RocksDB
+    pub committee_map: BTreeMap<EpochId, Committee>, //TODO: use DBMap / RocksDB
 }
 
 impl CommitteeStore {
@@ -92,28 +92,28 @@ impl CommitteeStore {
         }
         Ok(committee)
     }
-    // todo - make use of cache or remove this method
+    // // todo - make use of cache or remove this method
 
-    pub fn get_latest_committee(&self) -> Committee {
-        self.tables
-            .read()
-            .committee_map
-            .iter()
-            .next_back()
-            .map(|(_, committee)| committee.clone())
-            .expect("Committee map should not be empty")
-    }
-    /// Return the committee specified by `epoch`. If `epoch` is `None`, return the latest committee.
-    // todo - make use of cache or remove this method
-    pub fn get_or_latest_committee(&self, epoch: Option<EpochId>) -> SomaResult<Committee> {
-        Ok(match epoch {
-            Some(epoch) => self
-                .get_committee(&epoch)?
-                .ok_or(SomaError::MissingCommitteeAtEpoch(epoch))
-                .map(|c| Committee::clone(&*c))?,
-            None => self.get_latest_committee(),
-        })
-    }
+    // pub fn get_latest_committee(&self) -> Committee {
+    //     self.tables
+    //         .read()
+    //         .committee_map
+    //         .iter()
+    //         .next_back()
+    //         .map(|(_, committee)| committee.clone())
+    //         .expect("Committee map should not be empty")
+    // }
+    // /// Return the committee specified by `epoch`. If `epoch` is `None`, return the latest committee.
+    // // todo - make use of cache or remove this method
+    // pub fn get_or_latest_committee(&self, epoch: Option<EpochId>) -> SomaResult<Committee> {
+    //     Ok(match epoch {
+    //         Some(epoch) => self
+    //             .get_committee(&epoch)?
+    //             .ok_or(SomaError::MissingCommitteeAtEpoch(epoch))
+    //             .map(|c| Committee::clone(&*c))?,
+    //         None => self.get_latest_committee(),
+    //     })
+    // }
 
     fn database_is_empty(&self) -> bool {
         self.tables.read().committee_map.iter().next().is_none()

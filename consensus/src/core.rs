@@ -123,7 +123,7 @@ impl Core {
         // Recover the last proposed block
         let last_proposed_block = dag_state
             .read()
-            .get_last_block_for_authority(context.own_index.unwrap());
+            .get_last_block_for_authority(context.own_index().unwrap());
 
         // Recover the last included ancestor rounds based on the last proposed block. That will allow
         // to perform the next block proposal by using ancestor blocks of higher rounds and avoid
@@ -452,7 +452,7 @@ impl Core {
         let block = Block::new(
             self.context.committee.epoch(),
             clock_round,
-            self.context.own_index.unwrap(),
+            self.context.own_index().unwrap(),
             now,
             ancestors.iter().map(|b| b.reference()).collect(),
             transactions,
@@ -569,7 +569,7 @@ impl Core {
                         }
                         true
                     })
-                    .filter(|block| Some(block.author()) != self.context.own_index)
+                    .filter(|block| Some(block.author()) != self.context.own_index())
                     .flat_map(|block| {
                         if let Some(last_block_ref) = self.last_included_ancestors[block.author()] {
                             return (last_block_ref.round < block.round()).then_some(block);
@@ -787,12 +787,8 @@ impl CoreTextFixture {
             .with_authority_index(own_index);
 
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
@@ -867,7 +863,7 @@ mod test {
         let _ = tracing_subscriber::fmt::try_init();
         let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);
 
@@ -894,11 +890,7 @@ mod test {
             .expect("Storage error");
 
         // create dag state after all blocks have been written to store
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
@@ -927,8 +919,8 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.unwrap().value()).1,
-            authority_keypairs.remove(context.own_index.unwrap().value()),
+            key_pairs.remove(context.own_index().unwrap().value()).1,
+            authority_keypairs.remove(context.own_index().unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -976,7 +968,7 @@ mod test {
 
         let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new());
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
         let transaction_consumer = TransactionConsumer::new(tx_receiver, context.clone(), None);
 
@@ -1010,11 +1002,7 @@ mod test {
             .expect("Storage error");
 
         // create dag state after all blocks have been written to store
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
 
@@ -1043,8 +1031,8 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.unwrap().value()).1,
-            authority_keypairs.remove(context.own_index.unwrap().value()),
+            key_pairs.remove(context.own_index().unwrap().value()).1,
+            authority_keypairs.remove(context.own_index().unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1064,7 +1052,7 @@ mod test {
 
         assert_eq!(ancestors.len(), 4);
         for ancestor in ancestors {
-            if Some(ancestor.author) == context.own_index {
+            if Some(ancestor.author) == context.own_index() {
                 assert_eq!(ancestor.round, 0);
             } else {
                 assert_eq!(ancestor.round, 3);
@@ -1097,12 +1085,8 @@ mod test {
             consensus_max_transaction_size_bytes: 2_000,
             ..Default::default()
         }));
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let (transaction_client, tx_receiver) = TransactionClient::new(context.clone());
@@ -1128,8 +1112,8 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.unwrap().value()).1,
-            authority_keypairs.remove(context.own_index.unwrap().value()),
+            key_pairs.remove(context.own_index().unwrap().value()).1,
+            authority_keypairs.remove(context.own_index().unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1199,12 +1183,8 @@ mod test {
         let (context, mut key_pairs, mut authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
 
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
@@ -1231,8 +1211,8 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.unwrap().value()).1,
-            authority_keypairs.remove(context.own_index.unwrap().value()),
+            key_pairs.remove(context.own_index().unwrap().value()).1,
+            authority_keypairs.remove(context.own_index().unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1265,7 +1245,7 @@ mod test {
 
         let proposed_block = core.last_proposed_block();
         assert_eq!(proposed_block.round(), 2);
-        assert_eq!(Some(proposed_block.author()), context.own_index);
+        assert_eq!(Some(proposed_block.author()), context.own_index());
         assert_eq!(proposed_block.ancestors().len(), 3);
         let ancestors = proposed_block.ancestors();
         let ancestors = ancestors.iter().cloned().collect::<BTreeSet<_>>();
@@ -1286,12 +1266,8 @@ mod test {
             ..Default::default()
         }));
 
-        let store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            store.clone(),
-            None,
-        )));
+        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
@@ -1318,8 +1294,8 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index.unwrap().value()).1,
-            authority_keypairs.remove(context.own_index.unwrap().value()),
+            key_pairs.remove(context.own_index().unwrap().value()).1,
+            authority_keypairs.remove(context.own_index().unwrap().value()),
             dag_state.clone(),
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
@@ -1358,7 +1334,7 @@ mod test {
         // Our last ancestored included should be genesis. We do not update the last proposed block via the
         // normal block processing path to keep it simple.
         let our_ancestor_included = block.ancestors().iter().find(|block_ref: &&BlockRef| {
-            Some(block_ref.author) == context.own_index && block_ref.round == GENESIS_ROUND
+            Some(block_ref.author) == context.own_index() && block_ref.round == GENESIS_ROUND
         });
         assert!(our_ancestor_included.is_some());
     }
@@ -1508,7 +1484,7 @@ mod test {
                 .unwrap()
                 .unwrap();
                 assert_eq!(block.round(), round);
-                assert_eq!(Some(block.author()), core_fixture.core.context.own_index);
+                assert_eq!(Some(block.author()), core_fixture.core.context.own_index());
 
                 // append the new block to this round blocks
                 this_round_blocks.push(core_fixture.core.last_proposed_block().clone());
@@ -1597,7 +1573,7 @@ mod test {
                 .unwrap()
                 .unwrap();
                 assert_eq!(block.round(), round);
-                assert_eq!(Some(block.author()), core_fixture.core.context.own_index);
+                assert_eq!(Some(block.author()), core_fixture.core.context.own_index());
 
                 // append the new block to this round blocks
                 this_round_blocks.push(core_fixture.core.last_proposed_block().clone());
@@ -1663,7 +1639,7 @@ mod test {
 
             for core_fixture in &mut cores {
                 // do not produce any block for authority 3
-                if core_fixture.core.context.own_index == Some(excluded_authority) {
+                if core_fixture.core.context.own_index() == Some(excluded_authority) {
                     continue;
                 }
 

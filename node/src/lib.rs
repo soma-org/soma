@@ -32,6 +32,7 @@ use p2p::{
     builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle},
     tonic_gen::p2p_server::P2pServer,
 };
+use parking_lot::RwLock;
 use simulator::SimState;
 use std::{
     collections::HashMap,
@@ -49,17 +50,22 @@ use types::{
     client::Config,
     committee::Committee,
     config::node_config::{ConsensusConfig, NodeConfig},
+    consensus::context::{Clock, Context},
     crypto::KeypairTraits,
+    dag::dag_state::{self, DagState},
     error::{SomaError, SomaResult},
     p2p::{
         active_peers::{self, ActivePeers},
         channel_manager::{ChannelManager, ChannelManagerRequest},
     },
+    parameters::Parameters,
     peer_id::PeerId,
     protocol::ProtocolConfig,
     quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
     storage::{
-        committee_store::CommitteeStore, consensus::mem_store::MemStore, write_store::WriteStore,
+        committee_store::CommitteeStore,
+        consensus::{mem_store::MemStore, ConsensusStore},
+        write_store::WriteStore,
     },
     system_state::{
         EpochStartSystemState, EpochStartSystemStateTrait, SystemState, SystemStateTrait,
@@ -114,7 +120,9 @@ pub struct SomaNode {
     transaction_orchestrator: Option<Arc<TransactiondOrchestrator<NetworkAuthorityClient>>>,
     state_sync_handle: StateSyncHandle,
     commit_store: Arc<CommitStore>,
+    dag_state: Arc<RwLock<DagState>>,
     accumulator: Mutex<Option<Arc<StateAccumulator>>>,
+    consensus_store: Arc<dyn ConsensusStore>,
     // connection_monitor_status: Arc<ConnectionMonitorStatus>,
     // AuthorityAggregator of the network, created at start and beginning of each epoch.
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
@@ -200,6 +208,23 @@ impl SomaNode {
             consensus_store.clone(),
         );
 
+        let consensus_config = config
+            .consensus_config()
+            .expect("consensus_config should exist");
+        let parameters = consensus_config.parameters.clone().unwrap_or_default();
+
+        let context = Arc::new(Context::new(
+            None,
+            (*committee).clone(),
+            parameters,
+            Arc::new(Clock::new()),
+        ));
+
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context,
+            Arc::new(state_sync_store.clone()),
+        )));
+
         // let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
         let P2pComponents {
             channel_manager_tx,
@@ -208,6 +233,7 @@ impl SomaNode {
         } = Self::create_p2p_network(
             &config,
             state_sync_store.clone(),
+            dag_state.clone(),
             // trusted_peer_change_rx,
         )?;
 
@@ -294,11 +320,10 @@ impl SomaNode {
                 state.clone(),
                 committee,
                 epoch_store.clone(),
-                // checkpoint_store.clone(),
                 state_sync_handle.clone(),
-                // randomness_handle.clone(),
                 Arc::downgrade(&accumulator),
-                // connection_monitor_status.clone(),
+                dag_state.clone(),
+                consensus_store.clone(),
             )
             .await?;
             // This is only needed during cold start.
@@ -334,6 +359,8 @@ impl SomaNode {
             accumulator: Mutex::new(Some(accumulator)),
             state_sync_handle,
             commit_store,
+            dag_state,
+            consensus_store,
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -369,9 +396,11 @@ impl SomaNode {
     fn create_p2p_network(
         config: &NodeConfig,
         state_sync_store: StateSyncStore,
+        dag_state: Arc<RwLock<DagState>>,
     ) -> Result<P2pComponents> {
         let (discovery, state_sync, p2p_server) = P2pBuilder::new()
             .config(config.p2p_config.clone())
+            .dag_state(dag_state)
             .store(state_sync_store)
             .build();
 
@@ -414,11 +443,10 @@ impl SomaNode {
         state: Arc<AuthorityState>,
         committee: Arc<Committee>,
         epoch_store: Arc<AuthorityPerEpochStore>,
-        // checkpoint_store: Arc<CheckpointStore>,
         state_sync_handle: StateSyncHandle,
-        // randomness_handle: randomness::Handle,
         accumulator: Weak<StateAccumulator>,
-        // connection_monitor_status: Arc<ConnectionMonitorStatus>,
+        dag_state: Arc<RwLock<DagState>>,
+        consensus_store: Arc<dyn ConsensusStore>,
     ) -> Result<ValidatorComponents> {
         let mut config_clone = config.clone();
         let consensus_config = config_clone
@@ -441,6 +469,8 @@ impl SomaNode {
             client,
             state.get_accumulator_store().clone(),
             consensus_adapter.clone(),
+            dag_state.clone(),
+            consensus_store,
         );
 
         // This only gets started up once, not on every epoch. (Make call to remove every epoch.)
@@ -753,6 +783,8 @@ impl SomaNode {
                             new_epoch_store.clone(),
                             self.state_sync_handle.clone(),
                             weak_accumulator,
+                            self.dag_state.clone(),
+                            self.consensus_store.clone(),
                         )
                         .await?,
                     )
