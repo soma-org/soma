@@ -69,7 +69,8 @@ impl<C: EncoderNetworkClient> Broadcaster<C> {
                             // assume signature validation occurs inside of the generic function
                             valid_signatures.push(signature);
                             if valid_signatures.len()
-                                >= self.context.encoder_committee.quorum_threshold() as usize
+                                >= self.context.encoder_committee.evaluation_quorum_threshold()
+                                    as usize
                             {
                                 // We hit quorum, can exit early
                                 join_set.abort_all();

@@ -2,61 +2,67 @@ use std::hash::{Hash, Hasher};
 
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::{
-    crypto::keys::EncoderAggregateSignature,
-    digest::Digest,
-    entropy::BlockEntropyOutput,
-    metadata::{Metadata, MetadataCommitment},
-    transaction::SignedTransaction,
-};
+use shared::{digest::Digest, entropy::BlockEntropyOutput, metadata::MetadataCommitment};
 use strum_macros::Display;
 
-use super::encoder_committee::EncoderIndex;
-
-type Epoch = u64;
-type QuorumUnit = u32;
+use super::encoder_committee::{CountUnit, EncoderIndex, Epoch};
 
 pub(crate) struct Shard {
     epoch: Epoch,
-    quorum_threshold: QuorumUnit,
-    encoders: Vec<EncoderIndex>,
+    minimum_inference_size: CountUnit,
+    evaluation_quorum_threshold: CountUnit,
+    inference_set: Vec<EncoderIndex>,
+    evaluation_set: Vec<EncoderIndex>,
 }
 
 impl Shard {
     pub(crate) fn new(
         epoch: Epoch,
-        quorum_threshold: QuorumUnit,
-        encoders: Vec<EncoderIndex>,
+        minimum_inference_size: CountUnit,
+        evaluation_quorum_threshold: CountUnit,
+        inference_set: Vec<EncoderIndex>,
+        evaluation_set: Vec<EncoderIndex>,
     ) -> Self {
         Self {
             epoch,
-            quorum_threshold,
-            encoders,
+            minimum_inference_size,
+            evaluation_quorum_threshold,
+            inference_set,
+            evaluation_set,
         }
     }
     pub(crate) fn epoch(&self) -> Epoch {
         self.epoch
     }
-    pub(crate) fn encoders(&self) -> Vec<EncoderIndex> {
-        self.encoders.clone()
+    pub(crate) fn inference_set(&self) -> Vec<EncoderIndex> {
+        self.inference_set.clone()
     }
 
-    pub(crate) fn size(&self) -> usize {
-        self.encoders.len()
+    pub(crate) fn evaluation_set(&self) -> Vec<EncoderIndex> {
+        self.evaluation_set.clone()
+    }
+    pub(crate) fn inference_size(&self) -> usize {
+        self.inference_set.len()
     }
 
-    pub(crate) fn quorum_threshold(&self) -> QuorumUnit {
-        self.quorum_threshold
+    pub(crate) fn evaluation_size(&self) -> usize {
+        self.evaluation_set.len()
+    }
+    pub(crate) fn minimum_inference_size(&self) -> CountUnit {
+        self.minimum_inference_size
+    }
+    pub(crate) fn evaluation_quorum_threshold(&self) -> CountUnit {
+        self.evaluation_quorum_threshold
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_for_test(
-        epoch: Epoch,
-        quorum_threshold: QuorumUnit,
-        encoders: Vec<EncoderIndex>,
-    ) -> Self {
-        Self::new(epoch, quorum_threshold, encoders)
-    }
+    // #[cfg(test)]
+    // pub(crate) fn new_for_test(
+    //     epoch: Epoch,
+    //     quorum_threshold: QuorumUnit,
+    //     encoders: Vec<EncoderIndex>,
+    // ) -> Self {
+    //     Self::new(epoch, quorum_threshold, encoders)
+    // }
 }
 
 /// The Digest<ShardEntropy> acts as a seed for random sampling from the encoder committee.

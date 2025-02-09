@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use shared::{
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, NetworkKeyPair, NetworkPublicKey},
     digest::Digest,
+    error::SharedResult,
     multiaddr::Multiaddr,
 };
 use std::{
@@ -19,12 +20,16 @@ use super::{
 
 /// max of 10_000
 type VotingPowerUnit = u16;
-/// Size of a shard, must not be larger than shard index size hence u32
-type ShardSizeUnit = u32;
 /// Count of nodes, valid between 1 and shard size
-type QuorumUnit = u32;
+pub(crate) type CountUnit = u32;
 /// Epoch associated with the committee
-type Epoch = u64;
+pub(crate) type Epoch = u64;
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum SetType {
+    Disjoint(usize),
+    Intersecting,
+}
 
 /// Holds a single encoder committee for a given modality. Each modality has a unique set of
 /// Encoders. A given encoder can register to multiple modalities, but are not required to
@@ -34,21 +39,23 @@ type Epoch = u64;
 pub(crate) struct EncoderCommittee {
     /// committee changes with epoch
     epoch: Epoch,
-    /// current shard size requirement
-    shard_size: ShardSizeUnit,
-    /// the number required for quorum (can change with epoch)
-    quorum_threshold: QuorumUnit,
-    /// all the encoders
+    inference_set_size: CountUnit,
+    minimum_inference_size: CountUnit,
+    evaluation_set_size: CountUnit,
+    evaluation_quorum_threshold: CountUnit,
     encoders: Vec<Encoder>,
+    set_type: SetType,
 }
 
 impl EncoderCommittee {
     /// creates a new encoder committee for a given modality marker
     fn new(
         epoch: Epoch,
+        inference_set_size: CountUnit,
+        minimum_inference_size: CountUnit,
+        evaluation_set_size: CountUnit,
+        evaluation_quorum_threshold: CountUnit,
         encoders: Vec<Encoder>,
-        shard_size: ShardSizeUnit,
-        quorum_threshold: QuorumUnit,
     ) -> Self {
         assert!(!encoders.is_empty(), "Committee cannot be empty!");
         assert!(
@@ -57,13 +64,40 @@ impl EncoderCommittee {
             encoders.len()
         );
 
-        // let total_stake = encoders.iter().map(|a| a.stake).sum();
-        // assert_ne!(total_stake, 0, "Total stake cannot be zero!");
+        assert!(
+            encoders.len() >= inference_set_size as usize,
+            "len of encoders must be greater or equal to inference set size"
+        );
+        assert!(
+            encoders.len() >= evaluation_set_size as usize,
+            "len of encoders must be greater or equal to evaluation set size"
+        );
+
+        assert!(
+            inference_set_size >= minimum_inference_size,
+            "inference set size must be greater or equal to minimum inference set size"
+        );
+
+        assert!(
+            evaluation_set_size >= evaluation_quorum_threshold,
+            "evaluation set size must be greater or equal to quorum size"
+        );
+
+        let total_size = (inference_set_size + evaluation_set_size) as usize;
+        let set_type = if encoders.len() > total_size {
+            SetType::Disjoint(total_size)
+        } else {
+            SetType::Intersecting
+        };
+
         Self {
             epoch,
-            shard_size,
-            quorum_threshold,
+            inference_set_size,
+            minimum_inference_size,
+            evaluation_set_size,
+            evaluation_quorum_threshold,
             encoders,
+            set_type,
         }
     }
 
@@ -74,19 +108,17 @@ impl EncoderCommittee {
     pub(crate) fn epoch(&self) -> Epoch {
         self.epoch
     }
-
-    /// returns total stake
-    // pub(crate) fn total_stake(&self) -> Stake {
-    //     self.total_stake
-    // }
-
-    /// returns selection threshold
-    pub(crate) fn shard_size(&self) -> ShardSizeUnit {
-        self.shard_size
+    pub(crate) fn inference_set_size(&self) -> CountUnit {
+        self.inference_set_size
     }
-    /// returns quorum threshold
-    pub(crate) fn quorum_threshold(&self) -> QuorumUnit {
-        self.quorum_threshold
+    pub(crate) fn minimum_inference_size(&self) -> CountUnit {
+        self.minimum_inference_size
+    }
+    pub(crate) fn evaluation_set_size(&self) -> CountUnit {
+        self.evaluation_set_size
+    }
+    pub(crate) fn evaluation_quorum_threshold(&self) -> CountUnit {
+        self.evaluation_quorum_threshold
     }
 
     /// returns voting power for a given encoder index (of the specific modality)
@@ -108,8 +140,8 @@ impl EncoderCommittee {
     }
 
     /// Returns true if the provided count has reached quorum (2f+1).
-    pub(crate) fn reached_quorum(&self, count: QuorumUnit) -> bool {
-        count as u32 >= self.quorum_threshold()
+    pub(crate) fn reached_quorum(&self, count: CountUnit) -> bool {
+        count as u32 >= self.evaluation_quorum_threshold()
     }
 
     /// Coverts an index to an EncoderIndex, if valid.
@@ -140,14 +172,58 @@ impl EncoderCommittee {
             self.voting_power(encoder_index) as f64
         };
 
-        let index_vec = sample_weighted(&mut rng, self.size(), weight_fn, self.shard_size as usize)
-            .map_err(|e| ShardError::WeightedSampleError(e.to_string()))?;
-        let encoders = index_vec
-            .into_iter()
-            .map(|index| EncoderIndex(index as u32))
-            .collect();
+        match self.set_type {
+            SetType::Disjoint(total_size) => {
+                let shard_indices = sample_weighted(&mut rng, self.size(), weight_fn, total_size)
+                    .map_err(|e| ShardError::WeightedSampleError(e.to_string()))?
+                    .into_iter()
+                    .map(|index| EncoderIndex(index as u32))
+                    .collect::<Vec<_>>();
 
-        Ok(Shard::new(self.epoch, self.quorum_threshold, encoders))
+                let inference_indices = shard_indices[..self.inference_set_size as usize].to_vec();
+                let evaluation_indices = shard_indices[self.inference_set_size as usize..].to_vec();
+
+                Ok(Shard::new(
+                    self.epoch,
+                    self.minimum_inference_size,
+                    self.evaluation_quorum_threshold,
+                    inference_indices,
+                    evaluation_indices,
+                ))
+            }
+
+            SetType::Intersecting => {
+                let inference_indices = sample_weighted(
+                    &mut rng,
+                    self.size(),
+                    weight_fn,
+                    self.inference_set_size as usize,
+                )
+                .map_err(|e| ShardError::WeightedSampleError(e.to_string()))?
+                .into_iter()
+                .map(|index| EncoderIndex(index as u32))
+                .collect();
+
+                let evaluation_indices = sample_weighted(
+                    &mut rng,
+                    self.size(),
+                    weight_fn,
+                    self.evaluation_set_size as usize,
+                )
+                .map_err(|e| ShardError::WeightedSampleError(e.to_string()))?
+                .into_iter()
+                .map(|index| EncoderIndex(index as u32))
+                .collect();
+
+                Ok(Shard::new(
+                    self.epoch,
+                    self.minimum_inference_size,
+                    self.evaluation_quorum_threshold,
+                    inference_indices,
+                    evaluation_indices,
+                ))
+            }
+        }
     }
 }
 
@@ -156,8 +232,10 @@ impl EncoderCommittee {
     pub fn local_test_committee(
         epoch: Epoch,
         encoder_details: Vec<(VotingPowerUnit, Digest<Probe>)>,
-        shard_size: ShardSizeUnit,
-        quorum_threshold: QuorumUnit,
+        inference_set_size: CountUnit,
+        minimum_inference_size: CountUnit,
+        evaluation_set_size: CountUnit,
+        evaluation_quorum_threshold: CountUnit,
         starting_port: u16,
     ) -> (Self, Vec<(NetworkKeyPair, EncoderKeyPair)>) {
         let mut rng = StdRng::from_seed([0; 32]);
@@ -184,7 +262,14 @@ impl EncoderCommittee {
             .collect();
 
         (
-            Self::new(epoch, encoders, shard_size, quorum_threshold),
+            Self::new(
+                epoch,
+                inference_set_size,
+                minimum_inference_size,
+                evaluation_set_size,
+                evaluation_quorum_threshold,
+                encoders,
+            ),
             key_pairs,
         )
     }
@@ -285,90 +370,261 @@ impl<T> IndexMut<EncoderIndex> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytes::Bytes;
-    use shared::digest::Digest;
+    use std::collections::{HashMap, HashSet};
+
+    // Helper function to generate probe digests
+    fn probe_digest(i: u8) -> Digest<Probe> {
+        Digest::new_from_bytes([i; 32])
+    }
 
     #[test]
-    fn test_sample_shard() {
-        // Create a committee with different voting powers
-        let probe_digest = Digest::new(&Probe::new(Bytes::from("hello"))).unwrap();
-        let voting_powers = vec![
-            (100, probe_digest),
-            (200, probe_digest),
-            (300, probe_digest),
-            (400, probe_digest),
-            (500, probe_digest),
+    fn test_committee_sampling_safety() {
+        // Test with exact size to force intersecting sets
+        let encoder_details = vec![
+            (100, probe_digest(0)),
+            (100, probe_digest(1)),
+            (100, probe_digest(2)),
         ];
-        let shard_size = 3;
-        let quorum_threshold = 2;
-        let starting_port = 8000;
-        let epoch = 1;
 
-        let (committee, _keys) = EncoderCommittee::local_test_committee(
-            epoch,
-            voting_powers,
-            shard_size,
-            quorum_threshold,
-            starting_port,
+        let (committee, _) = EncoderCommittee::local_test_committee(
+            1,
+            encoder_details,
+            2, // inference_size
+            1, // min_inference
+            2, // eval_size
+            1, // quorum
+            8000,
         );
 
-        // Sample a shard using test entropy
-        let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from(
-            "test_entropy".as_bytes().to_vec(),
-        ));
-        let shard = committee.sample_shard(entropy).unwrap();
+        assert!(matches!(committee.set_type, SetType::Intersecting));
 
-        // Verify shard properties
-        assert_eq!(shard.epoch(), epoch);
-        assert_eq!(shard.quorum_threshold(), quorum_threshold);
-        assert_eq!(shard.size(), shard_size as usize);
+        // Sample multiple times to ensure safety properties
+        for seed in 0..100 {
+            let shard = committee
+                .sample_shard(Digest::new_from_bytes([seed; 32]))
+                .unwrap();
 
-        // Verify all indices are valid
-        for encoder_index in shard.encoders() {
-            assert!(committee.is_valid_index(encoder_index));
+            // Basic size checks
+            assert_eq!(shard.inference_set().len(), 2);
+            assert_eq!(shard.evaluation_set().len(), 2);
+            assert_eq!(shard.epoch(), committee.epoch());
+
+            let all_indices = [shard.inference_set(), shard.evaluation_set()].concat();
+            // All indices must be valid
+            for idx in all_indices {
+                assert!(committee.is_valid_index(idx));
+                assert!(idx.value() < committee.size());
+            }
         }
     }
 
     #[test]
-    fn test_sample_shard_weighted_distribution() {
-        let probe_digest = Digest::new(&Probe::new(Bytes::from("hello"))).unwrap();
-        let voting_powers = vec![
-            (1000, probe_digest),
-            (100, probe_digest),
-            (100, probe_digest),
-            (100, probe_digest),
-            (100, probe_digest),
+    fn test_disjoint_sampling_safety() {
+        // Test with larger size to force disjoint sets
+        let encoder_details = vec![
+            (1000, probe_digest(0)), // High power
+            (500, probe_digest(1)),
+            (250, probe_digest(2)),
+            (125, probe_digest(3)),
+            (60, probe_digest(4)),
+            (30, probe_digest(5)), // Low power
         ];
-        let shard_size = 2;
-        let quorum_threshold = 2;
-        let starting_port = 8000;
-        let epoch = 1;
-        let trials = 1000;
 
-        let (committee, _keys) = EncoderCommittee::local_test_committee(
-            epoch,
-            voting_powers.clone(),
-            shard_size,
-            quorum_threshold,
-            starting_port,
+        let (committee, _) = EncoderCommittee::local_test_committee(
+            1,
+            encoder_details,
+            2, // inference_size
+            1, // min_inference
+            2, // eval_size
+            1, // quorum
+            8000,
         );
 
-        let mut selection_counts = vec![0; voting_powers.len()];
+        assert!(matches!(committee.set_type, SetType::Disjoint(4)));
 
-        for i in 0..trials {
-            let entropy = Digest::<ShardEntropy>::new_from_bytes(&Bytes::from(
-                format!("test_entropy_{}", i).as_bytes().to_vec(),
-            ));
-            let shard = committee.sample_shard(entropy).unwrap();
+        // Track frequency of selection for each index
+        let mut frequencies = HashMap::new();
+        let samples = u8::MAX;
 
-            for encoder_index in shard.encoders() {
-                selection_counts[encoder_index.value()] += 1;
+        for seed in 0..samples {
+            let shard = committee
+                .sample_shard(Digest::new_from_bytes([seed; 32]))
+                .unwrap();
+
+            // Sets must be disjoint
+            let inference_set: HashSet<_> = shard.inference_set().iter().cloned().collect();
+            let eval_set: HashSet<_> = shard.evaluation_set().iter().cloned().collect();
+            assert!(
+                inference_set.is_disjoint(&eval_set),
+                "Sets must be disjoint"
+            );
+
+            // Track frequencies
+            for idx in inference_set.iter().chain(eval_set.iter()) {
+                *frequencies.entry(idx.value()).or_insert(0) += 1;
+            }
+
+            // Verify shard properties
+            assert_eq!(shard.inference_set().len(), 2);
+            assert_eq!(shard.evaluation_set().len(), 2);
+        }
+
+        // Higher voting power nodes should be selected more frequently
+        assert!(
+            frequencies.get(&0).unwrap_or(&0) > frequencies.get(&5).unwrap_or(&0),
+            "Higher power nodes should be selected more often"
+        );
+    }
+
+    #[test]
+    fn test_weighted_sampling_distribution() {
+        // Test extreme voting power differences
+        let encoder_details = vec![
+            (10000, probe_digest(0)), // Extremely high power
+            (1, probe_digest(1)),     // Minimal power
+            (1, probe_digest(2)),     // Minimal power
+            (1, probe_digest(3)),     // Minimal power
+        ];
+
+        let (committee, _) = EncoderCommittee::local_test_committee(
+            1,
+            encoder_details,
+            1, // inference_size
+            1, // min_inference
+            1, // eval_size
+            1, // quorum
+            8000,
+        );
+
+        let mut high_power_selections = 0;
+        let samples = u8::MAX;
+
+        for seed in 0..samples {
+            let shard = committee
+                .sample_shard(Digest::new_from_bytes([seed; 32]))
+                .unwrap();
+            let all_indices = [shard.inference_set(), shard.evaluation_set()].concat();
+
+            if all_indices.contains(&EncoderIndex(0)) {
+                high_power_selections += 1;
             }
         }
 
-        println!("{:?}", selection_counts);
+        // With 10000:1 power ratio, the high power node should be selected almost always
+        assert!(
+            high_power_selections as f64 / samples as f64 > 0.95,
+            "High power node selected only {}/{} times",
+            high_power_selections,
+            samples
+        );
+    }
 
-        // The first encoder (with 10x voting power) should be selected significantly more often
-        assert!(selection_counts[0] > selection_counts[1] * 2);
+    #[test]
+    fn test_minimum_inference_threshold() {
+        let encoder_details = vec![
+            (100, probe_digest(0)),
+            (100, probe_digest(1)),
+            (100, probe_digest(2)),
+        ];
+
+        let (committee, _) = EncoderCommittee::local_test_committee(
+            1,
+            encoder_details,
+            2, // inference_size
+            2, // min_inference - equal to inference_size
+            1, // eval_size
+            1, // quorum
+            8000,
+        );
+
+        for seed in 0..100 {
+            let shard = committee
+                .sample_shard(Digest::new_from_bytes([seed; 32]))
+                .unwrap();
+            assert_eq!(
+                shard.inference_set().len(),
+                committee.minimum_inference_size() as usize,
+                "Must have exactly minimum inference nodes"
+            );
+        }
+    }
+
+    #[test]
+    fn test_quorum_properties() {
+        let encoder_details = vec![
+            (100, probe_digest(0)),
+            (100, probe_digest(1)),
+            (100, probe_digest(2)),
+            (100, probe_digest(3)),
+        ];
+
+        let (committee, _) = EncoderCommittee::local_test_committee(
+            1,
+            encoder_details,
+            2, // inference_size
+            1, // min_inference
+            3, // eval_size
+            2, // quorum - requires 2/3 evaluators
+            8000,
+        );
+
+        assert!(!committee.reached_quorum(1), "1/3 should not reach quorum");
+        assert!(committee.reached_quorum(2), "2/3 should reach quorum");
+        assert!(committee.reached_quorum(3), "3/3 should reach quorum");
+
+        for seed in 0..100 {
+            let shard = committee
+                .sample_shard(Digest::new_from_bytes([seed; 32]))
+                .unwrap();
+            assert!(
+                shard.evaluation_set().len() >= committee.evaluation_quorum_threshold() as usize,
+                "Must have enough evaluators to potentially reach quorum"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "evaluation set size must be greater or equal to quorum size")]
+    fn test_invalid_quorum_config() {
+        let encoder_details = vec![(100, probe_digest(0)), (100, probe_digest(1))];
+
+        EncoderCommittee::local_test_committee(
+            1,
+            encoder_details,
+            1, // inference_size
+            1, // min_inference
+            1, // eval_size
+            2, // quorum larger than eval_size - should panic
+            8000,
+        );
+    }
+
+    #[test]
+    fn test_epoch_consistency() {
+        let encoder_details = vec![(100, probe_digest(0)), (100, probe_digest(1))];
+
+        let epoch = 42;
+        let (committee, _) = EncoderCommittee::local_test_committee(
+            epoch,
+            encoder_details,
+            1, // inference_size
+            1, // min_inference
+            1, // eval_size
+            1, // quorum
+            8000,
+        );
+
+        assert_eq!(committee.epoch(), epoch);
+
+        for seed in 0..10 {
+            let shard = committee
+                .sample_shard(Digest::new_from_bytes([seed; 32]))
+                .unwrap();
+            assert_eq!(
+                shard.epoch(),
+                epoch,
+                "Shard epoch must match committee epoch"
+            );
+        }
     }
 }
