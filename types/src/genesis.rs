@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    committee::{Committee, CommitteeWithNetworkMetadata, EpochId},
+    committee::{AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EpochId},
+    consensus::{
+        block::{BlockDigest, BlockRef},
+        commit::{CommitDigest, CommitRef, CommittedSubDag},
+    },
     effects::{self, TransactionEffects},
     error::SomaResult,
     object::{Object, ObjectID},
@@ -55,6 +59,15 @@ impl Genesis {
 
     pub fn epoch(&self) -> EpochId {
         0
+    }
+
+    pub fn commit(&self) -> CommittedSubDag {
+        CommittedSubDag::new(
+            BlockRef::new(0, AuthorityIndex(0), BlockDigest::default()),
+            vec![],
+            0,
+            CommitRef::new(0, CommitDigest::default()),
+        )
     }
 
     pub fn system_object(&self) -> SystemState {

@@ -191,11 +191,7 @@ impl SomaNode {
         info!("creating commit store");
 
         let commit_store = CommitStore::new();
-        // TODO: commit_store.insert_genesis_commit(
-        //     genesis.commit(),
-        //     genesis.commit_contents().clone(),
-        //     &epoch_store,
-        // );
+        commit_store.insert_genesis_commit(genesis.commit());
 
         info!("creating long term consensus store");
         let consensus_store = Arc::new(MemStore::new());

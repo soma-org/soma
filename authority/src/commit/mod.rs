@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 use types::{
     accumulator::CommitIndex,
     committee::EpochId,
@@ -66,46 +66,27 @@ impl CommitStore {
         })
     }
 
-    // #[instrument(level = "info", skip_all)]
-    // pub fn insert_genesis_commit(
-    //     &self,
-    //     commit: VerifiedCommitSummary,
-    //     contents: CommitContents,
-    //     epoch_store: &AuthorityPerEpochStore,
-    // ) {
-    //     assert_eq!(
-    //         commit.epoch(),
-    //         0,
-    //         "can't call insert_genesis_commit with a commit not in epoch 0"
-    //     );
-    //     assert_eq!(
-    //         *commit.index(),
-    //         0,
-    //         "can't call insert_genesis_commit with a commit that doesn't have a index of 0"
-    //     );
+    #[instrument(level = "info", skip_all)]
+    pub fn insert_genesis_commit(&self, commit: CommittedSubDag) {
+        // assert_eq!(
+        //     commit.commit_ref.leader.b,
+        //     0,
+        //     "can't call insert_genesis_commit with a commit not in epoch 0"
+        // );
+        assert_eq!(
+            commit.commit_ref.index, 0,
+            "can't call insert_genesis_commit with a commit that doesn't have a index of 0"
+        );
 
-    //     // Only insert the genesis commit if the DB is empty and doesn't have it already
-    //     if self
-    //         .get_commit_by_digest(commit.digest())
-    //         .unwrap()
-    //         .is_none()
-    //     {
-    //         if epoch_store.epoch() == commit.epoch {
-    //             epoch_store
-    //                 .put_genesis_commit_in_builder(commit.data(), &contents)
-    //                 .unwrap();
-    //         } else {
-    //             debug!(
-    //                 validator_epoch =% epoch_store.epoch(),
-    //                 genesis_epoch =% commit.epoch(),
-    //                 "Not inserting commit builder data for genesis commit",
-    //             );
-    //         }
-    //         self.insert_commit_contents(contents).unwrap();
-    //         self.insert_verified_commit(&commit).unwrap();
-    //         self.update_highest_synced_commit(&commit).unwrap();
-    //     }
-    // }
+        // Only insert the genesis commit if the DB is empty and doesn't have it already
+        if self
+            .get_commit_by_digest(&commit.commit_ref.digest)
+            .unwrap()
+            .is_none()
+        {
+            self.insert_commit(commit).unwrap();
+        }
+    }
 
     pub fn get_commit_by_digest(
         &self,
