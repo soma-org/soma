@@ -1,4 +1,8 @@
-use std::{collections::HashMap, marker::PhantomData, sync::Arc};
+use std::{
+    collections::HashMap,
+    marker::PhantomData,
+    sync::{Arc, Weak},
+};
 
 use crate::{
     server::P2pService,
@@ -13,7 +17,7 @@ use tokio::{
     task::JoinSet,
 };
 use types::{
-    accumulator::AccumulatorStore,
+    accumulator::{self, AccumulatorStore},
     config::{p2p_config::P2pConfig, state_sync_config::StateSyncConfig},
     consensus::{
         block_verifier::{BlockVerifier, SignedBlockVerifier},

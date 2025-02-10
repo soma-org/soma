@@ -1,7 +1,8 @@
 use crate::{
+    accumulator::Accumulator,
     base::{AuthorityName, ConciseableName},
     crypto::AuthorityPublicKeyBytes,
-    digests::{ConsensusCommitDigest, TransactionDigest},
+    digests::{ConsensusCommitDigest, ECMHLiveObjectSetDigest, TransactionDigest},
     state_sync::CommitTimestamp,
     transaction::CertifiedTransaction,
 };
@@ -123,29 +124,29 @@ pub struct ConsensusCommitPrologue {
     pub consensus_commit_digest: ConsensusCommitDigest,
 }
 
-pub trait NextEpochCommitteeAPI: Send + Sync + 'static {
-    /// Returns the committee for the next epoch if one has been computed
-    fn get_next_epoch_committee(&self) -> Option<ValidatorSet>;
+pub trait EndOfEpochAPI: Send + Sync + 'static {
+    /// Returns the committee for the next epoch if one has been computed, and epoch state digest
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest)>;
 }
 
 pub struct TestEpochStore {
-    pub next_epoch_committee: Option<ValidatorSet>,
+    pub next_epoch_state: Option<(ValidatorSet, ECMHLiveObjectSetDigest)>,
 }
 
 impl TestEpochStore {
     pub fn new() -> Self {
         Self {
-            next_epoch_committee: None,
+            next_epoch_state: None,
         }
     }
 
-    pub fn set_next_epoch_committee(&mut self, committee: ValidatorSet) {
-        self.next_epoch_committee = Some(committee);
+    pub fn set_next_epoch_state(&mut self, state: (ValidatorSet, ECMHLiveObjectSetDigest)) {
+        self.next_epoch_state = Some(state);
     }
 }
 
-impl NextEpochCommitteeAPI for TestEpochStore {
-    fn get_next_epoch_committee(&self) -> Option<ValidatorSet> {
-        self.next_epoch_committee.clone()
+impl EndOfEpochAPI for TestEpochStore {
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest)> {
+        self.next_epoch_state.clone()
     }
 }

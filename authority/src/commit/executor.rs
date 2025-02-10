@@ -11,7 +11,7 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::{
-    accumulator::CommitIndex,
+    accumulator::{Accumulator, CommitIndex},
     consensus::{block::BlockAPI, commit::CommittedSubDag, ConsensusTransactionKind},
     digests::TransactionDigest,
     effects::TransactionEffects,
@@ -24,6 +24,7 @@ use crate::{
     epoch_store::AuthorityPerEpochStore,
     output::ConsensusOutputAPI,
     state::AuthorityState,
+    state_accumulator::StateAccumulator,
     tx_manager::TransactionManager,
 };
 
@@ -32,7 +33,8 @@ use super::CommitStore;
 /// The interval to log commit progress, in # of commits processed.
 const COMMIT_PROGRESS_LOG_COUNT_INTERVAL: u32 = 5000;
 
-type CommitExecutionBuffer = FuturesOrdered<JoinHandle<(CommittedSubDag, Vec<TransactionDigest>)>>;
+type CommitExecutionBuffer =
+    FuturesOrdered<JoinHandle<(CommittedSubDag, Vec<TransactionDigest>, Option<Accumulator>)>>;
 
 pub struct CommitExecutor {
     mailbox: broadcast::Receiver<CommittedSubDag>,
@@ -41,6 +43,7 @@ pub struct CommitExecutor {
     object_cache_reader: Arc<dyn ObjectCacheRead>,
     transaction_cache_reader: Arc<dyn TransactionCacheRead>,
     tx_manager: Arc<TransactionManager>,
+    accumulator: Arc<StateAccumulator>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -54,6 +57,7 @@ impl CommitExecutor {
         mailbox: broadcast::Receiver<CommittedSubDag>,
         commit_store: Arc<CommitStore>,
         state: Arc<AuthorityState>,
+        accumulator: Arc<StateAccumulator>,
     ) -> Self {
         Self {
             mailbox,
@@ -62,6 +66,7 @@ impl CommitExecutor {
             transaction_cache_reader: state.get_transaction_cache_reader().clone(),
             tx_manager: state.transaction_manager().clone(),
             state,
+            accumulator,
         }
     }
 
@@ -144,8 +149,8 @@ impl CommitExecutor {
                 // watermark accordingly. Note that given that commits are guaranteed to
                 // be processed (added to FuturesOrdered) in index order, using FuturesOrdered
                 // guarantees that we will also ratchet the watermarks in order.
-                Some(Ok((commit, tx_digests))) = pending.next() => {
-                    self.process_executed_commit(&epoch_store, &commit, &tx_digests).await;
+                Some(Ok((commit, tx_digests, commit_acc))) = pending.next() => {
+                    self.process_executed_commit(&epoch_store, &commit, &tx_digests, commit_acc).await;
                     highest_executed = Some(commit.clone());
                 }
 
@@ -230,11 +235,11 @@ impl CommitExecutor {
                         }
                     }
 
-                    // let effects = self
-                    //     .transaction_cache_reader
-                    //     .notify_read_executed_effects(&all_tx_digests)
-                    //     .await
-                    //     .expect("should get effects");
+                    let effects = self
+                        .transaction_cache_reader
+                        .notify_read_executed_effects(&all_tx_digests)
+                        .await
+                        .expect("should get effects");
 
                     finalize_commit(
                         &self.state,
@@ -244,7 +249,8 @@ impl CommitExecutor {
                         &all_tx_digests,
                         &epoch_store,
                         commit.clone(),
-                        // effects,
+                        self.accumulator.clone(),
+                        effects,
                     )
                     .await
                     .expect("Finalizing checkpoint cannot fail");
@@ -253,13 +259,13 @@ impl CommitExecutor {
                         .insert_epoch_last_commit(cur_epoch, commit)
                         .expect("Failed to insert epoch last checkpoint");
 
-                    // self.accumulator
-                    //     .accumulate_running_root(&epoch_store, checkpoint.sequence_number, None)
-                    //     .await
-                    //     .expect("Failed to accumulate running root");
-                    // self.accumulator
-                    //     .accumulate_epoch(epoch_store.clone(), *checkpoint.sequence_number())
-                    //     .expect("Accumulating epoch cannot fail");
+                    self.accumulator
+                        .accumulate_running_root(&epoch_store, commit.commit_ref.index, None)
+                        .await
+                        .expect("Failed to accumulate running root");
+                    self.accumulator
+                        .accumulate_epoch(&epoch_store.clone(), commit.commit_ref.index)
+                        .expect("Accumulating epoch cannot fail");
 
                     self.bump_highest_executed_commit(commit);
 
@@ -303,6 +309,7 @@ impl CommitExecutor {
             self.transaction_cache_reader.as_ref(),
             epoch_store.clone(),
             self.tx_manager.clone(),
+            self.accumulator.clone(),
         )
         .await;
     }
@@ -371,12 +378,13 @@ impl CommitExecutor {
         let transaction_cache_reader = self.transaction_cache_reader.clone();
         let tx_manager = self.tx_manager.clone();
         let state = self.state.clone();
+        let accumulator = self.accumulator.clone();
 
         epoch_store.notify_synced_commit(commit.commit_ref.index);
 
         pending.push_back(tokio::spawn(async move {
             let epoch_store = epoch_store.clone();
-            let tx_digests = loop {
+            let (tx_digests, commit_acc) = loop {
                 match execute_commit(
                     commit.clone(),
                     &state,
@@ -385,6 +393,7 @@ impl CommitExecutor {
                     commit_store.clone(),
                     epoch_store.clone(),
                     tx_manager.clone(),
+                    accumulator.clone(),
                 )
                 .await
                 {
@@ -392,10 +401,10 @@ impl CommitExecutor {
                         error!("Error while executing commit, will retry in 1s: {:?}", err);
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
-                    Ok(tx_digests) => break tx_digests,
+                    Ok((tx_digests, commit_acc)) => break (tx_digests, commit_acc),
                 }
             };
-            (commit, tx_digests)
+            (commit, tx_digests, commit_acc)
         }));
     }
 
@@ -407,6 +416,7 @@ impl CommitExecutor {
         epoch_store: &AuthorityPerEpochStore,
         commit: &CommittedSubDag,
         all_tx_digests: &[TransactionDigest],
+        commit_acc: Option<Accumulator>,
     ) {
         // Commit all transaction effects to disk
         let cache_commit = self.state.get_cache_commit();
@@ -421,6 +431,10 @@ impl CommitExecutor {
             .expect("cannot fail");
 
         if !commit.is_last_commit_of_epoch() {
+            self.accumulator
+                .accumulate_running_root(epoch_store, commit.commit_ref.index, commit_acc)
+                .await
+                .expect("Failed to accumulate running root");
             self.bump_highest_executed_commit(commit);
         }
     }
@@ -483,7 +497,8 @@ async fn execute_commit(
     commit_store: Arc<CommitStore>,
     epoch_store: Arc<AuthorityPerEpochStore>,
     transaction_manager: Arc<TransactionManager>,
-) -> SomaResult<Vec<TransactionDigest>> {
+    accumulator: Arc<StateAccumulator>,
+) -> SomaResult<(Vec<TransactionDigest>, Option<Accumulator>)> {
     debug!("Preparing commit for execution",);
     let prepare_start = Instant::now();
 
@@ -499,7 +514,7 @@ async fn execute_commit(
         epoch_store.clone(),
     );
 
-    execute_transactions(
+    let commit_acc = execute_transactions(
         all_tx_digests.clone(),
         executable_txns,
         state,
@@ -508,12 +523,13 @@ async fn execute_commit(
         commit_store.clone(),
         epoch_store.clone(),
         transaction_manager,
+        accumulator,
         commit,
         prepare_start,
     )
     .await?;
 
-    Ok(all_tx_digests)
+    Ok((all_tx_digests, commit_acc))
 }
 
 // // Given a commit, find the end of epoch transaction, if it exists
@@ -627,9 +643,10 @@ async fn execute_transactions(
     commit_store: Arc<CommitStore>,
     epoch_store: Arc<AuthorityPerEpochStore>,
     transaction_manager: Arc<TransactionManager>,
+    accumulator: Arc<StateAccumulator>,
     commit: CommittedSubDag,
     prepare_start: Instant,
-) -> SomaResult {
+) -> SomaResult<Option<Accumulator>> {
     // for tx in &executable_txns {
     //     if tx.contains_shared_object() {
     //         epoch_store
@@ -658,7 +675,7 @@ async fn execute_transactions(
         Some(commit.commit_ref.index),
     );
 
-    handle_execution_effects(
+    let commit_acc = handle_execution_effects(
         state,
         all_tx_digests,
         commit.clone(),
@@ -667,6 +684,7 @@ async fn execute_transactions(
         transaction_cache_reader,
         epoch_store,
         transaction_manager,
+        accumulator,
     )
     .await;
 
@@ -675,7 +693,7 @@ async fn execute_transactions(
         info!("Commit execution took {:?}", exec_elapsed);
     }
 
-    Ok(())
+    Ok(commit_acc)
 }
 
 #[instrument(level = "error", skip_all, fields(index = ?commit.commit_ref.index, epoch = ?epoch_store.epoch()))]
@@ -689,7 +707,8 @@ async fn handle_execution_effects(
     transaction_cache_reader: &dyn TransactionCacheRead,
     epoch_store: Arc<AuthorityPerEpochStore>,
     transaction_manager: Arc<TransactionManager>,
-) {
+    accumulator: Arc<StateAccumulator>,
+) -> Option<Accumulator> {
     let log_timeout_sec = Duration::from_secs(30);
     // Once synced_txns have been awaited, all txns should have effects committed.
     let mut periods = 1;
@@ -773,12 +792,14 @@ async fn handle_execution_effects(
                         &all_tx_digests,
                         &epoch_store,
                         commit.clone(),
-                        // effects,
+                        accumulator.clone(),
+                        effects,
                     )
                     .await
                     .expect("Finalizing commit cannot fail");
+                } else {
+                    return None;
                 }
-                break;
             }
         }
     }
@@ -793,13 +814,14 @@ async fn finalize_commit(
     tx_digests: &[TransactionDigest],
     epoch_store: &Arc<AuthorityPerEpochStore>,
     commit: CommittedSubDag,
-    // effects: Vec<TransactionEffects>,
-) -> SomaResult {
+    accumulator: Arc<StateAccumulator>,
+    effects: Vec<TransactionEffects>,
+) -> SomaResult<Accumulator> {
     debug!("finalizing commit");
     epoch_store.insert_finalized_transactions(tx_digests, commit.commit_ref.index)?;
 
-    // let checkpoint_acc =
-    //     accumulator.accumulate_checkpoint(effects, checkpoint.sequence_number, epoch_store)?;
+    let commit_acc =
+        accumulator.accumulate_commit(effects, commit.commit_ref.index, epoch_store)?;
 
-    Ok(())
+    Ok(commit_acc)
 }

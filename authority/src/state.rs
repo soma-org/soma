@@ -393,19 +393,6 @@ impl AuthorityState {
         {
             tx_guard.release();
 
-            if let Some(commit) = commit {
-                if !effects.all_changed_objects().is_empty() {
-                    let commit_acc = self.accumulator.accumulate_commit(
-                        vec![effects.clone()],
-                        commit,
-                        epoch_store,
-                    )?;
-                    self.accumulator
-                        .accumulate_running_root(epoch_store, commit, Some(commit_acc))
-                        .await?;
-                }
-            }
-
             return Ok((effects, None));
         }
         let execution_guard = self
@@ -457,19 +444,6 @@ impl AuthorityState {
             epoch_store,
         )
         .await?;
-
-        if let Some(commit) = commit {
-            if !effects.all_changed_objects().is_empty() {
-                let commit_acc = self.accumulator.accumulate_commit(
-                    vec![effects.clone()],
-                    commit,
-                    epoch_store,
-                )?;
-                self.accumulator
-                    .accumulate_running_root(epoch_store, commit, Some(commit_acc))
-                    .await?;
-            }
-        }
 
         Ok((effects, execution_error_opt))
     }
@@ -913,6 +887,23 @@ impl AuthorityState {
         Ok(VerifiedSignedTransactionEffects::new_unchecked(
             signed_effects,
         ))
+    }
+
+    pub async fn get_root_state_digest(
+        &self,
+        commit_index: CommitIndex,
+        effects: Vec<TransactionEffects>,
+    ) -> SomaResult<ECMHLiveObjectSetDigest> {
+        let epoch_store = self.epoch_store.load();
+        let acc =
+            self.accumulator
+                .accumulate_commit(effects.clone(), commit_index, &epoch_store)?;
+        self.accumulator
+            .accumulate_running_root(&epoch_store, commit_index, Some(acc))
+            .await?;
+        self.accumulator
+            .digest_epoch(epoch_store.clone(), commit_index)
+            .await
     }
 }
 

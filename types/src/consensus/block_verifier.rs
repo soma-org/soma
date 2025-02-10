@@ -10,6 +10,7 @@ use super::transaction::TransactionVerifier;
 use crate::accumulator::{self, AccumulatorStore};
 use crate::committee::{Committee, EpochId};
 use crate::crypto::AuthorityPublicKey;
+use crate::digests::ECMHLiveObjectSetDigest;
 use crate::storage::read_store::ReadStore;
 use fastcrypto::hash::MultisetHash;
 use fastcrypto::traits::AggregateAuthenticator;
@@ -106,35 +107,21 @@ impl BlockVerifier for SignedBlockVerifier {
         // Verify the block's signature.
         block.verify_signature(&self.context)?;
 
-        // If the block contains a state commit, verify the accumulator.
-        if let Some(state_commit) = block.state_commit() {
-            let accumulator = self
-                .accumulator_store
-                .get_root_state_accumulator_for_commit(state_commit.commit());
-            if let Ok(Some(stored_state_hash)) = accumulator {
-                if stored_state_hash != *state_commit.state_hash() {
-                    error!(
-                        "State hash mismatch: expected {:?}, actual {:?}",
-                        stored_state_hash.digest(),
-                        state_commit.state_hash().digest()
-                    );
-                    return Err(ConsensusError::InvalidStateHash {
-                        expected: stored_state_hash.digest(),
-                        actual: state_commit.state_hash().digest(),
-                    });
-                } else {
-                    info!(
-                        "State hash matches the stored state hash. {:?}",
-                        stored_state_hash.digest()
-                    );
-                }
-            } else {
-                info!("State hash not found in the accumulator store.");
-            }
-        }
-
         // Verify EndOfEpochData if present
         if let Some(eoe) = block.end_of_epoch_data() {
+            // Verify state hash matches our local one if we have one
+            if let Ok(Some((_, our_digest))) = self
+                .accumulator_store
+                .get_root_state_accumulator_for_epoch(block.epoch())
+            {
+                if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
+                    return Err(ConsensusError::InvalidEndOfEpoch(format!(
+                        "State hash mismatch: expected {:?}, got {:?}",
+                        our_digest, eoe.state_hash
+                    )));
+                }
+            }
+
             match (
                 &eoe.next_validator_set,
                 &eoe.validator_set_signature,

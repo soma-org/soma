@@ -1209,25 +1209,27 @@ impl ObjectCacheRead for WritebackCache {
 }
 
 impl AccumulatorStore for WritebackCache {
-    fn get_root_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_epoch(
         &self,
-        commit: CommitIndex,
-    ) -> SomaResult<Option<Accumulator>> {
-        self.store.get_root_state_accumulator_for_commit(commit)
-    }
-
-    fn get_root_state_accumulator_for_highest_commit(
-        &self,
+        epoch: EpochId,
     ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
-        self.store.get_root_state_accumulator_for_highest_commit()
+        self.store.get_root_state_accumulator_for_epoch(epoch)
     }
 
-    fn insert_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_highest_epoch(
         &self,
+    ) -> SomaResult<Option<(EpochId, (CommitIndex, Accumulator))>> {
+        self.store.get_root_state_accumulator_for_highest_epoch()
+    }
+
+    fn insert_state_accumulator_for_epoch(
+        &self,
+        epoch: EpochId,
         commit: &CommitIndex,
         acc: &Accumulator,
     ) -> SomaResult {
-        self.store.insert_state_accumulator_for_commit(commit, acc)
+        self.store
+            .insert_state_accumulator_for_epoch(epoch, commit, acc)
     }
 
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {

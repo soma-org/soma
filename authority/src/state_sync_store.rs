@@ -3,6 +3,7 @@ use crate::commit::CommitStore;
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use types::accumulator::Accumulator;
 use types::accumulator::AccumulatorStore;
 use types::committee::Authority;
 use types::consensus::block::BlockAPI;
@@ -306,31 +307,32 @@ impl ConsensusStore for StateSyncStore {
 }
 
 impl AccumulatorStore for StateSyncStore {
-    fn get_root_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_epoch(
         &self,
-        commit: CommitIndex,
-    ) -> types::error::SomaResult<Option<types::accumulator::Accumulator>> {
+        epoch: EpochId,
+    ) -> types::error::SomaResult<Option<(CommitIndex, Accumulator)>> {
         self.cache_traits
             .accumulator_store
-            .get_root_state_accumulator_for_commit(commit)
+            .get_root_state_accumulator_for_epoch(epoch)
     }
 
-    fn get_root_state_accumulator_for_highest_commit(
+    fn get_root_state_accumulator_for_highest_epoch(
         &self,
-    ) -> types::error::SomaResult<Option<(CommitIndex, types::accumulator::Accumulator)>> {
+    ) -> types::error::SomaResult<Option<(EpochId, (CommitIndex, Accumulator))>> {
         self.cache_traits
             .accumulator_store
-            .get_root_state_accumulator_for_highest_commit()
+            .get_root_state_accumulator_for_highest_epoch()
     }
 
-    fn insert_state_accumulator_for_commit(
+    fn insert_state_accumulator_for_epoch(
         &self,
+        epoch: EpochId,
         commit: &CommitIndex,
-        acc: &types::accumulator::Accumulator,
+        acc: &Accumulator,
     ) -> types::error::SomaResult {
         self.cache_traits
             .accumulator_store
-            .insert_state_accumulator_for_commit(commit, acc)
+            .insert_state_accumulator_for_epoch(epoch, commit, acc)
     }
 
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = types::object::LiveObject> + '_> {

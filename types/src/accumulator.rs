@@ -1,4 +1,5 @@
 use crate::{
+    committee::EpochId,
     error::SomaResult,
     object::{LiveObject, Object, ObjectID, Version},
     storage::{object_store::ObjectStore, storage_error},
@@ -7,17 +8,18 @@ use crate::{
 pub type Accumulator = fastcrypto::hash::EllipticCurveMultisetHash;
 pub type CommitIndex = crate::consensus::commit::CommitIndex;
 pub trait AccumulatorStore: ObjectStore + Send + Sync {
-    fn get_root_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_epoch(
         &self,
-        commit: CommitIndex,
-    ) -> SomaResult<Option<Accumulator>>;
-
-    fn get_root_state_accumulator_for_highest_commit(
-        &self,
+        epoch: EpochId,
     ) -> SomaResult<Option<(CommitIndex, Accumulator)>>;
 
-    fn insert_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_highest_epoch(
         &self,
+    ) -> SomaResult<Option<(EpochId, (CommitIndex, Accumulator))>>;
+
+    fn insert_state_accumulator_for_epoch(
+        &self,
+        epoch: EpochId,
         commit: &CommitIndex,
         acc: &Accumulator,
     ) -> SomaResult;
@@ -43,23 +45,24 @@ impl ObjectStore for TestAccumulatorStore {
 }
 
 impl AccumulatorStore for TestAccumulatorStore {
-    fn get_root_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_epoch(
         &self,
-        _commit: CommitIndex,
-    ) -> SomaResult<Option<Accumulator>> {
-        Ok(None)
-    }
-
-    fn get_root_state_accumulator_for_highest_commit(
-        &self,
+        epoch: EpochId,
     ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
         Ok(None)
     }
 
-    fn insert_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_highest_epoch(
         &self,
-        _commit: &CommitIndex,
-        _acc: &Accumulator,
+    ) -> SomaResult<Option<(EpochId, (CommitIndex, Accumulator))>> {
+        Ok(None)
+    }
+
+    fn insert_state_accumulator_for_epoch(
+        &self,
+        epoch: EpochId,
+        commit: &CommitIndex,
+        acc: &Accumulator,
     ) -> SomaResult {
         Ok(())
     }

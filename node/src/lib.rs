@@ -665,6 +665,7 @@ impl SomaNode {
                 self.state_sync_handle.subscribe_to_synced_commits(),
                 self.commit_store.clone(),
                 self.state.clone(),
+                accumulator.clone(),
             );
             // let timestamp_ms = self.run_epoch(Duration::from_secs(15)).await; // TODO: make this configurable
 

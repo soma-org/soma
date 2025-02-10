@@ -995,39 +995,40 @@ impl ObjectStore for AuthorityStore {
 }
 
 impl AccumulatorStore for AuthorityStore {
-    fn get_root_state_accumulator_for_commit(
+    fn get_root_state_accumulator_for_epoch(
         &self,
-        commit: CommitIndex,
-    ) -> SomaResult<Option<Accumulator>> {
-        Ok(self
-            .perpetual_tables
-            .root_state_hash_by_commit
-            .read()
-            .get(&commit)
-            .cloned())
-    }
-
-    fn get_root_state_accumulator_for_highest_commit(
-        &self,
+        epoch: EpochId,
     ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
         Ok(self
             .perpetual_tables
-            .root_state_hash_by_commit
+            .root_state_hash_by_epoch
+            .read()
+            .get(&epoch)
+            .cloned())
+    }
+
+    fn get_root_state_accumulator_for_highest_epoch(
+        &self,
+    ) -> SomaResult<Option<(EpochId, (CommitIndex, Accumulator))>> {
+        Ok(self
+            .perpetual_tables
+            .root_state_hash_by_epoch
             .read()
             .iter()
             .next_back()
             .map(|(seq, acc)| (*seq, acc.clone())))
     }
 
-    fn insert_state_accumulator_for_commit(
+    fn insert_state_accumulator_for_epoch(
         &self,
+        epoch: EpochId,
         commit: &CommitIndex,
         acc: &Accumulator,
     ) -> SomaResult {
         self.perpetual_tables
-            .root_state_hash_by_commit
+            .root_state_hash_by_epoch
             .write()
-            .insert(*commit, acc.clone());
+            .insert(epoch, (*commit, acc.clone()));
 
         Ok(())
     }

@@ -74,9 +74,10 @@ pub struct AuthorityPerpetualTables {
     /// Parameters of the system fixed at the epoch start
     pub(crate) epoch_start_configuration: RwLock<BTreeMap<(), EpochStartConfiguration>>,
 
-    // Finalized root state accumulator for commit, to be included in next block proposed. These values should only ever be written once
+    // Finalized root state accumulator for epoch, to be included in
+    // of last commit of epoch. These values should only ever be written once
     // and never changed
-    pub(crate) root_state_hash_by_commit: RwLock<BTreeMap<CommitIndex, Accumulator>>,
+    pub(crate) root_state_hash_by_epoch: RwLock<BTreeMap<EpochId, (CommitIndex, Accumulator)>>,
 }
 
 impl AuthorityPerpetualTables {
@@ -93,7 +94,7 @@ impl AuthorityPerpetualTables {
             epoch_start_configuration: RwLock::new(BTreeMap::new()),
             objects: RwLock::new(BTreeMap::new()),
             object_transaction_locks: RwLock::new(BTreeMap::new()),
-            root_state_hash_by_commit: RwLock::new(BTreeMap::new()),
+            root_state_hash_by_epoch: RwLock::new(BTreeMap::new()),
         }
     }
 

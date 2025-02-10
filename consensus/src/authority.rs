@@ -27,7 +27,7 @@ use types::{
     accumulator::AccumulatorStore,
     crypto::{NetworkKeyPair, ProtocolKeyPair},
 };
-use types::{consensus::NextEpochCommitteeAPI, parameters::Parameters};
+use types::{consensus::EndOfEpochAPI, parameters::Parameters};
 use types::{
     consensus::{
         block_verifier::SignedBlockVerifier,
@@ -65,7 +65,7 @@ impl ConsensusAuthority {
         transaction_verifier: Arc<dyn TransactionVerifier>,
         commit_consumer: CommitConsumer,
         accumulator_store: Arc<dyn AccumulatorStore>,
-        epoch_store: Arc<dyn NextEpochCommitteeAPI>,
+        epoch_store: Arc<dyn EndOfEpochAPI>,
         dag_state: Arc<RwLock<DagState>>,
         consensus_store: Arc<dyn ConsensusStore>,
     ) -> Self {

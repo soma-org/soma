@@ -250,26 +250,41 @@ impl ConsensusHandler {
 
         if end_of_publish_quorum {
             // Execute advance epoch tx
-            let (system_state, _effects) = self
+            let (system_state, effects) = self
                 .state
                 .create_and_execute_advance_epoch_tx(&self.epoch_store, timestamp) // next epoch timestamp
                 .await
                 .expect("Failed to execute advance epoch transaction");
 
+            // Get epoch state hash digest
+            let state_digest = self
+                .state
+                .get_root_state_digest(commit_sub_dag_index.try_into().unwrap(), vec![effects])
+                .await
+                .expect("Failed to get root state digest");
+
             // Store for Core to access when proposing next block
-            self.epoch_store.set_next_epoch_state(system_state);
+            self.epoch_store
+                .set_next_epoch_state(system_state, state_digest);
+
+            // Don't schedule any more transactions since we've advanced the epoch
+            info!(
+                "Dropping {} transactions after end_of_publish_quorum reached",
+                transactions_to_schedule.len()
+            );
+        } else {
+            // update the calculated throughput
+            self.throughput_calculator
+                .add_transactions(timestamp, transactions_to_schedule.len() as u64);
+
+            // Only schedule transactions if we haven't reached EOP quorum
+            self.transaction_scheduler
+                .schedule(
+                    transactions_to_schedule,
+                    commit_sub_dag_index.try_into().unwrap(),
+                )
+                .await;
         }
-
-        // update the calculated throughput
-        self.throughput_calculator
-            .add_transactions(timestamp, transactions_to_schedule.len() as u64);
-
-        self.transaction_scheduler
-            .schedule(
-                transactions_to_schedule,
-                commit_sub_dag_index.try_into().unwrap(),
-            )
-            .await;
     }
 }
 

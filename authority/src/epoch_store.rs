@@ -3,7 +3,7 @@ use std::{
     future::Future,
     ops::{Bound, Deref},
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Weak},
     time::Instant,
 };
 
@@ -18,13 +18,13 @@ use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, CommitIndex},
     base::{AuthorityName, ConciseableName, Round, SomaAddress},
-    committee::{Committee, EpochId},
+    committee::{Authority, Committee, EpochId},
     consensus::{
         validator_set::ValidatorSet, ConsensusCommitPrologue, ConsensusTransaction,
-        ConsensusTransactionKey, ConsensusTransactionKind, NextEpochCommitteeAPI,
+        ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
     },
     crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
-    digests::{TransactionDigest, TransactionEffectsDigest},
+    digests::{ECMHLiveObjectSetDigest, TransactionDigest, TransactionEffectsDigest},
     effects::{self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects},
     envelope::TrustedEnvelope,
     error::{ExecutionError, SomaError, SomaResult},
@@ -58,6 +58,7 @@ use crate::{
     reconfiguration::ReconfigState,
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
+    state_accumulator::StateAccumulator,
     store::LockDetails,
 };
 
@@ -177,7 +178,7 @@ pub struct AuthorityPerEpochStore {
     /// Get notified when a synced commit has reached CommitExecutor.
     synced_commit_notify_read: NotifyRead<CommitIndex, ()>,
 
-    next_epoch_state: RwLock<Option<SystemState>>,
+    next_epoch_state: RwLock<Option<(SystemState, ECMHLiveObjectSetDigest)>>,
 }
 
 /// AuthorityEpochTables contains tables that contain data that is only valid within an epoch.
@@ -1598,31 +1599,41 @@ impl AuthorityPerEpochStore {
             .collect())
     }
 
-    pub fn set_next_epoch_state(&self, system_state: SystemState) {
+    pub fn set_next_epoch_state(
+        &self,
+        system_state: SystemState,
+        epoch_digest: ECMHLiveObjectSetDigest,
+    ) {
         if self.next_epoch_state.read().is_none() {
-            *self.next_epoch_state.write() = Some(system_state);
+            *self.next_epoch_state.write() = Some((system_state, epoch_digest));
         }
     }
 }
 
-impl NextEpochCommitteeAPI for AuthorityPerEpochStore {
-    fn get_next_epoch_committee(&self) -> Option<ValidatorSet> {
-        self.next_epoch_state.read().as_ref().map(|state| {
-            ValidatorSet(
-                state
-                    .get_current_epoch_committee()
-                    .validators()
-                    .iter()
-                    .map(|(authority_name, (voting_power, network_metadata))| {
-                        (
-                            authority_name.clone(),
-                            *voting_power,
-                            network_metadata.clone(),
-                        )
-                    })
-                    .collect(),
-            )
-        })
+impl EndOfEpochAPI for AuthorityPerEpochStore {
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest)> {
+        self.next_epoch_state
+            .read()
+            .as_ref()
+            .map(|(state, digest)| {
+                (
+                    ValidatorSet(
+                        state
+                            .get_current_epoch_committee()
+                            .validators()
+                            .iter()
+                            .map(|(authority_name, (voting_power, network_metadata))| {
+                                (
+                                    authority_name.clone(),
+                                    *voting_power,
+                                    network_metadata.clone(),
+                                )
+                            })
+                            .collect(),
+                    ),
+                    digest.clone(),
+                )
+            })
     }
 }
 

@@ -78,6 +78,17 @@ impl StateAccumulator {
         Self::accumulate_live_object_set_impl(self.store.iter_live_object_set())
     }
 
+    pub async fn digest_epoch(
+        &self,
+        epoch_store: Arc<AuthorityPerEpochStore>,
+        last_commit_of_epoch: CommitIndex,
+    ) -> SomaResult<ECMHLiveObjectSetDigest> {
+        Ok(self
+            .accumulate_epoch(&epoch_store, last_commit_of_epoch)?
+            .digest()
+            .into())
+    }
+
     /// Accumulates the effects of a single checkpoint and persists the accumulator.
     pub fn accumulate_commit(
         &self,
@@ -132,20 +143,39 @@ impl StateAccumulator {
         let mut running_root = if commit == 0 {
             // we're at genesis and need to start from scratch
             Accumulator::default()
-        } else if let Some((commit, acc)) = epoch_store.get_highest_running_root_accumulator()? {
-            acc
-        } else {
+        } else if epoch_store
+            .get_highest_running_root_accumulator()?
+            .is_none()
+        {
             // we're at the beginning of a new epoch and need to
             // bootstrap from the previous epoch's root state hash. Because this
             // should only occur at beginning of epoch, we shouldn't have to worry
             // about race conditions on reading the highest running root accumulator.
-            if let Some((prev_commit, prev_acc)) =
-                self.store.get_root_state_accumulator_for_highest_commit()?
+            if let Some((prev_epoch, (last_commit_prev_epoch, prev_acc))) =
+                self.store.get_root_state_accumulator_for_highest_epoch()?
             {
-                prev_acc
+                if last_commit_prev_epoch != commit - 1 {
+                    epoch_store.notify_read_running_root(commit - 1).await?
+                } else {
+                    assert_eq!(
+                        prev_epoch + 1,
+                        epoch_store.epoch(),
+                        "Expected highest existing root state hash to be for previous epoch",
+                    );
+                    prev_acc
+                }
             } else {
+                // Rare edge case where we manage to somehow lag in checkpoint execution from genesis
+                // such that the end of epoch checkpoint is built before we execute any checkpoints.
+                assert_eq!(
+                    epoch_store.epoch(),
+                    0,
+                    "Expected epoch to be 0 if previous root state hash does not exist"
+                );
                 epoch_store.notify_read_running_root(commit - 1).await?
             }
+        } else {
+            epoch_store.notify_read_running_root(commit - 1).await?
         };
 
         let commit_acc = commit_acc.unwrap_or_else(|| {
@@ -158,9 +188,6 @@ impl StateAccumulator {
         running_root.union(&commit_acc);
         epoch_store.insert_running_root_accumulator(&commit, &running_root)?;
 
-        self.store
-            .insert_state_accumulator_for_commit(&commit, &running_root)?;
-
         debug!(
             "Finalized root state hash for epoch (up to commit {}): {}",
             commit,
@@ -170,20 +197,24 @@ impl StateAccumulator {
         Ok(())
     }
 
-    pub fn finalize_running_root(
+    pub fn accumulate_epoch(
         &self,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-        commit: CommitIndex,
+        last_commit_of_epoch: CommitIndex,
     ) -> SomaResult<Accumulator> {
         let running_root = epoch_store
-            .get_running_root_accumulator(&commit)?
+            .get_running_root_accumulator(&last_commit_of_epoch)?
             .expect("Expected running root accumulator to exist up to last commit of epoch");
 
-        self.store
-            .insert_state_accumulator_for_commit(&commit, &running_root)?;
+        self.store.insert_state_accumulator_for_epoch(
+            epoch_store.epoch(),
+            &last_commit_of_epoch,
+            &running_root,
+        )?;
         debug!(
-            "Finalized root state hash for epoch (up to commit {}): {}",
-            commit,
+            "Finalized root state hash for epoch {} (up to commit {}): {}",
+            epoch_store.epoch(),
+            last_commit_of_epoch,
             running_root.clone().digest(),
         );
         Ok(running_root.clone())

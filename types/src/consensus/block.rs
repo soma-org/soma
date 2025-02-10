@@ -10,15 +10,18 @@ use std::{
 
 use super::context::Context;
 use super::{commit::CommitVote, validator_set::ValidatorSet};
-use crate::crypto::{
-    AggregateAuthoritySignature, AuthorityPublicKeyBytes, AuthoritySignature,
-    DefaultHash as DefaultHashFunction, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey,
-    DIGEST_LENGTH,
-};
 use crate::intent::{Intent, IntentMessage, IntentScope};
 use crate::{
     accumulator::{Accumulator, CommitIndex},
     committee::{AuthorityIndex, Epoch},
+};
+use crate::{
+    crypto::{
+        AggregateAuthoritySignature, AuthorityPublicKeyBytes, AuthoritySignature,
+        DefaultHash as DefaultHashFunction, ProtocolKeyPair, ProtocolKeySignature,
+        ProtocolPublicKey, DIGEST_LENGTH,
+    },
+    digests::ECMHLiveObjectSetDigest,
 };
 use crate::{
     ensure,
@@ -51,30 +54,13 @@ impl Transaction {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
-pub struct StateCommit {
-    commit: CommitIndex,
-    state_hash: Accumulator,
-}
-
-impl StateCommit {
-    pub fn new(commit: CommitIndex, state_hash: Accumulator) -> Self {
-        Self { commit, state_hash }
-    }
-
-    pub fn commit(&self) -> CommitIndex {
-        self.commit
-    }
-
-    pub fn state_hash(&self) -> &Accumulator {
-        &self.state_hash
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EndOfEpochData {
     /// The proposed validator set for next epoch, with each validator's public key and voting power
     pub next_validator_set: Option<ValidatorSet>,
+
+    /// Accumulated state hash digest of the last commit of the epoch
+    pub state_hash: Option<ECMHLiveObjectSetDigest>,
 
     /// BLS signature from this block's author on next_validator_set from blocks in ancestry
     /// Only included if a valid validator set was found in ancestry
@@ -94,7 +80,6 @@ pub struct Block {
     ancestors: Vec<BlockRef>,
     transactions: Vec<Transaction>,
     commit_votes: Vec<CommitVote>,
-    state_commit: Option<StateCommit>,
     end_of_epoch_data: Option<EndOfEpochData>,
 }
 
@@ -107,7 +92,6 @@ impl Block {
         ancestors: Vec<BlockRef>,
         transactions: Vec<Transaction>,
         commit_votes: Vec<CommitVote>,
-        state_commit: Option<StateCommit>,
         end_of_epoch_data: Option<EndOfEpochData>,
     ) -> Block {
         Self {
@@ -118,7 +102,6 @@ impl Block {
             ancestors,
             transactions,
             commit_votes,
-            state_commit,
             end_of_epoch_data,
         }
     }
@@ -132,7 +115,6 @@ impl Block {
             ancestors: vec![],
             transactions: vec![],
             commit_votes: vec![],
-            state_commit: None,
             end_of_epoch_data: None,
         }
     }
@@ -147,7 +129,6 @@ pub trait BlockAPI {
     fn ancestors(&self) -> &[BlockRef];
     fn transactions(&self) -> &[Transaction];
     fn commit_votes(&self) -> &[CommitVote];
-    fn state_commit(&self) -> Option<&StateCommit>;
     fn end_of_epoch_data(&self) -> Option<&EndOfEpochData>;
 }
 
@@ -182,10 +163,6 @@ impl BlockAPI for Block {
 
     fn commit_votes(&self) -> &[CommitVote] {
         &self.commit_votes
-    }
-
-    fn state_commit(&self) -> Option<&StateCommit> {
-        self.state_commit.as_ref()
     }
 
     fn end_of_epoch_data(&self) -> Option<&EndOfEpochData> {

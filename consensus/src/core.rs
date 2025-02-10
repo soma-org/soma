@@ -16,7 +16,7 @@ use types::{
     base::AuthorityName,
     committee::{AuthorityIndex, Stake},
     consensus::{
-        block::EndOfEpochData, validator_set::ValidatorSet, NextEpochCommitteeAPI, TestEpochStore,
+        block::EndOfEpochData, validator_set::ValidatorSet, EndOfEpochAPI, TestEpochStore,
     },
     crypto::{
         AggregateAuthenticator, AggregateAuthoritySignature, AuthorityKeyPair, AuthorityPublicKey,
@@ -28,7 +28,7 @@ use types::{
     consensus::{
         block::{
             Block, BlockAPI as _, BlockRef, BlockTimestampMs, Round, SignedBlock, Slot,
-            StateCommit, VerifiedBlock, GENESIS_ROUND,
+            VerifiedBlock, GENESIS_ROUND,
         },
         block_verifier::NoopBlockVerifier,
         commit::CommittedSubDag,
@@ -97,7 +97,7 @@ pub(crate) struct Core {
     // Store for state hashes by commit for inclusion in blocks.
     accumulator_store: Arc<dyn AccumulatorStore>,
 
-    epoch_store: Arc<dyn NextEpochCommitteeAPI>,
+    epoch_store: Arc<dyn EndOfEpochAPI>,
 }
 
 impl Core {
@@ -112,7 +112,7 @@ impl Core {
         committee_signer: AuthorityKeyPair,
         dag_state: Arc<RwLock<DagState>>,
         accumulator_store: Arc<dyn AccumulatorStore>,
-        epoch_store: Arc<dyn NextEpochCommitteeAPI>,
+        epoch_store: Arc<dyn EndOfEpochAPI>,
     ) -> Self {
         let last_decided_leader = dag_state.read().last_commit_leader();
         let number_of_leaders = 1; // TODO: context.parameters.mysticeti_num_leaders_per_round();
@@ -383,70 +383,64 @@ impl Core {
             .write()
             .take_commit_votes(MAX_COMMIT_VOTES_PER_BLOCK);
 
-        // Get the state hash for the highest commit.
-        let state_commit;
-        if let Ok(Some((commit, state_hash))) = self
-            .accumulator_store
-            .get_root_state_accumulator_for_highest_commit()
-        {
-            state_commit = Some(StateCommit::new(commit, state_hash));
-        } else {
-            state_commit = None;
-        }
-
         // Check for end of epoch phase
-        let end_of_epoch_data =
-            if let Some(next_validator_set) = self.epoch_store.get_next_epoch_committee() {
-                // Find first ancestor block proposing this validator set
-                let ancestor_with_validator_set = ancestors.iter().find(|block| {
-                    if let Some(eoe) = block.end_of_epoch_data() {
-                        eoe.next_validator_set.as_ref() == Some(&next_validator_set)
+        let end_of_epoch_data = if let Some((next_validator_set, state_digest)) =
+            self.epoch_store.get_next_epoch_state()
+        {
+            // Find first ancestor block proposing this validator set and state digest
+            let ancestor_with_validator_set = ancestors.iter().find(|block| {
+                if let Some(eoe) = block.end_of_epoch_data() {
+                    eoe.next_validator_set.as_ref() == Some(&next_validator_set)
+                        && eoe.state_hash == Some(state_digest.clone())
+                } else {
+                    false
+                }
+            });
+
+            Some(match ancestor_with_validator_set {
+                // Case 1: First to propose validator set and state digest
+                None => EndOfEpochData {
+                    next_validator_set: Some(next_validator_set),
+                    state_hash: Some(state_digest),
+                    validator_set_signature: None,
+                    aggregate_signature: None,
+                },
+
+                // Case 2: Ancestor proposed matching validator set and state digest
+                Some(_proposing_block) => {
+                    // Sign the validator set
+                    let sig = next_validator_set
+                        .sign(&self.committee_signer)
+                        .expect("Cannot sign validator set");
+
+                    // Collect all valid signatures including ours
+                    let mut ancestor_sigs =
+                        self.collect_validator_set_signatures(&ancestors, &next_validator_set);
+                    ancestor_sigs.push(sig.clone());
+
+                    // Case 4: Have quorum - include aggregate
+                    if ancestor_sigs.len() as u64 >= self.context.committee.quorum_threshold() {
+                        EndOfEpochData {
+                            next_validator_set: Some(next_validator_set),
+                            state_hash: Some(state_digest),
+                            validator_set_signature: Some(sig),
+                            aggregate_signature: self
+                                .aggregate_validator_set_signatures(ancestor_sigs),
+                        }
                     } else {
-                        false
-                    }
-                });
-
-                Some(match ancestor_with_validator_set {
-                    // Case 1: First to propose validator set
-                    None => EndOfEpochData {
-                        next_validator_set: Some(next_validator_set),
-                        validator_set_signature: None,
-                        aggregate_signature: None,
-                    },
-
-                    // Case 2: Ancestor proposed matching validator set
-                    Some(_proposing_block) => {
-                        // Sign the validator set
-                        let sig = next_validator_set
-                            .sign(&self.committee_signer)
-                            .expect("Cannot sign validator set");
-
-                        // Collect all valid signatures including ours
-                        let mut ancestor_sigs =
-                            self.collect_validator_set_signatures(&ancestors, &next_validator_set);
-                        ancestor_sigs.push(sig.clone());
-
-                        // Case 4: Have quorum - include aggregate
-                        if ancestor_sigs.len() as u64 >= self.context.committee.quorum_threshold() {
-                            EndOfEpochData {
-                                next_validator_set: Some(next_validator_set),
-                                validator_set_signature: Some(sig),
-                                aggregate_signature: self
-                                    .aggregate_validator_set_signatures(ancestor_sigs),
-                            }
-                        } else {
-                            // Case 2 continued: Add our signature but not enough for aggregate yet
-                            EndOfEpochData {
-                                next_validator_set: Some(next_validator_set),
-                                validator_set_signature: Some(sig),
-                                aggregate_signature: None,
-                            }
+                        // Case 2 continued: Add our signature but not enough for aggregate yet
+                        EndOfEpochData {
+                            next_validator_set: Some(next_validator_set),
+                            state_hash: Some(state_digest),
+                            validator_set_signature: Some(sig),
+                            aggregate_signature: None,
                         }
                     }
-                })
-            } else {
-                None // Not end of epoch yet
-            };
+                }
+            })
+        } else {
+            None // Not end of epoch yet
+        };
 
         // Create the block and insert to storage.
         let block = Block::new(
@@ -457,7 +451,6 @@ impl Core {
             ancestors.iter().map(|b| b.reference()).collect(),
             transactions,
             commit_votes,
-            state_commit,
             end_of_epoch_data,
         );
         let signed_block =
@@ -559,12 +552,13 @@ impl Core {
                 ancestors
                     .into_iter()
                     .filter(|block| {
-                        // Keep if no validator set or matching set
+                        // Keep if no end of epoch data or matching set + state hash
                         if let Some(eoe) = block.end_of_epoch_data() {
-                            if let Some(validator_set) = eoe.next_validator_set.as_ref() {
-                                if let Some(our_set) = self.epoch_store.get_next_epoch_committee() {
-                                    return validator_set == &our_set;
-                                }
+                            if let Some((our_set, our_digest)) =
+                                self.epoch_store.get_next_epoch_state()
+                            {
+                                return eoe.next_validator_set.as_ref() == Some(&our_set)
+                                    && eoe.state_hash == Some(our_digest);
                             }
                         }
                         true
