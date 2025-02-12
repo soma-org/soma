@@ -320,7 +320,10 @@ where
             }
 
             // Schedule new fetches if we're behind
+
             self.maybe_start_sync_task();
+
+            sleep(Duration::from_millis(1000)).await;
         }
 
         info!("State-Synchronizer ended");
@@ -335,6 +338,11 @@ where
             .index;
 
         let highest_known_commit = self.peer_heights.read().highest_known_commit_index();
+
+        info!(
+            "Highest synced commit: {:?}, highest known commit: {:?}",
+            highest_synced_commit, highest_known_commit
+        );
 
         if Some(highest_synced_commit) < highest_known_commit {
             let task = sync_from_peer(
@@ -681,186 +689,134 @@ async fn sync_from_peer<S>(
 {
     // Keep retrying with different peers until we succeed
     'retry: loop {
-        let peer_balancer = PeerBalancer::new(active_peers.clone(), peer_heights.clone());
+        let peer_balancer = PeerBalancer::new(active_peers.clone(), peer_heights.clone())
+            .with_commit(target_commit);
 
-        let current_highest_synced_commit_index = store
-            .get_highest_synced_commit()
-            .expect("store operation should not fail")
-            .commit_ref
-            .index;
+        'peer: for peer in peer_balancer.clone() {
+            let mut sync_start = store
+                .get_highest_synced_commit()
+                .expect("store operation should not fail")
+                .commit_ref
+                .index
+                .checked_add(1)
+                .expect("commit index should not overflow");
 
-        for peer in peer_balancer.clone() {
-            // Phase 1: Fetch commits
-            let (verified_commits, mut unverified_commits) = match fetch_and_verify_commits(
-                &peer,
-                current_highest_synced_commit_index..=target_commit,
-                &store,
-                block_verifier.clone(),
-                timeout,
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(e) => {
-                    warn!("Failed to fetch commits: {}", e);
-                    // Try the next peer
-                    continue;
-                }
-            };
+            // Keep trying with the same peer until we hit a fatal error
+            while sync_start <= target_commit {
+                info!(
+                    "Syncing from peer: {:?} for commits {} to {}",
+                    peer.public_key, sync_start, target_commit
+                );
 
-            let block_refs: Vec<_> = verified_commits
-                .iter()
-                .flat_map(|c| c.blocks())
-                .cloned()
-                .collect();
-            // Phase 2: Fetch blocks
-            let blocks = match fetch_blocks_batch(
-                &peer,
-                block_refs,
-                block_verifier.clone(),
-                timeout,
-            )
-            .await
-            {
-                Ok(blocks) => blocks,
-                Err(e) => {
-                    warn!("Failed to fetch blocks: {}", e);
-                    // Try the next peer
-                    continue;
-                }
-            };
-
-            // Phase 3: Process verified commits
-            if let Err(e) = process_verified_commits(
-                verified_commits,
-                blocks,
-                &store,
-                &dag_state,
-                &block_manager,
-                &committer,
-                &commit_interpreter,
-                &commit_event_sender,
-                &weak_sender,
-            )
-            .await
-            {
-                warn!("Failed to process verified commits: {}", e);
-                continue;
-            }
-
-            // Phase 4: Try to verify unverified commits in epoch order
-            if unverified_commits.has_pending() {
-                // Get epochs in order
-                let epochs: Vec<_> = unverified_commits.by_epoch.keys().copied().collect();
-
-                // Try to process each epoch in sequence
-                for epoch in epochs {
-                    // Skip if we don't have the committee yet
-                    if let Ok(Some(committee)) = store.get_committee(epoch) {
-                        let unverified = unverified_commits.take_epoch(epoch);
-                        let mut newly_verified = Vec::new();
-
-                        // First verify all commits in this epoch
-                        for commit in unverified {
-                            match verify_commit(
-                                commit.commit_digest,
-                                commit.commit,
-                                commit.blocks,
-                                commit.serialized_commit,
-                                committee.clone(),
-                                block_verifier.clone(),
-                                peer.public_key.clone(),
-                            ) {
-                                Ok(verified) => {
-                                    newly_verified.push(verified);
-                                }
-                                Err(e) => {
-                                    warn!("Failed to verify commit in epoch {}: {}", epoch, e);
-                                    // If verification fails, abort
-                                    continue 'retry;
-                                }
-                            }
+                // Phase 1: Fetch and verify commits
+                let verified_commits = match fetch_and_verify_commits(
+                    &peer,
+                    sync_start..=target_commit,
+                    &store,
+                    block_verifier.clone(),
+                    timeout,
+                )
+                .await
+                {
+                    Ok(commits) => commits,
+                    Err(e) => match e {
+                        SomaError::NoCommitteeForEpoch(epoch) => {
+                            // If we don't have the committee, wait for it to arrive
+                            warn!(
+                                "Missing committee for epoch {}, waiting for sync to catch up",
+                                epoch
+                            );
+                            sleep(Duration::from_secs(1)).await;
+                            continue;
                         }
-
-                        if !newly_verified.is_empty() {
-                            // Get all block refs for the verified commits
-                            let block_refs: Vec<_> = newly_verified
-                                .iter()
-                                .flat_map(|c| c.blocks())
-                                .cloned()
-                                .collect();
-
-                            // Fetch blocks for all verified commits in this epoch
-                            match fetch_blocks_batch(
-                                &peer,
-                                block_refs,
-                                block_verifier.clone(),
-                                timeout,
-                            )
-                            .await
-                            {
-                                Ok(blocks) => {
-                                    // Process all verified commits and their blocks together
-                                    if let Err(e) = process_verified_commits(
-                                        newly_verified,
-                                        blocks,
-                                        &store,
-                                        &dag_state,
-                                        &block_manager,
-                                        &committer,
-                                        &commit_interpreter,
-                                        &commit_event_sender,
-                                        &weak_sender,
-                                    )
-                                    .await
-                                    {
-                                        warn!(
-                                            "Failed to process verified commits for epoch {}: {}",
-                                            epoch, e
-                                        );
-                                        continue 'retry;
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!("Failed to fetch blocks for epoch {}: {}", epoch, e);
-                                    continue 'retry;
-                                }
-                            }
+                        _ => {
+                            warn!("Failed to fetch commits: {}", e);
+                            continue 'peer;
                         }
-                    } else {
-                        // If we don't have the committee for this epoch, abort and try again
-                        debug!(
-                            "Missing committee for epoch {}, will retry with new peer",
-                            epoch
+                    },
+                };
+
+                if verified_commits.is_empty() {
+                    warn!(
+                        "No verified commits received from peer: {:?}",
+                        peer.public_key
+                    );
+                    continue 'peer;
+                }
+
+                // Phase 2: Fetch blocks for verified commits
+                let block_refs: Vec<_> = verified_commits
+                    .iter()
+                    .flat_map(|c| c.blocks())
+                    .cloned()
+                    .collect();
+
+                info!(
+                    "Fetching {} blocks from peer: {:?}",
+                    block_refs.len(),
+                    peer.public_key
+                );
+
+                let blocks =
+                    match fetch_blocks_batch(&peer, block_refs, block_verifier.clone(), timeout)
+                        .await
+                    {
+                        Ok(blocks) => blocks,
+                        Err(e) => {
+                            warn!("Failed to fetch blocks: {}", e);
+                            continue 'peer;
+                        }
+                    };
+
+                info!(
+                    "Fetched {} blocks from peer: {:?}",
+                    blocks.len(),
+                    peer.public_key,
+                );
+
+                // Phase 3: Process verified commits
+                match process_verified_commits(
+                    verified_commits,
+                    blocks,
+                    &store,
+                    &dag_state,
+                    &block_manager,
+                    &committer,
+                    &commit_interpreter,
+                    &commit_event_sender,
+                    &weak_sender,
+                )
+                .await
+                {
+                    Ok(highest_processed) => {
+                        info!(
+                            "Successfully processed verified commits up to {}",
+                            highest_processed
                         );
-                        continue 'retry;
+
+                        break 'retry;
+
+                        // TODO: if highest_processed >= target_commit {
+                        //     break 'retry;
+                        // }
+
+                        // // Update sync_start for next iteration with same peer
+                        // sync_start = highest_processed
+                        //     .checked_add(1)
+                        //     .expect("commit index overflow");
+                    }
+                    Err(e) => {
+                        warn!("Failed to process verified commits: {}", e);
+                        continue 'peer;
                     }
                 }
-            }
-
-            // If we have no more pending commits, we're done
-            if !unverified_commits.has_pending() {
-                let highest_processed = store
-                    .get_highest_synced_commit()
-                    .expect("store operation should not fail")
-                    .commit_ref
-                    .index;
-
-                if highest_processed < target_commit {
-                    debug!(
-                        "Fetched commits ended at {} but target was {}",
-                        highest_processed, target_commit
-                    );
-                    // Try the next peer
-                    continue;
-                }
-
-                break 'retry;
             }
         }
 
         sleep(Duration::from_secs(1)).await;
     }
+
+    sleep(Duration::from_secs(1)).await;
 }
 
 // Phase 1: Fetch and verify commits
@@ -870,13 +826,10 @@ async fn fetch_and_verify_commits<S>(
     store: &S,
     block_verifier: Arc<SignedBlockVerifier>,
     timeout: Duration,
-) -> Result<(Vec<TrustedCommit>, UnverifiedCommits), SomaError>
+) -> Result<Vec<TrustedCommit>, SomaError>
 where
     S: WriteStore,
 {
-    const FETCH_COMMITS_TIMEOUT: Duration = Duration::from_secs(30);
-    const FETCH_BLOCKS_TIMEOUT: Duration = Duration::from_secs(120);
-
     let mut client = P2pClient::new(peer.channel.clone());
     let public_key = peer.public_key.clone();
 
@@ -893,16 +846,15 @@ where
         certifier_blocks: serialized_blocks,
     } = response.into_inner();
 
-    let mut verified_commits = Vec::new();
-    let mut unverified_commits = UnverifiedCommits::default();
-    let mut prev_digest: Option<(CommitDigest, Commit)> = None;
+    // 2. Parse and validate commit sequence
     let mut commits = Vec::new();
-    // First validate commit sequence
+    let mut prev_digest: Option<(CommitDigest, Commit)> = None;
+
     for (idx, serialized) in serialized_commits.iter().enumerate() {
         let commit: Commit =
             bcs::from_bytes(serialized).map_err(ConsensusError::MalformedCommit)?;
 
-        // Validate sequence...
+        // Validate first commit starts at requested index
         if idx == 0 && commit.index() != *commit_range.start() {
             return Err(ConsensusError::UnexpectedStartCommit {
                 peer: public_key.into_inner().to_string(),
@@ -914,6 +866,7 @@ where
 
         let digest = TrustedCommit::compute_digest(serialized);
 
+        // Validate sequence
         if let Some((prev_commit_digest, prev_commit)) = prev_digest {
             if commit.index() != prev_commit.index() + 1
                 || commit.previous_digest() != prev_commit_digest
@@ -929,10 +882,11 @@ where
 
         prev_digest = Some((digest, commit.clone()));
 
-        // Do not process more commits past the end index.
+        // Don't process commits past the end
         if commit.index() > *commit_range.end() {
             break;
         }
+
         commits.push((digest, commit, serialized.clone()));
     }
 
@@ -943,130 +897,50 @@ where
         .into());
     }
 
-    // Group commits by epoch and collect relevant blocks.
-    let mut commits_by_epoch: BTreeMap<Epoch, Vec<(CommitDigest, &Commit, Bytes)>> =
-        BTreeMap::new();
-    for (digest, commit, serialized) in &commits {
-        commits_by_epoch.entry(commit.epoch()).or_default().push((
-            *digest,
-            commit,
-            serialized.clone(),
-        ));
-    }
+    // 3. Get the last commit and verify it has enough votes
+    let (last_digest, last_commit, _) = commits.last().unwrap();
 
-    // Parse and verify blocks.
-    let blocks_by_commit_index: BTreeMap<CommitIndex, Vec<SignedBlock>> = serialized_blocks
-        .iter()
-        .filter_map(|serialized_block| {
-            let block = bcs::from_bytes::<SignedBlock>(serialized_block)
-                .map_err(|err| ConsensusError::MalformedBlock)
-                .ok()?;
+    // Get committee for the last commit
+    let committee = store
+        .get_committee(last_commit.epoch())?
+        .ok_or_else(|| SomaError::NoCommitteeForEpoch(last_commit.epoch()))?;
 
-            Some(block)
-        })
-        .flat_map(|signed_block| {
-            let votes = signed_block
-                .commit_votes()
-                .iter()
-                .map(|vote| vote.index)
-                .collect::<Vec<_>>();
-
-            votes
-                .into_iter()
-                .map(move |index| (index, signed_block.clone()))
-                .collect::<Vec<_>>()
-        })
-        .fold(BTreeMap::new(), |mut acc, (index, signed_block)| {
-            acc.entry(index).or_default().push(signed_block);
-            acc
-        });
-
-    // 3. Verify commits for each epoch.
-    for (epoch, epoch_commits) in commits_by_epoch {
-        // Try to verify commit with available committee
-        match store.get_committee(epoch)? {
-            Some(committee) => {
-                for (commit_digest, commit, serialized_commit) in epoch_commits {
-                    // Verify committee matches commit
-                    let verified = verify_commit(
-                        commit_digest,
-                        commit.clone(),
-                        blocks_by_commit_index
-                            .get(&commit.index())
-                            .cloned()
-                            .unwrap_or_default(),
-                        serialized_commit.clone(),
-                        committee.clone(),
-                        block_verifier.clone(),
-                        public_key.clone(),
-                    )?;
-
-                    verified_commits.push(verified);
-                }
-            }
-            None => {
-                // Track any commits that couldn't be verified due to missing committees
-                for commit in epoch_commits {
-                    if let Some(blocks) = blocks_by_commit_index.get(&commit.1.index()).cloned() {
-                        unverified_commits.add(
-                            epoch,
-                            UnverifiedCommit {
-                                commit_digest: commit.0,
-                                commit: commit.1.clone(),
-                                blocks,
-                                serialized_commit: commit.2.clone(),
-                            },
-                        );
-                    } else {
-                        return Err(ConsensusError::NoBlocksForCommit {
-                            commit: Box::new(commit.1.clone()),
-                            peer: public_key.into_inner().to_string(),
-                        }
-                        .into());
-                    }
-                }
-            }
-        }
-    }
-
-    Ok((verified_commits, unverified_commits))
-}
-
-fn verify_commit(
-    digest: CommitDigest,
-    commit: Commit,
-    blocks: Vec<SignedBlock>,
-    serialized_commit: Bytes,
-    committee: Arc<Committee>,
-    block_verifier: Arc<SignedBlockVerifier>,
-    peer: NetworkPublicKey,
-) -> Result<TrustedCommit, SomaError> {
-    let commit_ref = CommitRef {
-        index: commit.index(),
-        digest,
+    let last_commit_ref = CommitRef {
+        index: last_commit.index(),
+        digest: *last_digest,
     };
 
+    // Parse blocks and accumulate votes for the last commit
     let mut stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
-    for block in blocks {
+
+    for block_bytes in &serialized_blocks {
+        let block: SignedBlock =
+            bcs::from_bytes(block_bytes).map_err(ConsensusError::MalformedBlock)?;
+
         block_verifier.verify(&block)?;
+
         for vote in block.commit_votes() {
-            if *vote == commit_ref {
+            if *vote == last_commit_ref {
                 stake_aggregator.add(block.author(), &committee);
             }
         }
     }
 
-    // Check if the commit has enough votes.
+    // Verify the last commit has enough votes
     if !stake_aggregator.reached_threshold(&committee) {
         return Err(ConsensusError::NotEnoughCommitVotes {
             stake: stake_aggregator.stake(),
-            peer: peer.into_inner().to_string(),
-            commit: Box::new(commit.clone()),
+            peer: public_key.into_inner().to_string(),
+            commit: Box::new(last_commit.clone()),
         }
         .into());
     }
 
-    Ok(TrustedCommit::new_trusted(commit, serialized_commit))
+    // 4. Convert all commits to TrustedCommit
+    Ok(commits
+        .into_iter()
+        .map(|(_, commit, serialized)| TrustedCommit::new_trusted(commit, serialized))
+        .collect())
 }
 
 async fn fetch_blocks_batch(
@@ -1200,81 +1074,78 @@ async fn process_verified_commits(
     commit_interpreter: &RwLock<Linearizer>,
     commit_event_sender: &broadcast::Sender<CommittedSubDag>,
     weak_sender: &mpsc::WeakSender<StateSyncMessage>,
-) -> Result<(), SomaError> {
+) -> Result<CommitIndex, SomaError> {
     assert!(!verified_commits.is_empty());
+
+    info!(
+        "Processing verified commits: {}",
+        verified_commits.iter().map(|c| c.index()).join(",")
+    );
 
     let commit_end = verified_commits.last().unwrap().index();
 
-    // Group blocks by epoch
-    let mut blocks_by_epoch: BTreeMap<EpochId, Vec<VerifiedBlock>> = BTreeMap::new();
-    for block in blocks {
-        blocks_by_epoch
-            .entry(block.epoch())
-            .or_default()
-            .push(block);
-    }
+    // Add all blocks to block manager
+    let (accepted_blocks, missing_blocks) = block_manager.write().try_accept_blocks(blocks);
 
-    // Process blocks by epoch
-    for (epoch, epoch_blocks) in blocks_by_epoch {
-        // Add blocks to block manager
-        let (accepted_blocks, missing_blocks) =
-            block_manager.write().try_accept_blocks(epoch_blocks);
+    if !accepted_blocks.is_empty() {
+        debug!(
+            "Accepted blocks: {}",
+            accepted_blocks
+                .iter()
+                .map(|b| b.reference().to_string())
+                .join(",")
+        );
 
-        if !accepted_blocks.is_empty() {
+        // Try to decide on commits using last known leader
+        let decided_leaders = committer.try_decide(
+            dag_state.read().last_commit_leader(),
+            Some(accepted_blocks.last().unwrap().epoch()),
+        );
+
+        let committed_leaders = decided_leaders
+            .into_iter()
+            .filter_map(|leader| leader.into_committed_block())
+            .collect::<Vec<_>>();
+
+        if !committed_leaders.is_empty() {
             debug!(
-                "Accepted blocks: {}",
-                accepted_blocks
+                "Committing leaders: {}",
+                committed_leaders
                     .iter()
                     .map(|b| b.reference().to_string())
                     .join(",")
             );
 
-            // Try to decide on commits
-            let decided_leaders =
-                committer.try_decide(dag_state.read().last_commit_leader(), Some(epoch));
+            // Handle commits and update state
+            let committed_sub_dags = commit_interpreter.write().handle_commit(committed_leaders);
 
-            let committed_leaders = decided_leaders
-                .into_iter()
-                .filter_map(|leader| leader.into_committed_block())
-                .collect::<Vec<_>>();
+            for committed_sub_dag in committed_sub_dags {
+                // Send commit event
+                if let Err(err) = commit_event_sender.send(committed_sub_dag.clone()) {
+                    tracing::error!(
+                        "Failed to send committed sub-dag, probably due to shutdown: {err:?}"
+                    );
+                }
 
-            if !committed_leaders.is_empty() {
-                debug!(
-                    "Committing leaders: {}",
-                    committed_leaders
-                        .iter()
-                        .map(|b| b.reference().to_string())
-                        .join(",")
+                tracing::debug!(
+                    "Sending to execution commit {} leader {}",
+                    committed_sub_dag.commit_ref,
+                    committed_sub_dag.leader
                 );
 
-                // Handle commits and update state
-                let committed_sub_dags =
-                    commit_interpreter.write().handle_commit(committed_leaders);
-
-                for committed_sub_dag in committed_sub_dags {
-                    // Send commit event
-                    if let Err(err) = commit_event_sender.send(committed_sub_dag.clone()) {
-                        tracing::error!(
-                            "Failed to send committed sub-dag, probably due to shutdown: {err:?}"
-                        );
-                    }
-
-                    tracing::debug!(
-                        "Sending to execution commit {} leader {}",
-                        committed_sub_dag.commit_ref,
-                        committed_sub_dag.leader
-                    );
-
-                    // Update store
-                    store.insert_commit(committed_sub_dag)?;
-                }
+                // Update store
+                store.insert_commit(committed_sub_dag)?;
             }
+        } else {
+            debug!("No leaders to commit");
         }
+    } else {
+        debug!("No blocks accepted");
+    }
 
-        if !missing_blocks.is_empty() {
-            debug!("Missing blocks: {:?}", missing_blocks);
-            // TODO: Trigger fetching of missing blocks
-        }
+    if !missing_blocks.is_empty() {
+        debug!("Missing blocks: {:?}", missing_blocks);
+        // TODO: Trigger fetching of missing blocks
     }
 
     // Notify about synced commit
@@ -1284,32 +1155,5 @@ async fn process_verified_commits(
             .await;
     }
 
-    Ok(())
-}
-
-struct UnverifiedCommit {
-    blocks: Vec<SignedBlock>,
-    commit: Commit,
-    commit_digest: CommitDigest,
-    serialized_commit: Bytes,
-}
-
-#[derive(Default)]
-struct UnverifiedCommits {
-    // Map from epoch to pending commits for that epoch
-    by_epoch: BTreeMap<EpochId, Vec<UnverifiedCommit>>,
-}
-
-impl UnverifiedCommits {
-    fn add(&mut self, epoch: EpochId, pending: UnverifiedCommit) {
-        self.by_epoch.entry(epoch).or_default().push(pending);
-    }
-
-    fn take_epoch(&mut self, epoch: EpochId) -> Vec<UnverifiedCommit> {
-        self.by_epoch.remove(&epoch).unwrap_or_default()
-    }
-
-    fn has_pending(&self) -> bool {
-        !self.by_epoch.is_empty()
-    }
+    Ok(commit_end)
 }

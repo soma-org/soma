@@ -37,6 +37,8 @@ pub trait ReadStore: ReadCommitteeStore + ObjectStore + Send + Sync {
 
     fn get_commit_by_index(&self, index: CommitIndex) -> Option<CommittedSubDag>;
 
+    fn get_last_commit_index_of_epoch(&self, epoch: EpochId) -> Option<CommitIndex>;
+
     //
     // Transaction Getters
     //
@@ -87,6 +89,10 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
 
     fn get_commit_by_index(&self, index: CommitIndex) -> Option<CommittedSubDag> {
         (*self).get_commit_by_index(index)
+    }
+
+    fn get_last_commit_index_of_epoch(&self, epoch: EpochId) -> Option<CommitIndex> {
+        (*self).get_last_commit_index_of_epoch(epoch)
     }
 
     fn get_transaction(

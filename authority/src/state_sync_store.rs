@@ -91,6 +91,10 @@ impl ReadStore for StateSyncStore {
             .map_err(Into::into)
     }
 
+    fn get_last_commit_index_of_epoch(&self, epoch: EpochId) -> Option<CommitIndex> {
+        self.commit_store.get_last_commit_index_of_epoch(epoch)
+    }
+
     fn get_lowest_available_commit(&self) -> Result<CommitIndex, StorageError> {
         // TODO: update this to work with pruning
         // let highest_pruned_cp = self

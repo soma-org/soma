@@ -111,19 +111,14 @@ impl CommitStore {
     }
 
     pub fn get_highest_synced_commit(&self) -> Result<Option<CommittedSubDag>, TypedStoreError> {
-        info!("Getting highest synced commit");
         let highest_synced = if let Some(highest_synced) =
             self.watermarks.read().get(&CommitWatermark::HighestSynced)
         {
             highest_synced.clone()
         } else {
-            info!("Couldn't get highest synced commit");
             return Ok(None);
         };
-        info!(
-            commit = highest_synced.clone().0,
-            "Got highest synced commit"
-        );
+
         self.get_commit_by_digest(&highest_synced.1)
     }
 
@@ -345,6 +340,10 @@ impl CommitStore {
             None => None,
         };
         Ok(commit)
+    }
+
+    pub fn get_last_commit_index_of_epoch(&self, epoch: EpochId) -> Option<CommitIndex> {
+        self.epoch_last_commit_map.read().get(&epoch).cloned()
     }
 
     // Called by state sync, apart from inserting the commit and updating

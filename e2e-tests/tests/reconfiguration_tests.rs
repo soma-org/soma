@@ -84,12 +84,12 @@ async fn test_state_sync() {
     let mut test_cluster = TestClusterBuilder::new().build().await;
 
     // Make sure the validators are quiescent before bringing up the node.
-    sleep(Duration::from_millis(1000)).await;
+    sleep(Duration::from_millis(10000)).await;
 
     // Start a new fullnode that is not on the write path
-    // let fullnode = test_cluster.spawn_new_fullnode().await.soma_node;
+    let fullnode = test_cluster.spawn_new_fullnode().await.soma_node;
 
-    // sleep(Duration::from_millis(1000)).await;
+    sleep(Duration::from_millis(30000)).await;
 }
 
 #[msim::sim_test]

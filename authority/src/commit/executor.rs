@@ -156,10 +156,10 @@ impl CommitExecutor {
 
                 received = self.mailbox.recv() => match received {
                     Ok(commit) => {
-                        info!(
-                            index = ?commit.commit_ref.index,
-                            "Received commit summary from state sync"
-                        );
+                        // info!(
+                        //     index = ?commit.commit_ref.index,
+                        //     "Received committed sub dag from state sync"
+                        // );
                     },
                     Err(RecvError::Lagged(num_skipped)) => {
                         debug!(
@@ -360,7 +360,10 @@ impl CommitExecutor {
         pending: &mut CommitExecutionBuffer,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) {
-        debug!("Scheduling commit for execution");
+        debug!(
+            "Scheduling commit {} for execution",
+            commit.commit_ref.index
+        );
 
         // Mismatch between node epoch and commit epoch after startup
         // crash recovery is invalid

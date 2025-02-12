@@ -215,6 +215,9 @@ pub enum SomaError {
 
     #[error("Consensus error: {0}")]
     Consensus(String),
+
+    #[error("No committee for epoch: {0}")]
+    NoCommitteeForEpoch(Epoch),
 }
 
 impl From<Status> for SomaError {

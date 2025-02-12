@@ -9,7 +9,7 @@ use tonic::{async_trait, Request, Response, Status};
 use tracing::{debug, info};
 use types::committee::{Committee, EpochId};
 use types::consensus::block::{BlockAPI, BlockRef, Round, VerifiedBlock, GENESIS_ROUND};
-use types::consensus::commit::{CommitAPI, CommitRange, TrustedCommit};
+use types::consensus::commit::{self, CommitAPI, CommitRange, TrustedCommit};
 use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use types::dag::dag_state::DagState;
 use types::discovery::{GetKnownPeersRequest, GetKnownPeersResponse};
@@ -126,9 +126,36 @@ where
         let inclusive_end = commit_range
             .end()
             .min(commit_range.start() + COMMIT_SYNC_BATCH_SIZE - 1);
+
         let mut commits = self
             .store
             .scan_commits((commit_range.start()..=inclusive_end).into())?;
+
+        let first_commit = {
+            let commit = commits.first();
+            if commit.is_none() {
+                return Ok((vec![], vec![]));
+            }
+            commit.unwrap()
+        };
+
+        // First find the epoch of the first commit in sequence
+        let epoch = first_commit.epoch();
+
+        // Then find the last commit of that epoch
+        let last_commit_of_epoch = self
+            .store
+            .get_last_commit_index_of_epoch(epoch)
+            .unwrap_or(inclusive_end);
+        commits.retain(|c| c.index() <= last_commit_of_epoch);
+
+        if last_commit_of_epoch < inclusive_end {
+            debug!(
+                "Truncating commit sequence at epoch {} boundary index: {}",
+                epoch, last_commit_of_epoch
+            );
+        }
+
         let mut certifier_block_refs = vec![];
         'commit: while let Some(c) = commits.last() {
             let index = c.index();
