@@ -410,72 +410,21 @@ where
 
         // Because commit from consensus sends in order, when we have commit n,
         // we must have all of the commits before n from either state sync or consensus.
-        #[cfg(debug_assertions)]
-        {
-            let _ = (next_index..=commit.commit_ref.index)
-                .map(|n| {
-                    let commit = self
-                        .store
-                        .get_commit_by_index(n)
-                        .unwrap_or_else(|| panic!("store should contain commit {n}"));
-                })
-                .collect::<Vec<_>>();
-        }
+        // #[cfg(debug_assertions)]
+        // {
+        //     let _ = (next_index..=commit.commit_ref.index)
+        //         .map(|n| {
+        //             let commit = self
+        //                 .store
+        //                 .get_commit_by_index(n)
+        //                 .unwrap_or_else(|| panic!("store should contain commit {n}"));
+        //         })
+        //         .collect::<Vec<_>>();
+        // }
 
-        // TODO: If this is the last commit of a epoch, we need to make sure
-        // new committee is in store before we verify newer commits in next epoch.
-        // This could happen before this validator's reconfiguration finishes, because
-        // state sync does not reconfig.
-        // TODO: maybe we don't need to do this committee insertion in two places (other in StateSyncStore::insert_commit)
-        if let Some(Some(EndOfEpochData {
-            next_validator_set, ..
-        })) = commit
-            .get_end_of_epoch_block()
-            .map(|b| b.end_of_epoch_data())
-        {
-            if let Some(next_validator_set) = next_validator_set {
-                let voting_rights: BTreeMap<_, _> = next_validator_set
-                    .0
-                    .iter()
-                    .map(|(name, stake, _)| (*name, *stake))
-                    .collect();
-
-                let authorities = next_validator_set
-                    .0
-                    .iter()
-                    .map(|(name, stake, meta)| {
-                        (
-                            *name,
-                            Authority {
-                                stake: *stake,
-                                address: meta.consensus_address.clone(),
-                                hostname: meta.hostname.clone(),
-                                protocol_key: meta.protocol_key.clone(),
-                                network_key: meta.network_key.clone(),
-                                authority_key: meta.authority_key.clone(),
-                            },
-                        )
-                    })
-                    .collect();
-                let committee = Committee::new(
-                    commit
-                        .blocks
-                        .last()
-                        .unwrap()
-                        .epoch()
-                        .checked_add(1)
-                        .unwrap(),
-                    voting_rights,
-                    authorities,
-                );
-                self.store
-                    .insert_committee(committee)
-                    .expect("insert committee operation should not fail");
-            }
-        }
-
+        // Insert the commit to store
         self.store
-            .update_highest_synced_commit(&commit)
+            .insert_commit(commit.clone())
             .expect("store operation should not fail");
 
         // We don't care if no one is listening as this is a broadcast channel

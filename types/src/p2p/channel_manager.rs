@@ -206,7 +206,10 @@ where
                 if #[cfg(msim)] {
                     // msim does not have a working stub for TcpSocket. So create TcpListener directly.
                     match tokio::net::TcpListener::bind(own_address).await {
-                        Ok(listener) => break listener,
+                        Ok(listener) => {
+                            info!("Successfully bound p2p tonic server to address {:?}", own_address);
+                            break listener;
+                        },
                         Err(e) => {
                             warn!("Error binding to {own_address}: {e:?}");
                             panic!();

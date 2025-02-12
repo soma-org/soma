@@ -4,6 +4,7 @@ use types::{
     config::{
         node_config::{AuthorityKeyPairWithPath, ConsensusConfig, KeyPairWithPath, NodeConfig},
         p2p_config::{P2pConfig, SeedPeer},
+        state_sync_config::StateSyncConfig,
     },
     crypto::{
         AuthorityKeyPair, AuthorityPublicKeyBytes, KeypairTraits, NetworkKeyPair, SomaKeyPair,
@@ -68,10 +69,10 @@ impl ValidatorConfigBuilder {
             external_address: Some(validator.p2p_address),
             // Set a shorter timeout for checkpoint content download in tests, since
             // checkpoint pruning also happens much faster, and network is local.
-            // state_sync: Some(StateSyncConfig {
-            //     checkpoint_content_timeout_ms: Some(10_000),
-            //     ..Default::default()
-            // }),
+            state_sync: Some(StateSyncConfig {
+                commit_content_timeout_ms: Some(10_000),
+                ..Default::default()
+            }),
             ..Default::default()
         };
 
@@ -199,12 +200,12 @@ impl FullnodeConfigBuilder {
                     .p2p_external_address
                     .or(Some(validator_config.p2p_address.clone())),
                 seed_peers,
-                // Set a shorter timeout for checkpoint content download in tests, since
-                // checkpoint pruning also happens much faster, and network is local.
-                // state_sync: Some(StateSyncConfig {
-                //     checkpoint_content_timeout_ms: Some(10_000),
-                //     ..Default::default()
-                // }),
+                // Set a shorter timeout for commit content download in tests, since
+                // commit pruning also happens much faster, and network is local.
+                state_sync: Some(StateSyncConfig {
+                    commit_content_timeout_ms: Some(10_000),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }
         };

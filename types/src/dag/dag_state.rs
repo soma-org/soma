@@ -170,6 +170,9 @@ impl DagState {
             state.update_block_metadata(&block);
         }
 
+        // Initialize epoch 0 data
+        state.get_or_create_epoch_data(0);
+
         state
     }
 

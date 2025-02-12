@@ -87,7 +87,7 @@ impl CommitExecutor {
 
         // Complete epoch after executing the last commit of the epoch
         if let Some(highest_executed) = &highest_executed {
-            if epoch_store.epoch() == highest_executed.blocks.last().unwrap().epoch()
+            if epoch_store.epoch() == highest_executed.epoch()
                 && highest_executed.is_last_commit_of_epoch()
             {
                 // We can arrive at this point if we bump the highest_executed_commit watermark, and then
@@ -198,7 +198,7 @@ impl CommitExecutor {
         let cur_epoch = epoch_store.epoch();
 
         if let Some(commit) = commit {
-            if commit.blocks.last().unwrap().epoch() == cur_epoch {
+            if commit.epoch() == cur_epoch {
                 if commit.is_last_commit_of_epoch() {
                     info!(
                         ended_epoch = cur_epoch,
@@ -344,7 +344,7 @@ impl CommitExecutor {
                     )
                 });
             // Check if this commit belongs to current epoch
-            if commit.blocks.last().unwrap().epoch() > epoch_store.epoch() {
+            if commit.epoch() > epoch_store.epoch() {
                 return;
             }
 
@@ -364,7 +364,7 @@ impl CommitExecutor {
 
         // Mismatch between node epoch and commit epoch after startup
         // crash recovery is invalid
-        let commit_epoch = commit.blocks.last().unwrap().epoch();
+        let commit_epoch = commit.epoch();
         assert_eq!(
             commit_epoch,
             epoch_store.epoch(),
@@ -784,7 +784,7 @@ async fn handle_execution_effects(
                 // if no end of epoch commit, we must finalize the commit after executing
                 // the change epoch tx, which is done after all other commit execution
                 if !commit.is_last_commit_of_epoch() {
-                    finalize_commit(
+                    let commit_acc = finalize_commit(
                         state,
                         object_cache_reader,
                         transaction_cache_reader,
@@ -797,6 +797,7 @@ async fn handle_execution_effects(
                     )
                     .await
                     .expect("Finalizing commit cannot fail");
+                    return Some(commit_acc);
                 } else {
                     return None;
                 }

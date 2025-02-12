@@ -297,6 +297,16 @@ impl CommittedSubDag {
         }
     }
 
+    pub fn epoch(&self) -> Epoch {
+        // if there are blocks in the sub-dag, return the epoch of the last block
+        if let Some(block) = self.blocks.last() {
+            block.epoch()
+        } else {
+            // otherwise, it's the genesis commit
+            0
+        }
+    }
+
     /// Returns true if this commit contains a block with complete end of epoch data
     /// (validator set, validator signature, and aggregate signature)
     pub fn is_last_commit_of_epoch(&self) -> bool {

@@ -6,16 +6,18 @@ use std::{
 use config::{
     genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
     network_config::NetworkConfig,
-    node_config_builder::ValidatorConfigBuilder,
+    node_config_builder::{FullnodeConfigBuilder, ValidatorConfigBuilder},
 };
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
+use rand::rngs::OsRng;
 use swarm::{Swarm, SwarmBuilder};
 use tokio::time::timeout;
 use tracing::{error, info};
 use types::{
     base::{AuthorityName, ConciseableName, SomaAddress},
     committee::{CommitteeTrait, EpochId},
+    config::node_config::NodeConfig,
     error::SomaResult,
     genesis::Genesis,
     system_state::{SystemState, SystemStateTrait},
@@ -46,6 +48,10 @@ pub struct TestCluster {
 }
 
 impl TestCluster {
+    pub fn fullnode_config_builder(&self) -> FullnodeConfigBuilder {
+        self.swarm.get_fullnode_config_builder()
+    }
+
     pub fn all_node_handles(&self) -> Vec<SomaNodeHandle> {
         self.swarm
             .all_nodes()
@@ -104,6 +110,21 @@ impl TestCluster {
         let node_config = ValidatorConfigBuilder::new()
             .build(genesis_config, self.swarm.config().genesis.clone());
         self.swarm.spawn_new_node(node_config).await
+    }
+
+    /// Convenience method to start a new fullnode in the test cluster.
+    pub async fn spawn_new_fullnode(&mut self) -> FullNodeHandle {
+        self.start_fullnode_from_config(
+            self.fullnode_config_builder()
+                .build(&mut OsRng, self.swarm.config()),
+        )
+        .await
+    }
+
+    pub async fn start_fullnode_from_config(&mut self, config: NodeConfig) -> FullNodeHandle {
+        // let json_rpc_address = config.json_rpc_address;
+        let node = self.swarm.spawn_new_node(config).await;
+        FullNodeHandle::new(node).await
     }
 
     /// Ask 2f+1 validators to close epoch actively, and wait for the entire network to reach the next

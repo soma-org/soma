@@ -204,10 +204,11 @@ impl SomaNode {
             consensus_store.clone(),
         );
 
-        let consensus_config = config
-            .consensus_config()
-            .expect("consensus_config should exist");
-        let parameters = consensus_config.parameters.clone().unwrap_or_default();
+        let parameters = if let Some(consensus_config) = config.consensus_config() {
+            consensus_config.parameters.clone().unwrap_or_default()
+        } else {
+            Parameters::default()
+        };
 
         let context = Arc::new(Context::new(
             None,
@@ -624,7 +625,7 @@ impl SomaNode {
         server_builder = server_builder.add_service(ValidatorServer::new(validator_service));
 
         let server = server_builder
-            .bind(config.consensus_config().unwrap().address())
+            .bind(config.network_address())
             .await
             .map_err(|err| anyhow!(err.to_string()))?;
         let local_addr = server.local_addr();
