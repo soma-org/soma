@@ -14,7 +14,7 @@ use crate::digests::ECMHLiveObjectSetDigest;
 use crate::storage::read_store::ReadStore;
 use fastcrypto::hash::MultisetHash;
 use fastcrypto::traits::AggregateAuthenticator;
-use tokio::task::watch::error;
+
 use tracing::{error, info};
 
 use crate::error::{ConsensusError, ConsensusResult};

@@ -1,26 +1,36 @@
 use crate::{
+    builder::{P2pBuilder, UnstartedDiscovery},
     server::P2pService,
     tonic_gen::p2p_server::{P2p, P2pServer},
 };
 
 use super::*;
-use builder::{DiscoveryBuilder, UnstartedDiscovery};
 use fastcrypto::ed25519::Ed25519Signature;
 use rand::{rngs::StdRng, SeedableRng};
 use std::collections::HashSet;
 use tokio::sync::{broadcast, mpsc};
-use types::{error::SomaResult, p2p::channel_manager::ChannelManager};
+use types::{
+    error::SomaResult,
+    p2p::channel_manager::ChannelManager,
+    storage::{
+        consensus::ConsensusStore,
+        write_store::{TestP2pStore, WriteStore},
+    },
+};
 
 // Helper function to create a test channel manager
-async fn create_test_channel_manager(
+async fn create_test_channel_manager<S>(
     own_address: Multiaddr,
-    server: P2pServer<P2pService>,
+    server: P2pServer<P2pService<S>>,
 ) -> (
     mpsc::Sender<ChannelManagerRequest>,
     broadcast::Receiver<PeerEvent>,
     ActivePeers,
     NetworkKeyPair,
-) {
+)
+where
+    S: ConsensusStore + WriteStore + Clone + Send + Sync + 'static,
+{
     let mut rng = StdRng::from_seed([0; 32]);
     let active_peers = ActivePeers::new(1000);
     let network_key_pair = NetworkKeyPair::generate(&mut rng);
@@ -39,16 +49,31 @@ async fn create_test_channel_manager(
 #[tokio::test]
 async fn get_known_peers() -> SomaResult<()> {
     let peer_1_addr: Multiaddr = "/ip4/127.0.0.1/tcp/1234".parse().unwrap();
+    let request_addr: Multiaddr = "/ip4/127.0.0.2/tcp/5678".parse().unwrap();
     let config = P2pConfig {
         external_address: Some(peer_1_addr.clone()),
         ..Default::default()
     };
-    let (UnstartedDiscovery { state, .. }, server) =
-        DiscoveryBuilder::new().config(config).build_internal();
+    let (UnstartedDiscovery { state, .. }, _, server) = P2pBuilder::new()
+        .config(config)
+        .store(TestP2pStore::new())
+        .build_internal();
+
+    let request_info = NodeInfo {
+        peer_id: PeerId([8; 32]),
+        address: request_addr,
+        timestamp_ms: now_unix(),
+    };
+    let request = GetKnownPeersRequest {
+        own_info: SignedNodeInfo::new_from_data_and_sig(
+            request_info.clone(),
+            Ed25519Signature::default(),
+        ),
+    };
 
     // Error when own_info not set
     server
-        .get_known_peers(Request::new(GetKnownPeersRequest { timestamp_ms: 0 }))
+        .get_known_peers(Request::new(request.clone()))
         .await
         .unwrap_err();
 
@@ -64,7 +89,7 @@ async fn get_known_peers() -> SomaResult<()> {
         Ed25519Signature::default(),
     ));
     let response = server
-        .get_known_peers(Request::new(GetKnownPeersRequest { timestamp_ms: 0 }))
+        .get_known_peers(Request::new(request.clone()))
         .await
         .unwrap()
         .into_inner();
@@ -86,7 +111,7 @@ async fn get_known_peers() -> SomaResult<()> {
         )),
     );
     let response = server
-        .get_known_peers(Request::new(GetKnownPeersRequest { timestamp_ms: 0 }))
+        .get_known_peers(Request::new(request))
         .await
         .unwrap()
         .into_inner();
@@ -112,7 +137,10 @@ async fn make_connection_to_seed_peer() -> SomaResult<()> {
     };
 
     // Setup first peer
-    let (builder_1, server_1) = DiscoveryBuilder::new().config(config1).build();
+    let (builder_1, _, server_1) = P2pBuilder::new()
+        .config(config1)
+        .store(TestP2pStore::new())
+        .build();
     let (manager_tx_1, mut events_1, active_peers_1, network_key_pair_1) =
         create_test_channel_manager(peer_1_addr.clone(), server_1).await;
 
@@ -127,7 +155,10 @@ async fn make_connection_to_seed_peer() -> SomaResult<()> {
         ..Default::default()
     };
 
-    let (builder_2, server_2) = DiscoveryBuilder::new().config(config2).build();
+    let (builder_2, _, server_2) = P2pBuilder::new()
+        .config(config2)
+        .store(TestP2pStore::new())
+        .build();
     let (manager_tx_2, mut events_2, active_peers_2, network_key_pair_2) =
         create_test_channel_manager(peer_2_addr.clone(), server_2).await;
 
@@ -170,7 +201,10 @@ async fn three_nodes_can_connect_via_discovery() -> SomaResult<()> {
     };
 
     // Setup first peer (seed)
-    let (builder_1, server_1) = DiscoveryBuilder::new().config(config1).build();
+    let (builder_1, _, server_1) = P2pBuilder::new()
+        .config(config1)
+        .store(TestP2pStore::new())
+        .build();
     let (manager_tx_1, mut events_1, active_peers_1, network_key_pair_1) =
         create_test_channel_manager(peer_1_addr.clone(), server_1).await;
 
@@ -185,7 +219,10 @@ async fn three_nodes_can_connect_via_discovery() -> SomaResult<()> {
         ..Default::default()
     };
 
-    let (builder_2, server_2) = DiscoveryBuilder::new().config(config2).build();
+    let (builder_2, _, server_2) = P2pBuilder::new()
+        .config(config2)
+        .store(TestP2pStore::new())
+        .build();
     let (manager_tx_2, mut events_2, active_peers_2, network_key_pair_2) =
         create_test_channel_manager(peer_2_addr.clone(), server_2).await;
 
@@ -199,7 +236,10 @@ async fn three_nodes_can_connect_via_discovery() -> SomaResult<()> {
         }],
         ..Default::default()
     };
-    let (builder_3, server_3) = DiscoveryBuilder::new().config(config3).build();
+    let (builder_3, _, server_3) = P2pBuilder::new()
+        .config(config3)
+        .store(TestP2pStore::new())
+        .build();
     let (manager_tx_3, mut events_3, active_peers_3, network_key_pair_3) =
         create_test_channel_manager(peer_3_addr.clone(), server_3).await;
 

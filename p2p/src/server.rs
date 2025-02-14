@@ -12,7 +12,7 @@ use types::consensus::block::{BlockAPI, BlockRef, Round, VerifiedBlock, GENESIS_
 use types::consensus::commit::{self, CommitAPI, CommitRange, TrustedCommit};
 use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use types::dag::dag_state::DagState;
-use types::discovery::{GetKnownPeersRequest, GetKnownPeersResponse};
+use types::discovery::{GetKnownPeersRequest, GetKnownPeersResponse, SignedNodeInfo};
 use types::error::{ConsensusError, ConsensusResult};
 use types::p2p::channel_manager::PeerInfo;
 use types::state_sync::{
@@ -39,7 +39,8 @@ pub struct P2pService<S> {
     pub discovery_state: Arc<RwLock<DiscoveryState>>,
     pub store: S,
     pub peer_heights: Arc<RwLock<PeerHeights>>,
-    pub sender: mpsc::WeakSender<StateSyncMessage>,
+    pub state_sync_sender: mpsc::WeakSender<StateSyncMessage>,
+    pub discovery_sender: mpsc::Sender<SignedNodeInfo>,
     pub dag_state: Arc<RwLock<DagState>>,
 }
 
@@ -194,13 +195,15 @@ where
 
     async fn get_known_peers(
         &self,
-        _request: Request<GetKnownPeersRequest>,
+        request: Request<GetKnownPeersRequest>,
     ) -> Result<Response<GetKnownPeersResponse>, tonic::Status> {
         let state = self.discovery_state.read();
         let own_info = state
             .our_info
             .clone()
             .ok_or_else(|| tonic::Status::internal("own_info has not been initialized yet"))?;
+
+        let their_info = request.into_inner().own_info;
 
         let known_peers = if state.known_peers.len() < MAX_PEERS_TO_SEND {
             state
@@ -245,6 +248,11 @@ where
                 .collect()
         };
 
+        if let Err(e) = self.discovery_sender.try_send(their_info.clone()) {
+            debug!("Failed to send their info to connect back: {}", e);
+        } else {
+            info!("Sent their info to connect back: {}", their_info.peer_id);
+        }
         info!("Sending known peers and our info {}", own_info.peer_id);
 
         Ok(Response::new(GetKnownPeersResponse {
@@ -262,6 +270,8 @@ where
         };
 
         let PushCommitRequest { commit } = request.into_inner();
+
+        info!("Received pushed commit from peer {}: {}", peer_id, commit);
         if !self
             .peer_heights
             .write()
@@ -282,7 +292,7 @@ where
         // If this commit is higher than our highest synced commit notify the
         // event loop to potentially sync it
         if commit > highest_synced_commit {
-            if let Some(sender) = self.sender.upgrade() {
+            if let Some(sender) = self.state_sync_sender.upgrade() {
                 sender.send(StateSyncMessage::StartSyncJob).await.unwrap();
             }
         }

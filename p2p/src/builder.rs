@@ -36,6 +36,7 @@ use types::{
         dag_state::DagState,
         linearizer::Linearizer,
     },
+    discovery::SignedNodeInfo,
     p2p::{
         active_peers::{self, ActivePeers},
         channel_manager::{self, ChannelManager, ChannelManagerRequest},
@@ -64,6 +65,7 @@ pub struct UnstartedDiscovery {
     pub(super) config: P2pConfig,
     pub(super) shutdown_handle: oneshot::Receiver<()>,
     pub(super) state: Arc<RwLock<DiscoveryState>>,
+    pub(super) their_info_receiver: mpsc::Receiver<SignedNodeInfo>,
     // pub(super) trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
 }
 
@@ -79,6 +81,7 @@ impl UnstartedDiscovery {
             config,
             shutdown_handle,
             state,
+            their_info_receiver,
         } = self;
 
         let discovery_config = config.discovery.clone().unwrap_or_default();
@@ -105,6 +108,7 @@ impl UnstartedDiscovery {
                 channel_manager_tx,
                 // shutdown_handle,
                 state,
+                their_info_receiver,
                 // trusted_peer_change_rx,
             ),
             handle,
@@ -304,10 +308,13 @@ where
         };
 
         let (state_sync_sender, mailbox) = mpsc::channel(state_sync_config.mailbox_capacity());
+        let (their_info_sender, their_info_receiver) =
+            mpsc::channel(state_sync_config.mailbox_capacity());
         let (commit_event_sender, _receiver) = broadcast::channel(
             state_sync_config.synced_commit_broadcast_channel_capacity() as usize,
         );
-        let weak_sender = state_sync_sender.downgrade();
+        let weak_state_sync_sender = state_sync_sender.downgrade();
+
         let state_sync_handle = StateSyncHandle {
             sender: state_sync_sender,
             commit_event_sender: commit_event_sender.clone(),
@@ -362,7 +369,8 @@ where
             discovery_state: discovery_state.clone(),
             store: store.clone(),
             peer_heights: peer_heights.clone(),
-            sender: weak_sender,
+            state_sync_sender: weak_state_sync_sender,
+            discovery_sender: their_info_sender,
             dag_state: dag_state.clone(),
         };
 
@@ -372,6 +380,7 @@ where
                 config,
                 shutdown_handle: discovery_receiver,
                 state: discovery_state,
+                their_info_receiver,
             },
             UnstartedStateSync {
                 config: state_sync_config,

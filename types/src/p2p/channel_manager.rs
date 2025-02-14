@@ -1,18 +1,21 @@
+use axum::{http, Router};
+use bytes::Bytes;
+use fastcrypto::ed25519::Ed25519PublicKey;
+use futures_util::future;
+use http::{Request, Response};
+use http_body::Body;
+use http_body_util::combinators::UnsyncBoxBody;
+use hyper_util::{rt::TokioIo, service::TowerToHyperService};
+use parking_lot::RwLock;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::{
     convert::Infallible,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
-
-use axum::{http, Router};
-use bytes::Bytes;
-use fastcrypto::ed25519::Ed25519PublicKey;
-use http::{Request, Response};
-use http_body::Body;
-use http_body_util::combinators::UnsyncBoxBody;
-use hyper_util::{rt::TokioIo, service::TowerToHyperService};
-use parking_lot::RwLock;
+use tokio::sync::Mutex;
 use tokio::{
     pin,
     sync::oneshot,
@@ -82,7 +85,7 @@ pub struct ChannelManager<S> {
 
     // Service factory for peer handlers
     service: S,
-    event_sender: broadcast::Sender<PeerEvent>,
+    // event_sender: broadcast::Sender<PeerEvent>,
 }
 
 impl<S> ChannelManager<S>
@@ -99,7 +102,7 @@ where
         active_peers: ActivePeers,
     ) -> (Self, mpsc::Sender<ChannelManagerRequest>) {
         let (sender, receiver) = mpsc::channel(1000);
-        let (event_sender, _) = broadcast::channel(1000);
+        // let (event_sender, _) = broadcast::channel(1000);
         (
             Self {
                 own_address,
@@ -109,14 +112,14 @@ where
                 connection_handlers: JoinSet::new(),
                 server_handle: None,
                 service,
-                event_sender,
+                // event_sender,
             },
             sender,
         )
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<PeerEvent> {
-        self.event_sender.subscribe()
+        self.active_peers.subscribe()
     }
 
     pub async fn start(mut self) {
@@ -261,6 +264,7 @@ where
             let tls_acceptor = tls_acceptor.clone();
             let server = server.clone();
             let http = http.clone();
+            let active_peers = self.active_peers.clone();
 
             async move {
                 loop {
@@ -277,11 +281,18 @@ where
                     let tls_acceptor = tls_acceptor.clone();
                     let server = server.clone();
                     let http = http.clone();
+                    let active_peers = active_peers.clone();
 
                     let task = async move {
-                        if let Err(e) =
-                            handle_connection(tcp_stream, peer_addr, tls_acceptor, server, http)
-                                .await
+                        if let Err(e) = handle_connection(
+                            tcp_stream,
+                            peer_addr,
+                            tls_acceptor,
+                            server,
+                            http,
+                            active_peers,
+                        )
+                        .await
                         {
                             warn!("Connection handler error for {}: {}", peer_addr, e);
                         }
@@ -321,9 +332,9 @@ where
         self.active_peers
             .insert(peer_id, address.clone(), channel, public_key);
 
-        let _ = self
-            .event_sender
-            .send(PeerEvent::NewPeer { peer_id, address });
+        // let _ = self
+        //     .event_sender
+        //     .send(PeerEvent::NewPeer { peer_id, address });
 
         Ok(true)
     }
@@ -337,10 +348,10 @@ where
             .active_peers
             .remove(&peer_id, DisconnectReason::RequestedDisconnect)
         {
-            let _ = self.event_sender.send(PeerEvent::LostPeer {
-                peer_id,
-                reason: DisconnectReason::RequestedDisconnect,
-            });
+            // let _ = self.event_sender.send(PeerEvent::LostPeer {
+            //     peer_id,
+            //     reason: DisconnectReason::RequestedDisconnect,
+            // });
             Ok(())
         } else {
             Err(SomaError::PeerNotFound(peer_id))
@@ -458,10 +469,10 @@ where
                 .active_peers
                 .remove(&peer_id, DisconnectReason::Shutdown)
             {
-                let _ = self.event_sender.send(PeerEvent::LostPeer {
-                    peer_id,
-                    reason: DisconnectReason::Shutdown,
-                });
+                // let _ = self.event_sender.send(PeerEvent::LostPeer {
+                //     peer_id,
+                //     reason: DisconnectReason::Shutdown,
+                // });
                 debug!("Removed peer {} from active peers", peer_id);
             }
         }
@@ -494,6 +505,7 @@ async fn handle_connection(
     tls_acceptor: TlsAcceptor,
     service: Router,
     http: Arc<hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor>>,
+    active_peers: ActivePeers,
 ) -> SomaResult<()> {
     // Accept TLS connection
     let tls_stream = tls_acceptor
@@ -505,31 +517,22 @@ async fn handle_connection(
     let (peer_id, client_public_key) = extract_peer_info_from_tls(&tls_stream)?;
     // TODO: check that client_public_key is in the list of allowed peers
 
-    // TODO: process new peers on incoming connection
-    // let _ = event_sender.send(PeerEvent::NewPeer {
-    //     peer_id,
-    //     address: peer_addr.to_string().parse()?, // Convert SocketAddr to Multiaddr
-    // });
+    // TODO: Dial peer back here to get a channel and add to active peers
 
     // Setup service stack
     let svc = ServiceBuilder::new()
         .add_extension(PeerInfo { peer_id })
         .service(service.clone());
 
-    // Handle HTTP/2 connection
     pin! {
         let connection = http.serve_connection(TokioIo::new(tls_stream), TowerToHyperService::new(svc));
     }
-
     let mut has_shutdown = false;
     loop {
         tokio::select! {
             result = &mut connection => {
-                // TODO: Emit LostPeer event when connection ends
-                // let _ = event_sender.send(PeerEvent::LostPeer {
-                //     peer_id,
-                //     reason: DisconnectReason::ConnectionLost,
-                // });
+                // Remove peer - ActivePeers will handle the event emission internally
+                active_peers.remove(&peer_id, DisconnectReason::ConnectionLost);
                 match result {
                     Ok(()) => {
                         trace!("Connection closed for {}", peer_addr);

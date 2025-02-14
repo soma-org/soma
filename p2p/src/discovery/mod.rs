@@ -27,8 +27,8 @@ use types::{
 
 use crate::tonic_gen::p2p_client::P2pClient;
 
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 /// The internal discovery state shared between the main event loop and the request handler
 pub struct DiscoveryState {
@@ -53,6 +53,7 @@ pub struct DiscoveryEventLoop {
     pending_dials: HashMap<PeerId, AbortHandle>,
     dial_seed_peers_task: Option<AbortHandle>,
     state: Arc<RwLock<DiscoveryState>>,
+    their_info_receiver: mpsc::Receiver<SignedNodeInfo>,
     // trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
 }
 
@@ -68,6 +69,7 @@ impl DiscoveryEventLoop {
         keypair: NetworkKeyPair,
         channel_manager_tx: mpsc::Sender<ChannelManagerRequest>,
         state: Arc<RwLock<DiscoveryState>>,
+        their_info_receiver: mpsc::Receiver<SignedNodeInfo>,
         // trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
     ) -> Self {
         DiscoveryEventLoop {
@@ -80,6 +82,7 @@ impl DiscoveryEventLoop {
             pending_dials: Default::default(),
             dial_seed_peers_task: None,
             channel_manager_tx,
+            their_info_receiver,
             // shutdown_handle,
             state,
             // trusted_peer_change_rx,
@@ -92,6 +95,8 @@ impl DiscoveryEventLoop {
         self.construct_our_info();
         self.configure_preferred_peers().await;
 
+        // Subscribe to peer events from active_peers
+        let mut peer_events = self.active_peers.subscribe();
         let mut interval = tokio::time::interval(Duration::from_millis(INTERVAL_PERIOD_MS));
 
         loop {
@@ -118,6 +123,49 @@ impl DiscoveryEventLoop {
                         },
                     };
                 },
+                Ok(event) = peer_events.recv() => {
+                    self.handle_peer_event(event);
+                }
+                Some(their_info) = self.their_info_receiver.recv() => {
+                    update_known_peers(self.state.clone(), vec![their_info], self.allowlisted_peers.clone());
+                }
+            }
+        }
+    }
+
+    fn handle_peer_event(&mut self, event: PeerEvent) {
+        match event {
+            PeerEvent::NewPeer { peer_id, address } => {
+                if let Some(_state) = self.active_peers.get_state(&peer_id) {
+                    // Create a verified node info for the new peer
+                    let node_info = NodeInfo {
+                        peer_id,
+                        address,
+                        timestamp_ms: now_unix(),
+                    };
+
+                    // Sign the node info with the peer's public key
+                    let signed_info = node_info.sign(&self.keypair);
+                    let verified_info = VerifiedSignedNodeInfo::new_from_verified(signed_info);
+
+                    self.state
+                        .write()
+                        .known_peers
+                        .insert(peer_id, verified_info);
+
+                    // Spawn a task to query this peer's known peers
+                    self.tasks
+                        .spawn(query_connected_peers_for_their_known_peers(
+                            self.active_peers.clone(),
+                            self.discovery_config.clone(),
+                            self.state.clone(),
+                            self.allowlisted_peers.clone(),
+                        ));
+                }
+            }
+            PeerEvent::LostPeer { peer_id, reason } => {
+                debug!("Peer {} disconnected: {:?}", peer_id, reason);
+                self.state.write().known_peers.remove(&peer_id);
             }
         }
     }
@@ -364,6 +412,12 @@ async fn query_connected_peers_for_their_known_peers(
         peers_to_query.len()
     );
 
+    let own_info = state
+        .read()
+        .our_info
+        .clone()
+        .expect("Our info should be set");
+
     let found_peers = futures::stream::iter(peers_to_query)
         .map(|peer_id| {
             let channel = active_peers
@@ -371,10 +425,9 @@ async fn query_connected_peers_for_their_known_peers(
                 .expect("Active peer should exist")
                 .clone();
             let mut client = P2pClient::new(channel);
+            let own_info = own_info.clone();
             async move {
-                let mut request = Request::new(GetKnownPeersRequest {
-                    timestamp_ms: now_unix(),
-                });
+                let mut request = Request::new(GetKnownPeersRequest { own_info });
                 request.set_timeout(Duration::from_secs(PEER_QUERY_TIMEOUT_SECS));
                 client
                     .get_known_peers(request)

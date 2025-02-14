@@ -12,7 +12,7 @@ use crate::{
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GetKnownPeersRequest {
-    pub timestamp_ms: u64,
+    pub own_info: SignedNodeInfo,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
