@@ -36,6 +36,7 @@ axum.workspace = true
 zstd.workspace = true
 tokio-util.workspace = true
 mockall.workspace = true
+quick_cache.workspace = true
 
 [dependencies.pyo3]
 workspace = true

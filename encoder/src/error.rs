@@ -1,5 +1,3 @@
-use std::io;
-
 // use consensus_config::{AuthorityIndex, Epoch, Stake};
 use fastcrypto::error::FastCryptoError;
 use strum_macros::IntoStaticStr;
@@ -31,6 +29,9 @@ pub(crate) enum ShardError {
 
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
+
+    #[error("Invalid shard token: {0}")]
+    InvalidShardToken(String),
 
     #[error("ObjectStorage: {0}")]
     ObjectStorage(String),

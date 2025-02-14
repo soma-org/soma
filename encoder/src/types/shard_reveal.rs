@@ -2,7 +2,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::crypto::AesKey;
 
-use super::shard::ShardRef;
+use super::shard_verifier::ShardAuthToken;
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -15,27 +15,26 @@ pub enum ShardReveal {
 /// `ShardRevealAPI` is the trait that every shard commit version must implement
 #[enum_dispatch]
 pub(crate) trait ShardRevealAPI {
-    /// returns the shard ref
-    fn shard_ref(&self) -> &ShardRef;
+    fn auth_token(&self) -> &ShardAuthToken;
     /// returns the encryption key
     fn key(&self) -> &AesKey;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ShardRevealV1 {
-    shard_ref: ShardRef,
+    auth_token: ShardAuthToken,
     key: AesKey,
 }
 
 impl ShardRevealV1 {
-    pub(crate) const fn new(shard_ref: ShardRef, key: AesKey) -> Self {
-        Self { shard_ref, key }
+    pub(crate) const fn new(auth_token: ShardAuthToken, key: AesKey) -> Self {
+        Self { auth_token, key }
     }
 }
 
 impl ShardRevealAPI for ShardRevealV1 {
-    fn shard_ref(&self) -> &ShardRef {
-        &self.shard_ref
+    fn auth_token(&self) -> &ShardAuthToken {
+        &self.auth_token
     }
     fn key(&self) -> &AesKey {
         &self.key

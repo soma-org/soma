@@ -34,6 +34,15 @@ pub struct FinalityProof {
 }
 
 impl FinalityProof {
+    pub fn epoch(&self) -> Epoch {
+        self.claim.epoch
+    }
+    pub fn block_ref(&self) -> BlockRef {
+        self.claim.block_ref
+    }
+    pub fn transaction(&self) -> SignedTransaction {
+        self.claim.transaction.clone()
+    }
     pub fn verify(&self, committee: &AuthorityCommittee) -> SharedResult<()> {
         if self.claim.epoch != committee.epoch() {
             return Err(SharedError::WrongEpoch);

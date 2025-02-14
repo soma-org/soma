@@ -6,7 +6,7 @@ use crate::{
     actors::{pipelines::shard_input::ShardInputProcessor, ActorHandle},
     error::ShardResult,
     intelligence::model::Model,
-    networking::{messaging::EncoderNetworkClient, object::ObjectNetworkClient},
+    networking::{messaging::EncoderInternalNetworkClient, object::ObjectNetworkClient},
     storage::object::ObjectStorage,
     types::{shard::Shard, shard_input::ShardInput},
 };
@@ -24,7 +24,7 @@ pub trait PipelineDispatcher: Sync + Send + 'static {
 
 #[derive(Clone)]
 pub(crate) struct ActorPipelineDispatcher<
-    SNC: EncoderNetworkClient,
+    SNC: EncoderInternalNetworkClient,
     M: Model,
     OS: ObjectStorage,
     ONC: ObjectNetworkClient,
@@ -32,7 +32,7 @@ pub(crate) struct ActorPipelineDispatcher<
     shard_input_handle: ActorHandle<ShardInputProcessor<SNC, M, OS, ONC>>,
 }
 
-impl<SNC: EncoderNetworkClient, M: Model, OS: ObjectStorage, ONC: ObjectNetworkClient>
+impl<SNC: EncoderInternalNetworkClient, M: Model, OS: ObjectStorage, ONC: ObjectNetworkClient>
     ActorPipelineDispatcher<SNC, M, OS, ONC>
 {
     pub(crate) fn new(
@@ -43,7 +43,7 @@ impl<SNC: EncoderNetworkClient, M: Model, OS: ObjectStorage, ONC: ObjectNetworkC
 }
 
 #[async_trait]
-impl<SNC: EncoderNetworkClient, M: Model, OS: ObjectStorage, ONC: ObjectNetworkClient>
+impl<SNC: EncoderInternalNetworkClient, M: Model, OS: ObjectStorage, ONC: ObjectNetworkClient>
     PipelineDispatcher for ActorPipelineDispatcher<SNC, M, OS, ONC>
 {
     async fn shard_input(

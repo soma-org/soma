@@ -1,3 +1,9 @@
+//! In a previous version, the shard was composed of a single set of encoders.
+//! What was realized is that the security (probability of a dishonest majority)
+//! should be scaled seperately from the number of computers performing computation.
+//! This allows for the computation set that is generating an embedding to be tuned
+//! independently of security considerations. The seperation of concerns is also slightly
+//! more secure compared to encoders that are directly impacted by the outcome.
 use std::hash::{Hash, Hasher};
 
 use enum_dispatch::enum_dispatch;
@@ -55,6 +61,10 @@ impl Shard {
         self.evaluation_quorum_threshold
     }
 
+    pub(crate) fn contains(&self, index: &EncoderIndex) -> bool {
+        self.inference_set.contains(index) || self.evaluation_set.contains(index)
+    }
+
     // #[cfg(test)]
     // pub(crate) fn new_for_test(
     //     epoch: Epoch,
@@ -74,6 +84,15 @@ impl Shard {
 pub(crate) struct ShardEntropy {
     metadata_commitment: MetadataCommitment,
     entropy: BlockEntropyOutput,
+}
+
+impl ShardEntropy {
+    pub fn new(metadata_commitment: MetadataCommitment, entropy: BlockEntropyOutput) -> Self {
+        Self {
+            metadata_commitment,
+            entropy,
+        }
+    }
 }
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It

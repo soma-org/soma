@@ -15,7 +15,7 @@ use crate::{
     error::{ShardError, ShardResult},
     intelligence::model::Model,
     networking::{
-        messaging::{EncoderNetworkClient, MESSAGE_TIMEOUT},
+        messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
         object::ObjectNetworkClient,
     },
     storage::object::{ObjectPath, ObjectStorage},
@@ -52,8 +52,12 @@ use tokio_util::sync::CancellationToken;
 
 use super::broadcaster::Broadcaster;
 
-pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient>
-{
+pub struct EncoderCore<
+    C: EncoderInternalNetworkClient,
+    M: Model,
+    B: ObjectStorage,
+    BC: ObjectNetworkClient,
+> {
     client: Arc<C>,
     broadcaster: Arc<Broadcaster<C>>,
     downloader: ActorHandle<Downloader<BC>>,
@@ -68,7 +72,7 @@ pub struct EncoderCore<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: 
 
 impl<C, M, B, BC> EncoderCore<C, M, B, BC>
 where
-    C: EncoderNetworkClient,
+    C: EncoderInternalNetworkClient,
     M: Model,
     B: ObjectStorage,
     BC: ObjectNetworkClient,
@@ -184,7 +188,7 @@ where
         // // TODO: remove unwraps
         // let verified_signed_commit = Verified::from_trusted(signed_commit).unwrap();
 
-        // async fn get_shard_commit_signatures<C: EncoderNetworkClient>(
+        // async fn get_shard_commit_signatures<C: EncoderInternalNetworkClient>(
         //     client: Arc<C>,
         //     peer: NetworkingIndex,
         //     shard_commit: Verified<Signed<ShardCommit>>,
@@ -213,7 +217,7 @@ where
         //     )
         //     .await?;
 
-        // async fn send_shard_commit_certificates<C: EncoderNetworkClient>(
+        // async fn send_shard_commit_certificates<C: EncoderInternalNetworkClient>(
         //     client: Arc<C>,
         //     peer: NetworkingIndex,
         //     shard_commit_certificate: Verified<Certified<Signed<ShardCommit>>>,
@@ -253,60 +257,61 @@ where
         shard: Shard,
         shard_commit_certificate: Verified<Certified<Signed<ShardCommit>>>,
     ) -> ShardResult<()> {
-        let data = shard_commit_certificate.data();
-        let cancellation = CancellationToken::new();
+        // unimplemented!();
+        // let data = shard_commit_certificate.data();
+        // let cancellation = CancellationToken::new();
 
-        // TODO: fix this
-        let probe_checksum = Checksum::default();
-        let probe_path = ObjectPath::from_checksum(probe_checksum);
+        // // TODO: fix this
+        // let probe_checksum = Checksum::default();
+        // let probe_path = ObjectPath::from_checksum(probe_checksum);
 
-        let probe_bytes = self
-            .downloader
-            .process(
-                DownloaderInput::new(peer, probe_path.clone()),
-                cancellation.clone(),
-            )
-            .await?;
+        // let probe_bytes = self
+        //     .downloader
+        //     .process(
+        //         DownloaderInput::new(peer, probe_path.clone()),
+        //         cancellation.clone(),
+        //     )
+        //     .await?;
 
-        let PROBE_SIZE = 1024_usize * 10;
-        // TODO: fix this
+        // let PROBE_SIZE = 1024_usize * 10;
+        // // TODO: fix this
 
-        let decompressed_probe_bytes = self
-            .compressor
-            .process(
-                CompressorInput::Decompress(probe_bytes, PROBE_SIZE),
-                cancellation.clone(),
-            )
-            .await?;
+        // let decompressed_probe_bytes = self
+        //     .compressor
+        //     .process(
+        //         CompressorInput::Decompress(probe_bytes, PROBE_SIZE),
+        //         cancellation.clone(),
+        //     )
+        //     .await?;
 
-        let _ = self
-            .storage
-            .process(
-                StorageProcessorInput::Store(probe_path, decompressed_probe_bytes),
-                cancellation.clone(),
-            )
-            .await?;
+        // let _ = self
+        //     .storage
+        //     .process(
+        //         StorageProcessorInput::Store(probe_path, decompressed_probe_bytes),
+        //         cancellation.clone(),
+        //     )
+        //     .await?;
 
-        let data_path: ObjectPath = ObjectPath::from_checksum(data.checksum());
+        // let data_path: ObjectPath = ObjectPath::from_checksum(data.checksum());
 
-        let downloader_input = DownloaderInput::new(peer, data_path.clone());
+        // let downloader_input = DownloaderInput::new(peer, data_path.clone());
 
-        let encrypted_embedding_bytes = self
-            .downloader
-            .process(downloader_input, cancellation.clone())
-            .await?;
-        let _ = self
-            .storage
-            .process(
-                StorageProcessorInput::Store(data_path, encrypted_embedding_bytes),
-                cancellation.clone(),
-            )
-            .await?;
+        // let encrypted_embedding_bytes = self
+        //     .downloader
+        //     .process(downloader_input, cancellation.clone())
+        //     .await?;
+        // let _ = self
+        //     .storage
+        //     .process(
+        //         StorageProcessorInput::Store(data_path, encrypted_embedding_bytes),
+        //         cancellation.clone(),
+        //     )
+        //     .await?;
 
-        // TODO:
-        // 1. mark completed
-        // 2. when all completed, reveal your own encryption key
-        // 3. check if reveal already exists, if yes, proceed to processing the reveal
+        // // TODO:
+        // // 1. mark completed
+        // // 2. when all completed, reveal your own encryption key
+        // // 3. check if reveal already exists, if yes, proceed to processing the reveal
 
         Ok(())
     }
@@ -383,7 +388,7 @@ where
     }
 }
 
-impl<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> Clone
+impl<C: EncoderInternalNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> Clone
     for EncoderCore<C, M, B, BC>
 {
     fn clone(&self) -> Self {

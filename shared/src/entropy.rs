@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bytes::Bytes;
 use fastcrypto_vdf::{
     class_group::{discriminant::DISCRIMINANT_3072, QuadraticForm},
@@ -12,12 +14,12 @@ use crate::{
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlockEntropyOutput(Bytes);
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlockEntropyProof(Bytes);
 
 type EntropyIterations = u64;
 
-trait EntropyAPI {
+pub trait EntropyAPI {
     fn get_entropy(
         &self,
         epoch: Epoch,

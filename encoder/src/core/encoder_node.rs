@@ -22,8 +22,8 @@ use crate::{
     },
     networking::{
         messaging::{
-            tonic_network::{EncoderTonicClient, EncoderTonicManager},
-            EncoderNetworkClient, EncoderNetworkManager,
+            tonic_network::{EncoderInternalTonicClient, EncoderInternalTonicManager},
+            EncoderInternalNetworkClient, EncoderInternalNetworkManager,
         },
         object::{
             http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -42,7 +42,7 @@ use self::{downloader::Downloader, shard_input::ShardInputProcessor};
 use super::{
     broadcaster::Broadcaster,
     encoder_core::EncoderCore,
-    encoder_service::EncoderService,
+    encoder_service::EncoderInternalService,
     pipeline_dispatcher::{ActorPipelineDispatcher, PipelineDispatcher},
 };
 
@@ -73,7 +73,7 @@ use super::{
 // }
 
 pub struct EncoderNode {
-    network_manager: EncoderTonicManager,
+    network_manager: EncoderInternalTonicManager,
 }
 
 impl EncoderNode {
@@ -85,17 +85,16 @@ impl EncoderNode {
         entry_point: &Path,
     ) -> Self {
         let mut network_manager =
-            EncoderTonicManager::new(encoder_context.clone(), network_keypair);
+            EncoderInternalTonicManager::new(encoder_context.clone(), network_keypair);
 
-        let messaging_client = <EncoderTonicManager as EncoderNetworkManager<
-            EncoderService<
+        let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
+            EncoderInternalService<
                 ActorPipelineDispatcher<
-                    EncoderTonicClient,
+                    EncoderInternalTonicClient,
                     PythonModule,
                     FilesystemObjectStorage,
                     ObjectHttpClient,
                 >,
-                MemStore,
             >,
         >>::client(&network_manager);
 
@@ -164,7 +163,7 @@ impl EncoderNode {
         let pipeline_dispatcher = ActorPipelineDispatcher::new(shard_input_handle);
 
         let store = Arc::new(MemStore::new());
-        let network_service = Arc::new(EncoderService::new(
+        let network_service = Arc::new(EncoderInternalService::new(
             encoder_context,
             Arc::new(pipeline_dispatcher),
             store,
@@ -175,15 +174,14 @@ impl EncoderNode {
     }
 
     pub(crate) async fn stop(mut self) {
-        <EncoderTonicManager as EncoderNetworkManager<
-            EncoderService<
+        <EncoderInternalTonicManager as EncoderInternalNetworkManager<
+            EncoderInternalService<
                 ActorPipelineDispatcher<
-                    EncoderTonicClient,
+                    EncoderInternalTonicClient,
                     PythonModule,
                     FilesystemObjectStorage,
                     ObjectHttpClient,
                 >,
-                MemStore,
             >,
         >>::stop(&mut self.network_manager)
         .await;

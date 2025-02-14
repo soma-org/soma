@@ -8,6 +8,8 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{trace, warn};
 
+use super::EncoderIndex;
+
 /// `ChannelPool` contains the encoder context and an efficient mapping between networking index
 /// and an open channel. In the future it might be better to have a single `ChannelPool` for both
 /// consensus networking and the encoders to reduce the code, at which time a generic would need to
@@ -16,7 +18,7 @@ pub(crate) struct ChannelPool {
     /// context allows going from index to address
     context: Arc<EncoderContext>,
     /// channels stored using a RWLock to better support the concurrent usage
-    channels: RwLock<BTreeMap<NetworkingIndex, Channel>>,
+    channels: RwLock<BTreeMap<EncoderIndex, Channel>>,
 }
 
 /// Type alias since the type definition is so long
@@ -43,7 +45,7 @@ impl ChannelPool {
     /// tonic address, and then establish a connection. The newly connected channel is stored in the map, and returned.
     pub(crate) async fn get_channel(
         &self,
-        peer: NetworkingIndex,
+        peer: EncoderIndex,
         timeout: Duration,
     ) -> ShardResult<Channel> {
         {
@@ -52,9 +54,9 @@ impl ChannelPool {
                 return Ok(channel.clone());
             }
         }
-        let network_identity = self.context.network_committee.identity(peer);
+        let encoder = self.context.encoder_committee.encoder(peer);
 
-        let address = to_host_port_str(&network_identity.messaging_address).map_err(|e| {
+        let address = to_host_port_str(&encoder.address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address = format!("http://{address}");

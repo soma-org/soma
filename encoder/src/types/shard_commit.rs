@@ -1,8 +1,8 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::metadata::Metadata;
+use shared::{metadata::Metadata, signed::Signed};
 
-use super::shard::ShardRef;
+use super::shard_verifier::{Route, ShardAuthToken};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -15,14 +15,22 @@ pub enum ShardCommit {
 /// `ShardCommitAPI` is the trait that every shard commit version must implement
 #[enum_dispatch]
 pub(crate) trait ShardCommitAPI {
-    /// returns the shard ref
-    fn shard_ref(&self) -> &ShardRef;
-    fn data(&self) -> &Metadata;
+    fn auth_token(&self) -> &ShardAuthToken;
+    fn route(&self) -> &Option<Signed<Route>>;
+    fn commit(&self) -> &Metadata;
 }
 
 impl ShardCommit {
-    pub(crate) fn new_v1(shard_ref: ShardRef, data: Metadata) -> ShardCommit {
-        ShardCommit::V1(ShardCommitV1 { shard_ref, data })
+    pub(crate) fn new_v1(
+        auth_token: ShardAuthToken,
+        route: Option<Signed<Route>>,
+        commit: Metadata,
+    ) -> ShardCommit {
+        ShardCommit::V1(ShardCommitV1 {
+            auth_token,
+            route,
+            commit,
+        })
     }
 }
 
@@ -30,25 +38,23 @@ impl ShardCommit {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ShardCommitV1 {
-    // transaction_proof
-    // data (encrypted obviously)
-    // the encryption option in the data will contain the hash of the encryption key
-    // this means that you do not need to certify the reveal key, its baked in
-    data: Metadata,
-    /// shard ref, this is important for protecting against replay attacks
-    shard_ref: ShardRef,
+    // the auth token protects against replay attacks since this entire thing is signed with
+    // a unique shard auth token that is specific to the shard
+    auth_token: ShardAuthToken,
+    // signed by the source (eligible inference encoder)
+    // TODO: need to correct encoder signature
+    route: Option<Signed<Route>>,
+    commit: Metadata,
 }
 
 impl ShardCommitAPI for ShardCommitV1 {
-    fn shard_ref(&self) -> &ShardRef {
-        &self.shard_ref
+    fn auth_token(&self) -> &ShardAuthToken {
+        &self.auth_token
     }
-    fn data(&self) -> &Metadata {
-        &self.data
+    fn route(&self) -> &Option<Signed<Route>> {
+        &self.route
+    }
+    fn commit(&self) -> &Metadata {
+        &self.commit
     }
 }
-
-// pub struct CommitCertificate {
-//     signed_commit: SignedShardCommit,
-//     aggregate_signature: AuthorityPublicKey,
-// }

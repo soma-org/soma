@@ -3,11 +3,13 @@ use shared::{
     network_committee::{NetworkCommittee, NetworkingIndex},
 };
 
+use crate::actors::{workers::vdf::VDFProcessor, ActorHandle};
+
 use super::encoder_committee::{EncoderCommittee, EncoderIndex};
 
-#[derive(Clone)]
 /// EncoderContext is updated each epoch and provides the various services running
 /// information on committeees, configurations, and access to common metric reporting
+#[derive(Clone)]
 pub(crate) struct EncoderContext {
     /// the committee of validators
     pub authority_committee: AuthorityCommittee,

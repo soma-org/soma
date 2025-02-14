@@ -1,3 +1,7 @@
+//! The encoder committee stores all the neccessary details for creating shards from staked nodes
+//! The set type specifies whether to sample the total shard (inference and evaluation) at once or
+//! whether it should be resampled. In all cases it should opt for disjoint sets except for the cases
+//! where the size of staked encoders does not allow it.
 use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shared::{
@@ -283,7 +287,7 @@ pub(crate) struct Encoder {
     /// Voting power of the authority in the committee.
     voting_power: VotingPowerUnit,
     /// Network address for communicating with the authority.
-    address: Multiaddr,
+    pub(crate) address: Multiaddr,
     /// The authority's hostname, for metrics and logging.
     hostname: String,
     /// The authority's public key as Sui identity.

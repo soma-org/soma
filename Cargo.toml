@@ -65,3 +65,4 @@ tempdir = "0.3.7"
 arbtest = "0.3.2"
 mockall = "0.13.1"
 fastcrypto-vdf = { git = "https://github.com/MystenLabs/fastcrypto", features = ["experimental"] }
+quick_cache = "0.6.10"

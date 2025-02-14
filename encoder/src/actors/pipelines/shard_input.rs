@@ -5,7 +5,7 @@ use tokio::sync::Semaphore;
 use crate::{
     core::encoder_core::EncoderCore,
     intelligence::model::Model,
-    networking::{messaging::EncoderNetworkClient, object::ObjectNetworkClient},
+    networking::{messaging::EncoderInternalNetworkClient, object::ObjectNetworkClient},
     storage::object::ObjectStorage,
     types::{shard::Shard, shard_input::ShardInput},
 };
@@ -15,7 +15,7 @@ use crate::actors::{ActorMessage, Processor};
 use async_trait::async_trait;
 
 pub(crate) struct ShardInputProcessor<
-    C: EncoderNetworkClient,
+    C: EncoderInternalNetworkClient,
     M: Model,
     B: ObjectStorage,
     BC: ObjectNetworkClient,
@@ -24,7 +24,7 @@ pub(crate) struct ShardInputProcessor<
     semaphore: Arc<Semaphore>,
 }
 
-impl<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient>
+impl<C: EncoderInternalNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient>
     ShardInputProcessor<C, M, B, BC>
 {
     pub fn new(core: EncoderCore<C, M, B, BC>, concurrency: usize) -> Self {
@@ -34,7 +34,7 @@ impl<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClien
 }
 
 #[async_trait]
-impl<C: EncoderNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> Processor
+impl<C: EncoderInternalNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> Processor
     for ShardInputProcessor<C, M, B, BC>
 {
     type Input = (NetworkingIndex, Shard, Verified<Signed<ShardInput>>);

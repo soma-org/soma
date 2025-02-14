@@ -8,18 +8,18 @@ use tokio::time::sleep;
 
 use crate::{
     error::{ShardError, ShardResult},
-    networking::messaging::EncoderNetworkClient,
+    networking::messaging::EncoderInternalNetworkClient,
     types::{encoder_committee::EncoderIndex, encoder_context::EncoderContext},
 };
 
 const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
-pub(crate) struct Broadcaster<C: EncoderNetworkClient> {
+pub(crate) struct Broadcaster<C: EncoderInternalNetworkClient> {
     context: Arc<EncoderContext>,
     network_client: Arc<C>,
 }
 
-impl<C: EncoderNetworkClient> Broadcaster<C> {
+impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
     pub(crate) fn new(context: Arc<EncoderContext>, network_client: Arc<C>) -> Self {
         Self {
             context,
