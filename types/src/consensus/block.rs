@@ -281,7 +281,6 @@ impl Slot {
         Self { round, authority }
     }
 
-    #[cfg(test)]
     pub fn new_for_test(round: Round, authority: u32) -> Self {
         Self {
             round,
@@ -589,7 +588,7 @@ impl TestBlock {
         self
     }
 
-    pub(crate) fn set_transactions(mut self, transactions: Vec<Transaction>) -> Self {
+    pub fn set_transactions(mut self, transactions: Vec<Transaction>) -> Self {
         self.block.transactions = transactions;
         self
     }

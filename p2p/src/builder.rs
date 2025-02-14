@@ -23,19 +23,9 @@ use types::{
         block_verifier::{BlockVerifier, SignedBlockVerifier},
         commit::CommittedSubDag,
         context::{Clock, Context},
-        leader_schedule::LeaderSchedule,
         transaction,
     },
     crypto::NetworkKeyPair,
-    dag::{
-        self,
-        block_manager::BlockManager,
-        committer::universal_committer::{
-            universal_committer_builder::UniversalCommitterBuilder, UniversalCommitter,
-        },
-        dag_state::DagState,
-        linearizer::Linearizer,
-    },
     discovery::SignedNodeInfo,
     p2p::{
         active_peers::{self, ActivePeers},
@@ -176,10 +166,6 @@ pub struct UnstartedStateSync<S> {
     pub(super) peer_heights: Arc<RwLock<PeerHeights>>,
     pub(super) commit_event_sender: broadcast::Sender<CommittedSubDag>,
     pub(super) block_verifier: Arc<SignedBlockVerifier>,
-    pub(super) dag_state: Arc<RwLock<DagState>>,
-    pub(super) block_manager: Arc<RwLock<BlockManager>>,
-    pub(super) committer: Arc<UniversalCommitter>,
-    pub(super) linearizer: Arc<RwLock<Linearizer>>,
 }
 
 impl<S> UnstartedStateSync<S>
@@ -199,10 +185,6 @@ where
             peer_heights,
             commit_event_sender,
             block_verifier,
-            dag_state,
-            block_manager,
-            committer,
-            linearizer,
         } = self;
 
         (
@@ -216,10 +198,6 @@ where
                 active_peers,
                 peer_event_receiver,
                 block_verifier,
-                dag_state,
-                committer,
-                linearizer,
-                block_manager,
             ),
             handle,
         )
@@ -241,7 +219,6 @@ where
 pub struct P2pBuilder<S> {
     config: Option<P2pConfig>,
     store: Option<S>,
-    dag_state: Option<Arc<RwLock<DagState>>>,
     // trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
 }
 
@@ -251,7 +228,6 @@ impl P2pBuilder<()> {
         Self {
             store: None,
             config: None,
-            dag_state: None,
         }
     }
 }
@@ -261,13 +237,7 @@ impl<S> P2pBuilder<S> {
         P2pBuilder {
             store: Some(store),
             config: self.config,
-            dag_state: self.dag_state,
         }
-    }
-
-    pub fn dag_state(mut self, dag_state: Arc<RwLock<DagState>>) -> Self {
-        self.dag_state = Some(dag_state);
-        self
     }
 
     pub fn config(mut self, config: P2pConfig) -> Self {
@@ -297,7 +267,6 @@ where
         self,
     ) -> (UnstartedDiscovery, UnstartedStateSync<S>, P2pService<S>) {
         let store = self.store.unwrap();
-        let dag_state = self.dag_state.unwrap();
         let store_ref = Arc::new(store.clone());
         let config = self.config.unwrap();
         let state_sync_config = config.state_sync.clone().unwrap();
@@ -331,7 +300,16 @@ where
         .pipe(RwLock::new)
         .pipe(Arc::new);
 
-        let context = dag_state.read().context.clone();
+        // Dummy context with genesis committee
+        let parameters = Parameters {
+            ..Default::default()
+        };
+        let context = Arc::new(Context::new(
+            None,
+            (*store_ref.get_committee(0).unwrap().unwrap()).clone(),
+            parameters,
+            Arc::new(Clock::new()),
+        ));
 
         let signature_verifier =
             SignatureVerifier::new(Arc::new(context.committee.clone()), Some(store_ref.clone()));
@@ -343,35 +321,12 @@ where
             Some(store_ref.clone()),
         ));
 
-        let block_manager = Arc::new(RwLock::new(BlockManager::new(
-            dag_state.clone(),
-            block_verifier.clone(),
-        )));
-
-        let leader_schedule = Arc::new(LeaderSchedule::new(
-            context.clone(),
-            Some(store_ref.clone()),
-        ));
-
-        let number_of_leaders = 1; // TODO: context.parameters.mysticeti_num_leaders_per_round();
-        let committer = Arc::new(
-            UniversalCommitterBuilder::new(leader_schedule.clone(), dag_state.clone())
-                .with_number_of_leaders(number_of_leaders)
-                .with_pipeline(true)
-                .build(),
-        );
-        let linearizer = Arc::new(RwLock::new(Linearizer::new(
-            dag_state.clone(),
-            leader_schedule.clone(),
-        )));
-
         let server = P2pService {
             discovery_state: discovery_state.clone(),
             store: store.clone(),
             peer_heights: peer_heights.clone(),
             state_sync_sender: weak_state_sync_sender,
             discovery_sender: their_info_sender,
-            dag_state: dag_state.clone(),
         };
 
         (
@@ -390,10 +345,6 @@ where
                 peer_heights,
                 commit_event_sender,
                 block_verifier,
-                dag_state,
-                block_manager,
-                committer,
-                linearizer,
             },
             server,
         )

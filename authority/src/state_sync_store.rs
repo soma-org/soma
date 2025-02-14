@@ -10,10 +10,8 @@ use types::consensus::block::BlockAPI;
 use types::consensus::block::EndOfEpochData;
 use types::consensus::commit::CommitDigest;
 use types::consensus::commit::CommittedSubDag;
-use types::dag::dag_state::DagStore;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::consensus::ConsensusStore;
-use types::storage::read_store::ReadCommitteeStore;
 use types::storage::storage_error::Error as StorageError;
 use types::storage::storage_error::Result;
 use types::{
@@ -130,11 +128,7 @@ impl ReadStore for StateSyncStore {
             .get_executed_effects(digest)
             .map_err(Into::into)
     }
-}
 
-impl DagStore for StateSyncStore {}
-
-impl ReadCommitteeStore for StateSyncStore {
     fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
         self.committee_store
             .get_committee(&epoch)

@@ -1,6 +1,6 @@
-use std::{sync::Arc, time::Duration};
-
+use crate::{dag_state::DagState, leader_schedule::LeaderSchedule, linearizer::Linearizer};
 use parking_lot::RwLock;
+use std::{sync::Arc, time::Duration};
 use tokio::{sync::mpsc::UnboundedSender, time::Instant};
 use tracing::{debug, info};
 use types::{
@@ -11,9 +11,7 @@ use types::{
             TrustedCommit,
         },
         context::Context,
-        leader_schedule::LeaderSchedule,
     },
-    dag::{dag_state::DagState, linearizer::Linearizer},
     error::{ConsensusError, ConsensusResult},
     storage::consensus::ConsensusStore,
 };
@@ -168,17 +166,16 @@ impl CommitConsumer {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{dag_state::DagState, test_dag::DagBuilder};
     use parking_lot::RwLock;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
-
-    use super::*;
     use types::{
         consensus::{
             block::{BlockRef, Round},
             commit::DEFAULT_WAVE_LENGTH,
             context::Context,
         },
-        dag::{dag_state::DagState, test_dag::DagBuilder},
         storage::consensus::mem_store::MemStore,
     };
 
@@ -187,7 +184,7 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
         let num_authorities = 4;
         let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let mem_store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mem_store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
@@ -196,7 +193,7 @@ mod tests {
         let last_processed_commit_index = 0;
         let (sender, mut receiver) = unbounded_channel();
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
 
         let mut observer = CommitObserver::new(
             context.clone(),
@@ -288,7 +285,7 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
         let num_authorities = 4;
         let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let mem_store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mem_store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
@@ -297,7 +294,7 @@ mod tests {
         let last_processed_commit_index = 0;
         let (sender, mut receiver) = unbounded_channel();
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
 
         let mut observer = CommitObserver::new(
             context.clone(),
@@ -433,7 +430,7 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
         let num_authorities = 4;
         let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let mem_store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let mem_store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             mem_store.clone(),
@@ -442,7 +439,7 @@ mod tests {
         let last_processed_commit_index = 0;
         let (sender, mut receiver) = unbounded_channel();
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
 
         let mut observer = CommitObserver::new(
             context.clone(),

@@ -62,7 +62,7 @@ pub struct WriteBatch {
 }
 
 impl WriteBatch {
-    pub(crate) fn new(
+    pub fn new(
         blocks: Vec<VerifiedBlock>,
         commits: Vec<TrustedCommit>,
         commit_info: Vec<(CommitRef, CommitInfo)>,

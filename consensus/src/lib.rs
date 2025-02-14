@@ -1,13 +1,19 @@
 mod authority;
+mod block_manager;
 mod broadcaster;
 mod commit_observer;
 mod commit_syncer;
+mod committer;
 mod core;
 mod core_thread;
+mod dag_state;
+mod leader_schedule;
 mod leader_timeout;
+mod linearizer;
 mod network;
 mod service;
 mod synchronizer;
+mod test_dag;
 mod threshold_clock;
 
 pub use authority::ConsensusAuthority;

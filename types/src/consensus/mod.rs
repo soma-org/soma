@@ -15,7 +15,6 @@ pub mod block_verifier;
 pub mod commit;
 pub mod committee;
 pub mod context;
-pub mod leader_schedule;
 pub mod stake_aggregator;
 pub mod transaction;
 pub mod validator_set;

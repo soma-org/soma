@@ -27,10 +27,6 @@ use types::{
         stake_aggregator::{QuorumThreshold, StakeAggregator},
     },
     crypto::NetworkPublicKey,
-    dag::{
-        block_manager::BlockManager, committer::universal_committer::UniversalCommitter,
-        dag_state::DagState, linearizer::Linearizer,
-    },
     error::{ConsensusError, SomaError},
     p2p::{
         active_peers::{ActivePeers, PeerState},
@@ -42,7 +38,10 @@ use types::{
         GetCommitAvailabilityRequest, GetCommitAvailabilityResponse, GetCommitInfoRequest,
         PushCommitRequest,
     },
-    storage::write_store::WriteStore,
+    storage::{
+        consensus::{ConsensusStore, WriteBatch},
+        write_store::WriteStore,
+    },
 };
 
 use crate::{
@@ -228,16 +227,11 @@ pub struct StateSyncEventLoop<S> {
     active_peers: ActivePeers,
     peer_event_receiver: broadcast::Receiver<PeerEvent>,
     block_verifier: Arc<SignedBlockVerifier>,
-
-    dag_state: Arc<RwLock<DagState>>,
-    committer: Arc<UniversalCommitter>,
-    linearizer: Arc<RwLock<Linearizer>>,
-    block_manager: Arc<RwLock<BlockManager>>,
 }
 
 impl<S> StateSyncEventLoop<S>
 where
-    S: WriteStore + Clone + Send + Sync + 'static,
+    S: ConsensusStore + WriteStore + Clone + Send + Sync + 'static,
 {
     pub fn new(
         config: StateSyncConfig,
@@ -249,10 +243,6 @@ where
         active_peers: ActivePeers,
         peer_event_receiver: broadcast::Receiver<PeerEvent>,
         block_verifier: Arc<SignedBlockVerifier>,
-        dag_state: Arc<RwLock<DagState>>,
-        committer: Arc<UniversalCommitter>,
-        linearizer: Arc<RwLock<Linearizer>>,
-        block_manager: Arc<RwLock<BlockManager>>,
     ) -> Self {
         Self {
             config,
@@ -265,10 +255,6 @@ where
             active_peers,
             peer_event_receiver,
             block_verifier,
-            dag_state,
-            committer,
-            linearizer,
-            block_manager,
         }
     }
 
@@ -355,10 +341,6 @@ where
                 self.config.timeout(),
                 // The if condition ensures this is Some
                 highest_known_commit.unwrap(),
-                self.dag_state.clone(),
-                self.block_manager.clone(),
-                self.committer.clone(),
-                self.linearizer.clone(),
             );
             self.tasks.spawn(task);
         }
@@ -377,23 +359,23 @@ where
     // Handle a commit that we received from consensus
     #[instrument(level = "debug", skip_all)]
     fn handle_commit_from_consensus(&mut self, commit: Box<CommittedSubDag>) {
-        // TODO: Always check previous_digest matches in case there is a gap between
+        // Always check previous_digest matches in case there is a gap between
         // state sync and consensus.
-        // let prev_digest = self
-        //     .store
-        //     .get_commit_by_index(commit.commit_ref.index - 1)
-        //     .unwrap_or_else(|| {
-        //         panic!(
-        //             "Got commit {} from consensus but cannot find commit {} in certified_commits",
-        //             commit.commit_ref.index,
-        //             commit.commit_ref.index - 1
-        //         )
-        //     })
-        //     .commit_ref
-        //     .digest;
-        // if commit.commit_ref.previous_digest != prev_digest {
-        //     panic!("Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: {:?}", commit.commit_ref.index, Some(prev_digest), commit.previous_digest);
-        // }
+        let prev_digest = self
+            .store
+            .get_commit_by_index(commit.commit_ref.index - 1)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Got commit {} from consensus but cannot find commit {} in certified_commits",
+                    commit.commit_ref.index,
+                    commit.commit_ref.index - 1
+                )
+            })
+            .commit_ref
+            .digest;
+        if commit.previous_digest != prev_digest {
+            panic!("Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: {:?}", commit.commit_ref.index, Some(prev_digest), commit.previous_digest);
+        }
 
         let latest_commit = self
             .store
@@ -680,12 +662,8 @@ async fn sync_from_peer<S>(
     block_verifier: Arc<SignedBlockVerifier>,
     timeout: Duration,
     target_commit: CommitIndex,
-    dag_state: Arc<RwLock<DagState>>,
-    block_manager: Arc<RwLock<BlockManager>>,
-    committer: Arc<UniversalCommitter>,
-    commit_interpreter: Arc<RwLock<Linearizer>>,
 ) where
-    S: WriteStore + Clone,
+    S: ConsensusStore + WriteStore + Clone,
 {
     // Keep retrying with different peers until we succeed
     'retry: loop {
@@ -751,12 +729,6 @@ async fn sync_from_peer<S>(
                     .cloned()
                     .collect();
 
-                info!(
-                    "Fetching {} blocks from peer: {:?}",
-                    block_refs.len(),
-                    peer.public_key
-                );
-
                 let blocks =
                     match fetch_blocks_batch(&peer, block_refs, block_verifier.clone(), timeout)
                         .await
@@ -779,10 +751,6 @@ async fn sync_from_peer<S>(
                     verified_commits,
                     blocks,
                     &store,
-                    &dag_state,
-                    &block_manager,
-                    &committer,
-                    &commit_interpreter,
                     &commit_event_sender,
                     &weak_sender,
                 )
@@ -1064,17 +1032,16 @@ async fn fetch_blocks_batch(
     Ok(fetched_blocks)
 }
 
-async fn process_verified_commits(
+async fn process_verified_commits<S>(
     verified_commits: Vec<TrustedCommit>,
     blocks: Vec<VerifiedBlock>,
-    store: &impl WriteStore,
-    dag_state: &RwLock<DagState>,
-    block_manager: &RwLock<BlockManager>,
-    committer: &UniversalCommitter,
-    commit_interpreter: &RwLock<Linearizer>,
+    store: &S,
     commit_event_sender: &broadcast::Sender<CommittedSubDag>,
     weak_sender: &mpsc::WeakSender<StateSyncMessage>,
-) -> Result<CommitIndex, SomaError> {
+) -> Result<CommitIndex, SomaError>
+where
+    S: ConsensusStore + WriteStore,
+{
     assert!(!verified_commits.is_empty());
 
     info!(
@@ -1084,68 +1051,53 @@ async fn process_verified_commits(
 
     let commit_end = verified_commits.last().unwrap().index();
 
-    // Add all blocks to block manager
-    let (accepted_blocks, missing_blocks) = block_manager.write().try_accept_blocks(blocks);
+    // First write blocks and commits to ConsensusStore
+    store
+        .write(WriteBatch::new(
+            blocks.clone(),
+            verified_commits.clone(),
+            vec![],
+        ))
+        .unwrap_or_else(|e| panic!("Failed to write to storage: {:?}", e));
 
-    if !accepted_blocks.is_empty() {
-        debug!(
-            "Accepted blocks: {}",
-            accepted_blocks
-                .iter()
-                .map(|b| b.reference().to_string())
-                .join(",")
-        );
-
-        // Try to decide on commits using last known leader
-        let decided_leaders = committer.try_decide(
-            dag_state.read().last_commit_leader(),
-            Some(accepted_blocks.last().unwrap().epoch()),
-        );
-
-        let committed_leaders = decided_leaders
-            .into_iter()
-            .filter_map(|leader| leader.into_committed_block())
+    for commit in verified_commits {
+        let to_commit = commit
+            .blocks()
+            .iter()
+            .map(|block_ref| {
+                blocks
+                    .iter()
+                    .find(|b| b.reference() == *block_ref)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Failed to find block {:?} in blocks for commit {:?}",
+                            block_ref, commit
+                        )
+                    })
+            })
+            .cloned()
             .collect::<Vec<_>>();
 
-        if !committed_leaders.is_empty() {
-            debug!(
-                "Committing leaders: {}",
-                committed_leaders
-                    .iter()
-                    .map(|b| b.reference().to_string())
-                    .join(",")
-            );
+        let sub_dag = CommittedSubDag::new(
+            commit.leader(),
+            to_commit,
+            commit.timestamp_ms(),
+            commit.reference(),
+            commit.previous_digest(),
+        );
 
-            // Handle commits and update state
-            let committed_sub_dags = commit_interpreter.write().handle_commit(committed_leaders);
-
-            for committed_sub_dag in committed_sub_dags {
-                // Send commit event
-                if let Err(err) = commit_event_sender.send(committed_sub_dag.clone()) {
-                    tracing::error!(
-                        "Failed to send committed sub-dag, probably due to shutdown: {err:?}"
-                    );
-                }
-
-                tracing::debug!(
-                    "Sending to execution commit {} leader {}",
-                    committed_sub_dag.commit_ref,
-                    committed_sub_dag.leader
-                );
-
-                // Update store
-                store.insert_commit(committed_sub_dag)?;
-            }
-        } else {
-            debug!("No leaders to commit");
+        if let Err(err) = commit_event_sender.send(sub_dag.clone()) {
+            tracing::error!("Failed to send committed sub-dag, probably due to shutdown: {err:?}");
         }
-    } else {
-        debug!("No blocks accepted");
-    }
 
-    if !missing_blocks.is_empty() {
-        debug!("Missing blocks: {:?}", missing_blocks);
-        // TODO: Trigger fetching of missing blocks
+        tracing::debug!(
+            "Sending to execution commit {} leader {}",
+            sub_dag.commit_ref,
+            sub_dag.leader
+        );
+
+        // Update store
+        store.insert_commit(sub_dag)?;
     }
 
     // Notify about synced commit

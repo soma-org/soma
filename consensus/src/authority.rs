@@ -1,11 +1,14 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
+    block_manager::BlockManager,
     broadcaster::Broadcaster,
     commit_observer::{CommitConsumer, CommitObserver},
     commit_syncer::{CommitSyncer, CommitVoteMonitor},
     core::{Core, CoreSignals},
     core_thread::{ChannelCoreThreadDispatcher, CoreThreadDispatcher, CoreThreadHandle},
+    dag_state::DagState,
+    leader_schedule::LeaderSchedule,
     leader_timeout::{LeaderTimeoutTask, LeaderTimeoutTaskHandle},
     network::{
         tonic_network::{TonicClient, TonicManager},
@@ -20,7 +23,6 @@ use types::{
     accumulator,
     committee::{AuthorityIndex, Committee},
     crypto::AuthorityKeyPair,
-    dag::{self, dag_state},
     storage::consensus::ConsensusStore,
 };
 use types::{
@@ -32,10 +34,8 @@ use types::{
     consensus::{
         block_verifier::SignedBlockVerifier,
         context::{Clock, Context},
-        leader_schedule::LeaderSchedule,
         transaction::{TransactionClient, TransactionConsumer, TransactionVerifier},
     },
-    dag::{block_manager::BlockManager, dag_state::DagState},
     storage::consensus::mem_store::MemStore,
 };
 
@@ -56,7 +56,6 @@ impl ConsensusAuthority {
         own_index: AuthorityIndex,
         committee: Committee,
         parameters: Parameters,
-        context: Arc<Context>,
         // To avoid accidentally leaking the private key, the protocol key pair should only be
         // kept in Core.
         protocol_keypair: ProtocolKeyPair,
@@ -66,7 +65,6 @@ impl ConsensusAuthority {
         commit_consumer: CommitConsumer,
         accumulator_store: Arc<dyn AccumulatorStore>,
         epoch_store: Arc<dyn EndOfEpochAPI>,
-        dag_state: Arc<RwLock<DagState>>,
         consensus_store: Arc<dyn ConsensusStore>,
     ) -> Self {
         info!(
@@ -74,12 +72,12 @@ impl ConsensusAuthority {
             own_index, committee, parameters
         );
         assert!(committee.is_valid_index(own_index));
-        // let context = Arc::new(Context::new(
-        //     Some(own_index),
-        //     committee,
-        //     parameters,
-        //     Arc::new(Clock::new()),
-        // ));
+        let context = Arc::new(Context::new(
+            Some(own_index),
+            committee,
+            parameters,
+            Arc::new(Clock::new()),
+        ));
 
         let start_time = Instant::now();
 
@@ -100,11 +98,10 @@ impl ConsensusAuthority {
 
         // let store = Arc::new(MemStore::new());
         // let store = Arc::new(RocksDBStore::new(store_path));
-        // let dag_state = Arc::new(RwLock::new(DagState::new(
-        //     context.clone(),
-        //     store.clone(),
-        //     None,
-        // )));
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            consensus_store.clone(),
+        )));
 
         let block_verifier = Arc::new(SignedBlockVerifier::new(
             context.clone(),
@@ -115,7 +112,7 @@ impl ConsensusAuthority {
 
         let block_manager = BlockManager::new(dag_state.clone(), block_verifier.clone());
 
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
 
         let commit_observer = CommitObserver::new(
             context.clone(),
@@ -137,7 +134,6 @@ impl ConsensusAuthority {
             protocol_keypair,
             authority_keypair,
             dag_state.clone(),
-            accumulator_store.clone(),
             epoch_store,
         );
 
@@ -263,20 +259,12 @@ mod tests {
 
         let (sender, _receiver) = unbounded_channel();
         let commit_consumer = CommitConsumer::new(sender, 0, 0);
-        let context = Arc::new(Context::new(
-            Some(own_index),
-            committee.clone(),
-            parameters.clone(),
-            Arc::new(Clock::new()),
-        ));
-        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let store = Arc::new(MemStore::new());
 
         let authority = ConsensusAuthority::start(
             own_index,
             committee,
             parameters,
-            context,
             protocol_keypair,
             network_keypair,
             authority_keypair,
@@ -284,12 +272,11 @@ mod tests {
             commit_consumer,
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
-            dag_state.clone(),
             store.clone(),
         )
         .await;
 
-        assert_eq!(authority.context.own_index(), Some(own_index));
+        assert_eq!(authority.context.own_index, Some(own_index));
         assert_eq!(authority.context.committee.epoch(), 0);
         assert_eq!(authority.context.committee.size(), 1);
 
@@ -559,20 +546,12 @@ mod tests {
 
         let (sender, receiver) = unbounded_channel();
         let commit_consumer = CommitConsumer::new(sender, 0, 0);
-        let context = Arc::new(Context::new(
-            Some(index),
-            committee.clone(),
-            parameters.clone(),
-            Arc::new(Clock::new()),
-        ));
-        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
-        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let store = Arc::new(MemStore::new());
 
         let authority = ConsensusAuthority::start(
             index,
             committee,
             parameters,
-            context,
             protocol_keypair,
             network_keypair,
             authority_keypair,
@@ -580,7 +559,6 @@ mod tests {
             commit_consumer,
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
-            dag_state.clone(),
             store.clone(),
         )
         .await;

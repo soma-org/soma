@@ -12,7 +12,7 @@ use std::{
 
 use super::block::{BlockAPI as _, BlockTimestampMs, Round, Slot};
 use super::block::{BlockRef, VerifiedBlock};
-#[cfg(test)]
+
 use crate::committee::AuthorityIndex;
 use crate::committee::Epoch;
 use crate::crypto::{DefaultHash as DefaultHashFunction, DIGEST_LENGTH};
@@ -24,7 +24,7 @@ pub const GENESIS_COMMIT_INDEX: CommitIndex = 0;
 
 /// The consensus protocol operates in 'waves'. Each wave is composed of a leader
 /// round, at least one voting round, and one decision round.
-pub(crate) type WaveNumber = u32;
+pub type WaveNumber = u32;
 
 /// Default wave length for all committers. A longer wave length increases the
 /// chance of committing the leader under asynchrony at the cost of latency in
@@ -32,7 +32,7 @@ pub(crate) type WaveNumber = u32;
 pub const DEFAULT_WAVE_LENGTH: Round = MINIMUM_WAVE_LENGTH;
 
 /// We need at least one leader round, one voting round, and one decision round.
-pub(crate) const MINIMUM_WAVE_LENGTH: Round = 3;
+pub const MINIMUM_WAVE_LENGTH: Round = 3;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Commit {
@@ -54,7 +54,7 @@ pub struct Commit {
 
 impl Commit {
     /// Create a new commit.
-    pub(crate) fn new(
+    pub fn new(
         index: CommitIndex,
         previous_digest: CommitDigest,
         timestamp_ms: BlockTimestampMs,
@@ -72,7 +72,7 @@ impl Commit {
         }
     }
 
-    pub(crate) fn serialize(&self) -> Result<Bytes, bcs::Error> {
+    pub fn serialize(&self) -> Result<Bytes, bcs::Error> {
         let bytes = bcs::to_bytes(self)?;
         Ok(bytes.into())
     }
@@ -140,7 +140,7 @@ impl TrustedCommit {
         }
     }
 
-    pub(crate) fn reference(&self) -> CommitRef {
+    pub fn reference(&self) -> CommitRef {
         CommitRef {
             index: self.index(),
             digest: self.digest(),
@@ -151,7 +151,7 @@ impl TrustedCommit {
         &self.serialized
     }
 
-    pub(crate) fn digest(&self) -> CommitDigest {
+    pub fn digest(&self) -> CommitDigest {
         self.digest
     }
 
@@ -279,21 +279,25 @@ pub struct CommittedSubDag {
     /// First commit after genesis has a index of 1, then every next commit has a
     /// index incremented by 1.
     pub commit_ref: CommitRef,
+
+    pub previous_digest: CommitDigest,
 }
 
 impl CommittedSubDag {
     /// Create new (empty) sub-dag.
-    pub(crate) fn new(
+    pub fn new(
         leader: BlockRef,
         blocks: Vec<VerifiedBlock>,
         timestamp_ms: BlockTimestampMs,
         commit_ref: CommitRef,
+        previous_digest: CommitDigest,
     ) -> Self {
         Self {
             leader,
             blocks,
             timestamp_ms,
             commit_ref,
+            previous_digest,
         }
     }
 
@@ -347,7 +351,7 @@ impl CommittedSubDag {
 
 // Sort the blocks of the sub-dag blocks by round number then authority index. Any
 // deterministic & stable algorithm works.
-pub(crate) fn sort_sub_dag_blocks(blocks: &mut [VerifiedBlock]) {
+pub fn sort_sub_dag_blocks(blocks: &mut [VerifiedBlock]) {
     blocks.sort_by(|a, b| {
         a.round()
             .cmp(&b.round())
@@ -382,21 +386,21 @@ impl fmt::Debug for CommittedSubDag {
     }
 }
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(crate) enum Decision {
+pub enum Decision {
     Direct,
     Indirect,
 }
 
 /// The status of a leader slot from the direct and indirect commit rules.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum LeaderStatus {
+pub enum LeaderStatus {
     Commit(VerifiedBlock),
     Skip(Slot),
     Undecided(Slot),
 }
 
 impl LeaderStatus {
-    pub(crate) fn round(&self) -> Round {
+    pub fn round(&self) -> Round {
         match self {
             Self::Commit(block) => block.round(),
             Self::Skip(leader) => leader.round,
@@ -404,7 +408,7 @@ impl LeaderStatus {
         }
     }
 
-    pub(crate) fn is_decided(&self) -> bool {
+    pub fn is_decided(&self) -> bool {
         match self {
             Self::Commit(_) => true,
             Self::Skip(_) => true,
@@ -412,7 +416,7 @@ impl LeaderStatus {
         }
     }
 
-    pub(crate) fn into_decided_leader(self) -> Option<DecidedLeader> {
+    pub fn into_decided_leader(self) -> Option<DecidedLeader> {
         match self {
             Self::Commit(block) => Some(DecidedLeader::Commit(block)),
             Self::Skip(slot) => Some(DecidedLeader::Skip(slot)),
@@ -455,16 +459,14 @@ impl DecidedLeader {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn round(&self) -> Round {
+    pub fn round(&self) -> Round {
         match self {
             Self::Commit(block) => block.round(),
             Self::Skip(leader) => leader.round,
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn authority(&self) -> AuthorityIndex {
+    pub fn authority(&self) -> AuthorityIndex {
         match self {
             Self::Commit(block) => block.author(),
             Self::Skip(leader) => leader.authority,
@@ -581,6 +583,7 @@ pub fn load_committed_subdag_from_store(
         blocks,
         commit.timestamp_ms(),
         commit.reference(),
+        commit.previous_digest(),
     )
 }
 

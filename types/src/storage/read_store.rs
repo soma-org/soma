@@ -11,20 +11,11 @@ use crate::{
 
 use super::{object_store::ObjectStore, storage_error::Result};
 
-pub trait ReadCommitteeStore {
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>>;
-}
-
-impl<T: ReadCommitteeStore + ?Sized> ReadCommitteeStore for &T {
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
-        (*self).get_committee(epoch)
-    }
-}
-
-pub trait ReadStore: ReadCommitteeStore + ObjectStore + Send + Sync {
+pub trait ReadStore: ObjectStore + Send + Sync {
     //
     // Commit Getters
     //
+    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>>;
 
     /// Get the highest synced commit. This is the highest commit that has been synced from
     /// state-sync.
@@ -75,6 +66,10 @@ pub trait ReadStore: ReadCommitteeStore + ObjectStore + Send + Sync {
 }
 
 impl<T: ReadStore + ?Sized> ReadStore for &T {
+    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
+        (*self).get_committee(epoch)
+    }
+
     fn get_highest_synced_commit(&self) -> Result<CommittedSubDag> {
         (*self).get_highest_synced_commit()
     }

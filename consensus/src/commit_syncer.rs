@@ -23,6 +23,7 @@
 //!
 //!
 
+use crate::dag_state::DagState;
 use crate::{core_thread::CoreThreadDispatcher, network::NetworkClient};
 use bytes::Bytes;
 use futures::{stream::FuturesOrdered, StreamExt};
@@ -52,7 +53,6 @@ use types::{
         context::Context,
         stake_aggregator::{QuorumThreshold, StakeAggregator},
     },
-    dag::dag_state::DagState,
     error::{ConsensusError, ConsensusResult},
 };
 
@@ -609,7 +609,7 @@ impl FetchState {
             .committee
             .authorities()
             .filter_map(|(index, _)| {
-                if Some(index) != context.own_index() {
+                if Some(index) != context.own_index {
                     Some(index)
                 } else {
                     None

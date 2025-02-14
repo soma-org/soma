@@ -12,7 +12,7 @@ use tokio::time::Instant;
 #[derive(Clone)]
 pub struct Context {
     /// Index of this authority in the committee.
-    pub own_index: Arc<RwLock<Option<AuthorityIndex>>>,
+    pub own_index: Option<AuthorityIndex>,
     /// Committee of the current epoch.
     pub committee: Committee,
     // /// Parameters of this authority.
@@ -35,7 +35,7 @@ impl Context {
         clock: Arc<Clock>,
     ) -> Self {
         Self {
-            own_index: Arc::new(RwLock::new(own_index)),
+            own_index,
             committee,
             parameters,
             // protocol_config,
@@ -73,7 +73,7 @@ impl Context {
 
     // #[cfg(test)]
     pub fn with_authority_index(mut self, authority: AuthorityIndex) -> Self {
-        self.own_index = Arc::new(RwLock::new(Some(authority)));
+        self.own_index = Some(authority);
         self
     }
 
@@ -87,14 +87,6 @@ impl Context {
     pub fn with_parameters(mut self, parameters: Parameters) -> Self {
         self.parameters = parameters;
         self
-    }
-
-    pub fn set_own_index(&self, index: AuthorityIndex) {
-        *self.own_index.write() = Some(index);
-    }
-
-    pub fn own_index(&self) -> Option<AuthorityIndex> {
-        *self.own_index.read()
     }
 }
 

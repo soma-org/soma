@@ -15,7 +15,6 @@ use tokio::sync::Mutex;
 use tracing::info;
 use types::{
     accumulator,
-    dag::dag_state::{self, DagState},
     parameters::{self, Parameters},
     storage::consensus::ConsensusStore,
 };
@@ -45,7 +44,6 @@ pub struct MysticetiManager {
     consensus_handler: Mutex<Option<MysticetiConsensusHandler>>,
     accumulator_store: Arc<dyn AccumulatorStore>,
     consensus_adapter: Arc<ConsensusAdapter>,
-    dag_state: Arc<RwLock<DagState>>,
     consensus_store: Arc<dyn ConsensusStore>,
 }
 
@@ -60,7 +58,6 @@ impl MysticetiManager {
         client: Arc<LazyMysticetiClient>,
         accumulator_store: Arc<dyn AccumulatorStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
-        dag_state: Arc<RwLock<DagState>>,
         consensus_store: Arc<dyn ConsensusStore>,
     ) -> Self {
         Self {
@@ -74,7 +71,6 @@ impl MysticetiManager {
             consensus_handler: Mutex::new(None),
             accumulator_store,
             consensus_adapter,
-            dag_state,
             consensus_store,
         }
     }
@@ -100,6 +96,14 @@ impl ConsensusManagerTrait for MysticetiManager {
         let epoch = epoch_store.epoch();
         let protocol_config = epoch_store.protocol_config();
 
+        let consensus_config = config
+            .consensus_config()
+            .expect("consensus_config should exist");
+        let parameters = Parameters {
+            db_path: self.get_store_path(epoch),
+            ..consensus_config.parameters.clone().unwrap_or_default()
+        };
+
         let own_protocol_key = self.protocol_keypair.public();
         let (own_index, _) = committee
             .authorities()
@@ -115,20 +119,10 @@ impl ConsensusManagerTrait for MysticetiManager {
             consensus_handler.last_executed_sub_dag_index() as CommitIndex,
         );
 
-        let (context, parameters) = {
-            let dag_state_guard = self.dag_state.read();
-            dag_state_guard.context.set_own_index(own_index);
-            (
-                dag_state_guard.context.clone(),
-                dag_state_guard.context.parameters.clone(),
-            )
-        };
-
         let authority = ConsensusAuthority::start(
             own_index,
             committee.clone(),
             parameters,
-            context,
             self.protocol_keypair.clone(),
             self.network_keypair.clone(),
             self.authority_keypair.copy(),
@@ -136,7 +130,6 @@ impl ConsensusManagerTrait for MysticetiManager {
             consumer,
             self.accumulator_store.clone(),
             epoch_store.clone(),
-            self.dag_state.clone(),
             self.consensus_store.clone(),
         )
         .await;

@@ -44,7 +44,7 @@ impl Broadcaster {
         let mut senders = JoinSet::new();
         for (index, _authority) in context.committee.authorities() {
             // Skip sending Block to self.
-            if Some(index) == context.own_index() {
+            if Some(index) == context.own_index {
                 continue;
             }
             senders.spawn(Self::push_blocks(
@@ -274,7 +274,7 @@ mod test {
         sleep(Duration::from_millis(1)).await;
         let blocks_sent = network_client.blocks_sent();
         for (index, _) in context.committee.authorities() {
-            if Some(index) == context.own_index() {
+            if Some(index) == context.own_index {
                 continue;
             }
             assert_eq!(blocks_sent.get(&index).unwrap(), &vec![block.serialized()]);
@@ -284,7 +284,7 @@ mod test {
         sleep(Broadcaster::LAST_BLOCK_RETRY_INTERVAL / 2).await;
         let blocks_sent = network_client.blocks_sent();
         for (index, _) in context.committee.authorities() {
-            if Some(index) == context.own_index() {
+            if Some(index) == context.own_index {
                 continue;
             }
             assert!(blocks_sent.get(&index).is_none());
@@ -294,7 +294,7 @@ mod test {
         sleep(Broadcaster::LAST_BLOCK_RETRY_INTERVAL / 2).await;
         let blocks_sent = network_client.blocks_sent();
         for (index, _) in context.committee.authorities() {
-            if Some(index) == context.own_index() {
+            if Some(index) == context.own_index {
                 continue;
             }
             assert_eq!(blocks_sent.get(&index).unwrap(), &vec![block.serialized()]);

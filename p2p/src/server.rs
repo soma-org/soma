@@ -11,7 +11,6 @@ use types::committee::{Committee, EpochId};
 use types::consensus::block::{BlockAPI, BlockRef, Round, VerifiedBlock, GENESIS_ROUND};
 use types::consensus::commit::{self, CommitAPI, CommitRange, TrustedCommit};
 use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
-use types::dag::dag_state::DagState;
 use types::discovery::{GetKnownPeersRequest, GetKnownPeersResponse, SignedNodeInfo};
 use types::error::{ConsensusError, ConsensusResult};
 use types::p2p::channel_manager::PeerInfo;
@@ -41,7 +40,6 @@ pub struct P2pService<S> {
     pub peer_heights: Arc<RwLock<PeerHeights>>,
     pub state_sync_sender: mpsc::WeakSender<StateSyncMessage>,
     pub discovery_sender: mpsc::Sender<SignedNodeInfo>,
-    pub dag_state: Arc<RwLock<DagState>>,
 }
 
 impl<S> P2pService<S>
@@ -88,8 +86,10 @@ where
             }
         }
 
-        // For now ask dag state directly
-        let blocks = self.dag_state.read().get_blocks(&block_refs);
+        let blocks = self
+            .store
+            .read_blocks(&block_refs)
+            .unwrap_or_else(|e| panic!("Failed to read from storage: {:?}", e));
 
         // Now check if an ancestor's round is higher than the one that the peer has. If yes, then serve
         // that ancestor blocks up to `MAX_ADDITIONAL_BLOCKS`.
@@ -104,7 +104,10 @@ where
                 .collect::<Vec<_>>();
 
             if !all_ancestors.is_empty() {
-                ancestor_blocks = self.dag_state.read().get_blocks(&all_ancestors);
+                ancestor_blocks = self
+                    .store
+                    .read_blocks(&all_ancestors)
+                    .unwrap_or_else(|e| panic!("Failed to read from storage: {:?}", e));
             }
         }
 

@@ -13,7 +13,6 @@ use types::{
     committee::EpochId,
     config::node_config::{ConsensusConfig, NodeConfig},
     consensus::ConsensusTransaction,
-    dag::dag_state::DagState,
     error::SomaResult,
     storage::consensus::ConsensusStore,
 };
@@ -65,7 +64,6 @@ impl ConsensusManager {
         consensus_client: Arc<ConsensusClient>,
         accumulator_store: Arc<dyn AccumulatorStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
-        dag_state: Arc<RwLock<DagState>>,
         consensus_store: Arc<dyn ConsensusStore>,
     ) -> Self {
         let mysticeti_client = Arc::new(LazyMysticetiClient::new());
@@ -77,7 +75,6 @@ impl ConsensusManager {
             mysticeti_client.clone(),
             accumulator_store,
             consensus_adapter,
-            dag_state,
             consensus_store,
         );
         Self {

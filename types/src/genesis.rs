@@ -67,6 +67,7 @@ impl Genesis {
             vec![],
             0,
             CommitRef::new(0, CommitDigest::default()),
+            CommitDigest::MIN,
         )
     }
 

@@ -5,7 +5,6 @@ pub mod committee;
 pub mod config;
 pub mod consensus;
 pub mod crypto;
-pub mod dag;
 pub mod digests;
 pub mod discovery;
 pub mod effects;

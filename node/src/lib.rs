@@ -52,7 +52,6 @@ use types::{
     config::node_config::{ConsensusConfig, NodeConfig},
     consensus::context::{Clock, Context},
     crypto::KeypairTraits,
-    dag::dag_state::{self, DagState},
     error::{SomaError, SomaResult},
     p2p::{
         active_peers::{self, ActivePeers},
@@ -120,7 +119,6 @@ pub struct SomaNode {
     transaction_orchestrator: Option<Arc<TransactiondOrchestrator<NetworkAuthorityClient>>>,
     state_sync_handle: StateSyncHandle,
     commit_store: Arc<CommitStore>,
-    dag_state: Arc<RwLock<DagState>>,
     accumulator: Mutex<Option<Arc<StateAccumulator>>>,
     consensus_store: Arc<dyn ConsensusStore>,
     // connection_monitor_status: Arc<ConnectionMonitorStatus>,
@@ -204,24 +202,6 @@ impl SomaNode {
             consensus_store.clone(),
         );
 
-        let parameters = if let Some(consensus_config) = config.consensus_config() {
-            consensus_config.parameters.clone().unwrap_or_default()
-        } else {
-            Parameters::default()
-        };
-
-        let context = Arc::new(Context::new(
-            None,
-            (*committee).clone(),
-            parameters,
-            Arc::new(Clock::new()),
-        ));
-
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context,
-            Arc::new(state_sync_store.clone()),
-        )));
-
         // let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
         let P2pComponents {
             channel_manager_tx,
@@ -230,7 +210,6 @@ impl SomaNode {
         } = Self::create_p2p_network(
             &config,
             state_sync_store.clone(),
-            dag_state.clone(),
             // trusted_peer_change_rx,
         )?;
 
@@ -319,7 +298,6 @@ impl SomaNode {
                 epoch_store.clone(),
                 state_sync_handle.clone(),
                 Arc::downgrade(&accumulator),
-                dag_state.clone(),
                 consensus_store.clone(),
             )
             .await?;
@@ -356,7 +334,6 @@ impl SomaNode {
             accumulator: Mutex::new(Some(accumulator)),
             state_sync_handle,
             commit_store,
-            dag_state,
             consensus_store,
             // connection_monitor_status,
             #[cfg(msim)]
@@ -393,11 +370,9 @@ impl SomaNode {
     fn create_p2p_network(
         config: &NodeConfig,
         state_sync_store: StateSyncStore,
-        dag_state: Arc<RwLock<DagState>>,
     ) -> Result<P2pComponents> {
         let (discovery, state_sync, p2p_server) = P2pBuilder::new()
             .config(config.p2p_config.clone())
-            .dag_state(dag_state)
             .store(state_sync_store)
             .build();
 
@@ -442,7 +417,6 @@ impl SomaNode {
         epoch_store: Arc<AuthorityPerEpochStore>,
         state_sync_handle: StateSyncHandle,
         accumulator: Weak<StateAccumulator>,
-        dag_state: Arc<RwLock<DagState>>,
         consensus_store: Arc<dyn ConsensusStore>,
     ) -> Result<ValidatorComponents> {
         let mut config_clone = config.clone();
@@ -466,7 +440,6 @@ impl SomaNode {
             client,
             state.get_accumulator_store().clone(),
             consensus_adapter.clone(),
-            dag_state.clone(),
             consensus_store,
         );
 
@@ -625,7 +598,7 @@ impl SomaNode {
         server_builder = server_builder.add_service(ValidatorServer::new(validator_service));
 
         let server = server_builder
-            .bind(config.network_address())
+            .bind(config.consensus_config().unwrap().address())
             .await
             .map_err(|err| anyhow!(err.to_string()))?;
         let local_addr = server.local_addr();
@@ -781,7 +754,6 @@ impl SomaNode {
                             new_epoch_store.clone(),
                             self.state_sync_handle.clone(),
                             weak_accumulator,
-                            self.dag_state.clone(),
                             self.consensus_store.clone(),
                         )
                         .await?,

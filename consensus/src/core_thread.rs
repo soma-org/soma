@@ -208,17 +208,18 @@ mod test {
 
     use super::*;
     use crate::{
+        block_manager::BlockManager,
         commit_observer::{CommitConsumer, CommitObserver},
         core::CoreSignals,
+        dag_state::DagState,
+        leader_schedule::LeaderSchedule,
     };
     use types::{
         consensus::{
             block_verifier::NoopBlockVerifier,
             context::Context,
-            leader_schedule::LeaderSchedule,
             transaction::{TransactionClient, TransactionConsumer},
         },
-        dag::{block_manager::BlockManager, dag_state::DagState},
         storage::consensus::mem_store::MemStore,
     };
 
@@ -227,7 +228,7 @@ mod test {
         let _ = tracing_subscriber::fmt::try_init();
         let (context, mut key_pairs, authority_keypairs) = Context::new_for_test(4);
         let context = Arc::new(context);
-        let store = Arc::new(MemStore::new_with_committee(context.committee.clone()));
+        let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
         let block_manager = BlockManager::new(dag_state.clone(), Arc::new(NoopBlockVerifier));
         let (_transaction_client, tx_receiver) = TransactionClient::new(context.clone());
@@ -235,7 +236,7 @@ mod test {
         let (signals, signal_receivers) = CoreSignals::new(context.clone());
         let _block_receiver = signal_receivers.block_broadcast_receiver();
         let (sender, _receiver) = unbounded_channel();
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
         let commit_observer = CommitObserver::new(
             context.clone(),
             CommitConsumer::new(sender.clone(), 0, 0),
@@ -243,7 +244,7 @@ mod test {
             store,
             leader_schedule.clone(),
         );
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone(), None));
+        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
         let core = Core::new(
             context.clone(),
             leader_schedule,
@@ -251,10 +252,9 @@ mod test {
             block_manager,
             commit_observer,
             signals,
-            key_pairs.remove(context.own_index().unwrap().value()).1,
-            authority_keypairs[context.own_index().unwrap().value()].copy(),
+            key_pairs.remove(context.own_index.unwrap().value()).1,
+            authority_keypairs[context.own_index.unwrap().value()].copy(),
             dag_state,
-            Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
         );
 
