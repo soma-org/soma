@@ -360,10 +360,10 @@ impl MysticetiConsensusHandler {
                     .checked_add(epoch_duration_ms)
                     .expect("Overflow calculating next_reconfiguration_timestamp_ms");
 
-                // if commit_timestamp_ms >= next_reconfiguration_timestamp_ms {
-                //     info!("Begin closing epoch.");
-                //     consensus_adapter.close_epoch(&consensus_handler.epoch_store);
-                // }
+                if commit_timestamp_ms >= next_reconfiguration_timestamp_ms {
+                    info!("Begin closing epoch.");
+                    consensus_adapter.close_epoch(&consensus_handler.epoch_store);
+                }
             }
         });
         Self {

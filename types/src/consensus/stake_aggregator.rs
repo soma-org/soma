@@ -59,6 +59,10 @@ impl<T: CommitteeThreshold> StakeAggregator<T> {
         self.votes.clear();
         self.stake = 0;
     }
+
+    pub fn votes(&self) -> &BTreeSet<AuthorityIndex> {
+        &self.votes
+    }
 }
 
 #[cfg(test)]

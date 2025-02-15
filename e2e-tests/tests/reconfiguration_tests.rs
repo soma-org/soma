@@ -142,7 +142,7 @@ async fn test_reconfig_with_committee_change_basic() {
 
 // This test just starts up a cluster that reconfigures itself under 0 load.
 #[msim::sim_test]
-async fn test_passive_reconfig() {
+async fn test_passive_reconfig_normal() {
     do_test_passive_reconfig().await;
 }
 
@@ -152,7 +152,7 @@ async fn test_passive_reconfig_determinism() {
 }
 
 async fn do_test_passive_reconfig() {
-    let _ = tracing_subscriber::fmt::try_init();
+    init_tracing();
 
     let test_cluster = TestClusterBuilder::new()
         // .with_epoch_duration_ms(1000)

@@ -198,6 +198,14 @@ impl CommitExecutor {
         let cur_epoch = epoch_store.epoch();
 
         if let Some(commit) = commit {
+            if commit.is_last_commit_of_epoch() {
+                // We are at the end of the epoch
+                info!(
+                    index = ?commit.commit_ref.index, commit_epoch= commit.epoch(),
+                    "Reached end of epoch",
+                );
+            }
+
             if commit.epoch() == cur_epoch {
                 if commit.is_last_commit_of_epoch() {
                     info!(

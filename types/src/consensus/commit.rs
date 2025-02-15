@@ -315,12 +315,12 @@ impl CommittedSubDag {
     /// (validator set, validator signature, and aggregate signature)
     pub fn is_last_commit_of_epoch(&self) -> bool {
         self.blocks.iter().any(|block| {
-            if let Some(eoe) = block.end_of_epoch_data() {
+            if let Some(eoe) = block.end_of_epoch_data().clone() {
                 matches!(
                     (
-                        &eoe.next_validator_set,
-                        &eoe.validator_set_signature,
-                        &eoe.aggregate_signature
+                        eoe.next_validator_set,
+                        eoe.validator_set_signature,
+                        eoe.aggregate_signature
                     ),
                     (Some(_), Some(_), Some(_)) // All fields must be present
                 )

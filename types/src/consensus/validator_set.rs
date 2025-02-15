@@ -51,6 +51,6 @@ impl ValidatorSet {
 }
 
 /// Wrap a ValidatorSetDigest in the intent message
-fn to_validator_set_intent(digest: ValidatorSetDigest) -> IntentMessage<ValidatorSetDigest> {
+pub fn to_validator_set_intent(digest: ValidatorSetDigest) -> IntentMessage<ValidatorSetDigest> {
     IntentMessage::new(Intent::consensus_app(IntentScope::ValidatorSet), digest)
 }

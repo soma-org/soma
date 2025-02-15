@@ -9,13 +9,15 @@ use super::context::Context;
 use super::transaction::TransactionVerifier;
 use crate::accumulator::{self, AccumulatorStore};
 use crate::committee::{Committee, EpochId};
+use crate::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
+use crate::consensus::validator_set::to_validator_set_intent;
 use crate::crypto::AuthorityPublicKey;
 use crate::digests::ECMHLiveObjectSetDigest;
 use crate::storage::read_store::ReadStore;
 use fastcrypto::hash::MultisetHash;
 use fastcrypto::traits::AggregateAuthenticator;
 
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::error::{ConsensusError, ConsensusResult};
 
@@ -245,55 +247,62 @@ impl BlockVerifier for SignedBlockVerifier {
 
         if let Some(eoe) = block.end_of_epoch_data() {
             if let Some(agg_sig) = &eoe.aggregate_signature {
-                // Use HashSet for uniqueness
-                let mut pubkey_set = HashSet::new();
 
-                // Add this block's key if it signed
-                if let Some(_) = &eoe.validator_set_signature {
-                    let authority = self
-                        .context
-                        .committee
-                        .authority_by_authority_index(block.author())
-                        .unwrap();
-                    pubkey_set.insert(authority.authority_key.clone());
+                info!("Verifying block with end of epoch aggregate signature from: {}", block.author());
+
+                let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
+
+                // Get validator set message for verification
+                let validator_set = eoe.next_validator_set.as_ref().unwrap();
+                let digest = validator_set.compute_digest()?;
+                let message = bcs::to_bytes(&to_validator_set_intent(digest))
+                    .map_err(ConsensusError::SerializationFailure)?;
+
+                // Add this block's signature if present
+                if eoe.validator_set_signature.is_some() {
+                    aggregator.add(block.author(), &self.context.committee);
                 }
 
-                // Add ancestor keys if they signed same validator set
+                // Add ancestor signatures that match the validator set
                 for ancestor in ancestors {
                     if let Some(ancestor_eoe) = ancestor.end_of_epoch_data() {
                         if ancestor_eoe.next_validator_set == eoe.next_validator_set
                             && ancestor_eoe.validator_set_signature.is_some()
                         {
-                            let authority = self
-                                .context
-                                .committee
-                                .authority_by_authority_index(ancestor.author())
-                                .unwrap();
-                            pubkey_set.insert(authority.authority_key.clone());
+                            aggregator.add(ancestor.author(), &self.context.committee);
                         }
                     }
                 }
 
-                // Verify quorum using unique keys
-                if !self
-                    .context
-                    .committee
-                    .reached_quorum(pubkey_set.len() as u64)
-                {
+                // Verify we have enough stake for quorum
+                if !aggregator.reached_threshold(&self.context.committee) {
                     return Err(ConsensusError::InvalidEndOfEpoch(
-                        "Insufficient signatures for aggregate".into(),
+                        format!(
+                            "Insufficient stake for quorum (got {}, needed {})",
+                            aggregator.stake(),
+                            self.context.committee.quorum_threshold()
+                        )
+                        .into(),
                     ));
                 }
 
-                // Convert to Vec for BLS verification
-                let pubkeys: Vec<_> = pubkey_set.into_iter().collect();
+                // Get public keys in same order for verification
+                let pubkeys: Vec<_> = aggregator
+                    .votes()
+                    .iter()
+                    .map(|&idx| {
+                        self.context
+                            .committee
+                            .authority_by_authority_index(idx)
+                            .unwrap()
+                            .authority_key
+                            .clone()
+                    })
+                    .collect();
 
-                // Verify the aggregate signature
-                let validator_set = eoe.next_validator_set.as_ref().unwrap();
-                let message =
-                    bcs::to_bytes(&validator_set).map_err(ConsensusError::SerializationFailure)?;
-
-                agg_sig.verify(&pubkeys, &message).map_err(|_| {
+                // Verify the aggregate signature using the validator set message
+                agg_sig.verify(&pubkeys, &message).map_err(|e| {
+                    warn!("Aggregate signature verification failed: {}", e);
                     ConsensusError::InvalidEndOfEpoch("Invalid aggregate signature".into())
                 })?;
             }

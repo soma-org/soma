@@ -129,7 +129,7 @@ pub trait BlockAPI {
     fn ancestors(&self) -> &[BlockRef];
     fn transactions(&self) -> &[Transaction];
     fn commit_votes(&self) -> &[CommitVote];
-    fn end_of_epoch_data(&self) -> Option<&EndOfEpochData>;
+    fn end_of_epoch_data(&self) -> &Option<EndOfEpochData>;
 }
 
 impl BlockAPI for Block {
@@ -165,8 +165,8 @@ impl BlockAPI for Block {
         &self.commit_votes
     }
 
-    fn end_of_epoch_data(&self) -> Option<&EndOfEpochData> {
-        self.end_of_epoch_data.as_ref()
+    fn end_of_epoch_data(&self) -> &Option<EndOfEpochData> {
+        &self.end_of_epoch_data
     }
 }
 
