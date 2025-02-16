@@ -292,8 +292,18 @@ impl DagBuilder {
     pub(crate) fn get_uncommitted_blocks_at_slot(&self, slot: Slot) -> Vec<VerifiedBlock> {
         let mut blocks = vec![];
         for (block_ref, block) in self.blocks.range((
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MIN)),
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MAX)),
+            Included(BlockRef::new(
+                slot.round,
+                slot.authority,
+                BlockDigest::MIN,
+                self.context.committee.epoch(),
+            )),
+            Included(BlockRef::new(
+                slot.round,
+                slot.authority,
+                BlockDigest::MAX,
+                self.context.committee.epoch(),
+            )),
         )) {
             blocks.push(block.clone())
         }

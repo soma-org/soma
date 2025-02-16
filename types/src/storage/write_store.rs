@@ -2,12 +2,14 @@ use std::{io::Read, sync::Arc};
 
 use crate::{
     accumulator::{AccumulatorStore, CommitIndex},
-    committee::Committee,
+    committee::{Committee, Epoch},
     consensus::commit::CommittedSubDag,
 };
 
 use super::{
-    consensus::ConsensusStore, object_store::ObjectStore, read_store::ReadStore,
+    consensus::ConsensusStore,
+    object_store::ObjectStore,
+    read_store::{ReadCommitteeStore, ReadStore},
     storage_error::Result,
 };
 
@@ -104,11 +106,13 @@ impl ObjectStore for TestP2pStore {
     }
 }
 
-impl ReadStore for TestP2pStore {
+impl ReadCommitteeStore for TestP2pStore {
     fn get_committee(&self, epoch: crate::committee::EpochId) -> Result<Option<Arc<Committee>>> {
         todo!()
     }
+}
 
+impl ReadStore for TestP2pStore {
     fn get_highest_synced_commit(&self) -> Result<CommittedSubDag> {
         todo!()
     }
@@ -203,6 +207,7 @@ impl ConsensusStore for TestP2pStore {
         &self,
         authority: crate::committee::AuthorityIndex,
         start_round: crate::consensus::block::Round,
+        epoch: Epoch,
     ) -> crate::error::ConsensusResult<Vec<crate::consensus::block::VerifiedBlock>> {
         todo!()
     }
@@ -212,6 +217,7 @@ impl ConsensusStore for TestP2pStore {
         author: crate::committee::AuthorityIndex,
         num_of_rounds: u64,
         before_round: Option<crate::consensus::block::Round>,
+        epoch: Epoch,
     ) -> crate::error::ConsensusResult<Vec<crate::consensus::block::VerifiedBlock>> {
         todo!()
     }

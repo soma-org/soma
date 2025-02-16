@@ -63,7 +63,7 @@ impl Genesis {
 
     pub fn commit(&self) -> CommittedSubDag {
         CommittedSubDag::new(
-            BlockRef::new(0, AuthorityIndex(0), BlockDigest::default()),
+            BlockRef::new(0, AuthorityIndex(0), BlockDigest::default(), 0),
             vec![],
             0,
             CommitRef::new(0, CommitDigest::default()),

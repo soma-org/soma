@@ -8,6 +8,7 @@ use crate::{
 use lru::LruCache;
 use p2p::builder::StateSyncHandle;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use std::{collections::HashSet, num::NonZeroUsize, sync::Arc};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{error, info, instrument, warn};
@@ -342,23 +343,29 @@ impl MysticetiConsensusHandler {
                 consensus_handler
                     .handle_consensus_output_internal(consensus_output.clone())
                     .await;
+
                 // Send CommittedSubDag to state sync
                 consensus_handler
                     .state_sync_handle
-                    .send_commit(consensus_output)
+                    .send_commit(consensus_output.clone())
                     .await;
 
                 let epoch_start_timestamp_ms = consensus_handler
                     .epoch_store
                     .epoch_start_state()
                     .epoch_start_timestamp_ms();
-                let epoch_duration_ms = consensus_handler
-                    .epoch_store
-                    .epoch_start_state()
-                    .epoch_duration_ms();
+                let epoch_duration_ms = 1000; //consensus_handler .epoch_store.epoch_start_state().epoch_duration_ms();
+                                              // TODO: have this come from config but harcode for now
                 let next_reconfiguration_timestamp_ms = epoch_start_timestamp_ms
-                    .checked_add(epoch_duration_ms)
+                    .checked_add(Duration::from_millis(10).as_micros() as u64)
                     .expect("Overflow calculating next_reconfiguration_timestamp_ms");
+
+                info!(
+                    "Commit timestamp {}, next reconfig: {}, epoch: {}",
+                    commit_timestamp_ms,
+                    next_reconfiguration_timestamp_ms,
+                    consensus_output.epoch()
+                );
 
                 if commit_timestamp_ms >= next_reconfiguration_timestamp_ms {
                     info!("Begin closing epoch.");

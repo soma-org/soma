@@ -133,9 +133,9 @@ impl Core {
         // and it mostly matters just for this next proposal without any actual penalties in performance
         // or block proposal.
         let mut last_included_ancestors = vec![None; context.committee.size()];
-        for ancestor in last_proposed_block.ancestors() {
-            last_included_ancestors[ancestor.author] = Some(*ancestor);
-        }
+        // for ancestor in last_proposed_block.ancestors() {
+        //     last_included_ancestors[ancestor.author] = Some(*ancestor);
+        // }
 
         let min_propose_round = if context.parameters.is_sync_last_proposed_block_enabled() {
             None

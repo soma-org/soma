@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, num::NonZeroUsize};
+use std::{
+    collections::BTreeMap,
+    num::NonZeroUsize,
+    time::{Duration, Instant, SystemTime},
+};
 
 use fastcrypto::traits::KeyPair;
 use rand::rngs::OsRng;
@@ -168,6 +172,14 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         let account_keys = genesis_config.generate_accounts(&mut rng).unwrap();
 
+        let now = Instant::now();
+        let duration_since_unix_epoch =
+            match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                Ok(d) => d,
+                Err(e) => panic!("SystemTime before UNIX EPOCH! {e}"),
+            };
+        // let unix_epoch_instant = now.checked_sub(duration_since_unix_epoch).unwrap();
+
         let system_state = SystemState::create(
             validators
                 .iter()
@@ -184,7 +196,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     )
                 })
                 .collect(),
-            0,
+            duration_since_unix_epoch.as_millis() as u64,
             SystemParameters::default(),
         );
         let state_object = Object::new(

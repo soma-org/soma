@@ -82,48 +82,56 @@ mod tests {
             0,
             AuthorityIndex::new_for_test(0),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 0);
         aggregator.add_block(BlockRef::new(
             0,
             AuthorityIndex::new_for_test(1),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 0);
         aggregator.add_block(BlockRef::new(
             0,
             AuthorityIndex::new_for_test(2),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 1);
         aggregator.add_block(BlockRef::new(
             1,
             AuthorityIndex::new_for_test(0),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 1);
         aggregator.add_block(BlockRef::new(
             1,
             AuthorityIndex::new_for_test(3),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 1);
         aggregator.add_block(BlockRef::new(
             2,
             AuthorityIndex::new_for_test(1),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 2);
         aggregator.add_block(BlockRef::new(
             1,
             AuthorityIndex::new_for_test(1),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 2);
         aggregator.add_block(BlockRef::new(
             5,
             AuthorityIndex::new_for_test(2),
             BlockDigest::default(),
+            0,
         ));
         assert_eq!(aggregator.get_round(), 5);
     }
@@ -134,14 +142,54 @@ mod tests {
         let mut aggregator = ThresholdClock::new(0, context);
 
         let block_refs = vec![
-            BlockRef::new(0, AuthorityIndex::new_for_test(0), BlockDigest::default()),
-            BlockRef::new(0, AuthorityIndex::new_for_test(1), BlockDigest::default()),
-            BlockRef::new(0, AuthorityIndex::new_for_test(2), BlockDigest::default()),
-            BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::default()),
-            BlockRef::new(1, AuthorityIndex::new_for_test(3), BlockDigest::default()),
-            BlockRef::new(2, AuthorityIndex::new_for_test(1), BlockDigest::default()),
-            BlockRef::new(1, AuthorityIndex::new_for_test(1), BlockDigest::default()),
-            BlockRef::new(5, AuthorityIndex::new_for_test(2), BlockDigest::default()),
+            BlockRef::new(
+                0,
+                AuthorityIndex::new_for_test(0),
+                BlockDigest::default(),
+                0,
+            ),
+            BlockRef::new(
+                0,
+                AuthorityIndex::new_for_test(1),
+                BlockDigest::default(),
+                0,
+            ),
+            BlockRef::new(
+                0,
+                AuthorityIndex::new_for_test(2),
+                BlockDigest::default(),
+                0,
+            ),
+            BlockRef::new(
+                1,
+                AuthorityIndex::new_for_test(0),
+                BlockDigest::default(),
+                0,
+            ),
+            BlockRef::new(
+                1,
+                AuthorityIndex::new_for_test(3),
+                BlockDigest::default(),
+                0,
+            ),
+            BlockRef::new(
+                2,
+                AuthorityIndex::new_for_test(1),
+                BlockDigest::default(),
+                0,
+            ),
+            BlockRef::new(
+                1,
+                AuthorityIndex::new_for_test(1),
+                BlockDigest::default(),
+                0,
+            ),
+            BlockRef::new(
+                5,
+                AuthorityIndex::new_for_test(2),
+                BlockDigest::default(),
+                0,
+            ),
         ];
 
         let result = aggregator.add_blocks(block_refs);

@@ -10,6 +10,8 @@ use crate::{
 };
 use parking_lot::RwLock;
 
+use super::read_store::ReadCommitteeStore;
+
 pub struct CommitteeStore {
     tables: RwLock<CommitteeStoreTables>,
     cache: RwLock<HashMap<EpochId, Arc<Committee>>>,
@@ -117,5 +119,31 @@ impl CommitteeStore {
 
     fn database_is_empty(&self) -> bool {
         self.tables.read().committee_map.iter().next().is_none()
+    }
+}
+
+impl ReadCommitteeStore for CommitteeStore {
+    fn get_committee(
+        &self,
+        epoch: EpochId,
+    ) -> super::storage_error::Result<Option<Arc<Committee>>> {
+        self.get_committee(&epoch).map_err(Into::into)
+    }
+}
+
+pub struct TestCommitteeStore {}
+
+impl TestCommitteeStore {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl ReadCommitteeStore for TestCommitteeStore {
+    fn get_committee(
+        &self,
+        epoch: EpochId,
+    ) -> super::storage_error::Result<Option<Arc<Committee>>> {
+        todo!()
     }
 }

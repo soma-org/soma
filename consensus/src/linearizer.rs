@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use parking_lot::RwLock;
+use tracing::info;
 
 use super::dag_state::DagState;
 use super::leader_schedule::LeaderSchedule;

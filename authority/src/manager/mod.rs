@@ -14,7 +14,7 @@ use types::{
     config::node_config::{ConsensusConfig, NodeConfig},
     consensus::ConsensusTransaction,
     error::SomaResult,
-    storage::consensus::ConsensusStore,
+    storage::{consensus::ConsensusStore, read_store::ReadCommitteeStore},
 };
 
 use crate::{
@@ -65,6 +65,7 @@ impl ConsensusManager {
         accumulator_store: Arc<dyn AccumulatorStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
         consensus_store: Arc<dyn ConsensusStore>,
+        committee_store: Arc<dyn ReadCommitteeStore>,
     ) -> Self {
         let mysticeti_client = Arc::new(LazyMysticetiClient::new());
         let mysticeti_manager = MysticetiManager::new(
@@ -76,6 +77,7 @@ impl ConsensusManager {
             accumulator_store,
             consensus_adapter,
             consensus_store,
+            committee_store,
         );
         Self {
             consensus_config: consensus_config.clone(),

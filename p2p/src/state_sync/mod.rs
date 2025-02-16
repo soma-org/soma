@@ -277,8 +277,6 @@ where
                     self.handle_tick(now.into_std());
                 },
                 maybe_message = self.mailbox.recv() => {
-                    // Once all handles to our mailbox have been dropped this
-                    // will yield `None` and we can terminate the event loop
                     if let Some(message) = maybe_message {
                         self.handle_message(message);
                     } else {
@@ -308,8 +306,6 @@ where
             // Schedule new fetches if we're behind
 
             self.maybe_start_sync_task();
-
-            sleep(Duration::from_millis(1000)).await;
         }
 
         info!("State-Synchronizer ended");
@@ -386,6 +382,7 @@ where
 
         // If this is an older commit, just ignore it
         if latest_commit >= commit.commit_ref.index {
+            info!("Commit index is less than or equal to than synced commit, ignored");
             return;
         }
 
@@ -413,6 +410,13 @@ where
         // }
 
         // Insert the commit to store
+        info!(
+            "Inserting commit of index {} to store in handle_commit_from_consensus",
+            commit.commit_ref.index
+        );
+        if commit.is_last_commit_of_epoch() {
+            info!("Last commit of epoch received in handle_commit_from_consensus");
+        }
         self.store
             .insert_commit(commit.clone())
             .expect("store operation should not fail");
@@ -783,8 +787,6 @@ async fn sync_from_peer<S>(
 
         sleep(Duration::from_secs(1)).await;
     }
-
-    sleep(Duration::from_secs(1)).await;
 }
 
 // Phase 1: Fetch and verify commits
@@ -1006,7 +1008,7 @@ async fn fetch_blocks_batch(
 
                     let signed_block_digest = VerifiedBlock::compute_digest(&serialized);
                     let received_block_ref =
-                        BlockRef::new(signed_block.round(), signed_block.author(), signed_block_digest);
+                        BlockRef::new(signed_block.round(), signed_block.author(), signed_block_digest, signed_block.epoch());
 
                     if *requested_block_ref != received_block_ref {
                         return Err(ConsensusError::UnexpectedBlockForCommit {

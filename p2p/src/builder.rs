@@ -16,6 +16,7 @@ use tokio::{
     sync::{broadcast, mpsc, oneshot},
     task::JoinSet,
 };
+use tracing::{debug, info};
 use types::{
     accumulator::{self, AccumulatorStore},
     config::{p2p_config::P2pConfig, state_sync_config::StateSyncConfig},
@@ -139,7 +140,7 @@ impl StateSyncHandle {
         self.sender
             .send(StateSyncMessage::VerifiedCommit(Box::new(commit)))
             .await
-            .unwrap()
+            .expect("Could not send state sync handle commit")
     }
 
     /// Subscribe to the stream of commits that have been fully synchronized and downloaded.
@@ -282,10 +283,10 @@ where
         let (commit_event_sender, _receiver) = broadcast::channel(
             state_sync_config.synced_commit_broadcast_channel_capacity() as usize,
         );
-        let weak_state_sync_sender = state_sync_sender.downgrade();
+        // let weak_state_sync_sender = state_sync_sender.downgrade();
 
         let state_sync_handle = StateSyncHandle {
-            sender: state_sync_sender,
+            sender: state_sync_sender.clone(),
             commit_event_sender: commit_event_sender.clone(),
         };
         let peer_heights =
@@ -325,7 +326,7 @@ where
             discovery_state: discovery_state.clone(),
             store: store.clone(),
             peer_heights: peer_heights.clone(),
-            state_sync_sender: weak_state_sync_sender,
+            state_sync_sender,
             discovery_sender: their_info_sender,
         };
 

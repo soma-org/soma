@@ -75,7 +75,12 @@ async fn read_and_contain_blocks() {
     {
         let refs = vec![
             written_blocks[3].reference(),
-            BlockRef::new(1, AuthorityIndex::new_for_test(3), BlockDigest::default()),
+            BlockRef::new(
+                1,
+                AuthorityIndex::new_for_test(3),
+                BlockDigest::default(),
+                0,
+            ),
             written_blocks[2].reference(),
         ];
         let read_blocks = store
@@ -133,14 +138,14 @@ async fn scan_blocks(// #[values(new_rocksdb_teststore(), new_mem_teststore())] 
 
     {
         let scanned_blocks = store
-            .scan_blocks_by_author(AuthorityIndex::new_for_test(1), 20)
+            .scan_blocks_by_author(AuthorityIndex::new_for_test(1), 20, 0)
             .expect("Scan blocks should not fail");
         assert!(scanned_blocks.is_empty(), "{:?}", scanned_blocks);
     }
 
     {
         let scanned_blocks = store
-            .scan_blocks_by_author(AuthorityIndex::new_for_test(1), 12)
+            .scan_blocks_by_author(AuthorityIndex::new_for_test(1), 12, 0)
             .expect("Scan blocks should not fail");
         assert_eq!(scanned_blocks.len(), 2, "{:?}", scanned_blocks);
         assert_eq!(
@@ -161,7 +166,7 @@ async fn scan_blocks(// #[values(new_rocksdb_teststore(), new_mem_teststore())] 
 
     {
         let scanned_blocks = store
-            .scan_blocks_by_author(AuthorityIndex::new_for_test(1), 10)
+            .scan_blocks_by_author(AuthorityIndex::new_for_test(1), 10, 0)
             .expect("Scan blocks should not fail");
         assert_eq!(scanned_blocks.len(), 5, "{:?}", scanned_blocks);
         assert_eq!(
@@ -178,7 +183,7 @@ async fn scan_blocks(// #[values(new_rocksdb_teststore(), new_mem_teststore())] 
 
     {
         let scanned_blocks = store
-            .scan_last_blocks_by_author(AuthorityIndex::new_for_test(1), 2, None)
+            .scan_last_blocks_by_author(AuthorityIndex::new_for_test(1), 2, None, 0)
             .expect("Scan blocks should not fail");
         assert_eq!(scanned_blocks.len(), 2, "{:?}", scanned_blocks);
         assert_eq!(
@@ -187,7 +192,7 @@ async fn scan_blocks(// #[values(new_rocksdb_teststore(), new_mem_teststore())] 
         );
 
         let scanned_blocks = store
-            .scan_last_blocks_by_author(AuthorityIndex::new_for_test(1), 0, None)
+            .scan_last_blocks_by_author(AuthorityIndex::new_for_test(1), 0, None, 0)
             .expect("Scan blocks should not fail");
         assert_eq!(scanned_blocks.len(), 0);
     }
@@ -212,7 +217,12 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             1,
             CommitDigest::MIN,
             1,
-            BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::default()),
+            BlockRef::new(
+                1,
+                AuthorityIndex::new_for_test(0),
+                BlockDigest::default(),
+                0,
+            ),
             vec![],
             0,
         ),
@@ -220,7 +230,12 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             2,
             CommitDigest::MIN,
             2,
-            BlockRef::new(2, AuthorityIndex::new_for_test(0), BlockDigest::default()),
+            BlockRef::new(
+                2,
+                AuthorityIndex::new_for_test(0),
+                BlockDigest::default(),
+                0,
+            ),
             vec![],
             0,
         ),
@@ -228,7 +243,12 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             3,
             CommitDigest::MIN,
             3,
-            BlockRef::new(3, AuthorityIndex::new_for_test(0), BlockDigest::default()),
+            BlockRef::new(
+                3,
+                AuthorityIndex::new_for_test(0),
+                BlockDigest::default(),
+                0,
+            ),
             vec![],
             0,
         ),
@@ -236,7 +256,12 @@ async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_test
             4,
             CommitDigest::MIN,
             4,
-            BlockRef::new(4, AuthorityIndex::new_for_test(0), BlockDigest::default()),
+            BlockRef::new(
+                4,
+                AuthorityIndex::new_for_test(0),
+                BlockDigest::default(),
+                0,
+            ),
             vec![],
             0,
         ),

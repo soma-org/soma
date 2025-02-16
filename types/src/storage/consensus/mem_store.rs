@@ -11,7 +11,7 @@ use crate::consensus::{
     },
 };
 
-use crate::committee::{AuthorityIndex, Committee, EpochId};
+use crate::committee::{AuthorityIndex, Committee, Epoch, EpochId};
 use crate::error::{ConsensusResult, SomaResult};
 
 use super::{ConsensusStore, WriteBatch};
@@ -105,6 +105,7 @@ impl ConsensusStore for MemStore {
         &self,
         author: AuthorityIndex,
         start_round: Round,
+        epoch: Epoch,
     ) -> ConsensusResult<Vec<VerifiedBlock>> {
         let inner = self.inner.read();
         let mut refs = vec![];
@@ -112,7 +113,7 @@ impl ConsensusStore for MemStore {
             Included((author, start_round, BlockDigest::MIN)),
             Included((author, Round::MAX, BlockDigest::MAX)),
         )) {
-            refs.push(BlockRef::new(round, author, digest));
+            refs.push(BlockRef::new(round, author, digest, epoch));
         }
         let results = self.read_blocks(refs.as_slice())?;
         let mut blocks = vec![];
@@ -144,6 +145,7 @@ impl ConsensusStore for MemStore {
         author: AuthorityIndex,
         num_of_rounds: u64,
         before_round: Option<Round>,
+        epoch: Epoch,
     ) -> ConsensusResult<Vec<VerifiedBlock>> {
         let before_round = before_round.unwrap_or(Round::MAX);
         let mut refs = VecDeque::new();
@@ -158,7 +160,7 @@ impl ConsensusStore for MemStore {
             .rev()
             .take(num_of_rounds as usize)
         {
-            refs.push_front(BlockRef::new(round, author, digest));
+            refs.push_front(BlockRef::new(round, author, digest, epoch));
         }
         let results = self.read_blocks(refs.as_slices().0)?;
         let mut blocks = vec![];

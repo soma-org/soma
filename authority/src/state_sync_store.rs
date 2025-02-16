@@ -12,6 +12,7 @@ use types::consensus::commit::CommitDigest;
 use types::consensus::commit::CommittedSubDag;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::consensus::ConsensusStore;
+use types::storage::read_store::ReadCommitteeStore;
 use types::storage::storage_error::Error as StorageError;
 use types::storage::storage_error::Result;
 use types::{
@@ -128,12 +129,6 @@ impl ReadStore for StateSyncStore {
             .get_executed_effects(digest)
             .map_err(Into::into)
     }
-
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
-        self.committee_store
-            .get_committee(&epoch)
-            .map_err(Into::into)
-    }
 }
 
 impl ObjectStore for StateSyncStore {
@@ -145,6 +140,14 @@ impl ObjectStore for StateSyncStore {
         self.cache_traits
             .object_store
             .get_object_by_key(object_id, version)
+    }
+}
+
+impl ReadCommitteeStore for StateSyncStore {
+    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
+        self.committee_store
+            .get_committee(&epoch)
+            .map_err(Into::into)
     }
 }
 
@@ -257,9 +260,10 @@ impl ConsensusStore for StateSyncStore {
         &self,
         authority: types::committee::AuthorityIndex,
         start_round: types::consensus::block::Round,
+        epoch: types::committee::Epoch,
     ) -> types::error::ConsensusResult<Vec<types::consensus::block::VerifiedBlock>> {
         self.consensus_store
-            .scan_blocks_by_author(authority, start_round)
+            .scan_blocks_by_author(authority, start_round, epoch)
     }
 
     fn scan_last_blocks_by_author(
@@ -267,9 +271,10 @@ impl ConsensusStore for StateSyncStore {
         author: types::committee::AuthorityIndex,
         num_of_rounds: u64,
         before_round: Option<types::consensus::block::Round>,
+        epoch: types::committee::Epoch,
     ) -> types::error::ConsensusResult<Vec<types::consensus::block::VerifiedBlock>> {
         self.consensus_store
-            .scan_last_blocks_by_author(author, num_of_rounds, before_round)
+            .scan_last_blocks_by_author(author, num_of_rounds, before_round, epoch)
     }
 
     fn read_last_commit(

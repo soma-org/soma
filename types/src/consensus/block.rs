@@ -177,6 +177,7 @@ pub struct BlockRef {
     pub round: Round,
     pub author: AuthorityIndex,
     pub digest: BlockDigest,
+    pub epoch: Epoch,
 }
 
 impl BlockRef {
@@ -184,19 +185,22 @@ impl BlockRef {
         round: 0,
         author: AuthorityIndex::MIN,
         digest: BlockDigest::MIN,
+        epoch: 0,
     };
 
     pub const MAX: Self = Self {
         round: u32::MAX,
         author: AuthorityIndex::MAX,
         digest: BlockDigest::MAX,
+        epoch: Epoch::MAX,
     };
 
-    pub fn new(round: Round, author: AuthorityIndex, digest: BlockDigest) -> Self {
+    pub fn new(round: Round, author: AuthorityIndex, digest: BlockDigest, epoch: Epoch) -> Self {
         Self {
             round,
             author,
             digest,
+            epoch,
         }
     }
 }
@@ -468,6 +472,7 @@ impl VerifiedBlock {
             round: self.round,
             author: self.author,
             digest: self.digest,
+            epoch: self.epoch,
         }
     }
 

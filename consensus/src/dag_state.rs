@@ -1,4 +1,4 @@
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use types::storage::consensus::ConsensusStore;
 
 use types::committee::{AuthorityIndex, Committee, EpochId};
@@ -107,6 +107,7 @@ impl DagState {
                 .scan_commits((commit_recovery_start_index..=last_commit.index()).into())
                 .unwrap_or_else(|e| panic!("Failed to read from storage: {:?}", e))
                 .iter()
+                .filter(|commit| commit.epoch() == context.committee.epoch())
                 .for_each(|commit| {
                     for block_ref in commit.blocks() {
                         last_committed_rounds[block_ref.author] =
@@ -144,6 +145,7 @@ impl DagState {
                 .scan_blocks_by_author(
                     authority_index,
                     Self::eviction_round(round, cached_rounds) + 1,
+                    state.context.committee.epoch(),
                 )
                 .unwrap();
             for block in blocks {
@@ -195,6 +197,10 @@ impl DagState {
 
     /// Updates internal metadata for a block.
     fn update_block_metadata(&mut self, block: &VerifiedBlock) {
+        if block.epoch() != self.context.committee.epoch() {
+            warn!("Can't update block metadata for blocks of wrong epoch");
+            return;
+        }
         let block_ref = block.reference();
         self.recent_blocks.insert(block_ref, block.clone());
         self.recent_refs[block_ref.author].insert(block_ref);
@@ -269,8 +275,18 @@ impl DagState {
 
         let mut blocks = vec![];
         for (_block_ref, block) in self.recent_blocks.range((
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MIN)),
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MAX)),
+            Included(BlockRef::new(
+                slot.round,
+                slot.authority,
+                BlockDigest::MIN,
+                self.context.committee.epoch(),
+            )),
+            Included(BlockRef::new(
+                slot.round,
+                slot.authority,
+                BlockDigest::MAX,
+                self.context.committee.epoch(),
+            )),
         )) {
             blocks.push(block.clone())
         }
@@ -286,11 +302,17 @@ impl DagState {
 
         let mut blocks = vec![];
         for (_block_ref, block) in self.recent_blocks.range((
-            Included(BlockRef::new(round, AuthorityIndex::ZERO, BlockDigest::MIN)),
+            Included(BlockRef::new(
+                round,
+                AuthorityIndex::ZERO,
+                BlockDigest::MIN,
+                self.context.committee.epoch(),
+            )),
             Excluded(BlockRef::new(
                 round + 1,
                 AuthorityIndex::ZERO,
                 BlockDigest::MIN,
+                self.context.committee.epoch(),
             )),
         )) {
             blocks.push(block.clone())
@@ -324,6 +346,7 @@ impl DagState {
                     earlier_round,
                     AuthorityIndex::ZERO,
                     BlockDigest::MIN,
+                    self.context.committee.epoch(),
                 )),
                 Unbounded,
             ))
@@ -372,7 +395,12 @@ impl DagState {
     ) -> Vec<VerifiedBlock> {
         let mut blocks = vec![];
         for block_ref in self.recent_refs[authority].range((
-            Included(BlockRef::new(start, authority, BlockDigest::MIN)),
+            Included(BlockRef::new(
+                start,
+                authority,
+                BlockDigest::MIN,
+                self.context.committee.epoch(),
+            )),
             Unbounded,
         )) {
             let block = self
@@ -424,8 +452,14 @@ impl DagState {
                         last_evicted_round + 1,
                         authority_index,
                         BlockDigest::MIN,
+                        self.context.committee.epoch(),
                     )),
-                    Excluded(BlockRef::new(end_round, authority_index, BlockDigest::MIN)),
+                    Excluded(BlockRef::new(
+                        end_round,
+                        authority_index,
+                        BlockDigest::MIN,
+                        self.context.committee.epoch(),
+                    )),
                 ))
                 .next_back()
             {
@@ -457,8 +491,18 @@ impl DagState {
         }
 
         let mut result = self.recent_refs[slot.authority].range((
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MIN)),
-            Included(BlockRef::new(slot.round, slot.authority, BlockDigest::MAX)),
+            Included(BlockRef::new(
+                slot.round,
+                slot.authority,
+                BlockDigest::MIN,
+                self.context.committee.epoch(),
+            )),
+            Included(BlockRef::new(
+                slot.round,
+                slot.authority,
+                BlockDigest::MAX,
+                self.context.committee.epoch(),
+            )),
         ));
         result.next().is_some()
     }
@@ -606,24 +650,29 @@ impl DagState {
 
     /// Leader slot of the last commit.
     pub(crate) fn last_commit_leader(&self) -> Slot {
-        match &self.last_commit {
-            Some(commit) => commit.leader().into(),
-            None => self
-                .genesis
-                .iter()
-                .next()
-                .map(|(genesis_ref, _)| *genesis_ref)
-                .expect("Genesis blocks should always be available.")
-                .into(),
+        if let Some(commit) = &self.last_commit {
+            if commit.epoch() == self.context.committee.epoch() {
+                return commit.leader().into();
+            }
         }
+
+        self.genesis
+            .iter()
+            .next()
+            .map(|(genesis_ref, _)| *genesis_ref)
+            .expect("Genesis blocks should always be available.")
+            .into()
     }
 
     /// Highest round where a block is committed, which is last commit's leader round.
     pub(crate) fn last_commit_round(&self) -> Round {
-        match &self.last_commit {
-            Some(commit) => commit.leader().round,
-            None => 0,
+        if let Some(commit) = &self.last_commit {
+            if commit.epoch() == self.context.committee.epoch() {
+                return commit.leader().round;
+            }
         }
+
+        0
     }
 
     /// Last committed round per authority.
@@ -806,7 +855,8 @@ mod test {
             .get_block(&BlockRef::new(
                 last_ref.round,
                 last_ref.author,
-                BlockDigest::MIN
+                BlockDigest::MIN,
+                0
             ))
             .is_none());
 
@@ -1073,7 +1123,12 @@ mod test {
         // Now try to ask also for one block ref that is neither in cache nor in store
         block_refs.insert(
             3,
-            BlockRef::new(11, AuthorityIndex::new_for_test(3), BlockDigest::default()),
+            BlockRef::new(
+                11,
+                AuthorityIndex::new_for_test(3),
+                BlockDigest::default(),
+                0,
+            ),
         );
         let result = dag_state.contains_blocks(block_refs.clone());
 
@@ -1132,7 +1187,12 @@ mod test {
         // Then all should be found apart from the last one
         block_refs.insert(
             3,
-            BlockRef::new(11, AuthorityIndex::new_for_test(3), BlockDigest::default()),
+            BlockRef::new(
+                11,
+                AuthorityIndex::new_for_test(3),
+                BlockDigest::default(),
+                0,
+            ),
         );
         let mut expected = vec![true; (num_rounds * num_authorities) as usize];
         expected.insert(3, false);
@@ -1238,7 +1298,12 @@ mod test {
         // Now try to ask also for one block ref that is neither in cache nor in store
         block_refs.insert(
             3,
-            BlockRef::new(11, AuthorityIndex::new_for_test(3), BlockDigest::default()),
+            BlockRef::new(
+                11,
+                AuthorityIndex::new_for_test(3),
+                BlockDigest::default(),
+                0,
+            ),
         );
         let result = dag_state.get_blocks(&block_refs);
 

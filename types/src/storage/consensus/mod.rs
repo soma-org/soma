@@ -1,4 +1,4 @@
-use crate::committee::AuthorityIndex;
+use crate::committee::{AuthorityIndex, Epoch};
 use crate::consensus::{
     block::{BlockRef, Round, Slot, VerifiedBlock},
     commit::{CommitIndex, CommitInfo, CommitRange, CommitRef, TrustedCommit},
@@ -28,6 +28,7 @@ pub trait ConsensusStore: Send + Sync {
         &self,
         authority: AuthorityIndex,
         start_round: Round,
+        epoch: Epoch,
     ) -> ConsensusResult<Vec<VerifiedBlock>>;
 
     // The method returns the last `num_of_rounds` rounds blocks by author in round ascending order.
@@ -38,6 +39,7 @@ pub trait ConsensusStore: Send + Sync {
         author: AuthorityIndex,
         num_of_rounds: u64,
         before_round: Option<Round>,
+        epoch: Epoch,
     ) -> ConsensusResult<Vec<VerifiedBlock>>;
 
     /// Reads the last commit.

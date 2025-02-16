@@ -23,7 +23,7 @@ use types::{
     accumulator,
     committee::{AuthorityIndex, Committee},
     crypto::AuthorityKeyPair,
-    storage::consensus::ConsensusStore,
+    storage::{committee_store, consensus::ConsensusStore, read_store::ReadCommitteeStore},
 };
 use types::{
     accumulator::AccumulatorStore,
@@ -66,6 +66,7 @@ impl ConsensusAuthority {
         accumulator_store: Arc<dyn AccumulatorStore>,
         epoch_store: Arc<dyn EndOfEpochAPI>,
         consensus_store: Arc<dyn ConsensusStore>,
+        committee_store: Arc<dyn ReadCommitteeStore>,
     ) -> Self {
         info!(
             "Starting consensus authority {}\n{:#?}\n{:#?}",
@@ -107,7 +108,7 @@ impl ConsensusAuthority {
             context.clone(),
             transaction_verifier,
             accumulator_store.clone(),
-            None,
+            Some(committee_store),
         ));
 
         let block_manager = BlockManager::new(dag_state.clone(), block_verifier.clone());
@@ -232,6 +233,7 @@ mod tests {
     use tokio::time::sleep;
     use types::consensus::TestEpochStore;
     use types::parameters::Parameters;
+    use types::storage::committee_store::TestCommitteeStore;
 
     use crate::authority;
 
@@ -273,6 +275,7 @@ mod tests {
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
             store.clone(),
+            Arc::new(TestCommitteeStore::new()),
         )
         .await;
 
@@ -560,6 +563,7 @@ mod tests {
             Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
             store.clone(),
+            Arc::new(TestCommitteeStore::new()),
         )
         .await;
         (authority, receiver)

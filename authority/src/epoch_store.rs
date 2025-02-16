@@ -344,6 +344,7 @@ impl AuthorityPerEpochStore {
         let current_time = Instant::now();
         let epoch_id = committee.epoch;
 
+        // TODO: change this
         let tables = AuthorityEpochTables::default();
         let end_of_publish = StakeAggregator::from_iter(
             committee.clone(),
@@ -436,7 +437,82 @@ impl AuthorityPerEpochStore {
         epoch_start_configuration: EpochStartConfiguration,
     ) -> Arc<Self> {
         assert_eq!(self.epoch() + 1, new_committee.epoch);
-        Self::new(name, Arc::new(new_committee), epoch_start_configuration)
+
+        // Get the last consensus stats from current epoch
+        let last_consensus_stats = self
+            .tables()
+            .expect("Tables should exist when creating next epoch")
+            .get_last_consensus_stats()
+            .expect("Reading last consensus stats should not fail")
+            .unwrap_or_default();
+
+        // Create new tables but initialize with previous consensus stats
+        let mut tables = AuthorityEpochTables::default();
+        tables
+            .last_consensus_stats
+            .write()
+            .insert(LAST_CONSENSUS_STATS_ADDR, last_consensus_stats);
+
+        let epoch_id = new_committee.epoch;
+        let current_time = Instant::now();
+
+        // Rest of initialization...
+        let end_of_publish = StakeAggregator::from_iter(
+            Arc::new(new_committee.clone()),
+            tables.end_of_publish.read().iter().map(|(k, _)| (*k, ())),
+        );
+
+        let reconfig_state = tables
+            .load_reconfig_state()
+            .expect("Load reconfig state at initialization cannot fail");
+
+        let epoch_alive_notify = NotifyOnce::new();
+
+        let pending_consensus_transactions = tables.get_all_pending_consensus_transactions();
+        let pending_consensus_certificates: HashSet<_> = pending_consensus_transactions
+            .iter()
+            .filter_map(|transaction| {
+                if let ConsensusTransactionKind::UserTransaction(certificate) = &transaction.kind {
+                    Some(*certificate.digest())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(
+            epoch_start_configuration.epoch_start_state().epoch(),
+            epoch_id
+        );
+
+        let epoch_start_configuration = Arc::new(epoch_start_configuration);
+        let protocol_config = ProtocolConfig::default();
+        let signature_verifier = SignatureVerifier::new(Arc::new(new_committee.clone()), None);
+
+        Arc::new(Self {
+            name,
+            committee: Arc::new(new_committee),
+            protocol_config,
+            tables: ArcSwapOption::new(Some(Arc::new(tables))),
+            reconfig_state_mem: RwLock::new(reconfig_state),
+            epoch_alive_notify,
+            user_certs_closed_notify: NotifyOnce::new(),
+            epoch_alive: tokio::sync::RwLock::new(true),
+            consensus_notify_read: NotifyRead::new(),
+            signature_verifier,
+            executed_digests_notify_read: NotifyRead::new(),
+            running_root_notify_read: NotifyRead::new(),
+            end_of_publish: Mutex::new(end_of_publish),
+            pending_consensus_certificates: Mutex::new(pending_consensus_certificates),
+            mutex_table: MutexTable::new(MUTEX_TABLE_SIZE),
+            epoch_open_time: current_time,
+            epoch_close_time: Default::default(),
+            epoch_start_configuration,
+            executed_transactions_to_commit_notify_read: NotifyRead::new(),
+            highest_synced_commit: RwLock::new(0),
+            synced_commit_notify_read: NotifyRead::new(),
+            next_epoch_state: RwLock::new(None),
+        })
     }
 
     pub fn new_at_next_epoch_for_testing(&self) -> Arc<Self> {
@@ -1221,9 +1297,22 @@ impl AuthorityPerEpochStore {
             .get_last_consensus_stats()
             .map_err(SomaError::from)?
         {
-            Some(stats) => Ok(stats),
+            Some(stats) => {
+                info!(
+                    "Got last ExecutionIndices for epoch {}: commit index {}",
+                    self.epoch(),
+                    stats.sub_dag_index
+                );
+                Ok(stats)
+            }
             // TODO: stop reading from last_consensus_index after rollout.
-            None => Ok(ExecutionIndices::default()),
+            None => {
+                info!(
+                    "Did not get last ExecutionIndices for epoch {}",
+                    self.epoch()
+                );
+                Ok(ExecutionIndices::default())
+            }
         }
     }
 

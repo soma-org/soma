@@ -16,7 +16,7 @@ use tracing::info;
 use types::{
     accumulator,
     parameters::{self, Parameters},
-    storage::consensus::ConsensusStore,
+    storage::{consensus::ConsensusStore, read_store::ReadCommitteeStore},
 };
 use types::{
     accumulator::AccumulatorStore,
@@ -45,6 +45,7 @@ pub struct MysticetiManager {
     accumulator_store: Arc<dyn AccumulatorStore>,
     consensus_adapter: Arc<ConsensusAdapter>,
     consensus_store: Arc<dyn ConsensusStore>,
+    committee_store: Arc<dyn ReadCommitteeStore>,
 }
 
 impl MysticetiManager {
@@ -59,6 +60,7 @@ impl MysticetiManager {
         accumulator_store: Arc<dyn AccumulatorStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
         consensus_store: Arc<dyn ConsensusStore>,
+        committee_store: Arc<dyn ReadCommitteeStore>,
     ) -> Self {
         Self {
             protocol_keypair: ProtocolKeyPair::new(protocol_keypair),
@@ -72,6 +74,7 @@ impl MysticetiManager {
             accumulator_store,
             consensus_adapter,
             consensus_store,
+            committee_store,
         }
     }
 
@@ -119,6 +122,13 @@ impl ConsensusManagerTrait for MysticetiManager {
             consensus_handler.last_executed_sub_dag_index() as CommitIndex,
         );
 
+        info!(
+            "Starting new committee with last round {}, last commit {}, and committee epoch {}",
+            consensus_handler.last_executed_sub_dag_round(),
+            consensus_handler.last_executed_sub_dag_index(),
+            committee.epoch()
+        );
+
         let authority = ConsensusAuthority::start(
             own_index,
             committee.clone(),
@@ -131,6 +141,7 @@ impl ConsensusManagerTrait for MysticetiManager {
             self.accumulator_store.clone(),
             epoch_store.clone(),
             self.consensus_store.clone(),
+            self.committee_store.clone(),
         )
         .await;
         let client = authority.transaction_client();

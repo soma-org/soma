@@ -40,6 +40,7 @@ use tokio::{
     task::{JoinHandle, JoinSet},
     time::{sleep, Instant, MissedTickBehavior},
 };
+use tokio_rustls::rustls::crypto::ring::sign;
 use tracing::{debug, info, warn};
 use types::committee::AuthorityIndex;
 use types::{
@@ -402,6 +403,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
                             signed_block.round(),
                             signed_block.author(),
                             signed_block_digest,
+                            signed_block.epoch(),
                         );
                         if *requested_block_ref != received_block_ref {
                             return Err(ConsensusError::UnexpectedBlockForCommit {

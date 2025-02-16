@@ -441,6 +441,7 @@ impl SomaNode {
             state.get_accumulator_store().clone(),
             consensus_adapter.clone(),
             consensus_store,
+            state.clone_committee_store(),
         );
 
         // This only gets started up once, not on every epoch. (Make call to remove every epoch.)
@@ -637,7 +638,6 @@ impl SomaNode {
                 self.state.clone(),
                 accumulator.clone(),
             );
-            // let timestamp_ms = self.run_epoch(Duration::from_secs(15)).await; // TODO: make this configurable
 
             let cur_epoch_store = self.state.load_epoch_store_one_call_per_task();
 

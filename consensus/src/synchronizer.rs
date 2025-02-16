@@ -1164,10 +1164,10 @@ mod tests {
         // GIVEN
         let map = InflightBlocksMap::new();
         let some_block_refs = [
-            BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
-            BlockRef::new(10, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
-            BlockRef::new(12, AuthorityIndex::new_for_test(3), BlockDigest::MIN),
-            BlockRef::new(15, AuthorityIndex::new_for_test(2), BlockDigest::MIN),
+            BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::MIN, 0),
+            BlockRef::new(10, AuthorityIndex::new_for_test(0), BlockDigest::MIN, 0),
+            BlockRef::new(12, AuthorityIndex::new_for_test(3), BlockDigest::MIN, 0),
+            BlockRef::new(15, AuthorityIndex::new_for_test(2), BlockDigest::MIN, 0),
         ];
         let missing_block_refs = some_block_refs.iter().cloned().collect::<BTreeSet<_>>();
 

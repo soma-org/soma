@@ -38,7 +38,7 @@ pub struct P2pService<S> {
     pub discovery_state: Arc<RwLock<DiscoveryState>>,
     pub store: S,
     pub peer_heights: Arc<RwLock<PeerHeights>>,
-    pub state_sync_sender: mpsc::WeakSender<StateSyncMessage>,
+    pub state_sync_sender: mpsc::Sender<StateSyncMessage>,
     pub discovery_sender: mpsc::Sender<SignedNodeInfo>,
 }
 
@@ -155,8 +155,8 @@ where
 
         if last_commit_of_epoch < inclusive_end {
             debug!(
-                "Truncating commit sequence at epoch {} boundary index: {}",
-                epoch, last_commit_of_epoch
+                "Truncating commit sequence at epoch {} boundary index: {}, for range {} to {}, with total commits {}",
+                epoch, last_commit_of_epoch, commit_range.start(), commit_range.end(), commits.len()
             );
         }
 
@@ -295,9 +295,10 @@ where
         // If this commit is higher than our highest synced commit notify the
         // event loop to potentially sync it
         if commit > highest_synced_commit {
-            if let Some(sender) = self.state_sync_sender.upgrade() {
-                sender.send(StateSyncMessage::StartSyncJob).await.unwrap();
-            }
+            self.state_sync_sender
+                .send(StateSyncMessage::StartSyncJob)
+                .await
+                .unwrap();
         }
 
         Ok(Response::new(PushCommitResponse {

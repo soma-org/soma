@@ -13,7 +13,7 @@ use crate::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use crate::consensus::validator_set::to_validator_set_intent;
 use crate::crypto::AuthorityPublicKey;
 use crate::digests::ECMHLiveObjectSetDigest;
-use crate::storage::read_store::ReadStore;
+use crate::storage::read_store::{ReadCommitteeStore, ReadStore};
 use fastcrypto::hash::MultisetHash;
 use fastcrypto::traits::AggregateAuthenticator;
 
@@ -45,7 +45,7 @@ pub trait BlockVerifier: Send + Sync + 'static {
 /// be accepted into the DAG.
 pub struct SignedBlockVerifier {
     context: Arc<Context>,
-    committee_store: Option<Arc<dyn ReadStore>>,
+    committee_store: Option<Arc<dyn ReadCommitteeStore>>,
     genesis: BTreeSet<BlockRef>,
     transaction_verifier: Arc<dyn TransactionVerifier>,
     accumulator_store: Arc<dyn AccumulatorStore>,
@@ -56,7 +56,7 @@ impl SignedBlockVerifier {
         context: Arc<Context>,
         transaction_verifier: Arc<dyn TransactionVerifier>,
         accumulator_store: Arc<dyn AccumulatorStore>,
-        committee_store: Option<Arc<dyn ReadStore>>,
+        committee_store: Option<Arc<dyn ReadCommitteeStore>>,
     ) -> Self {
         let genesis = genesis_blocks(context.clone())
             .into_iter()
@@ -96,6 +96,7 @@ impl BlockVerifier for SignedBlockVerifier {
                 actual: block.epoch(),
             });
         }
+
         if block.round() == 0 {
             return Err(ConsensusError::UnexpectedGenesisBlock);
         }
@@ -247,8 +248,10 @@ impl BlockVerifier for SignedBlockVerifier {
 
         if let Some(eoe) = block.end_of_epoch_data() {
             if let Some(agg_sig) = &eoe.aggregate_signature {
-
-                info!("Verifying block with end of epoch aggregate signature from: {}", block.author());
+                info!(
+                    "Verifying block with end of epoch aggregate signature from: {}",
+                    block.author()
+                );
 
                 let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
 
