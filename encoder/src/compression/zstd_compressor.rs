@@ -22,7 +22,6 @@ impl Compressor for ZstdCompressor {
     }
 
     fn decompress(&self, contents: Bytes, uncompressed_size: SizeInBytes) -> ShardResult<Bytes> {
-        // TODO: switch to explicitly setting the size
         let decompressed = decompress(contents.as_ref(), uncompressed_size)
             .map_err(|e| ShardError::CompressionFailed(e.to_string()))?;
         Ok(Bytes::from(decompressed))

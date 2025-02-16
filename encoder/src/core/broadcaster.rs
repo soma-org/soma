@@ -1,3 +1,4 @@
+use fastcrypto::bls12381::min_sig;
 use serde::Serialize;
 use shared::{signed::Signature, verified::Verified};
 use std::future::Future;
@@ -32,15 +33,17 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
         input: Verified<T>,
         peers: Vec<EncoderIndex>,
         network_fn: F,
-    ) -> ShardResult<Vec<Verified<Signature<T>>>>
+    ) -> ShardResult<Vec<Verified<Signature<T, min_sig::BLS12381Signature>>>>
     where
         T: Serialize + Send + Sync + 'static,
         F: FnOnce(Arc<C>, EncoderIndex, Verified<T>) -> Fut + Copy + Send + Sync + 'static,
-        Fut: Future<Output = ShardResult<Verified<Signature<T>>>> + Send + 'static,
+        Fut: Future<Output = ShardResult<Verified<Signature<T, min_sig::BLS12381Signature>>>>
+            + Send
+            + 'static,
     {
         struct NetworkingResult<T: Serialize + Send + 'static> {
             peer: EncoderIndex,
-            result: ShardResult<Verified<Signature<T>>>,
+            result: ShardResult<Verified<Signature<T, min_sig::BLS12381Signature>>>,
             retries: u64,
         }
 

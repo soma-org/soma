@@ -1,84 +1,78 @@
+use bytes::Bytes;
+use fastcrypto::traits::{Authenticator, Signer, SigningKey, VerifyingKey};
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
-
 use crate::{
-    crypto::keys::{ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey},
+    digest::Digest,
     error::{SharedError, SharedResult},
     scope::{Scope, ScopedMessage},
 };
 
-use super::digest::Digest;
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Signed<T: Serialize> {
+pub struct Signed<T: Serialize, S: Authenticator> {
     inner: T,
-    signature: Signature<T>,
+    signature: Bytes,
+    #[serde(skip)]
+    phantom: PhantomData<S>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Signature<T: Serialize> {
-    bytes: Bytes,
-    marker: PhantomData<T>,
+pub struct Signature<T: Serialize, S: Authenticator> {
+    signature: Bytes,
+    #[serde(skip)]
+    phantom: PhantomData<(T, S)>,
 }
-
-impl<T: Serialize> Signed<T> {
-    pub fn new(inner: T, scope: Scope, keypair: &ProtocolKeyPair) -> SharedResult<Self> {
-        let inner_digest: Digest<T> = Digest::new(&inner)?;
+impl<T, S> Signed<T, S>
+where
+    T: Serialize,
+    S: Authenticator,
+{
+    pub fn new<K>(inner: T, scope: Scope, signer: &K) -> SharedResult<Self>
+    where
+        K: SigningKey<Sig = S> + Signer<K>,
+    {
+        let inner_digest = Digest::new(&inner)?;
         let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
             .map_err(SharedError::SerializationFailure)?;
-        let signature = keypair.sign(&message);
+        let signature = signer.sign(&message);
         Ok(Self {
             inner,
-            signature: Signature {
-                bytes: bytes::Bytes::copy_from_slice(signature.to_bytes()),
-                marker: PhantomData,
-            },
+            signature: Bytes::copy_from_slice(signature.as_bytes()),
+            phantom: PhantomData,
         })
     }
 
-    pub fn verify_signature(
-        &self,
-        scope: Scope,
-        public_key: &ProtocolPublicKey,
-    ) -> SharedResult<()> {
-        let inner_digest: Digest<T> = Digest::new(&self.inner)?;
-
+    pub fn verify(&self, scope: Scope, key: &S::PubKey) -> SharedResult<()>
+    where
+        S::PubKey: VerifyingKey<Sig = S>,
+    {
+        let inner_digest = Digest::new(&self.inner)?;
         let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
             .map_err(SharedError::SerializationFailure)?;
-
-        let sig = ProtocolKeySignature::from_bytes(&self.signature.bytes)
-            .map_err(SharedError::MalformedSignature)?;
-
-        public_key
-            .verify(&message, &sig)
+        let sig =
+            S::from_bytes(&self.signature).map_err(SharedError::SignatureVerificationFailure)?;
+        key.verify(&message, &sig)
             .map_err(SharedError::SignatureVerificationFailure)?;
-
         Ok(())
     }
-
-    pub fn signature(&self) -> Signature<T> {
-        Signature {
-            bytes: self.signature.bytes.clone(),
-            marker: PhantomData,
-        }
+    pub fn into_inner(self) -> T {
+        self.inner
     }
-
-    pub fn map<U: Serialize, F: FnOnce(T) -> U>(self, f: F) -> Signed<U> {
-        Signed {
-            inner: f(self.inner),
-            signature: Signature {
-                bytes: self.signature.bytes,
-                marker: PhantomData,
-            },
+    pub fn signature(self) -> Signature<T, S> {
+        Signature {
+            signature: self.signature,
+            phantom: PhantomData,
         }
     }
 }
 
-impl<T: Serialize> std::ops::Deref for Signed<T> {
+impl<T, S> std::ops::Deref for Signed<T, S>
+where
+    T: Serialize,
+    S: Authenticator,
+{
     type Target = T;
-
     fn deref(&self) -> &Self::Target {
         &self.inner
     }

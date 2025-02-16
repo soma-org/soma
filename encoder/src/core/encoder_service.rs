@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
+use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::ProtocolKeyPair,
     scope::Scope,
@@ -21,7 +22,6 @@ use crate::{
         shard_commit::{ShardCommit, ShardCommitAPI},
         shard_input::ShardInput,
         shard_reveal::{ShardReveal, ShardRevealAPI},
-        shard_slots::{ShardSlots, ShardSlotsAPI},
     },
 };
 
@@ -51,17 +51,17 @@ impl<PD: PipelineDispatcher> EncoderInternalService<PD> {
     }
 }
 
-fn unverified<T>(input: &T) -> ShardResult<()> {
-    Ok(())
-}
-
 #[async_trait]
 impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalService<PD> {
     async fn handle_send_commit(
         &self,
         peer: EncoderIndex,
         commit: Bytes,
-    ) -> ShardResult<Serialized<Signature<Signed<ShardCommit>>>> {
+    ) -> ShardResult<
+        Serialized<
+            Signature<Signed<ShardCommit, min_sig::BLS12381Signature>, min_sig::BLS12381Signature>,
+        >,
+    > {
         unimplemented!()
     }
     async fn handle_send_certified_commit(

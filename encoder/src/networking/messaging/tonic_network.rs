@@ -1,6 +1,7 @@
 //! Tonic Network contains all the code related to tonic-specific code implementing the network client, service, and manager traits.
 use async_trait::async_trait;
 use bytes::Bytes;
+use fastcrypto::bls12381::min_sig;
 use shared::{crypto::keys::NetworkKeyPair, signed::Signed, verified::Verified};
 use std::{io::Read, sync::Arc, time::Duration};
 use tokio::sync::oneshot;
@@ -16,9 +17,9 @@ use crate::{
     types::{
         certified::Certified,
         encoder_context::EncoderContext,
-        shard_block::{CommitRound, RevealRound, ShardVotes},
         shard_commit::ShardCommit,
         shard_reveal::ShardReveal,
+        shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
 };
 use tracing::info;
@@ -70,7 +71,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_commit(
         &self,
         peer: EncoderIndex,
-        commit: &Verified<Signed<ShardCommit>>,
+        commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
         let mut request = Request::new(SendCommitRequest {
@@ -89,7 +90,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_certified_commit(
         &self,
         peer: EncoderIndex,
-        certified_commit: &Verified<Certified<Signed<ShardCommit>>>,
+        certified_commit: &Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendCertifiedCommitRequest {
@@ -107,7 +108,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_commit_votes(
         &self,
         peer: EncoderIndex,
-        votes: &Verified<Signed<ShardVotes<CommitRound>>>,
+        votes: &Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendCommitVotesRequest {
@@ -125,7 +126,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_reveal(
         &self,
         peer: EncoderIndex,
-        reveal: &Verified<Signed<ShardReveal>>,
+        reveal: &Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendRevealRequest {
@@ -142,7 +143,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_reveal_votes(
         &self,
         peer: EncoderIndex,
-        votes: &Verified<Signed<ShardVotes<RevealRound>>>,
+        votes: &Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendRevealVotesRequest {

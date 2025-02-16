@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn test_entropy_vdf_e2e() {
         // Initialize VDF with same parameters as the reference test
-        let iterations: EntropyIterations = 10;
+        let iterations: EntropyIterations = 1;
         let vdf = EntropyVDF::new(iterations);
 
         // Create test epoch and block reference

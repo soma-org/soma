@@ -1,4 +1,5 @@
 use enum_dispatch::enum_dispatch;
+use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{metadata::Metadata, signed::Signed};
 
@@ -16,14 +17,14 @@ pub enum ShardCommit {
 #[enum_dispatch]
 pub(crate) trait ShardCommitAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn route(&self) -> &Option<Signed<Route>>;
+    fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>>;
     fn commit(&self) -> &Metadata;
 }
 
 impl ShardCommit {
     pub(crate) fn new_v1(
         auth_token: ShardAuthToken,
-        route: Option<Signed<Route>>,
+        route: Option<Signed<Route, min_sig::BLS12381Signature>>,
         commit: Metadata,
     ) -> ShardCommit {
         ShardCommit::V1(ShardCommitV1 {
@@ -43,7 +44,7 @@ struct ShardCommitV1 {
     auth_token: ShardAuthToken,
     // signed by the source (eligible inference encoder)
     // TODO: need to correct encoder signature
-    route: Option<Signed<Route>>,
+    route: Option<Signed<Route, min_sig::BLS12381Signature>>,
     commit: Metadata,
 }
 
@@ -51,7 +52,7 @@ impl ShardCommitAPI for ShardCommitV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn route(&self) -> &Option<Signed<Route>> {
+    fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>> {
         &self.route
     }
     fn commit(&self) -> &Metadata {

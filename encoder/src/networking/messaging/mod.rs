@@ -12,12 +12,13 @@ mod tonic_gen {
 
 use crate::types::certified::Certified;
 use crate::types::encoder_committee::EncoderIndex;
-use crate::types::shard_block::{CommitRound, RevealRound, ShardVotes};
 use crate::types::shard_commit::ShardCommit;
 use crate::types::shard_reveal::ShardReveal;
+use crate::types::shard_votes::{CommitRound, RevealRound, ShardVotes};
 use crate::{error::ShardResult, types::encoder_context::EncoderContext};
 use async_trait::async_trait;
 use bytes::Bytes;
+use fastcrypto::bls12381::min_sig;
 use multiaddr::Protocol;
 use shared::crypto::keys::NetworkKeyPair;
 use shared::multiaddr::Multiaddr;
@@ -36,34 +37,34 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_commit(
         &self,
         peer: EncoderIndex,
-        commit: &Verified<Signed<ShardCommit>>,
+        commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 
     async fn send_certified_commit(
         &self,
         peer: EncoderIndex,
-        certified_commit: &Verified<Certified<Signed<ShardCommit>>>,
+        certified_commit: &Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_commit_votes(
         &self,
         peer: EncoderIndex,
-        votes: &Verified<Signed<ShardVotes<CommitRound>>>,
+        votes: &Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_reveal(
         &self,
         peer: EncoderIndex,
-        reveal: &Verified<Signed<ShardReveal>>,
+        reveal: &Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
     async fn send_reveal_votes(
         &self,
         peer: EncoderIndex,
-        votes: &Verified<Signed<ShardVotes<RevealRound>>>,
+        votes: &Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -74,7 +75,11 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
         &self,
         peer: EncoderIndex,
         commit: Bytes,
-    ) -> ShardResult<Serialized<Signature<Signed<ShardCommit>>>>;
+    ) -> ShardResult<
+        Serialized<
+            Signature<Signed<ShardCommit, min_sig::BLS12381Signature>, min_sig::BLS12381Signature>,
+        >,
+    >;
     async fn handle_send_certified_commit(
         &self,
         peer: EncoderIndex,

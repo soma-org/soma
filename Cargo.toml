@@ -30,7 +30,6 @@ bcs = "0.1.6"
 bs58 = "0.5.1"
 enum_dispatch = "0.3.13"
 fastcrypto = { version = "0.1.8", features = ["copy_key"] }
-fastcrypto-tbls = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 bytes = { version = "1.7.1", features = ["serde"] }
 strum_macros = "0.26"
@@ -66,3 +65,4 @@ arbtest = "0.3.2"
 mockall = "0.13.1"
 fastcrypto-vdf = { git = "https://github.com/MystenLabs/fastcrypto", features = ["experimental"] }
 quick_cache = "0.6.10"
+hex = "0.4.3"

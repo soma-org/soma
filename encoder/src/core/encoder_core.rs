@@ -23,14 +23,12 @@ use crate::{
         certified::Certified,
         shard::Shard,
         shard_commit::{ShardCommit, ShardCommitAPI},
-        shard_completion_proof::ShardCompletionProof,
-        shard_endorsement::ShardEndorsement,
         shard_input::{ShardInput, ShardInputAPI},
-        shard_removal::ShardRemoval,
         shard_reveal::{ShardReveal, ShardRevealAPI},
     },
 };
 use bytes::Bytes;
+use fastcrypto::bls12381::min_sig;
 use ndarray::ArrayD;
 use rand::rngs::OsRng;
 use rand::RngCore;
@@ -103,7 +101,7 @@ where
         &self,
         peer: NetworkingIndex,
         shard: Shard,
-        shard_input: Verified<Signed<ShardInput>>,
+        shard_input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // // println!("{:?}", shard_input);
         // // TODO: look up or create cancellation token for the shard
@@ -255,7 +253,9 @@ where
         &self,
         peer: NetworkingIndex,
         shard: Shard,
-        shard_commit_certificate: Verified<Certified<Signed<ShardCommit>>>,
+        shard_commit_certificate: Verified<
+            Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        >,
     ) -> ShardResult<()> {
         // unimplemented!();
         // let data = shard_commit_certificate.data();
@@ -321,7 +321,9 @@ where
         peer: NetworkingIndex,
         shard: Shard,
         encrypted_data_checksum: Checksum,
-        shard_reveal_certificate: Verified<Certified<Signed<ShardReveal>>>,
+        shard_reveal_certificate: Verified<
+            Certified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+        >,
     ) -> ShardResult<()> {
         let cancellation = CancellationToken::new();
         let data_path: ObjectPath = ObjectPath::from_checksum(encrypted_data_checksum);
@@ -364,28 +366,30 @@ where
         Ok(())
     }
 
-    pub async fn process_shard_removal_certificate(
-        &self,
-        shard_removal_certificate: Verified<Certified<ShardRemoval>>,
-    ) {
-        println!("{:?}", shard_removal_certificate);
-    }
+    // pub async fn process_shard_removal_certificate(
+    //     &self,
+    //     shard_removal_certificate: Verified<Certified<ShardRemoval>>,
+    // ) {
+    //     println!("{:?}", shard_removal_certificate);
+    // }
 
-    pub async fn process_shard_endorsement_certificate(
-        &self,
-        shard_endorsement_certificate: Verified<Certified<Signed<ShardEndorsement>>>,
-    ) {
-        // print the endorsement certificate
-        // just reach this point
-        println!("{:?}", shard_endorsement_certificate);
-    }
+    // pub async fn process_shard_endorsement_certificate(
+    //     &self,
+    //     shard_endorsement_certificate: Verified<
+    //         Certified<Signed<ShardEndorsement, min_sig::BLS12381Signature>>,
+    //     >,
+    // ) {
+    //     // print the endorsement certificate
+    //     // just reach this point
+    //     println!("{:?}", shard_endorsement_certificate);
+    // }
 
-    pub async fn process_shard_completion_proof(
-        &self,
-        shard_completion_proof: Verified<ShardCompletionProof>,
-    ) {
-        println!("{:?}", shard_completion_proof);
-    }
+    // pub async fn process_shard_completion_proof(
+    //     &self,
+    //     shard_completion_proof: Verified<ShardCompletionProof>,
+    // ) {
+    //     println!("{:?}", shard_completion_proof);
+    // }
 }
 
 impl<C: EncoderInternalNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> Clone

@@ -5,6 +5,7 @@ use std::{
 
 use crate::{commit::CommitVote, digest::Digest, signed::Signed};
 use enum_dispatch::enum_dispatch;
+use fastcrypto::ed25519::Ed25519Signature;
 use serde::{Deserialize, Serialize};
 
 use crate::{authority_committee::AuthorityIndex, transaction::SignedTransaction};
@@ -156,7 +157,7 @@ pub struct BlockRef {
     /// returns the author
     author: AuthorityIndex,
     /// the digest for a blockheader (this is the unique reference)
-    digest: Digest<Signed<Block>>,
+    digest: Digest<Signed<Block, Ed25519Signature>>,
 }
 
 impl BlockRef {
@@ -175,7 +176,11 @@ impl BlockRef {
     };
 
     /// creates a new block header ref
-    pub fn new(round: Round, author: AuthorityIndex, digest: Digest<Signed<Block>>) -> Self {
+    pub fn new(
+        round: Round,
+        author: AuthorityIndex,
+        digest: Digest<Signed<Block, Ed25519Signature>>,
+    ) -> Self {
         Self {
             round,
             author,

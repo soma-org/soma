@@ -20,6 +20,7 @@ bcs.workspace = true
 strum_macros.workspace = true
 thiserror.workspace = true
 fastcrypto-vdf.workspace = true
+hex.workspace = true
 
 
 [lints]

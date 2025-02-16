@@ -1,3 +1,4 @@
+use fastcrypto::bls12381::min_sig;
 use shared::{network_committee::NetworkingIndex, signed::Signed, verified::Verified};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -37,7 +38,11 @@ impl<C: EncoderInternalNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetw
 impl<C: EncoderInternalNetworkClient, M: Model, B: ObjectStorage, BC: ObjectNetworkClient> Processor
     for ShardInputProcessor<C, M, B, BC>
 {
-    type Input = (NetworkingIndex, Shard, Verified<Signed<ShardInput>>);
+    type Input = (
+        NetworkingIndex,
+        Shard,
+        Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+    );
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {

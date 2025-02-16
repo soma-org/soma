@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use fastcrypto::{bls12381::min_sig, ed25519::Ed25519Signature};
 use shared::{network_committee::NetworkingIndex, signed::Signed, verified::Verified};
 use tokio_util::sync::CancellationToken;
 
@@ -17,7 +18,7 @@ pub trait PipelineDispatcher: Sync + Send + 'static {
         &self,
         networking_index: NetworkingIndex,
         shard: Shard,
-        shard_input: Verified<Signed<ShardInput>>,
+        shard_input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
 }
@@ -50,7 +51,7 @@ impl<SNC: EncoderInternalNetworkClient, M: Model, OS: ObjectStorage, ONC: Object
         &self,
         networking_index: NetworkingIndex,
         shard: Shard,
-        shard_input: Verified<Signed<ShardInput>>,
+        shard_input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         let input = (networking_index, shard, shard_input);
