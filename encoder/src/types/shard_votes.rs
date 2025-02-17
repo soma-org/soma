@@ -29,7 +29,6 @@ struct ShardVotesV1<T> {
     auth_token: ShardAuthToken,
     /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
     rejects: Vec<EncoderIndex>,
-
     // type marker see `CommitRound` and `RevealRound`
     marker: PhantomData<T>,
 }

@@ -175,7 +175,8 @@ pub(crate) enum ShardError {
     FailedToSendToCoreThread(String),
     // #[error("Received no commit from peer {peer}")]
     // NoCommitReceived { peer: AuthorityIndex },
-
+    #[error("failed type verification: {0}")]
+    FailedTypeVerification(String),
     // #[error(
     //     "Received unexpected start commit from peer {peer}: requested {start}, received {commit:?}"
     // )]

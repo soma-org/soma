@@ -3,7 +3,6 @@ use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::ProtocolKeyPair,
-    scope::Scope,
     serialized::Serialized,
     signed::{Signature, Signed},
     verified::Verified,
@@ -18,10 +17,9 @@ use crate::{
         certified::Certified,
         encoder_committee::EncoderIndex,
         encoder_context::EncoderContext,
-        shard::ShardRef,
-        shard_commit::{ShardCommit, ShardCommitAPI},
-        shard_input::ShardInput,
-        shard_reveal::{ShardReveal, ShardRevealAPI},
+        shard_commit::ShardCommit,
+        shard_reveal::ShardReveal,
+        shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
 };
 
@@ -56,28 +54,72 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
     async fn handle_send_commit(
         &self,
         peer: EncoderIndex,
-        commit: Bytes,
+        commit_bytes: Bytes,
     ) -> ShardResult<
         Serialized<
             Signature<Signed<ShardCommit, min_sig::BLS12381Signature>, min_sig::BLS12381Signature>,
         >,
     > {
+        // convert into correct type
+        let signed_commit: Signed<ShardCommit, min_sig::BLS12381Signature> =
+            bcs::from_bytes(&commit_bytes).map_err(ShardError::MalformedType)?;
+        // perform verification on type and auth including signature checks
+        let verified_commit = Verified::new(signed_commit, commit_bytes, |c| Ok(()))
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        // check store for conflicts, handle accordingly
+        // issue signature if there are no conflicts
         unimplemented!()
     }
     async fn handle_send_certified_commit(
         &self,
         peer: EncoderIndex,
-        certified_commit: Bytes,
+        certified_commit_bytes: Bytes,
     ) -> ShardResult<()> {
+        // convert into correct type
+        let certified_commit: Certified<Signed<ShardCommit, min_sig::BLS12381Signature>> =
+            bcs::from_bytes(&certified_commit_bytes).map_err(ShardError::MalformedType)?;
+        // perform verification on type and auth including signature checks
+        let verified_commit = Verified::new(certified_commit, certified_commit_bytes, |c| Ok(()))
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        // send to orchestrator
         unimplemented!()
     }
-    async fn handle_send_commit_votes(&self, peer: EncoderIndex, votes: Bytes) -> ShardResult<()> {
+    async fn handle_send_commit_votes(
+        &self,
+        peer: EncoderIndex,
+        votes_bytes: Bytes,
+    ) -> ShardResult<()> {
+        // convert into correct type
+        let votes: Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature> =
+            bcs::from_bytes(&votes_bytes).map_err(ShardError::MalformedType)?;
+        // perform verification on type and auth including signature checks
+        let verified_commit = Verified::new(votes, votes_bytes, |v| Ok(()))
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        // send to orchestrator
         unimplemented!()
     }
-    async fn handle_send_reveal(&self, peer: EncoderIndex, reveal: Bytes) -> ShardResult<()> {
+    async fn handle_send_reveal(&self, peer: EncoderIndex, reveal_bytes: Bytes) -> ShardResult<()> {
+        // convert into correct type
+        let reveal: Signed<ShardReveal, min_sig::BLS12381Signature> =
+            bcs::from_bytes(&reveal_bytes).map_err(ShardError::MalformedType)?;
+        // perform verification on type and auth including signature checks
+        let verified_commit = Verified::new(reveal, reveal_bytes, |r| Ok(()))
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        // send to orchestrator
         unimplemented!()
     }
-    async fn handle_send_reveal_votes(&self, peer: EncoderIndex, votes: Bytes) -> ShardResult<()> {
+    async fn handle_send_reveal_votes(
+        &self,
+        peer: EncoderIndex,
+        votes_bytes: Bytes,
+    ) -> ShardResult<()> {
+        // convert into correct type
+        let votes: Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature> =
+            bcs::from_bytes(&votes_bytes).map_err(ShardError::MalformedType)?;
+        // perform verification on type and auth including signature checks
+        let verified_commit = Verified::new(votes, votes_bytes, |v| Ok(()))
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        // send to orchestrator
         unimplemented!()
     }
 }

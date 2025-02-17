@@ -5,6 +5,7 @@
 use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shared::{
+    bitset::BitSet,
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, NetworkKeyPair, NetworkPublicKey},
     digest::Digest,
     error::SharedResult,
@@ -370,6 +371,23 @@ impl<T> IndexMut<EncoderIndex> for Vec<T> {
         self.get_mut(index.value()).unwrap()
     }
 }
+
+impl From<usize> for EncoderIndex {
+    fn from(value: usize) -> Self {
+        Self(value as u32)
+    }
+}
+
+impl From<EncoderIndex> for usize {
+    fn from(index: EncoderIndex) -> Self {
+        index.value()
+    }
+}
+
+// 8 * 1250 = 10_000 indices
+// this is actually less efficient than either using a shard-level index + bitset or just the raw
+// u32 encoder index in vec form.
+pub(crate) type EncoderBitSet = BitSet<EncoderIndex, 1250>;
 
 #[cfg(test)]
 mod tests {

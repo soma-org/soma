@@ -127,6 +127,8 @@ pub enum SharedError {
     MalformedSignature(FastCryptoError),
     #[error("VDF failed: {0}")]
     FailedVDF(String),
+    #[error("failed type verification: {0}")]
+    FailedTypeVerification(String),
     #[error("Failed to verify the block's signature: {0}")]
     SignatureVerificationFailure(FastCryptoError),
 

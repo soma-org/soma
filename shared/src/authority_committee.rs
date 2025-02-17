@@ -7,6 +7,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    bitset::BitSet,
     crypto::keys::{
         AuthorityKeyPair, AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair,
         ProtocolPublicKey,
@@ -272,55 +273,24 @@ impl<T> IndexMut<AuthorityIndex> for Vec<T> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct AuthorityBitSet([u8; 32]); // 32 bytes = 256 authorities
-
-impl AuthorityBitSet {
-    pub fn new(authorities: &[AuthorityIndex]) -> Self {
-        let mut bits = [0u8; 32];
-        for idx in authorities {
-            let byte_idx = idx.value() / 8;
-            let bit_idx = idx.value() as usize % 8;
-            bits[byte_idx] |= 1 << bit_idx;
-        }
-        Self(bits)
-    }
-
-    pub fn get_indices(&self) -> Vec<AuthorityIndex> {
-        let mut authorities = Vec::new();
-        for (byte_idx, &byte) in self.0.iter().enumerate() {
-            for bit_idx in 0..8 {
-                if byte & (1 << bit_idx) != 0 {
-                    authorities.push(AuthorityIndex((byte_idx * 8 + bit_idx) as u32));
-                }
-            }
-        }
-        authorities
+impl From<usize> for AuthorityIndex {
+    fn from(value: usize) -> Self {
+        Self(value as u32)
     }
 }
+
+impl From<AuthorityIndex> for usize {
+    fn from(index: AuthorityIndex) -> Self {
+        index.value()
+    }
+}
+
+// 8 * 32 = max 256 indices
+pub(crate) type AuthorityBitSet = BitSet<AuthorityIndex, 32>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_bitset() {
-        let authorities = vec![
-            AuthorityIndex::new_for_test(0),
-            AuthorityIndex::new_for_test(7),
-            AuthorityIndex::new_for_test(8),
-            AuthorityIndex::new_for_test(254),
-        ];
-
-        let bitset = AuthorityBitSet::new(&authorities);
-
-        // First byte should be 10000001
-        assert_eq!(bitset.0[0], 0b10000001);
-        // Second byte should be 00000001
-        assert_eq!(bitset.0[1], 0b00000001);
-        // Last byte should be 01000000
-        assert_eq!(bitset.0[31], 0b01000000);
-    }
 
     #[test]
     fn test_bitset_roundtrip() {
@@ -336,29 +306,3 @@ mod tests {
         assert_eq!(authorities, recovered);
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::local_committee_and_keys;
-
-//     #[test]
-//     fn committee_basic() {
-//         // GIVEN
-//         let epoch = 100;
-//         let num_of_authorities = 9;
-//         let authority_stakes = (1..=9).map(|s| s as Stake).collect();
-//         let (committee, _) = local_committee_and_keys(epoch, authority_stakes);
-
-//         // THEN make sure the output Committee fields are populated correctly.
-//         assert_eq!(committee.size(), num_of_authorities);
-//         for (i, authority) in committee.authorities() {
-//             assert_eq!((i.value() + 1) as Stake, authority.stake);
-//         }
-
-//         // AND ensure thresholds are calculated correctly.
-//         assert_eq!(committee.total_stake(), 45);
-//         assert_eq!(committee.quorum_threshold(), 31);
-//         assert_eq!(committee.validity_threshold(), 15);
-//     }
-// }

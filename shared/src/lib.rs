@@ -1,4 +1,5 @@
 pub mod authority_committee;
+pub mod bitset;
 pub mod block;
 pub mod checksum;
 pub mod commit;

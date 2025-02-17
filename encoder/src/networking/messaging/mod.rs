@@ -74,7 +74,7 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_commit(
         &self,
         peer: EncoderIndex,
-        commit: Bytes,
+        commit_bytes: Bytes,
     ) -> ShardResult<
         Serialized<
             Signature<Signed<ShardCommit, min_sig::BLS12381Signature>, min_sig::BLS12381Signature>,
@@ -83,11 +83,19 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_certified_commit(
         &self,
         peer: EncoderIndex,
-        certified_commit: Bytes,
+        certified_commit_bytes: Bytes,
     ) -> ShardResult<()>;
-    async fn handle_send_commit_votes(&self, peer: EncoderIndex, votes: Bytes) -> ShardResult<()>;
-    async fn handle_send_reveal(&self, peer: EncoderIndex, reveal: Bytes) -> ShardResult<()>;
-    async fn handle_send_reveal_votes(&self, peer: EncoderIndex, votes: Bytes) -> ShardResult<()>;
+    async fn handle_send_commit_votes(
+        &self,
+        peer: EncoderIndex,
+        votes_bytes: Bytes,
+    ) -> ShardResult<()>;
+    async fn handle_send_reveal(&self, peer: EncoderIndex, reveal_bytes: Bytes) -> ShardResult<()>;
+    async fn handle_send_reveal_votes(
+        &self,
+        peer: EncoderIndex,
+        votes_bytes: Bytes,
+    ) -> ShardResult<()>;
 }
 
 /// `EncoderNetworkManager` handles starting and stopping the network related services
