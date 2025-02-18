@@ -357,7 +357,7 @@ impl MysticetiConsensusHandler {
                 let epoch_duration_ms = 1000; //consensus_handler .epoch_store.epoch_start_state().epoch_duration_ms();
                                               // TODO: have this come from config but harcode for now
                 let next_reconfiguration_timestamp_ms = epoch_start_timestamp_ms
-                    .checked_add(Duration::from_millis(10).as_micros() as u64)
+                    .checked_add(epoch_duration_ms)
                     .expect("Overflow calculating next_reconfiguration_timestamp_ms");
 
                 info!(

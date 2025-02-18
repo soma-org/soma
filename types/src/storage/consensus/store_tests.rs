@@ -103,13 +103,13 @@ async fn read_and_contain_blocks() {
     {
         for block in &written_blocks {
             let found = store
-                .contains_block_at_slot(block.slot())
+                .contains_block_at_slot(block.slot(), 0)
                 .expect("Read blocks should not fail");
             assert!(found);
         }
 
         let found = store
-            .contains_block_at_slot(Slot::new(10, AuthorityIndex::new_for_test(0)))
+            .contains_block_at_slot(Slot::new(10, AuthorityIndex::new_for_test(0)), 0)
             .expect("Read blocks should not fail");
         assert!(!found);
     }

@@ -125,11 +125,11 @@ pub struct ConsensusCommitPrologue {
 
 pub trait EndOfEpochAPI: Send + Sync + 'static {
     /// Returns the committee for the next epoch if one has been computed, and epoch state digest
-    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest)>;
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)>;
 }
 
 pub struct TestEpochStore {
-    pub next_epoch_state: Option<(ValidatorSet, ECMHLiveObjectSetDigest)>,
+    pub next_epoch_state: Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)>,
 }
 
 impl TestEpochStore {
@@ -139,13 +139,13 @@ impl TestEpochStore {
         }
     }
 
-    pub fn set_next_epoch_state(&mut self, state: (ValidatorSet, ECMHLiveObjectSetDigest)) {
+    pub fn set_next_epoch_state(&mut self, state: (ValidatorSet, ECMHLiveObjectSetDigest, u64)) {
         self.next_epoch_state = Some(state);
     }
 }
 
 impl EndOfEpochAPI for TestEpochStore {
-    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest)> {
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)> {
         self.next_epoch_state.clone()
     }
 }

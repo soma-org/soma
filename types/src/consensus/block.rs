@@ -10,10 +10,13 @@ use std::{
 
 use super::context::Context;
 use super::{commit::CommitVote, validator_set::ValidatorSet};
-use crate::intent::{Intent, IntentMessage, IntentScope};
 use crate::{
     accumulator::{Accumulator, CommitIndex},
     committee::{AuthorityIndex, Epoch},
+};
+use crate::{
+    committee::Committee,
+    intent::{Intent, IntentMessage, IntentScope},
 };
 use crate::{
     crypto::{
@@ -56,6 +59,7 @@ impl Transaction {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EndOfEpochData {
+    pub next_epoch_start_timestamp_ms: u64,
     /// The proposed validator set for next epoch, with each validator's public key and voting power
     pub next_validator_set: Option<ValidatorSet>,
 
@@ -540,6 +544,21 @@ pub fn genesis_blocks(context: Arc<Context>) -> Vec<VerifiedBlock> {
                 context.committee.epoch(),
                 authority_index,
             ));
+            let serialized = signed_block
+                .serialize()
+                .expect("Genesis block serialization failed.");
+            // Unnecessary to verify genesis blocks.
+            VerifiedBlock::new_verified(signed_block, serialized)
+        })
+        .collect::<Vec<VerifiedBlock>>()
+}
+
+pub fn genesis_blocks_from_committee(committee: Arc<Committee>) -> Vec<VerifiedBlock> {
+    committee
+        .authorities()
+        .map(|(authority_index, _)| {
+            let signed_block =
+                SignedBlock::new_genesis(Block::genesis_block(committee.epoch(), authority_index));
             let serialized = signed_block
                 .serialize()
                 .expect("Genesis block serialization failed.");

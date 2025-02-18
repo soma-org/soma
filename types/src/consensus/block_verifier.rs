@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::block::{
-    genesis_blocks, BlockAPI as _, BlockRef, BlockTimestampMs, SignedBlock, VerifiedBlock,
-    GENESIS_ROUND,
+    genesis_blocks, genesis_blocks_from_committee, BlockAPI as _, BlockRef, BlockTimestampMs,
+    SignedBlock, VerifiedBlock, GENESIS_ROUND,
 };
 use super::context::Context;
 use super::transaction::TransactionVerifier;
@@ -199,7 +199,13 @@ impl BlockVerifier for SignedBlockVerifier {
                     block: block.round(),
                 });
             }
-            if ancestor.round == GENESIS_ROUND && !self.genesis.contains(ancestor) {
+            if ancestor.round == GENESIS_ROUND
+                && !genesis_blocks_from_committee(committee.clone())
+                    .iter()
+                    .map(|b| b.reference())
+                    .collect::<BTreeSet<BlockRef>>()
+                    .contains(ancestor)
+            {
                 return Err(ConsensusError::InvalidGenesisAncestor(*ancestor));
             }
             if seen_ancestors[ancestor.author] {

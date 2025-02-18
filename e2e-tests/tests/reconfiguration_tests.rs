@@ -121,11 +121,11 @@ async fn test_reconfig_with_committee_change_basic() {
     let new_validator_handle = test_cluster.spawn_new_validator(new_validator).await;
     test_cluster.wait_for_epoch_all_nodes(1).await;
 
-    // new_validator_handle.with(|node| {
-    //     assert!(node
-    //         .state()
-    //         .is_validator(&node.state().epoch_store_for_testing()));
-    // });
+    new_validator_handle.with(|node| {
+        assert!(node
+            .state()
+            .is_validator(&node.state().epoch_store_for_testing()));
+    });
 
     execute_remove_validator_tx(&test_cluster, &new_validator_handle).await;
     test_cluster.trigger_reconfiguration().await;

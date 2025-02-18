@@ -1700,7 +1700,7 @@ impl AuthorityPerEpochStore {
 }
 
 impl EndOfEpochAPI for AuthorityPerEpochStore {
-    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest)> {
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)> {
         self.next_epoch_state
             .read()
             .as_ref()
@@ -1721,6 +1721,7 @@ impl EndOfEpochAPI for AuthorityPerEpochStore {
                             .collect(),
                     ),
                     digest.clone(),
+                    state.epoch_start_timestamp_ms,
                 )
             })
     }

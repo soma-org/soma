@@ -265,7 +265,8 @@ where
     pub async fn start(mut self) {
         info!("State-Synchronizer started");
 
-        let mut interval = tokio::time::interval(self.config.interval_period());
+        let mut interval = tokio::time::interval(Duration::from_millis(100));
+        //TODO: self.config.interval_period()
         for peer_id in self.active_peers.peers().iter() {
             self.spawn_get_latest_from_peer(*peer_id);
         }
@@ -306,6 +307,8 @@ where
             // Schedule new fetches if we're behind
 
             self.maybe_start_sync_task();
+
+            sleep(Duration::from_millis(100)).await;
         }
 
         info!("State-Synchronizer ended");
@@ -410,13 +413,6 @@ where
         // }
 
         // Insert the commit to store
-        info!(
-            "Inserting commit of index {} to store in handle_commit_from_consensus",
-            commit.commit_ref.index
-        );
-        if commit.is_last_commit_of_epoch() {
-            info!("Last commit of epoch received in handle_commit_from_consensus");
-        }
         self.store
             .insert_commit(commit.clone())
             .expect("store operation should not fail");

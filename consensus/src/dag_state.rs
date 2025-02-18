@@ -705,7 +705,7 @@ impl DagState {
             return;
         }
         debug!(
-            "Flushing {} blocks ({}), {} commits ({}) and {} commit info ({}) to storage.",
+            "Flushing {} blocks ({}), {} commits ({}) and {} commit info ({}) to storage. Last commit index: {}, epoch: {} ",
             blocks.len(),
             blocks.iter().map(|b| b.reference().to_string()).join(","),
             commits.len(),
@@ -715,6 +715,8 @@ impl DagState {
                 .iter()
                 .map(|(commit_ref, _)| commit_ref.to_string())
                 .join(","),
+                commits.last().map(|c| c.index()).unwrap_or(0),
+                commits.last().map(|c| c.epoch()).unwrap_or(0)
         );
         self.store
             .write(WriteBatch::new(blocks, commits, commit_info_to_write))

@@ -252,8 +252,9 @@ impl ConsensusStore for StateSyncStore {
     fn contains_block_at_slot(
         &self,
         slot: types::consensus::block::Slot,
+        epoch: types::committee::Epoch,
     ) -> types::error::ConsensusResult<bool> {
-        self.consensus_store.contains_block_at_slot(slot)
+        self.consensus_store.contains_block_at_slot(slot, epoch)
     }
 
     fn scan_blocks_by_author(

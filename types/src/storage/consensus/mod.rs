@@ -21,7 +21,7 @@ pub trait ConsensusStore: Send + Sync {
     fn contains_blocks(&self, refs: &[BlockRef]) -> ConsensusResult<Vec<bool>>;
 
     /// Checks whether there is any block at the given slot
-    fn contains_block_at_slot(&self, slot: Slot) -> ConsensusResult<bool>;
+    fn contains_block_at_slot(&self, slot: Slot, epoch: Epoch) -> ConsensusResult<bool>;
 
     /// Reads blocks for an authority, from start_round.
     fn scan_blocks_by_author(

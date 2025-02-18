@@ -11,6 +11,7 @@ use types::{
             TrustedCommit,
         },
         context::Context,
+        stake_aggregator::{QuorumThreshold, StakeAggregator},
     },
     error::{ConsensusError, ConsensusResult},
     storage::consensus::ConsensusStore,
@@ -37,6 +38,7 @@ pub(crate) struct CommitObserver {
     /// Persistent storage for blocks, commits and other consensus data.
     store: Arc<dyn ConsensusStore>,
     leader_schedule: Arc<LeaderSchedule>,
+    pending_last_commit: Option<CommittedSubDag>,
 }
 
 impl CommitObserver {
@@ -53,6 +55,7 @@ impl CommitObserver {
             sender: commit_consumer.sender,
             store,
             leader_schedule,
+            pending_last_commit: None,
         };
 
         observer.recover_and_send_commits(commit_consumer.last_processed_commit_index);
@@ -66,6 +69,14 @@ impl CommitObserver {
         let committed_sub_dags = self.commit_interpreter.handle_commit(committed_leaders);
         let mut sent_sub_dags = Vec::with_capacity(committed_sub_dags.len());
         for committed_sub_dag in committed_sub_dags.into_iter() {
+            // TODO: If commit is the last commit of epoch, wait to send until ensuring it has enough votes (store.read_commit_votes)
+            if committed_sub_dag.is_last_commit_of_epoch() {
+                self.pending_last_commit = Some(committed_sub_dag.clone());
+                sent_sub_dags.push(committed_sub_dag);
+                self.try_send_last_commit()?;
+                continue;
+            }
+
             // Failures in sender.send() are assumed to be permanent
             if let Err(err) = self.sender.send(committed_sub_dag.clone()) {
                 tracing::error!(
@@ -83,6 +94,44 @@ impl CommitObserver {
 
         tracing::trace!("Committed & sent {sent_sub_dags:#?}");
         Ok(sent_sub_dags)
+    }
+
+    // New method to try sending the last commit if it has enough votes
+    pub(crate) fn try_send_last_commit(&mut self) -> ConsensusResult<Option<CommittedSubDag>> {
+        // Check if we have a pending last commit of epoch
+        let last_commit = match &self.pending_last_commit {
+            Some(commit) => commit,
+            None => return Ok(None),
+        };
+
+        // Read commit votes
+        let votes = self.store.read_commit_votes(last_commit.commit_ref.index)?;
+
+        // Check if we have enough votes
+        let mut stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        for vote in &votes {
+            stake_aggregator.add(vote.author, &self.context.committee);
+        }
+
+        if !stake_aggregator.reached_threshold(&self.context.committee) {
+            return Ok(None);
+        }
+
+        info!(
+            "Last commit of epoch {} has enough votes, sending to execution",
+            last_commit.commit_ref.index
+        );
+
+        // We have enough votes, load and send the committed subdag
+
+        if let Err(err) = self.sender.send(last_commit.clone()) {
+            tracing::error!(
+                "Failed to send last committed sub-dag, probably due to shutdown: {err:?}"
+            );
+            return Err(ConsensusError::Shutdown);
+        }
+
+        Ok(Some(last_commit.clone()))
     }
 
     fn recover_and_send_commits(&mut self, last_processed_commit_index: CommitIndex) {

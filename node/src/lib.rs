@@ -255,11 +255,24 @@ impl SomaNode {
                     CertificateProof::new_system(0),
                 ),
             );
+
+            let tx_digests = &[txn.digest().clone()];
+
             state
                 .try_execute_immediately(&transaction, None, Some(0), &epoch_store)
                 .instrument(span)
                 .await
                 .unwrap();
+
+            state
+                .get_cache_commit()
+                .commit_transaction_outputs(0, tx_digests)
+                .await
+                .expect("commit_transaction_outputs cannot fail");
+
+            epoch_store
+                .handle_committed_transactions(tx_digests)
+                .expect("cannot fail");
         }
 
         // checkpoint_store

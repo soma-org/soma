@@ -126,7 +126,6 @@ where
         &self,
         commit_range: CommitRange,
     ) -> ConsensusResult<(Vec<TrustedCommit>, Vec<VerifiedBlock>)> {
-        // Compute an inclusive end index and bound the maximum number of commits scanned.
         let inclusive_end = commit_range
             .end()
             .min(commit_range.start() + COMMIT_SYNC_BATCH_SIZE - 1);
@@ -143,27 +142,24 @@ where
             commit.unwrap()
         };
 
-        // First find the epoch of the first commit in sequence
         let epoch = first_commit.epoch();
-
-        // Then find the last commit of that epoch
         let last_commit_of_epoch = self
             .store
             .get_last_commit_index_of_epoch(epoch)
             .unwrap_or(inclusive_end);
+
         commits.retain(|c| c.index() <= last_commit_of_epoch);
 
-        if last_commit_of_epoch < inclusive_end {
-            debug!(
-                "Truncating commit sequence at epoch {} boundary index: {}, for range {} to {}, with total commits {}",
-                epoch, last_commit_of_epoch, commit_range.start(), commit_range.end(), commits.len()
-            );
-        }
+        info!("Retained {} commits", commits.len());
 
+        // Original stake verification logic for other cases
         let mut certifier_block_refs = vec![];
         'commit: while let Some(c) = commits.last() {
             let index = c.index();
             let votes = self.store.read_commit_votes(index)?;
+
+            info!("Read {} votes for commit {}", votes.len(), index);
+
             let committee = self
                 .store
                 .get_committee(c.epoch())?
@@ -179,12 +175,18 @@ where
                 commits.pop();
             }
         }
-        let certifier_blocks = self
+
+        let certifier_blocks: Vec<VerifiedBlock> = self
             .store
             .read_blocks(&certifier_block_refs)?
             .into_iter()
             .flatten()
             .collect();
+
+        if last_commit_of_epoch < inclusive_end {
+            info!("Truncated commit range to {} due to epoch boundary. Returning {} commits, and {} certifier_blocks", last_commit_of_epoch, commits.len(), certifier_blocks.len());
+        }
+
         Ok((commits, certifier_blocks))
     }
 }

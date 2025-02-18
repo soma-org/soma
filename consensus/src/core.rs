@@ -94,6 +94,11 @@ pub(crate) struct Core {
     last_known_proposed_round: Option<Round>,
 
     epoch_store: Arc<dyn EndOfEpochAPI>,
+
+    received_last_commit_of_epoch: bool,
+
+    /// Whether we've successfully sent the last commit of the epoch to execution
+    sent_last_commit: bool,
 }
 
 impl Core {
@@ -161,6 +166,8 @@ impl Core {
             dag_state,
             last_known_proposed_round: min_propose_round,
             epoch_store,
+            received_last_commit_of_epoch: false,
+            sent_last_commit: false,
         }
         .recover()
     }
@@ -231,7 +238,15 @@ impl Core {
             // Now add accepted blocks to the threshold clock and pending ancestors list.
             self.add_accepted_blocks(accepted_blocks);
 
-            self.try_commit()?;
+            let commits = self.try_commit()?;
+
+            // Check if any commit is end of epoch
+            for commit in commits {
+                if commit.is_last_commit_of_epoch() {
+                    self.received_last_commit_of_epoch = true;
+                    info!("Received end of epoch commit in Core");
+                }
+            }
 
             // Try to propose now since there are new blocks accepted.
             self.try_propose(false)?;
@@ -300,7 +315,16 @@ impl Core {
             self.signals.new_block(block.clone())?;
 
             // The new block may help commit.
-            self.try_commit()?;
+            let commits = self.try_commit()?;
+
+            // Check if any new commits are end of epoch
+            for commit in commits {
+                if commit.is_last_commit_of_epoch() {
+                    self.received_last_commit_of_epoch = true;
+                    info!("Received end of epoch commit after proposing block in Core");
+                }
+            }
+
             return Ok(Some(block));
         }
         Ok(None)
@@ -382,14 +406,19 @@ impl Core {
             .take_commit_votes(MAX_COMMIT_VOTES_PER_BLOCK);
 
         // Check for end of epoch phase
-        let end_of_epoch_data = if let Some((next_validator_set, state_digest)) =
-            self.epoch_store.get_next_epoch_state()
+        let end_of_epoch_data = if let Some((
+            next_validator_set,
+            state_digest,
+            epoch_start_timestamp_ms,
+        )) = self.epoch_store.get_next_epoch_state()
         {
+            info!("Proposing end of epoch data here");
             // Find first ancestor block proposing this validator set and state digest
             let ancestor_with_validator_set = ancestors.iter().find(|block| {
                 if let Some(eoe) = block.end_of_epoch_data() {
                     eoe.next_validator_set == Some(next_validator_set.clone())
                         && eoe.state_hash == Some(state_digest.clone())
+                        && eoe.next_epoch_start_timestamp_ms == epoch_start_timestamp_ms
                 } else {
                     false
                 }
@@ -400,6 +429,7 @@ impl Core {
                 None => {
                     info!("First to propose validator set and state object");
                     EndOfEpochData {
+                        next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                         next_validator_set: Some(next_validator_set),
                         state_hash: Some(state_digest),
                         validator_set_signature: None,
@@ -451,6 +481,7 @@ impl Core {
                         );
 
                         EndOfEpochData {
+                            next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                             next_validator_set: Some(next_validator_set),
                             state_hash: Some(state_digest),
                             validator_set_signature: Some(sig),
@@ -462,6 +493,7 @@ impl Core {
                             aggregator.stake()
                         );
                         EndOfEpochData {
+                            next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                             next_validator_set: Some(next_validator_set),
                             state_hash: Some(state_digest),
                             validator_set_signature: Some(sig),
@@ -471,6 +503,7 @@ impl Core {
                 }
             })
         } else {
+            info!("No next epoch state, not proposing end of epoch data");
             None // Not end of epoch yet
         };
 
@@ -520,6 +553,21 @@ impl Core {
 
     /// Runs commit rule to attempt to commit additional blocks from the DAG.
     fn try_commit(&mut self) -> ConsensusResult<Vec<CommittedSubDag>> {
+        if self.received_last_commit_of_epoch {
+            // Don't create new commits, just try to send last commit if it has enough votes
+            // First ensure any new commit votes are persisted
+            self.dag_state.write().flush();
+
+            return match self.commit_observer.try_send_last_commit()? {
+                Some(subdag) => {
+                    // Successfully sent the last commit, we can stop proposing blocks
+                    self.sent_last_commit = true;
+                    Ok(vec![subdag])
+                }
+                None => Ok(vec![]),
+            };
+        }
+
         let decided_leaders = self.committer.try_decide(self.last_decided_leader);
         if let Some(last) = decided_leaders.last() {
             self.last_decided_leader = last.slot();
@@ -547,6 +595,12 @@ impl Core {
 
     /// Whether the core should propose new blocks.
     fn should_propose(&self) -> bool {
+        // Don't propose if we've successfully sent the last commit
+        if self.sent_last_commit {
+            debug!("Skip proposing as last commit of epoch was successfully sent");
+            return false;
+        }
+
         let clock_round = self.threshold_clock.get_round();
         let skip_proposing = if let Some(last_known_proposed_round) = self.last_known_proposed_round
         {
@@ -586,11 +640,13 @@ impl Core {
                     .filter(|block| {
                         // Keep if no end of epoch data or matching set + state hash
                         if let Some(eoe) = block.end_of_epoch_data() {
-                            if let Some((our_set, our_digest)) =
+                            if let Some((our_set, our_digest, our_epoch_start_timestamp)) =
                                 self.epoch_store.get_next_epoch_state()
                             {
                                 return eoe.next_validator_set == Some(our_set)
-                                    && eoe.state_hash == Some(our_digest);
+                                    && eoe.state_hash == Some(our_digest)
+                                    && eoe.next_epoch_start_timestamp_ms
+                                        == our_epoch_start_timestamp;
                             }
                         }
                         true

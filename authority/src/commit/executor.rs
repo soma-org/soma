@@ -16,7 +16,10 @@ use types::{
     digests::TransactionDigest,
     effects::TransactionEffects,
     error::SomaResult,
-    transaction::{VerifiedCertificate, VerifiedExecutableTransaction, VerifiedTransaction},
+    transaction::{
+        EndOfEpochTransactionKind, VerifiedCertificate, VerifiedExecutableTransaction,
+        VerifiedTransaction,
+    },
 };
 
 use crate::{
@@ -199,25 +202,26 @@ impl CommitExecutor {
 
         if let Some(commit) = commit {
             if commit.epoch() == cur_epoch {
-                if commit.is_last_commit_of_epoch() {
+                if let Some(eoe_block) = commit.get_end_of_epoch_block() {
                     info!(
                         ended_epoch = cur_epoch,
                         last_commit = commit.commit_ref.index,
                         "Reached end of epoch",
                     );
 
-                    // self.execute_change_epoch_tx(
-                    //     change_epoch_tx_digest,
-                    //     change_epoch_tx,
-                    //     epoch_store.clone(),
-                    //     commit.clone(),
-                    // )
-                    // .await;
+                    let epoch_start_timestamp_ms = eoe_block
+                        .end_of_epoch_data()
+                        .as_ref()
+                        .expect("end of epoch block must have end of epoch data")
+                        .next_epoch_start_timestamp_ms;
 
-                    // let cache_commit = self.state.get_cache_commit();
-                    // cache_commit
-                    //     .commit_transaction_outputs(cur_epoch, &[change_epoch_tx_digest])
-                    //     .await;
+                    self.execute_change_epoch_tx(
+                        cur_epoch,
+                        epoch_store.clone(),
+                        commit.clone(),
+                        epoch_start_timestamp_ms,
+                    )
+                    .await;
 
                     // For finalizing the commit, we need to pass in all commit
                     // transaction effects. This should be a fast operation
@@ -279,21 +283,38 @@ impl CommitExecutor {
     #[instrument(level = "info", skip_all)]
     async fn execute_change_epoch_tx(
         &self,
-        change_epoch_tx_digest: TransactionDigest,
-        change_epoch_tx: VerifiedExecutableTransaction,
+        cur_epoch: u64,
         epoch_store: Arc<AuthorityPerEpochStore>,
         commit: CommittedSubDag,
+        epoch_start_timestamp_ms: u64,
     ) {
-        // if change_epoch_tx.contains_shared_object() {
-        //     epoch_store
-        //         .acquire_shared_locks_from_effects(
-        //             &change_epoch_tx,
-        //             &change_epoch_fx,
-        //             self.object_cache_reader.as_ref(),
-        //         )
-        //         .await
-        //         .expect("Acquiring shared locks for change_epoch tx cannot fail");
-        // }
+        let next_epoch = cur_epoch + 1;
+
+        let tx = VerifiedTransaction::new_end_of_epoch_transaction(
+            EndOfEpochTransactionKind::new_change_epoch(next_epoch, epoch_start_timestamp_ms),
+        );
+        let change_epoch_tx =
+            VerifiedExecutableTransaction::new_system(tx.clone(), epoch_store.epoch());
+        let change_epoch_tx_digest = change_epoch_tx.digest();
+        info!(
+            ?next_epoch,
+            ?change_epoch_tx_digest,
+            "Creating advance epoch transaction"
+        );
+
+        if self
+            .state
+            .get_transaction_cache_reader()
+            .is_tx_already_executed(change_epoch_tx_digest)
+            .expect("read cannot fail")
+        {
+            warn!(
+                ?change_epoch_tx_digest,
+                "Change epoch transaction already executed"
+            );
+
+            return;
+        }
 
         self.tx_manager.enqueue(
             vec![change_epoch_tx.clone()],
@@ -302,7 +323,7 @@ impl CommitExecutor {
         );
         handle_execution_effects(
             &self.state,
-            vec![change_epoch_tx_digest],
+            vec![change_epoch_tx_digest.clone()],
             commit.clone(),
             self.commit_store.clone(),
             self.object_cache_reader.as_ref(),
@@ -312,6 +333,17 @@ impl CommitExecutor {
             self.accumulator.clone(),
         )
         .await;
+
+        let cache_commit = self.state.get_cache_commit();
+        cache_commit
+            .commit_transaction_outputs(cur_epoch, &[*change_epoch_tx_digest])
+            .await
+            .expect("commit_transaction_outputs cannot fail");
+
+        info!(
+            ?change_epoch_tx_digest,
+            "Executed change epoch transaction in state sync"
+        );
     }
 
     #[instrument(level = "debug", skip_all)]
