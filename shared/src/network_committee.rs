@@ -12,7 +12,7 @@ type Epoch = u64;
 
 /// The network identities that meet the minimum required amount of stake
 /// to communicate with other nodes.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct NetworkCommittee {
     /// The epoch number of this committee
     epoch: Epoch,
@@ -129,8 +129,6 @@ impl NetworkingIndex {
         self.0 as usize
     }
 }
-
-#[cfg(test)]
 impl NetworkingIndex {
     pub const fn new_for_test(index: u32) -> Self {
         Self(index)

@@ -3,7 +3,10 @@ use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{metadata::Metadata, signed::Signed};
 
-use super::shard_verifier::{Route, ShardAuthToken};
+use super::{
+    encoder_committee::EncoderIndex,
+    shard_verifier::{Route, ShardAuthToken},
+};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -17,6 +20,8 @@ pub enum ShardCommit {
 #[enum_dispatch]
 pub(crate) trait ShardCommitAPI {
     fn auth_token(&self) -> &ShardAuthToken;
+    fn slot(&self) -> EncoderIndex;
+    fn committer(&self) -> EncoderIndex;
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>>;
     fn commit(&self) -> &Metadata;
 }
@@ -24,11 +29,13 @@ pub(crate) trait ShardCommitAPI {
 impl ShardCommit {
     pub(crate) fn new_v1(
         auth_token: ShardAuthToken,
+        slot: EncoderIndex,
         route: Option<Signed<Route, min_sig::BLS12381Signature>>,
         commit: Metadata,
     ) -> ShardCommit {
         ShardCommit::V1(ShardCommitV1 {
             auth_token,
+            slot,
             route,
             commit,
         })
@@ -42,8 +49,8 @@ struct ShardCommitV1 {
     // the auth token protects against replay attacks since this entire thing is signed with
     // a unique shard auth token that is specific to the shard
     auth_token: ShardAuthToken,
+    slot: EncoderIndex,
     // signed by the source (eligible inference encoder)
-    // TODO: need to correct encoder signature
     route: Option<Signed<Route, min_sig::BLS12381Signature>>,
     commit: Metadata,
 }
@@ -51,6 +58,16 @@ struct ShardCommitV1 {
 impl ShardCommitAPI for ShardCommitV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
+    }
+    fn slot(&self) -> EncoderIndex {
+        self.slot
+    }
+
+    fn committer(&self) -> EncoderIndex {
+        self.route
+            .as_ref()
+            .map(|r| r.destination())
+            .unwrap_or(self.slot)
     }
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>> {
         &self.route

@@ -7,6 +7,7 @@ use crate::{
     digest::Digest,
     error::{SharedError, SharedResult},
     scope::{Scope, ScopedMessage},
+    serialized::Serialized,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -30,7 +31,7 @@ where
 {
     pub fn new<K>(inner: T, scope: Scope, signer: &K) -> SharedResult<Self>
     where
-        K: SigningKey<Sig = S> + Signer<K>,
+        K: SigningKey<Sig = S> + Signer<S>,
     {
         let inner_digest = Digest::new(&inner)?;
         let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
@@ -64,6 +65,9 @@ where
             signature: self.signature,
             phantom: PhantomData,
         }
+    }
+    pub fn serialized(&self) -> Serialized<Signature<T, S>> {
+        Serialized::new(self.signature.clone())
     }
 }
 

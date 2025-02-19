@@ -21,7 +21,8 @@ pub enum SharedError {
 
     #[error("wrong epoch")]
     WrongEpoch,
-
+    #[error("Validation error: {0}")]
+    ValidationError(String),
     #[error("Actor error: {0}")]
     ShardNotFound(String),
 

@@ -97,7 +97,6 @@ mod tests {
             compressed.len() < original.len(),
             "Compressed data is not smaller than original data"
         );
-
         Ok(())
     }
 }

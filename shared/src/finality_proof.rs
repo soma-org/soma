@@ -21,6 +21,16 @@ pub struct BlockClaim {
     transaction: SignedTransaction,
 }
 
+impl BlockClaim {
+    pub fn new(epoch: Epoch, block_ref: BlockRef, transaction: SignedTransaction) -> Self {
+        Self {
+            epoch,
+            block_ref,
+            transaction,
+        }
+    }
+}
+
 ///Finality proof
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FinalityProof {
@@ -34,6 +44,17 @@ pub struct FinalityProof {
 }
 
 impl FinalityProof {
+    pub fn new(
+        claim: BlockClaim,
+        authorities: AuthorityBitSet,
+        signature: AuthorityAggregateSignature,
+    ) -> Self {
+        Self {
+            claim,
+            authorities,
+            signature,
+        }
+    }
     pub fn epoch(&self) -> Epoch {
         self.claim.epoch
     }

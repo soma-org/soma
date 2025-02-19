@@ -1,5 +1,6 @@
 // use consensus_config::{AuthorityIndex, Epoch, Stake};
 use fastcrypto::error::FastCryptoError;
+use shared::error::SharedError;
 use strum_macros::IntoStaticStr;
 use thiserror::Error;
 // use typed_store::TypedStoreError;
@@ -27,6 +28,8 @@ pub(crate) enum ShardError {
     #[error("Thread error: {0}")]
     ThreadError(String),
 
+    #[error("Conflicting commit: {0}")]
+    ConflictingCommit(String),
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
 
@@ -35,6 +38,9 @@ pub(crate) enum ShardError {
 
     #[error("ObjectStorage: {0}")]
     ObjectStorage(String),
+
+    #[error("Digest failure: {0}")]
+    DigestFailure(SharedError),
 
     #[error("Not found: {0}")]
     NotFound(String),
@@ -46,7 +52,7 @@ pub(crate) enum ShardError {
     MalformedCommit(bcs::Error),
 
     #[error("Error serializing: {0}")]
-    SerializationFailure(bcs::Error),
+    SerializationFailure(SharedError),
 
     #[error("Error deserializing type: {0}")]
     MalformedType(bcs::Error),

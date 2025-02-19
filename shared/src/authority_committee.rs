@@ -142,7 +142,6 @@ impl AuthorityCommittee {
     }
 }
 
-#[cfg(test)]
 impl AuthorityCommittee {
     pub fn local_test_committee(
         epoch: Epoch,
@@ -207,7 +206,7 @@ pub(crate) struct Authority {
 #[derive(
     Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize,
 )]
-pub(crate) struct AuthorityIndex(u32);
+pub struct AuthorityIndex(u32);
 
 impl AuthorityIndex {
     /// Minimum committee size is 1, so 0 index is always valid.
@@ -227,8 +226,7 @@ impl AuthorityIndex {
 
 impl AuthorityIndex {
     /// creates a new index for testing
-    #[cfg(test)]
-    pub(crate) fn new_for_test(index: u32) -> Self {
+    pub fn new_for_test(index: u32) -> Self {
         Self(index)
     }
 }
@@ -286,7 +284,7 @@ impl From<AuthorityIndex> for usize {
 }
 
 // 8 * 32 = max 256 indices
-pub(crate) type AuthorityBitSet = BitSet<AuthorityIndex, 32>;
+pub type AuthorityBitSet = BitSet<AuthorityIndex, 32>;
 
 #[cfg(test)]
 mod tests {

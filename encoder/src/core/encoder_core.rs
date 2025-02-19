@@ -34,7 +34,10 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use shared::{
     checksum::Checksum,
-    crypto::{keys::ProtocolKeyPair, AesKey},
+    crypto::{
+        keys::{EncoderKeyPair, ProtocolKeyPair},
+        AesKey,
+    },
     digest::Digest,
     metadata::{
         CompressionAPI, CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata, MetadataAPI,
@@ -65,7 +68,7 @@ pub struct EncoderCore<
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     model: ActorHandle<ModelProcessor<M>>,
     storage: ActorHandle<StorageProcessor<B>>,
-    keypair: Arc<ProtocolKeyPair>,
+    keypair: Arc<EncoderKeyPair>,
 }
 
 impl<C, M, B, BC> EncoderCore<C, M, B, BC>
@@ -83,7 +86,7 @@ where
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
         model: ActorHandle<ModelProcessor<M>>,
         storage: ActorHandle<StorageProcessor<B>>,
-        keypair: Arc<ProtocolKeyPair>,
+        keypair: Arc<EncoderKeyPair>,
     ) -> Self {
         Self {
             client,

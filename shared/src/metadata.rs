@@ -1,6 +1,7 @@
 use crate::{
     checksum::Checksum,
     crypto::{AesKey, EncryptionKey},
+    error::{SharedError, SharedResult},
 };
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -25,7 +26,7 @@ pub trait MetadataAPI {
 }
 
 /// Metadata is the top level wrapper of different versions
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[enum_dispatch(MetadataAPI)]
 pub enum Metadata {
     V1(MetadataV1),
@@ -51,7 +52,7 @@ impl Metadata {
 }
 /// Version 1 of the Metadata. Adding versioning here because while not currently sent over the wire,
 /// it is reasonable to assume that it may be.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 struct MetadataV1 {
     // notice that we also version our compression and encryption fields
     compression: Option<CompressionV1>,
@@ -96,12 +97,12 @@ pub enum Compression {
 }
 
 /// Algo is versioned independently
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum CompressionAlgorithmV1 {
     ZSTD,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CompressionV1 {
     algorithm: CompressionAlgorithmV1,
     // common field across all algorithm
@@ -140,7 +141,7 @@ pub enum Encryption {
     V1(EncryptionV1),
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum EncryptionV1 {
     // notice how different keys types can be used for the unique encryption algos
     Aes256Ctr64LE(Digest<AesKey>),
@@ -163,4 +164,123 @@ impl EncryptionAPI for EncryptionV1 {
 pub struct MetadataCommitment {
     metadata: Metadata,
     nonce: [u8; 32],
+}
+
+impl MetadataCommitment {
+    pub fn new(metadata: Metadata, nonce: [u8; 32]) -> Self {
+        MetadataCommitment { metadata, nonce }
+    }
+}
+
+pub fn verify_metadata(
+    expected_size: Option<usize>,
+    expected_shape: Option<Vec<usize>>,
+    require_compression: Option<bool>,
+    require_encryption: Option<bool>,
+    max_size: Option<usize>,
+) -> impl Fn(&Metadata) -> SharedResult<()> {
+    move |metadata: &Metadata| {
+        // Basic validations that always run
+        if metadata.size() == 0 {
+            return Err(SharedError::ValidationError("Size must be non-zero".into()));
+        }
+
+        // Shape validation
+        let shape = metadata.shape();
+        if shape.is_empty() {
+            return Err(SharedError::ValidationError("Shape cannot be empty".into()));
+        }
+        if shape.iter().any(|&dim| dim == 0) {
+            return Err(SharedError::ValidationError(
+                "Shape dimensions must be non-zero".into(),
+            ));
+        }
+
+        // Check size if specified
+        if let Some(expected_size) = expected_size {
+            if metadata.size() != expected_size {
+                return Err(SharedError::ValidationError(
+                    format!(
+                        "Size mismatch. Expected {}, got {}",
+                        expected_size,
+                        metadata.size()
+                    )
+                    .into(),
+                ));
+            }
+        }
+
+        // Check shape if specified
+        if let Some(expected_shape) = &expected_shape {
+            if metadata.shape() != expected_shape.as_slice() {
+                return Err(SharedError::ValidationError(
+                    format!(
+                        "Shape mismatch. Expected {:?}, got {:?}",
+                        expected_shape,
+                        metadata.shape()
+                    )
+                    .into(),
+                ));
+            }
+        }
+
+        // Check max size if specified
+        if let Some(max_size) = max_size {
+            if metadata.size() > max_size {
+                return Err(SharedError::ValidationError(
+                    format!(
+                        "Size {} exceeds maximum allowed size {}",
+                        metadata.size(),
+                        max_size
+                    )
+                    .into(),
+                ));
+            }
+        }
+
+        // Check compression requirements
+        match (metadata.compression(), require_compression) {
+            (Some(compression), Some(false)) => {
+                return Err(SharedError::ValidationError(
+                    "Compression not allowed for this metadata".into(),
+                ));
+            }
+            (None, Some(true)) => {
+                return Err(SharedError::ValidationError(
+                    "Compression required but not present".into(),
+                ));
+            }
+            (Some(compression), _) => {
+                let uncompressed_size = compression.uncompressed_size();
+                if uncompressed_size == 0 {
+                    return Err(SharedError::ValidationError(
+                        "Uncompressed size must be non-zero".into(),
+                    ));
+                }
+                if metadata.size() > uncompressed_size {
+                    return Err(SharedError::ValidationError(
+                        "Compressed size cannot be larger than uncompressed size".into(),
+                    ));
+                }
+            }
+            _ => {}
+        }
+
+        // Check encryption requirements
+        match (metadata.encryption(), require_encryption) {
+            (Some(_), Some(false)) => {
+                return Err(SharedError::ValidationError(
+                    "Encryption not allowed for this metadata".into(),
+                ));
+            }
+            (None, Some(true)) => {
+                return Err(SharedError::ValidationError(
+                    "Encryption required but not present".into(),
+                ));
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
 }

@@ -1,14 +1,21 @@
+use fastcrypto::bls12381::min_sig;
 use parking_lot::RwLock;
 use shared::{
-    digest::Digest, network_committee::NetworkingIndex, signed::Signed, verified::Verified,
+    digest::Digest, metadata::Metadata, network_committee::NetworkingIndex, signed::Signed,
+    verified::Verified,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     error::{ShardError, ShardResult},
     types::{
-        certified::Certified, shard::ShardRef, shard_commit::ShardCommit, shard_input::ShardInput,
+        certified::Certified,
+        encoder_committee::{EncoderIndex, Epoch},
+        shard::Shard,
+        shard_commit::{ShardCommit, ShardCommitAPI},
+        shard_input::ShardInput,
         shard_reveal::ShardReveal,
+        shard_verifier::ShardAuthToken,
     },
 };
 
@@ -22,7 +29,18 @@ pub(crate) struct MemStore {
 
 #[allow(unused)]
 struct Inner {
-    shards: BTreeMap<ShardRef, Vec<NetworkingIndex>>,
+    // epoch, shard reference, source encoder (slot)
+    commits: BTreeMap<
+        (Epoch, Digest<Shard>, EncoderIndex),
+        (
+            Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+            Metadata,
+        ),
+    >,
+    committers: BTreeMap<
+        (Epoch, Digest<Shard>, EncoderIndex),
+        Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+    >,
 }
 
 impl MemStore {
@@ -30,28 +48,58 @@ impl MemStore {
     pub(crate) const fn new() -> Self {
         Self {
             inner: RwLock::new(Inner {
-                shards: BTreeMap::new(),
+                commits: BTreeMap::new(),
+                committers: BTreeMap::new(),
             }),
         }
     }
 }
 
 impl Store for MemStore {
-    /// used to check whether the encoder has any knowledge of the shard
-    fn contains_shard(&self, shard_ref: &ShardRef) -> ShardResult<()> {
-        let inner = self.inner.read();
-        if inner.shards.contains_key(shard_ref) {
-            return Ok(());
-        }
-        Err(ShardError::DatastoreError("shard not found".to_string()))
-    }
+    fn atomic_commit(
+        &self,
+        shard_ref: Digest<Shard>,
+        signed_commit: Signed<ShardCommit, min_sig::BLS12381Signature>,
+    ) -> ShardResult<()> {
+        {
+            let epoch = signed_commit.auth_token().epoch();
+            let slot = signed_commit.slot();
+            let committer = signed_commit.committer();
+            let slot_key = (epoch, shard_ref, slot);
+            let committer_key = (epoch, shard_ref, committer);
+            let digest = Digest::new(&signed_commit).map_err(ShardError::DigestFailure)?;
+            let metadata = signed_commit.commit().clone();
+            let new_value = (digest.clone(), metadata);
+            let mut inner = self.inner.write();
 
-    fn read_shard(&self, shard_ref: &ShardRef) -> ShardResult<Vec<NetworkingIndex>> {
-        let inner = self.inner.read();
-        inner
-            .shards
-            .get(shard_ref)
-            .cloned()
-            .ok_or(ShardError::DatastoreError("shard not found".to_string()))
+            // Check both conditions first
+            let committer_check = inner.committers.get(&committer_key);
+            let slot_check = inner.commits.get(&slot_key);
+
+            match (committer_check, slot_check) {
+                // Committer has committed before
+                (Some(existing_digest), _) if existing_digest != &digest => {
+                    return Err(ShardError::ConflictingCommit(
+                        "existing commit from committer".to_string(),
+                    ));
+                }
+                // Slot is taken with different commit
+                (_, Some(existing)) if existing != &new_value => {
+                    return Err(ShardError::ConflictingCommit(
+                        "slot already has commit".to_string(),
+                    ));
+                }
+                // If we made it here, either there are no existing commits
+                // or the existing commits match exactly
+                (None, None) => {
+                    // Insert new commit
+                    inner.commits.insert(slot_key, new_value);
+                    inner.committers.insert(committer_key, digest);
+                }
+                // Everything matches, idempotent case
+                _ => {}
+            }
+            Ok(())
+        }
     }
 }

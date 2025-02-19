@@ -12,7 +12,7 @@ pub struct RevealRound;
 
 /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[enum_dispatch(ShardBlockAPI)]
+#[enum_dispatch(ShardVotesAPI<T>)]
 pub enum ShardVotes<T> {
     V1(ShardVotesV1<T>),
 }

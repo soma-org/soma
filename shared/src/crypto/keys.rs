@@ -284,6 +284,9 @@ impl EncoderKeyPair {
     pub fn generate<R: rand::Rng + fastcrypto::traits::AllowedRng>(rng: &mut R) -> Self {
         Self(bls12381::min_sig::BLS12381KeyPair::generate(rng))
     }
+    pub fn inner(&self) -> &bls12381::min_sig::BLS12381KeyPair {
+        &self.0
+    }
 
     /// Returns the public key associated with this keypair
     pub fn public(&self) -> EncoderPublicKey {

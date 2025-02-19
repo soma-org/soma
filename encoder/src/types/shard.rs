@@ -13,7 +13,8 @@ use strum_macros::Display;
 
 use super::encoder_committee::{CountUnit, EncoderIndex, Epoch};
 
-pub(crate) struct Shard {
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Shard {
     epoch: Epoch,
     minimum_inference_size: CountUnit,
     evaluation_quorum_threshold: CountUnit,

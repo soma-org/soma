@@ -1,8 +1,13 @@
 use std::{fs::File, marker::PhantomData, path::Path, sync::Arc};
 
-use shared::crypto::{
-    keys::{NetworkKeyPair, ProtocolKeyPair},
-    AesKey,
+use quick_cache::sync::Cache;
+use shared::{
+    crypto::{
+        keys::{EncoderKeyPair, NetworkKeyPair, ProtocolKeyPair},
+        AesKey,
+    },
+    digest::Digest,
+    entropy::EntropyVDF,
 };
 
 use crate::{
@@ -10,7 +15,7 @@ use crate::{
         pipelines::shard_input,
         workers::{
             compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
-            model::ModelProcessor, storage::StorageProcessor,
+            model::ModelProcessor, storage::StorageProcessor, vdf::VDFProcessor,
         },
         ActorManager,
     },
@@ -34,10 +39,14 @@ use crate::{
         datastore::mem_store::MemStore,
         object::{filesystem::FilesystemObjectStorage, ObjectStorage},
     },
-    types::{encoder_context::EncoderContext, shard},
+    types::{encoder_context::EncoderContext, shard, shard_verifier},
 };
 
-use self::{downloader::Downloader, shard_input::ShardInputProcessor};
+use self::{
+    downloader::Downloader,
+    shard_input::ShardInputProcessor,
+    shard_verifier::{ShardAuthToken, ShardVerifier, VerificationStatus},
+};
 
 use super::{
     broadcaster::Broadcaster,
@@ -80,7 +89,7 @@ impl EncoderNode {
     pub(crate) async fn start(
         encoder_context: Arc<EncoderContext>,
         network_keypair: NetworkKeyPair,
-        protocol_keypair: ProtocolKeyPair,
+        encoder_keypair: EncoderKeyPair,
         project_root: &Path,
         entry_point: &Path,
     ) -> Self {
@@ -111,7 +120,7 @@ impl EncoderNode {
         // });
 
         let blob_client = blob_network_manager.client();
-        let protocol_keypair: Arc<ProtocolKeyPair> = Arc::new(protocol_keypair);
+        let encoder_keypair = Arc::new(encoder_keypair);
 
         let default_buffer = 100_usize;
         let default_concurrency = 100_usize;
@@ -153,21 +162,28 @@ impl EncoderNode {
             compressor_handle,
             model_handle,
             storage_handle,
-            protocol_keypair.clone(),
+            encoder_keypair.clone(),
         );
+        let vdf = EntropyVDF::new(1);
+        let vdf_processor = VDFProcessor::new(vdf, 1);
+        let vdf_handle = ActorManager::new(1, vdf_processor).handle();
 
         let shard_input_processor = ShardInputProcessor::new(core, default_concurrency);
         let shard_input_manager = ActorManager::new(default_buffer, shard_input_processor);
         let shard_input_handle = shard_input_manager.handle();
 
         let pipeline_dispatcher = ActorPipelineDispatcher::new(shard_input_handle);
+        let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(64);
+        let verifier = ShardVerifier::new(cache);
 
         let store = Arc::new(MemStore::new());
         let network_service = Arc::new(EncoderInternalService::new(
             encoder_context,
             Arc::new(pipeline_dispatcher),
+            vdf_handle,
+            verifier,
             store,
-            protocol_keypair,
+            encoder_keypair,
         ));
         network_manager.start(network_service).await;
         Self { network_manager }

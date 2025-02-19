@@ -1,4 +1,4 @@
-pub(crate) mod address;
+pub mod address;
 pub mod keys;
 
 use bytes::Bytes;

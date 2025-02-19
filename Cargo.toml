@@ -29,7 +29,7 @@ tokio = { version = "1.0", features = ["full"] }
 bcs = "0.1.6"
 bs58 = "0.5.1"
 enum_dispatch = "0.3.13"
-fastcrypto = { version = "0.1.8", features = ["copy_key"] }
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", features = ["copy_key"] }
 serde = { version = "1.0", features = ["derive"] }
 bytes = { version = "1.7.1", features = ["serde"] }
 strum_macros = "0.26"

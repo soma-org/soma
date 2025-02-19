@@ -292,7 +292,7 @@ pub(crate) struct Encoder {
     /// The authority's hostname, for metrics and logging.
     hostname: String,
     /// The authority's public key as Sui identity.
-    encoder_key: EncoderPublicKey,
+    pub encoder_key: EncoderPublicKey,
     /// The authority's public key for TLS and as network identity.
     network_key: NetworkPublicKey,
     /// The digest of the probes are locked in at epoch change.
@@ -327,7 +327,7 @@ impl EncoderIndex {
 #[cfg(test)]
 impl EncoderIndex {
     /// creates an encoder index of specific modality for tests only
-    const fn new_for_test(index: u32) -> Self {
+    pub(crate) const fn new_for_test(index: u32) -> Self {
         Self(index)
     }
 }
