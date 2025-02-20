@@ -48,6 +48,8 @@ pub enum Scope {
     ShardEndorsement = 12,
     ShardCommitRoute = 13,
     ShardCertificate = 14,
+    ShardCommitVotes = 15,
+    ShardRevealVotes = 16,
 }
 
 impl TryFrom<u8> for Scope {

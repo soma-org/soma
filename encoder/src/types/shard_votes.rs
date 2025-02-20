@@ -19,6 +19,7 @@ pub enum ShardVotes<T> {
 
 #[enum_dispatch]
 pub trait ShardVotesAPI<T> {
+    fn voter(&self) -> EncoderIndex;
     fn auth_token(&self) -> &ShardAuthToken;
     fn rejects(&self) -> &[EncoderIndex];
 }
@@ -27,6 +28,7 @@ pub trait ShardVotesAPI<T> {
 struct ShardVotesV1<T> {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,
+    voter: EncoderIndex,
     /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
     rejects: Vec<EncoderIndex>,
     // type marker see `CommitRound` and `RevealRound`
@@ -34,9 +36,14 @@ struct ShardVotesV1<T> {
 }
 
 impl<T> ShardVotesV1<T> {
-    pub(crate) const fn new(auth_token: ShardAuthToken, rejects: Vec<EncoderIndex>) -> Self {
+    pub(crate) const fn new(
+        auth_token: ShardAuthToken,
+        voter: EncoderIndex,
+        rejects: Vec<EncoderIndex>,
+    ) -> Self {
         Self {
             auth_token,
+            voter,
             rejects,
             marker: PhantomData,
         }
@@ -44,6 +51,9 @@ impl<T> ShardVotesV1<T> {
 }
 
 impl<T> ShardVotesAPI<T> for ShardVotesV1<T> {
+    fn voter(&self) -> EncoderIndex {
+        self.voter
+    }
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }

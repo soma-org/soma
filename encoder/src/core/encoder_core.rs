@@ -27,11 +27,7 @@ use crate::{
         shard_reveal::{ShardReveal, ShardRevealAPI},
     },
 };
-use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use ndarray::ArrayD;
-use rand::rngs::OsRng;
-use rand::RngCore;
 use shared::{
     checksum::Checksum,
     crypto::{
@@ -43,12 +39,10 @@ use shared::{
         CompressionAPI, CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata, MetadataAPI,
     },
     network_committee::NetworkingIndex,
-    scope::Scope,
-    signed::{Signature, Signed},
+    signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
-use tokio::{sync::Semaphore, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use super::broadcaster::Broadcaster;

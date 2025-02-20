@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair, traits::Signer};
 use shared::{
-    crypto::keys::{EncoderKeyPair, ProtocolKeyPair},
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, ProtocolKeyPair},
     digest::Digest,
     metadata::verify_metadata,
     scope::Scope,
@@ -18,7 +18,7 @@ use crate::{
     networking::messaging::EncoderInternalNetworkService,
     storage::datastore::Store,
     types::{
-        certified::Certified,
+        certified::{Certified, CertifiedAPI},
         encoder_committee::EncoderIndex,
         encoder_context::EncoderContext,
         shard_commit::{ShardCommit, ShardCommitAPI},
@@ -88,7 +88,7 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             if let Some(signed_route) = signed_commit.route() {
                 // check route destination is valid (someone who is not a member of the computation set) and not the slot
                 if shard.inference_set().contains(&signed_route.destination())
-                    || &signed_route.destination() != &signed_commit.slot()
+                    || &signed_route.destination() == &signed_commit.slot()
                 {
                     return Err(shared::error::SharedError::ValidationError("s".to_string()));
                 }
@@ -153,10 +153,36 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .verify(&self.context, &self.vdf, certified_commit.auth_token())
             .await?;
         // perform verification on type and auth including signature checks
-        let verified_commit = Verified::new(certified_commit, certified_commit_bytes, |c| Ok(()))
-            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-        // send to orchestrator
-        unimplemented!()
+        let verified_certified_commit = Verified::new(
+            certified_commit,
+            certified_commit_bytes,
+            |certified_commit| {
+                let certifier_indices = certified_commit.indices();
+
+                for index in &certifier_indices {
+                    if !shard.evaluation_set().contains(index) {
+                        return Err(shared::error::SharedError::ValidationError(
+                            "index not in evaluation set".to_string(),
+                        ));
+                    }
+                }
+
+                if certifier_indices.len() < shard.evaluation_quorum_threshold() as usize {
+                    return Err(shared::error::SharedError::ValidationError(format!(
+                        "got: {:?}, needed: {}",
+                        certifier_indices,
+                        shard.evaluation_quorum_threshold()
+                    )));
+                }
+
+                certified_commit
+                    .verify(Scope::ShardCertificate, &self.context.encoder_committee)?;
+                Ok(())
+            },
+        )
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        // TODO: send to orchestrator
+        Ok(())
     }
     async fn handle_send_commit_votes(
         &self,
@@ -170,11 +196,37 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .shard_verifier
             .verify(&self.context, &self.vdf, votes.auth_token())
             .await?;
-        // perform verification on type and auth including signature checks
-        let verified_commit = Verified::new(votes, votes_bytes, |v| Ok(()))
-            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+
+        let verified_commit_votes = Verified::new(votes, votes_bytes, |votes| {
+            // verify that the author is part of the evaluation set
+            if !shard.evaluation_set().contains(&votes.voter()) {
+                return Err(shared::error::SharedError::ValidationError(
+                    "voter is not in evaluation set".to_string(),
+                ));
+            }
+            // verify that the reject encoder indexs are valid slots
+            for index in votes.rejects() {
+                if !shard.inference_set().contains(index) {
+                    return Err(shared::error::SharedError::ValidationError(
+                        "index not in inference set".to_string(),
+                    ));
+                }
+            }
+            // verify signature matches the voter
+            let _ = votes.verify(
+                Scope::ShardCommitVotes,
+                self.context
+                    .encoder_committee
+                    .encoder(votes.voter())
+                    .encoder_key
+                    .inner(),
+            )?;
+
+            Ok(())
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         // send to orchestrator
-        unimplemented!()
+        Ok(())
     }
     async fn handle_send_reveal(&self, peer: EncoderIndex, reveal_bytes: Bytes) -> ShardResult<()> {
         // convert into correct type
@@ -185,10 +237,12 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .verify(&self.context, &self.vdf, reveal.auth_token())
             .await?;
         // perform verification on type and auth including signature checks
+        // verify that the signature matches the slot and that the slot is valid for the shard
+        // database lookup for the commit metadata and verify the encryption key
         let verified_commit = Verified::new(reveal, reveal_bytes, |r| Ok(()))
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-        // send to orchestrator
-        unimplemented!()
+
+        Ok(())
     }
     async fn handle_send_reveal_votes(
         &self,
@@ -203,9 +257,38 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .verify(&self.context, &self.vdf, votes.auth_token())
             .await?;
         // perform verification on type and auth including signature checks
-        let verified_commit = Verified::new(votes, votes_bytes, |v| Ok(()))
-            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        // verify signature matches the author
+        // verify that the author is part of the evaluation set
+        // verify that the reject encoder indexs are valid slots
+        let verified_reveal_votes = Verified::new(votes, votes_bytes, |votes| {
+            // verify that the author is part of the evaluation set
+            if !shard.evaluation_set().contains(&votes.voter()) {
+                return Err(shared::error::SharedError::ValidationError(
+                    "voter is not in evaluation set".to_string(),
+                ));
+            }
+            // verify that the reject encoder indexs are valid slots
+            for index in votes.rejects() {
+                if !shard.inference_set().contains(index) {
+                    return Err(shared::error::SharedError::ValidationError(
+                        "index not in inference set".to_string(),
+                    ));
+                }
+            }
+            // verify signature matches the voter
+            let _ = votes.verify(
+                Scope::ShardRevealVotes,
+                self.context
+                    .encoder_committee
+                    .encoder(votes.voter())
+                    .encoder_key
+                    .inner(),
+            )?;
+
+            Ok(())
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         // send to orchestrator
-        unimplemented!()
+        Ok(())
     }
 }

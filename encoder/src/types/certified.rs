@@ -1,22 +1,28 @@
-use super::encoder_committee::EncoderIndex;
+use super::encoder_committee::{EncoderCommittee, EncoderIndex};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::{crypto::keys::EncoderAggregateSignature, network_committee::NetworkingIndex};
+use shared::{
+    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
+    digest::Digest,
+    error::{SharedError, SharedResult},
+    network_committee::NetworkingIndex,
+    scope::{Scope, ScopedMessage},
+};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(CertifiedAPI)]
-pub enum Certified<T> {
+pub enum Certified<T: Serialize> {
     V1(CertifiedV1<T>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct CertifiedV1<T> {
+struct CertifiedV1<T: Serialize> {
     inner: T,
     indices: Vec<EncoderIndex>,
     aggregate_signature: EncoderAggregateSignature,
 }
 
-impl<T> Certified<T> {
+impl<T: Serialize> Certified<T> {
     /// new constructs a new transaction certificate
     pub(crate) const fn new_v1(
         inner: T,
@@ -32,21 +38,40 @@ impl<T> Certified<T> {
 }
 
 #[enum_dispatch]
-trait CertifiedAPI {
+pub trait CertifiedAPI {
     fn indices(&self) -> Vec<EncoderIndex>;
     fn aggregate_signature(&self) -> &EncoderAggregateSignature;
+    fn verify(&self, scope: Scope, committee: &EncoderCommittee) -> SharedResult<()>;
 }
 
-impl<T> CertifiedAPI for CertifiedV1<T> {
+impl<T: Serialize> CertifiedAPI for CertifiedV1<T> {
     fn indices(&self) -> Vec<EncoderIndex> {
         self.indices.clone()
     }
     fn aggregate_signature(&self) -> &EncoderAggregateSignature {
         &self.aggregate_signature
     }
+
+    fn verify(&self, scope: Scope, committee: &EncoderCommittee) -> SharedResult<()> {
+        let inner_digest = Digest::new(&self.inner)?;
+        let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
+            .map_err(SharedError::SerializationFailure)?;
+        let certifier_keys: Vec<EncoderPublicKey> = self
+            .indices
+            .iter()
+            .map(|index| committee.encoder(index.clone()).encoder_key.clone())
+            .collect();
+
+        let _ = self
+            .aggregate_signature
+            .verify(&certifier_keys, &message)
+            .map_err(SharedError::SignatureVerificationFailure)?;
+
+        Ok(())
+    }
 }
 
-impl<T> std::ops::Deref for Certified<T> {
+impl<T: Serialize> std::ops::Deref for Certified<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
