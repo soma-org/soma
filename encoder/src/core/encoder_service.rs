@@ -82,23 +82,33 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
         // perform verification on type and auth including signature checks
         let verified_commit = Verified::new(signed_commit.clone(), commit_bytes, |signed_commit| {
             // check slot is valid member of computational set
+            // if the slot (the supposed eligible inference encoder) is not in the shards inference set
+            // the verification should fail. Slots do not change with routing.
             if !shard.inference_set().contains(&signed_commit.slot()) {
                 return Err(shared::error::SharedError::ValidationError("s".to_string()));
             }
+            // If there exists a route, we need to verify it, otherwise skip
             if let Some(signed_route) = signed_commit.route() {
-                // check route destination is valid (someone who is not a member of the computation set) and not the slot
+                // if the shards inference already contains the signed route this is invalid. Routing
+                // may only occur to non-eligible nodes.
                 if shard.inference_set().contains(&signed_route.destination())
+                    // check if the route destination is the original eligible slot
+                    // this redundancy is not allowed
                     || &signed_route.destination() == &signed_commit.slot()
                 {
-                    return Err(shared::error::SharedError::ValidationError("s".to_string()));
+                    return Err(shared::error::SharedError::ValidationError(
+                        "invalid route destination".to_string(),
+                    ));
                 }
 
-                // digest of route matches the auth token
+                // the digest of the auth token supplied with the commit must match the digest included in the signed
+                // route message. By forcing a signature of this digest, signed route messages cannot be replayed for different shards
                 if signed_route.auth_token_digest() != auth_token_digest {
                     return Err(shared::error::SharedError::ValidationError("s".to_string()));
                 }
 
                 // check signature of route is by the slot
+                // the original slot must sign off on the route in order to be eligible
                 let _ = signed_route.verify(
                     Scope::ShardCommitRoute,
                     self.context
@@ -110,6 +120,8 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             }
 
             // check overall signature is by the committer (slot or route destination if it exists)
+            // whoever is submitting the commit whether that is the original slot or a valid route must correctly sign
+            // off on the commit
             let _ = signed_commit.verify(
                 Scope::ShardCommitRoute,
                 self.context
@@ -118,6 +130,7 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     .encoder_key
                     .inner(),
             )?;
+            // the metadata must be valid
 
             let metadata = signed_commit.commit();
             // TODO: update to actually check commit size, shape, etc according to embedding standards
@@ -126,19 +139,19 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+        // the commit is idempotently committed to the store. If there is a conflict this should
+        // fail such that there is no partial signature produced that would attest to the commit
         self.store.atomic_commit(
             Digest::new(&shard).map_err(ShardError::DigestFailure)?,
             signed_commit.clone(),
         )?;
 
+        // produce the partial signature attesting to seeing the commit
         let keypair = self.encoder_keypair.inner().copy();
-
         let partial_sig = Signed::new(signed_commit, Scope::ShardCertificate, &keypair.private())
             .map_err(ShardError::SerializationFailure)?;
 
         Ok(partial_sig.serialized())
-
-        // issue signature if there are no conflicts
     }
     async fn handle_send_certified_commit(
         &self,
@@ -157,9 +170,12 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             certified_commit,
             certified_commit_bytes,
             |certified_commit| {
+                // pull out the idices of the certificate
                 let certifier_indices = certified_commit.indices();
 
                 for index in &certifier_indices {
+                    // for each index we need to ensure that they are members of the evaluation set
+                    // evaluation sets do not change for a given shard so this works with routing
                     if !shard.evaluation_set().contains(index) {
                         return Err(shared::error::SharedError::ValidationError(
                             "index not in evaluation set".to_string(),
@@ -167,6 +183,9 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     }
                 }
 
+                // TODO: need to ensure that these idicies are unique rn there is an attack where you can submit the same valid index multiple times
+
+                // to be a valid certificate, the number of unique indicies must meet the quorum threshold
                 if certifier_indices.len() < shard.evaluation_quorum_threshold() as usize {
                     return Err(shared::error::SharedError::ValidationError(format!(
                         "got: {:?}, needed: {}",
@@ -175,8 +194,12 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     )));
                 }
 
+                // verify the validity of the certificate (verify the agg signature against the public keys of the index)
                 certified_commit
                     .verify(Scope::ShardCertificate, &self.context.encoder_committee)?;
+
+                // It is redundant to reverify the signed commit that is certified since a quorum must be met to produce a valid certificate
+                // at least a quorum number of evaluators must validate the commit, and honest assumptions are out of scope here
                 Ok(())
             },
         )
@@ -198,13 +221,16 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .await?;
 
         let verified_commit_votes = Verified::new(votes, votes_bytes, |votes| {
-            // verify that the author is part of the evaluation set
+            // the voter must be a member of the evaluation set
+            // evaluation sets do not change for a given shard
             if !shard.evaluation_set().contains(&votes.voter()) {
                 return Err(shared::error::SharedError::ValidationError(
                     "voter is not in evaluation set".to_string(),
                 ));
             }
-            // verify that the reject encoder indexs are valid slots
+            // verify that the reject encoder indices are valid slots
+            // may want to check for uniqueness but since acceptance votes are implicit
+            // and rejection votes are implicit multiple redundant votes is fine unless they are counted twice
             for index in votes.rejects() {
                 if !shard.inference_set().contains(index) {
                     return Err(shared::error::SharedError::ValidationError(
@@ -212,7 +238,8 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     ));
                 }
             }
-            // verify signature matches the voter
+            // the signature of the vote message must match the voter. The inclusion of the voter in the
+            // evaluation set is checked above
             let _ = votes.verify(
                 Scope::ShardCommitVotes,
                 self.context
@@ -236,12 +263,31 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .shard_verifier
             .verify(&self.context, &self.vdf, reveal.auth_token())
             .await?;
-        // perform verification on type and auth including signature checks
-        // verify that the signature matches the slot and that the slot is valid for the shard
-        // database lookup for the commit metadata and verify the encryption key
-        let verified_commit = Verified::new(reveal, reveal_bytes, |r| Ok(()))
-            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        let verified_commit = Verified::new(reveal, reveal_bytes, |reveal| {
+            // the reveal slot must be a member of the shard inference slot
+            // in the case of routing, the original slot is still expected to handle the reveal since this allows
+            // routing to take place without needing to reorganize all the communication of the shard
+            if !shard.inference_set().contains(&reveal.slot()) {
+                return Err(shared::error::SharedError::ValidationError(
+                    "index not in inference set".to_string(),
+                ));
+            }
+            // the reveal message must be signed by the slot
+            let _ = reveal.verify(
+                Scope::ShardReveal,
+                self.context
+                    .encoder_committee
+                    .encoder(reveal.slot())
+                    .encoder_key
+                    .inner(),
+            )?;
+            Ok(())
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+        // TODO: need to look up the metadata associated with the specific shard and slot. If the metadata does
+        // not exist then throw an error. If the revealed key does not match the digest in the metadata, also
+        // throw an error.
         Ok(())
     }
     async fn handle_send_reveal_votes(
@@ -256,18 +302,17 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .shard_verifier
             .verify(&self.context, &self.vdf, votes.auth_token())
             .await?;
-        // perform verification on type and auth including signature checks
-        // verify signature matches the author
-        // verify that the author is part of the evaluation set
-        // verify that the reject encoder indexs are valid slots
         let verified_reveal_votes = Verified::new(votes, votes_bytes, |votes| {
-            // verify that the author is part of the evaluation set
+            // the voter must be a member of the evaluation set
+            // evaluation sets do not change for a given shard
             if !shard.evaluation_set().contains(&votes.voter()) {
                 return Err(shared::error::SharedError::ValidationError(
                     "voter is not in evaluation set".to_string(),
                 ));
             }
-            // verify that the reject encoder indexs are valid slots
+            // verify that the reject encoder indices are valid slots
+            // may want to check for uniqueness but since acceptance votes are implicit
+            // and rejection votes are implicit multiple redundant votes is fine unless they are counted twice
             for index in votes.rejects() {
                 if !shard.inference_set().contains(index) {
                     return Err(shared::error::SharedError::ValidationError(
@@ -275,7 +320,8 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     ));
                 }
             }
-            // verify signature matches the voter
+            // the signature of the vote message must match the voter. The inclusion of the voter in the
+            // evaluation set is checked above
             let _ = votes.verify(
                 Scope::ShardRevealVotes,
                 self.context

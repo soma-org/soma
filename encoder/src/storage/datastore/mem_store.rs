@@ -1,7 +1,11 @@
 use fastcrypto::bls12381::min_sig;
 use parking_lot::RwLock;
 use shared::{
-    digest::Digest, metadata::Metadata, network_committee::NetworkingIndex, signed::Signed,
+    crypto::AesKey,
+    digest::Digest,
+    metadata::{EncryptionAPI, Metadata, MetadataAPI},
+    network_committee::NetworkingIndex,
+    signed::Signed,
     verified::Verified,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -100,6 +104,32 @@ impl Store for MemStore {
                 _ => {}
             }
             Ok(())
+        }
+    }
+    fn check_reveal(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        slot: EncoderIndex,
+        key_digest: Digest<AesKey>,
+    ) -> ShardResult<()> {
+        let slot_key = (epoch, shard_ref, slot);
+        let mut inner = self.inner.read();
+        match inner.commits.get(&slot_key) {
+            Some((_, metadata)) => match metadata.encryption() {
+                Some(encryption) => {
+                    if encryption.key_digest() != key_digest {
+                        return Err(ShardError::InvalidReveal("sss".to_string()));
+                    }
+                    return Ok(());
+                }
+                None => {
+                    return Err(ShardError::InvalidReveal("sss".to_string()));
+                }
+            },
+            None => {
+                return Err(ShardError::InvalidReveal("sss".to_string()));
+            }
         }
     }
 }

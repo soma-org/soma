@@ -30,6 +30,8 @@ pub(crate) enum ShardError {
 
     #[error("Conflicting commit: {0}")]
     ConflictingCommit(String),
+    #[error("invalid reveal: {0}")]
+    InvalidReveal(String),
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
 
