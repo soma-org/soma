@@ -1,7 +1,6 @@
 use quick_cache::sync::Cache;
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::AesKey,
     digest::Digest,
     entropy::{BlockEntropyOutput, BlockEntropyProof},
     finality_proof::FinalityProof,
@@ -159,7 +158,6 @@ mod tests {
         crypto::{
             address::Address,
             keys::{AuthorityAggregateSignature, AuthoritySignature, ProtocolKeySignature},
-            AesKey,
         },
         digest::Digest,
         entropy::{BlockEntropyOutput, BlockEntropyProof, EntropyAPI, EntropyVDF},

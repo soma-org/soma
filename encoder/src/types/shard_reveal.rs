@@ -1,6 +1,6 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::crypto::AesKey;
+use shared::crypto::EncryptionKey;
 
 use super::{encoder_committee::EncoderIndex, shard_verifier::ShardAuthToken};
 
@@ -18,18 +18,22 @@ pub(crate) trait ShardRevealAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn slot(&self) -> EncoderIndex;
     /// returns the encryption key
-    fn key(&self) -> &AesKey;
+    fn key(&self) -> &EncryptionKey;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ShardRevealV1 {
     auth_token: ShardAuthToken,
     slot: EncoderIndex,
-    key: AesKey,
+    key: EncryptionKey,
 }
 
 impl ShardRevealV1 {
-    pub(crate) const fn new(auth_token: ShardAuthToken, slot: EncoderIndex, key: AesKey) -> Self {
+    pub(crate) const fn new(
+        auth_token: ShardAuthToken,
+        slot: EncoderIndex,
+        key: EncryptionKey,
+    ) -> Self {
         Self {
             auth_token,
             slot,
@@ -45,7 +49,7 @@ impl ShardRevealAPI for ShardRevealV1 {
     fn slot(&self) -> EncoderIndex {
         self.slot
     }
-    fn key(&self) -> &AesKey {
+    fn key(&self) -> &EncryptionKey {
         &self.key
     }
 }

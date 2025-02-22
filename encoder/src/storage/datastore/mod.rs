@@ -3,20 +3,14 @@
 pub(crate) mod mem_store;
 
 use fastcrypto::bls12381::min_sig;
-use shared::{
-    crypto::AesKey, digest::Digest, network_committee::NetworkingIndex, signed::Signed,
-    verified::Verified,
-};
+use shared::{crypto::EncryptionKey, digest::Digest, signed::Signed};
 
 use crate::{
     error::ShardResult,
     types::{
-        certified::Certified,
         encoder_committee::{EncoderIndex, Epoch},
-        shard::{Shard, ShardRef},
+        shard::Shard,
         shard_commit::ShardCommit,
-        shard_input::ShardInput,
-        shard_reveal::ShardReveal,
     },
 };
 
@@ -32,6 +26,6 @@ pub(crate) trait Store: Send + Sync + 'static {
         epoch: Epoch,
         shard_ref: Digest<Shard>,
         slot: EncoderIndex,
-        reveal_ref: Digest<AesKey>,
+        reveal_ref: Digest<EncryptionKey>,
     ) -> ShardResult<()>;
 }

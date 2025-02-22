@@ -1,41 +1,32 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use bytes::Bytes;
-use tokio::sync::Semaphore;
 
-use crate::{
-    error::ShardResult,
-    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::object::ObjectPath,
-};
+use crate::error::ShardError;
 
 use async_trait::async_trait;
-use shared::crypto::Encryptor;
+use shared::crypto::{EncryptionKey, Encryptor};
 
 use crate::actors::{ActorMessage, Processor};
 
-pub(crate) struct EncryptionProcessor<K, E: Encryptor<K>> {
+pub(crate) struct EncryptionProcessor<E: Encryptor> {
     encryptor: Arc<E>,
-    marker: PhantomData<K>,
 }
 
-impl<K, E: Encryptor<K>> EncryptionProcessor<K, E> {
+impl<E: Encryptor> EncryptionProcessor<E> {
     pub(crate) fn new(encryptor: Arc<E>) -> Self {
-        Self {
-            encryptor,
-            marker: PhantomData,
-        }
+        Self { encryptor }
     }
 }
 
-pub(crate) enum EncryptionInput<K> {
-    Encrypt(K, Bytes),
-    Decrypt(K, Bytes),
+pub(crate) enum EncryptionInput {
+    Encrypt(EncryptionKey, Bytes),
+    Decrypt(EncryptionKey, Bytes),
 }
 
 #[async_trait]
-impl<K: Sync + Send + 'static, E: Encryptor<K>> Processor for EncryptionProcessor<K, E> {
-    type Input = EncryptionInput<K>;
+impl<E: Encryptor> Processor for EncryptionProcessor<E> {
+    type Input = EncryptionInput;
     type Output = Bytes;
 
     async fn process(&self, msg: ActorMessage<Self>) {
@@ -44,11 +35,15 @@ impl<K: Sync + Send + 'static, E: Encryptor<K>> Processor for EncryptionProcesso
         let _ = tokio::task::spawn_blocking(move || match msg.input {
             EncryptionInput::Encrypt(key, contents) => {
                 let encrypted = encryptor.encrypt(key, contents);
-                let _ = msg.sender.send(Ok(encrypted));
+                let _ = msg
+                    .sender
+                    .send(encrypted.map_err(|_| ShardError::EncryptionFailed));
             }
             EncryptionInput::Decrypt(key, contents) => {
                 let decrypted = encryptor.decrypt(key, contents);
-                let _ = msg.sender.send(Ok(decrypted));
+                let _ = msg
+                    .sender
+                    .send(decrypted.map_err(|_| ShardError::EncryptionFailed));
             }
         })
         .await;

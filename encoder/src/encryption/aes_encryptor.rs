@@ -2,30 +2,35 @@ use aes::cipher::StreamCipher;
 use bytes::{Bytes, BytesMut};
 use crypto_common::KeyIvInit;
 
-use shared::crypto::{AesKey, Encryptor};
+use shared::{
+    crypto::{EncryptionKey, Encryptor},
+    error::SharedResult,
+};
 
 type Aes256Ctr64LE = ctr::Ctr64LE<aes::Aes256>;
 
 pub(crate) struct Aes256Ctr64LEEncryptor {}
 
 impl Aes256Ctr64LEEncryptor {
-    const NONCE: [u8; 16] = [0u8; 16];
-
     pub(crate) fn new() -> Self {
         Self {}
     }
 }
 
-impl Encryptor<AesKey> for Aes256Ctr64LEEncryptor {
-    fn encrypt(&self, key: AesKey, contents: Bytes) -> Bytes {
-        let mut cipher = Aes256Ctr64LE::new(&key, &Self::NONCE.into());
-        let mut buffer = BytesMut::with_capacity(contents.len());
-        buffer.extend_from_slice(&contents);
-        cipher.apply_keystream(&mut buffer);
-        buffer.freeze()
+impl Encryptor for Aes256Ctr64LEEncryptor {
+    fn encrypt(&self, key: EncryptionKey, contents: Bytes) -> SharedResult<Bytes> {
+        match key {
+            EncryptionKey::Aes256(k) => {
+                let mut cipher = Aes256Ctr64LE::new(&k.key, &k.iv.into());
+                let mut buffer = BytesMut::with_capacity(contents.len());
+                buffer.extend_from_slice(&contents);
+                cipher.apply_keystream(&mut buffer);
+                return Ok(buffer.freeze());
+            }
+        }
     }
 
-    fn decrypt(&self, key: AesKey, contents: Bytes) -> Bytes {
+    fn decrypt(&self, key: EncryptionKey, contents: Bytes) -> SharedResult<Bytes> {
         // CTR mode is symmetric, so encryption and decryption are the same
         self.encrypt(key, contents)
     }
@@ -35,7 +40,9 @@ impl Encryptor<AesKey> for Aes256Ctr64LEEncryptor {
 mod tests {
     use super::*;
     use arbtest::{arbitrary, arbtest};
+    use bcs::from_bytes;
     use bytes::Bytes;
+    use shared::crypto::{Aes256IV, Aes256Key};
 
     #[test]
     fn encryption_decryption_roundtrip() {
@@ -44,7 +51,13 @@ mod tests {
         arbtest(|u| {
             // Generate a random 256-bit key
             let key_bytes: [u8; 32] = u.arbitrary()?;
-            let aes_key = AesKey::from(key_bytes);
+            let aes_key = Aes256Key::from(key_bytes);
+            let aes_iv = Aes256IV {
+                iv: [0u8; 16],
+                key: aes_key,
+            };
+
+            let encryption_key = EncryptionKey::Aes256(aes_iv);
 
             // Generate random contents
             let contents: [u8; 32] = u.arbitrary()?;
@@ -52,9 +65,13 @@ mod tests {
             let encryptor = Aes256Ctr64LEEncryptor::new();
 
             // Encrypt
-            let encrypted = encryptor.encrypt(aes_key.clone(), Bytes::from(contents.to_vec()));
+            let encrypted = encryptor
+                .encrypt(encryption_key.clone(), Bytes::from(contents.to_vec()))
+                .unwrap();
             // Decrypt
-            let decrypted = encryptor.decrypt(aes_key, encrypted.clone());
+            let decrypted = encryptor
+                .decrypt(encryption_key, encrypted.clone())
+                .unwrap();
 
             // Assert that the roundtrip is identical
             assert_eq!(decrypted.as_ref(), contents.as_slice());

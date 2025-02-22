@@ -15,7 +15,8 @@ use thiserror::Error;
 pub(crate) enum ShardError {
     #[error("Quorum failed")]
     QuorumFailed,
-
+    #[error("Encryption failed")]
+    EncryptionFailed,
     #[error("weighted sample error: {0}")]
     WeightedSampleError(String),
 

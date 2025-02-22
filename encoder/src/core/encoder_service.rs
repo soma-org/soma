@@ -183,8 +183,6 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     }
                 }
 
-                // TODO: need to ensure that these idicies are unique rn there is an attack where you can submit the same valid index multiple times
-
                 // to be a valid certificate, the number of unique indicies must meet the quorum threshold
                 if certifier_indices.len() < shard.evaluation_quorum_threshold() as usize {
                     return Err(shared::error::SharedError::ValidationError(format!(
@@ -194,9 +192,10 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     )));
                 }
 
-                // verify the validity of the certificate (verify the agg signature against the public keys of the index)
+                // checks to ensure that the number of unique indices meets quorum and verifies the agg signature
+                // using the corresponding public keys from those indices
                 certified_commit
-                    .verify(Scope::ShardCertificate, &self.context.encoder_committee)?;
+                    .verify_quorum(Scope::ShardCertificate, &self.context.encoder_committee)?;
 
                 // It is redundant to reverify the signed commit that is certified since a quorum must be met to produce a valid certificate
                 // at least a quorum number of evaluators must validate the commit, and honest assumptions are out of scope here
@@ -263,7 +262,7 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             .shard_verifier
             .verify(&self.context, &self.vdf, reveal.auth_token())
             .await?;
-        let verified_commit = Verified::new(reveal, reveal_bytes, |reveal| {
+        let verified_commit = Verified::new(reveal.clone(), reveal_bytes, |reveal| {
             // the reveal slot must be a member of the shard inference slot
             // in the case of routing, the original slot is still expected to handle the reveal since this allows
             // routing to take place without needing to reorganize all the communication of the shard
@@ -285,9 +284,15 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-        // TODO: need to look up the metadata associated with the specific shard and slot. If the metadata does
-        // not exist then throw an error. If the revealed key does not match the digest in the metadata, also
-        // throw an error.
+        let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
+        let reveal_digest = Digest::new(reveal.key()).map_err(ShardError::DigestFailure)?;
+
+        let _ = self.store.check_reveal(
+            reveal.auth_token().epoch(),
+            shard_ref,
+            reveal.slot(),
+            reveal_digest,
+        )?;
         Ok(())
     }
     async fn handle_send_reveal_votes(

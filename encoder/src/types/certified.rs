@@ -41,7 +41,7 @@ impl<T: Serialize> Certified<T> {
 pub trait CertifiedAPI {
     fn indices(&self) -> Vec<EncoderIndex>;
     fn aggregate_signature(&self) -> &EncoderAggregateSignature;
-    fn verify(&self, scope: Scope, committee: &EncoderCommittee) -> SharedResult<()>;
+    fn verify_quorum(&self, scope: Scope, committee: &EncoderCommittee) -> SharedResult<()>;
 }
 
 impl<T: Serialize> CertifiedAPI for CertifiedV1<T> {
@@ -52,12 +52,28 @@ impl<T: Serialize> CertifiedAPI for CertifiedV1<T> {
         &self.aggregate_signature
     }
 
-    fn verify(&self, scope: Scope, committee: &EncoderCommittee) -> SharedResult<()> {
+    fn verify_quorum(&self, scope: Scope, committee: &EncoderCommittee) -> SharedResult<()> {
+        let unique_indices: std::collections::HashSet<_> = self.indices.iter().cloned().collect();
+
+        // Get evaluation quorum threshold from committee
+        let threshold = committee.evaluation_quorum_threshold();
+
+        // Check if we have enough unique indices to meet quorum
+        if unique_indices.len() < threshold as usize {
+            return Err(SharedError::ValidationError(format!(
+                "got: {} unique indices, needed: {}",
+                unique_indices.len(),
+                threshold
+            )));
+        }
+
+        // Proceed with signature verification using unique indices only
         let inner_digest = Digest::new(&self.inner)?;
         let message = bcs::to_bytes(&ScopedMessage::new(scope, inner_digest))
             .map_err(SharedError::SerializationFailure)?;
-        let certifier_keys: Vec<EncoderPublicKey> = self
-            .indices
+
+        // Collect public keys only for unique indices
+        let certifier_keys: Vec<EncoderPublicKey> = unique_indices
             .iter()
             .map(|index| committee.encoder(index.clone()).encoder_key.clone())
             .collect();

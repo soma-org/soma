@@ -1,6 +1,6 @@
 use crate::{
     checksum::Checksum,
-    crypto::{AesKey, EncryptionKey},
+    crypto::EncryptionKey,
     error::{SharedError, SharedResult},
 };
 use enum_dispatch::enum_dispatch;
@@ -132,7 +132,7 @@ impl CompressionAPI for CompressionV1 {
 pub trait EncryptionAPI {
     /// key digest only needs to return a type that impl EncryptionKey which allows
     /// the underlying Encryption Enum to store different keys
-    fn key_digest(&self) -> &Digest<impl EncryptionKey>;
+    fn key_digest(&self) -> Digest<EncryptionKey>;
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
@@ -144,14 +144,14 @@ pub enum Encryption {
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum EncryptionV1 {
     // notice how different keys types can be used for the unique encryption algos
-    Aes256Ctr64LE(Digest<AesKey>),
+    Aes256Ctr64LE(Digest<EncryptionKey>),
 }
 
 impl EncryptionAPI for EncryptionV1 {
-    fn key_digest(&self) -> &Digest<impl EncryptionKey> {
+    fn key_digest(&self) -> Digest<EncryptionKey> {
         match self {
             // return the digest but match each key accordingly
-            EncryptionV1::Aes256Ctr64LE(digest) => digest,
+            EncryptionV1::Aes256Ctr64LE(digest) => digest.clone(),
         }
     }
 }

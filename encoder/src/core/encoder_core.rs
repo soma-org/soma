@@ -32,7 +32,7 @@ use shared::{
     checksum::Checksum,
     crypto::{
         keys::{EncoderKeyPair, ProtocolKeyPair},
-        AesKey,
+        EncryptionKey,
     },
     digest::Digest,
     metadata::{
@@ -57,7 +57,7 @@ pub struct EncoderCore<
     broadcaster: Arc<Broadcaster<C>>,
     downloader: ActorHandle<Downloader<BC>>,
     // TODO: potentially change this to be a generic
-    encryptor: ActorHandle<EncryptionProcessor<AesKey, Aes256Ctr64LEEncryptor>>,
+    encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
     // TODO: potentially change this to be a generic
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     model: ActorHandle<ModelProcessor<M>>,
@@ -76,7 +76,7 @@ where
         client: Arc<C>,
         broadcaster: Arc<Broadcaster<C>>,
         downloader: ActorHandle<Downloader<BC>>,
-        encryptor: ActorHandle<EncryptionProcessor<AesKey, Aes256Ctr64LEEncryptor>>,
+        encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
         model: ActorHandle<ModelProcessor<M>>,
         storage: ActorHandle<StorageProcessor<B>>,

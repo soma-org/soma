@@ -2,10 +2,7 @@ use std::{fs::File, marker::PhantomData, path::Path, sync::Arc};
 
 use quick_cache::sync::Cache;
 use shared::{
-    crypto::{
-        keys::{EncoderKeyPair, NetworkKeyPair, ProtocolKeyPair},
-        AesKey,
-    },
+    crypto::keys::{EncoderKeyPair, NetworkKeyPair, ProtocolKeyPair},
     digest::Digest,
     entropy::EntropyVDF,
 };
@@ -134,7 +131,7 @@ impl EncoderNode {
         let downloader_manager = ActorManager::new(default_buffer, download_processor);
         let downloader_handle = downloader_manager.handle();
 
-        let encryptor_processor: EncryptionProcessor<AesKey, Aes256Ctr64LEEncryptor> =
+        let encryptor_processor: EncryptionProcessor<Aes256Ctr64LEEncryptor> =
             EncryptionProcessor::new(Arc::new(Aes256Ctr64LEEncryptor::new()));
         let encryptor_manager = ActorManager::new(default_buffer, encryptor_processor);
         let encryptor_handle = encryptor_manager.handle();
