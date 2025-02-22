@@ -83,10 +83,11 @@ impl StateAccumulator {
         epoch_store: Arc<AuthorityPerEpochStore>,
         last_commit_of_epoch: CommitIndex,
     ) -> SomaResult<ECMHLiveObjectSetDigest> {
-        Ok(self
+        let digest = self
             .accumulate_epoch(&epoch_store, last_commit_of_epoch)?
-            .digest()
-            .into())
+            .digest();
+        info!("Digest epoch: {}", digest);
+        Ok(digest.into())
     }
 
     /// Accumulates the effects of a single checkpoint and persists the accumulator.
@@ -96,9 +97,14 @@ impl StateAccumulator {
         commit: CommitIndex,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult<Accumulator> {
-        if let Some(acc) = epoch_store.get_state_hash_for_commit(&commit)? {
-            return Ok(acc);
-        }
+        // if let Some(acc) = epoch_store.get_state_hash_for_commit(&commit)? {
+        //     info!(
+        //         "Already have state hash for this commit {}: {}",
+        //         commit,
+        //         acc.digest()
+        //     );
+        //     return Ok(acc);
+        // }
 
         let acc = self.accumulate_effects(effects.clone());
 
@@ -131,14 +137,14 @@ impl StateAccumulator {
         // Normally this is fine, since the notify_read_running_root(commit_index - 1) will
         // work normally. But if there is only one commit in the epoch, that call will hang
         // forever, since the previous commit belongs to the previous epoch.
-        if epoch_store.get_running_root_accumulator(&commit)?.is_some() {
-            debug!(
-                "accumulate_running_root {:?} {:?} already exists",
-                epoch_store.epoch(),
-                commit
-            );
-            return Ok(());
-        }
+        // if epoch_store.get_running_root_accumulator(&commit)?.is_some() {
+        //     debug!(
+        //         "accumulate_running_root {:?} {:?} already exists",
+        //         epoch_store.epoch(),
+        //         commit
+        //     );
+        //     return Ok(());
+        // }
 
         let mut running_root = if commit == 0 {
             // we're at genesis and need to start from scratch
@@ -189,7 +195,7 @@ impl StateAccumulator {
         epoch_store.insert_running_root_accumulator(&commit, &running_root)?;
 
         debug!(
-            "Finalized root state hash for epoch (up to commit {}): {}",
+            "Accumulated commit {} to running root accumulator: {}",
             commit,
             running_root.clone().digest(),
         );

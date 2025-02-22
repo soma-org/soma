@@ -17,9 +17,10 @@ use tracing::{error, info};
 use types::{
     base::{AuthorityName, ConciseableName, SomaAddress},
     committee::{CommitteeTrait, EpochId},
-    config::node_config::NodeConfig,
+    config::{node_config::NodeConfig, p2p_config::SeedPeer},
     error::SomaResult,
     genesis::Genesis,
+    peer_id::PeerId,
     system_state::{SystemState, SystemStateTrait},
     transaction::Transaction,
 };
@@ -107,8 +108,24 @@ impl TestCluster {
         &mut self,
         genesis_config: ValidatorGenesisConfig,
     ) -> SomaNodeHandle {
-        let node_config = ValidatorConfigBuilder::new()
-            .build(genesis_config, self.swarm.config().genesis.clone());
+        let seed_peers = self
+            .swarm
+            .config()
+            .validator_configs
+            .iter()
+            .map(|config| SeedPeer {
+                peer_id: Some(PeerId(
+                    config.network_key_pair().public().into_inner().0.to_bytes(),
+                )),
+                address: config.p2p_config.external_address.clone().unwrap(),
+            })
+            .collect();
+
+        let node_config = ValidatorConfigBuilder::new().build(
+            genesis_config,
+            self.swarm.config().genesis.clone(),
+            seed_peers,
+        );
         self.swarm.spawn_new_node(node_config).await
     }
 
@@ -294,6 +311,13 @@ impl TestClusterBuilder {
     pub fn set_network_config(mut self, network_config: NetworkConfig) -> Self {
         assert!(self.genesis_config.is_none() && self.network_config.is_none());
         self.network_config = Some(network_config);
+        self
+    }
+
+    pub fn with_epoch_duration_ms(mut self, epoch_duration_ms: u64) -> Self {
+        self.get_or_init_genesis_config()
+            .parameters
+            .epoch_duration_ms = epoch_duration_ms;
         self
     }
 

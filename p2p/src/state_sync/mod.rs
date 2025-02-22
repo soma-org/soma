@@ -947,9 +947,8 @@ async fn fetch_blocks_batch(
                             })
                             .collect(),
                         highest_accepted_rounds: vec![],
-                        epoch: 0,
                     })
-                    .await.map_err(|e| ConsensusError::NetworkRequest(format!("Network error while streaming blocks")))?
+                    .await.map_err(|e| ConsensusError::NetworkRequest(format!("Network error while streaming blocks {}", e)))?
                     .into_inner();
 
                 let mut chunk_serialized_blocks = vec![];

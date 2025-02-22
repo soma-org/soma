@@ -367,7 +367,6 @@ impl<C: NetworkClient> CommitSyncer<C> {
                         .network_client
                         .fetch_blocks(
                             target_authority,
-                            inner.context.committee.epoch(),
                             request_block_refs.to_vec(),
                             vec![],
                             FETCH_BLOCKS_TIMEOUT,

@@ -69,7 +69,7 @@ impl CommitObserver {
         let committed_sub_dags = self.commit_interpreter.handle_commit(committed_leaders);
         let mut sent_sub_dags = Vec::with_capacity(committed_sub_dags.len());
         for committed_sub_dag in committed_sub_dags.into_iter() {
-            // TODO: If commit is the last commit of epoch, wait to send until ensuring it has enough votes (store.read_commit_votes)
+            // If commit is the last commit of epoch, wait to send until ensuring it has enough votes (store.read_commit_votes)
             if committed_sub_dag.is_last_commit_of_epoch() {
                 self.pending_last_commit = Some(committed_sub_dag.clone());
                 sent_sub_dags.push(committed_sub_dag);

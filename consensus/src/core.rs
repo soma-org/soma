@@ -538,7 +538,9 @@ impl Core {
         self.add_accepted_blocks(vec![verified_block.clone()]);
 
         // Ensure the new block and its ancestors are persisted, before broadcasting it.
-        self.dag_state.write().flush();
+        self.dag_state
+            .write()
+            .flush(self.received_last_commit_of_epoch);
 
         // Update internal state.
         self.last_proposed_block = verified_block.clone();
@@ -556,7 +558,9 @@ impl Core {
         if self.received_last_commit_of_epoch {
             // Don't create new commits, just try to send last commit if it has enough votes
             // First ensure any new commit votes are persisted
-            self.dag_state.write().flush();
+            self.dag_state
+                .write()
+                .flush(self.received_last_commit_of_epoch);
 
             return match self.commit_observer.try_send_last_commit()? {
                 Some(subdag) => {

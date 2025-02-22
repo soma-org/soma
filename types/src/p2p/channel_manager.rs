@@ -517,8 +517,6 @@ async fn handle_connection(
     let (peer_id, client_public_key) = extract_peer_info_from_tls(&tls_stream)?;
     // TODO: check that client_public_key is in the list of allowed peers
 
-    // TODO: Dial peer back here to get a channel and add to active peers
-
     // Setup service stack
     let svc = ServiceBuilder::new()
         .add_extension(PeerInfo { peer_id })

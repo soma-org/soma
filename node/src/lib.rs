@@ -516,32 +516,6 @@ impl SomaNode {
         validator_server_handle: JoinHandle<Result<()>>,
         // validator_overload_monitor_handle: Option<JoinHandle<()>>,
     ) -> Result<ValidatorComponents> {
-        // let (checkpoint_service, checkpoint_service_exit) = Self::start_checkpoint_service(
-        //     config,
-        //     consensus_adapter.clone(),
-        //     checkpoint_store,
-        //     epoch_store.clone(),
-        //     state.clone(),
-        //     state_sync_handle,
-        //    TODO: accumulator,
-        //     checkpoint_metrics.clone(),
-        // );
-
-        // if epoch_store.randomness_state_enabled() {
-        //     let randomness_manager = RandomnessManager::try_new(
-        //         Arc::downgrade(&epoch_store),
-        //         Box::new(consensus_adapter.clone()),
-        //         randomness_handle,
-        //         config.protocol_key_pair(),
-        //     )
-        //     .await;
-        //     if let Some(randomness_manager) = randomness_manager {
-        //         epoch_store
-        //             .set_randomness_manager(randomness_manager)
-        //             .await?;
-        //     }
-        // }
-
         let throughput_calculator = Arc::new(ConsensusThroughputCalculator::new(None));
 
         let throughput_profiler = Arc::new(ConsensusThroughputProfiler::new(

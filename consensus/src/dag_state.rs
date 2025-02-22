@@ -682,10 +682,14 @@ impl DagState {
 
     /// After each flush, DagState becomes persisted in storage and it expected to recover
     /// all internal states from storage after restarts.
-    pub(crate) fn flush(&mut self) {
+    pub(crate) fn flush(&mut self, no_commits: bool) {
         // Flush buffered data to storage.
         let blocks = std::mem::take(&mut self.blocks_to_write);
-        let commits = std::mem::take(&mut self.commits_to_write);
+        let commits = if !no_commits {
+            std::mem::take(&mut self.commits_to_write)
+        } else {
+            vec![]
+        };
         let commit_info_to_write = std::mem::take(&mut self.commit_info_to_write);
         // let commit_info_to_write = if self
         //     .context
@@ -1243,7 +1247,7 @@ mod test {
             leader.unwrap().epoch(),
         ));
 
-        dag_state.flush();
+        dag_state.flush(false);
 
         // When trying to request for authority 0 at block slot 8 it should panic, as anything
         // that is <= commit_round - cached_rounds = 10 - 2 = 8 should be evicted
@@ -1357,7 +1361,7 @@ mod test {
         }
 
         // Flush the dag state
-        dag_state.flush();
+        dag_state.flush(false);
 
         // Add the rest of the blocks and commits to the dag state
         dag_state.accept_blocks(dag_builder.blocks(6..=num_rounds));
@@ -1529,7 +1533,7 @@ mod test {
 
         // WHEN we flush the DagState - after adding a commit with all the blocks, we expect this to trigger
         // a clean up in the internal cache. That will keep the all the blocks with rounds >= authority_commit_round - CACHED_ROUND.
-        dag_state.flush();
+        dag_state.flush(false);
 
         // AND we request before round 3
         let end_round = 3;
@@ -1584,7 +1588,7 @@ mod test {
 
         // Flush the store so we keep in memory only the last 1 round from the last commit for each
         // authority.
-        dag_state.flush();
+        dag_state.flush(false);
 
         // THEN the method should panic, as some authorities have already evicted rounds <= round 2
         let end_round = 2;

@@ -39,7 +39,12 @@ impl ValidatorConfigBuilder {
         self
     }
 
-    pub fn build(self, validator: ValidatorGenesisConfig, genesis: genesis::Genesis) -> NodeConfig {
+    pub fn build(
+        self,
+        validator: ValidatorGenesisConfig,
+        genesis: genesis::Genesis,
+        seed_peers: Vec<SeedPeer>,
+    ) -> NodeConfig {
         let key_path = get_key_path(&validator.key_pair);
         let config_directory = self
             .config_directory
@@ -64,16 +69,22 @@ impl ValidatorConfigBuilder {
             parameters: None,
         };
 
-        let p2p_config = P2pConfig {
-            // listen_address: Some(validator.p2p_listen_address),
-            external_address: Some(validator.p2p_address),
-            // Set a shorter timeout for checkpoint content download in tests, since
-            // checkpoint pruning also happens much faster, and network is local.
-            state_sync: Some(StateSyncConfig {
-                commit_content_timeout_ms: Some(10_000),
+        let p2p_config = {
+            P2pConfig {
+                // listen_address: Some(
+                //     self.p2p_listen_address
+                //         .unwrap_or_else(|| validator_config.p2p_listen_address),
+                // ),
+                external_address: Some(validator.p2p_address.clone()),
+                seed_peers,
+                // Set a shorter timeout for commit content download in tests, since
+                // commit pruning also happens much faster, and network is local.
+                state_sync: Some(StateSyncConfig {
+                    commit_content_timeout_ms: Some(10_000),
+                    ..Default::default()
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
+            }
         };
 
         NodeConfig {

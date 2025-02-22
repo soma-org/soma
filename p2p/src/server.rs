@@ -50,31 +50,30 @@ where
         &self,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
-        epoch: EpochId,
     ) -> ConsensusResult<Vec<Bytes>> {
         const MAX_ADDITIONAL_BLOCKS: usize = 10;
         // if block_refs.len() > self.context.parameters.max_blocks_per_fetch {
         //     return Err(ConsensusError::TooManyFetchBlocksRequested(peer));
         // }
 
-        let Some(committee) = self
-            .store
-            .get_committee(epoch)?
-            .map(|c| Committee::clone(&*c))
-        else {
-            return Err(ConsensusError::NoCommitteeForEpoch(epoch));
-        };
-
-        if !highest_accepted_rounds.is_empty() && highest_accepted_rounds.len() != committee.size()
-        {
-            return Err(ConsensusError::InvalidSizeOfHighestAcceptedRounds(
-                highest_accepted_rounds.len(),
-                committee.size(),
-            ));
-        }
+        // TODO: highest accepted rounds check
+        // if !highest_accepted_rounds.is_empty() && highest_accepted_rounds.len() != committee.size()
+        // {
+        //     return Err(ConsensusError::InvalidSizeOfHighestAcceptedRounds(
+        //         highest_accepted_rounds.len(),
+        //         committee.size(),
+        //     ));
+        // }
 
         // Some quick validation of the requested block refs
         for block in &block_refs {
+            let Some(committee) = self
+                .store
+                .get_committee(block.epoch)?
+                .map(|c| Committee::clone(&*c))
+            else {
+                return Err(ConsensusError::NoCommitteeForEpoch(block.epoch));
+            };
             if !committee.is_valid_index(block.author) {
                 return Err(ConsensusError::InvalidAuthorityIndex {
                     index: block.author,
@@ -384,9 +383,8 @@ where
             })
             .collect();
         let highest_accepted_rounds = inner.highest_accepted_rounds;
-        let epoch = inner.epoch as EpochId;
         let blocks = self
-            .handle_fetch_blocks(block_refs, highest_accepted_rounds, epoch)
+            .handle_fetch_blocks(block_refs, highest_accepted_rounds)
             .await
             .map_err(|e| tonic::Status::internal(format!("{e:?}")))?;
         let responses: std::vec::IntoIter<Result<FetchBlocksResponse, tonic::Status>> =

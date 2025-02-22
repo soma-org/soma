@@ -135,7 +135,7 @@ impl Linearizer {
         // Commit metadata can be persisted more lazily because they are recoverable. Uncommitted
         // blocks can wait to persist too.
         // But for simplicity, all unpersisted blocks and commits are flushed to storage.
-        self.dag_state.write().flush();
+        self.dag_state.write().flush(false);
 
         committed_sub_dags
     }

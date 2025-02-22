@@ -103,14 +103,12 @@ impl NetworkClient for TonicClient {
     async fn fetch_blocks(
         &self,
         peer: AuthorityIndex,
-        epoch: Epoch,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>> {
         let mut client = self.get_client(peer, timeout).await?;
         let mut request = Request::new(FetchBlocksRequest {
-            epoch,
             block_refs: block_refs
                 .iter()
                 .filter_map(|r| match bcs::to_bytes(r) {
@@ -581,6 +579,10 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                 panic!("Failed to start server: timeout");
             }
 
+            // During simtest crash/restart tests there may be an older instance of consensus running
+            // that is bound to the TCP port of `own_address` that hasn't finished relinquishing
+            // control of the port yet. So instead of crashing when the address is inuse, we will retry
+            // for a short/reasonable period of time before giving up.
             cfg_if!(
                 if #[cfg(msim)] {
                     // msim does not have a working stub for TcpSocket. So create TcpListener directly.
@@ -591,7 +593,7 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                         },
                         Err(e) => {
                             warn!("Error binding to {own_address}: {e:?}");
-                            panic!();
+                            // panic!();
                             tokio::time::sleep(Duration::from_secs(1)).await;
                         }
                     }

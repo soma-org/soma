@@ -59,7 +59,7 @@ impl Default for SystemParameters {
     // TODO: make this configurable
     fn default() -> Self {
         Self {
-            epoch_duration_ms: 999, //1000 * 60, // TODO: 1000 * 60 * 60 * 24, // 1 day
+            epoch_duration_ms: 1000 * 60, // TODO: 1000 * 60 * 60 * 24, // 1 day
             min_validator_count: 0,
             max_validator_count: 0,
             min_validator_joining_stake: 0,

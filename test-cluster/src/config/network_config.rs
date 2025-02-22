@@ -9,13 +9,14 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use types::{
     committee::{Committee, CommitteeWithNetworkMetadata},
-    config::node_config::NodeConfig,
+    config::{node_config::NodeConfig, p2p_config::SeedPeer},
     crypto::{get_key_pair_from_rng, SomaKeyPair},
     digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
     object::{Object, ObjectData, ObjectType, Version},
+    peer_id::PeerId,
     system_state::{SystemParameters, SystemState, Validator},
     temporary_store::TemporaryStore,
     transaction::VerifiedTransaction,
@@ -197,7 +198,10 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 })
                 .collect(),
             duration_since_unix_epoch.as_millis() as u64,
-            SystemParameters::default(),
+            SystemParameters {
+                epoch_duration_ms: genesis_config.parameters.epoch_duration_ms,
+                ..Default::default()
+            },
         );
         let state_object = Object::new(
             ObjectData::new_with_id(
@@ -219,12 +223,22 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         let genesis = Genesis::new(tx.clone(), effects, objects);
 
+        let seed_peers: Vec<SeedPeer> = validators
+            .iter()
+            .map(|config| SeedPeer {
+                peer_id: Some(PeerId(
+                    config.network_key_pair.public().into_inner().0.to_bytes(),
+                )),
+                address: config.p2p_address.clone(),
+            })
+            .collect();
+
         let validator_configs = validators
             .into_iter()
             .enumerate()
             .map(|(idx, validator)| {
                 let mut builder = ValidatorConfigBuilder::new();
-                builder.build(validator, genesis.clone())
+                builder.build(validator, genesis.clone(), seed_peers.clone())
             })
             .collect();
         NetworkConfig {

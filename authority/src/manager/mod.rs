@@ -125,6 +125,7 @@ impl ConsensusManagerTrait for ConsensusManager {
     }
 
     async fn shutdown(&self) {
+        info!("Shutting down consensus ...");
         let prev_active = {
             let mut active = self.active.lock();
             std::mem::replace(&mut *active, false)

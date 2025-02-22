@@ -41,6 +41,7 @@ pub struct SsfnGenesisConfig {
 pub struct GenesisConfig {
     pub ssfn_config_info: Option<Vec<SsfnGenesisConfig>>,
     pub validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
+    pub parameters: GenesisCeremonyParameters,
     pub accounts: Vec<AccountConfig>,
 }
 
@@ -162,5 +163,44 @@ impl ValidatorGenesisConfigBuilder {
             consensus_address,
             p2p_address,
         }
+    }
+}
+
+/// Initial set of parameters for a chain.
+#[derive(Serialize, Deserialize)]
+pub struct GenesisCeremonyParameters {
+    #[serde(default = "GenesisCeremonyParameters::default_timestamp_ms")]
+    pub chain_start_timestamp_ms: u64,
+
+    /// The duration of an epoch, in milliseconds.
+    #[serde(default = "GenesisCeremonyParameters::default_epoch_duration_ms")]
+    pub epoch_duration_ms: u64,
+}
+
+impl GenesisCeremonyParameters {
+    pub fn new() -> Self {
+        Self {
+            chain_start_timestamp_ms: Self::default_timestamp_ms(),
+
+            epoch_duration_ms: Self::default_epoch_duration_ms(),
+        }
+    }
+
+    fn default_timestamp_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    }
+
+    fn default_epoch_duration_ms() -> u64 {
+        // 24 hrs
+        24 * 60 * 60 * 1000
+    }
+}
+
+impl Default for GenesisCeremonyParameters {
+    fn default() -> Self {
+        Self::new()
     }
 }

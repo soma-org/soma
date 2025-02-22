@@ -59,9 +59,6 @@ pub struct FetchBlocksRequest {
     // and its length should be the same as the committee size.
     #[prost(uint32, repeated, tag = "2")]
     pub highest_accepted_rounds: Vec<Round>,
-
-    #[prost(uint64, tag = "3")]
-    pub epoch: EpochId,
 }
 
 #[derive(Clone, prost::Message, Serialize, Deserialize)]

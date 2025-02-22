@@ -264,6 +264,8 @@ impl ConsensusHandler {
                 .await
                 .expect("Failed to get root state digest");
 
+            info!("STATE DIGEST TO PROPOSE: {}", state_digest.digest);
+
             // Store for Core to access when proposing next block
             self.epoch_store
                 .set_next_epoch_state(system_state, state_digest);
@@ -354,8 +356,13 @@ impl MysticetiConsensusHandler {
                     .epoch_store
                     .epoch_start_state()
                     .epoch_start_timestamp_ms();
-                let epoch_duration_ms = 1000; //consensus_handler .epoch_store.epoch_start_state().epoch_duration_ms();
-                                              // TODO: have this come from config but harcode for now
+                let epoch_duration_ms = consensus_handler
+                    .epoch_store
+                    .epoch_start_state()
+                    .epoch_duration_ms();
+
+                info!("EPOCH DURATION MS {}", epoch_duration_ms);
+
                 let next_reconfiguration_timestamp_ms = epoch_start_timestamp_ms
                     .checked_add(epoch_duration_ms)
                     .expect("Overflow calculating next_reconfiguration_timestamp_ms");

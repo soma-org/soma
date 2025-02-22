@@ -129,6 +129,7 @@ async fn test_reconfig_with_committee_change_basic() {
 
     execute_remove_validator_tx(&test_cluster, &new_validator_handle).await;
     test_cluster.trigger_reconfiguration().await;
+
     test_cluster.fullnode_handle.soma_node.with(|node| {
         assert_eq!(
             node.state()
@@ -155,7 +156,7 @@ async fn do_test_passive_reconfig() {
     init_tracing();
 
     let test_cluster = TestClusterBuilder::new()
-        // .with_epoch_duration_ms(1000)
+        .with_epoch_duration_ms(1000)
         .build()
         .await;
 

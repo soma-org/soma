@@ -476,7 +476,6 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             request_timeout,
             network_client.fetch_blocks(
                 peer,
-                context.committee.epoch(),
                 blocks_guard
                     .block_refs
                     .clone()
@@ -1098,7 +1097,6 @@ mod tests {
         async fn fetch_blocks(
             &self,
             peer: AuthorityIndex,
-            epoch: Epoch,
             block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,

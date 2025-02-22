@@ -108,11 +108,11 @@ impl BlockVerifier for SignedBlockVerifier {
         }
 
         // Verify the block's signature.
-        block.verify_signature(&self.context)?;
+        block.verify_signature(&committee)?;
 
         // Verify EndOfEpochData if present
         if let Some(eoe) = block.end_of_epoch_data() {
-            // Verify state hash matches our local one if we have one
+            // Verify state hash matches our local one if we have
             if let Ok(Some((_, our_digest))) = self
                 .accumulator_store
                 .get_root_state_accumulator_for_epoch(block.epoch())
@@ -120,7 +120,8 @@ impl BlockVerifier for SignedBlockVerifier {
                 if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
                     return Err(ConsensusError::InvalidEndOfEpoch(format!(
                         "State hash mismatch: expected {:?}, got {:?}",
-                        our_digest, eoe.state_hash
+                        our_digest.digest(),
+                        eoe.state_hash
                     )));
                 }
             }

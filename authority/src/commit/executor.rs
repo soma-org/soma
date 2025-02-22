@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use futures::stream::FuturesOrdered;
 use itertools::{izip, Either};
@@ -215,29 +219,44 @@ impl CommitExecutor {
                         .expect("end of epoch block must have end of epoch data")
                         .next_epoch_start_timestamp_ms;
 
-                    self.execute_change_epoch_tx(
-                        cur_epoch,
-                        epoch_store.clone(),
-                        commit.clone(),
-                        epoch_start_timestamp_ms,
-                    )
-                    .await;
+                    let change_epoch_tx_digest = self
+                        .execute_change_epoch_tx(
+                            cur_epoch,
+                            epoch_store.clone(),
+                            commit.clone(),
+                            epoch_start_timestamp_ms,
+                        )
+                        .await;
+
+                    let cache_commit = self.state.get_cache_commit();
+                    cache_commit
+                        .commit_transaction_outputs(cur_epoch, &[change_epoch_tx_digest])
+                        .await
+                        .expect("commit_transaction_outputs cannot fail");
 
                     // For finalizing the commit, we need to pass in all commit
                     // transaction effects. This should be a fast operation
 
                     // Collect transactions from CommittedSubDag
-                    let mut all_tx_digests = Vec::new();
+                    let all_tx_digests: HashSet<_> = commit
+                        .transactions()
+                        .iter()
+                        .flat_map(|(_, authority_transactions)| {
+                            authority_transactions
+                                .iter()
+                                .filter_map(|(_, transaction)| {
+                                    if let ConsensusTransactionKind::UserTransaction(cert_tx) =
+                                        &transaction.kind
+                                    {
+                                        Some(*cert_tx.digest())
+                                    } else {
+                                        None
+                                    }
+                                })
+                        })
+                        .collect();
 
-                    for (_, authority_transactions) in commit.transactions() {
-                        for (_, transaction) in authority_transactions {
-                            if let ConsensusTransactionKind::UserTransaction(cert_tx) =
-                                transaction.kind
-                            {
-                                all_tx_digests.push(*cert_tx.digest());
-                            }
-                        }
-                    }
+                    let all_tx_digests: Vec<_> = all_tx_digests.into_iter().collect();
 
                     let effects = self
                         .transaction_cache_reader
@@ -287,7 +306,7 @@ impl CommitExecutor {
         epoch_store: Arc<AuthorityPerEpochStore>,
         commit: CommittedSubDag,
         epoch_start_timestamp_ms: u64,
-    ) {
+    ) -> TransactionDigest {
         let next_epoch = cur_epoch + 1;
 
         let tx = VerifiedTransaction::new_end_of_epoch_transaction(
@@ -313,7 +332,7 @@ impl CommitExecutor {
                 "Change epoch transaction already executed"
             );
 
-            return;
+            return change_epoch_tx_digest.clone();
         }
 
         self.tx_manager.enqueue(
@@ -334,16 +353,12 @@ impl CommitExecutor {
         )
         .await;
 
-        let cache_commit = self.state.get_cache_commit();
-        cache_commit
-            .commit_transaction_outputs(cur_epoch, &[*change_epoch_tx_digest])
-            .await
-            .expect("commit_transaction_outputs cannot fail");
-
         info!(
             ?change_epoch_tx_digest,
             "Executed change epoch transaction in state sync"
         );
+
+        change_epoch_tx_digest.clone()
     }
 
     #[instrument(level = "debug", skip_all)]
@@ -611,19 +626,29 @@ fn get_unexecuted_transactions(
     epoch_store: Arc<AuthorityPerEpochStore>,
 ) -> (Vec<TransactionDigest>, Vec<VerifiedExecutableTransaction>) {
     // Collect transactions from CommittedSubDag
-    let mut tx_digests = Vec::new();
-    let mut transactions = Vec::new();
+    let transactions: HashMap<_, _> = commit
+        .transactions()
+        .iter()
+        .flat_map(|(_, authority_transactions)| {
+            authority_transactions
+                .iter()
+                .filter_map(|(_, transaction)| {
+                    if let ConsensusTransactionKind::UserTransaction(cert_tx) = &transaction.kind {
+                        let digest = *cert_tx.digest();
+                        let certificate = VerifiedCertificate::new_unchecked(*cert_tx.clone());
+                        let executable =
+                            VerifiedExecutableTransaction::new_from_certificate(certificate);
+                        Some((digest, executable))
+                    } else {
+                        None
+                    }
+                })
+        })
+        .collect();
 
-    for (_, authority_transactions) in commit.transactions() {
-        for (_, transaction) in authority_transactions {
-            if let ConsensusTransactionKind::UserTransaction(cert_tx) = transaction.kind {
-                tx_digests.push(*cert_tx.digest());
-                let certificate = VerifiedCertificate::new_unchecked(*cert_tx);
-                let executable = VerifiedExecutableTransaction::new_from_certificate(certificate);
-                transactions.push(executable);
-            }
-        }
-    }
+    // If you need separate vectors:
+    let tx_digests: Vec<_> = transactions.keys().copied().collect();
+    let transactions: Vec<_> = transactions.values().cloned().collect();
 
     // Check which transactions are already executed
     let executed_effects_digests = cache_reader

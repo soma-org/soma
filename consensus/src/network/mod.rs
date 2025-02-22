@@ -42,7 +42,6 @@ pub(crate) trait NetworkClient: Send + Sync + Sized + 'static {
     async fn fetch_blocks(
         &self,
         peer: AuthorityIndex,
-        epoch: Epoch,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
         timeout: Duration,

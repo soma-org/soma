@@ -228,7 +228,6 @@ mod test {
         async fn fetch_blocks(
             &self,
             _peer: AuthorityIndex,
-            _epoch: Epoch,
             _block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,

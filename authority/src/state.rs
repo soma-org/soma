@@ -336,7 +336,7 @@ impl AuthorityState {
     /// If this cannot be satisfied by the caller, execute_certificate() should be called instead.
     ///
     /// Should only be called within sui-core.
-    #[instrument(level = "trace", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     pub async fn try_execute_immediately(
         &self,
         certificate: &VerifiedExecutableTransaction,
@@ -373,7 +373,7 @@ impl AuthorityState {
         .tap_err(|e| info!(?tx_digest, "process_certificate failed: {e}"))
     }
 
-    #[instrument(level = "trace", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     pub(crate) async fn process_certificate(
         &self,
         tx_guard: CertTxGuard,
@@ -392,7 +392,10 @@ impl AuthorityState {
             .get_executed_effects(&digest)?
         {
             tx_guard.release();
-
+            info!(
+                "Cert processed by a concurrent attempt of the same cert, not processed: {}",
+                digest
+            );
             return Ok((effects, None));
         }
         let execution_guard = self

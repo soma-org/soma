@@ -348,9 +348,8 @@ impl SignedBlock {
 
     /// This method only verifies this block's signature. Verification of the full block
     /// should be done via BlockVerifier.
-    pub(crate) fn verify_signature(&self, context: &Context) -> ConsensusResult<()> {
+    pub(crate) fn verify_signature(&self, committee: &Committee) -> ConsensusResult<()> {
         let block = &self.inner;
-        let committee = &context.committee;
         ensure!(
             committee.is_valid_index(block.author()),
             ConsensusError::InvalidAuthorityIndex {
@@ -651,7 +650,7 @@ mod tests {
         let signed_block = SignedBlock::new(block, author_two_key).expect("Shouldn't fail signing");
 
         // Now verify the block's signature
-        let result = signed_block.verify_signature(&context);
+        let result = signed_block.verify_signature(&context.committee);
         assert!(result.is_ok());
 
         // Try to sign authority's 2 block with authority's 1 key
@@ -660,7 +659,7 @@ mod tests {
         let signed_block = SignedBlock::new(block, author_one_key).expect("Shouldn't fail signing");
 
         // Now verify the block, it should fail
-        let result = signed_block.verify_signature(&context);
+        let result = signed_block.verify_signature(&context.committee);
         match result.err().unwrap() {
             ConsensusError::SignatureVerificationFailure(err) => {
                 assert_eq!(err, FastCryptoError::InvalidSignature);
