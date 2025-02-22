@@ -9,7 +9,10 @@ use shared::{
 
 use crate::{
     actors::{
-        pipelines::shard_input,
+        pipelines::{
+            certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
+            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
+        },
         workers::{
             compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
             model::ModelProcessor, storage::StorageProcessor, vdf::VDFProcessor,
@@ -41,7 +44,6 @@ use crate::{
 
 use self::{
     downloader::Downloader,
-    shard_input::ShardInputProcessor,
     shard_verifier::{ShardAuthToken, ShardVerifier, VerificationStatus},
 };
 
@@ -49,7 +51,7 @@ use super::{
     broadcaster::Broadcaster,
     encoder_core::EncoderCore,
     encoder_service::EncoderInternalService,
-    pipeline_dispatcher::{ActorPipelineDispatcher, PipelineDispatcher},
+    pipeline_dispatcher::{Dispatcher, PipelineDispatcher},
 };
 
 // pub struct Encoder(EncoderNode<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
@@ -94,14 +96,7 @@ impl EncoderNode {
             EncoderInternalTonicManager::new(encoder_context.clone(), network_keypair);
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
-            EncoderInternalService<
-                ActorPipelineDispatcher<
-                    EncoderInternalTonicClient,
-                    PythonModule,
-                    FilesystemObjectStorage,
-                    ObjectHttpClient,
-                >,
-            >,
+            EncoderInternalService<PipelineDispatcher>,
         >>::client(&network_manager);
 
         // let messaging_client = network_manager.client();
@@ -165,18 +160,35 @@ impl EncoderNode {
         let vdf_processor = VDFProcessor::new(vdf, 1);
         let vdf_handle = ActorManager::new(1, vdf_processor).handle();
 
-        let shard_input_processor = ShardInputProcessor::new(core, default_concurrency);
-        let shard_input_manager = ActorManager::new(default_buffer, shard_input_processor);
-        let shard_input_handle = shard_input_manager.handle();
+        let certified_commit_processor = CertifiedCommitProcessor::new();
+        let commit_votes_processor = CommitVotesProcessor::new();
+        let reveal_processor = RevealProcessor::new();
+        let reveal_votes_processor = RevealVotesProcessor::new();
 
-        let pipeline_dispatcher = ActorPipelineDispatcher::new(shard_input_handle);
+        let certified_commit_manager =
+            ActorManager::new(default_buffer, certified_commit_processor);
+        let commit_votes_manager = ActorManager::new(default_buffer, commit_votes_processor);
+        let reveal_manager = ActorManager::new(default_buffer, reveal_processor);
+        let reveal_votes_manager = ActorManager::new(default_buffer, reveal_votes_processor);
+
+        let certified_commit_handle = certified_commit_manager.handle();
+        let commit_votes_handle = commit_votes_manager.handle();
+        let reveal_handle = reveal_manager.handle();
+        let reveal_votes_handle = reveal_votes_manager.handle();
+
+        let pipeline_dispatcher = PipelineDispatcher::new(
+            certified_commit_handle,
+            commit_votes_handle,
+            reveal_handle,
+            reveal_votes_handle,
+        );
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(64);
         let verifier = ShardVerifier::new(cache);
 
         let store = Arc::new(MemStore::new());
         let network_service = Arc::new(EncoderInternalService::new(
             encoder_context,
-            Arc::new(pipeline_dispatcher),
+            pipeline_dispatcher,
             vdf_handle,
             verifier,
             store,
@@ -188,14 +200,7 @@ impl EncoderNode {
 
     pub(crate) async fn stop(mut self) {
         <EncoderInternalTonicManager as EncoderInternalNetworkManager<
-            EncoderInternalService<
-                ActorPipelineDispatcher<
-                    EncoderInternalTonicClient,
-                    PythonModule,
-                    FilesystemObjectStorage,
-                    ObjectHttpClient,
-                >,
-            >,
+            EncoderInternalService<PipelineDispatcher>,
         >>::stop(&mut self.network_manager)
         .await;
     }

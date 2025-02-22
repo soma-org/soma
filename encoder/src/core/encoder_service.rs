@@ -28,21 +28,21 @@ use crate::{
     },
 };
 
-use super::pipeline_dispatcher::PipelineDispatcher;
+use super::pipeline_dispatcher::Dispatcher;
 
-pub(crate) struct EncoderInternalService<PD: PipelineDispatcher> {
+pub(crate) struct EncoderInternalService<D: Dispatcher> {
     context: Arc<EncoderContext>,
-    pipeline_dispatcher: Arc<PD>, //TODO: confirm this needs an arc?
+    dispatcher: D,
     vdf: ActorHandle<VDFProcessor>,
     shard_verifier: ShardVerifier,
     store: Arc<dyn Store>,
     encoder_keypair: Arc<EncoderKeyPair>,
 }
 
-impl<PD: PipelineDispatcher> EncoderInternalService<PD> {
+impl<D: Dispatcher> EncoderInternalService<D> {
     pub(crate) fn new(
         context: Arc<EncoderContext>,
-        pipeline_dispatcher: Arc<PD>,
+        dispatcher: D,
         vdf: ActorHandle<VDFProcessor>,
         shard_verifier: ShardVerifier,
         store: Arc<dyn Store>,
@@ -51,7 +51,7 @@ impl<PD: PipelineDispatcher> EncoderInternalService<PD> {
         println!("configured core thread");
         Self {
             context,
-            pipeline_dispatcher,
+            dispatcher,
             vdf,
             shard_verifier,
             store,
@@ -61,7 +61,7 @@ impl<PD: PipelineDispatcher> EncoderInternalService<PD> {
 }
 
 #[async_trait]
-impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalService<PD> {
+impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> {
     async fn handle_send_commit(
         &self,
         peer: EncoderIndex,
@@ -183,15 +183,6 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
                     }
                 }
 
-                // to be a valid certificate, the number of unique indicies must meet the quorum threshold
-                if certifier_indices.len() < shard.evaluation_quorum_threshold() as usize {
-                    return Err(shared::error::SharedError::ValidationError(format!(
-                        "got: {:?}, needed: {}",
-                        certifier_indices,
-                        shard.evaluation_quorum_threshold()
-                    )));
-                }
-
                 // checks to ensure that the number of unique indices meets quorum and verifies the agg signature
                 // using the corresponding public keys from those indices
                 certified_commit
@@ -203,7 +194,11 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             },
         )
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-        // TODO: send to orchestrator
+
+        let _ = self
+            .dispatcher
+            .dispatch_certified_commit(peer, verified_certified_commit)
+            .await?;
         Ok(())
     }
     async fn handle_send_commit_votes(
@@ -251,18 +246,21 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             Ok(())
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-        // send to orchestrator
+        let _ = self
+            .dispatcher
+            .dispatch_commit_votes(peer, verified_commit_votes)
+            .await?;
         Ok(())
     }
     async fn handle_send_reveal(&self, peer: EncoderIndex, reveal_bytes: Bytes) -> ShardResult<()> {
         // convert into correct type
         let reveal: Signed<ShardReveal, min_sig::BLS12381Signature> =
             bcs::from_bytes(&reveal_bytes).map_err(ShardError::MalformedType)?;
-        let (auth_token_digest, shard) = self
+        let (_auth_token_digest, shard) = self
             .shard_verifier
             .verify(&self.context, &self.vdf, reveal.auth_token())
             .await?;
-        let verified_commit = Verified::new(reveal.clone(), reveal_bytes, |reveal| {
+        let verified_reveal = Verified::new(reveal.clone(), reveal_bytes, |reveal| {
             // the reveal slot must be a member of the shard inference slot
             // in the case of routing, the original slot is still expected to handle the reveal since this allows
             // routing to take place without needing to reorganize all the communication of the shard
@@ -293,6 +291,10 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             reveal.slot(),
             reveal_digest,
         )?;
+        let _ = self
+            .dispatcher
+            .dispatch_reveal(peer, verified_reveal)
+            .await?;
         Ok(())
     }
     async fn handle_send_reveal_votes(
@@ -339,7 +341,10 @@ impl<PD: PipelineDispatcher> EncoderInternalNetworkService for EncoderInternalSe
             Ok(())
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-        // send to orchestrator
+        let _ = self
+            .dispatcher
+            .dispatch_reveal_votes(peer, verified_reveal_votes)
+            .await?;
         Ok(())
     }
 }

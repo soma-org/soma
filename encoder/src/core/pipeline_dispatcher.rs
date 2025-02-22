@@ -1,63 +1,126 @@
 use async_trait::async_trait;
-use fastcrypto::{bls12381::min_sig, ed25519::Ed25519Signature};
-use shared::{network_committee::NetworkingIndex, signed::Signed, verified::Verified};
+use fastcrypto::bls12381::min_sig;
+use shared::{signed::Signed, verified::Verified};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    actors::{pipelines::shard_input::ShardInputProcessor, ActorHandle},
+    actors::{
+        pipelines::{
+            certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
+            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
+        },
+        ActorHandle,
+    },
     error::ShardResult,
-    intelligence::model::Model,
-    networking::{messaging::EncoderInternalNetworkClient, object::ObjectNetworkClient},
-    storage::object::ObjectStorage,
-    types::{shard::Shard, shard_input::ShardInput},
+    types::{
+        certified::Certified,
+        encoder_committee::EncoderIndex,
+        shard_commit::ShardCommit,
+        shard_reveal::ShardReveal,
+        shard_votes::{CommitRound, RevealRound, ShardVotes},
+    },
 };
 
 #[async_trait]
-pub trait PipelineDispatcher: Sync + Send + 'static {
-    async fn shard_input(
+pub trait Dispatcher: Sync + Send + 'static {
+    async fn dispatch_certified_commit(
         &self,
-        networking_index: NetworkingIndex,
-        shard: Shard,
-        shard_input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
-        cancellation: CancellationToken,
+        peer: EncoderIndex,
+        certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+    ) -> ShardResult<()>;
+    async fn dispatch_commit_votes(
+        &self,
+        peer: EncoderIndex,
+        votes: Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()>;
+    async fn dispatch_reveal(
+        &self,
+        peer: EncoderIndex,
+        reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()>;
+    async fn dispatch_reveal_votes(
+        &self,
+        peer: EncoderIndex,
+        votes: Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
 }
 
 #[derive(Clone)]
-pub(crate) struct ActorPipelineDispatcher<
-    SNC: EncoderInternalNetworkClient,
-    M: Model,
-    OS: ObjectStorage,
-    ONC: ObjectNetworkClient,
-> {
-    shard_input_handle: ActorHandle<ShardInputProcessor<SNC, M, OS, ONC>>,
+pub(crate) struct PipelineDispatcher {
+    certified_commit_handle: ActorHandle<CertifiedCommitProcessor>,
+    commit_votes_handle: ActorHandle<CommitVotesProcessor>,
+    reveal_handle: ActorHandle<RevealProcessor>,
+    reveal_votes_handle: ActorHandle<RevealVotesProcessor>,
 }
 
-impl<SNC: EncoderInternalNetworkClient, M: Model, OS: ObjectStorage, ONC: ObjectNetworkClient>
-    ActorPipelineDispatcher<SNC, M, OS, ONC>
-{
+impl PipelineDispatcher {
     pub(crate) fn new(
-        shard_input_handle: ActorHandle<ShardInputProcessor<SNC, M, OS, ONC>>,
+        certified_commit_handle: ActorHandle<CertifiedCommitProcessor>,
+        commit_votes_handle: ActorHandle<CommitVotesProcessor>,
+        reveal_handle: ActorHandle<RevealProcessor>,
+        reveal_votes_handle: ActorHandle<RevealVotesProcessor>,
     ) -> Self {
-        Self { shard_input_handle }
+        Self {
+            certified_commit_handle,
+            commit_votes_handle,
+            reveal_handle,
+            reveal_votes_handle,
+        }
     }
 }
 
 #[async_trait]
-impl<SNC: EncoderInternalNetworkClient, M: Model, OS: ObjectStorage, ONC: ObjectNetworkClient>
-    PipelineDispatcher for ActorPipelineDispatcher<SNC, M, OS, ONC>
-{
-    async fn shard_input(
+impl Dispatcher for PipelineDispatcher {
+    async fn dispatch_certified_commit(
         &self,
-        networking_index: NetworkingIndex,
-        shard: Shard,
-        shard_input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
-        cancellation: CancellationToken,
+        peer: EncoderIndex,
+        certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
     ) -> ShardResult<()> {
-        let input = (networking_index, shard, shard_input);
-        self.shard_input_handle
-            .background_process(input, cancellation)
-            .await;
+        // TODO: use or remove peer
+        // TODO: need to create correct child cancellation token here
+        let cancellation = CancellationToken::new();
+        self.certified_commit_handle
+            .background_process(certified_commit, cancellation)
+            .await?;
+        Ok(())
+    }
+    async fn dispatch_commit_votes(
+        &self,
+        peer: EncoderIndex,
+        votes: Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        // TODO: use or remove peer
+        // TODO: need to create correct child cancellation token here
+        let cancellation = CancellationToken::new();
+        self.commit_votes_handle
+            .background_process(votes, cancellation)
+            .await?;
+        Ok(())
+    }
+    async fn dispatch_reveal(
+        &self,
+        peer: EncoderIndex,
+        reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        // TODO: use or remove peer
+        // TODO: need to create correct child cancellation token here
+        let cancellation = CancellationToken::new();
+        self.reveal_handle
+            .background_process(reveal, cancellation)
+            .await?;
+        Ok(())
+    }
+    async fn dispatch_reveal_votes(
+        &self,
+        peer: EncoderIndex,
+        votes: Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        // TODO: use or remove peer
+        // TODO: need to create correct child cancellation token here
+        let cancellation = CancellationToken::new();
+        self.reveal_votes_handle
+            .background_process(votes, cancellation)
+            .await?;
         Ok(())
     }
 }
