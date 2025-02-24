@@ -169,7 +169,7 @@ async fn do_test_passive_reconfig() {
 }
 
 #[msim::sim_test]
-async fn test_reconfig_with_committee_change_stress() {
+async fn test_reconfig_with_committee_change_stress_normal() {
     do_test_reconfig_with_committee_change_stress().await;
 }
 
@@ -179,6 +179,8 @@ async fn test_reconfig_with_committee_change_stress_determinism() {
 }
 
 async fn do_test_reconfig_with_committee_change_stress() {
+    init_tracing();
+
     let mut candidates = (0..6)
         .map(|_| ValidatorGenesisConfigBuilder::new().build(&mut OsRng))
         .collect::<Vec<_>>();

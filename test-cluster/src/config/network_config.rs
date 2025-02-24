@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     num::NonZeroUsize,
+    ops::Div,
     time::{Duration, Instant, SystemTime},
 };
 
@@ -181,10 +182,22 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             };
         // let unix_epoch_instant = now.checked_sub(duration_since_unix_epoch).unwrap();
 
+        let num_validators = validators.len() as u64;
+        let base_voting_power = (10000 as u64).div(num_validators);
+        let remainder = 10000 - (base_voting_power * num_validators);
+
         let system_state = SystemState::create(
             validators
                 .iter()
-                .map(|v| {
+                .enumerate()
+                .map(|(i, v)| {
+                    // Add 1 to the first 'remainder' validators to distribute the remainder
+                    let voting_power = if (i as u64) < remainder {
+                        base_voting_power + 1
+                    } else {
+                        base_voting_power
+                    };
+
                     Validator::new(
                         (&v.account_key_pair.public()).into(),
                         (v.key_pair.public()).clone(),
@@ -193,7 +206,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         v.network_address.clone(),
                         v.consensus_address.clone(),
                         v.network_address.clone(),
-                        10000 / validators.len() as u64,
+                        voting_power,
                     )
                 })
                 .collect(),

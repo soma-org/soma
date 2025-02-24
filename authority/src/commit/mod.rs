@@ -16,7 +16,6 @@ use types::{
 use crate::store::TypedStoreError;
 
 pub mod executor;
-pub mod output;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CommitWatermark {

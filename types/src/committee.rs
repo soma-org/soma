@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Display, Formatter, Write};
 use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
+use tracing::info;
 
 use crate::base::{AuthorityName, ConciseableName};
 use crate::consensus::committee::get_available_local_address;
