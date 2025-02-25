@@ -10,7 +10,7 @@ use super::{
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardCommitAPI)]
 pub enum ShardCommit {
     V1(ShardCommitV1),
@@ -44,7 +44,7 @@ impl ShardCommit {
 
 //Digest<Signed<ShardCommit>>
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 struct ShardCommitV1 {
     // the auth token protects against replay attacks since this entire thing is signed with
     // a unique shard auth token that is specific to the shard

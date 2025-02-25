@@ -35,13 +35,13 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
         network_fn: F,
     ) -> ShardResult<Vec<Verified<Signature<T, min_sig::BLS12381Signature>>>>
     where
-        T: Serialize + Send + Sync + 'static,
+        T: Serialize + PartialEq + Eq + Send + Sync + 'static,
         F: FnOnce(Arc<C>, EncoderIndex, Verified<T>) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = ShardResult<Verified<Signature<T, min_sig::BLS12381Signature>>>>
             + Send
             + 'static,
     {
-        struct NetworkingResult<T: Serialize + Send + 'static> {
+        struct NetworkingResult<T: Serialize + PartialEq + Eq + Send + 'static> {
             peer: EncoderIndex,
             result: ShardResult<Verified<Signature<T, min_sig::BLS12381Signature>>>,
             retries: u64,

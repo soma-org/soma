@@ -6,7 +6,7 @@ use super::{encoder_committee::EncoderIndex, shard_verifier::ShardAuthToken};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardRevealAPI)]
 pub enum ShardReveal {
     V1(ShardRevealV1),
@@ -21,7 +21,7 @@ pub(crate) trait ShardRevealAPI {
     fn key(&self) -> &EncryptionKey;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 struct ShardRevealV1 {
     auth_token: ShardAuthToken,
     slot: EncoderIndex,

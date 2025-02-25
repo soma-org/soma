@@ -1,6 +1,9 @@
 use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 
-use super::{GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService};
+use super::{
+    EncoderIndex, GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager,
+    ObjectNetworkService,
+};
 use crate::{
     error::{ShardError, ShardResult},
     networking::messaging::{to_host_port_str, to_socket_addr},
@@ -18,7 +21,6 @@ use axum::{
 };
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
-use shared::network_committee::NetworkingIndex;
 use tokio::sync::oneshot;
 use url::Url;
 
@@ -44,13 +46,13 @@ impl ObjectHttpClient {
 impl ObjectNetworkClient for ObjectHttpClient {
     async fn get_object(
         &self,
-        peer: NetworkingIndex,
+        peer: EncoderIndex,
         path: &ObjectPath,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
-        let network_identity = self.context.network_committee.identity(peer);
+        let encoder = self.context.encoder_committee.encoder(peer);
 
-        let address = to_host_port_str(&network_identity.blob_address).map_err(|e| {
+        let address = to_host_port_str(&encoder.address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address = format!("http://{address}/{}", path.path());
@@ -106,7 +108,7 @@ impl<S: ObjectNetworkService + Clone> ObjectHttpServiceProxy<S> {
         Path(path): Path<String>,
         State(Self { service }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
-        let peer = NetworkingIndex::default();
+        let peer = EncoderIndex::default();
         let path = ObjectPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
         service
             .handle_get_object(peer, &path)

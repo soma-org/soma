@@ -2,7 +2,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::metadata::{Metadata, MetadataCommitment};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardInputAPI)]
 pub enum ShardInput {
     V1(ShardInputV1),
@@ -15,7 +15,7 @@ pub trait ShardInputAPI {
     fn data(&self) -> &Metadata;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ShardInputV1 {
     // transaction_certificate: TransactionCertificate,
     commitment: MetadataCommitment,

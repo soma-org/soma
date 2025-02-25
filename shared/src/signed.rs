@@ -10,8 +10,8 @@ use crate::{
     serialized::Serialized,
 };
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Signed<T: Serialize, S: Authenticator> {
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Signed<T: Serialize + PartialEq + Eq, S: Authenticator> {
     inner: T,
     signature: Bytes,
     #[serde(skip)]
@@ -19,14 +19,14 @@ pub struct Signed<T: Serialize, S: Authenticator> {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Signature<T: Serialize, S: Authenticator> {
+pub struct Signature<T: Serialize + PartialEq + Eq, S: Authenticator> {
     signature: Bytes,
     #[serde(skip)]
     phantom: PhantomData<(T, S)>,
 }
 impl<T, S> Signed<T, S>
 where
-    T: Serialize,
+    T: Serialize + PartialEq + Eq,
     S: Authenticator,
 {
     pub fn new<K>(inner: T, scope: Scope, signer: &K) -> SharedResult<Self>
@@ -73,7 +73,7 @@ where
 
 impl<T, S> std::ops::Deref for Signed<T, S>
 where
-    T: Serialize,
+    T: Serialize + PartialEq + Eq,
     S: Authenticator,
 {
     type Target = T;

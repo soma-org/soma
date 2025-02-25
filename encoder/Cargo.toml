@@ -37,6 +37,7 @@ zstd.workspace = true
 tokio-util.workspace = true
 mockall.workspace = true
 quick_cache.workspace = true
+dashmap.workspace = true
 
 [dependencies.pyo3]
 workspace = true

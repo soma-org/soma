@@ -12,9 +12,9 @@ use crate::{
     error::{SharedError, SharedResult},
 };
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BlockEntropyOutput(Bytes);
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BlockEntropyProof(Bytes);
 
 type EntropyIterations = u64;

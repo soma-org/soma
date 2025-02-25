@@ -3,4 +3,5 @@ pub(crate) mod encoder_core;
 pub mod encoder_node;
 pub(crate) mod encoder_service;
 mod pipeline_dispatcher;
-pub(crate) mod supervisor;
+pub(crate) mod slot_tracker;
+pub(crate) mod vote_tracker;

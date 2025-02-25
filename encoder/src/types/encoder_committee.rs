@@ -10,6 +10,7 @@ use shared::{
     digest::Digest,
     error::SharedResult,
     multiaddr::Multiaddr,
+    probe::ProbeMetadata,
 };
 use std::{
     fmt::{Display, Formatter},
@@ -18,10 +19,7 @@ use std::{
 
 use crate::error::{ShardError, ShardResult};
 
-use super::{
-    probe::Probe,
-    shard::{Shard, ShardEntropy},
-};
+use super::shard::{Shard, ShardEntropy};
 
 /// max of 10_000
 type VotingPowerUnit = u16;
@@ -236,7 +234,7 @@ impl EncoderCommittee {
 impl EncoderCommittee {
     pub fn local_test_committee(
         epoch: Epoch,
-        encoder_details: Vec<(VotingPowerUnit, Digest<Probe>)>,
+        encoder_details: Vec<(VotingPowerUnit, ProbeMetadata)>,
         inference_set_size: CountUnit,
         minimum_inference_size: CountUnit,
         evaluation_set_size: CountUnit,
@@ -248,7 +246,7 @@ impl EncoderCommittee {
         let encoders = encoder_details
             .into_iter()
             .enumerate()
-            .map(|(i, (power, probe_digest))| {
+            .map(|(i, (power, probe))| {
                 let encoder_keypair = EncoderKeyPair::generate(&mut rng);
                 let network_keypair = NetworkKeyPair::generate(&mut rng);
                 let port = starting_port + i as u16;
@@ -261,7 +259,7 @@ impl EncoderCommittee {
                     hostname: format!("test-encoder-{}", i),
                     encoder_key: encoder_keypair.public(),
                     network_key: network_keypair.public(),
-                    probe_digest,
+                    probe,
                 }
             })
             .collect();
@@ -296,7 +294,7 @@ pub(crate) struct Encoder {
     /// The authority's public key for TLS and as network identity.
     network_key: NetworkPublicKey,
     /// The digest of the probes are locked in at epoch change.
-    probe_digest: Digest<Probe>,
+    pub probe: ProbeMetadata,
 }
 
 /// Represents an EncoderIndex, also modality marked for type safety
@@ -307,12 +305,12 @@ pub(crate) struct EncoderIndex(u32);
 
 impl EncoderIndex {
     /// Minimum committee size is 1, so 0 index is always valid.
-    const ZERO: Self = Self(0);
+    pub(crate) const ZERO: Self = Self(0);
 
     /// Only for scanning rows in the database. Invalid elsewhere.
-    const MIN: Self = Self::ZERO;
+    pub(crate) const MIN: Self = Self::ZERO;
     /// Max lex for scanning rows
-    const MAX: Self = Self(u32::MAX);
+    pub(crate) const MAX: Self = Self(u32::MAX);
 
     /// returns the value
     const fn value(&self) -> usize {
@@ -395,18 +393,14 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     // Helper function to generate probe digests
-    fn probe_digest(i: u8) -> Digest<Probe> {
-        Digest::new_from_bytes([i; 32])
+    fn probe(i: u8) -> ProbeMetadata {
+        ProbeMetadata::new_for_test(&[i; 32])
     }
 
     #[test]
     fn test_committee_sampling_safety() {
         // Test with exact size to force intersecting sets
-        let encoder_details = vec![
-            (100, probe_digest(0)),
-            (100, probe_digest(1)),
-            (100, probe_digest(2)),
-        ];
+        let encoder_details = vec![(100, probe(0)), (100, probe(1)), (100, probe(2))];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
             1,
@@ -444,12 +438,12 @@ mod tests {
     fn test_disjoint_sampling_safety() {
         // Test with larger size to force disjoint sets
         let encoder_details = vec![
-            (1000, probe_digest(0)), // High power
-            (500, probe_digest(1)),
-            (250, probe_digest(2)),
-            (125, probe_digest(3)),
-            (60, probe_digest(4)),
-            (30, probe_digest(5)), // Low power
+            (1000, probe(0)), // High power
+            (500, probe(1)),
+            (250, probe(2)),
+            (125, probe(3)),
+            (60, probe(4)),
+            (30, probe(5)), // Low power
         ];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
@@ -502,10 +496,10 @@ mod tests {
     fn test_weighted_sampling_distribution() {
         // Test extreme voting power differences
         let encoder_details = vec![
-            (10000, probe_digest(0)), // Extremely high power
-            (1, probe_digest(1)),     // Minimal power
-            (1, probe_digest(2)),     // Minimal power
-            (1, probe_digest(3)),     // Minimal power
+            (10000, probe(0)), // Extremely high power
+            (1, probe(1)),     // Minimal power
+            (1, probe(2)),     // Minimal power
+            (1, probe(3)),     // Minimal power
         ];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
@@ -543,11 +537,7 @@ mod tests {
 
     #[test]
     fn test_minimum_inference_threshold() {
-        let encoder_details = vec![
-            (100, probe_digest(0)),
-            (100, probe_digest(1)),
-            (100, probe_digest(2)),
-        ];
+        let encoder_details = vec![(100, probe(0)), (100, probe(1)), (100, probe(2))];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
             1,
@@ -574,10 +564,10 @@ mod tests {
     #[test]
     fn test_quorum_properties() {
         let encoder_details = vec![
-            (100, probe_digest(0)),
-            (100, probe_digest(1)),
-            (100, probe_digest(2)),
-            (100, probe_digest(3)),
+            (100, probe(0)),
+            (100, probe(1)),
+            (100, probe(2)),
+            (100, probe(3)),
         ];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
@@ -608,7 +598,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "evaluation set size must be greater or equal to quorum size")]
     fn test_invalid_quorum_config() {
-        let encoder_details = vec![(100, probe_digest(0)), (100, probe_digest(1))];
+        let encoder_details = vec![(100, probe(0)), (100, probe(1))];
 
         EncoderCommittee::local_test_committee(
             1,
@@ -623,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_epoch_consistency() {
-        let encoder_details = vec![(100, probe_digest(0)), (100, probe_digest(1))];
+        let encoder_details = vec![(100, probe(0)), (100, probe(1))];
 
         let epoch = 42;
         let (committee, _) = EncoderCommittee::local_test_committee(

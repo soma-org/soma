@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BitSet<T, const N: usize>([u8; N], PhantomData<T>);
 
 impl<T, const N: usize> BitSet<T, N>

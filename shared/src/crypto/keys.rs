@@ -142,7 +142,7 @@ pub struct AuthorityKeyPair(bls12381::min_sig::BLS12381KeyPair);
 pub struct AuthoritySignature(bls12381::min_sig::BLS12381Signature);
 
 /// A BLS aggregate signature wrapper for encoding operations
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthorityAggregateSignature(bls12381::min_sig::BLS12381AggregateSignature);
 
 impl AuthorityPublicKey {
@@ -249,7 +249,7 @@ pub struct EncoderKeyPair(bls12381::min_sig::BLS12381KeyPair);
 pub struct EncoderSignature(bls12381::min_sig::BLS12381Signature);
 
 /// A BLS aggregate signature wrapper for encoding operations
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EncoderAggregateSignature(bls12381::min_sig::BLS12381AggregateSignature);
 
 impl EncoderPublicKey {

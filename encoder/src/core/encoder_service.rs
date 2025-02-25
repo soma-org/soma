@@ -4,7 +4,8 @@ use fastcrypto::{bls12381::min_sig, traits::KeyPair, traits::Signer};
 use shared::{
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, ProtocolKeyPair},
     digest::Digest,
-    metadata::verify_metadata,
+    error::SharedError,
+    metadata::{verify_metadata, EncryptionAPI, MetadataAPI},
     scope::Scope,
     serialized::Serialized,
     signed::{Signature, Signed},
@@ -13,7 +14,7 @@ use shared::{
 use std::sync::Arc;
 
 use crate::{
-    actors::{workers::vdf::VDFProcessor, ActorHandle},
+    actors::{pipelines::certified_commit, workers::vdf::VDFProcessor, ActorHandle},
     error::{ShardError, ShardResult},
     networking::messaging::EncoderInternalNetworkService,
     storage::datastore::Store,
@@ -139,11 +140,19 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+        let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
+        let epoch = verified_commit.auth_token().epoch();
+        let slot = verified_commit.slot();
+        let committer = verified_commit.committer();
+
         // the commit is idempotently committed to the store. If there is a conflict this should
         // fail such that there is no partial signature produced that would attest to the commit
-        self.store.atomic_commit(
-            Digest::new(&shard).map_err(ShardError::DigestFailure)?,
-            signed_commit.clone(),
+        let _ = self.store.lock_signed_commit_digest(
+            epoch,
+            shard_ref,
+            slot,
+            committer,
+            verified_commit.digest(),
         )?;
 
         // produce the partial signature attesting to seeing the commit
@@ -165,6 +174,13 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
             .shard_verifier
             .verify(&self.context, &self.vdf, certified_commit.auth_token())
             .await?;
+
+        let committer = self
+            .context
+            .encoder_committee
+            .encoder(certified_commit.committer());
+
+        let probe_metadata = committer.probe.clone();
         // perform verification on type and auth including signature checks
         let verified_certified_commit = Verified::new(
             certified_commit,
@@ -197,7 +213,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
 
         let _ = self
             .dispatcher
-            .dispatch_certified_commit(peer, verified_certified_commit)
+            .dispatch_certified_commit(peer, shard, probe_metadata, verified_certified_commit)
             .await?;
         Ok(())
     }
@@ -256,11 +272,30 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         // convert into correct type
         let reveal: Signed<ShardReveal, min_sig::BLS12381Signature> =
             bcs::from_bytes(&reveal_bytes).map_err(ShardError::MalformedType)?;
-        let (_auth_token_digest, shard) = self
+        let (auth_token_digest, shard) = self
             .shard_verifier
             .verify(&self.context, &self.vdf, reveal.auth_token())
             .await?;
+        let slot = reveal.slot();
+        let epoch = reveal.auth_token().epoch();
+        let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
+        let certified_commit = self.store.get_certified_commit(epoch, shard_ref, slot)?;
+
         let verified_reveal = Verified::new(reveal.clone(), reveal_bytes, |reveal| {
+            let encryption =
+                certified_commit
+                    .commit()
+                    .encryption()
+                    .ok_or(SharedError::ValidationError(
+                        "missing encryption".to_string(),
+                    ))?;
+
+            let reveal_key_digest = Digest::new(reveal.key())?;
+            if encryption.key_digest() != reveal_key_digest {
+                return Err(SharedError::ValidationError(
+                    "key digests do not match".to_string(),
+                ));
+            }
             // the reveal slot must be a member of the shard inference slot
             // in the case of routing, the original slot is still expected to handle the reveal since this allows
             // routing to take place without needing to reorganize all the communication of the shard
@@ -282,18 +317,14 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-        let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
-        let reveal_digest = Digest::new(reveal.key()).map_err(ShardError::DigestFailure)?;
-
-        let _ = self.store.check_reveal(
-            reveal.auth_token().epoch(),
-            shard_ref,
-            reveal.slot(),
-            reveal_digest,
-        )?;
         let _ = self
             .dispatcher
-            .dispatch_reveal(peer, verified_reveal)
+            .dispatch_reveal(
+                peer,
+                shard,
+                certified_commit.commit().to_owned(),
+                verified_reveal,
+            )
             .await?;
         Ok(())
     }
@@ -309,6 +340,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
             .shard_verifier
             .verify(&self.context, &self.vdf, votes.auth_token())
             .await?;
+
         let verified_reveal_votes = Verified::new(votes, votes_bytes, |votes| {
             // the voter must be a member of the evaluation set
             // evaluation sets do not change for a given shard

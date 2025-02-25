@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
-use shared::{signed::Signed, verified::Verified};
+use shared::{metadata::Metadata, probe::ProbeMetadata, signed::Signed, verified::Verified};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -15,6 +15,7 @@ use crate::{
     types::{
         certified::Certified,
         encoder_committee::EncoderIndex,
+        shard::Shard,
         shard_commit::ShardCommit,
         shard_reveal::ShardReveal,
         shard_votes::{CommitRound, RevealRound, ShardVotes},
@@ -26,6 +27,8 @@ pub trait Dispatcher: Sync + Send + 'static {
     async fn dispatch_certified_commit(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
+        probe_metadata: ProbeMetadata,
         certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
     ) -> ShardResult<()>;
     async fn dispatch_commit_votes(
@@ -36,6 +39,8 @@ pub trait Dispatcher: Sync + Send + 'static {
     async fn dispatch_reveal(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
+        metadata: Metadata,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     async fn dispatch_reveal_votes(
@@ -74,13 +79,15 @@ impl Dispatcher for PipelineDispatcher {
     async fn dispatch_certified_commit(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
+        probe_metadata: ProbeMetadata,
         certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
         // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.certified_commit_handle
-            .background_process(certified_commit, cancellation)
+            .background_process((shard, probe_metadata, certified_commit), cancellation)
             .await?;
         Ok(())
     }
@@ -100,13 +107,15 @@ impl Dispatcher for PipelineDispatcher {
     async fn dispatch_reveal(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
+        metadata: Metadata,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
         // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.reveal_handle
-            .background_process(reveal, cancellation)
+            .background_process((shard, metadata, reveal), cancellation)
             .await?;
         Ok(())
     }

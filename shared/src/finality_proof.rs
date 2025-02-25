@@ -11,7 +11,7 @@ use crate::{
 /// In the future this will likely operate at the block level rather than individual level.
 /// Instead of a single tx, the authorities will sign off on a merkle root of the txs in a block.
 /// The proof for a specific tx would then be the signed root, along with the neccessary leaves.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BlockClaim {
     /// Epoch links to the correct authority committee
     epoch: Epoch,
@@ -32,7 +32,7 @@ impl BlockClaim {
 }
 
 ///Finality proof
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FinalityProof {
     /// details of the block (epoch, block_ref, tx or block merkle root in the future)
     claim: BlockClaim,

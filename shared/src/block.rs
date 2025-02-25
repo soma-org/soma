@@ -26,7 +26,7 @@ pub type TransactionIndex = u16;
 /// Votes on transactions in a specific block.
 /// Reject votes are explicit. The rest of transactions in the block receive implicit accept votes.
 // TODO: look into making fields `pub`.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct BlockTransactionVotes {
     pub(crate) block_ref: BlockRef,
     pub(crate) rejects: Vec<TransactionIndex>,
@@ -46,14 +46,14 @@ pub trait BlockAPI {
     fn misbehavior_reports(&self) -> &[MisbehaviorReport];
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(BlockAPI)]
 pub enum Block {
     V1(BlockV1),
 }
 
 /// BlockV1 is the first implementation of block
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 struct BlockV1 {
     epoch: Epoch,
     round: Round,
@@ -208,7 +208,7 @@ impl Hash for BlockRef {
     }
 }
 /// A block can attach reports of misbehavior by other authorities.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct MisbehaviorReport {
     /// the author being reported
     target: AuthorityIndex,
@@ -217,7 +217,7 @@ struct MisbehaviorReport {
 }
 
 /// Proof of misbehavior are usually signed block(s) from the misbehaving authority.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 enum MisbehaviorProof {
     /// Proof of an invalid block
     InvalidBlock(BlockRef),

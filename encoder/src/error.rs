@@ -15,6 +15,10 @@ use thiserror::Error;
 pub(crate) enum ShardError {
     #[error("Quorum failed")]
     QuorumFailed,
+    #[error("Missing compression metadata")]
+    MissingCompressionMetadata,
+    #[error("Missing data")]
+    MissingData,
     #[error("Encryption failed")]
     EncryptionFailed,
     #[error("weighted sample error: {0}")]

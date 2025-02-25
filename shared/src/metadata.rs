@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::{
     checksum::Checksum,
     crypto::EncryptionKey,
@@ -33,6 +35,18 @@ pub enum Metadata {
 }
 
 impl Metadata {
+    pub fn new_for_test(bytes: &[u8]) -> Self {
+        Metadata::V1(MetadataV1 {
+            compression: None,
+            encryption: None,
+            checksum: Checksum::new_from_bytes(bytes),
+            shape: vec![],
+            size: 0,
+        })
+    }
+}
+
+impl Metadata {
     /// new constructs a new transaction certificate
     pub fn new_v1(
         compression: Option<CompressionV1>,
@@ -48,6 +62,18 @@ impl Metadata {
             shape,
             size,
         })
+    }
+}
+impl PartialOrd for Metadata {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other)) // Delegates to Ord since Checksum is fully comparable
+    }
+}
+
+// Add Ord implementation
+impl Ord for Metadata {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.checksum().cmp(&other.checksum())
     }
 }
 /// Version 1 of the Metadata. Adding versioning here because while not currently sent over the wire,
@@ -160,7 +186,7 @@ impl EncryptionAPI for EncryptionV1 {
 /// The nonce makes it so that the same identical metadata cannot be detected based on hash.
 /// Prior to landing on this solution, a double hash was going to be used except it is deterministic meaning
 /// that if a piece of metadata had been submitted earlier, the hash and values would be known to network participants.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct MetadataCommitment {
     metadata: Metadata,
     nonce: [u8; 32],

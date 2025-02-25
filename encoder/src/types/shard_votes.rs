@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use super::{encoder_committee::EncoderIndex, shard_verifier::ShardAuthToken};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CommitRound;
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RevealRound;
 
 /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardVotesAPI<T>)]
 pub enum ShardVotes<T> {
     V1(ShardVotesV1<T>),
@@ -24,7 +24,7 @@ pub trait ShardVotesAPI<T> {
     fn rejects(&self) -> &[EncoderIndex];
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 struct ShardVotesV1<T> {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,

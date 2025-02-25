@@ -34,7 +34,7 @@ impl ShardVerifier {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ShardAuthToken {
     proof: FinalityProof,
     metadata_commitment: MetadataCommitment,
@@ -48,7 +48,7 @@ impl ShardAuthToken {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Route {
     // the selected encoder to commit on their behalf
     destination: EncoderIndex,
@@ -146,10 +146,7 @@ mod tests {
     use crate::{
         actors::{workers::vdf::VDFProcessor, ActorHandle, ActorManager},
         error::ShardResult,
-        types::{
-            encoder_committee::{EncoderCommittee, Epoch},
-            probe::Probe,
-        },
+        types::encoder_committee::{EncoderCommittee, Epoch},
     };
     use quick_cache::sync::Cache;
     use shared::{
@@ -164,6 +161,7 @@ mod tests {
         finality_proof::{BlockClaim, FinalityProof},
         metadata::{Metadata, MetadataCommitment},
         network_committee::{NetworkCommittee, NetworkIdentity, NetworkingIndex},
+        probe::ProbeMetadata,
         scope::{Scope, ScopedMessage},
         transaction::{
             ShardTransaction, SignedTransaction, TransactionData, TransactionExpiration,
@@ -203,7 +201,7 @@ mod tests {
 
         // Create encoder committee and context
         let encoder_indices: Vec<EncoderIndex> = (0..4).map(EncoderIndex::new_for_test).collect();
-        let encoder_details = vec![(1u16, Digest::<Probe>::default()); 4];
+        let encoder_details = vec![(1u16, ProbeMetadata::new_for_test(&[0u8; 8])); 4];
         let (encoder_committee, encoder_keypairs) = EncoderCommittee::local_test_committee(
             EPOCH,
             encoder_details,

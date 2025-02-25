@@ -66,3 +66,4 @@ mockall = "0.13.1"
 fastcrypto-vdf = { git = "https://github.com/MystenLabs/fastcrypto", features = ["experimental"] }
 quick_cache = "0.6.10"
 hex = "0.4.3"
+dashmap = "6.1.0"

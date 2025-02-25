@@ -45,6 +45,7 @@ use crate::{
 use self::{
     downloader::Downloader,
     shard_verifier::{ShardAuthToken, ShardVerifier, VerificationStatus},
+    slot_tracker::SlotTracker,
 };
 
 use super::{
@@ -52,6 +53,7 @@ use super::{
     encoder_core::EncoderCore,
     encoder_service::EncoderInternalService,
     pipeline_dispatcher::{Dispatcher, PipelineDispatcher},
+    slot_tracker,
 };
 
 // pub struct Encoder(EncoderNode<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
@@ -149,20 +151,36 @@ impl EncoderNode {
         let core = EncoderCore::new(
             messaging_client,
             broadcaster,
-            downloader_handle,
-            encryptor_handle,
-            compressor_handle,
+            downloader_handle.clone(),
+            encryptor_handle.clone(),
+            compressor_handle.clone(),
             model_handle,
-            storage_handle,
+            storage_handle.clone(),
             encoder_keypair.clone(),
         );
         let vdf = EntropyVDF::new(1);
         let vdf_processor = VDFProcessor::new(vdf, 1);
         let vdf_handle = ActorManager::new(1, vdf_processor).handle();
+        let store = Arc::new(MemStore::new());
 
-        let certified_commit_processor = CertifiedCommitProcessor::new();
+        let slot_tracker = SlotTracker::new(100);
+        let certified_commit_processor = CertifiedCommitProcessor::new(
+            100,
+            store.clone(),
+            slot_tracker.clone(),
+            downloader_handle.clone(),
+            compressor_handle.clone(),
+            storage_handle.clone(),
+        );
         let commit_votes_processor = CommitVotesProcessor::new();
-        let reveal_processor = RevealProcessor::new();
+        let reveal_processor = RevealProcessor::new(
+            100,
+            store.clone(),
+            slot_tracker,
+            storage_handle.clone(),
+            compressor_handle.clone(),
+            encryptor_handle.clone(),
+        );
         let reveal_votes_processor = RevealVotesProcessor::new();
 
         let certified_commit_manager =
@@ -185,7 +203,6 @@ impl EncoderNode {
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(64);
         let verifier = ShardVerifier::new(cache);
 
-        let store = Arc::new(MemStore::new());
         let network_service = Arc::new(EncoderInternalService::new(
             encoder_context,
             pipeline_dispatcher,

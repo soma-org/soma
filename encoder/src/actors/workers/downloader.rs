@@ -9,18 +9,19 @@ use crate::{
     error::ShardResult,
     networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
     storage::object::ObjectPath,
+    types::encoder_committee::EncoderIndex,
 };
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};
 
 pub(crate) struct DownloaderInput {
-    peer: NetworkingIndex,
+    peer: EncoderIndex,
     path: ObjectPath,
 }
 
 impl DownloaderInput {
-    pub(crate) fn new(peer: NetworkingIndex, path: ObjectPath) -> Self {
+    pub(crate) fn new(peer: EncoderIndex, path: ObjectPath) -> Self {
         Self { peer, path }
     }
 }

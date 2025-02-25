@@ -13,13 +13,13 @@ pub const DIGEST_LENGTH: usize = DefaultHashFunction::OUTPUT_SIZE;
 
 pub type Aes256Key = GenericArray<u8, <aes::Aes256 as crypto_common::KeySizeUser>::KeySize>;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Aes256IV {
     pub iv: [u8; 16],
     pub key: Aes256Key,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EncryptionKey {
     Aes256(Aes256IV),
 }

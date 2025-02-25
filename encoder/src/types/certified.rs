@@ -9,20 +9,20 @@ use shared::{
     scope::{Scope, ScopedMessage},
 };
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(CertifiedAPI)]
-pub enum Certified<T: Serialize> {
+pub enum Certified<T: Serialize + PartialEq + Eq> {
     V1(CertifiedV1<T>),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct CertifiedV1<T: Serialize> {
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+struct CertifiedV1<T: Serialize + PartialEq + Eq> {
     inner: T,
     indices: Vec<EncoderIndex>,
     aggregate_signature: EncoderAggregateSignature,
 }
 
-impl<T: Serialize> Certified<T> {
+impl<T: Serialize + PartialEq + Eq> Certified<T> {
     /// new constructs a new transaction certificate
     pub(crate) const fn new_v1(
         inner: T,
@@ -44,7 +44,7 @@ pub trait CertifiedAPI {
     fn verify_quorum(&self, scope: Scope, committee: &EncoderCommittee) -> SharedResult<()>;
 }
 
-impl<T: Serialize> CertifiedAPI for CertifiedV1<T> {
+impl<T: Serialize + PartialEq + Eq> CertifiedAPI for CertifiedV1<T> {
     fn indices(&self) -> Vec<EncoderIndex> {
         self.indices.clone()
     }
@@ -87,7 +87,7 @@ impl<T: Serialize> CertifiedAPI for CertifiedV1<T> {
     }
 }
 
-impl<T: Serialize> std::ops::Deref for Certified<T> {
+impl<T: Serialize + PartialEq + Eq> std::ops::Deref for Certified<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {

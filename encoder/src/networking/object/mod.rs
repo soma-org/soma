@@ -2,13 +2,12 @@ pub(crate) mod http_network;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use shared::network_committee::NetworkingIndex;
 use std::{sync::Arc, time::Duration};
 
 use crate::{
     error::ShardResult,
     storage::object::{ObjectPath, ObjectSignedUrl, ObjectStorage},
-    types::encoder_context::EncoderContext,
+    types::{encoder_committee::EncoderIndex, encoder_context::EncoderContext},
 };
 
 pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(60 * 2);
@@ -17,7 +16,7 @@ pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(6
 pub(crate) trait ObjectNetworkClient: Send + Sync + Sized + 'static {
     async fn get_object(
         &self,
-        peer: NetworkingIndex,
+        peer: EncoderIndex,
         path: &ObjectPath,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
@@ -33,7 +32,7 @@ pub enum GetObjectResponse {
 pub(crate) trait ObjectNetworkService: Send + Sync + Sized + 'static {
     async fn handle_get_object(
         &self,
-        peer: NetworkingIndex,
+        peer: EncoderIndex,
         path: &ObjectPath,
     ) -> ShardResult<GetObjectResponse>;
 }
@@ -56,7 +55,7 @@ pub struct SignedNetworkService<S: ObjectStorage + ObjectSignedUrl> {
 impl<S: ObjectStorage> ObjectNetworkService for DirectNetworkService<S> {
     async fn handle_get_object(
         &self,
-        peer: NetworkingIndex,
+        peer: EncoderIndex,
         path: &ObjectPath,
     ) -> ShardResult<GetObjectResponse> {
         let bytes = self.storage.get_object(path).await?;
@@ -68,7 +67,7 @@ impl<S: ObjectStorage> ObjectNetworkService for DirectNetworkService<S> {
 impl<S: ObjectStorage + ObjectSignedUrl> ObjectNetworkService for SignedNetworkService<S> {
     async fn handle_get_object(
         &self,
-        peer: NetworkingIndex,
+        peer: EncoderIndex,
         path: &ObjectPath,
     ) -> ShardResult<GetObjectResponse> {
         let url = self.storage.get_signed_url(path).await?;
