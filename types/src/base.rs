@@ -2,8 +2,9 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::crypto::{DefaultHash, GenericSignature, PublicKey, SomaPublicKey, SomaSignature};
+use crate::digests::ObjectDigest;
 use crate::error::SomaResult;
-use crate::object::ObjectID;
+use crate::object::{ObjectID, Version};
 use crate::serde::Readable;
 use crate::{crypto::AuthorityPublicKeyBytes, error::SomaError};
 use anyhow::anyhow;
@@ -230,3 +231,35 @@ impl FromStr for SomaAddress {
         decode_bytes_hex(s).map_err(|e| anyhow!(e))
     }
 }
+
+#[serde_as]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum FullObjectID {
+    Fastpath(ObjectID),
+    Consensus(ConsensusObjectSequenceKey),
+}
+
+impl FullObjectID {
+    pub fn new(object_id: ObjectID, start_version: Option<Version>) -> Self {
+        if let Some(start_version) = start_version {
+            Self::Consensus((object_id, start_version))
+        } else {
+            Self::Fastpath(object_id)
+        }
+    }
+
+    pub fn id(&self) -> ObjectID {
+        match &self {
+            FullObjectID::Fastpath(object_id) => *object_id,
+            FullObjectID::Consensus(consensus_object_sequence_key) => {
+                consensus_object_sequence_key.0
+            }
+        }
+    }
+}
+
+pub type FullObjectRef = (FullObjectID, Version, ObjectDigest);
+
+/// Represents an distinct stream of object versions for a Shared or ConsensusV2 object,
+/// based on the object ID and start version.
+pub type ConsensusObjectSequenceKey = (ObjectID, Version);

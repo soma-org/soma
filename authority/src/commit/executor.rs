@@ -335,6 +335,22 @@ impl CommitExecutor {
             return change_epoch_tx_digest.clone();
         }
 
+        // Check if the change epoch transaction has shared objects
+        if change_epoch_tx.contains_shared_object() {
+            // Assign shared object versions for the change epoch transaction
+            epoch_store
+                .assign_shared_object_versions_idempotent(
+                    self.object_cache_reader.as_ref(),
+                    &[change_epoch_tx.clone()],
+                )
+                .unwrap_or_else(|e| {
+                    panic!(
+                    "Failed to assign shared object versions for change epoch transaction: {:?}",
+                    e
+                )
+                });
+        }
+
         self.tx_manager.enqueue(
             vec![change_epoch_tx.clone()],
             &epoch_store,
@@ -477,7 +493,7 @@ impl CommitExecutor {
             .expect("commit_transaction_outputs cannot fail");
 
         epoch_store
-            .handle_committed_transactions(all_tx_digests)
+            .handle_committed_transactions(commit.commit_ref.index, all_tx_digests)
             .expect("cannot fail");
 
         if !commit.is_last_commit_of_epoch() {
@@ -563,6 +579,29 @@ async fn execute_commit(
         transaction_cache_reader,
         epoch_store.clone(),
     );
+
+    // Assign shared object versions for all transactions with shared objects
+    // We first need to collect all transactions that have shared objects
+    let txns_with_shared_objects: Vec<_> = executable_txns
+        .iter()
+        .filter(|txn| txn.contains_shared_object())
+        .map(|txn| txn.clone())
+        .collect();
+
+    if !txns_with_shared_objects.is_empty() {
+        // Use the idempotent version since we don't have effects yet
+        epoch_store
+            .assign_shared_object_versions_idempotent(
+                object_cache_reader,
+                &txns_with_shared_objects,
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to assign shared object versions for commit {}: {:?}",
+                    commit.commit_ref.index, e
+                )
+            });
+    }
 
     let commit_acc = execute_transactions(
         all_tx_digests.clone(),
@@ -707,18 +746,6 @@ async fn execute_transactions(
     commit: CommittedSubDag,
     prepare_start: Instant,
 ) -> SomaResult<Option<Accumulator>> {
-    // for tx in &executable_txns {
-    //     if tx.contains_shared_object() {
-    //         epoch_store
-    //             .acquire_shared_locks_from_effects(
-    //                 tx,
-    //                 digest_to_effects.get(tx.digest()).unwrap(),
-    //                 object_cache_reader,
-    //             )
-    //             .await?;
-    //     }
-    // }
-
     let prepare_elapsed = prepare_start.elapsed();
 
     if commit.commit_ref.index % COMMIT_PROGRESS_LOG_COUNT_INTERVAL == 0 {

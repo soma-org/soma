@@ -1,14 +1,41 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
+    base::{FullObjectID, SomaAddress},
     committee::EpochId,
-    digests::TransactionDigest,
-    effects::{object_change::EffectsObjectChange, ExecutionStatus, TransactionEffects},
-    object::{Object, ObjectID, Version},
+    digests::{ObjectDigest, TransactionDigest},
+    effects::{
+        object_change::EffectsObjectChange, ExecutionStatus, TransactionEffects,
+        TransactionEffectsAPI,
+    },
+    error::SomaResult,
+    object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
+    storage::InputKey,
+    transaction::InputObjects,
     tx_outputs::WrittenObjects,
 };
+
+/// A type containing all of the information needed to work with a deleted shared object in
+/// execution and when committing the execution effects of the transaction. This holds:
+/// 0. The object ID of the deleted shared object.
+/// 1. The version of the shared object.
+/// 2. Whether the object appeared as mutable (or owned) in the transaction, or as a read-only shared object.
+/// 3. The transaction digest of the previous transaction that used this shared object mutably or
+///    took it by value.
+pub type DeletedSharedObjectInfo = (ObjectID, Version, bool, TransactionDigest);
+
+/// A sequence of information about deleted shared objects in the transaction's inputs.
+pub type DeletedSharedObjects = Vec<DeletedSharedObjectInfo>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SharedInput {
+    Existing(ObjectRef),
+    Deleted(DeletedSharedObjectInfo),
+    Cancelled((ObjectID, Version)),
+}
 
 /// The results represent the primitive information that can then be used to construct
 /// transaction effects.
@@ -26,15 +53,57 @@ pub struct ExecutionResults {
     pub deleted_object_ids: BTreeSet<ObjectID>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct DynamicallyLoadedObjectMetadata {
+    pub version: Version,
+    pub digest: ObjectDigest,
+    pub owner: Owner,
+    pub previous_transaction: TransactionDigest,
+}
+
 impl ExecutionResults {
     pub fn update_version_and_previous_tx(
         &mut self,
-        lamport_timestamp: Version,
+        lamport_version: Version,
         prev_tx: TransactionDigest,
+        input_objects: &BTreeMap<ObjectID, Object>,
     ) {
-        for (_id, obj) in self.written_objects.iter_mut() {
+        for (id, obj) in self.written_objects.iter_mut() {
             // Update the version for the written object.
-            obj.data.increment_version_to(lamport_timestamp);
+            obj.data.increment_version_to(lamport_version);
+
+            // Record the version that the shared object was created at in its owner field.  Note,
+            // this only works because shared objects must be created as shared (not created as
+            // owned in one transaction and later converted to shared in another).
+            if let Owner::Shared {
+                initial_shared_version,
+            } = &mut obj.owner
+            {
+                if self.created_object_ids.contains(id) {
+                    assert_eq!(
+                        *initial_shared_version,
+                        Version::new(),
+                        "Initial version should be blank before this point for {id:?}",
+                    );
+                    *initial_shared_version = lamport_version;
+                }
+
+                // Update initial_shared_version for reshared objects
+                if let Some(Owner::Shared {
+                    initial_shared_version: previous_initial_shared_version,
+                }) = input_objects.get(id).map(|obj| &obj.owner)
+                {
+                    debug_assert!(!self.created_object_ids.contains(id));
+                    debug_assert!(!self.deleted_object_ids.contains(id));
+                    debug_assert!(
+                        *initial_shared_version == Version::new()
+                            || *initial_shared_version == *previous_initial_shared_version
+                    );
+
+                    *initial_shared_version = *previous_initial_shared_version;
+                }
+            }
+
             obj.previous_transaction = prev_tx;
         }
     }
@@ -46,40 +115,92 @@ pub struct TemporaryStore {
     /// The version to assign to all objects written by the transaction using this store.
     lamport_timestamp: Version,
     execution_results: ExecutionResults,
+    /// Objects that were loaded during execution
+    loaded_runtime_objects: BTreeMap<ObjectID, DynamicallyLoadedObjectMetadata>,
+    mutable_input_refs: BTreeMap<ObjectID, (VersionDigest, Owner)>, // Inputs that are mutable
+    /// The set of objects that we may receive during execution. Not guaranteed to receive all, or
+    /// any of the objects referenced in this set.
+    receiving_objects: Vec<ObjectRef>,
+    deleted_consensus_objects: BTreeMap<ObjectID, Version /* start_version */>,
+    // TODO: Now that we track epoch here, there are a few places we don't need to pass it around.
+    /// The current epoch.
+    cur_epoch: EpochId,
 }
 
 impl TemporaryStore {
     pub fn new(
-        input_objects: BTreeMap<ObjectID, Object>,
+        input_objects: InputObjects,
+        receiving_objects: Vec<ObjectRef>,
         tx_digest: TransactionDigest,
-        lamport_timestamp: Version,
+        cur_epoch: EpochId,
     ) -> Self {
+        let mutable_input_refs = input_objects.mutable_inputs();
+        let lamport_timestamp = input_objects.lamport_timestamp(&receiving_objects);
+        let deleted_consensus_objects = input_objects.deleted_consensus_objects();
+        let objects = input_objects.into_object_map();
+        #[cfg(debug_assertions)]
+        {
+            // Ensure that input objects and receiving objects must not overlap.
+            assert!(objects
+                .keys()
+                .collect::<HashSet<_>>()
+                .intersection(
+                    &receiving_objects
+                        .iter()
+                        .map(|oref| &oref.0)
+                        .collect::<HashSet<_>>()
+                )
+                .next()
+                .is_none());
+        }
         Self {
             tx_digest,
-            input_objects,
+            input_objects: objects,
             lamport_timestamp,
             execution_results: ExecutionResults::default(),
+            receiving_objects,
+            cur_epoch,
+            loaded_runtime_objects: BTreeMap::new(),
+            mutable_input_refs,
+            deleted_consensus_objects,
         }
     }
 
     pub fn update_object_version_and_prev_tx(&mut self) {
-        self.execution_results
-            .update_version_and_previous_tx(self.lamport_timestamp, self.tx_digest);
+        self.execution_results.update_version_and_previous_tx(
+            self.lamport_timestamp,
+            self.tx_digest,
+            &self.input_objects,
+        );
     }
 
     /// Given an object ID, if it's not modified, returns None.
-    fn get_object_modified_at(&self, object_id: &ObjectID) -> Option<Object> {
+    fn get_object_modified_at(
+        &self,
+        object_id: &ObjectID,
+    ) -> Option<DynamicallyLoadedObjectMetadata> {
         if self.execution_results.modified_objects.contains(object_id) {
-            if let Some(obj) = self.input_objects.get(object_id) {
-                return Some(obj.clone());
-            }
-            None
+            self.mutable_input_refs
+                .get(object_id)
+                .map(
+                    |((version, digest), owner)| DynamicallyLoadedObjectMetadata {
+                        version: *version,
+                        digest: *digest,
+                        owner: owner.clone(),
+                        previous_transaction: self.input_objects[object_id].previous_transaction,
+                    },
+                )
+                .or_else(|| self.loaded_runtime_objects.get(object_id).cloned())
+            // if let Some(obj) = self.input_objects.get(object_id) {
+            //     return Some(obj.clone());
+            // }
+            // None
         } else {
             None
         }
     }
 
-    fn get_object_changes(&self) -> BTreeMap<ObjectID, EffectsObjectChange> {
+    pub fn get_object_changes(&self) -> BTreeMap<ObjectID, EffectsObjectChange> {
         let results = &self.execution_results;
         let all_ids = results
             .created_object_ids
@@ -95,7 +216,7 @@ impl TemporaryStore {
                     *id,
                     EffectsObjectChange::new(
                         self.get_object_modified_at(id)
-                            .map(|obj| ((obj.data.version(), obj.digest()))),
+                            .map(|metadata| ((metadata.version, metadata.digest), metadata.owner)),
                         results.written_objects.get(id),
                         results.created_object_ids.contains(id),
                         results.deleted_object_ids.contains(id),
@@ -107,25 +228,50 @@ impl TemporaryStore {
 
     pub fn into_effects(
         mut self,
+        shared_object_refs: Vec<SharedInput>,
         transaction_digest: &TransactionDigest,
+        mut transaction_dependencies: BTreeSet<TransactionDigest>,
         status: ExecutionStatus,
         epoch: EpochId,
-    ) -> (WrittenObjects, TransactionEffects) {
+    ) -> (InnerTemporaryStore, TransactionEffects) {
         self.update_object_version_and_prev_tx();
 
+        // Regardless of execution status (including aborts), we insert the previous transaction
+        // for any successfully received objects during the transaction.
+        for (id, expected_version, expected_digest) in &self.receiving_objects {
+            // If the receiving object is in the loaded runtime objects, then that means that it
+            // was actually successfully loaded (so existed, and there was authenticated mutable
+            // access to it). So we insert the previous transaction as a dependency.
+            if let Some(obj_meta) = self.loaded_runtime_objects.get(id) {
+                // Check that the expected version, digest, and owner match the loaded version,
+                // digest, and owner. If they don't then don't register a dependency.
+                // This is because this could be "spoofed" by loading a dynamic object field.
+                let loaded_via_receive = obj_meta.version == *expected_version
+                    && obj_meta.digest == *expected_digest
+                    && obj_meta.owner.is_address_owned();
+                if loaded_via_receive {
+                    transaction_dependencies.insert(obj_meta.previous_transaction);
+                }
+            }
+        }
+
         let object_changes = self.get_object_changes();
-        let written_objects = self.execution_results.written_objects;
         let lamport_version = self.lamport_timestamp;
+
+        // Create the inner temporary store to return
+        let inner = self.into_inner();
 
         let effects = TransactionEffects::new(
             status,
             epoch,
+            shared_object_refs,
             *transaction_digest,
             lamport_version,
             object_changes,
+            transaction_dependencies.into_iter().collect(),
         );
 
-        (written_objects, effects)
+        (inner, effects)
     }
 
     /// Crate a new objcet. This is used to create objects outside of PT execution.
@@ -168,5 +314,192 @@ impl TemporaryStore {
 
         self.execution_results.modified_objects.insert(id);
         self.execution_results.written_objects.insert(id, object);
+    }
+
+    // check that every object read is owned directly or indirectly by sender, sponsor,
+    // or a shared object input
+    pub fn check_ownership_invariants(
+        &self,
+        sender: &SomaAddress,
+        mutable_inputs: &HashSet<ObjectID>,
+        is_epoch_change: bool,
+    ) -> SomaResult<()> {
+        // mark input objects as authenticated
+        let mut authenticated_for_mutation: HashSet<_> = self
+            .input_objects
+            .iter()
+            .filter_map(|(id, obj)| {
+                match &obj.owner {
+                    Owner::AddressOwner(a) => {
+                        assert!(sender == a, "Input object must be owned by sender");
+                        Some(id)
+                    }
+                    Owner::Shared { .. } => Some(id),
+                    Owner::Immutable => {
+                        // object is authenticated, but it cannot own other objects,
+                        // so we should not add it to `authenticated_objs`
+                        // However, we would definitely want to add immutable objects
+                        // to the set of authenticated roots if we were doing runtime
+                        // checks inside the VM instead of after-the-fact in the temporary
+                        // store. Here, we choose not to add them because this will catch a
+                        // bug where we mutate or delete an object that belongs to an immutable
+                        // object (though it will show up somewhat opaquely as an authentication
+                        // failure), whereas adding the immutable object to the roots will prevent
+                        // us from catching this.
+                        None
+                    }
+                }
+            })
+            .filter(|id| {
+                // remove any non-mutable inputs. This will remove deleted or readonly shared
+                // objects
+                mutable_inputs.contains(id)
+            })
+            .copied()
+            .collect();
+
+        // check all modified objects are authenticated (excluding gas objects)
+        let mut objects_to_authenticate = self
+            .execution_results
+            .modified_objects
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        // Map from an ObjectID to the ObjectID that covers it.
+        while let Some(to_authenticate) = objects_to_authenticate.pop() {
+            if authenticated_for_mutation.contains(&to_authenticate) {
+                // object has been authenticated
+                continue;
+            }
+
+            // we now assume the object is authenticated
+            authenticated_for_mutation.insert(to_authenticate);
+        }
+        Ok(())
+    }
+
+    pub fn save_loaded_runtime_objects(
+        &mut self,
+        loaded_runtime_objects: BTreeMap<ObjectID, DynamicallyLoadedObjectMetadata>,
+    ) {
+        #[cfg(debug_assertions)]
+        {
+            for (id, v1) in &loaded_runtime_objects {
+                if let Some(v2) = self.loaded_runtime_objects.get(id) {
+                    assert_eq!(v1, v2);
+                }
+            }
+            for (id, v1) in &self.loaded_runtime_objects {
+                if let Some(v2) = loaded_runtime_objects.get(id) {
+                    assert_eq!(v1, v2);
+                }
+            }
+        }
+        // Merge the two maps because we may be calling the execution engine more than once
+        // (e.g. in advance epoch transaction, where we may be publishing a new system package).
+        self.loaded_runtime_objects.extend(loaded_runtime_objects);
+    }
+
+    /// Break up the structure and return its internal stores for the transaction effects
+    pub fn into_inner(self) -> InnerTemporaryStore {
+        InnerTemporaryStore::new(
+            self.input_objects,
+            self.execution_results.written_objects,
+            self.mutable_input_refs,
+            self.lamport_timestamp,
+            self.deleted_consensus_objects,
+        )
+    }
+}
+
+/// A structure to hold the data extracted from TemporaryStore
+/// This is returned from execute_transaction and contains all the
+/// information needed for effects processing
+pub struct InnerTemporaryStore {
+    /// Objects that were in the input to the transaction
+    pub input_objects: BTreeMap<ObjectID, Object>,
+
+    /// Objects that were created or modified during execution
+    pub written: WrittenObjects,
+
+    /// The mutable input references used in the transaction
+    pub mutable_inputs: BTreeMap<ObjectID, (VersionDigest, Owner)>,
+
+    /// The lamport version assigned to the transaction
+    pub lamport_version: Version,
+
+    /// Shared objects that were deleted during the transaction
+    pub deleted_shared_objects: BTreeMap<ObjectID, Version /* start_version */>,
+}
+
+impl InnerTemporaryStore {
+    pub fn new(
+        input_objects: BTreeMap<ObjectID, Object>,
+        written: WrittenObjects,
+        mutable_inputs: BTreeMap<ObjectID, (VersionDigest, Owner)>,
+        lamport_version: Version,
+        deleted_shared_objects: BTreeMap<ObjectID, Version>,
+    ) -> Self {
+        Self {
+            input_objects,
+            written,
+            mutable_inputs,
+            lamport_version,
+            deleted_shared_objects,
+        }
+    }
+
+    pub fn get_output_keys(&self, effects: &TransactionEffects) -> Vec<InputKey> {
+        let mut output_keys: Vec<_> = self
+            .written
+            .iter()
+            .map(|(id, obj)| InputKey::VersionedObject {
+                id: obj.full_id(),
+                version: obj.version(),
+            })
+            .collect();
+
+        let deleted: HashMap<_, _> = effects
+            .deleted()
+            .iter()
+            .map(|oref| (oref.0, oref.1))
+            .collect();
+
+        // add deleted shared objects to the outputkeys that then get sent to notify_commit
+        let deleted_output_keys = deleted
+            .iter()
+            .filter_map(|(id, seq)| {
+                self.input_objects
+                    .get(id)
+                    .and_then(|obj| obj.is_shared().then_some((obj.full_id(), *seq)))
+            })
+            .map(|(full_id, seq)| InputKey::VersionedObject {
+                id: full_id,
+                version: seq,
+            });
+        output_keys.extend(deleted_output_keys);
+
+        // For any previously deleted shared objects that appeared mutably in the transaction,
+        // synthesize a notification for the next version of the object.
+        let smeared_version = self.lamport_version;
+        let deleted_accessed_objects = effects.deleted_mutably_accessed_shared_objects();
+        for object_id in deleted_accessed_objects.into_iter() {
+            let id = self
+                .input_objects
+                .get(&object_id)
+                .map(|obj| obj.full_id())
+                .unwrap_or_else(|| {
+                    let start_version = self.deleted_shared_objects.get(&object_id)
+                        .expect("deleted object must be in either input_objects or deleted_consensus_objects");
+                    FullObjectID::new(object_id, Some(*start_version))
+                });
+            let key = InputKey::VersionedObject {
+                id,
+                version: smeared_version,
+            };
+            output_keys.push(key);
+        }
+
+        output_keys
     }
 }

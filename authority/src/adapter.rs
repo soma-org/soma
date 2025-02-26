@@ -7,8 +7,10 @@ use crate::{
 use arc_swap::{ArcSwap, ArcSwapOption};
 use dashmap::{try_result::TryResult, DashMap};
 use futures::{
-    future::{select, Either},
-    pin_mut, FutureExt,
+    future::{self, select, Either},
+    pin_mut,
+    stream::FuturesUnordered,
+    FutureExt, StreamExt,
 };
 use itertools::Itertools;
 use parking_lot::RwLockReadGuard;
@@ -29,7 +31,7 @@ use tracing::{debug, info, warn};
 use types::{
     base::AuthorityName,
     committee::Committee,
-    consensus::{ConsensusTransaction, ConsensusTransactionKind},
+    consensus::{ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind},
     digests::TransactionDigest,
     error::SomaResult,
     peer_id::{ConnectionStatus, PeerId},
@@ -89,6 +91,12 @@ pub struct ConnectionMonitorStatus {
 }
 
 pub struct ConnectionMonitorStatusForTests {}
+
+#[derive(PartialEq, Eq)]
+enum ProcessedMethod {
+    Consensus,
+    StateSync,
+}
 
 impl ConsensusAdapter {
     /// Make a new Consensus adapter instance.
@@ -469,32 +477,32 @@ impl ConsensusAdapter {
             "soft_bundle"
         };
 
-        let processed_waiter = epoch_store
-            .consensus_messages_processed_notify(transaction_keys.clone())
-            .boxed();
-
-        pin_mut!(processed_waiter);
-
+        // Create the waiter until the node's turn comes to submit to consensus
         let (await_submit, position, positions_moved, preceding_disconnected) =
-            self.await_submit_delay(epoch_store.committee(), &transactions[..]);
+            self.await_submit_delay(&epoch_store.committee(), &transactions[..]);
 
-        let mut guard = InflightDropGuard::acquire(&self, tx_type);
+        // Create the waiter until the transaction is processed by consensus or via checkpoint
+        let processed_via_consensus_or_state_sync =
+            self.await_consensus_or_state_sync(transaction_keys.clone(), epoch_store);
+        pin_mut!(processed_via_consensus_or_state_sync);
+
         let processed_waiter = tokio::select! {
             // We need to wait for some delay until we submit transaction to the consensus
-            _ = await_submit => Some(processed_waiter),
+            _ = await_submit => Some(processed_via_consensus_or_state_sync),
 
             // If epoch ends, don't wait for submit delay
             _ = epoch_store.user_certs_closed_notify() => {
                 warn!(epoch = ?epoch_store.epoch(), "Epoch ended, skipping submission delay");
-                Some(processed_waiter)
+                Some(processed_via_consensus_or_state_sync)
             }
 
-            // If transaction is received by consensus while we wait, we are done.
-            processed = &mut processed_waiter => {
-                processed.expect("Storage error when waiting for consensus message processed");
+            // If transaction is received by consensus or checkpoint while we wait, we are done.
+            _ = &mut processed_via_consensus_or_state_sync => {
                 None
             }
         };
+
+        let mut guard = InflightDropGuard::acquire(&self, tx_type);
 
         if let Some(processed_waiter) = processed_waiter {
             debug!("Submitting {:?} to consensus", transaction_keys);
@@ -534,14 +542,13 @@ impl ConsensusAdapter {
                     time::sleep(Duration::from_secs(10)).await;
                 }
             };
-            match select(processed_waiter, submit_inner.boxed()).await {
-                Either::Left((processed, _submit_inner)) => processed,
+            let processed_method = match select(processed_waiter, submit_inner.boxed()).await {
+                Either::Left((observed_via_consensus, _submit_inner)) => observed_via_consensus,
                 Either::Right(((), processed_waiter)) => {
                     debug!("Submitted {transaction_keys:?} to consensus");
                     processed_waiter.await
                 }
-            }
-            .expect("Storage error when waiting for consensus message processed");
+            };
         }
         debug!("{transaction_keys:?} processed by consensus");
 
@@ -587,6 +594,70 @@ impl ConsensusAdapter {
                 warn!("Error when sending end of publish message: {:?}", err);
             }
         }
+    }
+
+    /// Waits for transactions to appear either to consensus output or been executed via state sync.
+    /// Returns the processed method, whether the transactions have been processed via consensus, or have been synced.
+    async fn await_consensus_or_state_sync(
+        self: &Arc<Self>,
+        transaction_keys: Vec<SequencedConsensusTransactionKey>,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> ProcessedMethod {
+        let notifications = FuturesUnordered::new();
+        for transaction_key in transaction_keys {
+            let transaction_digests = match transaction_key {
+                SequencedConsensusTransactionKey::External(
+                    ConsensusTransactionKey::Certificate(digest),
+                ) => vec![digest],
+                _ => vec![],
+            };
+
+            // TODO: implement processing by state sync
+            // let checkpoint_synced_future = if let SequencedConsensusTransactionKey::External(
+            //     ConsensusTransactionKey::CheckpointSignature(_, checkpoint_sequence_number),
+            // ) = transaction_key
+            // {
+            //     // If the transaction is a checkpoint signature, we can also wait to get notified when a checkpoint with equal or higher sequence
+            //     // number has been already synced. This way we don't try to unnecessarily sequence the signature for an already verified checkpoint.
+            //     Either::Left(
+            //         self.checkpoint_store
+            //             .notify_read_synced_checkpoint(checkpoint_sequence_number),
+            //     )
+            // } else {
+            //     Either::Right(future::pending())
+            // };
+
+            // We wait for each transaction individually to be processed by consensus or executed in a checkpoint. We could equally just
+            // get notified in aggregate when all transactions are processed, but with this approach can get notified in a more fine-grained way
+            // as transactions can be marked as processed in different ways. This is mostly a concern for the soft-bundle transactions.
+            notifications.push(async move {
+                tokio::select! {
+                    processed = epoch_store.consensus_messages_processed_notify(vec![transaction_key]) => {
+                        processed.expect("Storage error when waiting for consensus message processed");
+
+                        info!("Processed by consensus");
+           
+                        return ProcessedMethod::Consensus;
+                    },
+                    // processed = epoch_store.transactions_executed_in_checkpoint_notify(transaction_digests), if !transaction_digests.is_empty() => {
+                    //     processed.expect("Storage error when waiting for transaction executed in checkpoint");
+
+                    // }
+                    // _ = checkpoint_synced_future => {
+                        
+                    // }
+                }
+                // ProcessedMethod::StateSync
+            });
+        }
+
+        let processed_methods = notifications.collect::<Vec<ProcessedMethod>>().await;
+        // for method in processed_methods {
+        //     if method == ProcessedMethod::StateSync {
+        //         return ProcessedMethod::StateSync;
+        //     }
+        // }
+        ProcessedMethod::Consensus
     }
 }
 

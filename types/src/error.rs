@@ -218,6 +218,12 @@ pub enum SomaError {
 
     #[error("No committee for epoch: {0}")]
     NoCommitteeForEpoch(Epoch),
+
+    #[error("Expecting a single owner, shared ownership found")]
+    UnexpectedOwnerType,
+
+    #[error("The transaction inputs contain duplicated ObjectRef's")]
+    DuplicateObjectRefInput,
 }
 
 impl From<Status> for SomaError {

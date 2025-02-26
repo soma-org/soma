@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     num::NonZeroUsize,
     ops::Div,
     time::{Duration, Instant, SystemTime},
@@ -16,12 +16,12 @@ use types::{
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
-    object::{Object, ObjectData, ObjectType, Version},
+    object::{Object, ObjectData, ObjectType, Owner, Version},
     peer_id::PeerId,
     system_state::{SystemParameters, SystemState, Validator},
     temporary_store::TemporaryStore,
-    transaction::VerifiedTransaction,
-    SYSTEM_STATE_OBJECT_ID,
+    transaction::{InputObjects, VerifiedTransaction},
+    SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
 
 use super::{
@@ -223,6 +223,9 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 Version::MIN,
                 bcs::to_bytes(&system_state).unwrap(),
             ),
+            Owner::Shared {
+                initial_shared_version: Version::new(),
+            },
             TransactionDigest::default(),
         );
         let objects = vec![state_object.clone()];
@@ -230,9 +233,30 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         let tx = VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
         let digest = *tx.digest();
 
-        let mut temp_store = TemporaryStore::new(BTreeMap::new(), digest, (Version::MIN).next());
+        // Create the input objects map for TemporaryStore
+        let input_objects = InputObjects::new(Vec::new());
+        let shared_object_refs = Vec::new(); // No shared objects in the input
+        let receiving_objects = Vec::new(); // No receiving objects
+
+        // Create a TemporaryStore for the genesis transaction
+        let mut temp_store = TemporaryStore::new(
+            input_objects,
+            receiving_objects,
+            digest,
+            0, // epoch_id
+        );
+
+        // Add the system state object to the store
         temp_store.create_object(state_object);
-        let (_, effects) = temp_store.into_effects(&digest, ExecutionStatus::Success, 0);
+
+        // Generate effects using the into_effects method
+        let (inner, effects) = temp_store.into_effects(
+            shared_object_refs,
+            &digest,
+            BTreeSet::new(), // No transaction dependencies for genesis
+            ExecutionStatus::Success,
+            0, // epoch_id
+        );
 
         let genesis = Genesis::new(tx.clone(), effects, objects);
 

@@ -1,7 +1,8 @@
 use crate::{
-    base::{SomaAddress, SOMA_ADDRESS_LENGTH},
+    base::{FullObjectID, FullObjectRef, SomaAddress, SOMA_ADDRESS_LENGTH},
     crypto::{default_hash, DefaultHash},
     digests::{ObjectDigest, TransactionDigest},
+    error::{SomaError, SomaResult},
 };
 use anyhow::anyhow;
 use fastcrypto::{
@@ -13,8 +14,13 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
-use std::cmp::max;
+use std::{
+    cmp::max,
+    fmt::{Display, Formatter},
+};
 use std::{fmt, str::FromStr, sync::Arc};
+
+pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
 
 #[derive(
     Eq,
@@ -35,6 +41,8 @@ pub struct Version(u64);
 impl Version {
     pub const MIN: Version = Version(u64::MIN);
     pub const MAX: Version = Version(0x7fff_ffff_ffff_ffff);
+    pub const CANCELLED_READ: Version = Version(Version::MAX.value() + 1);
+    pub const CONGESTED: Version = Version(Version::MAX.value() + 2);
 
     pub const fn new() -> Self {
         Version(0)
@@ -90,6 +98,14 @@ impl Version {
 
         Version(max_input.0 + 1)
     }
+
+    pub fn is_cancelled(&self) -> bool {
+        self == &Version::CANCELLED_READ || self == &Version::CONGESTED
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self < &Version::MAX
+    }
 }
 
 pub type VersionDigest = (Version, ObjectDigest);
@@ -100,6 +116,8 @@ pub type ObjectRef = (ObjectID, Version, ObjectDigest);
 pub struct ObjectInner {
     /// The meat of the object
     pub data: ObjectData,
+    /// The owner that unlocks this object
+    pub owner: Owner,
     /// The digest of the transaction that created or last mutated this object
     pub previous_transaction: TransactionDigest,
 }
@@ -123,6 +141,39 @@ impl ObjectInner {
 
     pub fn type_(&self) -> &ObjectType {
         self.data.object_type()
+    }
+
+    // It's a common pattern to retrieve both the owner and object ID
+    // together, if it's owned by a single owner.
+    pub fn get_owner_and_id(&self) -> Option<(Owner, ObjectID)> {
+        Some((self.owner.clone(), self.id()))
+    }
+
+    pub fn is_immutable(&self) -> bool {
+        self.owner.is_immutable()
+    }
+
+    pub fn is_address_owned(&self) -> bool {
+        self.owner.is_address_owned()
+    }
+    pub fn is_shared(&self) -> bool {
+        self.owner.is_shared()
+    }
+    pub fn get_single_owner(&self) -> Option<SomaAddress> {
+        self.owner.get_owner_address().ok()
+    }
+
+    pub fn full_id(&self) -> FullObjectID {
+        let id = self.id();
+        if let Some(start_version) = self.owner.start_version() {
+            FullObjectID::Consensus((id, start_version))
+        } else {
+            FullObjectID::Fastpath(id)
+        }
+    }
+
+    pub fn compute_full_object_reference(&self) -> FullObjectRef {
+        (self.full_id(), self.version(), self.digest())
     }
 }
 
@@ -149,12 +200,17 @@ impl Object {
     }
 
     /// Create a new object
-    pub fn new(data: ObjectData, previous_transaction: TransactionDigest) -> Self {
+    pub fn new(data: ObjectData, owner: Owner, previous_transaction: TransactionDigest) -> Self {
         ObjectInner {
             data,
+            owner,
             previous_transaction,
         }
         .into()
+    }
+
+    pub fn owner(&self) -> &Owner {
+        &self.0.owner
     }
 }
 
@@ -506,6 +562,7 @@ pub struct ObjectInfo {
     pub version: Version,
     pub digest: ObjectDigest,
     pub object_type: ObjectType,
+    pub owner: Owner,
     pub previous_transaction: TransactionDigest,
 }
 
@@ -517,6 +574,7 @@ impl ObjectInfo {
             version,
             digest,
             object_type: o.into(),
+            owner: o.owner.clone(),
             previous_transaction: o.previous_transaction,
         }
     }
@@ -527,6 +585,7 @@ impl ObjectInfo {
             version: object.version(),
             digest: object.digest(),
             object_type: object.into(),
+            owner: object.owner.clone(),
             previous_transaction: object.previous_transaction,
         }
     }
@@ -559,6 +618,84 @@ impl LiveObject {
     pub fn to_normal(self) -> Option<Object> {
         match self {
             LiveObject::Normal(object) => Some(object),
+        }
+    }
+}
+
+#[derive(
+    Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, JsonSchema, Ord, PartialOrd,
+)]
+#[cfg_attr(feature = "fuzzing", derive(proptest_derive::Arbitrary))]
+pub enum Owner {
+    /// Object is exclusively owned by a single address, and is mutable.
+    AddressOwner(SomaAddress),
+    // /// Object is exclusively owned by a single object, and is mutable.
+    // /// The object ID is converted to SomaAddress as SomaAddress is universal.
+    // ObjectOwner(SomaAddress),
+    /// Object is shared, can be used by any address, and is mutable.
+    Shared {
+        /// The version at which the object became shared
+        initial_shared_version: Version,
+    },
+    /// Object is immutable, and hence ownership doesn't matter.
+    Immutable,
+}
+
+impl Owner {
+    // NOTE: only return address of AddressOwner, otherwise return error,
+    pub fn get_address_owner_address(&self) -> SomaResult<SomaAddress> {
+        match self {
+            Self::AddressOwner(address) => Ok(*address),
+            Self::Shared { .. } | Self::Immutable => Err(SomaError::UnexpectedOwnerType),
+        }
+    }
+
+    // NOTE: this function will return address of AddressOwner
+    pub fn get_owner_address(&self) -> SomaResult<SomaAddress> {
+        match self {
+            Self::AddressOwner(address) => Ok(*address),
+            Self::Shared { .. } | Self::Immutable => Err(SomaError::UnexpectedOwnerType),
+        }
+    }
+
+    // Returns initial_shared_version for Shared objects, and start_version for ConsensusV2 objects.
+    pub fn start_version(&self) -> Option<Version> {
+        match self {
+            Self::Shared {
+                initial_shared_version,
+            } => Some(*initial_shared_version),
+            Self::Immutable | Self::AddressOwner(_) => None,
+        }
+    }
+
+    pub fn is_immutable(&self) -> bool {
+        matches!(self, Owner::Immutable)
+    }
+
+    pub fn is_address_owned(&self) -> bool {
+        matches!(self, Owner::AddressOwner(_))
+    }
+
+    pub fn is_shared(&self) -> bool {
+        matches!(self, Owner::Shared { .. })
+    }
+}
+
+impl Display for Owner {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AddressOwner(address) => {
+                write!(f, "Account Address ( {} )", address)
+            }
+
+            Self::Immutable => {
+                write!(f, "Immutable")
+            }
+            Self::Shared {
+                initial_shared_version,
+            } => {
+                write!(f, "Shared( {} )", initial_shared_version.value())
+            }
         }
     }
 }

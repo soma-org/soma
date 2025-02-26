@@ -10,8 +10,8 @@ use parking_lot::RwLock;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
 use types::{
-    accumulator::Accumulator,
-    accumulator::{AccumulatorStore, CommitIndex},
+    accumulator::{Accumulator, AccumulatorStore, CommitIndex},
+    base::FullObjectID,
     committee::{Committee, EpochId},
     config::node_config::NodeConfig,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
@@ -21,7 +21,9 @@ use types::{
     genesis::Genesis,
     mutex_table::{MutexGuard, MutexTable, RwLockGuard, RwLockTable},
     object::{self, LiveObject, Object, ObjectID, ObjectRef, Version},
-    storage::{object_store::ObjectStore, ObjectKey, ObjectOrTombstone},
+    storage::{
+        object_store::ObjectStore, FullObjectKey, MarkerValue, ObjectKey, ObjectOrTombstone,
+    },
     system_state::{get_system_state, SystemState, SystemStateTrait},
     transaction::{VerifiedSignedTransaction, VerifiedTransaction},
     tx_outputs::TransactionOutputs,
@@ -145,6 +147,22 @@ impl AuthorityStore {
         }
 
         Ok(store)
+    }
+
+    // NB: This must only be called at time of reconfiguration. We take the execution lock write
+    // guard as an argument to ensure that this is the case.
+    pub fn clear_object_per_epoch_marker_table(
+        &self,
+        _execution_guard: &ExecutionLockWriteGuard<'_>,
+    ) -> SomaResult<()> {
+        // We can safely delete all entries in the per epoch marker table since this is only called
+        // at epoch boundaries (during reconfiguration). Therefore any entries that currently
+        // exist can be removed. Because of this we can use the `schedule_delete_all` method.
+        Ok(self
+            .perpetual_tables
+            .object_per_epoch_marker_table
+            .write()
+            .clear())
     }
 
     pub fn get_recovery_epoch_at_restart(&self) -> SomaResult<EpochId> {
@@ -329,6 +347,7 @@ impl AuthorityStore {
             let TransactionOutputs {
                 transaction,
                 effects,
+                markers,
                 written,
                 deleted,
                 locks_to_delete,
@@ -343,6 +362,16 @@ impl AuthorityStore {
                 .insert(*transaction_digest, transaction.serializable_ref().clone());
 
             let effects_digest = effects.digest();
+
+            markers
+                .iter()
+                .map(|(key, marker_value)| ((epoch_id, *key), *marker_value))
+                .for_each(|(key, value)| {
+                    self.perpetual_tables
+                        .object_per_epoch_marker_table
+                        .write()
+                        .insert(key, value);
+                });
 
             deleted
                 .iter()
@@ -763,7 +792,7 @@ impl AuthorityStore {
         let all_new_object_keys: Vec<ObjectKey> = effects
             .all_changed_objects()
             .into_iter()
-            .map(|((id, version, _), _)| ObjectKey(id, version))
+            .map(|((id, version, _), _, _)| ObjectKey(id, version))
             .collect();
 
         // Get write lock once and perform all removals
@@ -973,6 +1002,94 @@ impl AuthorityStore {
     /// In general we should avoid this as much as possible.
     pub fn get_system_state_object(&self) -> SomaResult<SystemState> {
         get_system_state(self.perpetual_tables.as_ref())
+    }
+
+    pub fn get_marker_value(
+        &self,
+        object_key: FullObjectKey,
+        epoch_id: EpochId,
+    ) -> SomaResult<Option<MarkerValue>> {
+        Ok(self
+            .perpetual_tables
+            .object_per_epoch_marker_table
+            .read()
+            .get(&(epoch_id, object_key))
+            .cloned())
+    }
+
+    pub fn get_latest_marker(
+        &self,
+        object_id: FullObjectID,
+        epoch_id: EpochId,
+    ) -> SomaResult<Option<(Version, MarkerValue)>> {
+        let min_key = (epoch_id, FullObjectKey::min_for_id(&object_id));
+        let max_key = (epoch_id, FullObjectKey::max_for_id(&object_id));
+
+        // Acquire read lock on the BTreeMap
+        let marker_map = self.perpetual_tables.object_per_epoch_marker_table.read();
+
+        // Find the entry with the highest key that's less than or equal to max_key
+        // This is equivalent to the skip_prior_to(&max_key) behavior
+        let marker_entry = marker_map
+            .range((
+                std::ops::Bound::Included(min_key),
+                std::ops::Bound::Included(max_key),
+            ))
+            .next_back();
+
+        match marker_entry {
+            Some(((epoch, key), marker)) => {
+                // Verify the bounds
+                assert_eq!(*epoch, epoch_id);
+                assert_eq!(key.id(), object_id);
+                Ok(Some((key.version(), marker.clone())))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn have_deleted_owned_object_at_version_or_after(
+        &self,
+        object_id: &ObjectID,
+        version: Version,
+        epoch_id: EpochId,
+    ) -> Result<bool, SomaError> {
+        let object_key = ObjectKey::max_for_id(object_id);
+        let marker_key = (epoch_id, FullObjectKey::Fastpath(object_key));
+
+        // Acquire read lock on the BTreeMap
+        let marker_map = self.perpetual_tables.object_per_epoch_marker_table.read();
+
+        // Get the first entry equal to or greater than marker_key
+        let marker_entry = marker_map
+            .range((
+                std::ops::Bound::Included(marker_key),
+                std::ops::Bound::Unbounded,
+            ))
+            .next();
+
+        match marker_entry {
+            Some(((epoch, key), marker)) => {
+                // For FullObjectKey::Fastpath, we need to extract the inner ObjectKey
+                let object_id_matches = match key {
+                    FullObjectKey::Fastpath(obj_key) => obj_key.0 == *object_id,
+                    FullObjectKey::Consensus(cons_key) => false, // Not handling consensus case
+                };
+
+                let version_matches = match key {
+                    FullObjectKey::Fastpath(obj_key) => obj_key.1 >= version,
+                    FullObjectKey::Consensus(_) => false,
+                };
+
+                // Check all conditions
+                let object_data_ok = object_id_matches && version_matches;
+                let epoch_data_ok = *epoch == epoch_id;
+                let mark_data_ok = *marker == MarkerValue::OwnedDeleted;
+
+                Ok(object_data_ok && epoch_data_ok && mark_data_ok)
+            }
+            None => Ok(false),
+        }
     }
 }
 

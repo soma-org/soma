@@ -29,15 +29,18 @@ use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, AccumulatorStore, CommitIndex},
+    base::FullObjectID,
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
     envelope::Message,
     error::{SomaError, SomaResult},
     object::{LiveObject, Object, ObjectID, ObjectRef, Version},
-    storage::{object_store::ObjectStore, ObjectKey, ObjectOrTombstone},
+    storage::{
+        object_store::ObjectStore, FullObjectKey, MarkerValue, ObjectKey, ObjectOrTombstone,
+    },
     system_state::{get_system_state, SystemState},
-    transaction::VerifiedTransaction,
+    transaction::{VerifiedSignedTransaction, VerifiedTransaction},
     tx_outputs::TransactionOutputs,
 };
 use utils::notify_read::NotifyRead;
@@ -47,7 +50,7 @@ use super::{
     ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TransactionCacheRead,
 };
 
-enum CacheResult<T> {
+pub enum CacheResult<T> {
     /// Entry is in the cache
     Hit(T),
     /// Entry is not in the cache and is known to not exist
@@ -112,6 +115,8 @@ impl LatestObjectCacheEntry {
     }
 }
 
+type MarkerKey = (EpochId, FullObjectID);
+
 /// UncommitedData stores execution outputs that are not yet written to the db. Entries in this
 /// struct can only be purged after they are committed.
 struct UncommittedData {
@@ -126,6 +131,12 @@ struct UncommittedData {
     /// bound for a child read in objects, it is the correct object to return.
     objects: DashMap<ObjectID, CachedVersionMap<ObjectEntry>>,
 
+    // Markers for received objects and deleted shared objects. This contains all of the dirty
+    // marker state, which is committed to the db at the same time as other transaction data.
+    // After markers are committed to the db we remove them from this table and insert them into
+    // marker_cache.
+    markers: DashMap<MarkerKey, CachedVersionMap<MarkerValue>>,
+
     transaction_effects: DashMap<TransactionEffectsDigest, TransactionEffects>,
 
     executed_effects_digests: DashMap<TransactionDigest, TransactionEffectsDigest>,
@@ -138,6 +149,7 @@ impl UncommittedData {
     fn new() -> Self {
         Self {
             objects: DashMap::new(),
+            markers: DashMap::new(),
             transaction_effects: DashMap::new(),
             executed_effects_digests: DashMap::new(),
             pending_transaction_writes: DashMap::new(),
@@ -146,6 +158,7 @@ impl UncommittedData {
 
     fn clear(&self) {
         self.objects.clear();
+        self.markers.clear();
         self.transaction_effects.clear();
         self.executed_effects_digests.clear();
         self.pending_transaction_writes.clear();
@@ -153,6 +166,7 @@ impl UncommittedData {
 
     fn is_empty(&self) -> bool {
         self.objects.is_empty()
+            && self.markers.is_empty()
             && self.transaction_effects.is_empty()
             && self.executed_effects_digests.is_empty()
             && self.pending_transaction_writes.is_empty()
@@ -173,6 +187,8 @@ struct CachedCommittedData {
     // `object_by_id_cache` is also written to on writes so that it is always coherent.
     object_by_id_cache: MokaCache<ObjectID, Arc<Mutex<LatestObjectCacheEntry>>>,
 
+    marker_cache: MokaCache<MarkerKey, Arc<Mutex<CachedVersionMap<MarkerValue>>>>,
+
     transactions: MokaCache<TransactionDigest, Arc<VerifiedTransaction>>,
 
     transaction_effects: MokaCache<TransactionEffectsDigest, Arc<TransactionEffects>>,
@@ -186,6 +202,8 @@ impl CachedCommittedData {
             .max_capacity(MAX_CACHE_SIZE)
             .max_capacity(MAX_CACHE_SIZE)
             .build();
+        let marker_cache = MokaCache::builder().max_capacity(MAX_CACHE_SIZE).build();
+
         let object_by_id_cache = MokaCache::builder()
             .max_capacity(MAX_CACHE_SIZE)
             .max_capacity(MAX_CACHE_SIZE)
@@ -206,6 +224,7 @@ impl CachedCommittedData {
 
         Self {
             object_cache,
+            marker_cache,
             object_by_id_cache,
             transactions,
             transaction_effects,
@@ -216,11 +235,13 @@ impl CachedCommittedData {
     fn clear_and_assert_empty(&self) {
         self.object_cache.invalidate_all();
         self.object_by_id_cache.invalidate_all();
+        self.marker_cache.invalidate_all();
         self.transactions.invalidate_all();
         self.transaction_effects.invalidate_all();
         self.executed_effects_digests.invalidate_all();
         assert_empty(&self.object_cache);
         assert_empty(&self.object_by_id_cache);
+        assert_empty(&self.marker_cache);
         assert_empty(&self.transactions);
         assert_empty(&self.transaction_effects);
         assert_empty(&self.executed_effects_digests);
@@ -364,6 +385,55 @@ impl WritebackCache {
         }
     }
 
+    fn write_marker_value(
+        &self,
+        epoch_id: EpochId,
+        object_key: FullObjectKey,
+        marker_value: MarkerValue,
+    ) {
+        tracing::trace!("inserting marker value {object_key:?}: {marker_value:?}",);
+        self.dirty
+            .markers
+            .entry((epoch_id, object_key.id()))
+            .or_default()
+            .value_mut()
+            .insert(object_key.version(), marker_value);
+    }
+
+    fn get_marker_value_cache_only(
+        &self,
+        object_key: FullObjectKey,
+        epoch_id: EpochId,
+    ) -> CacheResult<MarkerValue> {
+        Self::with_locked_cache_entries(
+            &self.dirty.markers,
+            &self.cached.marker_cache,
+            &(epoch_id, object_key.id()),
+            |dirty_entry, cached_entry| {
+                check_cache_entry_by_version!(self, dirty_entry, object_key.version());
+                check_cache_entry_by_version!(self, cached_entry, object_key.version());
+                CacheResult::Miss
+            },
+        )
+    }
+
+    fn get_latest_marker_value_cache_only(
+        &self,
+        object_id: FullObjectID,
+        epoch_id: EpochId,
+    ) -> CacheResult<(Version, MarkerValue)> {
+        Self::with_locked_cache_entries(
+            &self.dirty.markers,
+            &self.cached.marker_cache,
+            &(epoch_id, object_id),
+            |dirty_entry, cached_entry| {
+                check_cache_entry_by_latest!(self, dirty_entry);
+                check_cache_entry_by_latest!(self, cached_entry);
+                CacheResult::Miss
+            },
+        )
+    }
+
     fn get_object_entry_by_id_cache_only(
         &self,
         object_id: &ObjectID,
@@ -464,11 +534,12 @@ impl WritebackCache {
         epoch_id: EpochId,
         tx_outputs: Arc<TransactionOutputs>,
     ) -> SomaResult {
-        trace!(digest = ?tx_outputs.transaction.digest(), "writing transaction outputs to cache");
+        debug!(digest = ?tx_outputs.transaction.digest(), "writing transaction outputs to cache");
 
         let TransactionOutputs {
             transaction,
             effects,
+            markers,
             written,
             deleted,
             ..
@@ -480,6 +551,11 @@ impl WritebackCache {
         for ObjectKey(id, version) in deleted.iter() {
             self.write_object_entry(id, *version, ObjectEntry::Deleted)
                 .await;
+        }
+
+        // Update all markers
+        for (object_key, marker_value) in markers.iter() {
+            self.write_marker_value(epoch_id, *object_key, *marker_value);
         }
 
         for (object_id, object) in written.iter() {
@@ -569,6 +645,7 @@ impl WritebackCache {
         let TransactionOutputs {
             transaction,
             effects,
+            markers,
             written,
             deleted,
             ..
@@ -597,6 +674,17 @@ impl WritebackCache {
             .executed_effects_digests
             .remove(&tx_digest)
             .expect("executed effects must exist");
+
+        // Move dirty markers to cache
+        for (object_key, marker_value) in markers.iter() {
+            Self::move_version_from_dirty_to_cache(
+                &self.dirty.markers,
+                &self.cached.marker_cache,
+                (epoch, object_key.id()),
+                object_key.version(),
+                marker_value,
+            );
+        }
 
         for (object_id, object) in written.iter() {
             Self::move_version_from_dirty_to_cache(
@@ -862,7 +950,7 @@ impl TransactionCacheRead for WritebackCache {
 ///
 /// The "get from cache" and "get from store" behavior are implemented by the caller and provided
 /// via the get_cached_key and multiget_fallback functions.
-fn do_fallback_lookup<K: Copy, V: Default + Clone>(
+pub fn do_fallback_lookup<K: Copy, V: Default + Clone>(
     keys: &[K],
     get_cached_key: impl Fn(&K) -> SomaResult<CacheResult<V>>,
     multiget_fallback: impl Fn(&[K]) -> SomaResult<Vec<V>>,
@@ -904,6 +992,22 @@ impl ExecutionCacheWrite for WritebackCache {
         tx_outputs: Arc<TransactionOutputs>,
     ) -> BoxFuture<'_, SomaResult> {
         WritebackCache::write_transaction_outputs(self, epoch_id, tx_outputs).boxed()
+    }
+
+    fn acquire_transaction_locks(
+        &self,
+        epoch_store: &AuthorityPerEpochStore,
+        owned_input_objects: &[ObjectRef],
+        tx_digest: TransactionDigest,
+        signed_transaction: VerifiedSignedTransaction,
+    ) -> SomaResult {
+        self.object_locks.acquire_transaction_locks(
+            self,
+            epoch_store,
+            owned_input_objects,
+            tx_digest,
+            signed_transaction,
+        )
     }
 }
 
@@ -1167,6 +1271,38 @@ impl ObjectCacheRead for WritebackCache {
         )
     }
 
+    fn get_marker_value(
+        &self,
+        object_key: FullObjectKey,
+        epoch_id: EpochId,
+    ) -> Option<MarkerValue> {
+        match self.get_marker_value_cache_only(object_key, epoch_id) {
+            CacheResult::Hit(marker) => Some(marker),
+            CacheResult::NegativeHit => None,
+            CacheResult::Miss => self
+                .store
+                .get_marker_value(object_key, epoch_id)
+                .expect("db error"),
+        }
+    }
+
+    fn get_latest_marker(
+        &self,
+        object_id: FullObjectID,
+        epoch_id: EpochId,
+    ) -> Option<(Version, MarkerValue)> {
+        match self.get_latest_marker_value_cache_only(object_id, epoch_id) {
+            CacheResult::Hit((v, marker)) => Some((v, marker)),
+            CacheResult::NegativeHit => {
+                panic!("cannot have negative hit when getting latest marker")
+            }
+            CacheResult::Miss => self
+                .store
+                .get_latest_marker(object_id, epoch_id)
+                .expect("db error"),
+        }
+    }
+
     fn get_lock(&self, obj_ref: ObjectRef, epoch_store: &AuthorityPerEpochStore) -> LockResult {
         let cur_epoch = epoch_store.epoch();
         match self.get_object_by_id_cache_only(&obj_ref.0) {
@@ -1201,6 +1337,46 @@ impl ObjectCacheRead for WritebackCache {
             }
             CacheResult::Miss => self.store.get_lock(obj_ref, epoch_store),
         }
+    }
+
+    fn _get_live_objref(&self, object_id: ObjectID) -> SomaResult<ObjectRef> {
+        let obj = self
+            .get_object_impl(&object_id)?
+            .ok_or(SomaError::ObjectNotFound {
+                object_id,
+                version: None,
+            })?;
+        Ok(obj.compute_object_reference())
+    }
+
+    fn check_owned_objects_are_live(&self, owned_object_refs: &[ObjectRef]) -> SomaResult {
+        do_fallback_lookup(
+            owned_object_refs,
+            |obj_ref| match self.get_object_by_id_cache_only(&obj_ref.0) {
+                CacheResult::Hit((version, obj)) => {
+                    if obj.compute_object_reference() != *obj_ref {
+                        Err(SomaError::ObjectVersionUnavailableForConsumption {
+                            provided_obj_ref: *obj_ref,
+                            current_version: version,
+                        }
+                        .into())
+                    } else {
+                        Ok(CacheResult::Hit(()))
+                    }
+                }
+                CacheResult::NegativeHit => Err(SomaError::ObjectNotFound {
+                    object_id: obj_ref.0,
+                    version: None,
+                }
+                .into()),
+                CacheResult::Miss => Ok(CacheResult::Miss),
+            },
+            |remaining| {
+                self.check_owned_objects_are_live(remaining)?;
+                Ok(vec![(); remaining.len()])
+            },
+        )?;
+        Ok(())
     }
 
     fn get_system_state_object(&self) -> SomaResult<SystemState> {

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     digests::ObjectDigest,
-    object::{Object, VersionDigest},
+    object::{Object, Owner, VersionDigest},
 };
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub struct EffectsObjectChange {
 
 impl EffectsObjectChange {
     pub fn new(
-        modified_at: Option<VersionDigest>,
+        modified_at: Option<(VersionDigest, Owner)>,
         written: Option<&Object>,
         id_created: bool,
         id_deleted: bool,
@@ -38,8 +38,9 @@ impl EffectsObjectChange {
         );
         Self {
             input_state: modified_at.map_or(ObjectIn::NotExist, ObjectIn::Exist),
-            output_state: written
-                .map_or(ObjectOut::NotExist, |o| ObjectOut::ObjectWrite(o.digest())),
+            output_state: written.map_or(ObjectOut::NotExist, |o| {
+                ObjectOut::ObjectWrite((o.digest(), o.owner.clone()))
+            }),
             id_operation: if id_created {
                 IDOperation::Created
             } else if id_deleted {
@@ -56,14 +57,14 @@ impl EffectsObjectChange {
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ObjectIn {
     NotExist,
-    /// The old version, digest.
-    Exist(VersionDigest),
+    /// The old version, digest and owner.
+    Exist((VersionDigest, Owner)),
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ObjectOut {
     /// Same definition as in ObjectIn.
     NotExist,
-    /// Any written object, including all of mutated, created today.
-    ObjectWrite(ObjectDigest),
+    /// Any written object, including all of mutated, created, unwrapped today.
+    ObjectWrite((ObjectDigest, Owner)),
 }
