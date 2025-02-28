@@ -10,7 +10,7 @@ use crate::{
         ActorHandle, ActorMessage, Processor,
     },
     compression::zstd_compressor::ZstdCompressor,
-    core::slot_tracker::SlotTracker,
+    core::{pipeline_dispatcher::Dispatcher, slot_tracker::SlotTracker},
     error::{ShardError, ShardResult},
     networking::object::http_network::ObjectHttpClient,
     storage::{
@@ -146,7 +146,7 @@ impl Processor for CertifiedCommitProcessor {
             Ok(())
         }
         .await;
-        msg.sender.send(result);
+        let _ = msg.sender.send(result);
     }
 
     fn shutdown(&mut self) {}

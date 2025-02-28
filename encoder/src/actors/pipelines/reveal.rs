@@ -10,7 +10,7 @@ use crate::{
         ActorHandle, ActorMessage, Processor,
     },
     compression::zstd_compressor::ZstdCompressor,
-    core::slot_tracker::SlotTracker,
+    core::{pipeline_dispatcher::Dispatcher, slot_tracker::SlotTracker},
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
     storage::{
