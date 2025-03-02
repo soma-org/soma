@@ -14,6 +14,7 @@ use crate::{
         encoder_committee::{EncoderIndex, Epoch},
         shard::Shard,
         shard_commit::ShardCommit,
+        shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
 };
 
@@ -54,4 +55,18 @@ pub(crate) trait Store: Send + Sync + 'static {
         checksum: Checksum,
     ) -> ShardResult<usize>;
     fn time_since_first_reveal(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Option<Duration>;
+    fn add_commit_vote(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        shard: Shard,
+        vote: ShardVotes<CommitRound>,
+    ) -> ShardResult<(usize, usize)>;
+    fn add_reveal_vote(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        shard: Shard,
+        vote: ShardVotes<RevealRound>,
+    ) -> ShardResult<(usize, usize)>;
 }

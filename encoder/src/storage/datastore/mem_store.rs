@@ -2,7 +2,7 @@ use fastcrypto::bls12381::min_sig;
 use parking_lot::RwLock;
 use shared::{checksum::Checksum, crypto::EncryptionKey, digest::Digest, signed::Signed};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -13,6 +13,7 @@ use crate::{
         encoder_committee::{EncoderIndex, Epoch},
         shard::Shard,
         shard_commit::ShardCommit,
+        shard_votes::{CommitRound, RevealRound, ShardVotes, ShardVotesAPI},
     },
 };
 
@@ -44,10 +45,34 @@ struct Inner {
 
     // EPOCH, SHARD_REF, SLOT
     reveals: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), (EncryptionKey, Checksum)>,
+    // EPOCH, SHARD_REF
     first_commit_timestamp_ms: BTreeMap<(Epoch, Digest<Shard>), u64>,
+    // EPOCH, SHARD_REF
     first_reveal_timestamp_ms: BTreeMap<(Epoch, Digest<Shard>), u64>,
+
+    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    commit_slot_accept_voters:
+        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    commit_slot_reject_voters:
+        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // EPOCH, SHARD_REF, SLOT -> FINALITY STATUS
+    commit_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
+
+    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    reveal_slot_accept_voters:
+        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    reveal_slot_reject_voters:
+        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // EPOCH, SHARD_REF, SLOT -> FINALITY STATUS
+    reveal_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
 }
 
+pub(crate) enum SlotFinality {
+    Accepted,
+    Rejected,
+}
 impl MemStore {
     pub(crate) const fn new() -> Self {
         Self {
@@ -58,6 +83,12 @@ impl MemStore {
                 reveals: BTreeMap::new(),
                 first_commit_timestamp_ms: BTreeMap::new(),
                 first_reveal_timestamp_ms: BTreeMap::new(),
+                commit_slot_accept_voters: BTreeMap::new(),
+                commit_slot_reject_voters: BTreeMap::new(),
+                commit_slot_finality: BTreeMap::new(),
+                reveal_slot_accept_voters: BTreeMap::new(),
+                reveal_slot_reject_voters: BTreeMap::new(),
+                reveal_slot_finality: BTreeMap::new(),
             }),
         }
     }
@@ -240,5 +271,179 @@ impl Store for MemStore {
             .as_millis() as u64;
 
         Some(Duration::from_millis(current_ms - timestamp_ms))
+    }
+    fn add_commit_vote(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        shard: Shard,
+        vote: ShardVotes<CommitRound>,
+    ) -> ShardResult<(usize, usize)> {
+        let mut inner = self.inner.write();
+        let voter = vote.voter();
+        let rejects = vote.rejects();
+
+        // Get the evaluation set and quorum threshold from the shard
+        let evaluation_set = shard.evaluation_set();
+        let evaluation_set_size = shard.evaluation_size();
+
+        let quorum = shard.evaluation_quorum_threshold() as usize;
+        let accept_threshold = quorum; // 2f + 1
+        let reject_threshold = (evaluation_set_size - quorum) + 1; // (N - quorum) + 1
+
+        let start_key = (epoch, shard_ref, EncoderIndex::MIN);
+        let end_key = (epoch, shard_ref, EncoderIndex::MAX);
+
+        // Process votes for each slot in the evaluation set
+        for &slot in &evaluation_set {
+            let slot_key = (epoch, shard_ref, slot);
+
+            // Skip if the slot is already finalized, we'll count it later via range query
+            if inner.commit_slot_finality.get(&slot_key).is_some() {
+                continue;
+            }
+
+            // Determine if the voter accepts or rejects this slot
+            let is_reject = rejects.contains(&slot);
+            if is_reject {
+                inner
+                    .commit_slot_reject_voters
+                    .entry(slot_key)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(voter);
+            } else {
+                inner
+                    .commit_slot_accept_voters
+                    .entry(slot_key)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(voter);
+            }
+
+            // Count current votes for this slot
+            let accept_count = inner
+                .commit_slot_accept_voters
+                .get(&slot_key)
+                .map(|voters| voters.len())
+                .unwrap_or(0);
+            let reject_count = inner
+                .commit_slot_reject_voters
+                .get(&slot_key)
+                .map(|voters| voters.len())
+                .unwrap_or(0);
+
+            // Check for finality
+            if accept_count >= accept_threshold {
+                inner
+                    .commit_slot_finality
+                    .insert(slot_key, SlotFinality::Accepted);
+            } else if reject_count >= reject_threshold {
+                inner
+                    .commit_slot_finality
+                    .insert(slot_key, SlotFinality::Rejected);
+            }
+        }
+
+        // Use a single range query to count both finalized and accepted slots
+        let (total_finalized_slots, total_accepted_slots) = inner
+            .commit_slot_finality
+            .range(start_key..=end_key)
+            .fold((0, 0), |(finalized, accepted), (_, finality)| {
+                let finalized = finalized + 1;
+                let accepted = if matches!(finality, SlotFinality::Accepted) {
+                    accepted + 1
+                } else {
+                    accepted
+                };
+                (finalized, accepted)
+            });
+
+        Ok((total_finalized_slots, total_accepted_slots))
+    }
+    fn add_reveal_vote(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        shard: Shard,
+        vote: ShardVotes<RevealRound>,
+    ) -> ShardResult<(usize, usize)> {
+        let mut inner = self.inner.write();
+        let voter = vote.voter();
+        let rejects = vote.rejects();
+
+        // Get the evaluation set and quorum threshold from the shard
+        let evaluation_set = shard.evaluation_set();
+        let evaluation_set_size = shard.evaluation_size();
+
+        let quorum = shard.evaluation_quorum_threshold() as usize;
+        let accept_threshold = quorum; // 2f + 1
+        let reject_threshold = (evaluation_set_size - quorum) + 1; // (N - quorum) + 1
+
+        let start_key = (epoch, shard_ref, EncoderIndex::MIN);
+        let end_key = (epoch, shard_ref, EncoderIndex::MAX);
+
+        // Process votes for each slot in the evaluation set
+        for &slot in &evaluation_set {
+            let slot_key = (epoch, shard_ref, slot);
+
+            // Skip if the slot is already finalized, we'll count it later via range query
+            if inner.reveal_slot_finality.get(&slot_key).is_some() {
+                continue;
+            }
+
+            // Determine if the voter accepts or rejects this slot
+            let is_reject = rejects.contains(&slot);
+            if is_reject {
+                inner
+                    .reveal_slot_reject_voters
+                    .entry(slot_key)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(voter);
+            } else {
+                inner
+                    .reveal_slot_accept_voters
+                    .entry(slot_key)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(voter);
+            }
+
+            // Count current votes for this slot
+            let accept_count = inner
+                .reveal_slot_accept_voters
+                .get(&slot_key)
+                .map(|voters| voters.len())
+                .unwrap_or(0);
+            let reject_count = inner
+                .reveal_slot_reject_voters
+                .get(&slot_key)
+                .map(|voters| voters.len())
+                .unwrap_or(0);
+
+            // Check for finality
+            if accept_count >= accept_threshold {
+                inner
+                    .reveal_slot_finality
+                    .insert(slot_key, SlotFinality::Accepted);
+            } else if reject_count >= reject_threshold {
+                inner
+                    .reveal_slot_finality
+                    .insert(slot_key, SlotFinality::Rejected);
+            }
+        }
+
+        // Use a single range query to count both finalized and accepted slots
+        let (total_finalized_slots, total_accepted_slots) = inner
+            .reveal_slot_finality
+            .range(start_key..=end_key)
+            .fold((0, 0), |(finalized, accepted), (_, finality)| {
+                let finalized = finalized + 1;
+                let accepted = if matches!(finality, SlotFinality::Accepted) {
+                    accepted + 1
+                } else {
+                    accepted
+                };
+                (finalized, accepted)
+            });
+
+        Ok((total_finalized_slots, total_accepted_slots))
     }
 }

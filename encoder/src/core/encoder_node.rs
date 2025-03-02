@@ -172,7 +172,7 @@ impl EncoderNode {
             compressor_handle.clone(),
             storage_handle.clone(),
         );
-        let commit_votes_processor = CommitVotesProcessor::new();
+        let commit_votes_processor = CommitVotesProcessor::new(store.clone());
         let reveal_processor = RevealProcessor::new(
             100,
             store.clone(),
@@ -181,7 +181,7 @@ impl EncoderNode {
             compressor_handle.clone(),
             encryptor_handle.clone(),
         );
-        let reveal_votes_processor = RevealVotesProcessor::new();
+        let reveal_votes_processor = RevealVotesProcessor::new(store.clone());
 
         let certified_commit_manager =
             ActorManager::new(default_buffer, certified_commit_processor);
