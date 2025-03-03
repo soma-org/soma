@@ -17,109 +17,12 @@ const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
 pub(crate) struct Broadcaster<C: EncoderInternalNetworkClient> {
     context: Arc<EncoderContext>,
-    network_client: Arc<C>,
+    client: Arc<C>,
 }
 
 impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
-    pub(crate) fn new(context: Arc<EncoderContext>, network_client: Arc<C>) -> Self {
-        Self {
-            context,
-            network_client,
-        }
-    }
-
-    pub(crate) async fn collect_signatures<T, F, Fut>(
-        &self,
-        input: Verified<T>,
-        peers: Vec<EncoderIndex>,
-        network_fn: F,
-    ) -> ShardResult<Vec<Verified<Signature<T, min_sig::BLS12381Signature>>>>
-    where
-        T: Serialize + PartialEq + Eq + Send + Sync + 'static,
-        F: FnOnce(Arc<C>, EncoderIndex, Verified<T>) -> Fut + Copy + Send + Sync + 'static,
-        Fut: Future<Output = ShardResult<Verified<Signature<T, min_sig::BLS12381Signature>>>>
-            + Send
-            + 'static,
-    {
-        struct NetworkingResult<T: Serialize + PartialEq + Eq + Send + 'static> {
-            peer: EncoderIndex,
-            result: ShardResult<Verified<Signature<T, min_sig::BLS12381Signature>>>,
-            retries: u64,
-        }
-
-        let mut join_set: JoinSet<NetworkingResult<T>> = JoinSet::new();
-        let mut valid_signatures = Vec::new();
-
-        // for each shard member
-        for peer in peers {
-            let client = self.network_client.clone();
-            let cloned_input = input.clone();
-            join_set.spawn(async move {
-                let result = network_fn(client, peer, cloned_input).await;
-                NetworkingResult {
-                    peer,
-                    result,
-                    retries: 0,
-                }
-            });
-        }
-
-        while let Some(result) = join_set.join_next().await {
-            match result {
-                Ok(result) => {
-                    match result.result {
-                        Ok(signature) => {
-                            // assume signature validation occurs inside of the generic function
-                            valid_signatures.push(signature);
-                            if valid_signatures.len()
-                                >= self.context.encoder_committee.evaluation_quorum_threshold()
-                                    as usize
-                            {
-                                // We hit quorum, can exit early
-                                join_set.abort_all();
-                                return Ok(valid_signatures);
-                            }
-                        }
-
-                        Err(e) => {
-                            match e {
-                                ShardError::ConflictingRequest => {
-                                    // TODO: do not retry
-                                    // add count to conflicts
-                                    // abort if unique conflicts > (shard_size - quorum)
-                                }
-                                _ => {
-                                    let client = self.network_client.clone();
-                                    let peer = result.peer;
-                                    let retries = result.retries + 1;
-                                    // TODO: potentially change retry increase to be exponential backoff
-                                    let retry_interval = Duration::from_secs(retries);
-                                    if retry_interval <= MAX_RETRY_INTERVAL {
-                                        let cloned_input = input.clone();
-                                        join_set.spawn(async move {
-                                            sleep(retry_interval).await;
-                                            let result =
-                                                network_fn(client, peer, cloned_input).await;
-                                            NetworkingResult {
-                                                peer,
-                                                result,
-                                                retries,
-                                            }
-                                        });
-                                    } else {
-                                        // add to count of conflicts because we can stop early if
-                                        // abort if unique conflicts > (shard_size - quorum)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-        }
-
-        Err(ShardError::QuorumFailed)
+    pub(crate) fn new(context: Arc<EncoderContext>, client: Arc<C>) -> Self {
+        Self { context, client }
     }
 
     pub(crate) async fn broadcast<T, F, Fut>(
@@ -143,7 +46,7 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
 
         // for each shard member
         for peer in peers {
-            let client = self.network_client.clone();
+            let client = self.client.clone();
             let cloned_input = input.clone();
             join_set.spawn(async move {
                 let result = network_fn(client, peer, cloned_input).await;
@@ -162,7 +65,7 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
                         Ok(_) => {}
 
                         Err(e) => {
-                            let client = self.network_client.clone();
+                            let client = self.client.clone();
                             let peer = result.peer;
                             let retries = result.retries + 1;
                             // TODO: potentially change retry increase to be exponential backoff
@@ -189,5 +92,3 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
         Ok(())
     }
 }
-
-// given some shard and a message, broadcast the message to the entire shard. Go ahead and

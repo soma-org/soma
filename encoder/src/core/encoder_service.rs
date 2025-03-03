@@ -230,6 +230,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
             .verify(&self.context, &self.vdf, votes.auth_token())
             .await?;
 
+        // TODO: need to ensure that a person can only vote once with a locked in digest
         let verified_commit_votes = Verified::new(votes, votes_bytes, |votes| {
             // the voter must be a member of the evaluation set
             // evaluation sets do not change for a given shard
