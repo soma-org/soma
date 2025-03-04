@@ -39,7 +39,6 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
-use tokio_util::sync::CancellationToken;
 
 pub(crate) struct CertifiedCommitProcessor {
     cache: Cache<Digest<Shard>, ()>,
@@ -163,7 +162,7 @@ impl Processor for CertifiedCommitProcessor {
                 let shard_clone = shard.clone();
                 self.slot_tracker
                     .start_commit_vote_timer(shard_ref, duration, move || async move {
-                        broadcaster
+                        let _ = broadcaster
                             .process(
                                 (
                                     shard_auth_token,

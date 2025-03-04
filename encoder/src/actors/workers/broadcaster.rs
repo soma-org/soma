@@ -8,11 +8,13 @@ use tokio::sync::Semaphore;
 
 use crate::{
     core::broadcaster::Broadcaster,
+    error::{ShardError, ShardResult},
     networking::messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     storage::datastore::Store,
     types::{
         encoder_committee::{EncoderIndex, Epoch},
         shard::Shard,
+        shard_reveal::{ShardReveal, ShardRevealV1},
         shard_verifier::ShardAuthToken,
         shard_votes::{CommitRound, RevealRound, ShardVotes, ShardVotesV1},
     },
@@ -50,6 +52,7 @@ impl<C: EncoderInternalNetworkClient> BroadcasterProcessor<C> {
 pub(crate) enum BroadcastType {
     CommitVote(Epoch, Digest<Shard>),
     RevealVote(Epoch, Digest<Shard>),
+    RevealKey(Epoch, Digest<Shard>, EncoderIndex),
 }
 
 #[async_trait]
@@ -124,6 +127,37 @@ impl<C: EncoderInternalNetworkClient> Processor for BroadcasterProcessor<C> {
                             })
                             .await;
                         msg.sender.send(result);
+                    }
+                    BroadcastType::RevealKey(epoch, shard_ref, slot) => {
+                        let result: ShardResult<()> = async {
+                            let (encryption_key, checksum) =
+                                store.get_reveal(epoch, shard_ref, slot)?;
+
+                            let reveal = ShardReveal::V1(ShardRevealV1::new(
+                                auth_token,
+                                own_index,
+                                encryption_key,
+                            ));
+                            let signed_reveal =
+                                Signed::new(reveal, Scope::ShardReveal, &keypair.private())
+                                    .unwrap();
+                            let verified_reveal = Verified::from_trusted(signed_reveal)
+                                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+                            broadcaster
+                                .broadcast(
+                                    verified_reveal,
+                                    peers,
+                                    |client, peer, verified_type| async move {
+                                        let _ = client
+                                            .send_reveal(peer, &verified_type, MESSAGE_TIMEOUT)
+                                            .await;
+                                        Ok(())
+                                    },
+                                )
+                                .await
+                        }
+                        .await;
+                        let _ = msg.sender.send(result);
                     }
                 }
                 drop(permit);

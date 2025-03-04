@@ -61,6 +61,8 @@ impl<D: Dispatcher> EncoderInternalService<D> {
     }
 }
 
+// TODO: check for sending the correct peer to the dispatcher e.g. either require the peer to match or
+// use the correct value e.g. voter for shard votes
 #[async_trait]
 impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> {
     async fn handle_send_commit(
@@ -236,6 +238,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
             .shard_verifier
             .verify(&self.context, &self.vdf, votes.auth_token())
             .await?;
+        let auth_token = votes.auth_token().clone();
 
         // TODO: need to ensure that a person can only vote once with a locked in digest
         let verified_commit_votes = Verified::new(votes, votes_bytes, |votes| {
@@ -272,7 +275,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         let _ = self
             .dispatcher
-            .dispatch_commit_votes(peer, shard, verified_commit_votes)
+            .dispatch_commit_votes(peer, auth_token, shard, verified_commit_votes)
             .await?;
         Ok(())
     }
@@ -351,6 +354,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
             .verify(&self.context, &self.vdf, votes.auth_token())
             .await?;
 
+        let auth_token = votes.auth_token().clone();
         let verified_reveal_votes = Verified::new(votes, votes_bytes, |votes| {
             // the voter must be a member of the evaluation set
             // evaluation sets do not change for a given shard
@@ -385,7 +389,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         let _ = self
             .dispatcher
-            .dispatch_reveal_votes(peer, shard, verified_reveal_votes)
+            .dispatch_reveal_votes(peer, auth_token, shard, verified_reveal_votes)
             .await?;
         Ok(())
     }

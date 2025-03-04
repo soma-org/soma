@@ -60,6 +60,12 @@ pub(crate) trait Store: Send + Sync + 'static {
         checksum: Checksum,
     ) -> ShardResult<usize>;
     fn get_filled_reveal_slots(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Vec<EncoderIndex>;
+    fn get_reveal(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        slot: EncoderIndex,
+    ) -> ShardResult<(EncryptionKey, Checksum)>;
     fn time_since_first_reveal(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Option<Duration>;
     fn add_commit_vote(
         &self,

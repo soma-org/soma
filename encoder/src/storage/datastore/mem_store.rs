@@ -205,7 +205,7 @@ impl Store for MemStore {
         slot: EncoderIndex,
     ) -> ShardResult<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>> {
         let slot_key = (epoch, shard_ref, slot);
-        let mut inner = self.inner.read();
+        let inner = self.inner.read();
         match inner.certified_commits.get(&slot_key) {
             Some(signed_commit) => return Ok(signed_commit.clone()),
             None => {
@@ -276,6 +276,21 @@ impl Store for MemStore {
         }
 
         Ok(count)
+    }
+    fn get_reveal(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        slot: EncoderIndex,
+    ) -> ShardResult<(EncryptionKey, Checksum)> {
+        let slot_key = (epoch, shard_ref, slot);
+        let inner = self.inner.read();
+        match inner.reveals.get(&slot_key) {
+            Some(reveal) => return Ok(reveal.clone()),
+            None => {
+                return Err(ShardError::InvalidReveal("key does not exist".to_string()));
+            }
+        }
     }
     fn get_filled_reveal_slots(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Vec<EncoderIndex> {
         let start_key = (epoch, shard_ref, EncoderIndex::MIN);

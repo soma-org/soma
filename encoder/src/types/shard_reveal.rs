@@ -22,7 +22,7 @@ pub(crate) trait ShardRevealAPI {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct ShardRevealV1 {
+pub(crate) struct ShardRevealV1 {
     auth_token: ShardAuthToken,
     slot: EncoderIndex,
     key: EncryptionKey,

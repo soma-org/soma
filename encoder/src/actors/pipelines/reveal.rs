@@ -11,7 +11,7 @@ use crate::{
         ActorHandle, ActorMessage, Processor,
     },
     compression::zstd_compressor::ZstdCompressor,
-    core::{pipeline_dispatcher::Dispatcher, slot_tracker::SlotTracker},
+    core::slot_tracker::SlotTracker,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
     networking::messaging::tonic_network::EncoderInternalTonicClient,
@@ -36,7 +36,6 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
-use tokio_util::sync::CancellationToken;
 
 pub(crate) struct RevealProcessor {
     cache: Cache<Digest<Shard>, ()>,
@@ -158,7 +157,7 @@ impl Processor for RevealProcessor {
                 let broadcaster = self.broadcaster.clone();
                 self.slot_tracker
                     .start_reveal_vote_timer(shard_ref, duration, move || async move {
-                        broadcaster
+                        let _ = broadcaster
                             .process(
                                 (
                                     auth_token,
@@ -179,7 +178,7 @@ impl Processor for RevealProcessor {
             Ok(())
         }
         .await;
-        msg.sender.send(result);
+        let _ = msg.sender.send(result);
     }
 
     fn shutdown(&mut self) {}

@@ -184,8 +184,11 @@ impl EncoderNode {
             compressor_handle.clone(),
             storage_handle.clone(),
         );
-        let commit_votes_processor =
-            CommitVotesProcessor::new(store.clone(), encoder_context.own_encoder_index);
+        let commit_votes_processor = CommitVotesProcessor::new(
+            store.clone(),
+            encoder_context.own_encoder_index,
+            broadcaster_handle.clone(),
+        );
         let reveal_processor = RevealProcessor::new(
             100,
             store.clone(),
