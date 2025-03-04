@@ -2,7 +2,7 @@ use std::{ops::Deref, sync::Arc};
 
 use crate::{
     actors::{ActorMessage, Processor},
-    error::ShardResult,
+    error::{ShardError, ShardResult},
     storage::datastore::Store,
     types::{
         encoder_committee::EncoderIndex,
@@ -29,14 +29,14 @@ impl CommitVotesProcessor {
 impl Processor for CommitVotesProcessor {
     type Input = (
         Shard,
-        Digest<Shard>,
         Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
     );
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, shard_ref, votes) = msg.input;
+            let (shard, votes) = msg.input;
+            let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
             let epoch = shard.epoch();
             let (total_finalized_slots, total_accepted_slots) = self.store.add_commit_vote(
                 epoch,

@@ -25,7 +25,7 @@ pub trait ShardVotesAPI<T> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct ShardVotesV1<T> {
+pub(crate) struct ShardVotesV1<T> {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,
     voter: EncoderIndex,

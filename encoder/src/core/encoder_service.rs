@@ -170,6 +170,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         // convert into correct type
         let certified_commit: Certified<Signed<ShardCommit, min_sig::BLS12381Signature>> =
             bcs::from_bytes(&certified_commit_bytes).map_err(ShardError::MalformedType)?;
+        let auth_token = certified_commit.auth_token().clone();
         let (auth_token_digest, shard) = self
             .shard_verifier
             .verify(&self.context, &self.vdf, certified_commit.auth_token())
@@ -213,7 +214,13 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
 
         let _ = self
             .dispatcher
-            .dispatch_certified_commit(peer, shard, probe_metadata, verified_certified_commit)
+            .dispatch_certified_commit(
+                peer,
+                auth_token,
+                shard,
+                probe_metadata,
+                verified_certified_commit,
+            )
             .await?;
         Ok(())
     }
@@ -265,7 +272,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         let _ = self
             .dispatcher
-            .dispatch_commit_votes(peer, verified_commit_votes)
+            .dispatch_commit_votes(peer, shard, verified_commit_votes)
             .await?;
         Ok(())
     }
@@ -273,6 +280,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         // convert into correct type
         let reveal: Signed<ShardReveal, min_sig::BLS12381Signature> =
             bcs::from_bytes(&reveal_bytes).map_err(ShardError::MalformedType)?;
+        let auth_token = reveal.auth_token().clone();
         let (auth_token_digest, shard) = self
             .shard_verifier
             .verify(&self.context, &self.vdf, reveal.auth_token())
@@ -322,6 +330,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
             .dispatcher
             .dispatch_reveal(
                 peer,
+                auth_token,
                 shard,
                 certified_commit.commit().to_owned(),
                 verified_reveal,
@@ -376,7 +385,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         let _ = self
             .dispatcher
-            .dispatch_reveal_votes(peer, verified_reveal_votes)
+            .dispatch_reveal_votes(peer, shard, verified_reveal_votes)
             .await?;
         Ok(())
     }

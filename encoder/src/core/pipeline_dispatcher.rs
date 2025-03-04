@@ -18,6 +18,7 @@ use crate::{
         shard::Shard,
         shard_commit::ShardCommit,
         shard_reveal::ShardReveal,
+        shard_verifier::ShardAuthToken,
         shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
 };
@@ -27,6 +28,7 @@ pub trait Dispatcher: Sync + Send + 'static {
     async fn dispatch_certified_commit(
         &self,
         peer: EncoderIndex,
+        auth_token: ShardAuthToken,
         shard: Shard,
         probe_metadata: ProbeMetadata,
         certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
@@ -34,11 +36,13 @@ pub trait Dispatcher: Sync + Send + 'static {
     async fn dispatch_commit_votes(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
         votes: Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     async fn dispatch_reveal(
         &self,
         peer: EncoderIndex,
+        auth_token: ShardAuthToken,
         shard: Shard,
         metadata: Metadata,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
@@ -46,6 +50,7 @@ pub trait Dispatcher: Sync + Send + 'static {
     async fn dispatch_reveal_votes(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
         votes: Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
 }
@@ -79,6 +84,7 @@ impl Dispatcher for PipelineDispatcher {
     async fn dispatch_certified_commit(
         &self,
         peer: EncoderIndex,
+        auth_token: ShardAuthToken,
         shard: Shard,
         probe_metadata: ProbeMetadata,
         certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
@@ -87,26 +93,31 @@ impl Dispatcher for PipelineDispatcher {
         // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.certified_commit_handle
-            .background_process((shard, probe_metadata, certified_commit), cancellation)
+            .background_process(
+                (auth_token, shard, probe_metadata, certified_commit),
+                cancellation,
+            )
             .await?;
         Ok(())
     }
     async fn dispatch_commit_votes(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
         votes: Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
         // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.commit_votes_handle
-            .background_process(votes, cancellation)
+            .background_process((shard, votes), cancellation)
             .await?;
         Ok(())
     }
     async fn dispatch_reveal(
         &self,
         peer: EncoderIndex,
+        auth_token: ShardAuthToken,
         shard: Shard,
         metadata: Metadata,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
@@ -115,20 +126,21 @@ impl Dispatcher for PipelineDispatcher {
         // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.reveal_handle
-            .background_process((shard, metadata, reveal), cancellation)
+            .background_process((auth_token, shard, metadata, reveal), cancellation)
             .await?;
         Ok(())
     }
     async fn dispatch_reveal_votes(
         &self,
         peer: EncoderIndex,
+        shard: Shard,
         votes: Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
         // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.reveal_votes_handle
-            .background_process(votes, cancellation)
+            .background_process((shard, votes), cancellation)
             .await?;
         Ok(())
     }

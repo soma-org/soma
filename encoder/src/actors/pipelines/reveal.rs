@@ -1,8 +1,9 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use crate::{
     actors::{
         workers::{
+            broadcaster::{BroadcastType, BroadcasterProcessor},
             compression::{CompressionProcessor, CompressorInput},
             encryption::{EncryptionInput, EncryptionProcessor},
             storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput},
@@ -13,13 +14,16 @@ use crate::{
     core::{pipeline_dispatcher::Dispatcher, slot_tracker::SlotTracker},
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
+    networking::messaging::tonic_network::EncoderInternalTonicClient,
     storage::{
         datastore::Store,
         object::{filesystem::FilesystemObjectStorage, ObjectPath},
     },
     types::{
+        encoder_committee::EncoderIndex,
         shard::Shard,
         shard_reveal::{ShardReveal, ShardRevealAPI},
+        shard_verifier::ShardAuthToken,
     },
 };
 use async_trait::async_trait;
@@ -32,11 +36,13 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
+use tokio_util::sync::CancellationToken;
 
 pub(crate) struct RevealProcessor {
     cache: Cache<Digest<Shard>, ()>,
     store: Arc<dyn Store>,
     slot_tracker: SlotTracker,
+    broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
     storage: ActorHandle<StorageProcessor<FilesystemObjectStorage>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
@@ -47,6 +53,7 @@ impl RevealProcessor {
         cache_size: usize,
         store: Arc<dyn Store>,
         slot_tracker: SlotTracker,
+        broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
         storage: ActorHandle<StorageProcessor<FilesystemObjectStorage>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
         encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
@@ -55,6 +62,7 @@ impl RevealProcessor {
             cache: Cache::new(cache_size),
             store,
             slot_tracker,
+            broadcaster,
             storage,
             compressor,
             encryptor,
@@ -65,6 +73,7 @@ impl RevealProcessor {
 #[async_trait]
 impl Processor for RevealProcessor {
     type Input = (
+        ShardAuthToken,
         Shard,
         Metadata,
         Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
@@ -74,7 +83,7 @@ impl Processor for RevealProcessor {
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             // TODO: check/mark cache
-            let (shard, metadata, verified_reveal) = msg.input;
+            let (auth_token, shard, metadata, verified_reveal) = msg.input;
             let slot = verified_reveal.slot();
             let epoch = verified_reveal.auth_token().epoch();
 
@@ -135,8 +144,32 @@ impl Processor for RevealProcessor {
                     .store
                     .time_since_first_reveal(epoch, shard_ref)
                     .unwrap_or(Duration::from_secs(60));
+                // TODO: make this cleaner should be built into the shard
+                let inference_set = shard.inference_set(); // Vec<EncoderIndex>
+                let evaluation_set = shard.evaluation_set(); // Vec<EncoderIndex>
+
+                // Combine into a HashSet to deduplicate
+                let mut peers_set: HashSet<EncoderIndex> = inference_set.into_iter().collect();
+                peers_set.extend(evaluation_set);
+
+                // Convert back to Vec
+                let peers: Vec<EncoderIndex> = peers_set.into_iter().collect();
+                let shard_clone = shard.clone();
+                let broadcaster = self.broadcaster.clone();
                 self.slot_tracker
-                    .start_reveal_vote_timer(shard_ref, duration)
+                    .start_reveal_vote_timer(shard_ref, duration, move || async move {
+                        broadcaster
+                            .process(
+                                (
+                                    auth_token,
+                                    shard_clone,
+                                    BroadcastType::RevealVote(epoch, shard_ref),
+                                    peers,
+                                ),
+                                msg.cancellation.clone(),
+                            )
+                            .await;
+                    })
                     .await;
             }
             if count == shard.inference_size() {

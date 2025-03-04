@@ -14,8 +14,9 @@ use crate::{
             reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
         },
         workers::{
-            compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
-            model::ModelProcessor, storage::StorageProcessor, vdf::VDFProcessor,
+            broadcaster::BroadcasterProcessor, compression::CompressionProcessor, downloader,
+            encryption::EncryptionProcessor, model::ModelProcessor, storage::StorageProcessor,
+            vdf::VDFProcessor,
         },
         ActorManager,
     },
@@ -149,7 +150,7 @@ impl EncoderNode {
         let storage_handle = storage_manager.handle();
 
         let core = EncoderCore::new(
-            messaging_client,
+            messaging_client.clone(),
             broadcaster,
             downloader_handle.clone(),
             encryptor_handle.clone(),
@@ -163,25 +164,39 @@ impl EncoderNode {
         let vdf_handle = ActorManager::new(1, vdf_processor).handle();
         let store = Arc::new(MemStore::new());
 
+        let broadcaster = Broadcaster::new(encoder_context.clone(), messaging_client);
+        let broadcast_processor = BroadcasterProcessor::new(
+            default_concurrency,
+            broadcaster,
+            store.clone(),
+            encoder_context.own_encoder_index,
+            encoder_keypair.clone(),
+        );
+        let broadcaster_handle = ActorManager::new(default_buffer, broadcast_processor).handle();
+
         let slot_tracker = SlotTracker::new(100);
         let certified_commit_processor = CertifiedCommitProcessor::new(
             100,
             store.clone(),
             slot_tracker.clone(),
+            broadcaster_handle.clone(),
             downloader_handle.clone(),
             compressor_handle.clone(),
             storage_handle.clone(),
         );
-        let commit_votes_processor = CommitVotesProcessor::new(store.clone());
+        let commit_votes_processor =
+            CommitVotesProcessor::new(store.clone(), encoder_context.own_encoder_index);
         let reveal_processor = RevealProcessor::new(
             100,
             store.clone(),
             slot_tracker,
+            broadcaster_handle.clone(),
             storage_handle.clone(),
             compressor_handle.clone(),
             encryptor_handle.clone(),
         );
-        let reveal_votes_processor = RevealVotesProcessor::new(store.clone());
+        let reveal_votes_processor =
+            RevealVotesProcessor::new(store.clone(), encoder_context.own_encoder_index);
 
         let certified_commit_manager =
             ActorManager::new(default_buffer, certified_commit_processor);

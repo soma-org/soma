@@ -181,6 +181,23 @@ impl Store for MemStore {
 
         Ok(count)
     }
+
+    fn get_filled_certified_commit_slots(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+    ) -> Vec<EncoderIndex> {
+        let start_key = (epoch, shard_ref, EncoderIndex::MIN);
+        let end_key = (epoch, shard_ref, EncoderIndex::MAX);
+        let inner = self.inner.read();
+
+        // Use range query to get all keys in the range and extract the EncoderIndex (slot)
+        inner
+            .certified_commits
+            .range(start_key..=end_key)
+            .map(|((_, _, slot), _)| *slot) // Extract the slot from the key tuple
+            .collect::<Vec<EncoderIndex>>()
+    }
     fn get_certified_commit(
         &self,
         epoch: Epoch,
@@ -260,6 +277,18 @@ impl Store for MemStore {
 
         Ok(count)
     }
+    fn get_filled_reveal_slots(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Vec<EncoderIndex> {
+        let start_key = (epoch, shard_ref, EncoderIndex::MIN);
+        let end_key = (epoch, shard_ref, EncoderIndex::MAX);
+        let inner = self.inner.read();
+
+        inner
+            .reveals
+            .range(start_key..=end_key)
+            .map(|((_, _, slot), _)| *slot) // Extract the slot from the key tuple
+            .collect::<Vec<EncoderIndex>>()
+    }
+
     fn time_since_first_reveal(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Option<Duration> {
         let shard_key = (epoch, shard_ref);
         let inner = self.inner.read();

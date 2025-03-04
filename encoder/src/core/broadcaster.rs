@@ -8,7 +8,7 @@ use tokio::task::JoinSet;
 use tokio::time::sleep;
 
 use crate::{
-    error::{ShardError, ShardResult},
+    error::ShardResult,
     networking::messaging::EncoderInternalNetworkClient,
     types::{encoder_committee::EncoderIndex, encoder_context::EncoderContext},
 };

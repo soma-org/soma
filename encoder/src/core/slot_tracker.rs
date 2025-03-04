@@ -27,11 +27,15 @@ impl SlotTracker {
         }
     }
 
-    pub(crate) async fn start_commit_vote_timer(
+    pub(crate) async fn start_commit_vote_timer<F, Fut>(
         &self,
         shard_ref: Digest<Shard>,
         timeout: Duration,
-    ) {
+        on_trigger: F,
+    ) where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send,
+    {
         // Acquire a permit, blocking if the limit is reached
         let permit = self.semaphore.clone().acquire_owned().await.unwrap();
         let (tx, rx) = oneshot::channel();
@@ -44,9 +48,11 @@ impl SlotTracker {
         tokio::spawn(async move {
             tokio::select! {
                 _ = sleep(timeout) => {
+                    on_trigger().await;
                     // Timer hits, trigger work
                 }
                 _ = rx => {
+                    on_trigger().await;
                     // Oneshot receives, trigger work
                 }
             }
@@ -61,11 +67,15 @@ impl SlotTracker {
             let _ = tx.send(());
         }
     }
-    pub(crate) async fn start_reveal_vote_timer(
+    pub(crate) async fn start_reveal_vote_timer<F, Fut>(
         &self,
         shard_ref: Digest<Shard>,
         timeout: Duration,
-    ) {
+        on_trigger: F,
+    ) where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send,
+    {
         // Acquire a permit, blocking if the limit is reached
         let permit = self.semaphore.clone().acquire_owned().await.unwrap();
         let (tx, rx) = oneshot::channel();
@@ -78,9 +88,11 @@ impl SlotTracker {
         tokio::spawn(async move {
             tokio::select! {
                 _ = sleep(timeout) => {
+                    on_trigger().await;
                     // Timer hits, trigger work
                 }
                 _ = rx => {
+                    on_trigger().await;
                     // Oneshot receives, trigger work
                 }
             }

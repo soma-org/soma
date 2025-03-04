@@ -35,6 +35,11 @@ pub(crate) trait Store: Send + Sync + 'static {
         slot: EncoderIndex,
         certified_commit: Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<usize>;
+    fn get_filled_certified_commit_slots(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+    ) -> Vec<EncoderIndex>;
     fn get_certified_commit(
         &self,
         epoch: Epoch,
@@ -54,6 +59,7 @@ pub(crate) trait Store: Send + Sync + 'static {
         reveal: EncryptionKey,
         checksum: Checksum,
     ) -> ShardResult<usize>;
+    fn get_filled_reveal_slots(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Vec<EncoderIndex>;
     fn time_since_first_reveal(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Option<Duration>;
     fn add_commit_vote(
         &self,

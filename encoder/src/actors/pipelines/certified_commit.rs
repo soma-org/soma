@@ -1,8 +1,9 @@
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{collections::HashSet, ops::Deref, sync::Arc, time::Duration};
 
 use crate::{
     actors::{
         workers::{
+            broadcaster::{BroadcastType, BroadcasterProcessor},
             compression::{CompressionProcessor, CompressorInput},
             downloader::{Downloader, DownloaderInput},
             storage::{StorageProcessor, StorageProcessorInput},
@@ -10,17 +11,22 @@ use crate::{
         ActorHandle, ActorMessage, Processor,
     },
     compression::zstd_compressor::ZstdCompressor,
-    core::{pipeline_dispatcher::Dispatcher, slot_tracker::SlotTracker},
+    core::slot_tracker::SlotTracker,
     error::{ShardError, ShardResult},
-    networking::object::http_network::ObjectHttpClient,
+    networking::{
+        messaging::tonic_network::EncoderInternalTonicClient,
+        object::http_network::ObjectHttpClient,
+    },
     storage::{
         datastore::Store,
         object::{filesystem::FilesystemObjectStorage, ObjectPath},
     },
     types::{
         certified::Certified,
+        encoder_committee::EncoderIndex,
         shard::Shard,
         shard_commit::{ShardCommit, ShardCommitAPI},
+        shard_verifier::ShardAuthToken,
     },
 };
 use async_trait::async_trait;
@@ -33,11 +39,13 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
+use tokio_util::sync::CancellationToken;
 
 pub(crate) struct CertifiedCommitProcessor {
     cache: Cache<Digest<Shard>, ()>,
     store: Arc<dyn Store>,
     slot_tracker: SlotTracker,
+    broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
     downloader: ActorHandle<Downloader<ObjectHttpClient>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     storage: ActorHandle<StorageProcessor<FilesystemObjectStorage>>,
@@ -48,6 +56,7 @@ impl CertifiedCommitProcessor {
         cache_size: usize,
         store: Arc<dyn Store>,
         slot_tracker: SlotTracker,
+        broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
         downloader: ActorHandle<Downloader<ObjectHttpClient>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
         storage: ActorHandle<StorageProcessor<FilesystemObjectStorage>>,
@@ -56,6 +65,7 @@ impl CertifiedCommitProcessor {
             cache: Cache::new(cache_size),
             store,
             slot_tracker,
+            broadcaster,
             downloader,
             compressor,
             storage,
@@ -66,6 +76,7 @@ impl CertifiedCommitProcessor {
 #[async_trait]
 impl Processor for CertifiedCommitProcessor {
     type Input = (
+        ShardAuthToken,
         Shard,
         ProbeMetadata,
         Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
@@ -75,7 +86,7 @@ impl Processor for CertifiedCommitProcessor {
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             // TODO: check/mark cache
-            let (shard, probe_metadata, verified_certified_commit) = msg.input;
+            let (shard_auth_token, shard, probe_metadata, verified_certified_commit) = msg.input;
             let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
 
             let slot = verified_certified_commit.slot();
@@ -92,7 +103,7 @@ impl Processor for CertifiedCommitProcessor {
             let _ = self
                 .storage
                 .process(
-                    StorageProcessorInput::Store(data_path, encrypted_embedding_bytes),
+                    StorageProcessorInput::Store(data_path.clone(), encrypted_embedding_bytes),
                     msg.cancellation.clone(),
                 )
                 .await?;
@@ -130,13 +141,40 @@ impl Processor for CertifiedCommitProcessor {
                 verified_certified_commit.deref().to_owned(),
             )?;
 
+            // TODO: only do this if you are a eval set member
+
             if count == shard.minimum_inference_size() as usize {
                 let duration = self
                     .store
                     .time_since_first_certified_commit(epoch, shard_ref)
                     .unwrap_or(Duration::from_secs(60));
+
+                // TODO: make this cleaner should be built into the shard
+                let inference_set = shard.inference_set(); // Vec<EncoderIndex>
+                let evaluation_set = shard.evaluation_set(); // Vec<EncoderIndex>
+
+                // Combine into a HashSet to deduplicate
+                let mut peers_set: HashSet<EncoderIndex> = inference_set.into_iter().collect();
+                peers_set.extend(evaluation_set);
+
+                // Convert back to Vec
+                let peers: Vec<EncoderIndex> = peers_set.into_iter().collect();
+                let broadcaster = self.broadcaster.clone();
+                let shard_clone = shard.clone();
                 self.slot_tracker
-                    .start_commit_vote_timer(shard_ref, duration)
+                    .start_commit_vote_timer(shard_ref, duration, move || async move {
+                        broadcaster
+                            .process(
+                                (
+                                    shard_auth_token,
+                                    shard_clone,
+                                    BroadcastType::CommitVote(epoch, shard_ref),
+                                    peers,
+                                ),
+                                msg.cancellation.clone(),
+                            )
+                            .await;
+                    })
                     .await;
             }
             if count == shard.inference_size() {
