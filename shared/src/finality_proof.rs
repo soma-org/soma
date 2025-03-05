@@ -154,11 +154,8 @@ mod tests {
             .collect();
 
         // Create authority bitset for the signing authorities
-        let authorities = AuthorityBitSet::new(
-            &(0..3)
-                .map(|i| AuthorityIndex::new_for_test(i))
-                .collect::<Vec<_>>(),
-        );
+        let authorities =
+            AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
 
         // Create and verify the proof
         let proof = FinalityProof {
@@ -192,11 +189,8 @@ mod tests {
             .collect();
 
         // Create authority bitset for the signing authorities
-        let authorities = AuthorityBitSet::new(
-            &(0..4)
-                .map(|i| AuthorityIndex::new_for_test(i))
-                .collect::<Vec<_>>(),
-        );
+        let authorities =
+            AuthorityBitSet::new(&(0..4).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
 
         // Create and verify the proof
         let proof = FinalityProof {
@@ -227,11 +221,8 @@ mod tests {
             .map(|(_, _, authority_kp)| authority_kp.sign(&message))
             .collect();
 
-        let authorities = AuthorityBitSet::new(
-            &(0..2)
-                .map(|i| AuthorityIndex::new_for_test(i))
-                .collect::<Vec<_>>(),
-        );
+        let authorities =
+            AuthorityBitSet::new(&(0..2).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
 
         let proof = FinalityProof {
             claim,
@@ -239,7 +230,7 @@ mod tests {
             signature: AuthorityAggregateSignature::new(&signatures).unwrap(),
         };
 
-        assert_eq!(proof.verify(&committee).is_err(), true);
+        assert!(proof.verify(&committee).is_err());
     }
 
     #[test]
@@ -261,11 +252,8 @@ mod tests {
             .map(|(_, _, authority_kp)| authority_kp.sign(&message))
             .collect();
 
-        let authorities = AuthorityBitSet::new(
-            &(0..3)
-                .map(|i| AuthorityIndex::new_for_test(i))
-                .collect::<Vec<_>>(),
-        );
+        let authorities =
+            AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
 
         let proof = FinalityProof {
             claim,
@@ -304,11 +292,8 @@ mod tests {
             transaction: diff_tx(), // Different transaction
         };
 
-        let authorities = AuthorityBitSet::new(
-            &(0..3)
-                .map(|i| AuthorityIndex::new_for_test(i))
-                .collect::<Vec<_>>(),
-        );
+        let authorities =
+            AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
 
         let proof = FinalityProof {
             claim: tampered_claim,

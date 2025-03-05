@@ -64,7 +64,7 @@ impl<C: EncoderInternalNetworkClient> Processor for BroadcasterProcessor<C> {
         let broadcaster = self.broadcaster.clone();
         let store = self.store.clone();
         let keypair = self.encoder_keypair.inner().copy();
-        let own_index = self.own_index.clone();
+        let own_index = self.own_index;
         if let Ok(permit) = self.semaphore.clone().acquire_owned().await {
             tokio::spawn(async move {
                 let (auth_token, shard, input, peers) = msg.input;

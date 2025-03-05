@@ -27,16 +27,19 @@ pub(crate) struct MemStore {
 
 #[allow(unused)]
 struct Inner {
+    #[allow(clippy::type_complexity)]
     // EPOCH, SHARD_REF, SLOT
     commit_digests: BTreeMap<
         (Epoch, Digest<Shard>, EncoderIndex),
         Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     >,
+    #[allow(clippy::type_complexity)]
     // EPOCH, SHARD_REF, COMMITTER
     committers: BTreeMap<
         (Epoch, Digest<Shard>, EncoderIndex),
         Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     >,
+    #[allow(clippy::type_complexity)]
     // EPOCH, SHARD_REF, SLOT
     certified_commits: BTreeMap<
         (Epoch, Digest<Shard>, EncoderIndex),
@@ -207,10 +210,8 @@ impl Store for MemStore {
         let slot_key = (epoch, shard_ref, slot);
         let inner = self.inner.read();
         match inner.certified_commits.get(&slot_key) {
-            Some(signed_commit) => return Ok(signed_commit.clone()),
-            None => {
-                return Err(ShardError::InvalidReveal("key does not exist".to_string()));
-            }
+            Some(signed_commit) => Ok(signed_commit.clone()),
+            None => Err(ShardError::InvalidReveal("key does not exist".to_string())),
         }
     }
     fn time_since_first_certified_commit(
@@ -286,10 +287,8 @@ impl Store for MemStore {
         let slot_key = (epoch, shard_ref, slot);
         let inner = self.inner.read();
         match inner.reveals.get(&slot_key) {
-            Some(reveal) => return Ok(reveal.clone()),
-            None => {
-                return Err(ShardError::InvalidReveal("key does not exist".to_string()));
-            }
+            Some(reveal) => Ok(reveal.clone()),
+            None => Err(ShardError::InvalidReveal("key does not exist".to_string())),
         }
     }
     fn get_filled_reveal_slots(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Vec<EncoderIndex> {
@@ -343,7 +342,7 @@ impl Store for MemStore {
             let slot_key = (epoch, shard_ref, slot);
 
             // Skip if the slot is already finalized, we'll count it later via range query
-            if inner.commit_slot_finality.get(&slot_key).is_some() {
+            if inner.commit_slot_finality.contains_key(&slot_key) {
                 continue;
             }
 
@@ -353,13 +352,13 @@ impl Store for MemStore {
                 inner
                     .commit_slot_reject_voters
                     .entry(slot_key)
-                    .or_insert_with(BTreeSet::new)
+                    .or_default()
                     .insert(voter);
             } else {
                 inner
                     .commit_slot_accept_voters
                     .entry(slot_key)
-                    .or_insert_with(BTreeSet::new)
+                    .or_default()
                     .insert(voter);
             }
 
@@ -430,7 +429,7 @@ impl Store for MemStore {
             let slot_key = (epoch, shard_ref, slot);
 
             // Skip if the slot is already finalized, we'll count it later via range query
-            if inner.reveal_slot_finality.get(&slot_key).is_some() {
+            if inner.reveal_slot_finality.contains_key(&slot_key) {
                 continue;
             }
 
@@ -440,13 +439,13 @@ impl Store for MemStore {
                 inner
                     .reveal_slot_reject_voters
                     .entry(slot_key)
-                    .or_insert_with(BTreeSet::new)
+                    .or_default()
                     .insert(voter);
             } else {
                 inner
                     .reveal_slot_accept_voters
                     .entry(slot_key)
-                    .or_insert_with(BTreeSet::new)
+                    .or_default()
                     .insert(voter);
             }
 

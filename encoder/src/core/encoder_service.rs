@@ -24,6 +24,7 @@ use crate::{
         encoder_context::EncoderContext,
         shard_commit::{ShardCommit, ShardCommitAPI},
         shard_reveal::{ShardReveal, ShardRevealAPI},
+        shard_scores::{ShardScores, ShardScoresAPI},
         shard_verifier::ShardVerifier,
         shard_votes::{CommitRound, RevealRound, ShardVotes, ShardVotesAPI},
     },
@@ -97,7 +98,7 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
                 if shard.inference_set().contains(&signed_route.destination())
                     // check if the route destination is the original eligible slot
                     // this redundancy is not allowed
-                    || &signed_route.destination() == &signed_commit.slot()
+                    || signed_route.destination() == signed_commit.slot()
                 {
                     return Err(shared::error::SharedError::ValidationError(
                         "invalid route destination".to_string(),
@@ -390,6 +391,43 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
         let _ = self
             .dispatcher
             .dispatch_reveal_votes(peer, auth_token, shard, verified_reveal_votes)
+            .await?;
+        Ok(())
+    }
+    async fn handle_send_scores(&self, peer: EncoderIndex, scores_bytes: Bytes) -> ShardResult<()> {
+        let scores: Signed<ShardScores, min_sig::BLS12381Signature> =
+            bcs::from_bytes(&scores_bytes).map_err(ShardError::MalformedType)?;
+        let (auth_token_digest, shard) = self
+            .shard_verifier
+            .verify(&self.context, &self.vdf, scores.auth_token())
+            .await?;
+        let auth_token = scores.auth_token().clone();
+        let verified_scores = Verified::new(scores, scores_bytes, |scores| {
+            // NOTE using peer not a field from the type, not sure which is better
+            if !shard.evaluation_set().contains(&peer) {
+                return Err(shared::error::SharedError::ValidationError(
+                    "sender is not in evaluation set".to_string(),
+                ));
+            }
+
+            // ensure there is a score for each slot
+            // len of scores should be len of inference slot, each slot should be a valid member
+
+            let _ = scores.verify(
+                Scope::ShardScores,
+                self.context
+                    .encoder_committee
+                    .encoder(peer) // NOTE: using the peer not a field from the scores. not sure which is better
+                    .encoder_key
+                    .inner(),
+            )?;
+
+            Ok(())
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        let _ = self
+            .dispatcher
+            .dispatch_scores(peer, auth_token, shard, verified_scores)
             .await?;
         Ok(())
     }

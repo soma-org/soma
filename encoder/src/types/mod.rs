@@ -1,10 +1,10 @@
 pub(crate) mod certified;
 pub(crate) mod encoder_committee;
 pub(crate) mod encoder_context;
-pub(crate) mod score;
 pub(crate) mod shard;
 pub(crate) mod shard_commit;
 pub(crate) mod shard_input;
 pub(crate) mod shard_reveal;
+pub(crate) mod shard_scores;
 pub(crate) mod shard_verifier;
 pub(crate) mod shard_votes;

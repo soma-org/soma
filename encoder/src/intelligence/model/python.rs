@@ -56,7 +56,7 @@ impl PythonInterpreter {
     }
 
     pub(crate) fn new_module(&self, entry_point: &Path) -> ShardResult<PythonModule> {
-        let entry_point_code = std::fs::read_to_string(&entry_point).map_err(|e| {
+        let entry_point_code = std::fs::read_to_string(entry_point).map_err(|e| {
             ShardError::FailedLoadingPythonModule(format!("Failed to read entry point file: {}", e))
         })?;
 
@@ -118,7 +118,7 @@ impl Model for PythonModule {
         let result = tokio::task::spawn_blocking(move || {
             Python::with_gil(|py| -> ShardResult<ArrayD<f32>> {
                 // Use the cloned module inside the blocking task
-                let py_input = PyArrayDyn::from_array_bound(py, &input);
+                let py_input = PyArrayDyn::from_array(py, &input);
 
                 let result = module
                     .call_method1(py, "__call__", (py_input,))
@@ -133,8 +133,8 @@ impl Model for PythonModule {
                     ))
                 })?;
 
-                let input_batch_size = input.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
-                let output_batch_size = array.shape().get(0).ok_or(ShardError::ArrayShapeError)?;
+                let input_batch_size = input.shape().first().ok_or(ShardError::ArrayShapeError)?;
+                let output_batch_size = array.shape().first().ok_or(ShardError::ArrayShapeError)?;
 
                 if input_batch_size != output_batch_size {
                     return Err(ShardError::BatchSizeMismatch(format!(

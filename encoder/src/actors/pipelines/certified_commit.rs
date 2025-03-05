@@ -14,12 +14,12 @@ use crate::{
     core::slot_tracker::SlotTracker,
     error::{ShardError, ShardResult},
     networking::{
-        messaging::tonic_network::EncoderInternalTonicClient,
-        object::http_network::ObjectHttpClient,
+        messaging::EncoderInternalNetworkClient,
+        object::{http_network::ObjectHttpClient, ObjectNetworkClient},
     },
     storage::{
         datastore::Store,
-        object::{filesystem::FilesystemObjectStorage, ObjectPath},
+        object::{filesystem::FilesystemObjectStorage, ObjectPath, ObjectStorage},
     },
     types::{
         certified::Certified,
@@ -40,25 +40,31 @@ use shared::{
     verified::Verified,
 };
 
-pub(crate) struct CertifiedCommitProcessor {
+pub(crate) struct CertifiedCommitProcessor<
+    E: EncoderInternalNetworkClient,
+    O: ObjectNetworkClient,
+    S: ObjectStorage,
+> {
     cache: Cache<Digest<Shard>, ()>,
     store: Arc<dyn Store>,
     slot_tracker: SlotTracker,
-    broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
-    downloader: ActorHandle<Downloader<ObjectHttpClient>>,
+    broadcaster: ActorHandle<BroadcasterProcessor<E>>,
+    downloader: ActorHandle<Downloader<O>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-    storage: ActorHandle<StorageProcessor<FilesystemObjectStorage>>,
+    storage: ActorHandle<StorageProcessor<S>>,
 }
 
-impl CertifiedCommitProcessor {
+impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage>
+    CertifiedCommitProcessor<E, O, S>
+{
     pub(crate) fn new(
         cache_size: usize,
         store: Arc<dyn Store>,
         slot_tracker: SlotTracker,
-        broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
-        downloader: ActorHandle<Downloader<ObjectHttpClient>>,
+        broadcaster: ActorHandle<BroadcasterProcessor<E>>,
+        downloader: ActorHandle<Downloader<O>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-        storage: ActorHandle<StorageProcessor<FilesystemObjectStorage>>,
+        storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
             cache: Cache::new(cache_size),
@@ -73,7 +79,9 @@ impl CertifiedCommitProcessor {
 }
 
 #[async_trait]
-impl Processor for CertifiedCommitProcessor {
+impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> Processor
+    for CertifiedCommitProcessor<E, O, S>
+{
     type Input = (
         ShardAuthToken,
         Shard,
@@ -92,8 +100,11 @@ impl Processor for CertifiedCommitProcessor {
             let epoch = verified_certified_commit.auth_token().epoch();
             let commit_metadata = verified_certified_commit.commit();
             let data_path: ObjectPath = ObjectPath::from_checksum(commit_metadata.checksum());
-            let downloader_input =
-                DownloaderInput::new(verified_certified_commit.committer(), data_path.clone());
+            let downloader_input = DownloaderInput::new(
+                epoch,
+                verified_certified_commit.committer(),
+                commit_metadata.clone(),
+            );
             // download the commit and store
             let encrypted_embedding_bytes = self
                 .downloader
@@ -111,7 +122,11 @@ impl Processor for CertifiedCommitProcessor {
             let probe_bytes = self
                 .downloader
                 .process(
-                    DownloaderInput::new(verified_certified_commit.committer(), probe_path.clone()),
+                    DownloaderInput::new(
+                        epoch,
+                        verified_certified_commit.committer(),
+                        probe_metadata.deref().clone(),
+                    ),
                     msg.cancellation.clone(),
                 )
                 .await?;

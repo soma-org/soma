@@ -1,8 +1,8 @@
-use std::{fs::File, marker::PhantomData, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use quick_cache::sync::Cache;
 use shared::{
-    crypto::keys::{EncoderKeyPair, NetworkKeyPair, ProtocolKeyPair},
+    crypto::keys::{EncoderKeyPair, NetworkKeyPair},
     digest::Digest,
     entropy::EntropyVDF,
 };
@@ -11,7 +11,7 @@ use crate::{
     actors::{
         pipelines::{
             certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
-            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
+            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         workers::{
             broadcaster::BroadcasterProcessor, compression::CompressionProcessor, downloader,
@@ -22,25 +22,19 @@ use crate::{
     },
     compression::zstd_compressor::ZstdCompressor,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
-    intelligence::model::{
-        python::{PythonInterpreter, PythonModule},
-        Model,
-    },
+    intelligence::model::python::PythonInterpreter,
     networking::{
         messaging::{
             tonic_network::{EncoderInternalTonicClient, EncoderInternalTonicManager},
-            EncoderInternalNetworkClient, EncoderInternalNetworkManager,
+            EncoderInternalNetworkManager,
         },
         object::{
             http_network::{ObjectHttpClient, ObjectHttpManager},
-            DirectNetworkService, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService,
+            DirectNetworkService, ObjectNetworkManager,
         },
     },
-    storage::{
-        datastore::mem_store::MemStore,
-        object::{filesystem::FilesystemObjectStorage, ObjectStorage},
-    },
-    types::{encoder_context::EncoderContext, shard, shard_verifier},
+    storage::{datastore::mem_store::MemStore, object::filesystem::FilesystemObjectStorage},
+    types::{encoder_context::EncoderContext, shard_verifier},
 };
 
 use self::{
@@ -50,11 +44,8 @@ use self::{
 };
 
 use super::{
-    broadcaster::Broadcaster,
-    encoder_core::EncoderCore,
-    encoder_service::EncoderInternalService,
-    pipeline_dispatcher::{Dispatcher, PipelineDispatcher},
-    slot_tracker,
+    broadcaster::Broadcaster, encoder_core::EncoderCore, encoder_service::EncoderInternalService,
+    pipeline_dispatcher::PipelineDispatcher, slot_tracker,
 };
 
 // pub struct Encoder(EncoderNode<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
@@ -99,7 +90,13 @@ impl EncoderNode {
             EncoderInternalTonicManager::new(encoder_context.clone(), network_keypair);
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
-            EncoderInternalService<PipelineDispatcher>,
+            EncoderInternalService<
+                PipelineDispatcher<
+                    EncoderInternalTonicClient,
+                    ObjectHttpClient,
+                    FilesystemObjectStorage,
+                >,
+            >,
         >>::client(&network_manager);
 
         // let messaging_client = network_manager.client();
@@ -201,22 +198,28 @@ impl EncoderNode {
         let reveal_votes_processor =
             RevealVotesProcessor::new(store.clone(), encoder_context.own_encoder_index);
 
+        let scores_processor =
+            ScoresProcessor::new(store.clone(), encoder_context.own_encoder_index);
+
         let certified_commit_manager =
             ActorManager::new(default_buffer, certified_commit_processor);
         let commit_votes_manager = ActorManager::new(default_buffer, commit_votes_processor);
         let reveal_manager = ActorManager::new(default_buffer, reveal_processor);
         let reveal_votes_manager = ActorManager::new(default_buffer, reveal_votes_processor);
+        let scores_manager = ActorManager::new(default_buffer, scores_processor);
 
         let certified_commit_handle = certified_commit_manager.handle();
         let commit_votes_handle = commit_votes_manager.handle();
         let reveal_handle = reveal_manager.handle();
         let reveal_votes_handle = reveal_votes_manager.handle();
+        let scores_handle = scores_manager.handle();
 
         let pipeline_dispatcher = PipelineDispatcher::new(
             certified_commit_handle,
             commit_votes_handle,
             reveal_handle,
             reveal_votes_handle,
+            scores_handle,
         );
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(64);
         let verifier = ShardVerifier::new(cache);
@@ -235,7 +238,13 @@ impl EncoderNode {
 
     pub(crate) async fn stop(mut self) {
         <EncoderInternalTonicManager as EncoderInternalNetworkManager<
-            EncoderInternalService<PipelineDispatcher>,
+            EncoderInternalService<
+                PipelineDispatcher<
+                    EncoderInternalTonicClient,
+                    ObjectHttpClient,
+                    FilesystemObjectStorage,
+                >,
+            >,
         >>::stop(&mut self.network_manager)
         .await;
     }

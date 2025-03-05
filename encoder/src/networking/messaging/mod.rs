@@ -14,6 +14,7 @@ use crate::types::certified::Certified;
 use crate::types::encoder_committee::EncoderIndex;
 use crate::types::shard_commit::ShardCommit;
 use crate::types::shard_reveal::ShardReveal;
+use crate::types::shard_scores::ShardScores;
 use crate::types::shard_votes::{CommitRound, RevealRound, ShardVotes};
 use crate::{error::ShardResult, types::encoder_context::EncoderContext};
 use async_trait::async_trait;
@@ -67,6 +68,12 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
         votes: &Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
+    async fn send_scores(
+        &self,
+        peer: EncoderIndex,
+        scores: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
 }
 
 #[async_trait]
@@ -96,6 +103,7 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
         peer: EncoderIndex,
         votes_bytes: Bytes,
     ) -> ShardResult<()>;
+    async fn handle_send_scores(&self, peer: EncoderIndex, scores_bytes: Bytes) -> ShardResult<()>;
 }
 
 /// `EncoderNetworkManager` handles starting and stopping the network related services

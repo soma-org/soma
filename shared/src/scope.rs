@@ -50,6 +50,7 @@ pub enum Scope {
     ShardCertificate = 14,
     ShardCommitVotes = 15,
     ShardRevealVotes = 16,
+    ShardScores = 17,
 }
 
 impl TryFrom<u8> for Scope {

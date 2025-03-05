@@ -67,6 +67,7 @@ struct BlockV1 {
 }
 
 impl BlockV1 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         epoch: Epoch,
         round: Round,

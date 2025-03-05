@@ -74,6 +74,15 @@ fn build_tonic_services(out_dir: &Path) {
                 .codec_path(codec_path)
                 .build(),
         )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("send_scores")
+                .route_name("SendScores")
+                .input_type("crate::networking::messaging::tonic_network::SendScoresRequest")
+                .output_type("crate::networking::messaging::tonic_network::SendScoresResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
         .build();
     tonic_build::manual::Builder::new()
         .out_dir(out_dir)

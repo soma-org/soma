@@ -27,6 +27,8 @@ pub(crate) enum ShardError {
     #[error("Actor error: {0}")]
     ShardNotFound(String),
 
+    #[error("Object validation error: {0}")]
+    ObjectValidation(String),
     #[error("Actor error: {0}")]
     ActorError(String),
 

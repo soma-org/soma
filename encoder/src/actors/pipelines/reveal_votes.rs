@@ -48,6 +48,8 @@ impl Processor for RevealVotesProcessor {
             if total_finalized_slots == shard.inference_size() {
                 if total_accepted_slots >= shard.minimum_inference_size() as usize {
                     if shard.evaluation_set().contains(&self.own_index) {
+                        // CALL THE EVALUATION PIPELINE
+                        // WHICH BROADCASTS
                         // if member of the evaluation set then trigger final evaluation
                     }
                 } else {

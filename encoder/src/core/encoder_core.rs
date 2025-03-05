@@ -72,6 +72,7 @@ where
     B: ObjectStorage,
     BC: ObjectNetworkClient,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         client: Arc<C>,
         broadcaster: Arc<Broadcaster<C>>,

@@ -48,13 +48,13 @@ impl<T: Serialize> Verified<T> {
         let digest = Digest::<T>::new_from_bytes(&serialized);
         Ok(Self {
             inner: Arc::new(inner),
-            digest: digest,
+            digest,
             serialized,
         })
     }
 
     pub fn digest(&self) -> Digest<T> {
-        self.digest.clone()
+        self.digest
     }
 
     pub fn serialized(&self) -> Serialized<T> {
@@ -84,7 +84,7 @@ impl<T: Serialize> Clone for Verified<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            digest: self.digest.clone(),
+            digest: self.digest,
             serialized: self.serialized.clone(),
         }
     }

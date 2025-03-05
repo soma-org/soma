@@ -7,8 +7,13 @@ use std::{sync::Arc, time::Duration};
 use crate::{
     error::ShardResult,
     storage::object::{ObjectPath, ObjectSignedUrl, ObjectStorage},
-    types::{encoder_committee::EncoderIndex, encoder_context::EncoderContext},
+    types::{
+        encoder_committee::{EncoderIndex, Epoch},
+        encoder_context::EncoderContext,
+    },
 };
+
+use shared::metadata::Metadata;
 
 pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(60 * 2);
 
@@ -16,8 +21,9 @@ pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(6
 pub(crate) trait ObjectNetworkClient: Send + Sync + Sized + 'static {
     async fn get_object(
         &self,
+        epoch: Epoch,
         peer: EncoderIndex,
-        path: &ObjectPath,
+        metadata: &Metadata,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 }

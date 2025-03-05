@@ -65,7 +65,7 @@ impl<B: ObjectStorage> Processor for StorageProcessor<B> {
                         .store
                         .get_object(&path)
                         .await
-                        .map(|bytes| StorageProcessorOutput::Get(bytes));
+                        .map(StorageProcessorOutput::Get);
                     let _ = msg.sender.send(result);
                 }
             }

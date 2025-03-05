@@ -104,8 +104,7 @@ impl EncoderCommittee {
         }
     }
 
-    /// -----------------------------------------------------------------------
-    /// Accessors to Committee fields.
+    // -----------------------------------------------------------------------
 
     /// returns the epoch
     pub(crate) fn epoch(&self) -> Epoch {
@@ -144,7 +143,7 @@ impl EncoderCommittee {
 
     /// Returns true if the provided count has reached quorum (2f+1).
     pub(crate) fn reached_quorum(&self, count: CountUnit) -> bool {
-        count as u32 >= self.evaluation_quorum_threshold()
+        count >= self.evaluation_quorum_threshold()
     }
 
     /// Coverts an index to an EncoderIndex, if valid.

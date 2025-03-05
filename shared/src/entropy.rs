@@ -62,12 +62,10 @@ impl EntropyAPI for EntropyVDF {
             .evaluate(&input)
             .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
 
-        let entropy_bytes =
-            bcs::to_bytes(&output).map_err(|e| SharedError::SerializationFailure(e))?;
+        let entropy_bytes = bcs::to_bytes(&output).map_err(SharedError::SerializationFailure)?;
 
         let entropy = BlockEntropyOutput(Bytes::copy_from_slice(&entropy_bytes));
-        let proof_bytes =
-            bcs::to_bytes(&proof).map_err(|e| SharedError::SerializationFailure(e))?;
+        let proof_bytes = bcs::to_bytes(&proof).map_err(SharedError::SerializationFailure)?;
 
         let proof = BlockEntropyProof(Bytes::copy_from_slice(&proof_bytes));
         Ok((entropy, proof))

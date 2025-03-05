@@ -67,8 +67,7 @@ impl AuthorityCommittee {
         }
     }
 
-    /// -----------------------------------------------------------------------
-    /// Accessors to Committee fields.
+    // -----------------------------------------------------------------------
 
     /// Returns the epoch field
     pub(crate) const fn epoch(&self) -> Epoch {
@@ -108,8 +107,7 @@ impl AuthorityCommittee {
             .map(|(i, a)| (AuthorityIndex(i as u32), a))
     }
 
-    /// -----------------------------------------------------------------------
-    /// Helpers for Committee properties.
+    // -----------------------------------------------------------------------
 
     /// Returns true if the provided stake has reached quorum (2f+1).
     pub(crate) const fn reached_quorum(&self, stake: Stake) -> bool {

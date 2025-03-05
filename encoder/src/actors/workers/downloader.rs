@@ -1,28 +1,36 @@
 use std::{path, sync::Arc};
 
 use bytes::Bytes;
-use shared::network_committee::NetworkingIndex;
+use shared::{
+    checksum::Checksum,
+    metadata::{Metadata, MetadataAPI, MetadataCommitment},
+    network_committee::NetworkingIndex,
+};
 use tokio::sync::Semaphore;
-use tower::limit::concurrency;
 
 use crate::{
-    error::ShardResult,
+    error::{ShardError, ShardResult},
     networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
     storage::object::ObjectPath,
-    types::encoder_committee::EncoderIndex,
+    types::encoder_committee::{EncoderIndex, Epoch},
 };
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};
 
 pub(crate) struct DownloaderInput {
+    epoch: Epoch,
     peer: EncoderIndex,
-    path: ObjectPath,
+    metadata: Metadata,
 }
 
 impl DownloaderInput {
-    pub(crate) fn new(peer: EncoderIndex, path: ObjectPath) -> Self {
-        Self { peer, path }
+    pub(crate) fn new(epoch: Epoch, peer: EncoderIndex, metadata: Metadata) -> Self {
+        Self {
+            epoch,
+            peer,
+            metadata,
+        }
     }
 }
 
@@ -49,12 +57,27 @@ impl<B: ObjectNetworkClient> Processor for Downloader<B> {
         let client = self.client.clone();
         if let Ok(permit) = self.semaphore.clone().acquire_owned().await {
             tokio::spawn(async move {
-                let input = msg.input;
-                let object = client
-                    .get_object(input.peer, &input.path, GET_OBJECT_TIMEOUT)
-                    .await
-                    .unwrap();
-                let _ = msg.sender.send(Ok(object));
+                let result: ShardResult<Bytes> = async {
+                    let input = msg.input;
+                    let object = client
+                        .get_object(input.epoch, input.peer, &input.metadata, GET_OBJECT_TIMEOUT)
+                        .await?;
+                    if Checksum::new_from_bytes(&object) != input.metadata.checksum() {
+                        return Err(ShardError::ObjectValidation(
+                            "object checksum does not match metadata".to_string(),
+                        ));
+                    };
+
+                    if object.len() != input.metadata.size() {
+                        return Err(ShardError::ObjectValidation(
+                            "object size does not match metadata".to_string(),
+                        ));
+                    }
+
+                    Ok(object)
+                }
+                .await;
+                let _ = msg.sender.send(result);
                 drop(permit);
             });
         }

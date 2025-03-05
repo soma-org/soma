@@ -7,17 +7,20 @@ use crate::{
     actors::{
         pipelines::{
             certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
-            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
+            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         ActorHandle,
     },
     error::ShardResult,
+    networking::{messaging::EncoderInternalNetworkClient, object::ObjectNetworkClient},
+    storage::object::ObjectStorage,
     types::{
         certified::Certified,
         encoder_committee::EncoderIndex,
         shard::Shard,
         shard_commit::ShardCommit,
         shard_reveal::ShardReveal,
+        shard_scores::ShardScores,
         shard_verifier::ShardAuthToken,
         shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
@@ -55,34 +58,52 @@ pub trait Dispatcher: Sync + Send + 'static {
         shard: Shard,
         votes: Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
+    async fn dispatch_scores(
+        &self,
+        peer: EncoderIndex,
+        auth_token: ShardAuthToken,
+        shard: Shard,
+        scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()>;
 }
 
 #[derive(Clone)]
-pub(crate) struct PipelineDispatcher {
-    certified_commit_handle: ActorHandle<CertifiedCommitProcessor>,
+pub(crate) struct PipelineDispatcher<
+    E: EncoderInternalNetworkClient,
+    O: ObjectNetworkClient,
+    S: ObjectStorage,
+> {
+    certified_commit_handle: ActorHandle<CertifiedCommitProcessor<E, O, S>>,
     commit_votes_handle: ActorHandle<CommitVotesProcessor>,
     reveal_handle: ActorHandle<RevealProcessor>,
     reveal_votes_handle: ActorHandle<RevealVotesProcessor>,
+    scores_handle: ActorHandle<ScoresProcessor>,
 }
 
-impl PipelineDispatcher {
+impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage>
+    PipelineDispatcher<E, O, S>
+{
     pub(crate) fn new(
-        certified_commit_handle: ActorHandle<CertifiedCommitProcessor>,
+        certified_commit_handle: ActorHandle<CertifiedCommitProcessor<E, O, S>>,
         commit_votes_handle: ActorHandle<CommitVotesProcessor>,
         reveal_handle: ActorHandle<RevealProcessor>,
         reveal_votes_handle: ActorHandle<RevealVotesProcessor>,
+        scores_handle: ActorHandle<ScoresProcessor>,
     ) -> Self {
         Self {
             certified_commit_handle,
             commit_votes_handle,
             reveal_handle,
             reveal_votes_handle,
+            scores_handle,
         }
     }
 }
 
 #[async_trait]
-impl Dispatcher for PipelineDispatcher {
+impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> Dispatcher
+    for PipelineDispatcher<E, O, S>
+{
     async fn dispatch_certified_commit(
         &self,
         peer: EncoderIndex,
@@ -145,6 +166,21 @@ impl Dispatcher for PipelineDispatcher {
         let cancellation = CancellationToken::new();
         self.reveal_votes_handle
             .background_process((shard, votes), cancellation)
+            .await?;
+        Ok(())
+    }
+    async fn dispatch_scores(
+        &self,
+        peer: EncoderIndex,
+        auth_token: ShardAuthToken,
+        shard: Shard,
+        scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        // TODO: use or remove peer
+        // TODO: need to create correct child cancellation token here
+        let cancellation = CancellationToken::new();
+        self.scores_handle
+            .background_process((shard, scores), cancellation)
             .await?;
         Ok(())
     }

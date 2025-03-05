@@ -177,7 +177,7 @@ impl EncryptionAPI for EncryptionV1 {
     fn key_digest(&self) -> Digest<EncryptionKey> {
         match self {
             // return the digest but match each key accordingly
-            EncryptionV1::Aes256Ctr64LE(digest) => digest.clone(),
+            EncryptionV1::Aes256Ctr64LE(digest) => *digest,
         }
     }
 }
@@ -225,42 +225,33 @@ pub fn verify_metadata(
         // Check size if specified
         if let Some(expected_size) = expected_size {
             if metadata.size() != expected_size {
-                return Err(SharedError::ValidationError(
-                    format!(
-                        "Size mismatch. Expected {}, got {}",
-                        expected_size,
-                        metadata.size()
-                    )
-                    .into(),
-                ));
+                return Err(SharedError::ValidationError(format!(
+                    "Size mismatch. Expected {}, got {}",
+                    expected_size,
+                    metadata.size()
+                )));
             }
         }
 
         // Check shape if specified
         if let Some(expected_shape) = &expected_shape {
             if metadata.shape() != expected_shape.as_slice() {
-                return Err(SharedError::ValidationError(
-                    format!(
-                        "Shape mismatch. Expected {:?}, got {:?}",
-                        expected_shape,
-                        metadata.shape()
-                    )
-                    .into(),
-                ));
+                return Err(SharedError::ValidationError(format!(
+                    "Shape mismatch. Expected {:?}, got {:?}",
+                    expected_shape,
+                    metadata.shape()
+                )));
             }
         }
 
         // Check max size if specified
         if let Some(max_size) = max_size {
             if metadata.size() > max_size {
-                return Err(SharedError::ValidationError(
-                    format!(
-                        "Size {} exceeds maximum allowed size {}",
-                        metadata.size(),
-                        max_size
-                    )
-                    .into(),
-                ));
+                return Err(SharedError::ValidationError(format!(
+                    "Size {} exceeds maximum allowed size {}",
+                    metadata.size(),
+                    max_size
+                )));
             }
         }
 

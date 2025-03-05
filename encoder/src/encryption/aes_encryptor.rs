@@ -25,7 +25,7 @@ impl Encryptor for Aes256Ctr64LEEncryptor {
                 let mut buffer = BytesMut::with_capacity(contents.len());
                 buffer.extend_from_slice(&contents);
                 cipher.apply_keystream(&mut buffer);
-                return Ok(buffer.freeze());
+                Ok(buffer.freeze())
             }
         }
     }
@@ -78,7 +78,7 @@ mod tests {
 
             // Assert that encrypted does not match original contents as long as
             // contents is not an empty set.
-            if contents.len() > 0 {
+            if !contents.is_empty() {
                 assert_ne!(encrypted.as_ref(), contents.as_slice());
             }
             Ok(())

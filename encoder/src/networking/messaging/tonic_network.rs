@@ -19,6 +19,7 @@ use crate::{
         encoder_context::EncoderContext,
         shard_commit::ShardCommit,
         shard_reveal::ShardReveal,
+        shard_scores::ShardScores,
         shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
 };
@@ -157,6 +158,23 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
     }
+    async fn send_scores(
+        &self,
+        peer: EncoderIndex,
+        scores: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let mut request = Request::new(SendScoresRequest {
+            scores: scores.bytes(),
+        });
+        request.set_timeout(timeout);
+        self.get_client(peer, timeout)
+            .await?
+            .send_scores(request)
+            .await
+            .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
+        Ok(())
+    }
 }
 
 /// Proxies Tonic requests to `NetworkService` with actual handler implementation.
@@ -290,6 +308,26 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendRevealVotesResponse {}))
+    }
+    async fn send_scores(
+        &self,
+        request: Request<SendScoresRequest>,
+    ) -> Result<Response<SendScoresResponse>, tonic::Status> {
+        let Some(peer) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.encoder_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let scores = request.into_inner().scores;
+
+        self.service
+            .handle_send_scores(peer, scores)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+
+        Ok(Response::new(SendScoresResponse {}))
     }
 }
 
@@ -432,3 +470,13 @@ pub(crate) struct SendRevealVotesRequest {
 
 #[derive(Clone, prost::Message)]
 pub(crate) struct SendRevealVotesResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendScoresRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    scores: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendScoresResponse {}

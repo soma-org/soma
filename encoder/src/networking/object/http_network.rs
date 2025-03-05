@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 
 use super::{
-    EncoderIndex, GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager,
+    EncoderIndex, Epoch, GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager,
     ObjectNetworkService,
 };
 use crate::{
@@ -21,6 +21,7 @@ use axum::{
 };
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
+use shared::metadata::{Metadata, MetadataAPI};
 use tokio::sync::oneshot;
 use url::Url;
 
@@ -46,8 +47,9 @@ impl ObjectHttpClient {
 impl ObjectNetworkClient for ObjectHttpClient {
     async fn get_object(
         &self,
+        epoch: Epoch,
         peer: EncoderIndex,
-        path: &ObjectPath,
+        metadata: &Metadata,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
         let encoder = self.context.encoder_committee.encoder(peer);
@@ -55,7 +57,7 @@ impl ObjectNetworkClient for ObjectHttpClient {
         let address = to_host_port_str(&encoder.address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
-        let address = format!("http://{address}/{}", path.path());
+        let address = format!("http://{address}/{}", metadata.checksum());
 
         let url = Url::from_str(&address).map_err(|e| ShardError::UrlParseError(e.to_string()))?;
         let response = self

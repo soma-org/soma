@@ -15,6 +15,7 @@ enum SlotType {
 }
 #[derive(Clone)]
 pub(crate) struct SlotTracker {
+    #[allow(clippy::type_complexity)]
     slots: Arc<DashMap<(Digest<Shard>, SlotType), oneshot::Sender<()>>>,
     semaphore: Arc<Semaphore>, // Limits concurrent tasks
 }
@@ -41,7 +42,7 @@ impl SlotTracker {
         let (tx, rx) = oneshot::channel();
 
         let slot_key = (shard_ref, SlotType::Commit);
-        self.slots.insert(slot_key.clone(), tx);
+        self.slots.insert(slot_key, tx);
 
         let slots = self.slots.clone();
 
@@ -81,7 +82,7 @@ impl SlotTracker {
         let (tx, rx) = oneshot::channel();
 
         let slot_key = (shard_ref, SlotType::Reveal);
-        self.slots.insert(slot_key.clone(), tx);
+        self.slots.insert(slot_key, tx);
 
         let slots = self.slots.clone();
 

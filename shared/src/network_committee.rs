@@ -37,8 +37,7 @@ impl NetworkCommittee {
 
         Self { epoch, identities }
     }
-    /// -----------------------------------------------------------------------
-    /// Accessors to Committee fields.
+    // -----------------------------------------------------------------------
 
     pub const fn epoch(&self) -> Epoch {
         self.epoch
@@ -65,8 +64,7 @@ impl NetworkCommittee {
             .map(|(i, a)| (NetworkingIndex(i as u32), a))
     }
 
-    /// -----------------------------------------------------------------------
-    /// Helpers for Committee properties.
+    // -----------------------------------------------------------------------
 
     /// Coverts an index to an NetworkingIndex, if valid.
     /// Returns None if index is out of bound.

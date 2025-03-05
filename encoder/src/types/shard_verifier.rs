@@ -85,23 +85,22 @@ impl ShardVerifier {
         }
         let valid_shard_result: ShardResult<Shard> = {
             // check that the finality proof is valid against the epoch's authorities
-            let _ = token
+            token
                 .proof
                 .verify(&context.authority_committee)
                 .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
             // check that the vdf entropy (block entropy) passes verification with the provided proof
-            let _ = vdf
-                .process(
-                    (
-                        token.proof.epoch(),
-                        token.proof.block_ref(),
-                        token.block_entropy.clone(),
-                        token.entropy_proof.clone(),
-                    ),
-                    CancellationToken::new(),
-                )
-                .await?;
+            vdf.process(
+                (
+                    token.proof.epoch(),
+                    token.proof.block_ref(),
+                    token.block_entropy.clone(),
+                    token.entropy_proof.clone(),
+                ),
+                CancellationToken::new(),
+            )
+            .await?;
 
             // TODO: need to actually check the transaction itself
             // specifically the metadata_commitment digest matches what is provided
@@ -134,9 +133,9 @@ impl ShardVerifier {
             // unwrapping manually here so we can cache the invalid verification
             Err(_) => self.cache.insert(digest, VerificationStatus::Invalid),
         }
-        return Err(ShardError::InvalidShardToken(
+        Err(ShardError::InvalidShardToken(
             "invalid shard token".to_string(),
-        ));
+        ))
     }
 }
 
@@ -258,11 +257,8 @@ mod tests {
             .collect();
 
         // Create authority bitset for the signing authorities
-        let authorities = AuthorityBitSet::new(
-            &(0..3)
-                .map(|i| AuthorityIndex::new_for_test(i))
-                .collect::<Vec<_>>(),
-        );
+        let authorities =
+            AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
 
         // Create and verify the proof
         let proof = FinalityProof::new(

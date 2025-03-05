@@ -75,11 +75,10 @@ impl<T: Serialize + PartialEq + Eq> CertifiedAPI for CertifiedV1<T> {
         // Collect public keys only for unique indices
         let certifier_keys: Vec<EncoderPublicKey> = unique_indices
             .iter()
-            .map(|index| committee.encoder(index.clone()).encoder_key.clone())
+            .map(|index| committee.encoder(*index).encoder_key.clone())
             .collect();
 
-        let _ = self
-            .aggregate_signature
+        self.aggregate_signature
             .verify(&certifier_keys, &message)
             .map_err(SharedError::SignatureVerificationFailure)?;
 
