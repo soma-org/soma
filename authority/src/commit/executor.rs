@@ -337,6 +337,7 @@ impl CommitExecutor {
 
         // Check if the change epoch transaction has shared objects
         if change_epoch_tx.contains_shared_object() {
+            info!("contains shared object");
             // Assign shared object versions for the change epoch transaction
             epoch_store
                 .assign_shared_object_versions_idempotent(
@@ -356,6 +357,7 @@ impl CommitExecutor {
             &epoch_store,
             Some(commit.commit_ref.index),
         );
+
         handle_execution_effects(
             &self.state,
             vec![change_epoch_tx_digest.clone()],
@@ -589,6 +591,7 @@ async fn execute_commit(
         .collect();
 
     if !txns_with_shared_objects.is_empty() {
+        info!("contains shared object");
         // Use the idempotent version since we don't have effects yet
         epoch_store
             .assign_shared_object_versions_idempotent(

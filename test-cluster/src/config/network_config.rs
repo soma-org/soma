@@ -258,7 +258,11 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             0, // epoch_id
         );
 
-        let genesis = Genesis::new(tx.clone(), effects, objects);
+        let genesis = Genesis::new(
+            tx.clone(),
+            effects,
+            inner.written.iter().map(|(_, o)| o.clone()).collect(),
+        );
 
         let seed_peers: Vec<SeedPeer> = validators
             .iter()

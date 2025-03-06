@@ -17,12 +17,12 @@ pub struct EffectsObjectChange {
     // input_state and output_state are the core fields that's required by
     // the protocol as it tells how an object changes on-chain.
     /// State of the object in the store prior to this transaction.
-    pub(crate) input_state: ObjectIn,
+    pub input_state: ObjectIn,
     /// State of the object in the store after this transaction.
-    pub(crate) output_state: ObjectOut,
+    pub output_state: ObjectOut,
 
     /// Whether this object ID is created or deleted in this transaction.
-    pub(crate) id_operation: IDOperation,
+    pub id_operation: IDOperation,
 }
 
 impl EffectsObjectChange {

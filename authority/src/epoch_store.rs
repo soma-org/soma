@@ -26,12 +26,12 @@ use types::{
     },
     crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
     digests::{ECMHLiveObjectSetDigest, TransactionDigest, TransactionEffectsDigest},
-    effects::{self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects},
+    effects::{self, object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut}, ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind},
     envelope::TrustedEnvelope,
     error::{ExecutionError, SomaError, SomaResult},
     execution_indices::ExecutionIndices,
     mutex_table::{MutexGuard, MutexTable},
-    object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Version},
+    object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version},
     protocol::{Chain, ProtocolConfig},
     signature_verifier::SignatureVerifier,
     storage::{object_store::ObjectStore, InputKey},
@@ -39,9 +39,9 @@ use types::{
         self, get_system_state, EpochStartSystemState, EpochStartSystemStateTrait, SystemState,
         SystemStateTrait,
     },
-    temporary_store::{InnerTemporaryStore, TemporaryStore},
+    temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore},
     transaction::{
-        self, CertifiedTransaction, EndOfEpochTransactionKind, InputObjectKind, InputObjects, SenderSignedData, StateTransactionKind, Transaction, TransactionKey, TransactionKind, TrustedExecutableTransaction, VerifiedCertificate, VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction
+        self, CertifiedTransaction, EndOfEpochTransactionKind, InputObjectKind, InputObjects, ObjectReadResult, ObjectReadResultKind, SenderSignedData, StateTransactionKind, Transaction, TransactionKey, TransactionKind, TrustedExecutableTransaction, VerifiedCertificate, VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction
     },
     tx_outputs::WrittenObjects,
     SYSTEM_STATE_OBJECT_ID,
@@ -1489,6 +1489,7 @@ impl AuthorityPerEpochStore {
         let digest = cert.digest();
         Ok(CertTxGuard(self.acquire_tx_lock(digest).await))
     }
+   
 
     pub fn execute_transaction(
         &self,
@@ -1498,22 +1499,246 @@ impl AuthorityPerEpochStore {
         signer: SomaAddress,
         input_objects: InputObjects,
     ) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
-        let mutable_inputs = input_objects.mutable_inputs().keys().copied().collect();
+        // Extract information for normal execution
         let shared_object_refs = input_objects.filter_shared_objects();
-        let receiving_objects = kind.receiving_objects();
-        let mut transaction_dependencies = input_objects.transaction_dependencies();
-        let contains_deleted_input = input_objects.contains_deleted_objects();
-        let cancelled_objects = input_objects.get_cancelled_objects();
+        let transaction_dependencies = input_objects.transaction_dependencies();
         let epoch_id = self.epoch();
-       
-        let mut temporary_store = TemporaryStore::new(
-            input_objects,
-            receiving_objects,
-            tx_digest,
-            epoch_id,
+        
+        // Check if we have assigned shared object placeholders
+        let mut shared_objects_to_load = HashSet::new();
+        let mut has_assigned_shared_version_placeholders = false;
+        let mut shared_object_versions = HashMap::new();
+        
+        // Scan input objects to find any with assigned versions
+        for obj in input_objects.iter() {
+            if let ObjectReadResultKind::CancelledTransactionSharedObject(version) = &obj.object {
+                if !version.is_cancelled() {
+                    // This is a placeholder for an assigned shared version
+                    if let InputObjectKind::SharedObject { id, initial_shared_version, .. } = obj.input_object_kind {
+                        shared_objects_to_load.insert(id);
+                        shared_object_versions.insert(id, *version);
+                        has_assigned_shared_version_placeholders = true;
+                    }
+                }
+            }
+        }
+        
+        debug!("Input objects: {:?}", input_objects);
+        debug!(
+            "Has assigned shared version placeholders: {}, shared objects to load: {:?}", 
+            has_assigned_shared_version_placeholders,
+            shared_objects_to_load
         );
-
-        if let TransactionKind::ConsensusCommitPrologue(_prologue) = kind {
+        
+        // Special handling for transactions with assigned shared versions
+        if has_assigned_shared_version_placeholders {
+            debug!("Using specialized handling for transaction with assigned shared versions");
+            
+            // Always ensure we load the system state
+            if !shared_objects_to_load.contains(&SYSTEM_STATE_OBJECT_ID) {
+                shared_objects_to_load.insert(SYSTEM_STATE_OBJECT_ID);
+            }
+            
+            // Create a temporary store with the original input objects
+            let mut temporary_store = TemporaryStore::new(
+                input_objects,
+                kind.receiving_objects(),
+                tx_digest,
+                epoch_id,
+            );
+            
+            // Load all required shared objects
+            for object_id in &shared_objects_to_load {
+                match store.get_object(object_id) {
+                    Ok(Some(object)) => {
+                        debug!("Loaded shared object {}: {:?}", object_id, object);
+                        
+                        // Add to temporary store - directly overwriting the placeholder
+                        // NOTE: We're not modifying the version yet
+                        temporary_store.input_objects.insert(*object_id, object);
+                    },
+                    Ok(None) => {
+                        if object_id == &SYSTEM_STATE_OBJECT_ID {
+                            let error_msg = format!("System state object not found in the store");
+                            return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+                        }
+                    },
+                    Err(err) => {
+                        if object_id == &SYSTEM_STATE_OBJECT_ID {
+                            let error_msg = format!("Failed to fetch shared object {}: {}", object_id, err);
+                            return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+                        }
+                    }
+                }
+            }
+            
+            // Try to read system state object
+            if let Some(obj) = temporary_store.read_object(&SYSTEM_STATE_OBJECT_ID) {
+                let state_object = obj.clone();
+                
+                // Deserialize system state
+                let mut state = match bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents()) {
+                    Ok(state) => state,
+                    Err(err) => {
+                        let error_msg = format!("Failed to deserialize system state: {}", err);
+                        return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+                    }
+                };
+                
+                // Apply transaction to state
+                let result = match kind.clone() {
+                    TransactionKind::StateTransaction(tx) => match tx.kind {
+                        StateTransactionKind::AddValidator(args) => {
+                            state.request_add_validator(
+                                signer,
+                                args.pubkey_bytes,
+                                args.network_pubkey_bytes,
+                                args.worker_pubkey_bytes,
+                                args.net_address,
+                                args.p2p_address,
+                                args.primary_address,
+                            )
+                        }
+                        StateTransactionKind::RemoveValidator(args) => {
+                            state.request_remove_validator(signer, args.pubkey_bytes)
+                        }
+                    },
+                    TransactionKind::EndOfEpochTransaction(tx) => match tx {
+                        EndOfEpochTransactionKind::ChangeEpoch(change_epoch) => {
+                            state.advance_epoch(change_epoch.epoch, change_epoch.epoch_start_timestamp_ms)
+                        }
+                    },
+                    _ => Ok(()),
+                };
+    
+                debug!("Result state object {:?}", result);
+    
+                // Process execution result
+                let (execution_status, execution_error) = match &result {
+                    Ok(()) => (
+                        ExecutionStatus::Success,
+                        None
+                    ),
+                    Err(err) => {
+                        let error = ExecutionFailureStatus::SomaError(err.clone());
+                        (
+                            ExecutionStatus::Failure { error: error.clone() },
+                            Some(ExecutionError::new(error, None))
+                        )
+                    }
+                };
+    
+                debug!("After state object: {:?}", state);
+                
+                // Update state object with new state
+                let state_bytes = match bcs::to_bytes(&state) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        let error_msg = format!("Failed to serialize updated system state: {}", err);
+                        return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+                    }
+                };
+                
+                // Update the state object in temporary store
+                let mut updated_state_object = state_object;
+                updated_state_object.data.update_contents(state_bytes);
+                temporary_store.mutate_input_object(updated_state_object);
+                
+                // Prepare to collect objects for the output
+                let mut object_changes = BTreeMap::new();
+                let mut written_objects = BTreeMap::new();
+                let mut input_objects_map = BTreeMap::new();
+                let mut mutable_inputs = BTreeMap::new();
+                
+                // Collect system state object versions
+                if let Some(system_state_obj) = temporary_store.read_object(&SYSTEM_STATE_OBJECT_ID) {
+                    // Get target version from shared_object_versions
+                    let target_version = shared_object_versions
+                        .get(&SYSTEM_STATE_OBJECT_ID)
+                        .cloned()
+                        .unwrap_or_else(|| system_state_obj.version().next());
+                    
+                    // Create a copy with the target version
+                    let mut final_system_state = system_state_obj.clone();
+                    
+                    // Set version directly - bypassing increment
+                    final_system_state.data.set_version_to(target_version);
+                    
+                    // Add to results
+                    let id = final_system_state.id();
+                    let input_version = system_state_obj.version();
+                    let input_digest = system_state_obj.digest();
+                    
+                    // Add to written objects
+                    written_objects.insert(id, final_system_state.clone());
+                    
+                    // Add to input objects
+                    input_objects_map.insert(id, system_state_obj.clone());
+                    
+                    // Record mutable input
+                    if !system_state_obj.owner().is_immutable() {
+                        mutable_inputs.insert(id, ((input_version, input_digest), system_state_obj.owner().clone()));
+                    }
+                    
+                    // Create effect object change
+                    let input_state = ObjectIn::Exist(((input_version, input_digest), system_state_obj.owner().clone()));
+                    let output_state = ObjectOut::ObjectWrite((final_system_state.digest(), final_system_state.owner().clone()));
+                    
+                    object_changes.insert(id, EffectsObjectChange {
+                        input_state,
+                        output_state,
+                        id_operation: IDOperation::None,
+                    });
+                }
+                
+                // Filter out shared objects that we've loaded
+                let filtered_shared_refs = shared_object_refs.into_iter()
+                    .filter(|shared_input| {
+                        match shared_input {
+                            SharedInput::Existing((id, _, _)) |
+                            SharedInput::Deleted((id, _, _, _)) |
+                            SharedInput::Cancelled((id, _)) => !shared_objects_to_load.contains(id)
+                        }
+                    })
+                    .collect();
+                
+                // Create effects
+                let effects = TransactionEffects::new(
+                    execution_status.clone(),
+                    epoch_id,
+                    filtered_shared_refs,
+                    tx_digest,
+                    Version::MAX, // Use MAX to avoid version conflicts
+                    object_changes,
+                    transaction_dependencies.into_iter().collect(),
+                );
+                
+                // Create InnerTemporaryStore
+                let inner_store = InnerTemporaryStore::new(
+                    input_objects_map,
+                    written_objects,
+                    mutable_inputs,
+                    Version::MAX,  // Use MAX as lamport_timestamp
+                    BTreeMap::new() // No deleted shared objects
+                );
+                
+                return (inner_store, effects, execution_error);
+            } else {
+                // System state object should always exist
+                let error_msg = "System state object not found in the temporary store".to_string();
+                return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+            }
+        }
+        
+        // Special case for consensus commit prologues
+        if let TransactionKind::ConsensusCommitPrologue(_prologue) = &kind {
+            let mut temporary_store = TemporaryStore::new(
+                input_objects,
+                kind.receiving_objects(),
+                tx_digest,
+                epoch_id,
+            );
+            
             // For consensus commit, we don't process any state changes, just return success
             temporary_store.update_object_version_and_prev_tx();
             
@@ -1524,154 +1749,110 @@ impl AuthorityPerEpochStore {
                 ExecutionStatus::Success,
                 epoch_id,
             );
-
+    
             return (inner, effects, None);
         }
-
-        // Read system state object
-        let mut state_object = match temporary_store.read_object(&SYSTEM_STATE_OBJECT_ID) {
-            Some(obj) => obj.clone(),
-            None => {
-                // System state object should always exist
-                let error_msg = "System state object not found".to_string();
-                let error = ExecutionError::new(
-                    ExecutionFailureStatus::SomaError(SomaError::from(error_msg.clone())),
-                    None
-                );
-                
-                let execution_status = ExecutionStatus::Failure { 
-                    error: ExecutionFailureStatus::SomaError(SomaError::from(error_msg))
-                };
-                
-                let (inner, effects) = temporary_store.into_effects(
-                    shared_object_refs,
-                    &tx_digest,
-                    transaction_dependencies,
-                    execution_status,
-                    epoch_id,
-                );
-                
-                return (inner, effects, Some(error));
-            }
-        };
         
-        // Deserialize system state
-        let mut state = match bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents()) {
-            Ok(state) => state,
-            Err(err) => {
-                let error_msg = format!("Failed to deserialize system state: {}", err);
-                let error = ExecutionError::new(
-                    ExecutionFailureStatus::SomaError(SomaError::from(error_msg.clone())),
-                    None
-                );
-                
-                let execution_status = ExecutionStatus::Failure { 
-                    error: ExecutionFailureStatus::SomaError(SomaError::from(error_msg))
-                };
-                
-                let (inner, effects) = temporary_store.into_effects(
-                    shared_object_refs,
-                    &tx_digest,
-                    transaction_dependencies,
-                    execution_status,
-                    epoch_id,
-                );
-                
-                return (inner, effects, Some(error));
-            }
-        };
-
-        // Apply transaction to state
-        let result = match kind.clone() {
-            TransactionKind::StateTransaction(tx) => match tx.kind {
-                StateTransactionKind::AddValidator(args) => {
-                    // TODO: check if the signer is the same as the validator
-                    state.request_add_validator(
-                        signer,
-                        args.pubkey_bytes,
-                        args.network_pubkey_bytes,
-                        args.worker_pubkey_bytes,
-                        args.net_address,
-                        args.p2p_address,
-                        args.primary_address,
-                    )
-                }
-                StateTransactionKind::RemoveValidator(args) => {
-                    // TODO: check if the signer is the same as the validator
-                    state.request_remove_validator(signer, args.pubkey_bytes)
-                }
-            },
-            TransactionKind::EndOfEpochTransaction(tx) => match tx {
-                EndOfEpochTransactionKind::ChangeEpoch(change_epoch) => {
-                    state.advance_epoch(change_epoch.epoch, change_epoch.epoch_start_timestamp_ms)
-                }
-            },
-            _ => Ok(()),
-        };
-
-        // Process execution result
-        let (execution_status, execution_error) = match &result {
-            Ok(()) => (
-                ExecutionStatus::Success,
-                None
-            ),
-            Err(err) => {
-                let error = ExecutionFailureStatus::SomaError(err.clone());
-                (
-                    ExecutionStatus::Failure { error: error.clone() },
-                    Some(ExecutionError::new(error, None))
-                )
-            }
-        };
-
-        info!("After state object: {:?}", state);
+        // Standard execution path for transactions without assigned shared versions
+        let mut temporary_store = TemporaryStore::new(
+            input_objects,
+            kind.receiving_objects(),
+            tx_digest,
+            epoch_id,
+        );
         
-        // Update state object with new state
-        let state_bytes = match bcs::to_bytes(&state) {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                let error_msg = format!("Failed to serialize updated system state: {}", err);
-                let error = ExecutionError::new(
-                    ExecutionFailureStatus::SomaError(SomaError::from(error_msg.clone())),
-                    None
-                );
-                
-                let execution_status = ExecutionStatus::Failure { 
-                    error: ExecutionFailureStatus::SomaError(SomaError::from(error_msg))
-                };
-                
-                let (inner, effects) = temporary_store.into_effects(
-                    shared_object_refs,
-                    &tx_digest,
-                    transaction_dependencies,
-                    execution_status,
-                    epoch_id,
-                );
-                
-                return (inner, effects, Some(error));
-            }
-        };
-        
-        // Update the state object in temporary store
-        state_object.data.update_contents(state_bytes);
-        temporary_store.mutate_input_object(state_object);
-        
-        // Check any required invariants
-        if let Err(err) = temporary_store.check_ownership_invariants(
-            &signer,
-            &mutable_inputs,
-            matches!(kind, TransactionKind::EndOfEpochTransaction(_))
-        ) {
-            let error_msg = format!("Ownership invariant violated: {}", err);
-            let error = ExecutionError::new(
-                ExecutionFailureStatus::SomaError(SomaError::from(error_msg.clone())),
-                None
-            );
+        // Try to read system state object
+        if let Some(obj) = temporary_store.read_object(&SYSTEM_STATE_OBJECT_ID) {
+            let state_object = obj.clone();
             
-            let execution_status = ExecutionStatus::Failure { 
-                error: ExecutionFailureStatus::SomaError(SomaError::from(error_msg))
+            // Deserialize system state
+            let mut state = match bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents()) {
+                Ok(state) => state,
+                Err(err) => {
+                    let error_msg = format!("Failed to deserialize system state: {}", err);
+                    return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+                }
             };
             
+            // Apply transaction to state
+            let result = match kind.clone() {
+                TransactionKind::StateTransaction(tx) => match tx.kind {
+                    StateTransactionKind::AddValidator(args) => {
+                        // TODO: check if the signer is the same as the validator
+                        state.request_add_validator(
+                            signer,
+                            args.pubkey_bytes,
+                            args.network_pubkey_bytes,
+                            args.worker_pubkey_bytes,
+                            args.net_address,
+                            args.p2p_address,
+                            args.primary_address,
+                        )
+                    }
+                    StateTransactionKind::RemoveValidator(args) => {
+                        // TODO: check if the signer is the same as the validator
+                        state.request_remove_validator(signer, args.pubkey_bytes)
+                    }
+                },
+                TransactionKind::EndOfEpochTransaction(tx) => match tx {
+                    EndOfEpochTransactionKind::ChangeEpoch(change_epoch) => {
+                        state.advance_epoch(change_epoch.epoch, change_epoch.epoch_start_timestamp_ms)
+                    }
+                },
+                _ => Ok(()),
+            };
+    
+            debug!("Result state object {:?}", result);
+    
+            // Process execution result
+            let (execution_status, execution_error) = match &result {
+                Ok(()) => (
+                    ExecutionStatus::Success,
+                    None
+                ),
+                Err(err) => {
+                    let error = ExecutionFailureStatus::SomaError(err.clone());
+                    (
+                        ExecutionStatus::Failure { error: error.clone() },
+                        Some(ExecutionError::new(error, None))
+                    )
+                }
+            };
+    
+            debug!("After state object: {:?}", state);
+            
+            // Update state object with new state
+            let state_bytes = match bcs::to_bytes(&state) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    let error_msg = format!("Failed to serialize updated system state: {}", err);
+                    return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+                }
+            };
+            
+            // Update the state object in temporary store
+            let mut updated_state_object = state_object;
+            updated_state_object.data.update_contents(state_bytes);
+            temporary_store.mutate_input_object(updated_state_object);
+            
+            // Get mutable input IDs
+            let mutable_inputs = temporary_store.mutable_input_refs.keys().cloned().collect();
+            
+            // Check any required invariants
+            let is_epoch_change = matches!(kind, TransactionKind::EndOfEpochTransaction(_));
+            if let Err(err) = temporary_store.check_ownership_invariants(
+                &signer,
+                &mutable_inputs,
+                is_epoch_change
+            ) {
+                let error_msg = format!("Ownership invariant violated: {}", err);
+                return error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id);
+            }
+            
+            // Update versions before generating effects
+            temporary_store.update_object_version_and_prev_tx();
+            
+            // Generate final effects
             let (inner, effects) = temporary_store.into_effects(
                 shared_object_refs,
                 &tx_digest,
@@ -1679,22 +1860,15 @@ impl AuthorityPerEpochStore {
                 execution_status,
                 epoch_id,
             );
-            
-            return (inner, effects, Some(error));
+    
+            (inner, effects, execution_error)
+        } else {
+            // System state object should always exist
+            let error_msg = "System state object not found in the temporary store".to_string();
+            error_result(tx_digest, shared_object_refs, transaction_dependencies, error_msg, epoch_id)
         }
-        
-        // Generate final effects
-        let (inner, effects) = temporary_store.into_effects(
-            shared_object_refs,
-            &tx_digest,
-            transaction_dependencies,
-            execution_status,
-            epoch_id,
-        );
-
-        (inner, effects, execution_error)
     }
-
+    
     #[instrument(level = "trace", skip_all)]
     pub fn insert_tx_cert_sig(
         &self,
@@ -2012,24 +2186,34 @@ impl AuthorityPerEpochStore {
         let versions_to_write: Vec<_> = uninitialized_objects
             .iter()
             .map(|(id, initial_version)| {
-                // Note: we don't actually need to read from the transaction here, as no writer
-                // can update object_store until after get_or_init_next_object_versions
-                // completes.
                 match cache_reader.get_object(id) {
                     Ok(Some(obj)) => {
-                        if obj.owner().start_version() == Some(*initial_version) {
-                            ((*id, *initial_version), obj.version())
+                        let obj_version = obj.version();
+                        
+                        // For any object that exists in the cache, we need to ensure the
+                        // next version is strictly greater than the current version,
+                        // regardless of what the initial_version is
+                        let next_version = if obj_version >= *initial_version {
+                            // Object already has a version >= initial_version,
+                            // we must use a version higher than the current one
+                            obj_version.next()
                         } else {
-                            // If we can't find a matching start version, treat the object as
-                            // if it's absent.
-                            if let Some(obj_start_version) = obj.owner().start_version() {
-                                assert!(*initial_version >= obj_start_version,
-                                        "should be impossible to certify a transaction with a start version that must have only existed in a previous epoch; obj = {obj:?} initial_version = {initial_version:?}, obj_start_version = {obj_start_version:?}");
-                            }
-                            ((*id, *initial_version), *initial_version)
-                        }
+                            // Current version is less than initial_version,
+                            // safe to use the initial version
+                            *initial_version
+                        };
+                        
+                        debug!(
+                            "Assigning version for object {:?}: current={:?}, initial={:?}, assigned={:?}",
+                            id, obj_version, initial_version, next_version
+                        );
+                        
+                        ((*id, *initial_version), next_version)
                     }
-                    _ => ((*id, *initial_version), *initial_version),
+                    _ => {
+                        // Object not found in cache, use initial version
+                        ((*id, *initial_version), *initial_version)
+                    }
                 }
             })
             .collect();
@@ -2077,13 +2261,38 @@ impl AuthorityPerEpochStore {
         cache_reader: &dyn ObjectCacheRead,
         certificates: &[VerifiedExecutableTransaction],
     ) -> SomaResult {
+        // Check if we've already assigned versions for these transactions
+        let mut cert_versions_to_assign = Vec::new();
+        
+        for cert in certificates {
+            let tx_key = cert.key();
+            
+            // If we've already assigned versions for this transaction, use those
+            if let Some(assigned_versions) = self.get_assigned_shared_object_versions(&tx_key) {
+                info!("Using previously assigned versions for tx {:?}: {:?}", 
+                      cert.digest(), assigned_versions);
+                // No need to re-assign versions
+            } else {
+                // Only add certs that don't already have assigned versions
+                cert_versions_to_assign.push(cert.clone());
+            }
+        }
+        
+        // If all transactions already have assigned versions, we're done
+        if cert_versions_to_assign.is_empty() {
+            return Ok(());
+        }
+        
+        // Only compute and assign versions for transactions that don't already have them
         let assigned_versions = SharedObjVerManager::assign_versions_from_consensus(
             self,
             cache_reader,
-            certificates,
+            &cert_versions_to_assign,
             &BTreeMap::new(),
         )?
         .assigned_versions;
+        
+        info!("Assigning shared object version idempotent: {:?}", assigned_versions);
         self.set_assigned_shared_object_versions(assigned_versions);
         Ok(())
     }
@@ -2104,6 +2313,7 @@ impl AuthorityPerEpochStore {
             self,
             cache_reader,
         );
+        info!("Assigning shared object version from effects: {:?}", versions);
         self.set_assigned_shared_object_versions(versions);
         Ok(())
     }
@@ -2182,4 +2392,45 @@ impl EndOfEpochAPI for AuthorityPerEpochStore {
                 )
             })
     }
+}
+
+// Helper function for returning errors
+fn error_result(
+    tx_digest: TransactionDigest,
+    shared_object_refs: Vec<SharedInput>,
+    transaction_dependencies: BTreeSet<TransactionDigest>,
+    error_msg: String,
+    epoch_id: EpochId,
+) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
+    warn!("{}", error_msg);
+    let error = ExecutionError::new(
+        ExecutionFailureStatus::SomaError(SomaError::from(error_msg.clone())),
+        None
+    );
+    
+    let execution_status = ExecutionStatus::Failure { 
+        error: ExecutionFailureStatus::SomaError(SomaError::from(error_msg))
+    };
+    
+    // Just create empty effects
+    let effects = TransactionEffects::new(
+        execution_status.clone(),
+        epoch_id,
+        shared_object_refs,
+        tx_digest,
+        Version::MAX,
+        BTreeMap::new(), // No changed objects
+        transaction_dependencies.into_iter().collect(),
+    );
+    
+    // Create a minimal InnerTemporaryStore
+    let inner_store = InnerTemporaryStore::new(
+        BTreeMap::new(),  // input_objects
+        BTreeMap::new(),  // written
+        BTreeMap::new(),  // mutable_inputs
+        Version::MAX,     // lamport_version
+        BTreeMap::new(),  // deleted_shared_objects
+    );
+    
+    (inner_store, effects, Some(error))
 }

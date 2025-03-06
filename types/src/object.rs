@@ -273,6 +273,10 @@ impl ObjectData {
         self.version.decrement_to(prev);
     }
 
+    pub fn set_version_to(&mut self, version: Version) {
+        self.version = version;
+    }
+
     /// Get the raw contents without the ID bytes
     pub fn contents(&self) -> &[u8] {
         &self.contents[ObjectID::LENGTH..]

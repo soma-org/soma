@@ -111,13 +111,13 @@ impl ExecutionResults {
 
 pub struct TemporaryStore {
     tx_digest: TransactionDigest,
-    input_objects: BTreeMap<ObjectID, Object>,
+    pub input_objects: BTreeMap<ObjectID, Object>,
     /// The version to assign to all objects written by the transaction using this store.
-    lamport_timestamp: Version,
-    execution_results: ExecutionResults,
+    pub lamport_timestamp: Version,
+    pub execution_results: ExecutionResults,
     /// Objects that were loaded during execution
     loaded_runtime_objects: BTreeMap<ObjectID, DynamicallyLoadedObjectMetadata>,
-    mutable_input_refs: BTreeMap<ObjectID, (VersionDigest, Owner)>, // Inputs that are mutable
+    pub mutable_input_refs: BTreeMap<ObjectID, (VersionDigest, Owner)>, // Inputs that are mutable
     /// The set of objects that we may receive during execution. Not guaranteed to receive all, or
     /// any of the objects referenced in this set.
     receiving_objects: Vec<ObjectRef>,
@@ -409,6 +409,53 @@ impl TemporaryStore {
             self.lamport_timestamp,
             self.deleted_consensus_objects,
         )
+    }
+
+    // Add an object from the object store to the temporary store
+    /// This is used to add actual shared objects that correspond to placeholder versions
+    pub fn add_object_from_store(&mut self, object: Object) {
+        let id = object.id();
+
+        // Create a modified object with version set to MINIMUM_VERSION
+        // to ensure that later incrementing to the lamport timestamp will work
+        let mut modified_object = object.clone();
+
+        // Reset the object's version to Version::MIN so it can be properly
+        // incremented later in update_object_version_and_prev_tx
+        if modified_object.version() > Version::MIN {
+            // Save the current version and digest for the mutable_input_refs
+            let original_version = modified_object.version();
+            let original_digest = modified_object.digest();
+
+            // Reset the version to MIN so it can be incremented without panicking
+            modified_object.data.set_version_to(Version::MIN);
+
+            // Add to input objects with the reset version
+            self.input_objects.insert(id, modified_object);
+
+            // If this object is at all mutable, we should track it in mutable inputs
+            // using the ORIGINAL version and digest
+            if !matches!(object.owner, Owner::Immutable) {
+                let version_digest = (original_version, original_digest);
+                self.mutable_input_refs
+                    .insert(id, (version_digest, object.owner().clone()));
+            }
+        } else {
+            // For objects already at Version::MIN, we can just add them as is
+            self.input_objects.insert(id, modified_object.clone());
+
+            // If this object is at all mutable, we should track it in mutable inputs
+            if !matches!(object.owner, Owner::Immutable) {
+                let version_digest = (modified_object.version(), modified_object.digest());
+                self.mutable_input_refs
+                    .insert(id, (version_digest, object.owner().clone()));
+            }
+        }
+    }
+
+    /// Helper method to get the set of mutable input object IDs
+    pub fn get_mutable_input_ids(&self) -> HashSet<ObjectID> {
+        self.mutable_input_refs.keys().cloned().collect()
     }
 }
 

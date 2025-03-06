@@ -538,7 +538,14 @@ impl<S> Envelope<SenderSignedData, S> {
     }
 
     pub fn contains_shared_object(&self) -> bool {
-        self.shared_input_objects().next().is_some()
+        self.data()
+            .inner()
+            .intent_message
+            .value
+            .shared_input_objects()
+            .iter()
+            .next()
+            .is_some()
     }
 
     pub fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {

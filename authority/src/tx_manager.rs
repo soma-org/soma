@@ -7,7 +7,7 @@ use std::{
 use lru::LruCache;
 use parking_lot::RwLock;
 use tokio::{sync::mpsc::UnboundedSender, time::Instant};
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 use types::{
     accumulator::CommitIndex,
     base::FullObjectID,
@@ -325,6 +325,35 @@ impl TransactionManager {
                     }
                 }
 
+
+                // ADDED: Check for transactions with shared objects that have assigned versions
+                let has_shared_objects = cert.contains_shared_object();
+                
+                if has_shared_objects {
+                    if let Some(assigned_versions) = epoch_store.get_assigned_shared_object_versions(&cert.key()) {
+                        debug!(
+                            tx_digest = ?cert.digest(),
+                            "Found assigned shared versions for tx: {:?}",
+                            assigned_versions
+                        );
+                        
+                        // Mark assigned versions as available to break circular dependency
+                        for ((id, _), assigned_version) in &assigned_versions {
+                            for key in input_object_keys.iter() {
+                                if key.id().id() == *id && key.version() == Some(*assigned_version) {
+                                    debug!(
+                                        tx_digest = ?cert.digest(),
+                                        object_id = ?id,
+                                        version = ?assigned_version,
+                                        "Marking shared object as immediately available for transaction with assigned version"
+                                    );
+                                    object_availability.insert(*key, Some(true));
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Some((cert, fx_digest, input_object_keys, commit))
             })
             .collect();
@@ -439,33 +468,91 @@ impl TransactionManager {
                 continue;
             }
 
-            let mut waiting_input_objects = BTreeSet::new();
-            std::mem::swap(
-                &mut waiting_input_objects,
-                &mut pending_cert.waiting_input_objects,
-            );
-            for key in waiting_input_objects {
-                if !object_availability[&key].unwrap() {
-                    // The input object is not yet available.
-                    pending_cert.waiting_input_objects.insert(key);
-
-                    assert!(
-                        inner.missing_inputs.entry(key).or_default().insert(digest),
-                        "Duplicated certificate {:?} for missing object {:?}",
-                        digest,
-                        key
+            // ADDED: Special handling for transactions with shared objects that have assigned versions
+            let has_shared_objects = pending_cert.certificate.contains_shared_object();
+                    
+            if has_shared_objects {
+                // For transactions with shared objects that have assigned versions,
+                // check which objects we can skip waiting for
+                if let Some(assigned_versions) = epoch_store.get_assigned_shared_object_versions(&pending_cert.certificate.key()) {
+                    debug!(
+                        tx_digest = ?digest,
+                        "Transaction has assigned versions: {:?}",
+                        assigned_versions
                     );
-                    let input_txns = inner.input_objects.entry(key.id()).or_default();
-                    input_txns.insert(digest, pending_cert_enqueue_time);
+                    
+                    // Create a map for quick lookups
+                    let assigned_version_map: HashMap<_, _> = assigned_versions
+                        .iter()
+                        .map(|((id, _), version)| (*id, *version))
+                        .collect();
+                    
+                    // Filter out objects that should be considered available
+                    pending_cert.waiting_input_objects.retain(|key| {
+                        if let Some(version) = key.version() {
+                            if let Some(&assigned_version) = assigned_version_map.get(&key.id().id()) {
+                                if version == assigned_version {
+                                    // This is an assigned shared object - don't wait for it
+                                    debug!(
+                                        tx_digest = ?digest,
+                                        object_id = ?key.id().id(),
+                                        version = ?version,
+                                        "Skipping wait for shared object with assigned version"
+                                    );
+                                    return false;
+                                }
+                            }
+                        }
+                        true
+                    });
+                }
+            } else {
+                // Original handling for transactions without shared objects
+                let mut waiting_input_objects = BTreeSet::new();
+                std::mem::swap(
+                    &mut waiting_input_objects,
+                    &mut pending_cert.waiting_input_objects,
+                );
+                
+                for key in waiting_input_objects {
+                    if !object_availability[&key].unwrap() {
+                        // The input object is not yet available.
+                        info!(
+                            "input object is not yet available {} {:?}",
+                            key.id().id(),
+                            key.version()
+                        );
+                        pending_cert.waiting_input_objects.insert(key);
+
+                        assert!(
+                            inner.missing_inputs.entry(key).or_default().insert(digest),
+                            "Duplicated certificate {:?} for missing object {:?}",
+                            digest,
+                            key
+                        );
+                        let input_txns = inner.input_objects.entry(key.id()).or_default();
+                        input_txns.insert(digest, pending_cert_enqueue_time);
+                    }
                 }
             }
 
             // Ready transactions can start to execute.
             if pending_cert.waiting_input_objects.is_empty() {
                 // Send to execution driver for execution.
+                debug!(
+                    tx_digest = ?digest, 
+                    has_shared_objects = ?has_shared_objects,
+                    "Certificate ready for immediate execution"
+                );
                 self.certificate_ready(&mut inner, pending_cert);
                 continue;
             }
+
+            debug!(
+                tx_digest = ?digest,
+                remaining_objects = ?pending_cert.waiting_input_objects.len(),
+                "Certificate not yet ready, waiting for input objects"
+            );
 
             assert!(
                 inner
