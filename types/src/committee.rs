@@ -1,3 +1,35 @@
+//! # Committee Management
+//!
+//! ## Overview
+//! This module defines the structures and logic for managing validator committees in the
+//! Soma blockchain. Committees are responsible for consensus, transaction validation, and
+//! network operations, with voting power distributed among validators.
+//!
+//! ## Responsibilities
+//! - Define the validator committee structure and membership
+//! - Manage validator voting power and stake distribution
+//! - Provide committee-related constants like quorum thresholds
+//! - Support authority selection based on stake weight
+//! - Handle epoch transitions and committee reconfiguration
+//!
+//! ## Component Relationships
+//! - Used by consensus module to determine leader selection and voting rights
+//! - Used by authority module to validate transaction certificates
+//! - Used by node module for validator discovery and networking
+//! - Provides the foundation for Byzantine Fault Tolerance in the system
+//!
+//! ## Key Workflows
+//! 1. Committee creation at genesis and during epoch transitions
+//! 2. Validator selection weighted by stake for leader election
+//! 3. Threshold verification for transaction commit certificates
+//! 4. Authority identity and metadata management
+//!
+//! ## Design Patterns
+//! - Immutable committee structure for thread safety
+//! - Caching of derived data like authority indices for performance
+//! - Fixed total voting power with normalized stake distribution
+//! - Deterministic stake-weighted authority selection
+
 use fastcrypto::ed25519::{Ed25519KeyPair, Ed25519PublicKey};
 use fastcrypto::traits::KeyPair;
 use rand::rngs::{OsRng, StdRng, ThreadRng};
@@ -21,36 +53,142 @@ use crate::digests::TransactionDigest;
 use crate::error::{SomaError, SomaResult};
 use crate::multiaddr::Multiaddr;
 
+/// Identifier for a specific epoch in the blockchain's history.
+///
+/// Epochs represent discrete time periods during which a specific committee
+/// of validators is active. The EpochId increments with each reconfiguration.
 pub type EpochId = u64;
 
+/// Represents the voting power of an authority in the committee.
+///
+/// The sum of all voting powers in a committee is fixed at TOTAL_VOTING_POWER.
+/// Voting power determines the influence of an authority in consensus decisions.
 pub type VotingPower = u64;
 
+/// Hash digest type for committee state.
+///
+/// Used for efficiently representing and comparing committee configurations.
 pub type CommitteeDigest = [u8; 32];
 
-/// Set total_voting_power as 10_000 by convention. Individual voting powers can be interpreted
-/// as easily understandable basis points (e.g., voting_power: 100 = 1%, voting_power: 1 = 0.01%).
-/// Fixing the total voting power allows clients to hardcode the quorum threshold and total_voting power rather
-/// than recomputing these.
+/// Total voting power across all validators in a committee, fixed at 10,000.
+///
+/// Individual voting powers can be interpreted as basis points
+/// (e.g., voting_power: 100 = 1%, voting_power: 1 = 0.01%).
+/// Fixing the total voting power allows clients to hardcode the quorum threshold
+/// and total voting power rather than recomputing these.
 pub const TOTAL_VOTING_POWER: VotingPower = 10_000;
 
-/// Quorum threshold for our fixed voting power--any message signed by this much voting power can be trusted
-/// up to BFT assumptions
+/// Quorum threshold for BFT consensus (2f+1).
+///
+/// Any message signed by this much voting power can be trusted
+/// up to BFT assumptions. This represents approximately 66.67% of
+/// the total voting power.
 pub const QUORUM_THRESHOLD: VotingPower = 6_667;
 
-/// Validity threshold defined by f+1
+/// Validity threshold defined by f+1 (approximately 33.34%).
+///
+/// Used for determining when enough validators have seen or acknowledged
+/// a message. This is the minimum threshold needed to ensure at least
+/// one honest validator has processed a message.
 pub const VALIDITY_THRESHOLD: VotingPower = 3_334;
 
+/// Represents a committee of validators for a specific epoch.
+///
+/// The Committee structure tracks validator membership, voting power distribution,
+/// authority metadata, and provides operations for validator selection and threshold
+/// verification.
+///
+/// ## Thread Safety
+/// This structure is immutable after creation and can be safely shared across threads
+/// using Arc<Committee>.
+///
+/// ## Examples
+///
+/// ```
+/// # use std::collections::BTreeMap;
+/// # type EpochId = u64;
+/// # type AuthorityName = [u8; 32];
+/// # type VotingPower = u64;
+/// # struct Authority {}
+/// # struct Committee { epoch: EpochId, voting_rights: Vec<(AuthorityName, VotingPower)> }
+/// # impl Committee {
+/// #     fn new(_: EpochId, _: BTreeMap<AuthorityName, VotingPower>, _: BTreeMap<AuthorityName, Authority>) -> Self {
+/// #         Committee { epoch: 0, voting_rights: vec![] }
+/// #     }
+/// #     fn quorum_threshold(&self) -> VotingPower { 6667 }
+/// #     fn stake(&self, _: &AuthorityName) -> VotingPower { 1000 }
+/// # }
+/// # let mut voting_rights = BTreeMap::new();
+/// # let mut authorities = BTreeMap::new();
+/// # voting_rights.insert([0; 32], 5000);
+/// # voting_rights.insert([1; 32], 5000);
+/// // Create a committee for epoch 1
+/// let committee = Committee::new(1, voting_rights, authorities);
+///
+/// // Check if a certificate has reached quorum
+/// # let certificate_stake = 7000;
+/// if certificate_stake >= committee.quorum_threshold() {
+///     // Certificate has quorum and can be trusted
+/// }
+///
+/// // Get an authority's voting power
+/// # let authority_name = [0; 32];
+/// let stake = committee.stake(&authority_name);
+/// ```
 #[derive(Clone, Debug, Serialize, Deserialize, Eq)]
 pub struct Committee {
+    /// The epoch this committee is active for
     pub epoch: EpochId,
+
+    /// Ordered list of authorities and their voting power
     pub voting_rights: Vec<(AuthorityName, VotingPower)>,
+
+    /// Cached mapping from authority names to their public keys
     expanded_keys: HashMap<AuthorityName, AuthorityPublicKey>,
+
+    /// Cached mapping from authority names to their index in voting_rights
     index_map: HashMap<AuthorityName, usize>,
 
+    /// Detailed information about each authority
     pub authorities: HashMap<AuthorityName, Authority>,
 }
 
 impl Committee {
+    /// Creates a new committee with the specified epoch, voting rights, and authorities.
+    ///
+    /// # Arguments
+    /// * `epoch` - The epoch ID for this committee
+    /// * `voting_rights` - Mapping of authority names to their voting power
+    /// * `authorities` - Mapping of authority names to their detailed information
+    ///
+    /// # Returns
+    /// A new Committee instance
+    ///
+    /// # Panics
+    /// This function will panic if:
+    /// - The voting rights collection is empty
+    /// - All authorities have zero voting power
+    /// - The total voting power doesn't equal TOTAL_VOTING_POWER (10,000)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::BTreeMap;
+    /// # type AuthorityName = [u8; 32];
+    /// # type VotingPower = u64;
+    /// # struct Authority {}
+    /// # struct Committee { epoch: u64 }
+    /// # impl Committee {
+    /// #     fn new(epoch: u64, _: BTreeMap<AuthorityName, VotingPower>, _: BTreeMap<AuthorityName, Authority>) -> Self {
+    /// #         Committee { epoch }
+    /// #     }
+    /// # }
+    /// # let mut voting_rights = BTreeMap::new();
+    /// # let mut authorities = BTreeMap::new();
+    /// # voting_rights.insert([0; 32], 5000);
+    /// # voting_rights.insert([1; 32], 5000);
+    /// let committee = Committee::new(1, voting_rights, authorities);
+    /// ```
     pub fn new(
         epoch: EpochId,
         voting_rights: BTreeMap<AuthorityName, VotingPower>,
