@@ -1,0 +1,4 @@
+[alias]
+t = "llvm-cov nextest"
+d = "doc --document-private-items"
+do = "doc --open --document-private-items"
