@@ -47,10 +47,7 @@ mod tests {
 
             // Decompress and verify
             let decompressed = compressor.decompress(compressed, original.len()).unwrap();
-            assert_eq!(
-                decompressed, original_bytes,
-                "Decompressed data should match original"
-            );
+            assert_eq!(decompressed, original_bytes);
 
             Ok(())
         })
@@ -67,9 +64,19 @@ mod tests {
 
         let compressed = compressor.compress(original_bytes.clone()).unwrap();
 
-        assert!(
-            compressed.len() < original_bytes.len(),
-            "Compressed data is not smaller than original data"
-        );
+        assert!(compressed.len() < original_bytes.len());
+    }
+    #[test]
+    fn test_compression_error_cases() {
+        let original = [0_u8; 2048].to_vec();
+
+        let compressor = ZstdCompressor::new();
+        let original_bytes = Bytes::from(original.clone());
+
+        let compressed = compressor.compress(original_bytes.clone()).unwrap();
+
+        assert!(compressor
+            .decompress(compressed, original.len() - 1)
+            .is_err());
     }
 }

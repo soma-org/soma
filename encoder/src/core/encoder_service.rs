@@ -410,6 +410,18 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
                 ));
             }
 
+            if scores.unique_slots() != shard.inference_size() {
+                return Err(shared::error::SharedError::ValidationError(
+                    "unique slots for scores does not match shard size".to_string(),
+                ));
+            }
+            for slot in scores.slots() {
+                if !shard.inference_set().contains(&slot) {
+                    return Err(shared::error::SharedError::ValidationError(
+                        "score slot not in inference set".to_string(),
+                    ));
+                }
+            }
             // ensure there is a score for each slot
             // len of scores should be len of inference slot, each slot should be a valid member
 

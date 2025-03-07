@@ -36,6 +36,7 @@ impl Processor for ScoresProcessor {
             let epoch = shard.epoch();
 
             // TODO
+            // aggregate scores
             Ok(())
         }
         .await;

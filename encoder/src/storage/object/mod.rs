@@ -1,4 +1,5 @@
 pub(crate) mod filesystem;
+pub(crate) mod memory;
 
 use crate::error::ShardResult;
 use async_trait::async_trait;
@@ -7,7 +8,7 @@ use std::str::FromStr;
 
 use shared::checksum::Checksum;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ObjectPath {
     // TODO: make this better
     path: String,
@@ -48,4 +49,20 @@ pub(crate) trait ObjectStorage: Send + Sync + Sized + 'static {
 #[async_trait]
 pub(crate) trait ObjectSignedUrl: Send + Sync + 'static {
     async fn get_signed_url(&self, path: &ObjectPath) -> ShardResult<String>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_object_path() {
+        let checksum = Checksum::new_from_bytes(&[1u8; 32]);
+        let path = checksum.to_string();
+
+        let path_obj = ObjectPath::new(path.clone()).unwrap();
+        let checksum_obj = ObjectPath::from_checksum(checksum);
+        assert_eq!(path_obj, checksum_obj);
+        assert_eq!(path, checksum_obj.path());
+    }
 }

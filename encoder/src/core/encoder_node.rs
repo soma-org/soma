@@ -11,7 +11,8 @@ use crate::{
     actors::{
         pipelines::{
             certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
-            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
+            evaluation::EvaluationProcessor, reveal::RevealProcessor,
+            reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         workers::{
             broadcaster::BroadcasterProcessor, compression::CompressionProcessor, downloader,
@@ -171,6 +172,10 @@ impl EncoderNode {
         );
         let broadcaster_handle = ActorManager::new(default_buffer, broadcast_processor).handle();
 
+        let evaluation_processor =
+            EvaluationProcessor::new(store.clone(), broadcaster_handle.clone());
+        let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
+
         let slot_tracker = SlotTracker::new(100);
         let certified_commit_processor = CertifiedCommitProcessor::new(
             100,
@@ -195,8 +200,11 @@ impl EncoderNode {
             compressor_handle.clone(),
             encryptor_handle.clone(),
         );
-        let reveal_votes_processor =
-            RevealVotesProcessor::new(store.clone(), encoder_context.own_encoder_index);
+        let reveal_votes_processor = RevealVotesProcessor::new(
+            store.clone(),
+            encoder_context.own_encoder_index,
+            evaluation_handle,
+        );
 
         let scores_processor =
             ScoresProcessor::new(store.clone(), encoder_context.own_encoder_index);

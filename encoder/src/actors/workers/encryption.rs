@@ -55,3 +55,64 @@ impl<E: Encryptor> Processor for EncryptionProcessor<E> {
         // TODO: check whether to do anything for client shutdown
     }
 }
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use shared::crypto::{Aes256IV, Aes256Key};
+    use std::time::Duration;
+    use tokio::time::sleep;
+    use tokio_util::sync::CancellationToken;
+
+    use crate::{
+        actors::ActorManager, encryption::aes_encryptor::Aes256Ctr64LEEncryptor, error::ShardResult,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_encryption_actor() -> ShardResult<()> {
+        let encryptor = Aes256Ctr64LEEncryptor::new();
+        let processor = EncryptionProcessor::new(Arc::new(encryptor));
+        let manager = ActorManager::new(1, processor);
+        let handle = manager.handle();
+        let cancellation = CancellationToken::new();
+
+        // Generate a random 256-bit key
+        let key_bytes: [u8; 32] = [2u8; 32];
+        let aes_key = Aes256Key::from(key_bytes);
+        let aes_iv = Aes256IV {
+            iv: [0u8; 16],
+            key: aes_key,
+        };
+
+        let encryption_key = EncryptionKey::Aes256(aes_iv);
+
+        // Generate random contents
+        let contents = Bytes::from([0_u8; 1024].to_vec());
+
+        let encrypted = handle
+            .process(
+                EncryptionInput::Encrypt(encryption_key.clone(), contents.clone()),
+                cancellation.clone(),
+            )
+            .await?;
+
+        let decrypted = handle
+            .process(
+                EncryptionInput::Decrypt(encryption_key.clone(), encrypted.clone()),
+                cancellation.clone(),
+            )
+            .await?;
+
+        // Assert that the roundtrip is identical
+        assert_eq!(decrypted, contents);
+
+        // Assert that encrypted does not match original contents as long as
+        // contents is not an empty set.
+        assert_ne!(encrypted, contents);
+
+        manager.shutdown();
+        sleep(Duration::from_millis(100)).await;
+        Ok(())
+    }
+}

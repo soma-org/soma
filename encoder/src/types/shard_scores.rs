@@ -39,7 +39,7 @@ impl ShardScoresAPI for ShardScoresV1 {
         &self.auth_token
     }
     fn scores(&self) -> Vec<Score> {
-        self.scores.iter().map(|s| Score::V1(s.clone())).collect()
+        self.scores.iter().map(|s| Score::V1(*s)).collect()
     }
     fn unique_slots(&self) -> usize {
         let unique_slots: HashSet<EncoderIndex> =

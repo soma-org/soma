@@ -1,12 +1,14 @@
 use std::{ops::Deref, sync::Arc};
 
 use crate::{
-    actors::{ActorMessage, Processor},
+    actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
+    networking::messaging::EncoderInternalNetworkClient,
     storage::datastore::Store,
     types::{
         encoder_committee::EncoderIndex,
         shard::Shard,
+        shard_verifier::ShardAuthToken,
         shard_votes::{RevealRound, ShardVotes},
     },
 };
@@ -14,20 +16,32 @@ use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use shared::{digest::Digest, signed::Signed, verified::Verified};
 
-pub(crate) struct RevealVotesProcessor {
+use super::evaluation::EvaluationProcessor;
+
+pub(crate) struct RevealVotesProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
     own_index: EncoderIndex,
+    evaluation_handle: ActorHandle<EvaluationProcessor<E>>,
 }
 
-impl RevealVotesProcessor {
-    pub(crate) fn new(store: Arc<dyn Store>, own_index: EncoderIndex) -> Self {
-        Self { store, own_index }
+impl<E: EncoderInternalNetworkClient> RevealVotesProcessor<E> {
+    pub(crate) fn new(
+        store: Arc<dyn Store>,
+        own_index: EncoderIndex,
+        evaluation_handle: ActorHandle<EvaluationProcessor<E>>,
+    ) -> Self {
+        Self {
+            store,
+            own_index,
+            evaluation_handle,
+        }
     }
 }
 
 #[async_trait]
-impl Processor for RevealVotesProcessor {
+impl<E: EncoderInternalNetworkClient> Processor for RevealVotesProcessor<E> {
     type Input = (
+        ShardAuthToken,
         Shard,
         Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
     );
@@ -35,7 +49,7 @@ impl Processor for RevealVotesProcessor {
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, votes) = msg.input;
+            let (auth_token, shard, votes) = msg.input;
             let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
             let epoch = shard.epoch();
             let (total_finalized_slots, total_accepted_slots) = self.store.add_reveal_vote(
@@ -48,6 +62,9 @@ impl Processor for RevealVotesProcessor {
             if total_finalized_slots == shard.inference_size() {
                 if total_accepted_slots >= shard.minimum_inference_size() as usize {
                     if shard.evaluation_set().contains(&self.own_index) {
+                        self.evaluation_handle
+                            .process((auth_token, shard), msg.cancellation.clone())
+                            .await;
                         // CALL THE EVALUATION PIPELINE
                         // WHICH BROADCASTS
                         // if member of the evaluation set then trigger final evaluation

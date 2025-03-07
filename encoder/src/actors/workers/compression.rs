@@ -59,7 +59,10 @@ impl<C: Compressor> Processor for CompressionProcessor<C> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use arbtest::arbtest;
+    use tokio::time::sleep;
     use tokio_util::sync::CancellationToken;
 
     use crate::{actors::ActorManager, compression::zstd_compressor::ZstdCompressor};
@@ -97,6 +100,9 @@ mod tests {
             compressed.len() < original.len(),
             "Compressed data is not smaller than original data"
         );
+
+        manager.shutdown();
+        sleep(Duration::from_millis(100)).await;
         Ok(())
     }
 }
