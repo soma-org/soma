@@ -1,9 +1,110 @@
 # Documentation
 
 ## Description
-The goal is to build comprehensive documentation for the Soma blockchain codebase, reflecting its actual architecture, patterns, and implementation details. This includes both code-level documentation and higher-level architectural documentation.
+The goal is to build comprehensive documentation for the Soma blockchain codebase, reflecting its actual architecture, patterns, and implementation details. This includes both code-level documentation and higher-level architectural documentation that spans multiple files to capture cross-component relationships.
 
 ## Documentation Strategy
+
+### Cross-File Documentation Approach
+
+#### When to Create Cross-File Documentation
+The following signals indicate it's time to create summary documentation that spans multiple files:
+
+1. **Workflow Complexity**: When a process requires 3+ components working together to complete
+2. **Repeated Explanations**: Same concepts being explained in multiple file comments
+3. **Developer Onboarding Friction**: New team members struggle to understand relationships between components
+4. **Tight Coupling**: Multiple components share implementation details or state management
+5. **Critical Path Understanding**: Core workflows aren't clear from reading individual files alone
+6. **Architectural Pattern Implementation**: When a design pattern spans multiple files
+7. **Cross-Component Dependencies**: Implicit dependencies not captured in interface definitions
+8. **Recurring Questions**: Team members repeatedly ask about the same cross-component interactions
+
+#### Structure for Cross-File Documentation
+Centralized documentation should follow this structure:
+
+```markdown
+# [Subsystem/Feature/Process Name]
+
+## Purpose and Scope
+- High-level description of what this collection of components achieves
+- Business value delivered by this functionality
+- System boundaries and interfaces with other subsystems
+
+## Key Components
+- Component A: Primary responsibility and critical functions
+- Component B: Primary responsibility and critical functions
+- Component C: Primary responsibility and critical functions
+
+## Component Relationships Diagram
+[Mermaid diagram showing relationships]
+
+## Critical Workflows
+1. **[Workflow Name]**
+   - Step 1: [Component] [Action] → [Result]
+   - Step 2: [Component] [Action] → [Result]
+   - ...
+
+2. **[Workflow Name]**
+   - ...
+
+## State Transitions
+- Initial state
+- Transition 1: Trigger and resulting state
+- Transition 2: Trigger and resulting state
+- ...
+
+## Error Handling
+- [Error scenario]: How it propagates across components and recovery
+- ...
+
+## Threading and Concurrency Model
+- Thread ownership and responsibility
+- Synchronization points
+- Potential deadlocks and mitigations
+
+## Configuration Parameters
+- Parameter 1: Impact across components
+- Parameter 2: Impact across components
+- ...
+
+## Evolution History
+- Why components were split/structured this way
+- Key architectural decisions and trade-offs
+- Anticipated future directions
+```
+
+#### Information Prioritization
+
+**Centralized Documentation Should Contain:**
+- Cross-component workflows that can't be understood from a single file
+- Architectural decisions that shaped multiple components
+- State transitions that span component boundaries
+- Concurrency patterns that involve multiple components
+- Error propagation paths across component boundaries
+- Configuration impacts that affect multiple components
+- API contract guarantees between components
+- Performance characteristics of end-to-end operations
+- Key dependency graphs showing how components relate
+- Evolution history explaining why the architecture looks this way
+
+**File-Level Documentation Should Contain:**
+- Implementation details specific to that file
+- Function-level behavior and parameter explanations
+- Class/struct responsibilities and lifecycle
+- File-specific algorithms and optimization notes
+- Local error handling approaches
+- Usage examples for individual components
+- Unit test explanations relevant to the file
+- Direct dependencies imported by the file
+- Thread safety notes for individual data structures
+- Performance characteristics of specific functions
+
+#### Cross-File Documentation Maintenance
+- Schedule reviews after major releases or architectural changes
+- Update when new components are added or significant refactoring occurs
+- Assign ownership to ensure documentation stays current
+- Include last verified date and confidence rating (1-10)
+- Link to related module documentation to avoid duplication
 
 ### Module Prioritization
 Based on current project state and component dependencies, we've prioritized modules in this order:
@@ -147,12 +248,47 @@ We'll track documentation progress using a multi-level approach:
 2. **Module-level aggregation**: Overall completion percentage per module
 3. **Priority-based tracking**: Progress on high-priority items vs. overall progress
 4. **Task-based tracking**: Clear tasks in documentation.md
+5. **Cross-file documentation tracking**: New section in documentation_progress.md
 
 Each documentation update will include:
 - Updated completion percentages
 - Confidence rating (1-10)
 - Timestamp of last update
 - Identified documentation gaps
+
+#### Cross-File Documentation Process
+
+For documenting relationships that span multiple files:
+
+1. **Identify Related Components**:
+   - Review imports/dependencies across the codebase
+   - Trace message flows between components
+   - Map out transaction/request lifecycles
+
+2. **Map Core Interfaces**:
+   - Identify where components connect
+   - Document contracts and guarantees between components
+   - Note data structure transformations between components
+
+3. **Document Workflows**:
+   - Start with user-triggered or system-triggered events
+   - Trace the complete path through all components
+   - Document state changes and side effects
+
+4. **Create Visual Representations**:
+   - Develop sequence diagrams for critical workflows
+   - Create component relationship diagrams
+   - Map data flow between components
+
+5. **Consolidate Architectural Patterns**:
+   - Identify common patterns used across components
+   - Document pattern implementations and variations
+   - Explain why patterns were chosen
+
+6. **Document Evolution History**:
+   - Capture key architectural decisions
+   - Explain component splits and boundaries
+   - Note anticipated future changes
 
 ## Current Tasks
 
@@ -170,6 +306,13 @@ Each documentation update will include:
   - [ ] State management and effects
   - [ ] Epoch-specific storage
   - **Confidence**: 3/10 - "In progress"
+
+- [ ] Create cross-file documentation for critical subsystems
+  - [ ] Transaction lifecycle (complete path from submission to execution)
+  - [ ] Consensus subsystem (block production, verification, and commit)
+  - [ ] Epoch reconfiguration (across authority and consensus)
+  - [ ] State synchronization (P2P and authority integration)
+  - **Confidence**: 0/10 - "Not started"
 
 ### Medium Priority
 - [ ] Document module-level architecture
@@ -201,6 +344,12 @@ Each documentation update will include:
   - [ ] Recovery mechanisms
   - [ ] Logging and diagnostics
   - **Confidence**: 5/10 - "Partially complete"
+
+- [ ] Document cross-component threading model
+  - [ ] Thread ownership and responsibility
+  - [ ] Synchronization points
+  - [ ] Potential deadlocks and mitigations
+  - **Confidence**: 0/10 - "Not started"
 
 ## Documentation Progress by Module
 
@@ -245,7 +394,7 @@ Each documentation update will include:
 
 ## Implementation Plan
 
-### Phase 1: Foundation (Weeks 1-2)
+### Phase 1: Foundation (Weeks 1-2) ✅
 - ✅ Focus on Types module (base.rs, transaction.rs, committee.rs, crypto.rs, object.rs, system_state.rs)
 - ✅ Document core error handling patterns (error.rs)
 - ✅ Document transaction effects and result handling (effects/mod.rs)
@@ -255,34 +404,41 @@ Each documentation update will include:
 - ✅ Completed all high-priority files in Types module Phase 1 (100% complete)
 - ✅ Phase 1 completed successfully
 
-### Phase 2: Core State (Weeks 3-4)
+### Phase 2: Core State (Weeks 3-4) 🔄
 - ✅ Document Authority state.rs (90% complete) - Comprehensive documentation of module, struct, and methods including transaction processing, epoch management, and state handling
 - 🔄 Document epoch_store.rs (In progress) - Working on epoch-specific storage documentation
 - ✅ Document transaction management (tx_manager.rs) - Completed with comprehensive coverage of transaction dependency tracking and execution coordination
 - [ ] Document transaction validation logic (tx_validator.rs)
 - [ ] Document storage implementations (store.rs)
+- [ ] Create cross-file documentation for transaction processing workflow
 
 ### Phase 3: Consensus (Weeks 5-6)
 - Document consensus core components (authority.rs, core.rs)
 - Document block production and verification process
 - Document commit processing and synchronization
+- Create cross-file documentation for consensus workflow
 
 ### Phase 4: Networking (Weeks 7-8)
 - Document P2P discovery and state synchronization
 - Document network message handling
 - Document peer management
+- Create cross-file documentation for network state synchronization
 
 ### Phase 5: Integration (Weeks 9-10)
 - Document Node implementation and lifecycle
-- Document cross-component workflows
-- Create architecture diagrams for key processes
+- Create cross-file documentation for epoch management
+- Create cross-file documentation for validator reconfiguration
+- Create architecture diagrams for key cross-component processes
 
 ### Phase 6: Completion and Review (Weeks 11-12)
 - Fill documentation gaps identified during previous phases
 - Conduct documentation reviews
+- Review and update all cross-file documentation
 - Finalize all documentation
 
 ## Recent Updates
+*2025-03-08*: Developed cross-file documentation strategy with clear signals for when to create centralized documentation, information prioritization guidelines, and maintenance approach - Cline (Confidence: 9/10)
+
 *2025-03-07*: Completed documentation for authority/src/tx_manager.rs with comprehensive coverage of transaction management, dependency tracking, and execution coordination - Cline (Confidence: 9/10)
 
 *2025-03-07*: Started documentation for authority/src/epoch_store.rs with module-level documentation and key transaction processing components including ConsensusCertificateResult, CancelConsensusCertificateReason, and transaction guards - Cline (Confidence: 7/10)

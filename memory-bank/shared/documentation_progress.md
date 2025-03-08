@@ -1,9 +1,11 @@
 # Soma Codebase Documentation Progress
 
 ## Overview
-This document tracks the documentation progress across the Soma blockchain codebase. It provides a detailed breakdown of which files have proper documentation and which ones need attention.
+This document tracks the documentation progress across the Soma blockchain codebase. It provides a detailed breakdown of which files have proper documentation and which ones need attention, as well as cross-file documentation that spans multiple components.
 
 ## Documentation Standards
+
+### File-Level Documentation
 Each file should include:
 1. **Module-level documentation**: Purpose, responsibilities, and interactions with other components
 2. **Public API documentation**: For all public functions, methods, and types
@@ -11,17 +13,36 @@ Each file should include:
 4. **Usage examples**: Where appropriate for important APIs
 5. **Thread safety information**: Details about concurrent access patterns
 
+### Cross-File Documentation
+For functionality that spans multiple components, we maintain dedicated cross-file documentation that should include:
+1. **Component relationship diagrams**: Visual representation of how components interact
+2. **End-to-end workflows**: Complete process flows across component boundaries
+3. **Interface contracts**: Detailed specifications of cross-component interfaces
+4. **State transition documentation**: How state changes propagate between components
+5. **Concurrency model**: Thread ownership, synchronization points, and potential deadlocks
+
 ## Documentation Quality Criteria
+
+### File-Level Quality Criteria
 - **Completeness**: Covers all public APIs and important implementation details
 - **Clarity**: Uses clear, concise language that new developers can understand
 - **Context**: Explains why components exist, not just what they do
 - **Correctness**: Accurately reflects current implementation
 - **Consistency**: Follows consistent format and style
 
+### Cross-File Documentation Quality Criteria
+- **System perspective**: Explains architecture from a holistic viewpoint
+- **Component relationships**: Clearly documents how components interact
+- **Critical path clarity**: Makes workflow paths obvious across components
+- **Boundary definition**: Precisely defines component interfaces and contracts
+- **State management**: Documents how state is shared and synchronized
+- **Evolution rationale**: Explains why the architecture evolved this way
+
 ## Progress Summary
 - **Overall Progress**: 27%
-- **Last Updated**: 2025-03-07
+- **Last Updated**: 2025-03-08
 - **Current Focus**: Core State (Authority) in Phase 2
+- **Cross-File Documentation**: 0%
 
 ### Progress by Priority Level
 - **High Priority Items**: 55%
@@ -34,6 +55,13 @@ Each file should include:
 - **Node Module**: 0%
 - **P2P Module**: 0%
 - **Types Module**: 100%
+
+### Cross-File Documentation Progress
+- **Transaction Lifecycle**: 0%
+- **Consensus Workflow**: 0%
+- **Epoch Reconfiguration**: 0%
+- **State Synchronization**: 0%
+- **Validator Lifecycle**: 0%
 
 ## Module Status
 
@@ -129,9 +157,67 @@ Each file should include:
 | lib.rs | 0% | High | Main SomaNode implementation and lifecycle |
 | handle.rs | 0% | Medium | Node handle for external interaction |
 
+## Cross-File Documentation Topics
+
+### Transaction Lifecycle (High Priority)
+- **Components Involved**: Authority, Consensus, P2P
+- **Description**: Tracks a transaction from submission through validation, execution, commit, and state update
+- **Key Interfaces**: 
+  - Authority to Consensus (transaction submission)
+  - Consensus to Authority (commit notification)
+  - Authority to P2P (transaction broadcast)
+- **Status**: Not started
+- **Last Updated**: N/A
+- **Confidence**: 0/10
+
+### Consensus Workflow (High Priority)
+- **Components Involved**: Consensus, Authority, P2P
+- **Description**: Documents the complete consensus process from block production to commit
+- **Key Interfaces**:
+  - Leader selection and scheduling
+  - Block verification and validation
+  - Threshold signature aggregation
+  - Commit processing
+- **Status**: Not started
+- **Last Updated**: N/A
+- **Confidence**: 0/10
+
+### Epoch Reconfiguration (High Priority)
+- **Components Involved**: Authority, Consensus, Node
+- **Description**: Explains the complete epoch change process including validator set updates
+- **Key Interfaces**:
+  - Epoch store swapping
+  - Committee reconfiguration
+  - Service restart coordination
+- **Status**: Not started
+- **Last Updated**: N/A
+- **Confidence**: 0/10
+
+### State Synchronization (Medium Priority)
+- **Components Involved**: P2P, Authority
+- **Description**: Documents how nodes synchronize their state with the network
+- **Key Interfaces**:
+  - State request/response protocol
+  - Object verification
+  - Checkpointing
+- **Status**: Not started
+- **Last Updated**: N/A
+- **Confidence**: 0/10
+
+### Validator Lifecycle (Medium Priority)
+- **Components Involved**: Node, Authority, Consensus, P2P
+- **Description**: Covers the complete lifecycle of a validator node from startup to shutdown
+- **Key Interfaces**:
+  - Component initialization sequence
+  - Network discovery and connection
+  - Graceful shutdown
+- **Status**: Not started  
+- **Last Updated**: N/A
+- **Confidence**: 0/10
+
 ## Documentation Implementation Plan
 
-### Phase 1: Foundation (Weeks 1-2)
+### Phase 1: Foundation (Weeks 1-2) ✅
 - **Focus Areas**: 
   - Types module foundation files (base.rs, transaction.rs, committee.rs, crypto.rs)
   - Error handling patterns (error.rs)
@@ -139,11 +225,12 @@ Each file should include:
 - **Milestone Target**: 90% documentation coverage of high-priority Types module files
 - **Current Status**: Completed (11/11 high-priority files completed, 100%)
 
-### Phase 2: Core State (Weeks 3-4)
+### Phase 2: Core State (Weeks 3-4) 🔄
 - **Focus Areas**:
   - Authority state management (state.rs, epoch_store.rs)
   - Transaction processing (tx_manager.rs, tx_validator.rs)
   - Storage implementation (store.rs)
+  - Start cross-file transaction lifecycle documentation
 - **Milestone Target**: 80% documentation coverage of high-priority Authority module files
 - **Current Status**: In progress (2/11 high-priority files completed)
 
@@ -152,6 +239,7 @@ Each file should include:
   - Consensus core (authority.rs, core.rs)
   - Block production and verification
   - Commit processing (committer/)
+  - Consensus workflow cross-file documentation
 - **Milestone Target**: 80% documentation coverage of high-priority Consensus module files
 - **Current Status**: Not started
 
@@ -160,39 +248,54 @@ Each file should include:
   - P2P discovery and state synchronization
   - Network message handling
   - Peer management
+  - State synchronization cross-file documentation
 - **Milestone Target**: 90% documentation coverage of high-priority P2P module files
 - **Current Status**: Not started
 
 ### Phase 5: Integration (Weeks 9-10)
 - **Focus Areas**:
   - Node implementation and lifecycle
-  - Cross-component workflows
-  - Architecture diagrams
-- **Milestone Target**: 90% documentation coverage of high-priority Node module files
+  - Epoch reconfiguration cross-file documentation
+  - Validator lifecycle cross-file documentation
+  - Cross-component architecture diagrams
+- **Milestone Target**: 90% documentation coverage of high-priority Node module files + 80% of cross-file documentation
 - **Current Status**: Not started
 
 ### Phase 6: Completion (Weeks 11-12)
 - **Focus Areas**:
   - Documentation gaps
-  - Review and refinement
-  - Final documentation
-- **Milestone Target**: 100% documentation coverage of high-priority files across all modules
+  - Review and refinement of all documentation
+  - Final cross-file documentation updates
+  - Integration of all documentation into a cohesive whole
+- **Milestone Target**: 100% documentation coverage of high-priority files and cross-file topics
 - **Current Status**: Not started
 
 ## Documentation Challenges & Mitigations
 
 ### Identified Challenges
 1. **Complex Interdependencies**: Many components have intricate relationships making it difficult to document them in isolation
-   - **Mitigation**: Create relationship diagrams and cross-references between components
+   - **Mitigation**: Create dedicated cross-file documentation with relationship diagrams
+   - **Mitigation**: Use consistent naming conventions across component boundaries
 
 2. **Evolving Codebase**: Documentation may become outdated as code evolves
    - **Mitigation**: Integrate documentation reviews into the development process
+   - **Mitigation**: Schedule regular documentation audits with version tracking
 
 3. **Technical Complexity**: Some algorithms (like consensus) are inherently complex
    - **Mitigation**: Create progressive explanation layers from high-level to detailed
+   - **Mitigation**: Use diagrams and pseudocode to clarify complex logic
 
 4. **Thread Safety**: Documenting concurrent access patterns is challenging
    - **Mitigation**: Develop specialized documentation sections for concurrency
+   - **Mitigation**: Create a concurrency model diagram showing thread ownership
+
+5. **Cross-Component Workflows**: End-to-end processes are difficult to track
+   - **Mitigation**: Create dedicated documentation for critical workflows
+   - **Mitigation**: Use sequence diagrams to visualize component interactions
+
+6. **Interface Evolution**: Component interfaces change over time
+   - **Mitigation**: Document interface contracts explicitly
+   - **Mitigation**: Include interface evolution history in documentation
 
 ## Next Steps
 
@@ -201,20 +304,27 @@ Each file should include:
 2. Begin work on tx_validator.rs for transaction validation logic
 3. Document store.rs for storage implementation details
 4. Start documenting commit/executor.rs for transaction commit execution
+5. Begin creating cross-file documentation framework for Transaction Lifecycle
 
 ### Medium-term Tasks (Next Month)
 1. Complete remaining high-priority files in Authority module
 2. Create documentation for critical Authority components
-3. Develop process diagrams for key workflows
+3. Complete the Transaction Lifecycle cross-file documentation
 4. Begin consensus component documentation
+5. Start cross-file documentation for Consensus Workflow
 
 ### Long-term Goals
 1. Achieve 100% documentation coverage across all modules
-2. Create a comprehensive developer guide using the documentation
-3. Implement automated documentation checking in CI pipeline
-4. Create interactive documentation with diagrams
+2. Complete all high-priority cross-file documentation topics
+3. Create a comprehensive developer guide using the documentation
+4. Implement automated documentation checking in CI pipeline
+5. Create interactive documentation with diagrams
 
 ## Recent Updates
+*2025-03-08*: Developed comprehensive cross-file documentation strategy with clear prioritization guidelines, structure templates, and maintenance approach - Cline (Confidence: 9/10)
+
+*2025-03-08*: Updated documentation progress tracking to include cross-file documentation topics and implementation plan - Cline (Confidence: 9/10)
+
 *2025-03-07*: Completed documentation for authority/src/tx_manager.rs with comprehensive coverage of transaction management, dependency tracking, and execution coordination - Cline (Confidence: 9/10)
 
 *2025-03-07*: Started documentation for authority/src/epoch_store.rs with module-level documentation and key transaction processing components - Cline (Confidence: 7/10)
