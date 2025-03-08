@@ -43,7 +43,7 @@ flowchart TD
         TempStore -->|Compute| Effects[Transaction Effects]
     end
     
-    AuthState -->|Order Shared| Consensus[Consensus Authority]
+    AuthState <-->|Order Shared| Consensus[Consensus Authority]
     Consensus -->|Ordered Cert| Certificate[Certificate]
     
     Certificate -->|Process| CommitExec[Commit Executor]
@@ -201,27 +201,130 @@ if !certificate.contains_shared_object() {
 - Resolves dependencies when objects become available
 - Ensures transactions are executed in correct order
 
+```mermaid
+flowchart TD
+    ReceiveTx[Receive Transaction] --> CheckExec{Already\nExecuted?}
+    CheckExec -->|Yes| Skip[Skip Transaction]
+    CheckExec -->|No| CheckDeps{Check Input\nObjects}
+    
+    CheckDeps -->|All Available| EnqueueReady[Enqueue for Execution]
+    CheckDeps -->|Some Missing| TrackDeps[Track Dependencies]
+    
+    TrackDeps --> AddToWaiting[Add to Waiting Queue]
+    
+    CommitTx[Transaction Committed] --> NotifyCompletion[Notify TransactionManager]
+    NotifyCompletion --> UpdateAvailable[Update Available Objects]
+    UpdateAvailable --> CheckWaiting[Check Waiting Transactions]
+    
+    CheckWaiting -->|Some Ready| EnqueueNewlyReady[Enqueue Ready Transactions]
+    CheckWaiting -->|None Ready| Wait[Continue Waiting]
+```
+
+The TransactionManager uses a sophisticated dependency tracking system:
+
 ```rust
 // in authority/src/tx_manager.rs
-pub fn notify_commit(
-    &self,
-    digest: &TransactionDigest,
-    output_keys: Vec<ObjectKey>,
-    epoch_store: &Arc<AuthorityPerEpochStore>,
-) {
-    // Transaction dependency resolution logic
+struct Inner {
+    // Maps missing input objects to transactions waiting for them
+    missing_inputs: HashMap<InputKey, BTreeSet<TransactionDigest>>,
+
+    // Stores age info for all transactions depending on each object
+    input_objects: HashMap<FullObjectID, TransactionQueue>,
+
+    // Cache of available objects and their versions
+    available_objects_cache: AvailableObjectsCache,
+
+    // Maps transaction digests to their content and missing input objects
+    pending_certificates: HashMap<TransactionDigest, PendingCertificate>,
+
+    // Set of transactions that have been sent to execution but have not finished
+    executing_certificates: HashSet<TransactionDigest>,
 }
 ```
 
 **Verification Status**: Verified-Code (notify_commit in authority/src/tx_manager.rs)
 
-#### Dependency Tracking
-- For each transaction, track input objects
-- If any input objects are missing, add to waiting list
-- When objects become available through other transactions, check waiting list
-- Execute transactions once all dependencies are satisfied
+#### Dependency Tracking Workflow
+1. When a transaction is enqueued, TransactionManager checks all input objects
+2. If any input objects are missing, the transaction is added to the waiting list
+3. For each missing object, the transaction is recorded in missing_inputs
+4. When objects become available through commit_certificate, TransactionManager checks waiting list
+5. Transactions that now have all dependencies available are moved to ready queue
+6. Ready transactions are sent to execution driver
 
-**Verification Status**: Verified-Code (enqueue method in TransactionManager)
+```rust
+// in authority/src/tx_manager.rs
+pub fn notify_commit(
+    &self,
+    digest: &TransactionDigest,
+    output_keys: Vec<InputKey>,
+    epoch_store: &Arc<AuthorityPerEpochStore>,
+) {
+    // Get transactions waiting for these objects
+    let reconfig_lock = self.inner.read();
+    {
+        let commit_time = Instant::now();
+        let mut inner = reconfig_lock.write();
+
+        // Handle epoch transition
+        if inner.epoch != epoch_store.epoch() {
+            warn!("Ignoring committed certificate from wrong epoch.");
+            return;
+        }
+
+        // Make objects available and find ready transactions
+        self.objects_available_locked(
+            &mut inner,
+            epoch_store,
+            output_keys,
+            true,
+            commit_time,
+        );
+
+        // Remove from executing certificates
+        if !inner.executing_certificates.remove(digest) {
+            trace!("{:?} not found in executing certificates", digest);
+            return;
+        }
+    }
+}
+
+fn find_ready_transactions(
+    &mut self,
+    input_key: InputKey,
+    update_cache: bool,
+) -> Vec<PendingCertificate> {
+    // Mark object as available
+    if update_cache {
+        self.available_objects_cache.insert(&input_key);
+    }
+
+    let mut ready_certificates = Vec::new();
+
+    // Find transactions waiting for this object
+    let Some(digests) = self.missing_inputs.remove(&input_key) else {
+        // No transaction is waiting on the object yet.
+        return ready_certificates;
+    };
+
+    // Process each waiting transaction
+    for digest in digests.iter() {
+        // Update transaction's waiting list
+        let pending_cert = self.pending_certificates.get_mut(&digest).unwrap();
+        assert!(pending_cert.waiting_input_objects.remove(&input_key));
+        
+        // When a certificate has all its input objects, it is ready to execute
+        if pending_cert.waiting_input_objects.is_empty() {
+            let pending_cert = self.pending_certificates.remove(&digest).unwrap();
+            ready_certificates.push(pending_cert);
+        }
+    }
+
+    ready_certificates
+}
+```
+
+**Verification Status**: Verified-Code (find_ready_transactions in TransactionManager)
 
 ### 6. Shared Object Processing
 
@@ -262,6 +365,40 @@ pub fn handle_consensus_transaction(
 - All validators use the same version numbers
 - Ensures consistent state across the network
 - Prevents conflicts and double-spending
+
+#### Shared Object Version Assignment Process
+
+```mermaid
+sequenceDiagram
+    participant Consensus
+    participant AuthState as AuthorityState
+    participant EpochStore as AuthorityPerEpochStore
+    participant VersionManager as SharedObjVerManager
+    participant Cache as ConsensusOutputCache
+    
+    Consensus->>AuthState: Process consensus transaction
+    AuthState->>EpochStore: process_consensus_transaction
+    EpochStore->>VersionManager: assign_versions_from_consensus
+    
+    Note over VersionManager: For each shared object:
+    VersionManager->>EpochStore: get_or_init_next_object_versions
+    EpochStore->>Cache: Check already assigned versions
+    
+    alt Version already assigned
+        Cache-->>EpochStore: Return assigned version
+    else Version not assigned
+        EpochStore->>EpochStore: Acquire version locks
+        EpochStore->>EpochStore: Look up current object version
+        EpochStore->>EpochStore: Determine next version
+        EpochStore->>EpochStore: Write to next_shared_object_versions
+        EpochStore-->>VersionManager: Return assigned version
+    end
+    
+    VersionManager-->>EpochStore: Return shared object versions
+    EpochStore->>Cache: Insert shared object assignments
+    EpochStore-->>AuthState: Return transaction with assigned versions
+    AuthState->>AuthState: Enqueue transaction for execution
+```
 
 **Verification Status**: Verified-Code (assign_shared_object_versions in AuthorityPerEpochStore)
 
@@ -372,12 +509,14 @@ async fn commit_certificate(
     _execution_guard: ExecutionLockReadGuard<'_>,
     epoch_store: &Arc<AuthorityPerEpochStore>,
 ) -> SomaResult {
-    // Write effects to storage
+    // Build transaction outputs
     let transaction_outputs = TransactionOutputs::build_transaction_outputs(
         certificate.clone().into_unsigned(),
         effects.clone(),
         inner_temporary_store,
     );
+    
+    // Write effects to storage
     self.get_cache_writer()
         .write_transaction_outputs(epoch_store.epoch(), transaction_outputs.into())
         .await?;
@@ -397,6 +536,27 @@ async fn commit_certificate(
 - TransactionManager checks waiting transactions
 - Ready transactions are enqueued for execution
 - Continues the chain of dependent transactions
+
+```mermaid
+sequenceDiagram
+    participant AuthState as AuthorityState
+    participant TxManager as TransactionManager
+    participant Storage
+    participant Execution as ExecutionDriver
+    
+    AuthState->>Storage: commit_certificate
+    AuthState->>TxManager: notify_commit
+    
+    TxManager->>TxManager: Update available objects
+    TxManager->>TxManager: Find newly ready transactions
+    
+    loop For each ready transaction
+        TxManager->>Execution: Send ready transaction
+        Execution->>AuthState: Execute transaction
+        AuthState->>Storage: Commit effects
+        AuthState->>TxManager: notify_commit
+    end
+```
 
 **Verification Status**: Verified-Code (notify_commit in TransactionManager)
 
@@ -511,6 +671,62 @@ pub struct AuthorityState {
 }
 ```
 
+### Critical Lock Mechanisms
+
+#### 1. AuthorityState Execution Lock
+```rust
+// RwLock for coordinating epochs and execution
+execution_lock: RwLock<EpochId>,
+
+// Read lock for normal transaction processing
+let execution_guard = self.execution_lock_for_executable_transaction(transaction).await?;
+
+// Write lock for reconfiguration
+let mut execution_lock = self.execution_lock_for_reconfiguration().await;
+```
+
+- **Purpose**: Prevents reconfiguration during transaction execution
+- **Read Mode**: Multiple transactions can execute concurrently
+- **Write Mode**: Exclusive access for epoch transitions
+- **Safety**: Ensures all transactions are from current epoch
+
+#### 2. Epoch Store Swap
+```rust
+// Arc-wrapped epoch store, swapped atomically during reconfiguration
+epoch_store: ArcSwap<AuthorityPerEpochStore>,
+
+// Swap during reconfiguration
+self.epoch_store.store(new_epoch_store.clone());
+```
+
+- **Purpose**: Atomically switches to new epoch
+- **Safety**: Thread-safe without blocking readers
+- **Efficiency**: Zero-copy for readers
+
+#### 3. Transaction-Specific Locks
+```rust
+// In AuthorityPerEpochStore
+mutex_table: MutexTable<TransactionDigest>,
+
+// Acquire transaction lock
+let tx_guard = epoch_store.acquire_tx_guard(certificate).await?;
+```
+
+- **Purpose**: Prevents concurrent execution of same transaction
+- **Granularity**: One lock per transaction digest
+- **Safety**: Prevents double execution of certificates
+
+#### 4. TransactionManager Double-Nested Lock
+```rust
+// Double-nested lock for transaction state
+inner: RwLock<RwLock<Inner>>,
+```
+
+- **Purpose**: Allows reconfiguration without blocking readers
+- **Outer Lock**: Protects against reconfiguration
+- **Inner Lock**: Protects transaction state
+- **Safety**: Prevents data races during reconfiguration
+
 **Verification Status**: Verified-Code (AuthorityState in authority/src/state.rs)
 
 ## Error Handling
@@ -602,8 +818,65 @@ pub async fn create_and_execute_advance_epoch_tx(
 
 **Verification Status**: Verified-Code (TransactionManager implementation)
 
-## Confidence: 8/10
+## Complete Transaction Lifecycle Sequence Diagram
 
-This document provides a comprehensive overview of the transaction data flow in the Soma blockchain based on direct code analysis. The core components and workflows are well-documented with specific code references. Some implementation details about the interaction between consensus and transaction execution could benefit from further clarification, but the overall description accurately reflects the current implementation.
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ValidatorA as Validator A
+    participant ValidatorB as Validator B
+    participant ValidatorC as Validator C
+    participant Consensus
+    participant TxManager as TransactionManager
+    participant TempStore as TemporaryStore
+    participant Storage
+    
+    Note over Client: Create and sign transaction
+    Client->>ValidatorA: Submit transaction
+    ValidatorA->>ValidatorA: Verify signature
+    ValidatorA->>ValidatorA: Validate inputs and locks
+    ValidatorA->>ValidatorA: Sign transaction
+    ValidatorA-->>Client: Return signed transaction
+    
+    Note over Client: Collect validator signatures
+    Client->>ValidatorB: Submit transaction
+    ValidatorB-->>Client: Return signed transaction
+    Client->>ValidatorC: Submit transaction
+    ValidatorC-->>Client: Return signed transaction
+    
+    Note over Client: Form certificate with signatures
+    Client->>ValidatorA: Submit certificate
+    
+    alt Transaction with owned objects only
+        ValidatorA->>TxManager: Enqueue certificate
+        TxManager->>TxManager: Check dependencies
+        TxManager->>ValidatorA: Execute certificate
+    else Transaction with shared objects
+        ValidatorA->>Consensus: Submit for ordering
+        Consensus->>Consensus: Order transaction
+        Consensus->>ValidatorA: Return ordered certificate
+        ValidatorA->>ValidatorA: Assign shared object versions
+        ValidatorA->>TxManager: Enqueue certificate
+        TxManager->>ValidatorA: Execute certificate
+    end
+    
+    ValidatorA->>ValidatorA: Acquire transaction lock
+    ValidatorA->>ValidatorA: Load input objects
+    ValidatorA->>TempStore: Execute in temporary store
+    TempStore->>TempStore: Apply transaction
+    TempStore->>TempStore: Compute effects
+    TempStore-->>ValidatorA: Return effects
+    
+    ValidatorA->>Storage: Commit certificate and effects
+    ValidatorA->>TxManager: Notify transaction committed
+    TxManager->>TxManager: Update available objects
+    TxManager->>TxManager: Find newly ready transactions
+    
+    ValidatorA-->>Client: Return transaction effects
+```
+
+## Confidence: 9/10
+
+This document provides a comprehensive overview of the transaction data flow in the Soma blockchain based on direct code analysis. The core components, workflows, lock hierarchy, and concurrency mechanisms are thoroughly documented with specific code references. The detailed sequence diagrams accurately reflect the transaction lifecycle from submission to execution, and the shared object handling mechanism is clearly explained. Cross-component interactions, especially between AuthorityState, TransactionManager, and AuthorityPerEpochStore are well covered with accurate explanations of their responsibilities.
 
 ## Last Updated: 2025-03-08 by Cline

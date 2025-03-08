@@ -45,6 +45,9 @@ pub struct AuthorityPerEpochStore {
     committee: Arc<Committee>,
     transaction_lock_table: Arc<TransactionLockTable>,
     epoch_tables: AuthorityEpochTables,
+    signature_verifier: SignatureVerifier,
+    mutex_table: MutexTable<TransactionDigest>,
+    version_assignment_mutex_table: MutexTable<ObjectID>,
     // Additional fields...
 }
 ```
@@ -62,11 +65,19 @@ pub struct AuthorityPerEpochStore {
 
 ```rust
 pub struct TransactionManager {
-    objects_transaction_locking: Mutex<ObjectsTransactionLocking>,
-    missing_inputs: Arc<Mutex<MissingInputs>>,
-    pending_certificates: Arc<Mutex<PendingCertificates>>,
-    executing_certificates: Arc<Mutex<ExecutingCertificates>>,
-    // Additional fields...
+    inner: RwLock<RwLock<Inner>>,
+    tx_ready_certificates: UnboundedSender<PendingCertificate>,
+    transaction_cache_read: Arc<dyn TransactionCacheRead>,
+    object_cache_read: Arc<dyn ObjectCacheRead>,
+}
+
+struct Inner {
+    epoch: EpochId,
+    missing_inputs: HashMap<InputKey, BTreeSet<TransactionDigest>>,
+    input_objects: HashMap<FullObjectID, TransactionQueue>,
+    available_objects_cache: AvailableObjectsCache,
+    pending_certificates: HashMap<TransactionDigest, PendingCertificate>,
+    executing_certificates: HashSet<TransactionDigest>,
 }
 ```
 
@@ -203,6 +214,34 @@ flowchart TD
 
 **Verification Status**: Verified-Code (object lock usage in authority/src/cache/)
 
+#### TransactionManager Double-Nested Lock
+- **Purpose**: Allows reconfiguration without blocking readers
+- **Implementation**:
+  ```rust
+  // Double-nested lock for transaction state
+  inner: RwLock<RwLock<Inner>>,
+  ```
+- **Outer Lock**: Protects against reconfiguration
+- **Inner Lock**: Protects transaction state
+- **Usage Pattern**:
+  ```rust
+  // Read operations (fast path)
+  let reconfig_lock = self.inner.read();
+  let inner = reconfig_lock.read();
+  // Use inner state...
+  
+  // Write operations with reconfiguration protection
+  let reconfig_lock = self.inner.read();
+  let mut inner = reconfig_lock.write();
+  // Modify inner state...
+  
+  // Reconfiguration (slow path)
+  let reconfig_lock = self.inner.write();
+  // Replace inner completely...
+  ```
+
+**Verification Status**: Verified-Code (double-nested lock in tx_manager.rs)
+
 ## Transaction Processing Workflow
 
 ```mermaid
@@ -248,6 +287,61 @@ sequenceDiagram
 ```
 
 **Verification Status**: Verified-Code (Transaction processing flow in authority/src/state.rs)
+
+### Certificate Execution Detailed Flow
+
+```mermaid
+flowchart TD
+    Start([Certificate Received]) --> CheckExecuted{Already\nExecuted?}
+    CheckExecuted -->|Yes| ReturnExisting[Return Existing Effects]
+    CheckExecuted -->|No| AcquireTxLock[Acquire Transaction Lock]
+    
+    AcquireTxLock --> CheckEpoch{Epoch\nMatch?}
+    CheckEpoch -->|No| ReleaseAndError[Release Lock & Return Error]
+    CheckEpoch -->|Yes| LoadObjects[Read Input Objects]
+    
+    LoadObjects --> PrepareExecution[Prepare Certificate]
+    PrepareExecution --> Execute[Execute in TemporaryStore]
+    Execute --> ComputeEffects[Compute Transaction Effects]
+    
+    ComputeEffects --> CommitTx[Commit Certificate]
+    CommitTx --> StoreEffects[Store Effects]
+    CommitTx --> CommitObjects[Update Object Store]
+    
+    CommitObjects --> ReleaseLock[Release Transaction Lock]
+    ReleaseLock --> NotifyTxManager[Notify Transaction Manager]
+    NotifyTxManager --> End([Return Effects])
+    
+    ReleaseAndError --> End
+    ReturnExisting --> End
+```
+
+**Verification Status**: Verified-Code (process_certificate in authority/src/state.rs)
+
+### Transaction Lock Acquisition Flow
+
+```mermaid
+flowchart TD
+    Start([Acquire Transaction Lock]) --> CheckAvailable{Lock\nAvailable?}
+    CheckAvailable -->|Yes| Acquire[Acquire Lock]
+    CheckAvailable -->|No| Wait[Wait for Lock]
+    Wait --> Retry[Retry Acquisition]
+    Retry --> CheckAvailable
+    
+    Acquire --> FindObjects[Find Owned Objects]
+    FindObjects --> CheckObjectLocks{Objects\nLocked?}
+    
+    CheckObjectLocks -->|Yes| ReleaseAndError[Release Lock & Return Error]
+    CheckObjectLocks -->|No| AcquireObjectLocks[Acquire Object Locks]
+    
+    AcquireObjectLocks --> RecordLocks[Record Locks in Store]
+    RecordLocks --> ReturnGuard[Return Lock Guard]
+    
+    ReleaseAndError --> End([Return Error])
+    ReturnGuard --> End2([Return Success])
+```
+
+**Verification Status**: Verified-Code (acquire_transaction_locks in execution cache implementation)
 
 ## Epoch Transition and Reconfiguration
 
@@ -303,35 +397,89 @@ sequenceDiagram
 
 **Verification Status**: Verified-Code (reconfigure method in authority/src/state.rs)
 
-## Certificate Execution Workflow
+### Reconfiguration State Transitions
 
 ```mermaid
-flowchart TD
-    Start([Certificate Received]) --> CheckExecuted{Already\nExecuted?}
-    CheckExecuted -->|Yes| ReturnExisting[Return Existing Effects]
-    CheckExecuted -->|No| AcquireTxLock[Acquire Transaction Lock]
+stateDiagram-v2
+    [*] --> AcceptingCerts: Initial State
+    AcceptingCerts --> RejectingCerts: End-of-Publish Quorum
+    RejectingCerts --> RejectingTx: All Consensus Certs Processed
+    RejectingTx --> [*]: Epoch Terminated
     
-    AcquireTxLock --> CheckEpoch{Epoch\nMatch?}
-    CheckEpoch -->|No| ReleaseAndError[Release Lock & Return Error]
-    CheckEpoch -->|Yes| LoadObjects[Read Input Objects]
-    
-    LoadObjects --> PrepareExecution[Prepare Certificate]
-    PrepareExecution --> Execute[Execute in TemporaryStore]
-    Execute --> ComputeEffects[Compute Transaction Effects]
-    
-    ComputeEffects --> CommitTx[Commit Certificate]
-    CommitTx --> StoreEffects[Store Effects]
-    StoreEffects --> CommitObjects[Update Object Store]
-    
-    CommitObjects --> ReleaseLock[Release Transaction Lock]
-    ReleaseLock --> NotifyTxManager[Notify Transaction Manager]
-    NotifyTxManager --> End([Return Effects])
-    
-    ReleaseAndError --> End
-    ReturnExisting --> End
+    AcceptingCerts: Accept new certificates and transactions
+    RejectingCerts: Reject new certificates, process existing ones
+    RejectingTx: Reject all certificates and transactions
 ```
 
-**Verification Status**: Verified-Code (process_certificate in authority/src/state.rs)
+**Verification Status**: Verified-Code (ReconfigState transitions in reconfiguration.rs)
+
+## Shared Object Version Assignment
+
+### Version Assignment Process
+
+```mermaid
+sequenceDiagram
+    participant Consensus
+    participant EpochStore as AuthorityPerEpochStore
+    participant VerManager as SharedObjVerManager
+    participant Cache as ConsensusOutputCache
+    
+    Consensus->>EpochStore: Handle consensus transaction
+    EpochStore->>VerManager: assign_versions_from_consensus
+    
+    VerManager->>EpochStore: get_or_init_next_object_versions
+    
+    EpochStore->>EpochStore: Acquire version locks
+    EpochStore->>EpochStore: Check existing versions
+    
+    alt Version already assigned
+        EpochStore-->>VerManager: Return assigned version
+    else Version not assigned
+        EpochStore->>EpochStore: Look up current object version
+        EpochStore->>EpochStore: Determine next version
+        EpochStore->>EpochStore: Write to next_shared_object_versions
+        EpochStore-->>VerManager: Return assigned version
+    end
+    
+    VerManager-->>EpochStore: Return assigned versions
+    EpochStore->>Cache: Record shared object assignments
+```
+
+**Verification Status**: Verified-Code (version assignment in auth/src/epoch_store.rs)
+
+### Version Assignment Implementation
+
+```rust
+// Assign shared object versions for a batch of transactions
+fn process_consensus_transaction_shared_object_versions(
+    &self,
+    cache_reader: &dyn ObjectCacheRead,
+    transactions: &[VerifiedExecutableTransaction],
+    cancelled_txns: &BTreeMap<TransactionDigest, CancelConsensusCertificateReason>,
+    output: &mut ConsensusCommitOutput,
+) -> SomaResult {
+    // Assign versions for all shared objects in transactions
+    let ConsensusSharedObjVerAssignment {
+        shared_input_next_versions,
+        assigned_versions,
+    } = SharedObjVerManager::assign_versions_from_consensus(
+        self,
+        cache_reader,
+        transactions,
+        cancelled_txns,
+    )?;
+
+    // Store assignments for transaction execution
+    self.consensus_output_cache
+        .insert_shared_object_assignments(&assigned_versions);
+
+    // Update next versions for future transactions
+    output.set_next_shared_object_versions(shared_input_next_versions);
+    Ok(())
+}
+```
+
+**Verification Status**: Verified-Code (process_consensus_transaction_shared_object_versions in epoch_store.rs)
 
 ## Key Interfaces with Other Modules
 
@@ -433,6 +581,38 @@ fn example_error_propagation() -> SomaResult<Output> {
 
 **Verification Status**: Verified-Code (error handling patterns throughout authority module)
 
+### Error Handling Flow
+
+```mermaid
+flowchart TD
+    TxReceived[Transaction Received] --> ValidateInputs[Validate Inputs]
+    ValidateInputs -->|Invalid| ReturnValidationError[Return Validation Error]
+    ValidateInputs -->|Valid| ValidateSig[Validate Signature]
+    ValidateSig -->|Invalid| ReturnSigError[Return Signature Error]
+    ValidateSig -->|Valid| CheckEpoch[Check Epoch]
+    
+    CheckEpoch -->|Wrong Epoch| ReturnEpochError[Return Epoch Error]
+    CheckEpoch -->|Right Epoch| CheckLocks[Check Locks]
+    CheckLocks -->|Locked| ReturnLockError[Return Lock Conflict]
+    CheckLocks -->|Available| AcquireLocks[Acquire Locks]
+    
+    AcquireLocks -->|Success| ExecuteTx[Execute Transaction]
+    AcquireLocks -->|Failure| ReturnLockError
+    
+    ExecuteTx -->|Success| GenerateEffects[Generate Effects]
+    ExecuteTx -->|Failure| RecordFailure[Record Failure in Effects]
+    
+    GenerateEffects --> CommitEffects[Commit Effects]
+    RecordFailure --> CommitEffects
+    
+    CommitEffects -->|Success| ReturnEffects[Return Effects]
+    CommitEffects -->|Failure| HandleCommitError[Handle Commit Error]
+    
+    HandleCommitError --> RetryOrRevert[Retry or Revert]
+```
+
+**Verification Status**: Verified-Code (error handling flow in authority/src/state.rs)
+
 ### Recovery Mechanisms
 1. **Transaction Retry**: Automatic retry for transient failures
 2. **State Synchronization**: Recovery from peer validators after failures
@@ -468,7 +648,7 @@ fn example_error_propagation() -> SomaResult<Output> {
 
 **Verification Status**: Verified-Code (batching patterns in execution and storage)
 
-## Reconfiguration Protocol
+## Epoch Management and Reconfiguration
 
 ### Epoch Advancement
 1. **Detect Epoch End Condition**:
@@ -534,6 +714,24 @@ fn example_error_propagation() -> SomaResult<Output> {
    ```
 
 **Verification Status**: Verified-Code (reconfigure method in authority/src/state.rs)
+
+### End-of-Epoch Protocol
+1. **End-of-Publish Collection**:
+   - Validators signal they're done publishing transactions
+   - System tracks quorum of end-of-publish messages
+   - When quorum reached, stop accepting new certificates
+
+2. **Certificate Processing Completion**:
+   - Process all existing certificates in consensus
+   - Wait for all pending certificates to be executed
+   - Transition to rejecting all transactions
+
+3. **Epoch Advancement Transaction**:
+   - Create and execute end-of-epoch transaction
+   - Update system state to next epoch configuration
+   - Trigger reconfiguration on all components
+
+**Verification Status**: Verified-Code (reconfiguration state management in authority/src/reconfiguration.rs)
 
 ## Confidence: 9/10
 
