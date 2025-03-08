@@ -26,3 +26,6 @@ This file tracks suggestions for documentation priorities, decisions made, and c
 | 2025-03-07 | types/src/consensus/mod.rs | High priority foundation file in Phase 1, consensus-specific type definitions, currently at 0% coverage | High | Accepted | Complete (100%) | 9/10 |
 | 2025-03-07 | types/src/storage/mod.rs | High priority foundation file in Phase 1, storage interfaces and abstractions, currently at 0% coverage | High | Accepted | Complete (100%) | 9/10 |
 | 2025-03-07 | types/src/temporary_store.rs | High priority foundation file in Phase 1, temporary storage for transaction execution, currently at 0% coverage | High | Accepted | Complete (100%) | 9/10 |
+| 2025-03-07 | authority/src/state.rs | High priority core state management file in Phase 2, foundation of authority module, critical for understanding transaction processing | High | Accepted | Complete (90%) | 8/10 |
+| 2025-03-07 | authority/src/epoch_store.rs | High priority file in Phase 2, critical for understanding epoch-specific storage and state management, closely related to state.rs | High | Accepted | In Progress (30%) | 7/10 |
+| 2025-03-07 | authority/src/tx_manager.rs | High priority file in Phase 2, transaction manager implementation, critical for understanding transaction lifecycle | High | Accepted | Complete (100%) | 9/10 |

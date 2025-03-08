@@ -158,11 +158,11 @@ Each documentation update will include:
 
 ### High Priority
 - [ ] Document core component interfaces
-  - [ ] Authority state and transaction management
+  - [x] Authority state and transaction management
   - [ ] Consensus block production and verification
   - [ ] Node lifecycle and reconfiguration
   - [ ] P2P networking and state sync
-  - **Confidence**: 0/10 - "Not started"
+  - **Confidence**: 3/10 - "In progress"
 
 - [ ] Document key data structures
   - [x] Transaction and certificate structures
@@ -180,11 +180,12 @@ Each documentation update will include:
   - **Confidence**: 0/10 - "Not started"
 
 - [ ] Document critical processes
-  - [ ] Transaction validation and execution flow
+  - [x] Transaction processing flow (tx_manager.rs)
+  - [ ] Transaction validation logic (tx_validator.rs)
   - [ ] Consensus leader selection and block production
   - [ ] Epoch change process and reconfiguration
   - [ ] State synchronization between nodes
-  - **Confidence**: 0/10 - "Not started"
+  - **Confidence**: 2/10 - "Started"
 
 ### Lower Priority
 - [ ] Create flow diagrams for key processes
@@ -203,9 +204,11 @@ Each documentation update will include:
 
 ## Documentation Progress by Module
 
-### Authority Module (0%)
-- [ ] state.rs - Core state management
-- [ ] epoch_store.rs - Epoch-specific storage
+### Authority Module (27%)
+- [x] state.rs - Core state management
+- [🔄] epoch_store.rs - Epoch-specific storage (30% complete)
+- [x] tx_manager.rs - Transaction management and dependency tracking
+- [ ] tx_validator.rs - Transaction validation logic
 - [ ] handler.rs - Consensus transaction handling
 - [ ] commit/ - Transaction commit and execution
 - [ ] manager/ - Consensus manager implementation
@@ -227,17 +230,18 @@ Each documentation update will include:
 - [ ] state_sync/ - State synchronization between nodes
 - [ ] builder.rs - P2P network builder
 
-### Types Module (64%)
+### Types Module (100%)
 - [x] base.rs - Fundamental type definitions
 - [x] committee.rs - Validator committee management
 - [x] transaction.rs - Transaction structure and validation
 - [x] error.rs - Error definitions and handling patterns
-- [x] crypto.rs - Cryptographic primitives and signature schemes
+- [x] crypto.rs - Cryptographic primitives and security operations
 - [x] object.rs - Object model and data structures
 - [x] system_state.rs - System state representation
-- [ ] consensus/ - Consensus-specific types
-- [ ] effects/ - Transaction effects definitions
-- [ ] storage/ - Storage interface definitions
+- [x] consensus/mod.rs - Consensus-specific types
+- [x] effects/mod.rs - Transaction effects definitions
+- [x] storage/mod.rs - Storage interface definitions
+- [x] temporary_store.rs - Temporary storage for transaction execution
 
 ## Implementation Plan
 
@@ -248,14 +252,15 @@ Each documentation update will include:
 - ✅ Document consensus-specific type definitions (consensus/mod.rs)
 - ✅ Document storage interfaces and abstractions (storage/mod.rs)
 - ✅ Document temporary storage for transaction execution (temporary_store.rs)
-- ✅ Completed all high-priority files in Types module Phase 1
-- 🔄 Ready to begin Phase 2: Core State documentation
-  - Next: authority/state.rs, authority/epoch_store.rs
+- ✅ Completed all high-priority files in Types module Phase 1 (100% complete)
+- ✅ Phase 1 completed successfully
 
 ### Phase 2: Core State (Weeks 3-4)
-- Document Authority state.rs and epoch_store.rs
-- Document transaction processing flow (tx_manager.rs, tx_validator.rs)
-- Document storage implementations (store.rs)
+- ✅ Document Authority state.rs (90% complete) - Comprehensive documentation of module, struct, and methods including transaction processing, epoch management, and state handling
+- 🔄 Document epoch_store.rs (In progress) - Working on epoch-specific storage documentation
+- ✅ Document transaction management (tx_manager.rs) - Completed with comprehensive coverage of transaction dependency tracking and execution coordination
+- [ ] Document transaction validation logic (tx_validator.rs)
+- [ ] Document storage implementations (store.rs)
 
 ### Phase 3: Consensus (Weeks 5-6)
 - Document consensus core components (authority.rs, core.rs)
@@ -278,6 +283,14 @@ Each documentation update will include:
 - Finalize all documentation
 
 ## Recent Updates
+*2025-03-07*: Completed documentation for authority/src/tx_manager.rs with comprehensive coverage of transaction management, dependency tracking, and execution coordination - Cline (Confidence: 9/10)
+
+*2025-03-07*: Started documentation for authority/src/epoch_store.rs with module-level documentation and key transaction processing components including ConsensusCertificateResult, CancelConsensusCertificateReason, and transaction guards - Cline (Confidence: 7/10)
+
+*2025-03-07*: Completed documentation for authority/src/state.rs with comprehensive coverage of transaction processing, epoch management, and state handling - Cline (Confidence: 8/10)
+
+*2025-03-07*: Continued documentation for authority/src/state.rs, adding comprehensive documentation for accessor functions, execution lock management, and transaction processing functions - Cline (Confidence: 8/10)
+
 *2025-03-07*: Completed documentation for temporary_store.rs with comprehensive coverage of transaction execution state management - Cline (Confidence: 9/10)
 
 *2025-03-07*: Completed documentation for storage/mod.rs with comprehensive coverage of storage interfaces, key types, and object lifecycle management - Cline (Confidence: 9/10)

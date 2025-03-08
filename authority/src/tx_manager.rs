@@ -1,3 +1,35 @@
+//! # Transaction Manager
+//! 
+//! ## Overview
+//! The Transaction Manager is responsible for coordinating the flow of transactions through the system,
+//! ensuring they are executed only when all their input objects are available. It acts as a critical
+//! mediator between consensus, RPC handlers, checkpoint executor, and the execution driver.
+//!
+//! ## Responsibilities
+//! - Track transaction dependencies on input objects
+//! - Determine when transactions are ready for execution
+//! - Manage transaction queues and prioritization
+//! - Coordinate transaction execution across epoch boundaries
+//! - Maintain an efficient cache of available objects
+//!
+//! ## Component Relationships
+//! - Receives certificates from consensus, RPC handlers, and checkpoint executor
+//! - Publishes ready certificates to the execution driver
+//! - Interacts with AuthorityState for transaction execution
+//! - Coordinates with AuthorityPerEpochStore for epoch-specific state
+//!
+//! ## Key Workflows
+//! 1. Transaction enqueuing and dependency tracking
+//! 2. Object availability notification and transaction readiness determination
+//! 3. Transaction execution coordination
+//! 4. Epoch reconfiguration handling
+//!
+//! ## Design Patterns
+//! - Double-nested locking for safe reconfiguration
+//! - LRU caching for efficient object availability tracking
+//! - Dependency-based execution scheduling
+//! - Capacity management for collections to prevent memory bloat
+
 use std::{
     cmp::{max, Reverse},
     collections::{hash_map, BTreeSet, BinaryHeap, HashMap, HashSet},
@@ -26,66 +58,116 @@ use crate::{
 /// Minimum capacity of HashMaps used in TransactionManager.
 const MIN_HASHMAP_CAPACITY: usize = 1000;
 
-/// TransactionManager is responsible for publishing a stream of certified transactions (certificates) ready to execute.
-/// It receives certificates from conseensus, validator RPC handlers, and checkpoint executor.
-/// Execution driver subscribes to the stream of ready certificates from TransactionManager, and
-/// executes them in parallel.
-/// The actual execution logic is inside AuthorityState. After a transaction commits and updates
-/// storage, committed certificates are notified back to TransactionManager.
+/// # TransactionManager
+///
+/// Responsible for coordinating the flow of transactions through the system by tracking
+/// dependencies and determining when transactions are ready for execution.
+///
+/// ## Purpose
+/// Acts as the central coordinator for transaction processing, ensuring that transactions
+/// are executed only when all their input objects are available. It maintains the dependency
+/// graph between transactions and objects, and publishes ready transactions to the execution
+/// driver.
+///
+/// ## Lifecycle
+/// - Created at node startup with the current epoch
+/// - Processes transactions throughout the epoch
+/// - Reconfigured during epoch transitions to handle new transactions
+/// - Maintains state about pending and executing transactions
+///
+/// ## Thread Safety
+/// Uses a double-nested RwLock pattern to ensure safe concurrent access and proper
+/// reconfiguration. The outer lock protects against reconfiguration, while the inner
+/// lock protects the transaction state.
 pub struct TransactionManager {
-    // transaction_cache_read: Arc<dyn TransactionCacheRead>,
+    /// Channel for sending ready certificates to the execution driver
     tx_ready_certificates: UnboundedSender<PendingCertificate>,
-    // inner is a doubly nested lock so that we can enforce that an outer lock (for read) is held
-    // before the inner lock (for read or write) can be acquired. During reconfiguration, we acquire
-    // the outer lock for write, to ensure that no other threads can be running while we reconfigure.
+    
+    /// Double-nested lock for transaction state
+    /// The outer lock protects against reconfiguration, while the inner lock protects
+    /// the transaction state. During reconfiguration, we acquire the outer lock for write,
+    /// to ensure that no other threads can be running while we reconfigure.
     inner: RwLock<RwLock<Inner>>,
 
+    /// Cache for checking if transactions have already been executed
     transaction_cache_read: Arc<dyn TransactionCacheRead>,
 
+    /// Cache for checking object availability
     object_cache_read: Arc<dyn ObjectCacheRead>,
 }
 
+/// # PendingCertificate
+///
+/// Represents a transaction certificate that is being processed by the TransactionManager.
+///
+/// ## Purpose
+/// Tracks a transaction's execution state, including what input objects it's waiting for
+/// and any expected effects for verification.
+///
+/// ## Lifecycle
+/// - Created when a transaction is enqueued
+/// - Updated as input objects become available
+/// - Sent to execution driver when all inputs are available
+/// - Removed from TransactionManager when execution completes
 #[derive(Clone, Debug)]
 pub struct PendingCertificate {
-    // Certified transaction to be executed.
+    /// Certified transaction to be executed
     pub certificate: VerifiedExecutableTransaction,
-    // When executing from checkpoint, the certified effects digest is provided, so that forks can
-    // be detected prior to committing the transaction.
+    
+    /// Expected effects digest for fork detection
+    /// When executing from checkpoint, this is provided to detect forks
+    /// prior to committing the transaction
     pub expected_effects_digest: Option<TransactionEffectsDigest>,
-    // The input object this certificate is waiting for to become available in order to be executed.
+    
+    /// Input objects this certificate is waiting for
+    /// The transaction can only be executed when this set is empty
     pub waiting_input_objects: BTreeSet<InputKey>,
-    // Commit index of the certificate.
+    
+    /// Commit index of the certificate
+    /// Used to track the transaction's position in the consensus sequence
     pub commit: Option<CommitIndex>,
 }
 
+/// # Inner
+///
+/// Internal state of the TransactionManager protected by the double-nested lock.
+///
+/// ## Purpose
+/// Maintains all the data structures needed to track transaction dependencies,
+/// object availability, and execution state.
+///
+/// ## Thread Safety
+/// This struct is not thread-safe on its own and must be protected by the
+/// TransactionManager's double-nested lock system.
 struct Inner {
-    // Current epoch of TransactionManager.
+    /// Current epoch of TransactionManager
     epoch: EpochId,
 
-    // Maps missing input objects to transactions in pending_certificates.
+    /// Maps missing input objects to transactions waiting for them
+    /// Key: Input object that is not yet available
+    /// Value: Set of transaction digests waiting for this object
     missing_inputs: HashMap<InputKey, BTreeSet<TransactionDigest>>,
 
-    // Stores age info for all transactions depending on each object.
-    // Used for throttling signing and submitting transactions depending on hot objects.
-    // An `IndexMap` is used to ensure that the insertion order is preserved.
+    /// Stores age info for all transactions depending on each object
+    /// Used for throttling signing and submitting transactions depending on hot objects
+    /// Key: Object ID
+    /// Value: Queue of transactions waiting for this object with their enqueue times
     input_objects: HashMap<FullObjectID, TransactionQueue>,
 
-    // Maps object IDs to the highest observed sequence number of the object. When the value is
-    // None, indicates that the object is immutable, corresponding to an InputKey with no sequence
-    // number.
+    /// Cache of available objects and their versions
+    /// Used to quickly determine if an object is available without querying storage
     available_objects_cache: AvailableObjectsCache,
 
-    // A transaction enqueued to TransactionManager must be in either pending_certificates or
-    // executing_certificates.
-
-    // Maps transaction digests to their content and missing input objects.
+    /// Maps transaction digests to their content and missing input objects
+    /// A transaction is in this map if it's waiting for at least one input object
     pending_certificates: HashMap<TransactionDigest, PendingCertificate>,
 
-    // Transactions that  have not finished execution.
+    /// Set of transactions that have been sent to execution but have not finished
     executing_certificates: HashSet<TransactionDigest>,
 }
 
 impl Inner {
+    /// Creates a new Inner state for the given epoch
     fn new(epoch: EpochId) -> Inner {
         Inner {
             epoch,
@@ -97,9 +179,20 @@ impl Inner {
         }
     }
 
-    // Checks if there is any transaction waiting on `input_key`. Returns all the pending
-    // transactions that are ready to be executed.
-    // Must ensure input_key is available in storage before calling this function.
+    /// # Find Ready Transactions
+    ///
+    /// Checks if there are any transactions waiting on the given input object and
+    /// returns all transactions that become ready to execute as a result.
+    ///
+    /// ## Arguments
+    /// * `input_key` - The input object that has become available
+    /// * `update_cache` - Whether to update the available objects cache
+    ///
+    /// ## Returns
+    /// Vector of PendingCertificates that are now ready to execute
+    ///
+    /// ## Important Note
+    /// Must ensure input_key is available in storage before calling this function.
     fn find_ready_transactions(
         &mut self,
         input_key: InputKey,
@@ -151,6 +244,8 @@ impl Inner {
         ready_certificates
     }
 
+    /// Increases capacity of internal collections if they're getting too full
+    /// After reaching 3/4 load in hashmaps, increase capacity to decrease load to 1/2.
     fn maybe_reserve_capacity(&mut self) {
         self.missing_inputs.maybe_reserve_capacity();
         self.input_objects.maybe_reserve_capacity();
@@ -158,6 +253,7 @@ impl Inner {
         self.executing_certificates.maybe_reserve_capacity();
     }
 
+    /// Decreases capacity of internal collections if they're too empty
     /// After reaching 1/4 load in hashmaps, decrease capacity to increase load to 1/2.
     fn maybe_shrink_capacity(&mut self) {
         self.missing_inputs.maybe_shrink_capacity();
@@ -168,13 +264,24 @@ impl Inner {
 }
 
 impl TransactionManager {
+    /// # Create a new TransactionManager
+    ///
+    /// Creates a new TransactionManager for the given epoch and recovers any pending
+    /// transactions from storage.
+    ///
+    /// ## Arguments
+    /// * `object_cache_read` - Cache for checking object availability
+    /// * `epoch_store` - Store for the current epoch
+    /// * `tx_ready_certificates` - Channel for sending ready certificates to execution
+    /// * `transaction_cache_read` - Cache for checking transaction execution status
+    ///
+    /// ## Recovery Behavior
     /// If a node restarts, transaction manager recovers in-memory data from pending_certificates,
     /// which contains certified transactions from consensus output and RPC that are not executed.
     /// Transactions from other sources, e.g. checkpoint executor, have own persistent storage to
     /// retry transactions.
     pub(crate) fn new(
         object_cache_read: Arc<dyn ObjectCacheRead>,
-        // transaction_cache_read: Arc<dyn TransactionCacheRead>,
         epoch_store: &AuthorityPerEpochStore,
         tx_ready_certificates: UnboundedSender<PendingCertificate>,
         transaction_cache_read: Arc<dyn TransactionCacheRead>,
@@ -185,7 +292,7 @@ impl TransactionManager {
             tx_ready_certificates,
             transaction_cache_read,
         };
-        // TODO: Recover pending certificates and fetch commit index for each when node restarts
+        // Recover pending certificates from storage
         transaction_manager.enqueue(
             epoch_store.all_pending_execution().unwrap(),
             epoch_store,
@@ -194,11 +301,22 @@ impl TransactionManager {
         transaction_manager
     }
 
-    /// Enqueues certificates / verified transactions into TransactionManager. Once all of the input objects are available
-    /// locally for a certificate, the certified transaction will be sent to execution driver.
+    /// # Enqueue Certificates
     ///
+    /// Enqueues verified certificates into the TransactionManager for processing.
+    ///
+    /// ## Arguments
+    /// * `certs` - Vector of verified certificates to enqueue
+    /// * `epoch_store` - Store for the current epoch
+    /// * `commit` - Optional commit index for the certificates
+    ///
+    /// ## Important
     /// REQUIRED: Shared object locks must be taken before calling enqueueing transactions
     /// with shared objects!
+    ///
+    /// ## Behavior
+    /// Once all input objects are available locally for a certificate, the certified
+    /// transaction will be sent to the execution driver.
     #[instrument(level = "trace", skip_all)]
     pub(crate) fn enqueue_certificates(
         &self,
@@ -213,6 +331,14 @@ impl TransactionManager {
         self.enqueue(executable_txns, epoch_store, commit)
     }
 
+    /// # Enqueue Executable Transactions
+    ///
+    /// Enqueues verified executable transactions into the TransactionManager.
+    ///
+    /// ## Arguments
+    /// * `certs` - Vector of verified executable transactions to enqueue
+    /// * `epoch_store` - Store for the current epoch
+    /// * `commit` - Optional commit index for the transactions
     #[instrument(level = "trace", skip_all)]
     pub(crate) fn enqueue(
         &self,
@@ -224,6 +350,14 @@ impl TransactionManager {
         self.enqueue_impl(certs, epoch_store)
     }
 
+    /// # Enqueue with Expected Effects Digest
+    ///
+    /// Enqueues transactions with their expected effects digests, typically used
+    /// when executing from checkpoints to detect forks.
+    ///
+    /// ## Arguments
+    /// * `certs` - Vector of (transaction, effects digest) pairs
+    /// * `epoch_store` - Store for the current epoch
     #[instrument(level = "trace", skip_all)]
     pub(crate) fn enqueue_with_expected_effects_digest(
         &self,
@@ -237,6 +371,20 @@ impl TransactionManager {
         self.enqueue_impl(certs, epoch_store)
     }
 
+    /// # Implementation of Enqueue
+    ///
+    /// Core implementation of transaction enqueuing logic shared by all public enqueue methods.
+    ///
+    /// ## Arguments
+    /// * `certs` - Vector of (transaction, optional effects digest, optional commit index) tuples
+    /// * `epoch_store` - Store for the current epoch
+    ///
+    /// ## Process Flow
+    /// 1. Filter out already executed transactions
+    /// 2. Check object availability for all input objects
+    /// 3. Create pending certificates for transactions
+    /// 4. Track dependencies and determine which transactions are ready
+    /// 5. Send ready transactions to execution
     fn enqueue_impl(
         &self,
         certs: Vec<(

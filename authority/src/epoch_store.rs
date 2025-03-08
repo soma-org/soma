@@ -1,3 +1,35 @@
+//! # Epoch Store
+//! 
+//! ## Overview
+//! The epoch store manages all epoch-specific state and storage for a validator authority.
+//! It provides a clean separation between data from different epochs, enabling safe epoch
+//! transitions and reconfiguration.
+//!
+//! ## Responsibilities
+//! - Manage epoch-specific database tables and in-memory state
+//! - Process consensus transactions and assign shared object versions
+//! - Handle transaction execution and effects certification
+//! - Manage epoch transitions and reconfiguration state
+//! - Coordinate validator committee operations
+//!
+//! ## Component Relationships
+//! - Interacts with AuthorityState to provide epoch-specific storage
+//! - Provides transaction processing services to consensus
+//! - Manages shared object versioning for transaction execution
+//! - Coordinates with reconfiguration process for epoch changes
+//!
+//! ## Key Workflows
+//! 1. Consensus transaction processing and shared object version assignment
+//! 2. Transaction execution and effects certification
+//! 3. Epoch transition and reconfiguration
+//! 4. End-of-epoch protocol coordination
+//!
+//! ## Design Patterns
+//! - Epoch isolation: All epoch-specific data is contained within the epoch store
+//! - Clean shutdown: Graceful termination of epoch-specific tasks
+//! - Consensus quarantine: Protection against forking during consensus processing
+//! - Version assignment: Deterministic shared object version management
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     future::Future,
@@ -57,37 +89,95 @@ use crate::{
 
 
 
-// CertLockGuard and CertTxGuard are functionally identical right now, but we retain a distinction
-// anyway. If we need to support distributed object storage, having this distinction will be
-// useful, as we will most likely have to re-implement a retry / write-ahead-log at that point.
+/// # CertLockGuard and CertTxGuard
+///
+/// Transaction lock guards for preventing concurrent execution of the same transaction.
+/// These types provide a clean abstraction for transaction locking that can be extended
+/// in the future to support distributed object storage.
+///
+/// ## Purpose
+/// - Prevent concurrent execution of the same transaction
+/// - Provide a clean abstraction for transaction locking
+/// - Enable future extensions for distributed storage
+///
+/// ## Usage
+/// - Acquire a lock before executing a transaction
+/// - Release the lock after execution is complete
+/// - Use commit_tx to signal successful execution
+///
+/// ## Thread Safety
+/// These guards work with the mutex_table to provide fine-grained locking
+/// at the transaction level, allowing concurrent execution of different transactions.
 pub struct CertLockGuard(#[allow(unused)] MutexGuard);
+
+/// Transaction guard that wraps a CertLockGuard and provides additional
+/// transaction-specific operations.
 pub struct CertTxGuard(#[allow(unused)] CertLockGuard);
 
 impl CertTxGuard {
+    /// Release the transaction lock without any additional actions.
     pub fn release(self) {}
+    
+    /// Commit the transaction and release the lock.
     pub fn commit_tx(self) {}
+    
+    /// Get a reference to the underlying lock guard.
     pub fn as_lock_guard(&self) -> &CertLockGuard {
         &self.0
     }
 }
 
+/// # CancelConsensusCertificateReason
+///
+/// Reasons why a transaction certificate might be cancelled during consensus processing.
+///
+/// ## Purpose
+/// Provides detailed information about why a transaction was cancelled,
+/// which can be used for error reporting and debugging.
+///
+/// ## Variants
+/// Currently only supports cancellation due to congestion on specific objects,
+/// but can be extended with additional cancellation reasons in the future.
 pub enum CancelConsensusCertificateReason {
+    /// Transaction was cancelled due to congestion on specific objects.
+    /// Contains the list of object IDs that experienced congestion.
     CongestionOnObjects(Vec<ObjectID>),
 }
 
+/// # ConsensusCertificateResult
+///
+/// Represents the result of processing a consensus transaction or certificate.
+/// This enum is used to determine how a transaction should be handled after
+/// it has been processed by the consensus handler.
+///
+/// ## Variants
+/// Different outcomes require different handling in the consensus flow:
+/// - Some transactions are executed immediately
+/// - Some are ignored (already processed or invalid for current epoch)
+/// - Some are cancelled but still need to go through execution engine
+/// - Some are just consensus protocol messages
 pub enum ConsensusCertificateResult {
     /// The consensus message was ignored (e.g. because it has already been processed).
     Ignored,
+    
     /// An executable transaction (can be a user tx or a system tx)
+    /// that should be scheduled for execution.
     SomaTransaction(VerifiedExecutableTransaction),
+    
     /// The transaction should be re-processed at a future commit, specified by the DeferralKey
     // Deferred(DeferralKey),
+    
     /// A message was processed which updates randomness state.
     // RandomnessConsensusMessage,
+    
     /// Everything else, e.g. AuthorityCapabilities, CheckpointSignatures, etc.
+    /// These messages update consensus state but don't result in transactions.
     ConsensusMessage,
+    
     /// A system message in consensus was ignored (e.g. because of end of epoch).
+    /// Different from Ignored in that it specifically applies to system messages.
     IgnoredSystem,
+    
     /// A will-be-cancelled transaction. It'll still go through execution engine (but not be executed),
     /// unlock any owned objects, and return corresponding cancellation error according to
     /// `CancelConsensusCertificateReason`.
@@ -99,6 +189,33 @@ pub enum ConsensusCertificateResult {
     ),
 }
 
+/// # AuthorityPerEpochStore
+///
+/// The primary store for all epoch-specific state and storage in a validator authority.
+///
+/// ## Purpose
+/// Manages all data that is specific to a single epoch, providing clean isolation between
+/// epochs and enabling safe epoch transitions. This includes transaction processing,
+/// consensus state, shared object versioning, and reconfiguration state.
+///
+/// ## Lifecycle
+/// - Created at the beginning of an epoch with a specific committee and configuration
+/// - Used throughout the epoch for transaction processing and consensus operations
+/// - Gracefully shut down during epoch transition, ensuring all in-flight operations complete
+/// - Replaced by a new instance for the next epoch
+///
+/// ## Thread Safety
+/// Designed for concurrent access with careful lock management:
+/// - Uses RwLocks for shared state that needs concurrent readers
+/// - Uses MutexTables for fine-grained locking of specific objects
+/// - Implements notification patterns for async coordination
+/// - Maintains careful lock ordering to prevent deadlocks
+///
+/// ## Key Components
+/// - Tables: Epoch-specific storage tables for transactions, effects, and state
+/// - Consensus quarantine: Protection against forking during consensus processing
+/// - Reconfiguration state: Manages the epoch change protocol
+/// - Shared object version management: Assigns versions to shared objects
 pub struct AuthorityPerEpochStore {
     /// The name of this authority.
     pub(crate) name: AuthorityName,
@@ -185,7 +302,23 @@ pub struct AuthorityPerEpochStore {
     next_epoch_state: RwLock<Option<(SystemState, ECMHLiveObjectSetDigest)>>,
 }
 
-/// AuthorityEpochTables contains tables that contain data that is only valid within an epoch.
+/// # AuthorityEpochTables
+///
+/// Contains tables that store epoch-specific data that is only valid within a single epoch.
+/// 
+/// ## Purpose
+/// Provides a clean separation of data between epochs, ensuring that data from previous epochs
+/// doesn't interfere with the current epoch's operation. This isolation is critical for
+/// maintaining consistency during epoch transitions.
+///
+/// ## Lifecycle
+/// - Created at the beginning of an epoch
+/// - Used throughout the epoch for transaction processing and state management
+/// - Discarded or archived at the end of the epoch
+///
+/// ## Thread Safety
+/// Most tables are protected by RwLocks to allow concurrent access while maintaining
+/// consistency. The lock ordering must be carefully maintained to prevent deadlocks.
 #[derive(Default)]
 pub struct AuthorityEpochTables {
     /// Certificates that have been received from clients or received from consensus, but not yet
