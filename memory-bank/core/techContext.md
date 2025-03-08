@@ -1,174 +1,140 @@
-# Soma Technical Context
+# Technology Context
 
-## Technology Stack
+## Purpose and Scope
+This document describes the technology stack, tooling, and technical constraints that form the foundation of the Soma blockchain. It provides essential context about the technical environment in which Soma operates and the key technologies it leverages.
+
+## Core Technology Stack
 
 ### Programming Language
-- **Rust**: Primary language for all components
-  - Strong memory safety guarantees
+- **Rust (2021 edition)**: Primary implementation language
+  - Strong type system and memory safety
   - Zero-cost abstractions
-  - Trait-based system
-  - Pattern matching
-  - Type inference
-  - Minimal runtime
+  - Ownership model for thread safety
+  - Rich ecosystem of crates
 
-### Core Libraries & Dependencies
-- **Tokio**: Async runtime for concurrent operations
-  - Task spawning and management with JoinSet
-  - I/O multiplexing with tokio::select!
-  - Synchronization primitives for async contexts
-  - Testing utilities for async code
+### Async Runtime
+- **Tokio**: Asynchronous runtime for efficient concurrent operations
+  - Task scheduling and management
+  - Asynchronous I/O primitives
+  - Synchronization primitives (Mutex, RwLock, channels)
+  - JoinSet for task management
 
-- **Tonic**: gRPC framework based on HTTP/2
-  - Service definition and implementation for inter-node communication
-  - Client and server code generation
-  - Channel-based communication
+### Storage
+- **RocksDB**: Embedded key-value storage engine
+  - Accessed through trait interfaces for abstraction
+  - Column families for data organization
+  - LSM-tree structure for write optimization
+  - Configurable performance characteristics
 
-- **Parking_lot**: Efficient synchronization primitives
-  - RwLock for concurrent reads with exclusive writes
-  - Mutex for exclusive access
-  - Performance improvements over standard library versions
+### Networking
+- **Tonic/gRPC**: Network communication framework
+  - Protocol buffer message definitions
+  - Streaming RPCs for state synchronization
+  - Generated service interfaces
+  - Transport layer security integration
 
-- **Arc-swap**: Hot-swappable atomic reference counting
-  - Used for swapping epoch stores during reconfiguration
-  - Thread-safe updates of shared state
+### Serialization
+- **BCS (Binary Canonical Serialization)**: Primary serialization format
+  - Deterministic byte representation
+  - Space-efficient encoding
+  - Type safety and schema validation
+  - Consistent across implementations
 
-- **BCS**: Binary Canonical Serialization
-  - Deterministic serialization for blockchain data
-  - Used for transaction and block serialization
+## Infrastructure
 
-- **Fastcrypto**: Cryptographic library
-  - Verification of signatures
-  - Key management for authority operations
-  - Used for consensus signatures and transaction validation
+### Development Environment
+- **Git**: Version control
+- **GitHub**: Code hosting and CI/CD
+- **Rust Analyzer**: IDE integration
+- **Cargo**: Package management
+- **VSCode/Cursor**: Primary editor environments
 
-- **Tracing**: Structured, event-based diagnostic information
-  - Hierarchical spans for tracking operations
-  - Detailed logging across components
-
-- **Supporting Libraries**:
-  - **thiserror**: Error type definitions and propagation
-  - **anyhow**: Flexible error handling
-  - **futures**: Asynchronous operation composition
-  - **itertools**: Advanced iterator operations
-  - **bytes**: Efficient byte buffer handling
-  - **lru**: Least-recently-used cache implementation
-  - **tap**: Functional programming utilities
-
-### Project Structure
-- **/authority**: Validator and authority management
-  - **state.rs**: Central authority state management
-  - **epoch_store.rs**: Per-epoch state and storage
-  - **handler.rs**: Consensus transaction handling
-  - **commit/**: Transaction commit and execution
-  - **manager/**: Consensus manager implementation
-  - **cache/**: Object and transaction caching
-
-- **/node**: Core blockchain node implementation
-  - **lib.rs**: Main SomaNode implementation
-  - **handle.rs**: Node handle for external interaction
-
-- **/consensus**: Mysticeti consensus implementation
-  - **authority.rs**: ConsensusAuthority implementation
-  - **core.rs**: Core consensus logic
-  - **core_thread.rs**: Consensus thread management
-  - **committer/**: Transaction commitment to state
-  - **network/**: Consensus network communication
-
-- **/p2p**: Peer-to-peer networking layer
-  - **discovery/**: Peer discovery implementation
-  - **state_sync/**: State synchronization between nodes
-  - **builder.rs**: P2P network builder
-
-- **/types**: Core data types and structures
-  - **base.rs**: Fundamental type definitions
-  - **committee.rs**: Validator committee management
-  - **transaction.rs**: Transaction structure and validation
-  - **consensus/**: Consensus-specific types
-  - **effects/**: Transaction effects definitions
-  - **storage/**: Storage interface definitions
-
-- **/utils**: Shared utilities and helpers
-  - **notify_once.rs**: One-time notification utility
-  - **notify_read.rs**: Notification for reads
-  - **agg.rs**: Aggregation utilities
-
-## System Components
-
-### Authority Components
-- **AuthorityState**: Central state manager for a validator node
-  - Transaction processing and execution
-  - Certificate handling and verification
-  - State management and transitions
-
-- **AuthorityPerEpochStore**: Per-epoch storage and state
-  - Epoch-specific transaction handling
-  - Consensus interaction
-  - Reconfiguration state management
-
-- **TransactionManager**: Transaction handling and scheduling
-  - Enqueues transactions for execution
-  - Manages pending certificate execution
-  - Tracks transaction dependencies
-
-### Consensus Components
-- **ConsensusAuthority**: Main consensus implementation
-  - Block production and verification
-  - Leader selection and scheduling
-  - Commit management
-  - Network communication
-
-- **Core**: Consensus core logic
-  - ThresholdClock for round management
-  - Block creation and verification
-  - Leader block handling
-
-- **CommitSyncer**: Synchronizes commits between nodes
-  - Fetches missing commits
-  - Verifies commit validity
-  - Updates local state
-
-### P2P Components
-- **DiscoveryEventLoop**: Peer discovery and management
-  - Finds and connects to new peers
-  - Maintains peer information
-  - Manages connections to peers
-
-- **StateSyncEventLoop**: State synchronization
-  - Fetches missing state from peers
-  - Verifies fetched state
-  - Updates local state
-
-### Node Components
-- **SomaNode**: Main node implementation
-  - Component lifecycle management
-  - Reconfiguration handling
-  - Epoch transition coordination
-
-## Development Environment
-- **Cargo**: Rust package manager
-- **Rustfmt & Clippy**: Code formatting and linting
-- **Github Actions**: CI/CD pipeline
+### Continuous Integration
+- **GitHub Actions**: CI/CD pipeline
   - Automated testing
-  - Linting and formatting checks
-  - Deployment automation
+  - Code quality checks
+  - Build verification
+  - Release automation
+
+### Deployment
+- **Docker**: Container runtime
+  - Consistent runtime environment
+  - Dependency management
+  - Resource isolation
+
+- **Kubernetes**: Container orchestration
+  - Scalable deployments
+  - Service discovery
+  - State management
+  - Rolling updates
 
 ## Technical Constraints
-- Byzantine fault tolerance requirements:
-  - System functions correctly with up to f faulty nodes out of 3f+1 total
-  - Validators must reach consensus despite node failures
-  - System must detect and handle malicious behavior
 
-- Performance considerations:
-  - Efficient transaction processing
-  - Minimized consensus latency
-  - Optimized state synchronization
+### Performance Requirements
+- **Latency**: Sub-second transaction finality target
+- **Throughput**: 1000+ transactions per second initial target
+- **Scalability**: Horizontal scaling via sharding (planned)
 
-- Safety guarantees:
-  - No double-spending or invalid state transitions
-  - Consistent state across honest nodes
-  - Deterministic transaction execution
+### Security Considerations
+- **Byzantine Fault Tolerance**: Resilience against malicious actors
+- **Cryptographic Standards**: Industry-standard cryptographic primitives
+- **Network Security**: TLS for all network communication
+- **Access Control**: Fine-grained permission model
 
-- Liveness guarantees:
-  - System continues to make progress despite failures
-  - Reconfiguration completes successfully
-  - Transactions are eventually processed
+### Reliability Requirements
+- **Availability**: 99.9%+ uptime target
+- **Data Durability**: No transaction loss once finalized
+- **Recovery**: Clean recovery from crashes and partitions
+
+## Development Practices
+
+### Code Quality
+- **Static Analysis**: Clippy for Rust linting
+- **Formatting**: Rustfmt for consistent style
+- **Documentation**: Comprehensive inline documentation
+- **Testing**: Unit, integration, and end-to-end testing
+
+### Architecture Principles
+- **Component Isolation**: Clear boundaries between modules
+- **Interface-Driven Design**: Well-defined interfaces between components
+- **Error Handling**: Comprehensive error types and propagation
+- **Concurrency Model**: Task-based concurrency with message passing
+
+### Testing Strategy
+- **Unit Tests**: Component-level functionality verification
+- **Integration Tests**: Cross-component interaction testing
+- **End-to-End Tests**: Full system behavior validation
+- **Property-Based Testing**: Randomized input testing
+
+## External Dependencies
+
+### Core Libraries
+- **ed25519-dalek**: Cryptographic signatures
+- **blake2b_simd**: Cryptographic hashing
+- **arc-swap**: Atomic reference counting with swapping
+- **serde**: Serialization/deserialization framework
+- **thiserror**: Error type definitions
+- **tracing**: Structured logging and diagnostics
+
+### Infrastructure
+- **prometheus**: Metrics collection
+- **opentelemetry**: Distributed tracing
+- **reqwest**: HTTP client for external integrations
+- **warp**: HTTP server for API endpoints
+
+## Version Management
+
+### Semantic Versioning
+- Major version: Backward-incompatible changes
+- Minor version: New features, backward compatible
+- Patch version: Bug fixes, backward compatible
+
+### Protocol Versioning
+- Explicit protocol version in system state
+- Version negotiation during peer connection
+- Backward compatibility guarantees
+
+## Confidence: 8/10
+This document provides a comprehensive overview of the technology context for the Soma blockchain. The core technology stack is well-established, though some deployment and infrastructure details may evolve as the project matures.
+
+## Last Updated: 2025-03-08 by Cline
