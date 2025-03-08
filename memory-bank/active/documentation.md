@@ -308,10 +308,9 @@ For documenting relationships that span multiple files:
   - **Confidence**: 3/10 - "In progress"
 
 - [ ] Create cross-file documentation for critical subsystems
-  - [ ] Transaction lifecycle (complete path from submission to execution)
-  - [ ] Consensus subsystem (block production, verification, and commit)
-  - [ ] Epoch reconfiguration (across authority and consensus)
-  - [ ] State synchronization (P2P and authority integration)
+  - [ ] Core Data Flow (transaction lifecycle, object model, commit processing)
+  - [ ] System Coordination (consensus, committee, epoch changes)
+  - [ ] Deployment & Operations (node types, genesis, validator lifecycle)
   - **Confidence**: 0/10 - "Not started"
 
 ### Medium Priority
@@ -404,36 +403,31 @@ For documenting relationships that span multiple files:
 - ✅ Completed all high-priority files in Types module Phase 1 (100% complete)
 - ✅ Phase 1 completed successfully
 
-### Phase 2: Core State (Weeks 3-4) 🔄
-- ✅ Document Authority state.rs (90% complete) - Comprehensive documentation of module, struct, and methods including transaction processing, epoch management, and state handling
-- 🔄 Document epoch_store.rs (In progress) - Working on epoch-specific storage documentation
-- ✅ Document transaction management (tx_manager.rs) - Completed with comprehensive coverage of transaction dependency tracking and execution coordination
+### Phase 2: Core Components & Data Flow (Weeks 3-5) 🔄
+- ✅ Document Authority state.rs (90% complete)
+- 🔄 Document epoch_store.rs (In progress)
+- ✅ Document transaction management (tx_manager.rs)
 - [ ] Document transaction validation logic (tx_validator.rs)
-- [ ] Document storage implementations (store.rs)
-- [ ] Create cross-file documentation for transaction processing workflow
+- [ ] Document commit/executor.rs for transaction commit execution
+- [ ] Create "Core Data Flow" cross-file documentation (transaction lifecycle, object model, commit processing)
+- [ ] Document key consensus components (authority.rs, core.rs)
 
-### Phase 3: Consensus (Weeks 5-6)
-- Document consensus core components (authority.rs, core.rs)
-- Document block production and verification process
-- Document commit processing and synchronization
-- Create cross-file documentation for consensus workflow
-
-### Phase 4: Networking (Weeks 7-8)
+### Phase 3: System Coordination (Weeks 6-8)
+- Document remaining consensus components (block_manager.rs, threshold_clock.rs)
+- Document committee management (types/src/committee.rs, consensus/src/leader_schedule.rs)
+- Document reconfiguration.rs for epoch changes
+- Create "System Coordination" cross-file documentation (consensus, committee, epoch changes)
 - Document P2P discovery and state synchronization
-- Document network message handling
-- Document peer management
-- Create cross-file documentation for network state synchronization
 
-### Phase 5: Integration (Weeks 9-10)
+### Phase 4: Operational Components (Weeks 9-10)
 - Document Node implementation and lifecycle
-- Create cross-file documentation for epoch management
-- Create cross-file documentation for validator reconfiguration
+- Document remaining P2P components
+- Create "Deployment & Operations" cross-file documentation (node types, genesis, validator lifecycle)
 - Create architecture diagrams for key cross-component processes
 
-### Phase 6: Completion and Review (Weeks 11-12)
+### Phase 5: Completion and Review (Weeks 11-12)
 - Fill documentation gaps identified during previous phases
 - Conduct documentation reviews
-- Review and update all cross-file documentation
 - Finalize all documentation
 
 ## Recent Updates
