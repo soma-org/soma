@@ -30,8 +30,8 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 |----------|--------|------------|--------------|-------|
 | authority/* | COMPLETE | 9/10 | 2025-03-09 | Authority module documentation, complete with 5 comprehensive subdocuments |
 | consensus/* | COMPLETE | 9/10 | 2025-03-10 | Consensus module documentation, complete with 4 comprehensive subdocuments |
-| node.md | PARTIAL | 7/10 | 2025-02-22 | Node lifecycle and orchestration |
-| p2p.md | PARTIAL | 6/10 | 2025-02-24 | P2P networking and discovery |
+| p2p/* | COMPLETE | 9/10 | 2025-03-08 | P2P module documentation, complete with 4 comprehensive subdocuments |
+| node/* | COMPLETE | 9/10 | 2025-03-08 | Node module documentation, complete with 6 comprehensive subdocuments |
 
 ## Reference Documentation
 
@@ -41,6 +41,32 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 | agent_workflows.md | COMPLETE | 9/10 | 2025-02-15 | Documentation of AI agent workflows |
 
 ## Recent Milestones
+
+### 2025-03-08: Node Module Documentation Completed
+- Implemented comprehensive documentation of Node module
+- Created hierarchical structure with 6 detailed subdocuments:
+  - index.md - Overview and navigation
+  - module_structure.md - Component architecture and relationships
+  - lifecycle_management.md - Node startup, operation, and shutdown
+  - service_orchestration.md - Integration of core services
+  - reconfiguration.md - Epoch transitions and validator set changes
+  - thread_safety.md - Concurrency controls and thread safety
+- Added detailed sequence diagrams for initialization, reconfiguration, and key workflows
+- Documented concurrency patterns and thread safety mechanisms
+- Provided concrete code examples from implementation
+- Achieved 9/10 confidence through thorough code verification
+
+### 2025-03-08: P2P Module Documentation Completed
+- Implemented comprehensive documentation of P2P module
+- Created hierarchical structure with 4 detailed subdocuments:
+  - module_structure.md - Component architecture and relationships
+  - discovery.md - Peer discovery and network connectivity
+  - state_sync.md - State synchronization mechanisms
+  - thread_safety.md - Concurrency controls and safety
+- Added detailed sequence diagrams for peer discovery and state sync protocols
+- Documented event loop architecture and thread safety mechanisms
+- Provided concrete code examples from implementation
+- Achieved 9/10 confidence through thorough code verification
 
 ### 2025-03-10: Consensus Module Documentation Completed
 - Implemented comprehensive documentation of consensus module
@@ -85,27 +111,22 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 
 ## Next Documentation Priorities
 
-1. **P2P Module Documentation** - Document network communication and state synchronization
-   - Detail peer discovery mechanisms
-   - Document state synchronization protocols
-   - Explain network message handling
-   - Cover error handling and recovery
-
-2. **Node Module Documentation** - Document node lifecycle and services
-   - Detail component orchestration and initialization
-   - Explain service registration and management
-   - Document node configuration and bootstrapping
-   - Cover shutdown and cleanup procedures
-
-3. **Storage Layer Documentation** - Develop comprehensive storage documentation
+1. **Storage Layer Documentation** - Develop comprehensive storage documentation
    - Document storage interfaces and implementations
    - Explain object persistence strategies
    - Detail index and lookup mechanisms
 
-4. **State Synchronization** - Document state sync protocols and implementation
-   - Explain node catchup mechanisms
-   - Document verification processes
-   - Detail bootstrapping processes
+3. **Security Model Documentation** - Document security properties and threat model
+   - Detail Byzantine fault tolerance guarantees
+   - Document cryptographic protocols
+   - Analyze attack vectors and mitigations
+   - Document permissioning and access control
+
+4. **Configuration Guide** - Document system configuration
+   - Detail configuration parameters
+   - Explain deployment options
+   - Document performance tuning
+   - Cover monitoring and observability
 
 ## Implementation Best Practices
 
