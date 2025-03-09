@@ -16,6 +16,8 @@ use crate::{authority_committee::AuthorityIndex, block::TransactionIndex};
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub enum SharedError {
+    #[error("fast crypto error: {0}")]
+    FastCrypto(String),
     #[error("Quorum failed")]
     QuorumFailed,
 

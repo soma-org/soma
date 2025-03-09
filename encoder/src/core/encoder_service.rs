@@ -4,6 +4,7 @@ use fastcrypto::{bls12381::min_sig, traits::KeyPair, traits::Signer};
 use shared::{
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, ProtocolKeyPair},
     digest::Digest,
+    entropy::EntropyVDF,
     error::SharedError,
     metadata::{verify_metadata, EncryptionAPI, MetadataAPI},
     scope::Scope,
@@ -35,7 +36,7 @@ use super::pipeline_dispatcher::Dispatcher;
 pub(crate) struct EncoderInternalService<D: Dispatcher> {
     context: Arc<EncoderContext>,
     dispatcher: D,
-    vdf: ActorHandle<VDFProcessor>,
+    vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
     shard_verifier: ShardVerifier,
     store: Arc<dyn Store>,
     encoder_keypair: Arc<EncoderKeyPair>,
@@ -45,7 +46,7 @@ impl<D: Dispatcher> EncoderInternalService<D> {
     pub(crate) fn new(
         context: Arc<EncoderContext>,
         dispatcher: D,
-        vdf: ActorHandle<VDFProcessor>,
+        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
         shard_verifier: ShardVerifier,
         store: Arc<dyn Store>,
         encoder_keypair: Arc<EncoderKeyPair>,

@@ -2,7 +2,7 @@ use quick_cache::sync::Cache;
 use serde::{Deserialize, Serialize};
 use shared::{
     digest::Digest,
-    entropy::{BlockEntropyOutput, BlockEntropyProof},
+    entropy::{BlockEntropyOutput, BlockEntropyProof, EntropyVDF},
     finality_proof::FinalityProof,
     metadata::MetadataCommitment,
 };
@@ -69,7 +69,7 @@ impl ShardVerifier {
     pub(crate) async fn verify(
         &self,
         context: &EncoderContext,
-        vdf: &ActorHandle<VDFProcessor>,
+        vdf: &ActorHandle<VDFProcessor<EntropyVDF>>,
         token: &ShardAuthToken,
     ) -> ShardResult<(Digest<ShardAuthToken>, Shard)> {
         let digest =
@@ -190,7 +190,7 @@ mod tests {
     async fn setup_test_environment() -> (
         ShardVerifier,
         ShardAuthToken,
-        ActorHandle<VDFProcessor>,
+        ActorHandle<VDFProcessor<EntropyVDF>>,
         EncoderContext,
     ) {
         // Set up VDF processor

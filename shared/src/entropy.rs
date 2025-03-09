@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use fastcrypto_vdf::{
@@ -14,12 +14,23 @@ use crate::{
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BlockEntropyOutput(Bytes);
+
+impl BlockEntropyOutput {
+    pub fn new(bytes: Bytes) -> Self {
+        Self(bytes)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BlockEntropyProof(Bytes);
-
+impl BlockEntropyProof {
+    pub fn new(bytes: Bytes) -> Self {
+        Self(bytes)
+    }
+}
 type EntropyIterations = u64;
 
-pub trait EntropyAPI {
+pub trait EntropyAPI: Send + Sync + Sized + 'static {
     fn get_entropy(
         &self,
         epoch: Epoch,
@@ -36,13 +47,16 @@ pub trait EntropyAPI {
 }
 
 pub struct EntropyVDF {
-    vdf: DefaultVDF,
+    vdf: Arc<Mutex<DefaultVDF>>,
 }
 
 impl EntropyVDF {
     pub fn new(iterations: EntropyIterations) -> Self {
         Self {
-            vdf: DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations),
+            vdf: Arc::new(Mutex::new(DefaultVDF::new(
+                DISCRIMINANT_3072.clone(),
+                iterations,
+            ))),
         }
     }
 }
@@ -57,10 +71,14 @@ impl EntropyAPI for EntropyVDF {
         let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
             .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
 
-        let (output, proof) = self
-            .vdf
-            .evaluate(&input)
-            .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
+        let (output, proof) = {
+            let vdf = self
+                .vdf
+                .lock()
+                .map_err(|e| SharedError::FastCrypto(e.to_string()))?; // Lock acquired
+            vdf.evaluate(&input)
+                .map_err(|e| SharedError::FailedVDF(e.to_string()))?
+        };
 
         let entropy_bytes = bcs::to_bytes(&output).map_err(SharedError::SerializationFailure)?;
 
@@ -88,8 +106,11 @@ impl EntropyAPI for EntropyVDF {
         let proof: QuadraticForm =
             bcs::from_bytes(&tx_entropy_proof.0).map_err(SharedError::MalformedType)?;
 
-        self.vdf
-            .verify(&input, &entropy, &proof)
+        let vdf = self
+            .vdf
+            .lock()
+            .map_err(|e| SharedError::FastCrypto(e.to_string()))?; // Lock acquired
+        vdf.verify(&input, &entropy, &proof)
             .map_err(|e| SharedError::FailedVDF(e.to_string()))
     }
 }
