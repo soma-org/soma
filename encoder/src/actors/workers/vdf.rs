@@ -67,6 +67,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::mpsc;
+    use tokio::sync::oneshot::Sender;
     use tokio::time::sleep;
     use tokio_util::sync::CancellationToken;
 
@@ -102,8 +103,9 @@ mod tests {
     }
 
     // Helper function to create test data
-    fn create_test_message() -> ActorMessage<VDFProcessor<MockEntropyAPI>> {
-        let (sender, _receiver) = tokio::sync::oneshot::channel();
+    fn create_test_message(
+        sender: Sender<ShardResult<()>>,
+    ) -> ActorMessage<VDFProcessor<MockEntropyAPI>> {
         ActorMessage {
             input: (
                 1,                   // epoch
@@ -126,7 +128,7 @@ mod tests {
 
         // Create test message with response channel
         let (sender, receiver) = tokio::sync::oneshot::channel();
-        let msg = create_test_message();
+        let msg = create_test_message(sender);
 
         // Process the message
         processor.process(msg).await;
@@ -146,7 +148,7 @@ mod tests {
 
         // Create test message with response channel
         let (sender, receiver) = tokio::sync::oneshot::channel();
-        let msg = create_test_message();
+        let msg = create_test_message(sender);
 
         // Process the message
         processor.process(msg).await;
