@@ -20,9 +20,13 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 |----------|--------|------------|--------------|-------|
 | type_system.md | COMPLETE | 9/10 | 2025-03-08 | Comprehensive overview of the core type system |
 | error_handling.md | COMPLETE | 9/10 | 2025-03-08 | Documents error handling patterns and practices |
+| thread_safety_patterns.md | COMPLETE | 9/10 | 2025-03-08 | Synthesized thread safety patterns and concurrency mechanisms across all modules |
+| cross_module_communication.md | COMPLETE | 9/10 | 2025-03-08 | Comprehensive documentation of communication patterns between modules |
+| epoch_management.md | COMPLETE | 9/10 | 2025-03-08 | Documentation of epoch boundaries, reconfiguration, and cross-module coordination |
 | data_flow/* | COMPLETE | 9/10 | 2025-03-09 | Detailed documentation of transaction processing, split into structured subdocuments including cross-module relationships |
 | consensus_approach.md | COMPLETE | 9/10 | 2025-03-10 | Comprehensive documentation of consensus protocol implementation |
-| storage_model.md | IN PROGRESS | 5/10 | 2025-02-25 | Overview of storage design and implementation |
+| storage_model.md | COMPLETE | 8/10 | 2025-03-08 | Comprehensive documentation of storage architecture and implementation patterns |
+| security_model.md | COMPLETE | 9/10 | 2025-03-08 | Comprehensive analysis of security mechanisms across all modules, threat models, and mitigations |
 
 ## Module Documentation
 
@@ -41,6 +45,54 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 | agent_workflows.md | COMPLETE | 9/10 | 2025-02-15 | Documentation of AI agent workflows |
 
 ## Recent Milestones
+
+### 2025-03-08: Checkpoint Processing Documentation
+- Created comprehensive checkpoint processing documentation across three key areas:
+  - `authority/checkpoint_processing.md` - Details of Authority module's role in processing checkpoints
+  - `p2p/checkpoint_processing.md` - P2P module's checkpoint synchronization mechanisms
+  - `knowledge/data_flow/checkpoint_processing.md` - Cross-module checkpoint processing flow
+- Documented end-to-end flows for both validator and non-validator nodes
+- Detailed watermark-based progression tracking system
+- Explained the integration between ConsensusHandler, CommitStore, and CommitExecutor
+- Documented StateSyncEventLoop and StateSyncStore integration with Authority
+- Created sequence diagrams for all major checkpoint processing workflows
+- Explained epoch transition handling during checkpoint processing
+- Provided cross-references to related documentation (commit processing, state sync)
+- Achieved 8/10 confidence through code verification and system architecture analysis
+
+### 2025-03-08: Cross-Module Communication Documentation
+- Created comprehensive `cross_module_communication.md` knowledge document
+- Synthesized communication patterns and interfaces between all modules
+- Documented key interfaces with specific trait definitions:
+  - Authority → Consensus through SubmitToConsensus trait
+  - Consensus → Authority through ConsensusHandler trait
+  - Authority → P2P through StateSyncClient trait
+  - P2P → Authority through StateSyncCallbacks trait
+- Created detailed sequence diagrams for cross-module data flows:
+  - Transaction processing across modules
+  - Epoch transition coordination
+  - State synchronization between validators
+- Identified and resolved inconsistencies in interface descriptions and terminology
+- Documented thread safety mechanisms for cross-module interactions
+- Explained implementation patterns (Adapter, Observer, Factory)
+- Created complete reference of module-to-module communication types
+- Explained differences in communication patterns between validator and fullnode types
+- Achieved 8/10 confidence through thorough code verification
+
+### 2025-03-08: Thread Safety Patterns Documentation
+- Created comprehensive cross-module knowledge document `thread_safety_patterns.md`
+- Synthesized thread safety mechanisms from Authority, Consensus, and P2P modules
+- Identified and documented common patterns:
+  - Lock-based concurrency control with hierarchical ordering
+  - Thread isolation and message passing architecture
+  - Task management and supervision strategies
+  - Hot-swappable state management
+- Analyzed cross-module interfaces and communication channels
+- Documented module-specific approaches and implementation variations
+- Established consistent terminology and pattern definitions
+- Provided concrete code examples and best practices
+- Created detailed diagrams for lock hierarchies and communication patterns
+- Achieved 9/10 confidence through thorough code verification and pattern analysis
 
 ### 2025-03-08: Authority Module Documentation Completion
 - Implemented comprehensive documentation for all remaining Authority module components:
@@ -152,6 +204,25 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 - Updated index.md with improved component relationship diagram
 - Maintained 9/10 confidence through thorough code verification
 
+### 2025-03-08: Storage Model Documentation
+- Created comprehensive `storage_model.md` knowledge document
+- Documented key storage components and their relationships:
+  - AuthorityPerpetualTables for long-lived persistent storage
+  - AuthorityPerEpochStore for epoch-specific storage
+  - AuthorityStore for storage interface and locking management
+- Detailed implementation patterns:
+  - Multi-layered locking approach for concurrency control
+  - Object lifecycle management through versioning
+  - Atomic commit processing with robust error handling
+  - State synchronization support mechanisms
+- Created detailed component diagrams for storage architecture
+- Documented key interfaces (ObjectStore, AccumulatorStore)
+- Explained cross-module integration points with Authority, Consensus, and P2P modules
+- Reconciled inconsistent terminology across module documentation
+- Documented storage behavior during epoch transitions
+- Provided concrete code examples from implementation
+- Achieved 8/10 confidence through thorough code verification
+
 ### 2025-03-08: Error Handling Documentation
 - Completed comprehensive documentation of error handling patterns
 - Included error propagation and recovery strategies
@@ -166,18 +237,7 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 
 ## Next Documentation Priorities
 
-1. **Storage Layer Documentation** - Develop comprehensive storage documentation
-   - Document storage interfaces and implementations
-   - Explain object persistence strategies
-   - Detail index and lookup mechanisms
-
-3. **Security Model Documentation** - Document security properties and threat model
-   - Detail Byzantine fault tolerance guarantees
-   - Document cryptographic protocols
-   - Analyze attack vectors and mitigations
-   - Document permissioning and access control
-
-4. **Configuration Guide** - Document system configuration
+1. **Configuration Guide** - Document system configuration
    - Detail configuration parameters
    - Explain deployment options
    - Document performance tuning

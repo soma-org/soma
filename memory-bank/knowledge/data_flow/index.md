@@ -11,6 +11,8 @@ For clarity and better organization, the transaction data flow documentation is 
 3. [**Concurrency Model**](./concurrency_model.md) - Thread safety and lock hierarchy
 4. [**Dependency Management**](./dependency_management.md) - How transaction dependencies are tracked and resolved
 5. [**Shared Object Processing**](./shared_object_processing.md) - Consensus integration and version assignment
+6. [**Cross-Module Relationships**](./cross_module_relationships.md) - Interactions between modules and commit processing flow
+7. [**Checkpoint Processing**](./checkpoint_processing.md) - End-to-end flow of consensus-ordered commits through execution
 
 ## Key Components Overview
 
@@ -50,6 +52,7 @@ flowchart TD
 
 ## Cross-References
 - See [Authority Module](../../modules/authority/index.md) for details on the authority implementation
+- See [Consensus Module](../../modules/consensus/index.md) for details on consensus implementation
 - See [Type System](../type_system.md) for information on transaction and object types
 - See [Error Handling](../error_handling.md) for understanding how errors are processed
 
@@ -58,4 +61,4 @@ This document hierarchy provides a comprehensive and accurate description of the
 
 ## Confidence: 9/10
 
-## Last Updated: 2025-03-09 by Cline
+## Last Updated: 2025-03-08 by Cline
