@@ -76,6 +76,11 @@ Provides efficient object access and transaction isolation:
 11. [Commit Processing](./commit_processing.md) - Consensus output handling and transaction ordering
 12. [State Accumulator](./state_accumulator.md) - Cryptographic state verification mechanism
 13. [Mysticeti Integration](./mysticeti_integration.md) - Integration with Mysticeti consensus engine
+14. [Service Implementation](./service_implementation.md) - Network API interface implementation
+15. [Consensus Quarantine](./consensus_quarantine.md) - Safe consensus output processing mechanism
+16. [State Sync Store](./state_sync_store.md) - State synchronization storage interface
+17. [Transaction Orchestrator](./orchestrator.md) - Cross-validator transaction coordination
+18. [Server Components](./server_components.md) - Network server implementation details
 
 ## Component Relationships
 
@@ -178,6 +183,11 @@ The Authority module ensures thread safety through:
 | StateAccumulator | Verified-Code | 9/10 |
 | MysticetiManager | Verified-Code | 9/10 |
 | CausalOrder | Verified-Code | 9/10 |
+| ValidatorService | Verified-Code | 9/10 |
+| ConsensusQuarantine | Verified-Code | 9/10 |
+| StateSyncStore | Verified-Code | 9/10 |
+| TransactionOrchestrator | Verified-Code | 9/10 |
+| ServerComponents | Verified-Code | 9/10 |
 
 ## Confidence: 9/10
 
