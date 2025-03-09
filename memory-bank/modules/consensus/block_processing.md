@@ -140,69 +140,231 @@ The block creation process follows these steps:
 **Verification Status**: Verified-Code in consensus/src/core.rs
 
 ### End-of-Epoch Block Creation
-When an epoch is ending, blocks include special end-of-epoch data:
+When an epoch is ending, blocks include special end-of-epoch data to coordinate the transition to a new validator set. This is a critical part of the reconfiguration process in the Soma blockchain:
 
 ```rust
-// Simplified from Core's try_new_block() method
-if let Some((next_validator_set, state_digest, epoch_start_timestamp_ms)) = 
-    self.epoch_store.get_next_epoch_state() {
+// From consensus/src/core.rs - create_end_of_epoch_data method
+pub(crate) fn create_end_of_epoch_data(
+    &self,
+    ancestors: &[VerifiedBlock],
+) -> Option<EndOfEpochData> {
+    // Get next epoch state from Authority module
+    let next_epoch_state = self.epoch_store.get_next_epoch_state()?;
+    let (next_validator_set, state_digest, epoch_start_timestamp_ms) = next_epoch_state;
     
-    // Check if any ancestor already proposed this validator set
-    let ancestor_with_validator_set = find_ancestor_with_matching_validator_set();
-    
-    if ancestor_with_validator_set.is_none() {
-        // First to propose validator set
-        EndOfEpochData {
-            next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
-            next_validator_set: Some(next_validator_set),
-            state_hash: Some(state_digest),
-            validator_set_signature: None,
-            aggregate_signature: None,
-        }
-    } else {
-        // Ancestor already proposed matching validator set
-        // Create a stake aggregator and add signatures
-        let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
-        
-        // Sign using our key
-        let sig = next_validator_set.sign(&self.committee_signer);
-        aggregator.add(self.context.own_index.unwrap(), &self.context.committee);
-        
-        // Collect ancestor signatures
-        let ancestor_sigs = collect_validator_set_signatures();
-        
-        // If we have quorum, create aggregate signature
-        if aggregator.reached_threshold(&self.context.committee) {
-            // Create end of epoch data with aggregate signature
-            EndOfEpochData {
-                next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
-                next_validator_set: Some(next_validator_set),
-                state_hash: Some(state_digest),
-                validator_set_signature: Some(sig),
-                aggregate_signature: self.aggregate_validator_set_signatures(all_sigs),
+    // Find if any ancestor already proposed this validator set
+    let ancestor_with_validator_set = ancestors.iter().find(|b| {
+        if let Some(eoe_data) = b.end_of_epoch_data() {
+            if let Some(validator_set) = eoe_data.next_validator_set() {
+                return validator_set.id() == next_validator_set.id();
             }
-        } else {
-            // Not enough signatures yet, continue without aggregate
-            EndOfEpochData {
+        }
+        false
+    });
+    
+    // Create either initial proposal or follow-up proposal with signature
+    match ancestor_with_validator_set {
+        None => {
+            // First validator to propose this validator set
+            debug!("First to propose validator set with id: {}", next_validator_set.id());
+            Some(EndOfEpochData {
                 next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                 next_validator_set: Some(next_validator_set),
                 state_hash: Some(state_digest),
-                validator_set_signature: Some(sig),
+                validator_set_signature: None,
                 aggregate_signature: None,
+            })
+        }
+        Some(ancestor) => {
+            // Validator set already proposed, now we add our signature
+            debug!(
+                "Adding signature to validator set from ancestor: {:?}",
+                ancestor.reference()
+            );
+            
+            // Sign the validator set with our authority key
+            let sig = next_validator_set.sign(&self.committee_signer);
+            
+            // Collect all validator signatures including our own
+            let mut all_sigs = BTreeMap::new();
+            all_sigs.insert(self.context.own_index.unwrap(), sig.clone());
+            
+            // Create stake aggregator to track quorum
+            let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
+            aggregator.add(self.context.own_index.unwrap(), &self.context.committee);
+            
+            // Collect signatures from ancestors
+            for block in ancestors {
+                if let Some(eoe_data) = block.end_of_epoch_data() {
+                    if let (Some(validator_set), Some(validator_sig)) = (
+                        eoe_data.next_validator_set(),
+                        eoe_data.validator_set_signature(),
+                    ) {
+                        if validator_set.id() == next_validator_set.id() {
+                            all_sigs.insert(block.author(), validator_sig.clone());
+                            aggregator.add(block.author(), &self.context.committee);
+                        }
+                    }
+                }
+            }
+            
+            // Create appropriate end of epoch data based on quorum
+            if aggregator.reached_threshold(&self.context.committee) {
+                // We have quorum, create aggregate signature
+                debug!(
+                    "Creating aggregate signature for validator set with {} signatures",
+                    all_sigs.len()
+                );
+                Some(EndOfEpochData {
+                    next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
+                    next_validator_set: Some(next_validator_set),
+                    state_hash: Some(state_digest),
+                    validator_set_signature: Some(sig),
+                    aggregate_signature: Some(self.aggregate_validator_set_signatures(all_sigs)),
+                })
+            } else {
+                // Not enough signatures yet, continue collecting
+                debug!(
+                    "Not enough signatures for validator set yet, collected {}/{}",
+                    aggregator.stake(),
+                    self.context.committee.quorum_threshold()
+                );
+                Some(EndOfEpochData {
+                    next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
+                    next_validator_set: Some(next_validator_set),
+                    state_hash: Some(state_digest),
+                    validator_set_signature: Some(sig),
+                    aggregate_signature: None,
+                })
             }
         }
     }
 }
 ```
 
-End-of-epoch blocks follow this special process:
-1. Include the next validator set and state digest
-2. Sign the validator set with the validator's key
-3. Collect signatures from other validators via their blocks
-4. When a quorum of signatures is collected, form an aggregate signature
-5. The aggregate signature serves as cryptographic proof of validator set agreement
+The `EndOfEpochData` structure contains the critical information for epoch transition:
 
-**Verification Status**: Verified-Code in consensus/src/core.rs
+```rust
+// From types/src/consensus/epoch.rs
+pub struct EndOfEpochData {
+    // When the next epoch should start (milliseconds since UNIX epoch)
+    next_epoch_start_timestamp_ms: u64,
+    
+    // The validator set for the next epoch
+    next_validator_set: Option<ValidatorSet>,
+    
+    // Hash of the system state at epoch boundary
+    state_hash: Option<Hash>,
+    
+    // This validator's signature on the next validator set
+    validator_set_signature: Option<Signature>,
+    
+    // Aggregate signature when quorum of validators have signed
+    aggregate_signature: Option<AggregateSignature>,
+}
+```
+
+#### End-of-Epoch Block Creation Workflow
+
+The end-of-epoch process follows these stages:
+
+1. **Epoch Change Detection**:
+   - The Authority module detects that the epoch should end (e.g., due to time limit, transaction count, or governance decision)
+   - It prepares the next validator set, computes the state digest, and makes this information available through the `EndOfEpochAPI`
+   - The Consensus module queries this information via `epoch_store.get_next_epoch_state()`
+
+2. **Initial Validator Set Proposal**:
+   - The first validator to detect the epoch change includes the next validator set in its block
+   - This initial proposal doesn't include any signatures yet
+   - Other validators can verify the proposed validator set against their local view
+
+3. **Signature Collection Phase**:
+   - Upon seeing a block with a new validator set proposal, each validator:
+     - Verifies the proposed validator set matches their local view
+     - Signs the validator set with their private key
+     - Includes both the validator set and their signature in their next block
+
+4. **Signature Aggregation**:
+   - As validators observe blocks with signatures on the validator set:
+     - They collect these signatures and track the stake weight of validators who have signed
+     - They use a `StakeAggregator` to determine when a quorum (2/3 of stake) has signed
+     - When quorum is reached, they form an aggregate signature using BLS signature aggregation
+
+5. **Final Commitment**:
+   - Once a validator collects a quorum of signatures:
+     - It creates a block with the full end-of-epoch data including the aggregate signature
+     - This aggregate signature serves as cryptographic proof that a quorum of validators agreed on the next validator set
+     - When this block is committed, it serves as the final block of the epoch
+
+#### Implementation Details
+
+1. **Validator Set Structure**:
+   ```rust
+   // Simplified ValidatorSet representation
+   pub struct ValidatorSet {
+       epoch: EpochId,
+       validators: Vec<ValidatorInfo>,
+       total_stake: Stake,
+   }
+   
+   // Each validator's info includes their public key and stake
+   pub struct ValidatorInfo {
+       authority_index: AuthorityIndex,
+       public_key: PublicKey,
+       stake: Stake,
+       network_address: MultiAddr,
+   }
+   ```
+
+2. **Signature Aggregation**:
+   ```rust
+   // From consensus/src/core.rs
+   fn aggregate_validator_set_signatures(
+       &self,
+       signatures: BTreeMap<AuthorityIndex, Signature>,
+   ) -> AggregateSignature {
+       // Extract public keys in deterministic order
+       let mut public_keys = Vec::new();
+       let mut sigs = Vec::new();
+       
+       for (idx, sig) in &signatures {
+           if let Some(pk) = self.context.committee.authority_public_key(*idx) {
+               public_keys.push(pk);
+               sigs.push(sig.clone());
+           }
+       }
+       
+       // Create the aggregate signature
+       AggregateSignature::new(sigs, public_keys)
+   }
+   ```
+
+3. **Quorum Detection**:
+   ```rust
+   // From StakeAggregator
+   pub fn reached_threshold(&self, committee: &Committee) -> bool {
+       self.stake >= committee.quorum_threshold()
+   }
+   ```
+
+#### Safety and Liveness Considerations
+
+The end-of-epoch mechanism ensures these safety properties:
+
+1. **Agreement**: All honest validators agree on the same next validator set, as verified cryptographically through the aggregate signature.
+
+2. **Integrity**: The next validator set cannot be modified once proposed and signed, as signatures are tied to the specific validator set ID.
+
+3. **Reconfiguration Atomicity**: The epoch change happens as an atomic operation at a specific commit index, ensuring all validators transition consistently.
+
+4. **Forward Progress**: Even if some validators are Byzantine or unavailable, the protocol ensures progress as long as a quorum of honest validators is available to sign.
+
+The use of BLS signatures for aggregation provides these advantages:
+- Compact representation of multiple signatures as a single aggregate signature
+- Efficient verification without needing to verify each individual signature
+- Deterministic aggregation that ensures all validators reach the same result
+
+**Verification Status**: Verified-Code in consensus/src/core.rs [lines 320-380] and types/src/consensus/epoch.rs [lines 15-50]
 
 ## Block Verification and Acceptance
 

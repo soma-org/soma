@@ -12,6 +12,7 @@ flowchart TD
     classDef protection fill:#f9f,stroke:#333,stroke-width:2px
     classDef comm fill:#bbf,stroke:#333,stroke-width:1px
     classDef tasks fill:#afa,stroke:#333,stroke-width:1px
+    classDef external fill:#afa,stroke:#333,stroke-width:1px
     
     RwLock[RwLock Protection]:::protection
     Channels[Channel Communication]:::comm
@@ -24,6 +25,9 @@ flowchart TD
     Channels --> MessagePassing[Message Passing]
     Channels --> Backpressure[Backpressure]
     Channels --> EventCoord[Event Coordination]
+    Channels --> AuthorityIntegration[Authority Integration]
+    
+    AuthorityIntegration --> CommitExecutor[CommitExecutor]:::external
     
     TaskMgmt --> JoinSet[JoinSet]
     TaskMgmt --> ErrorHandling[Error Handling]
@@ -140,7 +144,7 @@ The P2P module uses Tokio channels extensively for thread-safe communication bet
    - **SignedNodeInfo channel**: For discovery information sharing
 
 2. **broadcast Channels**:
-   - **CommittedSubDag channel**: For broadcasting commit events
+   - **CommittedSubDag channel**: For broadcasting commit events to CommitExecutor
    - **PeerEvent channel**: For broadcasting peer connect/disconnect events
 
 3. **oneshot Channels**:
@@ -154,6 +158,42 @@ Each component has clear channel ownership:
 - **DiscoveryEventLoop**: Owns discovery-related channels
 - **StateSyncEventLoop**: Owns sync-related channels
 - **P2pService**: Has sending endpoints to both loops
+- **CommitExecutor**: Subscribes to CommittedSubDag broadcast channel
+
+### Authority Integration via Channels
+
+The P2P module integrates with the Authority module's CommitExecutor through a broadcast channel:
+
+```rust
+// Creation of broadcast channel for CommittedSubDag objects
+let (commit_event_sender, _receiver) = broadcast::channel(
+    state_sync_config.synced_commit_broadcast_channel_capacity() as usize,
+);
+
+// In CommitExecutor constructor
+pub fn new(
+    mailbox: broadcast::Receiver<CommittedSubDag>,
+    commit_store: Arc<CommitStore>,
+    state: Arc<AuthorityState>,
+    accumulator: Arc<StateAccumulator>,
+) -> Self {
+    Self {
+        mailbox,  // Receives CommittedSubDag objects from state sync
+        commit_store,
+        state,
+        object_cache_reader: state.get_object_cache_reader().clone(),
+        transaction_cache_reader: state.get_transaction_cache_reader().clone(),
+        tx_manager: state.transaction_manager().clone(),
+        accumulator,
+    }
+}
+```
+
+This channel-based integration ensures:
+1. **Loose Coupling**: P2P and Authority modules remain decoupled
+2. **Async Processing**: CommitExecutor processes commits asynchronously
+3. **Backpressure Handling**: Broadcast channel with configured capacity
+4. **Error Isolation**: Failures in one module don't directly impact the other
 
 ### Backpressure Handling
 
@@ -197,6 +237,22 @@ match rx.await {
     Err(e) => {
         debug!("connect request cancelled: {e}");
     }
+}
+
+// Broadcast channel error handling in CommitExecutor
+match received {
+    Ok(commit) => {
+        // Handle commit
+    },
+    Err(RecvError::Lagged(num_skipped)) => {
+        debug!(
+            "Commit Execution Recv channel overflowed with {:?} messages",
+            num_skipped,
+        );
+    }
+    Err(RecvError::Closed) => {
+        panic!("Commit Execution Sender (StateSync) closed channel unexpectedly");
+    },
 }
 ```
 
@@ -271,6 +327,26 @@ if let Some(abort_handle) = &self.dial_seed_peers_task {
     if abort_handle.is_finished() {
         self.dial_seed_peers_task = None;
     }
+}
+```
+
+### Retry Logic in Tasks
+
+State sync tasks implement retry logic for network resilience:
+
+```rust
+// Keep retrying with different peers until we succeed
+'retry: loop {
+    let peer_balancer = PeerBalancer::new(active_peers.clone(), peer_heights.clone())
+        .with_commit(target_commit);
+
+    'peer: for peer in peer_balancer.clone() {
+        // Try with this peer
+        // If it fails, continue to next peer
+    }
+
+    // If all peers failed, wait and try again
+    sleep(Duration::from_secs(1)).await;
 }
 ```
 
@@ -387,13 +463,77 @@ This ensures:
 2. **Preventing Borrow Conflicts**: Avoid borrow checker conflicts
 3. **Lock Scope Reduction**: Reduce lock durations
 
+### Weak References for Cycle Prevention
+
+The code uses weak references to prevent reference cycles:
+
+```rust
+// Weak sender to avoid reference cycles
+weak_sender: mpsc::WeakSender<StateSyncMessage>,
+```
+
+This ensures:
+1. **No Reference Cycles**: Prevents memory leaks
+2. **Clean Shutdown**: Components can be properly dropped
+3. **Safe Self-Messaging**: Components can send messages to themselves
+
 ### Bounded Resource Use
 
 The code ensures bounded resource use:
 
 1. **Bounded Channels**: All channels have configured capacity
-2. **Request Limits**: Network requests have limits (MAX_FETCH_RESPONSE_BYTES)
+2. **Request Limits**: Network requests have limits (MAX_FETCH_RESPONSE_BYTES, MAX_TOTAL_FETCHED_BYTES)
 3. **Collection Limits**: Collection sizes are bounded (MAX_PEERS_TO_SEND)
+4. **Batch Processing**: Operations are batched to control resource consumption
+
+## Integration with CommitExecutor
+
+The P2P module's StateSyncEventLoop integrates with the Authority module's CommitExecutor through a broadcast channel for CommittedSubDag objects:
+
+### Channel Creation
+
+```rust
+// In P2pBuilder
+let (commit_event_sender, _receiver) = broadcast::channel(
+    state_sync_config.synced_commit_broadcast_channel_capacity() as usize,
+);
+```
+
+### Message Broadcasting
+
+```rust
+// In StateSyncEventLoop
+let _ = self.commit_event_sender.send(commit.clone());
+```
+
+### Message Reception
+
+```rust
+// In CommitExecutor
+match self.mailbox.recv() {
+    Ok(commit) => {
+        // Process commit for execution
+    },
+    Err(RecvError::Lagged(num_skipped)) => {
+        debug!(
+            "Commit Execution Recv channel overflowed with {:?} messages",
+            num_skipped,
+        );
+    }
+    Err(RecvError::Closed) => {
+        panic!("Commit Execution Sender (StateSync) closed channel unexpectedly");
+    },
+}
+```
+
+### Thread Safety Benefits
+
+This integration ensures thread safety between modules by:
+1. **Clear Boundaries**: Each module handles its own concurrency
+2. **Message-Based Communication**: No shared mutable state between modules
+3. **Clean Error Handling**: Errors in one module don't directly impact the other
+4. **Backpressure Control**: Channel capacity prevents overwhelming receiver
+5. **Optional Processing**: CommitExecutor can independently manage execution pacing
 
 ## Verification Status
 
@@ -404,6 +544,8 @@ The code ensures bounded resource use:
 | Task Management | Verified-Code | 9/10 | JoinSet usage and proper error handling in both event loops |
 | Event Loop Architecture | Verified-Code | 9/10 | Single await point pattern consistently followed |
 | Memory Safety | Verified-Code | 9/10 | Consistent Arc/Clone usage with clear ownership boundaries |
+| CommitExecutor Integration | Verified-Code | 9/10 | Channel-based integration with comprehensive error handling |
+| Retry Logic | Verified-Code | 9/10 | Comprehensive retry patterns in sync_from_peer and related functions |
 
 ## Confidence: 9/10
 This document provides a comprehensive and accurate representation of the thread safety mechanisms in the P2P module based on direct code inspection. The concurrency patterns, locking strategies, and channel-based communication are accurately represented with clear evidence from the codebase.

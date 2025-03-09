@@ -22,30 +22,44 @@ flowchart TD
     PeerHeights[PeerHeights]:::support
     TxVerifier[TxVerifier]:::support
     BlockVerifier[SignedBlockVerifier]:::support
+    PeerBalancer[PeerBalancer]:::support
     
     ActivePeers[ActivePeers]:::external
     ChannelManager[ChannelManager]:::external
     ConsensusStore[ConsensusStore]:::external
     Committee[Committee]:::external
+    SignatureVerifier[SignatureVerifier]:::external
+    CommitExecutor[CommitExecutor]:::external
     
     P2pBuilder --> P2pService
     P2pBuilder --> DiscoveryEL
     P2pBuilder --> StateSyncEL
+    P2pBuilder --> TxVerifier
     
     P2pService --> DiscoveryState
     P2pService --> PeerHeights
+    P2pService --> ConsensusStore
     
     DiscoveryEL --> DiscoveryState
     DiscoveryEL --> ActivePeers
+    DiscoveryEL --> ChannelManager
     
     StateSyncEL --> PeerHeights
     StateSyncEL --> BlockVerifier
     StateSyncEL --> ConsensusStore
+    StateSyncEL --> ActivePeers
+    StateSyncEL --> PeerBalancer
+    StateSyncEL -.broadcast channel.-> CommitExecutor
+    
+    PeerBalancer --> ActivePeers
+    PeerBalancer --> PeerHeights
     
     BlockVerifier --> TxVerifier
     BlockVerifier --> Committee
+    BlockVerifier --> ConsensusStore
     
-    ChannelManager --> ActivePeers
+    TxVerifier --> SignatureVerifier
+    SignatureVerifier --> Committee
 ```
 
 ## Component Descriptions
@@ -64,6 +78,7 @@ flowchart TD
   - `fetch_blocks`: Serve block fetch requests
   - `fetch_commits`: Serve commit fetch requests
   - `push_commit`: Process commit propagation
+  - `get_commit_availability`: Report commit height information
 - **State**:
   - References to `DiscoveryState` and `PeerHeights`
   - Access to the consensus store
@@ -76,11 +91,13 @@ flowchart TD
   - Discovering other nodes on the network
   - Managing and updating peer metadata
   - Establishing connections to new peers
+  - Validating peer information signatures
 - **Key Methods**:
   - `start`: Main event loop for discovery operations
   - `handle_tick`: Periodic discovery operations
   - `handle_peer_event`: Process peer connect/disconnect events
   - `query_connected_peers_for_their_known_peers`: Gather peer information
+  - `update_known_peers`: Validate and store peer information
 - **State**:
   - Local node information
   - Known peers list
@@ -94,16 +111,23 @@ flowchart TD
   - Fetching missing blocks and commits
   - Verifying fetched data
   - Applying updates to local state
+  - Broadcasting verified commits to Authority's CommitExecutor
+  - Handling epoch boundaries
 - **Key Methods**:
   - `start`: Main event loop for state sync operations
   - `handle_message`: Process sync-related messages
   - `maybe_start_sync_task`: Initiate sync when behind
   - `handle_commit_from_consensus`: Process new local commits
+  - `fetch_and_verify_commits`: Verify commit integrity
+  - `fetch_blocks_batch`: Fetch and verify blocks
+  - `process_verified_commits`: Write verified commits to store and broadcast
 - **State**:
   - Peer height information
   - Sync task tracking
   - References to consensus store
   - Block verifier for data integrity
+  - Broadcast channel for CommittedSubDag objects
+  - Weak reference to self-channel for task completion signaling
 
 #### P2pBuilder
 - **Purpose**: Constructs and configures P2P components
@@ -112,6 +136,7 @@ flowchart TD
   - Setting up communication channels
   - Initializing state objects
   - Providing unified construction interface
+  - Creating broadcast channel for CommittedSubDag objects
 - **Key Methods**:
   - `build`: Create all P2P components
   - `build_internal`: Core component construction logic
@@ -135,6 +160,7 @@ flowchart TD
 - **State**:
   - Mapping of peer IDs to their highest commit indices
   - Mapping of peer IDs to their lowest available commit indices
+  - Genesis commit digest for chain identification
 - **Methods**:
   - `update_peer_info`: Update a peer's commit information
   - `insert_peer_info`: Add new peer commit information
@@ -146,9 +172,13 @@ flowchart TD
   - Verify transaction signatures
   - Validate transaction contents
   - Ensure transaction integrity
+  - Process transaction batches
+- **Methods**:
+  - `verify_batch`: Verify a batch of transactions
+  - `validate_transactions`: Validate transaction structure and signatures
 - **Dependencies**:
+  - Signature verifier
   - Committee information
-  - Signature verification mechanisms
 
 #### SignedBlockVerifier
 - **Purpose**: Block verification during sync
@@ -156,10 +186,23 @@ flowchart TD
   - Verify block signatures
   - Validate block structure
   - Ensure block integrity
+  - Verify transactions in blocks
 - **Dependencies**:
   - Transaction verifier
   - Committee information
   - Consensus context
+
+#### PeerBalancer
+- **Purpose**: Intelligent peer selection for sync
+- **Responsibilities**:
+  - Select appropriate peers for sync operations
+  - Balance load across peers
+  - Filter peers based on commit availability
+  - Add randomization to peer selection
+- **Methods**:
+  - `new`: Create peer balancer with available peers
+  - `with_commit`: Configure for specific commit target
+  - Iterator implementation for peer selection
 
 ## Initialization Flow
 
@@ -172,12 +215,16 @@ sequenceDiagram
     participant Discovery as DiscoveryEventLoop
     participant StateSync as StateSyncEventLoop
     participant Service as P2pService
+    participant CommitExecutor as Authority::CommitExecutor
     
     Node->>Builder: new()
     Node->>Builder: store(store)
     Node->>Builder: config(config)
     
     Builder->>Builder: build_internal()
+    Note over Builder: Create DiscoveryState and PeerHeights
+    Note over Builder: Initialize TX Verifier and Block Verifier
+    Note over Builder: Create commit broadcast channel
     Builder-->>Node: (discovery, statesync, service)
     
     Note over Node: Create channel manager
@@ -189,6 +236,9 @@ sequenceDiagram
     StateSync-->>Node: statesync_handle
     
     Note over Node: Start gRPC server with service
+    
+    Node->>CommitExecutor: new(commit_channel)
+    Note over CommitExecutor: Listen for CommittedSubDag objects
 ```
 
 ## Communication Channels
@@ -203,6 +253,7 @@ The P2P module uses various channels for communication:
    - `mailbox`: Channel to receive state sync messages
    - `weak_sender`: Weak reference to state sync message sender
    - `commit_event_sender`: Broadcast channel for commit events
+   - `broadcast::Sender<CommittedSubDag>`: Channel to send verified commits to CommitExecutor
 
 3. **Service channels**:
    - `discovery_sender`: Channel to discovery for peer information
@@ -215,35 +266,52 @@ The P2P module uses various channels for communication:
 2. Discovery event loop is started
 3. State sync event loop is started
 4. P2P service is registered with gRPC server
+5. Discovery event loop initializes peer connections
+6. State sync begins querying peer heights
+7. CommitExecutor starts listening for CommittedSubDag broadcasts
 
 ### Normal Operation
 1. Discovery continuously updates peer information
 2. State sync monitors for new commits from peers
 3. State sync fetches missing blocks and commits
 4. P2P service handles incoming network requests
+5. State sync broadcasts verified CommittedSubDag objects
+6. CommitExecutor executes transactions from CommittedSubDag
 
 ### Shutdown Sequence
 1. Node signals shutdown
 2. Discovery and state sync loops gracefully terminate
 3. P2P service stops accepting requests
-4. Resources are released
+4. JoinSets clean up pending tasks
+5. Resources are released
 
 ## Integration with Other Modules
 
 ### Authority Module
-- State sync delivers synchronized commits to authority
-- Authority processes the transactions in these commits
+- State sync delivers synchronized commits to authority via CommittedSubDag broadcast
+- CommitExecutor processes these CommittedSubDag objects to:
+  - Extract transactions for execution
+  - Filter out already executed transactions
+  - Assign shared object versions
+  - Enqueue transactions for execution
+  - Process transaction effects
+  - Commit outputs to storage
+  - Finalize commit execution
 - Authority provides blocks and commits to serve to other nodes
+- Transaction verifier ensures transaction integrity
+- State accumulator tracks commit state
 
 ### Consensus Module
 - State sync receives new commits from consensus
 - Consensus verifies downloaded blocks during sync
 - Committed blocks are propagated to other nodes
+- Block verifier ensures block signature validity
 
 ### Node Module
 - Manages P2P component lifecycle
 - Configures P2P components through builder
 - Handles component startup and shutdown
+- Provides network configuration
 
 ## Verification Status
 
@@ -253,8 +321,11 @@ The P2P module uses various channels for communication:
 | DiscoveryEventLoop | Verified-Code | 9/10 | Direct inspection of p2p/src/discovery/mod.rs implementation |
 | StateSyncEventLoop | Verified-Code | 9/10 | Direct inspection of p2p/src/state_sync/mod.rs implementation |
 | P2pBuilder | Verified-Code | 9/10 | Direct inspection of p2p/src/builder.rs implementation |
+| TxVerifier | Verified-Code | 9/10 | Direct inspection of p2p/src/state_sync/tx_verifier.rs |
+| PeerBalancer | Verified-Code | 8/10 | Implementation in p2p/src/state_sync/mod.rs:310-353 |
+| CommitExecutor Integration | Verified-Code | 9/10 | Direct inspection of authority/src/commit/executor.rs |
 | Communication Flow | Verified-Code | 8/10 | Tracing channel usage across multiple files |
-| Integration Points | Inferred | 7/10 | Based on interface patterns and references |
+| Integration Points | Verified-Code | 8/10 | Broadcast channel connects state sync to CommitExecutor |
 
 ## Confidence: 9/10
 This document provides a detailed and accurate representation of the P2P module's structure based on direct code inspection. The component relationships and responsibilities are well-documented, with clear evidence from the implementation.

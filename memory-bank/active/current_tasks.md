@@ -96,6 +96,17 @@
 - Provided concrete code examples from implementation
 - Detailed thread safety mechanisms and lock hierarchies
 - Explained the Byzantine fault tolerance properties with verification
+- Enhanced documentation for critical mechanisms:
+  - Added detailed implementation of pipelined commits with code examples
+  - Expanded leader timeout and view change documentation with precise calculation methods
+  - Provided comprehensive coverage of end-of-epoch transitions with safety guarantees
+  - Added complete explanation of signature aggregation process for validator set changes
+
+**Recent Updates (2025-03-08)**:
+- Enhanced pipelined commit documentation with actual implementation code and performance benefits
+- Expanded leader timeout mechanism with detailed timeout calculation and view change implementation
+- Added comprehensive documentation on end-of-epoch block creation workflow and safety properties
+- Included detailed diagrams for critical consensus processes
 
 #### P2P Module Documentation
 **Status**: COMPLETED ✓

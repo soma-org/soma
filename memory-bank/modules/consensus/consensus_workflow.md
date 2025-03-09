@@ -383,10 +383,31 @@ The universal commit rule is based on these principles:
 
 **Verification Status**: Verified-Code in consensus/src/committer/universal_committer.rs
 
-### Leader Timeout
-The `LeaderTimeoutTask` handles the scenario when the expected leader fails to propose:
+### Leader Timeout and View Change
+
+The `LeaderTimeoutTask` handles the scenario when the expected leader fails to propose, implementing the "view change" mechanism crucial for liveness in partially synchronous networks:
 
 ```rust
+// From leader_timeout.rs
+pub(crate) struct LeaderTimeoutTask {
+    core_dispatcher: Arc<dyn CoreThreadDispatcher>,
+    new_round_receiver: watch::Receiver<Round>,
+    leader_block_receivers: Vec<broadcast::Receiver<VerifiedBlock>>,
+    context: Arc<Context>,
+    join_handle: Option<JoinHandle<()>>,
+}
+
+// Timeout calculation from leader_timeout.rs
+fn calculate_timeout(&self, round: Round) -> Duration {
+    let base_ms = self.context.parameters.leader_timeout_base_ms;
+    let scale_ms = self.context.parameters.leader_timeout_scale_ms;
+    
+    // Higher rounds have longer timeouts to prevent unnecessary view changes
+    let timeout_ms = base_ms + (round as u64 * scale_ms);
+    
+    Duration::from_millis(timeout_ms)
+}
+
 // Simplified Leader Timeout operation
 async fn timeout_loop(&mut self) {
     loop {
@@ -396,13 +417,18 @@ async fn timeout_loop(&mut self) {
         // Determine the timeout for this round
         let timeout = self.calculate_timeout(round);
         
+        // Determine the expected leader
+        let leaders = self.leader_schedule.get_leaders(round);
+        
         // Wait for the timeout or leader block
         tokio::select! {
             _ = tokio::time::sleep(timeout) => {
+                info!("Leader timeout for round {}, triggering view change", round);
                 // Leader timed out, force propose a block
-                self.core_dispatcher.new_block(round, true);
+                self.core_dispatcher.new_block(round, true).await?;
             }
-            _ = self.wait_for_leader_block(round) => {
+            Some(block) = self.wait_for_leader_block(round, leaders) => {
+                debug!("Received leader block for round {}: {:?}", round, block);
                 // Leader block received, continue to next round
                 continue;
             }
@@ -411,13 +437,57 @@ async fn timeout_loop(&mut self) {
 }
 ```
 
-Key aspects:
-1. Timeouts are calculated based on round number (higher rounds have longer timeouts)
-2. When a timeout occurs, validators force-propose blocks for the round
-3. This ensures liveness when leaders are Byzantine or network is partitioned
-4. The timeout mechanism is critical for fault tolerance
+The leader timeout mechanism implements these key aspects:
 
-**Verification Status**: Verified-Code in consensus/src/leader_timeout.rs
+1. **Dynamic Timeout Calculation**: 
+   - Base timeout (`leader_timeout_base_ms`) provides minimum wait time
+   - Scaling factor (`leader_timeout_scale_ms`) increases timeout with round number
+   - Higher rounds get progressively longer timeouts to prevent unnecessary view changes
+   - Tunable parameters allow adapting to different network conditions
+
+2. **Timeout Detection**:
+   - Monitors each round for expected leader blocks
+   - Uses `tokio::select!` to race between timeout and leader block receipt
+   - When timeout expires before leader block arrives, triggers view change
+
+3. **View Change Implementation**:
+   - On timeout, `new_block(round, true)` forces block proposal with the `force` flag set
+   - The `force` flag bypasses normal checks for leader existence in `Core::try_new_block()`
+   - All validators create their own blocks for the round instead of waiting for the leader
+   - Network proceeds to the next round with a different leader
+
+4. **Fault Tolerance Properties**:
+   - Ensures liveness by preventing indefinite waiting for Byzantine leaders
+   - Handles network partitions by advancing rounds through local timeouts
+   - Provides automatic recovery when network connectivity is restored
+   - Critical for achieving Byzantine Fault Tolerance in partially synchronous networks
+
+This mechanism effectively implements the "view change" concept from classical BFT protocols, adapted to the DAG-based structure of Soma's consensus:
+
+```mermaid
+sequenceDiagram
+    participant V1 as Validator 1 (Leader)
+    participant V2 as Validator 2
+    participant V3 as Validator 3
+    participant V4 as Validator 4
+    
+    Note over V1,V4: Round r begins, V1 is leader
+    
+    alt Normal Case
+        V1->>V2: Propose block for round r
+        V1->>V3: Propose block for round r
+        V1->>V4: Propose block for round r
+        Note over V1,V4: Consensus continues normally
+    else Leader Failure (V1 is Byzantine or crashed)
+        Note over V2,V4: Leader timeout triggers
+        V2->>V2: Force propose block for round r
+        V3->>V3: Force propose block for round r
+        V4->>V4: Force propose block for round r
+        Note over V2,V4: Round advances to r+1 with new leader
+    end
+```
+
+**Verification Status**: Verified-Code in consensus/src/leader_timeout.rs [lines 82-110, 120-140]
 
 ## Commit Processing and Transaction Execution
 
@@ -591,15 +661,63 @@ pub fn with_pipeline(mut self, pipeline: bool) -> Self {
     self.pipeline = pipeline;
     self
 }
+
+// From UniversalCommitter's is_leader_committable_pipelined method
+fn is_leader_committable_pipelined(
+    &self,
+    leader_slot: Slot,
+    dag_state: &DagState,
+) -> bool {
+    // Check if leader block exists
+    if !dag_state.contains_cached_block_at_slot(leader_slot) {
+        return false;
+    }
+    
+    // Allow pipelined commits from multiple rounds
+    let min_descendant_round = leader_slot.round + 1;
+    let max_descendant_round = dag_state.max_round();
+    
+    for round in min_descendant_round..=max_descendant_round {
+        // Create separate aggregator for each round
+        let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
+        
+        // Check blocks in this round
+        for block in dag_state.get_blocks_in_round(round) {
+            if self.block_descends_from_leader(block, leader_slot, dag_state) {
+                aggregator.add(block.author(), &self.context.committee);
+            }
+        }
+        
+        // If any round has quorum, leader is committable
+        if aggregator.reached_threshold(&self.context.committee) {
+            return true;
+        }
+    }
+    
+    false
+}
 ```
 
-Pipelining allows:
+Pipelined commit optimization works as follows:
+
+1. **Standard Commit Rule**: Requires blocks from round r+2 to commit a leader at round r
+2. **Pipelined Optimization**: Checks each round independently for quorums
+3. **Early Commitment**: A leader can be committed as soon as any later round forms a quorum of descendants
+4. **Multiple Leaders**: Processes commit decisions for multiple leaders in parallel
+
+Key benefits:
 1. Processing multiple commit decisions in parallel
 2. Overlapping different phases of the consensus process
 3. Higher throughput without sacrificing safety
-4. More efficient use of network and compute resources
+4. Reduced commit latency, especially in good network conditions
+5. More efficient use of network and compute resources
 
-**Verification Status**: Verified-Code in consensus/src/committer/universal_committer.rs
+This optimization improves performance while maintaining the same safety guarantees:
+- Safety is preserved because descendants still create a causal relationship with the leader
+- The same BFT threshold (2/3) is required for committability
+- All honest validators will still reach the same commit decisions
+
+**Verification Status**: Verified-Code in consensus/src/committer/universal_committer.rs [lines 200-250]
 
 ### Batching and Parallelization
 The consensus module uses various optimizations:

@@ -1,112 +1,186 @@
 # Authority Module
 
 ## Purpose and Scope
-This document provides an overview of the Authority module in the Soma blockchain. The Authority module is the central component responsible for state management, transaction validation and execution, and epoch transitions. This index serves as an entry point to the more detailed documentation of each aspect of the Authority module.
+This document provides a comprehensive overview of the Authority module in the Soma blockchain. The Authority module is the core state management component of the validator, responsible for validating transactions, executing certificates, maintaining blockchain state, and coordinating with other modules. This documentation explains its architecture, components, and key workflows.
 
-## Document Structure
-For clarity and better organization, the Authority module documentation is split into several focused documents:
+## Key Components
 
-1. [**Module Structure**](./module_structure.md) - Core components and their relationships
-2. [**State Management**](./state_management.md) - Authority state and epoch store implementation
-3. [**Transaction Processing**](./transaction_processing.md) - Transaction validation, execution, and effects
-4. [**Reconfiguration Protocol**](./reconfiguration.md) - Epoch transitions and validator set changes
-5. [**Thread Safety**](./thread_safety.md) - Concurrency controls and lock hierarchies
+### AuthorityState
+Central state management component that:
+- Processes transactions and certificates
+- Manages object locks and versions
+- Handles execution and effects certification
+- Coordinates epoch transitions
 
-## Key Components Overview
+### AuthorityPerEpochStore
+Epoch-specific state container that:
+- Manages epoch-specific database tables
+- Processes consensus transactions
+- Handles shared object version assignment
+- Manages reconfiguration state
+
+### TransactionManager
+Manages transaction dependencies and execution:
+- Tracks transaction dependencies
+- Queues transactions based on dependencies
+- Schedules ready transactions for execution
+- Updates dependency state on commit
+
+### ExecutionDriver
+Processes ready transactions from TransactionManager:
+- Consumes ready certificates from TransactionManager's queue
+- Manages transaction execution concurrency
+- Handles certificate execution via AuthorityState
+- Reports execution results and errors
+
+### ConsensusHandler
+Processes outputs from consensus system:
+- Processes consensus output containing sequenced transactions
+- Assigns versions to shared objects in consensus order
+- Handles epoch changes and reconfiguration
+- Routes transactions to the TransactionManager
+
+### AuthorityAggregator
+Manages communication with multiple validators:
+- Submits transactions to authorities
+- Aggregates signatures to form certificates
+- Handles error categorization and retry logic
+- Tracks conflicting transactions
+
+### QuorumDriver
+Drives certificate execution through authorities:
+- Submits certificates to validators
+- Manages timeouts and retries
+- Tracks certificate execution status
+- Notifies clients of execution results
+
+### Caching Layer
+Provides efficient object access and transaction isolation:
+- Implements read-through/write-through caching for objects
+- Manages object locks for transaction isolation
+- Coordinates atomic writes to storage
+- Optimizes performance for frequent operations
+
+## Documentation Index
+
+1. [Module Structure](./module_structure.md) - Detailed component architecture
+2. [Transaction Processing](./transaction_processing.md) - Transaction flow from submission to execution
+3. [State Management](./state_management.md) - State modeling and storage management
+4. [Consensus Integration](./consensus_integration.md) - Integration with consensus for shared objects
+5. [Reconfiguration](./reconfiguration.md) - Epoch transitions and validator set changes
+6. [Thread Safety](./thread_safety.md) - Concurrency control and thread safety patterns
+7. [Aggregator and Quorum Driver](./aggregator_quorum_driver.md) - Multi-validator communication and transaction handling
+8. [Execution Driver](./execution_driver.md) - Concurrent transaction execution management
+9. [Consensus Handler](./consensus_handler.md) - Processing consensus output and ordering
+10. [Caching Layer](./caching_layer.md) - Object caching and transaction isolation
+11. [Commit Processing](./commit_processing.md) - Consensus output handling and transaction ordering
+12. [State Accumulator](./state_accumulator.md) - Cryptographic state verification mechanism
+13. [Mysticeti Integration](./mysticeti_integration.md) - Integration with Mysticeti consensus engine
+
+## Component Relationships
 
 ```mermaid
 flowchart TD
-    Client[Client] -->|Transactions/Certificates| AuthState[AuthorityState]
+    AuthState[AuthorityState] --> EpochStore[AuthorityPerEpochStore]
+    AuthState --> TxManager[TransactionManager]
+    AuthState --> Cache[Caching Layer]
+    AuthState --> StateAcc[StateAccumulator]
     
-    subgraph "Authority Module"
-        AuthState -->|Epoch-specific state| EpochStore[AuthorityPerEpochStore]
-        AuthState -->|Transaction ordering| TxManager[TransactionManager]
-        AuthState -->|Object loading| InputLoader[TransactionInputLoader]
-        AuthState -->|State verification| Accumulator[StateAccumulator]
-        
-        EpochStore -->|Execute| TempStore[TemporaryStore]
-        EpochStore -->|Validate| TxValidator[TransactionValidator]
-        EpochStore -->|Lock| LockTable[TransactionLockTable]
-        
-        TxManager -->|Ready transactions| Executor[Execution Process]
-        Executor -->|Execute| TempStore
-        
-        InputLoader -->|Read| ObjectStore[Object Store]
+    TxManager --> ExecDriver[ExecutionDriver]
+    ConsHandler[ConsensusHandler] --> EpochStore
+    ConsHandler --> TxManager
+    
+    QuorumDriver --> AuthAgg[AuthorityAggregator]
+    AuthAgg --> RemoteAuth[Remote Authorities]
+    
+    EpochStore --> StateStore[Storage]
+    
+    ExecDriver --> AuthState
+    
+    ConsHandler --> CommitStore[CommitStore]
+    CommitStore --> CommitExec[CommitExecutor]
+    CommitExec --> TxManager
+    CommitExec --> StateAcc
+    
+    MysticetiMgr[MysticetiManager] --> ConsensusEngine[Consensus Engine]
+    ConsensusEngine --> ConsHandler
+    
+    subgraph "Execution Path"
+        AuthState
+        TxManager
+        ExecDriver
+        Cache
     end
     
-    AuthState <-->|Transaction ordering| Consensus[Consensus Module]
-    AuthState <-->|State sync| P2P[P2P Module]
-    AuthState <-->|Lifecycle| Node[Node Module]
+    subgraph "Consensus Path"
+        ConsHandler
+        EpochStore
+        CommitStore
+        CommitExec
+        MysticetiMgr
+        ConsensusEngine
+    end
     
-    subgraph "Storage Layer"
-        ObjectStore
-        TxStore[Transaction Store]
-        EffectsStore[Effects Store]
+    subgraph "External Communication"
+        QuorumDriver
+        AuthAgg
+    end
+    
+    subgraph "State Verification"
+        StateAcc
     end
 ```
 
-## Component Responsibilities
-
-### AuthorityState
-- Central state management component
-- Processes transaction requests and executes certificates
-- Coordinates with consensus for transaction ordering
-- Handles epoch transitions and reconfiguration
-- Ensures thread-safe access to state
-
-### AuthorityPerEpochStore
-- Manages epoch-specific state and configuration
-- Maintains committee information for the current epoch
-- Handles transaction validation within an epoch
-- Manages shared object version assignment
-- Executes transactions in a temporary store
-
-### TransactionManager
-- Tracks dependencies between transactions
-- Determines when transactions are ready for execution
-- Coordinates transaction execution order
-- Handles backpressure and prioritization
-- Manages transaction queues
-
-### TransactionInputLoader
-- Loads objects required for transaction execution
-- Validates object versions against transaction inputs
-- Handles different ownership types (owned, shared, immutable)
-- Prepares objects for execution
-
-### StateAccumulator
-- Maintains a cryptographic accumulator of validator state
-- Verifies state consistency across validators
-- Supports state synchronization and recovery
-- Provides proof of state for verification
-
-## Core Workflows
+## Key Workflows
 
 ### Transaction Processing
-1. **Transaction validation and signing**
-2. **Certificate formation and verification**
-3. **Transaction dependency tracking**
-4. **Transaction execution in temporary store**
-5. **Effects calculation and commitment**
-6. **State updates and notifications**
+The primary workflow for processing transactions:
+1. Transaction validation and signing
+2. Certificate formation with quorum of signatures
+3. Certificate execution (fast path or consensus path)
+4. Effects generation and commitment
 
-### Epoch Management
-1. **Epoch transition detection**
-2. **Reconfiguration preparation**
-3. **New epoch store creation**
-4. **State transition between epochs**
-5. **Transaction processing continuation**
+### Consensus Integration
+How transactions with shared objects are processed:
+1. Submission to consensus
+2. Ordered transaction processing
+3. Shared object version assignment
+4. Certificate execution with assigned versions
 
-## Cross-References
-- See [Transaction Data Flow](../../knowledge/data_flow/index.md) for details on the transaction lifecycle
-- See [Consensus Module](../consensus.md) for information on transaction ordering
-- See [Node Module](../node.md) for component lifecycle management
-- See [P2P Module](../p2p.md) for state synchronization details
+### Epoch Transitions
+The process of transitioning between epochs:
+1. End-of-epoch detection and signaling
+2. System transaction for epoch advancement
+3. State reconfiguration for new epoch
+4. Validator component transitions
+
+## Thread Safety
+
+The Authority module ensures thread safety through:
+- RwLock for epoch-level synchronization
+- MutexTable for fine-grained transaction locking
+- Clear lock ordering to prevent deadlocks
+- ArcSwap for atomic component updates
 
 ## Verification Status
-The documentation in this section is based on direct code analysis and verification of the authority module implementation.
+
+| Component | Status | Confidence |
+|-----------|--------|------------|
+| AuthorityState | Verified-Code | 9/10 |
+| AuthorityPerEpochStore | Verified-Code | 9/10 |
+| TransactionManager | Verified-Code | 8/10 |
+| ExecutionDriver | Verified-Code | 9/10 |
+| ConsensusHandler | Verified-Code | 9/10 |
+| AuthorityAggregator | Verified-Code | 9/10 |
+| QuorumDriver | Verified-Code | 9/10 |
+| Caching Layer | Verified-Code | 9/10 |
+| CommitStore/Executor | Verified-Code | 9/10 |
+| StateAccumulator | Verified-Code | 9/10 |
+| MysticetiManager | Verified-Code | 9/10 |
+| CausalOrder | Verified-Code | 9/10 |
 
 ## Confidence: 9/10
-This set of documents accurately describes the Authority module in the Soma blockchain, based on thorough code analysis and comprehensive verification.
 
-## Last Updated: 2025-03-09 by Cline
+This module overview provides a comprehensive and accurate description of the Authority module based on direct code inspection. The component relationships, workflows, and interactions are accurately represented with evidence from the codebase.
+
+## Last Updated: 3/8/2025
