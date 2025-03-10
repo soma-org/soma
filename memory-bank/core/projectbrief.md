@@ -1,7 +1,7 @@
 # Soma Blockchain Project Brief
 
 ## Project Purpose
-Soma is a Rust-based blockchain node software that provides a Byzantine Fault Tolerant consensus mechanism with validator-based authority. The system processes transactions and maintains state across a distributed network, with clear epoch boundaries for reconfiguration.
+Soma is a Rust-based blockchain node software that provides a Byzantine Fault Tolerant DAG consensus mechanism with validator-based authority. The system processes transactions and maintains state across a distributed network, with clear epoch boundaries for reconfiguration.
 
 
 ## Core Requirements
@@ -43,7 +43,7 @@ The system is organized into primary modules:
 
 ### Epoch Management
 - Epochs define validator set lifetimes
-- End-of-epoch determined by time threshold or explicit signals
+- End-of-epoch determined by time threshold
 - Validator set changes implemented at epoch boundaries
 - System state accumulated and verified at epoch transitions
 
@@ -57,11 +57,12 @@ Based on the Soma Milestones document:
 - Archival store and indexer completion
 
 ## Development Approach
-This project utilizes an AI agent workflow with Cursor and Cline, focusing on:
+This project utilizes an AI agent workflow focusing on:
 - Context efficiency through structured documentation
 - Modular development with clear handoffs
 - Rust async best practices and thorough testing
 - Thorough testing at unit and integration levels
+- E2E tests using deterministic simulation testing
 - Comprehensive error handling and recovery
 - Component-based architecture with clear interfaces
 - Progressive stability improvements

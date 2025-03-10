@@ -7,6 +7,7 @@ This document tracks the progress of Memory Bank documentation for the Soma bloc
 
 | Document | Status | Confidence | Last Updated | Notes |
 |----------|--------|------------|--------------|-------|
+| read_me_first.md | COMPLETE | 9/10 | 2025-03-09 | New developer onboarding guide with essential codebase knowledge |
 | projectbrief.md | COMPLETE | 9/10 | 2025-03-01 | Provides comprehensive overview of project goals and architecture |
 | systemPatterns.md | COMPLETE | 8/10 | 2025-03-08 | Documents key architectural and implementation patterns |
 | techContext.md | COMPLETE | 9/10 | 2025-02-20 | Details technical stack and implementation approach |

@@ -68,7 +68,6 @@ This document tracks the overall progress of the Soma blockchain project, includ
 - ✅ Data flow documentation
 - ✅ Security model documentation
 - ✅ Memory Bank organization
-- 🔄 Performance tuning guides (In progress)
 
 ## Current Sprint Focus
 - Finalize transaction batching and performance optimizations

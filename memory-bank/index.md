@@ -1,6 +1,7 @@
 # Soma Development Index
 
 ## Core Files
+- [Read Me First!](core/read_me_first.md) - Essential guide for new developers
 - [Project Brief](core/projectbrief.md) - Overall project scope and goals
 - [Technical Context](core/techContext.md) - Technology stack and environment
 - [System Patterns](core/systemPatterns.md) - Architectural and coding patterns
