@@ -5,313 +5,35 @@ Soma is a Rust-based blockchain node software that provides a Byzantine Fault To
 
 ## Tool Synchronization Protocol
 This .clinerules file works in conjunction with:
-- The memory-bank hierarchy (core/, active/, shared/ folders)
+- The memory-bank hierarchy (core/, knowledge/, modules/ folders)
 - The .cursorrules file for Cursor guidance
 - The .cursor/rules/*.mdc files for module-specific guidance in Cursor
 
 When working with Cline, always:
 1. Begin by reviewing the memory-bank for latest project context
-2. Check memory-bank/shared/tool_transitions.md for context from previous Cursor sessions
-3. Document confidence ratings (1-10) for all significant work
-4. Update memory-bank files with implementation details, patterns, and progress
+2. Document confidence ratings (1-10) for all significant work
+3. Update memory-bank files with implementation details, patterns, and progress
 
-Before switching to Cursor, document:
-1. Current state and progress in memory-bank/active/[module].md
-2. New patterns in memory-bank/core/systemPatterns.md
-3. Overall progress in memory-bank/core/progress.md
-4. A transition summary in memory-bank/shared/tool_transitions.md
+### Documentation Synchronization Protocol
+To ensure consistency across documentation:
 
-## Tech Stack
-Backend:
-- Rust (2021 edition)
-- Tokio for async runtime
-- RocksDB for storage (referenced through traits)
-- Tonic/gRPC for network communication
-- BCS for serialization
+1. **Progress.md and ActiveContext.md Alignment**:
+   - The "Now" section in progress.md must align with the "Current Development Focus" in activeContext.md
+   - When updating one document, always check and update the other to maintain consistency
+   - The activeContext.md provides more technical detail around the current focus, while progress.md tracks milestones
+   - Both documents should reflect the same immediate priorities
 
-Infrastructure:
-- CI/CD with GitHub Actions
-- Docker for containerization
-- Kubernetes for deployment
+2. **Confidence Rating Consistency**:
+   - When updating confidence ratings in one document, evaluate if other related documents need rating updates
+   - Document the reasoning behind confidence rating changes
 
-## Architectural Patterns and Decisions
+3. **Update Cycle**:
+   - Update both documents when:
+     - Completing a significant development milestone
+     - Shifting focus to a new development area
+     - Incorporating new architectural components
+     - Resolving major challenges or blockers
 
-### Component Architecture
-The system is organized into primary modules that interact with clear boundaries:
-- Authority - State management, transaction validation and execution
-- Consensus - BFT agreement protocol implementation (Mysticeti)
-- Node - Lifecycle and orchestration 
-- P2P - Network discovery and state synchronization
-
-### Authority State Management
-- The primary state management is through `AuthorityState` and epoch-specific `AuthorityPerEpochStore`
-- Clear separation of per-epoch data to handle reconfiguration
-- Thread-safe state access via Arc<RwLock<>> pattern
-- Example from authority/state.rs:
-```rust
-pub struct AuthorityState {
-    pub name: AuthorityName,
-    pub secret: StableSyncAuthoritySigner,
-    epoch_store: ArcSwap<AuthorityPerEpochStore>,
-    execution_lock: RwLock<EpochId>,
-    committee_store: Arc<CommitteeStore>,
-    transaction_manager: Arc<TransactionManager>,
-    // Additional fields...
-}
-```
-
-### Consensus Engine Structure
-- Core-based design with round management via ThresholdClock
-- Clear commit verification and block production processes
-- Leader selection and leader scheduling patterns
-- Example from consensus architecture:
-```rust
-pub struct ConsensusAuthority {
-    context: Arc<Context>,
-    transaction_client: Arc<TransactionClient>,
-    synchronizer: Arc<SynchronizerHandle>,
-    commit_syncer: CommitSyncer<TonicClient>,
-    core_thread_handle: CoreThreadHandle,
-    // Additional fields...
-}
-```
-
-### Transaction Processing Flow
-1. **Validation**: Verify transaction signatures and inputs
-2. **Execution**: Process the transaction in a temporary store
-3. **Commit**: Write results to permanent storage
-4. **Notification**: Signal execution completion
-5. **State Update**: Update global state with transaction effects
-
-Example from authority/state.rs:
-```rust
-pub async fn try_execute_immediately(
-    &self,
-    certificate: &VerifiedExecutableTransaction,
-    expected_effects_digest: Option<TransactionEffectsDigest>,
-    commit: Option<CommitIndex>,
-    epoch_store: &Arc<AuthorityPerEpochStore>,
-) -> SomaResult<(TransactionEffects, Option<ExecutionError>)> {
-    // Transaction execution logic
-}
-```
-
-### Epoch Management and Reconfiguration
-- Clean epoch transition with state and validator set changes
-- Graceful shutdown of previous epoch's services
-- Careful state recovery from persistent storage
-- Deterministic end-of-epoch detection and handling
-
-Example pattern:
-```rust
-pub async fn reconfigure(
-    &self,
-    cur_epoch_store: &AuthorityPerEpochStore,
-    new_committee: Committee,
-    epoch_start_configuration: EpochStartConfiguration,
-    epoch_last_commit: CommitIndex,
-) -> SomaResult<Arc<AuthorityPerEpochStore>> {
-    // Reconfiguration logic
-}
-```
-
-### P2P Network Architecture
-- Peer discovery with signed node information exchange
-- State synchronization for catching up with latest chain state
-- Channel management for maintaining persistent peer connections
-- Peer balancing for distributed load management
-
-## Async Programming Patterns
-
-### Event-Loop and Handler Pattern
-- Central event loops for message processing
-- Handler functions for specific message types
-- Channel-based communication between components
-- Example from p2p/state_sync:
-
-```rust
-pub async fn start(mut self) {
-    info!("State-Synchronizer started");
-
-    let mut interval = tokio::time::interval(Duration::from_millis(100));
-    
-    loop {
-        tokio::select! {
-            now = interval.tick() => {
-                self.handle_tick(now.into_std());
-            },
-            maybe_message = self.mailbox.recv() => {
-                if let Some(message) = maybe_message {
-                    self.handle_message(message);
-                } else {
-                    break;
-                }
-            },
-            peer_event = self.peer_event_receiver.recv() => {
-                self.handle_peer_event(peer_event);
-            },
-            Some(task_result) = self.tasks.join_next() => {
-                // Handle task result
-            },
-        }
-    }
-}
-```
-
-### Task Spawning and Management
-- Use of `JoinSet` for tracking related tasks
-- Graceful task cancellation and error handling
-- Structured task supervision pattern
-- Example:
-
-```rust
-let mut tasks = JoinSet::new();
-tasks.spawn(async move {
-    // Task logic here
-});
-
-while let Some(result) = tasks.join_next().await {
-    match result {
-        Ok(value) => println!("Task completed with: {value:?}"),
-        Err(e) => {
-            if e.is_cancelled() {
-                // Handle cancellation
-            } else if e.is_panic() {
-                // Propagate panics
-                std::panic::resume_unwind(e.into_panic());
-            } else {
-                // Handle other errors
-            }
-        }
-    };
-}
-```
-
-### State Protection Patterns
-- `RwLock` for shared state that needs concurrent readers
-- `Mutex` or `parking_lot::RwLock` for non-async contexts
-- `tokio::sync::Mutex` for async contexts requiring exclusive access
-- `ArcSwap` for hot-swappable components like epoch store
-
-### Cancellation and Timeout Management
-- Proper cancellation propagation through task hierarchies
-- Timeout handling for network requests
-- Graceful shutdown sequences
-- Example:
-
-```rust
-tokio::select! {
-    result = async_operation() => {
-        // Handle result
-    }
-    _ = tokio::time::sleep(Duration::from_secs(timeout)) => {
-        // Handle timeout
-    }
-}
-```
-
-## Error Handling
-
-### Error Type Hierarchy
-- Module-specific error types that implement `thiserror::Error`
-- Clear error categorization (validation, internal, network, etc.)
-- Example from observed pattern:
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum SomaError {
-    #[error("epoch has ended: {0}")]
-    EpochEnded(EpochId),
-    
-    #[error("wrong epoch, expected {expected_epoch}, actual {actual_epoch}")]
-    WrongEpoch {
-        expected_epoch: EpochId,
-        actual_epoch: EpochId,
-    },
-    
-    #[error("validator halted at epoch end")]
-    ValidatorHaltedAtEpochEnd,
-    
-    #[error("database error: {0}")]
-    DatabaseError(#[from] std::io::Error),
-    
-    #[error("internal error: {0}")]
-    InternalError(String),
-}
-```
-
-### Error Propagation
-- Consistent use of `?` operator for error propagation
-- Adding context to errors as they propagate
-- Explicit error mapping between modules
-- Pattern observed:
-
-```rust
-fn process_operation() -> SomaResult<Output> {
-    let data = fetch_data()
-        .map_err(|e| SomaError::InternalError(format!("Failed to fetch data: {}", e)))?;
-    
-    let result = validate_data(data)?;
-    
-    Ok(process_result(result)?)
-}
-```
-
-## Testing Framework
-
-### Test Structure
-- Unit tests focused on component behavior
-- Integration tests for component interactions
-- End-to-end tests for critical workflows
-- Mock implementations for external dependencies
-
-### Async Testing
-- Use of `tokio::test` for asynchronous test cases
-- Careful management of mock asynchronous behavior
-- Example:
-
-```rust
-#[tokio::test]
-async fn test_consensus_authority_operation() {
-    // Setup test environment with mock components
-    let authority = setup_test_authority().await;
-    
-    // Execute test operations
-    let result = authority.process_transaction(test_tx).await;
-    
-    // Verify results
-    assert!(result.is_ok());
-    // Additional assertions...
-}
-```
-
-### Test Fixtures
-- Centralized test fixtures for common test scenarios
-- Factory methods for test object creation
-- Helper functions for test setup and verification
-
-## Module-Specific Guidelines
-
-### Authority Module
-- Implement transaction validation and execution
-- Manage state transitions and effects calculation
-- Handle epoch boundaries and reconfiguration
-- Ensure consistent consensus interaction
-
-### Node Module
-- Manage component lifecycle and orchestration
-- Handle graceful startup and shutdown sequences
-- Coordinate consensus, authority and P2P modules
-- Implement service registration and discovery
-
-### Consensus Module
-- Implement Byzantine fault-tolerant agreement protocol
-- Manage leader selection and block production
-- Handle view changes and leader rotation
-- Process commits and threshold signatures 
-
-### P2P Module
-- Implement peer discovery and connection management
-- Provide efficient state synchronization mechanisms
-- Handle network partitions and reconnection logic
-- Implement message propagation with retry logic
+4. **Change Propagation**:
+   - When updating the "Now" section in progress.md, update the "Current Development Focus" in activeContext.md
+   - When adding technical details to activeContext.md, ensure they align with the milestone tracking in progress.md

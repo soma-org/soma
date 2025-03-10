@@ -1,52 +1,135 @@
 # Technology Context
 
-## Purpose and Scope
-This document describes the technology stack, tooling, and technical constraints that form the foundation of the Soma blockchain. It provides essential context about the technical environment in which Soma operates and the key technologies it leverages.
+## Introduction
+This document provides the essential technical context needed to understand and work with the Soma blockchain codebase. It focuses on the key technologies, dependencies, and patterns that form the foundation of our system, with emphasis on what developers need to know to be productive quickly.
+
+## Getting Started
+
+### Development Environment Setup
+- **Rust**: Install via rustup, version 1.70+ (2021 edition)
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+- **Required tools**: 
+  - Git (2.30+)
+  - Cargo (included with Rust)
+  - RocksDB dependencies (libclang, build-essential)
+  - Protocol Buffers compiler (protoc 3.15+)
+- **Recommended IDE**: VSCode with rust-analyzer extension
+- **Build the project**: 
+  ```bash
+  cargo build
+  ```
+- **Run tests**:
+  ```bash
+  cargo test
+  ```
 
 ## Core Technology Stack
 
 ### Programming Language
 - **Rust (2021 edition)**: Primary implementation language
-  - Strong type system and memory safety
-  - Zero-cost abstractions
-  - Ownership model for thread safety
-  - Rich ecosystem of crates
-  - Error handling with thiserror for specific error types
+  - **What it is**: A systems programming language with memory safety guarantees without garbage collection
+  - **How we use it**: For all blockchain components, leveraging traits, enums, and ownership model
+  - **Why we chose it**: Memory safety, zero-cost abstractions, and fine-grained control over concurrency
+  - **Important patterns**:
+    - Error propagation with `?` operator and thiserror for custom error types
+    - Trait-based abstractions for component interfaces
+    - Immutable-by-default data with explicit mutability
+    - Pattern matching for exhaustive condition handling
 
 ### Async Runtime
-- **Tokio**: Asynchronous runtime for efficient concurrent operations
-  - Task scheduling and management
-  - Asynchronous I/O primitives
-  - Synchronization primitives (Mutex, RwLock, channels)
-  - JoinSet for task management and supervision
-  - Select macros for concurrent operation coordination
-  - Cancellation propagation for clean task termination
+- **Tokio (1.25+)**: Asynchronous runtime for efficient concurrent operations
+  - **What it is**: A platform for writing concurrent applications with the async/await syntax
+  - **How we use it**: For all I/O operations, including network, storage, and task management
+  - **Why we chose it**: Production-ready, actively maintained, and rich feature set
+  - **Important patterns**:
+    - Task spawning with `tokio::spawn(async move { ... })`
+    - `JoinSet` for managing related tasks
+    - `tokio::select!` for concurrent operation coordination
+    - Proper cancellation propagation with `AbortHandle`
+    - Channel usage (`mpsc`, `oneshot`, `broadcast`) for communication
+    - Async locks (`Mutex`, `RwLock`) for shared state access
+  - **Common pitfalls**:
+    - Deadlocks from blocking operations in async contexts
+    - Improper error propagation in spawned tasks
+    - Not handling task cancellation properly
 
 ### Storage
-- **RocksDB**: Embedded key-value storage engine
-  - Accessed through trait interfaces for abstraction
-  - Column families for data organization
-  - LSM-tree structure for write optimization
-  - Configurable performance characteristics
-  - Transactional operations for atomic state changes
-  - Snapshot isolation for consistent reads
+- **RocksDB (7.9+)**: Embedded key-value storage engine
+  - **What it is**: A high-performance embedded key-value store
+  - **How we use it**: Through trait interfaces for all persistent blockchain state
+  - **Why we chose it**: Write optimization, snapshot isolation, and performance characteristics
+  - **Important patterns**:
+    - Column families for data organization by type
+    - Batch operations for atomic state updates
+    - Iterator usage for range queries
+    - Snapshot isolation for consistent reads during transactions
+  - **Common pitfalls**:
+    - Large memory usage with default settings
+    - Improper error handling on disk full conditions
+    - Performance degradation with too many small writes
 
 ### Networking
-- **Tonic/gRPC**: Network communication framework
-  - Protocol buffer message definitions
-  - Streaming RPCs for state synchronization
-  - Generated service interfaces
-  - Transport layer security integration
-  - Backpressure handling for network stability
-  - Connection pooling and request multiplexing
+- **Tonic/gRPC (0.9+)**: Network communication framework
+  - **What it is**: A high-performance gRPC implementation for Rust
+  - **How we use it**: For validator-to-validator communication and client-server interaction
+  - **Why we chose it**: Type safety, streaming support, and cross-platform compatibility
+  - **Important patterns**:
+    - Protocol buffer message definitions
+    - Service trait implementations
+    - Streaming for bulk data transfer
+    - Timeout and retry logic for resilience
+  - **Common pitfalls**:
+    - Not handling backpressure properly
+    - Improper error propagation in streaming contexts
+    - Missing timeout handling
 
 ### Serialization
 - **BCS (Binary Canonical Serialization)**: Primary serialization format
-  - Deterministic byte representation
-  - Space-efficient encoding
-  - Type safety and schema validation
-  - Consistent across implementations
-  - Optimized for blockchain state representation
+  - **What it is**: A deterministic, compact binary serialization protocol
+  - **How we use it**: For all blockchain state, transactions, and network messages
+  - **Why we chose it**: Determinism (critical for consensus) and space efficiency
+  - **Important patterns**:
+    - Derive macros for serializable types
+    - Explicit versioning for evolution
+    - Binary format for storage and network transmission
+  - **Common pitfalls**:
+    - Incompatible schema changes
+    - Handling differences between storage and network serialization needs
+
+## Cryptography
+
+- **fastcrypto**: Library for cryptographic operations from MystenLabs
+  - **What it is**: A high-performance cryptography library optimized for blockchain use cases
+  - **How we use it**: For threshold signatures, BLS aggregation, and cryptographic verification
+  - **Key features**:
+    - BLS12-381 curve implementations for threshold signatures
+    - Threshold signature schemes for committee-based consensus
+    - High-performance batch verification
+    - Copy key functionality (enabled in our dependencies)
+  - **Implementation**: Git dependency (MystenLabs/fastcrypto)
+
+- **Ed25519**: Digital signature algorithm
+  - **What it is**: A public-key signature system based on elliptic curve cryptography
+  - **How we use it**: For transaction signatures, validator identity, and authentication
+  - **Implementation**: ed25519 (2.2.3) with pkcs8, alloc, and zeroize features
+  - **Important considerations**:
+    - Batch verification for performance
+    - Key management with zeroize for security
+    - PKCS#8 formatting for standard key representation
+
+- **EllipticCurveMultisetHash (ECMH)**: State accumulator mechanism
+  - **What it is**: A hash function that allows for set operations on hashed values
+  - **How we use it**: For state accumulators and incremental verification
+  - **Benefits**: Efficient updates for small state changes
+  - **Implementation**: Custom implementation in types/src/accumulator.rs
+
+- **Cryptographic Digests**: Used throughout the system
+  - **What they are**: Fixed-size unique representations of arbitrary data
+  - **How we use them**: For transaction IDs, state verification, and Merkle proofs
+  - **Implementation**: Primarily through fastcrypto abstractions
+  - **Performance considerations**: Optimized implementations for blockchain use cases
 
 ## Infrastructure
 
@@ -66,32 +149,7 @@ This document describes the technology stack, tooling, and technical constraints
   - Release automation and versioning
   - Security scanning for dependency vulnerabilities
 
-### Deployment
-- **Docker**: Container runtime
-  - Consistent runtime environment
-  - Dependency management
-  - Resource isolation
-  - Multi-stage builds for optimized images
-
-- **Kubernetes**: Container orchestration
-  - Scalable deployments
-  - Service discovery
-  - State management
-  - Rolling updates
-  - Health checking and auto-recovery
-
 ## Technical Constraints
-
-### Performance Requirements
-- **Latency**: Sub-second transaction finality target
-  - < 500ms average commit time
-  - < 200ms optimized target
-- **Throughput**: 1000+ transactions per second initial target
-  - Current: ~1000 tx/second single node
-  - Target: 5000+ tx/second single node
-- **Scalability**: Horizontal scaling via sharding (planned)
-  - Per-committee throughput increases
-  - Cross-shard transaction support
 
 ### Security Considerations
 - **Byzantine Fault Tolerance**: Resilience against f<n/3 malicious actors
@@ -134,11 +192,44 @@ This document describes the technology stack, tooling, and technical constraints
   - Comprehensive inline documentation
   - Module-level architecture documentation
   - Knowledge base in Memory Bank
-- **Testing**: 
-  - Unit tests with tokio::test
-  - Integration tests for cross-component verification
-  - End-to-end tests with simulated networks
-  - Randomized tests for consensus resilience
+
+### Testing
+- **Unit Tests**: 
+  - Component-level functionality verification
+  - Isolated testing with mocks
+  - `#[tokio::test]` for async test cases
+  - High coverage targets
+
+- **Integration Tests**: 
+  - Cross-component interaction testing
+  - Realistic data flows
+  - Error injection and recovery
+
+- **madsim / msim**: Simulation testing framework
+  - **What it is**: A deterministic simulation environment for distributed systems
+  - **How we use it**: For testing consensus and network protocols under controlled conditions
+  - **Benefits**: Deterministic execution, controllable time, network partitioning simulation
+  - **Example usage**: 
+    ```rust
+    #[cfg(msim)]
+    #[msim::test]
+    async fn test_network_partition() {
+        // Test code with controlled network conditions
+    }
+    ```
+
+- **llvm-cov**: Test coverage analysis
+  - **What it is**: LLVM's code coverage tool integrated with Rust
+  - **How we use it**: For measuring test coverage and identifying untested code paths
+  - **Usage example**:
+    ```bash
+    cargo llvm-cov --lcov --output-path lcov.info
+    ```
+
+- **Property-Based Testing**: 
+  - Randomized input testing with proptest crate
+  - Invariant checking for consistency guarantees
+  - Fuzzing for edge case discovery
 
 ### Architecture Principles
 - **Component Isolation**: 
@@ -158,45 +249,36 @@ This document describes the technology stack, tooling, and technical constraints
   - Thread safety with explicit lock hierarchies
   - Actor-like components with mailboxes
 
-### Testing Strategy
-- **Unit Tests**: 
-  - Component-level functionality verification
-  - Isolated testing with mocks
-  - High coverage targets
-- **Integration Tests**: 
-  - Cross-component interaction testing
-  - Realistic data flows
-  - Error injection and recovery
-- **End-to-End Tests**: 
-  - Full system behavior validation
-  - Simulated validator networks
-  - Byzantine behavior testing
-- **Property-Based Testing**: 
-  - Randomized input testing
-  - Invariant checking
-  - Fuzzing for edge case discovery
-
 ## External Dependencies
 
 ### Core Libraries
-- **ed25519-dalek**: Cryptographic signatures
-- **blake2b_simd**: Cryptographic hashing
-- **arc-swap**: Atomic reference counting with swapping
-- **serde**: Serialization/deserialization framework
-- **thiserror**: Error type definitions
-- **tracing**: Structured logging and diagnostics
-- **parking_lot**: Alternative synchronization primitives
-- **dashmap**: Concurrent hash map implementation
-- **futures**: Additional futures abstractions
-- **bytes**: Efficient byte buffer handling
+- **tokio (1.36)**: Asynchronous runtime with full feature set
+- **fastcrypto**: Cryptographic primitives from MystenLabs (Git dependency)
+- **tonic (0.12)**: gRPC implementation
+- **ed25519 (2.2)**: Cryptographic signatures
+- **bcs (0.1.6)**: Binary Canonical Serialization
+- **serde (1.0)**: Serialization/deserialization framework
+- **bytes (1.7)**: Efficient byte buffer handling
+- **arc-swap (1.7)**: Atomic reference counting with swapping
+- **thiserror (1.0)**: Error type definitions
+- **tracing (0.1.40)**: Structured logging and diagnostics
+- **futures (0.3)**: Additional futures abstractions
+- **async-trait (0.1)**: Async function support in traits
+- **parking_lot (0.12)**: Alternative synchronization primitives
+- **anyhow (1.0)**: Error handling
+- **itertools (0.13)**: Iterator extensions
 
-### Infrastructure
-- **prometheus**: Metrics collection and exposure
-- **opentelemetry**: Distributed tracing integration
-- **reqwest**: HTTP client for external integrations
-- **warp**: HTTP server for API endpoints
-- **clap**: Command-line argument parsing
-- **config**: Configuration file management
+### Network and HTTP Stack
+- **tower (0.4)**: Modular service middleware
+- **hyper (1.4)**: HTTP implementation
+- **tokio-rustls (0.26)**: TLS implementation for Tokio
+- **tower-http (0.5)**: HTTP-specific middleware
+- **tokio-stream (0.1)**: Stream utilities for Tokio
+
+### Testing and Simulation
+- **msim**: Network simulation framework (from MystenLabs)
+- **rand (0.8)**: Random number generation
+- **tempfile (3.12)**: Temporary file utilities
 
 ## Version Management
 
@@ -212,7 +294,12 @@ This document describes the technology stack, tooling, and technical constraints
 - Feature flags for gradual deployment
 - Reconfiguration-based protocol updates
 
-## Confidence: 9/10
-This document provides a comprehensive overview of the technology context for the Soma blockchain. The core technology stack is well-established and thoroughly verified against the codebase. Performance characteristics and exact infrastructure details continue to evolve as the project matures.
+## Confidence Ratings
+- Core Rust patterns: 10/10
+- Tokio usage patterns: 9/10
+- RocksDB usage: 8/10
+- Cryptography: 9/10
+- Testing framework: 9/10
+- External dependencies: 8/10
 
-## Last Updated: 2025-03-08 by Cline
+## Last Updated: 2025-03-10 by Cline
