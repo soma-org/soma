@@ -76,7 +76,7 @@ pub(crate) struct PipelineDispatcher<
     certified_commit_handle: ActorHandle<CertifiedCommitProcessor<E, O, S>>,
     commit_votes_handle: ActorHandle<CommitVotesProcessor>,
     reveal_handle: ActorHandle<RevealProcessor>,
-    reveal_votes_handle: ActorHandle<RevealVotesProcessor<E>>,
+    reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,
     scores_handle: ActorHandle<ScoresProcessor>,
 }
 
@@ -87,7 +87,7 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage>
         certified_commit_handle: ActorHandle<CertifiedCommitProcessor<E, O, S>>,
         commit_votes_handle: ActorHandle<CommitVotesProcessor>,
         reveal_handle: ActorHandle<RevealProcessor>,
-        reveal_votes_handle: ActorHandle<RevealVotesProcessor<E>>,
+        reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,
         scores_handle: ActorHandle<ScoresProcessor>,
     ) -> Self {
         Self {

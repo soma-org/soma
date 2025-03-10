@@ -1,0 +1,20 @@
+[package]
+name = "probe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zstd.workspace = true
+bcs.workspace = true
+serde.workspace = true
+enum_dispatch.workspace = true
+numpy.workspace = true
+ndarray.workspace = true
+bytes.workspace = true
+
+[dependencies.burn]
+workspace = true
+features = ["ndarray", "autodiff"]
+
+[lints]
+workspace = true

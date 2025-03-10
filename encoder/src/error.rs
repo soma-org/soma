@@ -136,6 +136,9 @@ pub(crate) enum ShardError {
     #[error("Failed to deserialize signature: {0}")]
     MalformedSignature(FastCryptoError),
 
+    #[error("Signature aggregation failure: {0}")]
+    SignatureAggregationFailure(FastCryptoError),
+
     #[error("Failed to verify the block's signature: {0}")]
     SignatureVerificationFailure(FastCryptoError),
 

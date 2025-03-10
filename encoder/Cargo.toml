@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 shared.workspace = true
+probe.workspace = true
 tokio.workspace = true
 serde.workspace = true
 fastcrypto.workspace = true
@@ -38,6 +39,7 @@ tokio-util.workspace = true
 mockall.workspace = true
 quick_cache.workspace = true
 dashmap.workspace = true
+burn.workspace = true
 
 [dependencies.pyo3]
 workspace = true

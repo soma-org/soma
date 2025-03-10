@@ -60,6 +60,9 @@ where
     pub fn into_inner(self) -> T {
         self.inner
     }
+    pub fn raw_signature(&self) -> Bytes {
+        self.signature.clone()
+    }
     pub fn signature(self) -> Signature<T, S> {
         Signature {
             signature: self.signature,

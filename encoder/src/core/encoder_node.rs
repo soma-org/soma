@@ -172,8 +172,12 @@ impl EncoderNode {
         );
         let broadcaster_handle = ActorManager::new(default_buffer, broadcast_processor).handle();
 
-        let evaluation_processor =
-            EvaluationProcessor::new(store.clone(), broadcaster_handle.clone());
+        let evaluation_processor = EvaluationProcessor::new(
+            encoder_context.clone(),
+            store.clone(),
+            broadcaster_handle.clone(),
+            storage_handle.clone(),
+        );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
 
         let slot_tracker = SlotTracker::new(100);
@@ -206,8 +210,11 @@ impl EncoderNode {
             evaluation_handle,
         );
 
-        let scores_processor =
-            ScoresProcessor::new(store.clone(), encoder_context.own_encoder_index);
+        let scores_processor = ScoresProcessor::new(
+            encoder_context.clone(),
+            store.clone(),
+            encoder_context.own_encoder_index,
+        );
 
         let certified_commit_manager =
             ActorManager::new(default_buffer, certified_commit_processor);

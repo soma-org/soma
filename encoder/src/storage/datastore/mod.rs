@@ -14,6 +14,7 @@ use crate::{
         encoder_committee::{EncoderIndex, Epoch},
         shard::Shard,
         shard_commit::ShardCommit,
+        shard_scores::{Score, ScoreSet, ShardScores},
         shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
 };
@@ -81,4 +82,16 @@ pub(crate) trait Store: Send + Sync + 'static {
         shard: Shard,
         vote: ShardVotes<RevealRound>,
     ) -> ShardResult<(usize, usize)>;
+    fn get_accepted_finalized_reveal_slots(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+    ) -> ShardResult<Vec<EncoderIndex>>;
+    fn add_scores(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        evaluator: EncoderIndex,
+        signed_scores: Signed<ScoreSet, min_sig::BLS12381Signature>,
+    ) -> ShardResult<Vec<(EncoderIndex, Signed<ScoreSet, min_sig::BLS12381Signature>)>>;
 }

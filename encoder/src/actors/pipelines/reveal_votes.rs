@@ -4,7 +4,7 @@ use crate::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
     networking::messaging::EncoderInternalNetworkClient,
-    storage::datastore::Store,
+    storage::{datastore::Store, object::ObjectStorage},
     types::{
         encoder_committee::EncoderIndex,
         shard::Shard,
@@ -18,17 +18,17 @@ use shared::{digest::Digest, signed::Signed, verified::Verified};
 
 use super::evaluation::EvaluationProcessor;
 
-pub(crate) struct RevealVotesProcessor<E: EncoderInternalNetworkClient> {
+pub(crate) struct RevealVotesProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,
     own_index: EncoderIndex,
-    evaluation_handle: ActorHandle<EvaluationProcessor<E>>,
+    evaluation_handle: ActorHandle<EvaluationProcessor<E, S>>,
 }
 
-impl<E: EncoderInternalNetworkClient> RevealVotesProcessor<E> {
+impl<E: EncoderInternalNetworkClient, S: ObjectStorage> RevealVotesProcessor<E, S> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
         own_index: EncoderIndex,
-        evaluation_handle: ActorHandle<EvaluationProcessor<E>>,
+        evaluation_handle: ActorHandle<EvaluationProcessor<E, S>>,
     ) -> Self {
         Self {
             store,
@@ -39,7 +39,7 @@ impl<E: EncoderInternalNetworkClient> RevealVotesProcessor<E> {
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient> Processor for RevealVotesProcessor<E> {
+impl<E: EncoderInternalNetworkClient, S: ObjectStorage> Processor for RevealVotesProcessor<E, S> {
     type Input = (
         ShardAuthToken,
         Shard,
@@ -64,10 +64,7 @@ impl<E: EncoderInternalNetworkClient> Processor for RevealVotesProcessor<E> {
                     if shard.evaluation_set().contains(&self.own_index) {
                         self.evaluation_handle
                             .process((auth_token, shard), msg.cancellation.clone())
-                            .await;
-                        // CALL THE EVALUATION PIPELINE
-                        // WHICH BROADCASTS
-                        // if member of the evaluation set then trigger final evaluation
+                            .await?;
                     }
                 } else {
                     // trigger cancellation, this shard cannot proceed

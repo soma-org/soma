@@ -13,6 +13,7 @@ use crate::{
         encoder_committee::{EncoderIndex, Epoch},
         shard::Shard,
         shard_commit::ShardCommit,
+        shard_scores::{ScoreSet, ShardScores},
         shard_votes::{CommitRound, RevealRound, ShardVotes, ShardVotesAPI},
     },
 };
@@ -68,8 +69,15 @@ struct Inner {
     // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
     reveal_slot_reject_voters:
         BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
-    // EPOCH, SHARD_REF, SLOT -> FINALITY STATUS
     reveal_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
+
+    scores: BTreeMap<
+        (Epoch, Digest<Shard>, EncoderIndex),
+        (
+            Digest<ScoreSet>,
+            Signed<ScoreSet, min_sig::BLS12381Signature>,
+        ),
+    >,
 }
 
 pub(crate) enum SlotFinality {
@@ -92,6 +100,7 @@ impl MemStore {
                 reveal_slot_accept_voters: BTreeMap::new(),
                 reveal_slot_reject_voters: BTreeMap::new(),
                 reveal_slot_finality: BTreeMap::new(),
+                scores: BTreeMap::new(),
             }),
         }
     }
@@ -211,7 +220,7 @@ impl Store for MemStore {
         let inner = self.inner.read();
         match inner.certified_commits.get(&slot_key) {
             Some(signed_commit) => Ok(signed_commit.clone()),
-            None => Err(ShardError::InvalidReveal("key does not exist".to_string())),
+            None => Err(ShardError::NotFound("key does not exist".to_string())),
         }
     }
     fn time_since_first_certified_commit(
@@ -488,5 +497,72 @@ impl Store for MemStore {
             });
 
         Ok((total_finalized_slots, total_accepted_slots))
+    }
+
+    fn get_accepted_finalized_reveal_slots(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+    ) -> ShardResult<Vec<EncoderIndex>> {
+        let start_key = (epoch, shard_ref, EncoderIndex::MIN);
+        let end_key = (epoch, shard_ref, EncoderIndex::MAX);
+        let inner = self.inner.read();
+
+        // Collect slots where reveal votes are finalized as Accepted
+        let accepted_slots = inner
+            .reveal_slot_finality
+            .range(start_key..=end_key)
+            .filter_map(|((_, _, slot), finality)| {
+                if matches!(finality, SlotFinality::Accepted) {
+                    Some(*slot)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<EncoderIndex>>();
+
+        Ok(accepted_slots)
+    }
+
+    fn add_scores(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        evaluator: EncoderIndex,
+        signed_scores: Signed<ScoreSet, min_sig::BLS12381Signature>,
+    ) -> ShardResult<Vec<(EncoderIndex, Signed<ScoreSet, min_sig::BLS12381Signature>)>> {
+        let scores_digest =
+            Digest::new(&signed_scores.clone().into_inner()).map_err(ShardError::DigestFailure)?;
+        let scores_vote_key = (epoch, shard_ref, evaluator);
+        let mut inner = self.inner.write();
+        match inner.scores.get(&scores_vote_key) {
+            Some((existing_digest, _)) => {
+                if existing_digest != &scores_digest {
+                    return Err(ShardError::ConflictingCommit(
+                        "evaluator already has different scores".to_string(),
+                    ));
+                }
+            }
+            None => {
+                inner
+                    .scores
+                    .insert(scores_vote_key, (scores_digest, signed_scores));
+            }
+        }
+
+        let start_key = (epoch, shard_ref, EncoderIndex::MIN);
+        let end_key = (epoch, shard_ref, EncoderIndex::MAX);
+
+        Ok(inner
+            .scores
+            .range(start_key..=end_key)
+            .filter_map(|((_, _, eval_idx), (digest, signed))| {
+                if digest == &scores_digest {
+                    Some((*eval_idx, signed.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect())
     }
 }
