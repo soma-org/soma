@@ -5,32 +5,32 @@ Soma is a Rust-based blockchain node software that provides a Byzantine Fault To
 
 ## Tool Synchronization Protocol
 This file works in conjunction with:
-- The memory-bank hierarchy (core/, active/, shared/ folders)
+- The memory-bank hierarchy (core/, knowledge/, modules/ folders) as shown in memory-bank/index.md
 - The .clinerules file for Cline-specific guidance
 - The .cursor/rules/*.mdc files for module-specific guidance
 
 ### Before Starting with Cursor
 1. Check memory-bank files for current context:
    - Review memory-bank/core/activeContext.md for current focus
-   - Examine memory-bank/active/[module].md for relevant module status
-   - Check memory-bank/shared/tool_transitions.md for context from previous Cline sessions
+   - Examine memory-bank/modules/[module].md and memory-bank/modules/[module]/index.md for relevant module status
+   - Check memory-bank/core/progress.md for development progress context
 
 ### During Cursor Sessions
 1. Follow patterns from memory-bank/core/systemPatterns.md
-2. Reference design documents in memory-bank/design/ folder
+2. Reference knowledge documents in memory-bank/knowledge/ folder
 3. Apply module-specific rules from .cursor/rules/*.mdc files
 4. Document confidence in your implementation (1-10 scale)
 
 ### After Completing Work with Cursor
 Before switching to Cline, update:
-1. memory-bank/active/[module].md with implementation details
+1. memory-bank/modules/[module]/index.md or relevant module document with implementation details
 2. memory-bank/core/progress.md with completion status and confidence
 3. memory-bank/core/systemPatterns.md with any new patterns discovered
-4. memory-bank/shared/tool_transitions.md with context for the next Cline session
+4. memory-bank/core/activeContext.md with context for the next session
 
-Example transition note in tool_transitions.md:
+Example transition note in activeContext.md:
 ```markdown
-## 2025-03-07: Cursor to Cline Transition
+## 2025-03-07: Implementation Status Update
 
 **Module**: node
 **Task**: Implement transaction validation

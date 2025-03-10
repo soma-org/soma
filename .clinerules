@@ -5,7 +5,7 @@ Soma is a Rust-based blockchain node software that provides a Byzantine Fault To
 
 ## Tool Synchronization Protocol
 This .clinerules file works in conjunction with:
-- The memory-bank hierarchy (core/, knowledge/, modules/ folders)
+- The memory-bank hierarchy (core/, knowledge/, modules/ folders) as shown in memory-bank/index.md
 - The .cursorrules file for Cursor guidance
 - The .cursor/rules/*.mdc files for module-specific guidance in Cursor
 
@@ -33,6 +33,7 @@ To ensure consistency across documentation:
      - Shifting focus to a new development area
      - Incorporating new architectural components
      - Resolving major challenges or blockers
+   - Update .clinerules and .cursorrules as necessary changes arise
 
 4. **Change Propagation**:
    - When updating the "Now" section in progress.md, update the "Current Development Focus" in activeContext.md

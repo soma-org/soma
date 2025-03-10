@@ -374,16 +374,6 @@ During recovery, the stored state is used to:
 - Receives transaction execution results
 - Coordinates epoch transitions and reconfiguration
 
-### With Node Module
-- Receives lifecycle management (start/stop)
-- Provides metrics and status information
-- Receives configuration updates
-
-### With P2P Module
-- Sends and receives consensus messages
-- Coordinates peer discovery and connection management
-- Handles network-level error conditions
-
 ## Error Handling
 
 The Consensus module implements robust error handling:
