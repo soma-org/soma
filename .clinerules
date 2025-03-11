@@ -38,3 +38,6 @@ To ensure consistency across documentation:
 4. **Change Propagation**:
    - When updating the "Now" section in progress.md, update the "Current Development Focus" in activeContext.md
    - When adding technical details to activeContext.md, ensure they align with the milestone tracking in progress.md
+
+Before running "cargo test" make sure to prepand " RUSTFLAGS="--cfg msim" " to the front to 
+ensure the tests are run in the correct environment. This is important for the test suite to work correctly.
