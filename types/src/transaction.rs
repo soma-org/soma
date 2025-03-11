@@ -1,3 +1,33 @@
+//! # Transaction Module
+//!
+//! ## Overview
+//! This module defines the core transaction types and structures used throughout the Soma blockchain.
+//! It provides the foundation for transaction creation, validation, execution, and certification.
+//!
+//! ## Responsibilities
+//! - Define transaction data structures and their serialization formats
+//! - Implement transaction signing and verification mechanisms
+//! - Provide utilities for transaction input/output management
+//! - Define the transaction lifecycle from creation to certification
+//! - Support different transaction types (system, user, consensus)
+//!
+//! ## Component Relationships
+//! - Interacts with Authority module for transaction execution and validation
+//! - Provides transaction structures to Consensus module for ordering
+//! - Consumes cryptographic primitives for transaction signing and verification
+//! - Defines input/output structures for the object model
+//!
+//! ## Key Workflows
+//! 1. Transaction creation, signing, and submission
+//! 2. Transaction certification through validator signatures
+//! 3. Input object resolution and validation
+//! 4. Transaction execution and effects generation
+//!
+//! ## Design Patterns
+//! - Envelope Pattern: Separates transaction data from signatures
+//! - Type-safe verification: Uses type system to enforce verification state
+//! - Immutable data structures: Ensures transaction integrity throughout lifecycle
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     iter,
@@ -33,21 +63,56 @@ use crate::{
 };
 use tap::Pipe;
 
+/// # TransactionKind
+///
+/// Represents the different types of transactions supported by the Soma blockchain.
+///
+/// ## Purpose
+/// Categorizes transactions based on their function and lifecycle within the system,
+/// allowing for specialized processing and validation rules for each type.
+///
+/// ## Variants
+/// - `Genesis`: Initial transaction that creates the genesis state
+/// - `ConsensusCommitPrologue`: System transaction that records consensus commit information
+/// - `StateTransaction`: User-initiated transaction that modifies blockchain state
+/// - `EndOfEpochTransaction`: System transaction that handles epoch transitions
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub enum TransactionKind {
+    /// Genesis transaction that initializes the blockchain state
     Genesis(GenesisTransaction),
+    /// Records consensus commit information in the blockchain state
     ConsensusCommitPrologue(ConsensusCommitPrologue),
+    /// User-initiated transaction that modifies blockchain state
+    StateTransaction(StateTransaction),
     /// EndOfEpochTransaction replaces ChangeEpoch with a list of transactions that are allowed to
     /// run at the end of the epoch.
-    StateTransaction(StateTransaction),
     EndOfEpochTransaction(EndOfEpochTransactionKind),
 }
 
+/// # StateTransaction
+///
+/// Represents a user-initiated transaction that modifies the blockchain state.
+///
+/// ## Purpose
+/// Encapsulates the transaction type, sender information, and input objects
+/// required for executing state changes on the blockchain.
+///
+/// ## Lifecycle
+/// Created by users, validated by validators, executed by the authority module,
+/// and committed to the blockchain state.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct StateTransaction {
+    /// The specific type of state transaction
     pub kind: StateTransactionKind,
-    /// Input objects or primitive values
+    /// Input objects or primitive values (currently commented out)
     // pub inputs: Vec<CallArg>,
+    /// The address of the transaction sender
     pub sender: SomaAddress,
 }
 
@@ -91,11 +156,25 @@ impl StateTransaction {
     }
 }
 
+/// # CallArg
+///
+/// Represents an argument to a transaction call, which can be either pure data or an object reference.
+///
+/// ## Purpose
+/// Provides a unified way to pass different types of arguments to transactions,
+/// distinguishing between pure data values and object references.
+///
+/// ## Variants
+/// - `Pure`: Raw bytes representing a primitive value or serialized data
+/// - `Object`: A reference to an object that will be used in the transaction
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub enum CallArg {
-    // contains no objects
+    /// Contains no objects, just pure data as bytes
     Pure(Vec<u8>),
-    // an object
+    /// A reference to an object
     Object(ObjectArg),
 }
 
@@ -139,18 +218,36 @@ impl CallArg {
     }
 }
 
+/// # ObjectArg
+///
+/// Represents different ways an object can be referenced in a transaction.
+///
+/// ## Purpose
+/// Distinguishes between different object access patterns in transactions,
+/// including immutable/owned objects, shared objects, and objects being received.
+///
+/// ## Variants
+/// - `ImmOrOwnedObject`: An immutable or owned object reference
+/// - `SharedObject`: A shared object that may be accessed by multiple transactions
+/// - `Receiving`: An object that will be received in this transaction
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub enum ObjectArg {
-    // A object from fastpath.
+    /// A object from fastpath (immutable or owned by the transaction sender)
     ImmOrOwnedObject(ObjectRef),
-    // A object from consensus (historically consensus objects were always shared).
-    // SharedObject::mutable controls whether caller asks for a mutable reference to shared object.
+    /// A object from consensus (historically consensus objects were always shared).
+    /// SharedObject::mutable controls whether caller asks for a mutable reference to shared object.
     SharedObject {
+        /// The object's unique identifier
         id: ObjectID,
+        /// The initial version when the object became shared
         initial_shared_version: Version,
+        /// Whether the transaction requires mutable access to the object
         mutable: bool,
     },
-    // An object that can be received in this transaction.
+    /// An object that can be received in this transaction
     Receiving(ObjectRef),
 }
 
@@ -170,24 +267,75 @@ impl ObjectArg {
     }
 }
 
+/// # StateTransactionKind
+///
+/// Represents the different types of state-modifying transactions supported by the system.
+///
+/// ## Purpose
+/// Categorizes state transactions based on their specific function,
+/// allowing for specialized processing and validation rules.
+///
+/// ## Variants
+/// - `AddValidator`: Transaction to add a new validator to the network
+/// - `RemoveValidator`: Transaction to remove an existing validator from the network
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub enum StateTransactionKind {
+    /// Transaction to add a new validator to the network
     AddValidator(AddValidatorArgs),
+    /// Transaction to remove an existing validator from the network
     RemoveValidator(RemoveValidatorArgs),
 }
 
+/// # AddValidatorArgs
+///
+/// Contains the necessary information to add a new validator to the network.
+///
+/// ## Purpose
+/// Encapsulates all required validator credentials and network addresses
+/// needed to register a new validator in the validator set.
+///
+/// ## Lifecycle
+/// Created as part of an AddValidator transaction, processed during transaction
+/// execution, and results in a new validator being added to the validator set.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct AddValidatorArgs {
+    /// The validator's public key bytes
     pub pubkey_bytes: Vec<u8>,
+    /// The validator's network public key bytes for secure communication
     pub network_pubkey_bytes: Vec<u8>,
+    /// The worker node's public key bytes
     pub worker_pubkey_bytes: Vec<u8>,
+    /// The validator's network address
     pub net_address: Vec<u8>,
+    /// The validator's peer-to-peer communication address
     pub p2p_address: Vec<u8>,
+    /// The validator's primary address for client communication
     pub primary_address: Vec<u8>,
 }
 
+/// # RemoveValidatorArgs
+///
+/// Contains the necessary information to remove a validator from the network.
+///
+/// ## Purpose
+/// Identifies the validator to be removed from the validator set
+/// using their public key.
+///
+/// ## Lifecycle
+/// Created as part of a RemoveValidator transaction, processed during transaction
+/// execution, and results in a validator being removed from the validator set.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct RemoveValidatorArgs {
+    /// The public key bytes of the validator to remove
     pub pubkey_bytes: Vec<u8>,
 }
 
@@ -260,17 +408,59 @@ impl TransactionKind {
     }
 }
 
+/// # GenesisTransaction
+///
+/// Represents the initial transaction that creates the genesis state of the blockchain.
+///
+/// ## Purpose
+/// Defines the initial set of objects that exist at blockchain creation,
+/// establishing the foundation state from which all future transactions build.
+///
+/// ## Lifecycle
+/// Created once at blockchain initialization and executed as the first transaction
+/// in the blockchain's history.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct GenesisTransaction {
+    /// The initial set of objects to be created in the genesis state
     pub objects: Vec<Object>,
 }
 
-/// EndOfEpochTransactionKind
+/// # EndOfEpochTransactionKind
+///
+/// Represents the different types of transactions that can occur at the end of an epoch.
+///
+/// ## Purpose
+/// Encapsulates transactions that handle epoch transitions and related system operations
+/// that must occur at epoch boundaries.
+///
+/// ## Variants
+/// - `ChangeEpoch`: Transaction that transitions the blockchain to a new epoch
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub enum EndOfEpochTransactionKind {
+    /// Transaction that transitions the blockchain to a new epoch
     ChangeEpoch(ChangeEpoch),
 }
 
+/// # ChangeEpoch
+///
+/// Contains the information needed to transition the blockchain to a new epoch.
+///
+/// ## Purpose
+/// Defines the parameters for an epoch change, including the new epoch ID
+/// and the timestamp when the epoch started.
+///
+/// ## Lifecycle
+/// Created at the end of an epoch, processed as part of an EndOfEpochTransaction,
+/// and results in the blockchain transitioning to a new epoch.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct ChangeEpoch {
     /// The next (to become) epoch ID.
@@ -311,8 +501,22 @@ impl EndOfEpochTransactionKind {
     }
 }
 
-/// CertificateProof is a proof that a transaction certs existed at a given epoch and hence can be executed.
-/// There are two types of proofs: one that is proven by inclusion in a commit and one that is proven by quorum signature.
+/// # CertificateProof
+///
+/// A proof that a transaction certificate existed at a given epoch and hence can be executed.
+///
+/// ## Purpose
+/// Provides cryptographic evidence that a transaction has been properly certified
+/// and is valid for execution, using one of several proof mechanisms.
+///
+/// ## Variants
+/// - `Commit`: Validity proven by inclusion in a specific commit
+/// - `Certified`: Validity proven by transaction certificate signature
+/// - `QuorumExecuted`: Validity proven by execution by a quorum of validators
+/// - `SystemTransaction`: System-generated transaction that doesn't require external validation
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum CertificateProof {
     /// Validity was proven by inclusion in the given commit
@@ -350,20 +554,47 @@ impl CertificateProof {
     }
 }
 
-/// An ExecutableTransaction is a wrapper of a transaction with a CertificateProof that indicates
+/// # ExecutableTransaction
+///
+/// A wrapper of a transaction with a CertificateProof that indicates
 /// there existed a valid certificate for this transaction, and hence it can be executed locally.
-/// This is an abstraction data structure to cover both the case where the transaction is
-/// certified or checkpointed when we schedule it for execution.
+///
+/// ## Purpose
+/// Provides an abstraction for transactions that are ready for execution,
+/// whether they were certified or checkpointed when scheduled for execution.
+///
+/// ## Related Types
+/// - `VerifiedExecutableTransaction`: An ExecutableTransaction that has been verified
+/// - `TrustedExecutableTransaction`: An ExecutableTransaction that is trusted without verification
 pub type ExecutableTransaction = Envelope<SenderSignedData, CertificateProof>;
 pub type VerifiedExecutableTransaction = VerifiedEnvelope<SenderSignedData, CertificateProof>;
 pub type TrustedExecutableTransaction = TrustedEnvelope<SenderSignedData, CertificateProof>;
 
+/// # Transaction
+///
 /// A transaction that is signed by a sender but not yet by an authority.
+///
+/// ## Purpose
+/// Represents the initial state of a transaction after it has been created and
+/// signed by a user but before it has been processed by the network.
+///
+/// ## Related Types
+/// - `VerifiedTransaction`: A Transaction that has been verified
+/// - `TrustedTransaction`: A Transaction that is trusted without verification
 pub type Transaction = Envelope<SenderSignedData, EmptySignInfo>;
 pub type VerifiedTransaction = VerifiedEnvelope<SenderSignedData, EmptySignInfo>;
 pub type TrustedTransaction = TrustedEnvelope<SenderSignedData, EmptySignInfo>;
 
+/// # SignedTransaction
+///
 /// A transaction that is signed by a sender and also by an authority.
+///
+/// ## Purpose
+/// Represents a transaction that has been processed by a single authority
+/// but has not yet received enough signatures to form a certificate.
+///
+/// ## Related Types
+/// - `VerifiedSignedTransaction`: A SignedTransaction that has been verified
 pub type SignedTransaction = Envelope<SenderSignedData, AuthoritySignInfo>;
 pub type VerifiedSignedTransaction = VerifiedEnvelope<SenderSignedData, AuthoritySignInfo>;
 
@@ -417,9 +648,25 @@ impl VerifiedSignedTransaction {
     }
 }
 
+/// # TransactionData
+///
+/// Contains the core data of a transaction, including its type and sender.
+///
+/// ## Purpose
+/// Encapsulates the essential information needed to define a transaction,
+/// separate from signatures and other metadata.
+///
+/// ## Lifecycle
+/// Created during transaction construction, signed by the sender,
+/// and eventually executed by the network.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct TransactionData {
+    /// The specific type of transaction
     pub kind: TransactionKind,
+    /// The address of the transaction sender
     pub sender: SomaAddress,
 }
 
@@ -489,6 +736,20 @@ impl TransactionData {
     }
 }
 
+/// # SenderSignedData
+///
+/// Contains transaction data signed by the sender.
+///
+/// ## Purpose
+/// Wraps the transaction data and signatures from the sender,
+/// providing a container for the core transaction information.
+///
+/// ## Lifecycle
+/// Created when a transaction is signed by the sender,
+/// and used throughout the transaction's lifecycle.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SenderSignedData(SizeOneVec<SenderSignedTransaction>);
 
@@ -558,8 +819,23 @@ impl<S> Envelope<SenderSignedData, S> {
     }
 }
 
+/// # SenderSignedTransaction
+///
+/// Represents a transaction that has been signed by the sender.
+///
+/// ## Purpose
+/// Combines the transaction data (wrapped in an intent message) with
+/// the signatures from all transaction participants.
+///
+/// ## Lifecycle
+/// Created when a transaction is signed by the sender,
+/// and used as the basis for further processing by authorities.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SenderSignedTransaction {
+    /// The transaction data wrapped in an intent message
     pub intent_message: IntentMessage<TransactionData>,
     /// A list of signatures signed by all transaction participants.
     /// 1. non participant signature must not be present.
@@ -636,6 +912,17 @@ impl SenderSignedTransaction {
     }
 }
 
+/// # CertifiedTransaction
+///
+/// A transaction that has been certified by a quorum of validators.
+///
+/// ## Purpose
+/// Represents a transaction that has received enough signatures from validators
+/// to form a certificate, making it ready for execution.
+///
+/// ## Lifecycle
+/// Created when a transaction receives signatures from a quorum of validators,
+/// and used as the basis for transaction execution.
 pub type CertifiedTransaction = Envelope<SenderSignedData, AuthorityStrongQuorumSignInfo>;
 
 impl CertifiedTransaction {
@@ -746,11 +1033,22 @@ pub fn verify_sender_signed_data_message_signatures(
     Ok(())
 }
 
-/// TransactionKey uniquely identifies a transaction across all epochs.
-/// Note that a single transaction may have multiple keys, for example a RandomnessStateUpdate
-/// could be identified by both `Digest` and `RandomnessRound`.
+/// # TransactionKey
+///
+/// Uniquely identifies a transaction across all epochs.
+///
+/// ## Purpose
+/// Provides a way to reference transactions uniquely throughout the system,
+/// enabling transaction lookup and tracking.
+///
+/// ## Variants
+/// - `Digest`: Identifies a transaction by its digest
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum TransactionKey {
+    /// Identifies a transaction by its digest
     Digest(TransactionDigest),
 }
 
@@ -763,10 +1061,23 @@ impl TransactionKey {
     }
 }
 
+/// # SharedInputObject
+///
+/// Represents a shared object that is used as input to a transaction.
+///
+/// ## Purpose
+/// Encapsulates the information needed to reference a shared object,
+/// including its ID, initial version, and mutability.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SharedInputObject {
+    /// The unique identifier of the shared object
     pub id: ObjectID,
+    /// The initial version when the object became shared
     pub initial_shared_version: Version,
+    /// Whether the transaction requires mutable access to the object
     pub mutable: bool,
 }
 
@@ -790,14 +1101,31 @@ impl SharedInputObject {
     }
 }
 
+/// # InputObjectKind
+///
+/// Represents the different kinds of objects that can be used as inputs to a transaction.
+///
+/// ## Purpose
+/// Distinguishes between different object access patterns in transactions,
+/// including immutable/owned objects and shared objects.
+///
+/// ## Variants
+/// - `ImmOrOwnedObject`: An immutable or owned object reference
+/// - `SharedObject`: A shared object that may be accessed by multiple transactions
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, PartialOrd, Ord, Hash)]
 pub enum InputObjectKind {
-    // A Move object, either immutable, or owned mutable.
+    /// A Move object, either immutable, or owned mutable
     ImmOrOwnedObject(ObjectRef),
-    // A Move object that's shared and mutable.
+    /// A Move object that's shared and mutable
     SharedObject {
+        /// The object's unique identifier
         id: ObjectID,
+        /// The initial version when the object became shared
         initial_shared_version: Version,
+        /// Whether the transaction requires mutable access to the object
         mutable: bool,
     },
 }
@@ -842,21 +1170,52 @@ impl InputObjectKind {
     }
 }
 
-/// The result of reading an object for execution. Because shared objects may be deleted, one
-/// possible result of reading a shared object is that ObjectReadResultKind::Deleted is returned.
+/// # ObjectReadResult
+///
+/// The result of reading an object for execution.
+///
+/// ## Purpose
+/// Encapsulates both the input object kind and the actual object data (or information
+/// about why the object couldn't be read), providing a complete view of an object
+/// for transaction execution.
+///
+/// ## Lifecycle
+/// Created during transaction input resolution, used during transaction execution,
+/// and helps determine how objects should be processed.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Clone, Debug)]
 pub struct ObjectReadResult {
+    /// The kind of input object (immutable/owned or shared)
     pub input_object_kind: InputObjectKind,
+    /// The actual object data or information about why it couldn't be read
     pub object: ObjectReadResultKind,
 }
 
+/// # ObjectReadResultKind
+///
+/// Represents the different possible results of reading an object.
+///
+/// ## Purpose
+/// Handles the various states an object might be in when a transaction attempts to read it,
+/// including normal objects, deleted shared objects, and objects in cancelled transactions.
+///
+/// ## Variants
+/// - `Object`: A normal object that exists and can be read
+/// - `DeletedSharedObject`: A shared object that has been deleted
+/// - `CancelledTransactionSharedObject`: A shared object in a cancelled transaction
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Clone)]
 pub enum ObjectReadResultKind {
+    /// A normal object that exists and can be read
     Object(Object),
-    // The version of the object that the transaction intended to read, and the digest of the tx
-    // that deleted it.
+    /// The version of the object that the transaction intended to read, and the digest of the tx
+    /// that deleted it
     DeletedSharedObject(Version, TransactionDigest),
-    // A shared object in a cancelled transaction. The sequence number embeds cancellation reason.
+    /// A shared object in a cancelled transaction. The sequence number embeds cancellation reason
     CancelledTransactionSharedObject(Version),
 }
 

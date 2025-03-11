@@ -1,0 +1,90 @@
+---
+description: Testing Standards
+globs: **/tests/**/*.rs
+---
+# Testing Standards
+
+Rules for implementing tests in the Soma blockchain.
+
+<rule>
+name: testing_standards
+description: Enforces testing patterns for the Soma blockchain
+filters:
+  - type: file_path
+    pattern: "tests/"
+  - type: file_path
+    pattern: "test_"
+  - type: file_path
+    pattern: "_test"
+
+actions:
+  - type: suggest
+    message: |
+      When implementing tests for Soma blockchain:
+
+      ## Unit Testing
+      - Test each function in isolation
+      - Mock external dependencies
+      - Test happy paths and error cases
+      - Use parameterized tests for edge cases
+
+      ## Async Testing
+      - Use `tokio::test` for async tests
+      - Test cancellation and timeout behaviors
+      - Mock time with `tokio::time::pause()`
+      - Test concurrent operations
+
+      ## Integration Testing
+      - Test component interactions
+      - Set up realistic test environments
+      - Verify end-to-end behavior
+      - Test with network conditions
+
+      ## Property-Based Testing
+      - Test invariants with randomized inputs
+      - Verify state consistency properties
+      - Test BFT properties under various conditions
+      - Use shrinking for minimal failure cases
+
+examples:
+  - input: |
+      #[test]
+      fn test_balance_transfer() {
+          let mut state = State::new();
+          let tx = Transaction::transfer(from, to, 100);
+          let result = execute_tx(&tx, &mut state);
+          assert!(result.is_ok());
+      }
+    output: |
+      #[tokio::test]
+      async fn test_balance_transfer() {
+          // Setup test state with proper initialization
+          let mut state = TestState::new()
+              .with_account(ALICE, 1000)
+              .with_account(BOB, 500)
+              .build();
+              
+          // Create properly formed transaction
+          let tx = Transaction::transfer()
+              .from(ALICE)
+              .to(BOB)
+              .amount(100)
+              .nonce(1)
+              .build_and_sign(&ALICE_KEY)?;
+              
+          // Process transaction
+          let result = process_transaction(&tx, &state).await?;
+          
+          // Verify state changes
+          assert_eq!(state.balance_of(ALICE)?, 900);
+          assert_eq!(state.balance_of(BOB)?, 600);
+          
+          // Verify events
+          assert_eq!(state.events().len(), 1);
+          assert_matches!(state.events()[0], Event::Transfer { .. });
+      }
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

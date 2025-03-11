@@ -1,3 +1,36 @@
+//! # Temporary Store Module
+//!
+//! ## Overview
+//! This module provides a temporary storage mechanism for transaction execution in the Soma blockchain.
+//! It manages the state of objects during transaction execution, tracking modifications, creations,
+//! and deletions before they are committed to permanent storage.
+//!
+//! ## Responsibilities
+//! - Maintain a temporary view of object state during transaction execution
+//! - Track object modifications, creations, and deletions
+//! - Generate transaction effects based on state changes
+//! - Enforce ownership and access control rules
+//! - Handle version management for objects
+//! - Support shared object access patterns
+//!
+//! ## Component Relationships
+//! - Used by the transaction executor to manage object state during execution
+//! - Provides input to the effects generator for creating transaction effects
+//! - Interfaces with the permanent storage layer for committing changes
+//! - Supports the object model defined in the object module
+//!
+//! ## Key Workflows
+//! 1. Object loading and access during transaction execution
+//! 2. Tracking object modifications and ownership changes
+//! 3. Generating transaction effects from execution results
+//! 4. Enforcing object ownership and access control rules
+//!
+//! ## Design Patterns
+//! - Temporary view pattern for isolated state changes
+//! - Version management for object consistency
+//! - Ownership tracking for access control
+//! - Effects generation from state changes
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
@@ -18,46 +51,103 @@ use crate::{
     tx_outputs::WrittenObjects,
 };
 
+/// # DeletedSharedObjectInfo
+///
 /// A type containing all of the information needed to work with a deleted shared object in
-/// execution and when committing the execution effects of the transaction. This holds:
-/// 0. The object ID of the deleted shared object.
-/// 1. The version of the shared object.
-/// 2. Whether the object appeared as mutable (or owned) in the transaction, or as a read-only shared object.
+/// execution and when committing the execution effects of the transaction.
+///
+/// ## Components
+/// 0. The object ID of the deleted shared object
+/// 1. The version of the shared object
+/// 2. Whether the object appeared as mutable (or owned) in the transaction, or as a read-only shared object
 /// 3. The transaction digest of the previous transaction that used this shared object mutably or
-///    took it by value.
+///    took it by value
 pub type DeletedSharedObjectInfo = (ObjectID, Version, bool, TransactionDigest);
 
+/// # DeletedSharedObjects
+///
 /// A sequence of information about deleted shared objects in the transaction's inputs.
+///
+/// ## Purpose
+/// Tracks all shared objects that were deleted during transaction execution,
+/// which is important for maintaining object history and preventing double-spending.
 pub type DeletedSharedObjects = Vec<DeletedSharedObjectInfo>;
 
+/// # SharedInput
+///
+/// Represents different types of shared object inputs to a transaction.
+///
+/// ## Purpose
+/// Tracks the state and access pattern of shared objects used in a transaction,
+/// which is essential for proper sequencing and conflict detection.
+///
+/// ## Variants
+/// - Existing: A shared object that exists and is being accessed
+/// - Deleted: A shared object that has been deleted
+/// - Cancelled: A shared object in a cancelled transaction
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SharedInput {
+    /// A shared object that exists in storage
     Existing(ObjectRef),
+
+    /// A shared object that has been deleted
     Deleted(DeletedSharedObjectInfo),
+
+    /// A shared object in a cancelled transaction
     Cancelled((ObjectID, Version)),
 }
 
-/// The results represent the primitive information that can then be used to construct
-/// transaction effects.
+/// # ExecutionResults
+///
+/// The primitive information that can be used to construct transaction effects.
+///
+/// ## Purpose
+/// Collects all object changes that occurred during transaction execution,
+/// providing the foundation for generating transaction effects.
+///
+/// ## Thread Safety
+/// This structure is not thread-safe and should only be accessed from a single thread
+/// during transaction execution.
 #[derive(Debug, Default)]
 pub struct ExecutionResults {
-    /// All objects written regardless of whether they were mutated, created, or unwrapped.
+    /// All objects written regardless of whether they were mutated, created, or unwrapped
     pub written_objects: BTreeMap<ObjectID, Object>,
-    /// All objects that existed prior to this transaction, and are modified in this transaction.
-    /// This includes any type of modification, including mutated, wrapped and deleted objects.
+
+    /// All objects that existed prior to this transaction, and are modified in this transaction
+    /// This includes any type of modification, including mutated, wrapped and deleted objects
     pub modified_objects: BTreeSet<ObjectID>,
-    /// All object IDs created in this transaction.
+
+    /// All object IDs created in this transaction
     pub created_object_ids: BTreeSet<ObjectID>,
-    /// All object IDs deleted in this transaction.
-    /// No object ID should be in both created_object_ids and deleted_object_ids.
+
+    /// All object IDs deleted in this transaction
+    /// No object ID should be in both created_object_ids and deleted_object_ids
     pub deleted_object_ids: BTreeSet<ObjectID>,
 }
 
+/// # DynamicallyLoadedObjectMetadata
+///
+/// Metadata for objects that are dynamically loaded during transaction execution.
+///
+/// ## Purpose
+/// Tracks essential information about objects that are loaded during execution
+/// but were not part of the initial transaction inputs.
+///
+/// ## Usage
+/// Used to maintain consistency and track dependencies for objects that are
+/// accessed dynamically during transaction execution.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct DynamicallyLoadedObjectMetadata {
+    /// The version of the dynamically loaded object
     pub version: Version,
+
+    /// The digest of the dynamically loaded object
     pub digest: ObjectDigest,
+
+    /// The owner of the dynamically loaded object
     pub owner: Owner,
+
+    /// The transaction that last modified this object
     pub previous_transaction: TransactionDigest,
 }
 
@@ -109,21 +199,51 @@ impl ExecutionResults {
     }
 }
 
+/// # TemporaryStore
+///
+/// A temporary storage mechanism for transaction execution that tracks object state changes.
+///
+/// ## Purpose
+/// Provides a temporary view of object state during transaction execution,
+/// tracking all modifications, creations, and deletions before they are
+/// committed to permanent storage.
+///
+/// ## Lifecycle
+/// 1. Created at the start of transaction execution with input objects
+/// 2. Modified during execution as objects are created, modified, or deleted
+/// 3. Used to generate transaction effects after execution completes
+/// 4. Converted to InnerTemporaryStore for effects processing
+///
+/// ## Thread Safety
+/// This structure is not thread-safe and should only be accessed from a single thread
+/// during transaction execution.
 pub struct TemporaryStore {
+    /// The digest of the transaction being executed
     tx_digest: TransactionDigest,
+
+    /// Objects that were inputs to the transaction
     pub input_objects: BTreeMap<ObjectID, Object>,
-    /// The version to assign to all objects written by the transaction using this store.
+
+    /// The version to assign to all objects written by the transaction using this store
     pub lamport_timestamp: Version,
+
+    /// Results of execution, including all object changes
     pub execution_results: ExecutionResults,
-    /// Objects that were loaded during execution
+
+    /// Objects that were loaded during execution but were not inputs
     loaded_runtime_objects: BTreeMap<ObjectID, DynamicallyLoadedObjectMetadata>,
-    pub mutable_input_refs: BTreeMap<ObjectID, (VersionDigest, Owner)>, // Inputs that are mutable
-    /// The set of objects that we may receive during execution. Not guaranteed to receive all, or
-    /// any of the objects referenced in this set.
+
+    /// Inputs that are mutable, with their original version, digest, and owner
+    pub mutable_input_refs: BTreeMap<ObjectID, (VersionDigest, Owner)>,
+
+    /// The set of objects that we may receive during execution
+    /// Not guaranteed to receive all, or any of the objects referenced in this set
     receiving_objects: Vec<ObjectRef>,
+
+    /// Consensus objects that were deleted in previous transactions
     deleted_consensus_objects: BTreeMap<ObjectID, Version /* start_version */>,
-    // TODO: Now that we track epoch here, there are a few places we don't need to pass it around.
-    /// The current epoch.
+
+    /// The current epoch
     cur_epoch: EpochId,
 }
 
@@ -459,9 +579,20 @@ impl TemporaryStore {
     }
 }
 
-/// A structure to hold the data extracted from TemporaryStore
-/// This is returned from execute_transaction and contains all the
-/// information needed for effects processing
+/// # InnerTemporaryStore
+///
+/// A structure to hold the data extracted from TemporaryStore for effects processing.
+///
+/// ## Purpose
+/// Contains all the information needed for effects processing after transaction execution,
+/// in a more compact form than the full TemporaryStore.
+///
+/// ## Usage
+/// This is returned from execute_transaction and used during effects processing
+/// to generate and commit transaction effects.
+///
+/// ## Thread Safety
+/// This structure is immutable after creation and can be safely shared across threads.
 pub struct InnerTemporaryStore {
     /// Objects that were in the input to the transaction
     pub input_objects: BTreeMap<ObjectID, Object>,

@@ -1,0 +1,43 @@
+# Soma Blockchain Development Rules
+
+## Project Context
+Soma is a Rust-based blockchain node software that provides a Byzantine Fault Tolerant consensus mechanism with validator-based authority. The system processes transactions and maintains state across a distributed network, with clear epoch boundaries for reconfiguration.
+
+## Tool Synchronization Protocol
+This .clinerules file works in conjunction with:
+- The memory-bank hierarchy (core/, knowledge/, modules/ folders) as shown in memory-bank/index.md
+- The .cursorrules file for Cursor guidance
+- The .cursor/rules/*.mdc files for module-specific guidance in Cursor
+
+When working with Cline, always:
+1. Begin by reviewing the memory-bank for latest project context
+2. Document confidence ratings (1-10) for all significant work
+3. Update memory-bank files with implementation details, patterns, and progress
+
+### Documentation Synchronization Protocol
+To ensure consistency across documentation:
+
+1. **Progress.md and ActiveContext.md Alignment**:
+   - The "Now" section in progress.md must align with the "Current Development Focus" in activeContext.md
+   - When updating one document, always check and update the other to maintain consistency
+   - The activeContext.md provides more technical detail around the current focus, while progress.md tracks milestones
+   - Both documents should reflect the same immediate priorities
+
+2. **Confidence Rating Consistency**:
+   - When updating confidence ratings in one document, evaluate if other related documents need rating updates
+   - Document the reasoning behind confidence rating changes
+
+3. **Update Cycle**:
+   - Update both documents when:
+     - Completing a significant development milestone
+     - Shifting focus to a new development area
+     - Incorporating new architectural components
+     - Resolving major challenges or blockers
+   - Update .clinerules and .cursorrules as necessary changes arise
+
+4. **Change Propagation**:
+   - When updating the "Now" section in progress.md, update the "Current Development Focus" in activeContext.md
+   - When adding technical details to activeContext.md, ensure they align with the milestone tracking in progress.md
+
+Before running "cargo test" make sure to prepand " RUSTFLAGS="--cfg msim" " to the front to 
+ensure the tests are run in the correct environment. This is important for the test suite to work correctly.

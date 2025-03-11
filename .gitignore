@@ -25,3 +25,7 @@ Cargo.lock
 /target
 
 e2e-tests/test.log
+
+**/.obsidian
+
+e2e-tests/logs/*

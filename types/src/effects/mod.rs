@@ -1,3 +1,33 @@
+//! # Transaction Effects Module
+//!
+//! ## Overview
+//! This module defines the structures and types that represent the effects and outcomes of
+//! transaction execution in the Soma blockchain. It captures all state changes resulting from
+//! transaction processing, including object creation, modification, and deletion.
+//!
+//! ## Responsibilities
+//! - Define the structure of transaction effects and their serialization format
+//! - Track object state changes (created, modified, deleted objects)
+//! - Represent execution status (success or failure with reason)
+//! - Manage shared object access patterns and versioning
+//! - Support verification of transaction effects through authority signatures
+//!
+//! ## Component Relationships
+//! - Used by the Authority module to record and communicate transaction outcomes
+//! - Consumed by clients to understand transaction results
+//! - Utilized by the consensus module to track dependencies between transactions
+//! - Provides input to the storage layer for state updates
+//!
+//! ## Key Workflows
+//! 1. Transaction execution produces TransactionEffects detailing all state changes
+//! 2. Effects are signed by authorities and aggregated into certificates
+//! 3. Certified effects are used to update the global state and notify clients
+//!
+//! ## Design Patterns
+//! - Envelope pattern: Effects are wrapped in envelopes with different signature types
+//! - Immutable data structures: All effect types are immutable once created
+//! - Verification chain: Effects can be verified against committee signatures
+
 use std::collections::{BTreeMap, HashSet};
 
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
@@ -21,25 +51,52 @@ use crate::{
 
 pub mod object_change;
 
-/// The response from processing a transaction or a certified transaction
+/// # TransactionEffects
+///
+/// The response from processing a transaction or a certified transaction. This structure
+/// contains all information about the outcome of transaction execution, including execution
+/// status, object changes, and dependencies.
+///
+/// ## Purpose
+/// TransactionEffects serves as the authoritative record of all state changes resulting from
+/// a transaction. It captures the complete set of objects created, modified, or deleted,
+/// as well as the transaction's execution status and dependencies.
+///
+/// ## Lifecycle
+/// 1. Created by the transaction executor after processing a transaction
+/// 2. Signed by authorities to create SignedTransactionEffects
+/// 3. Aggregated into CertifiedTransactionEffects when enough signatures are collected
+/// 4. Used to update the global state and notify clients of transaction outcome
+///
+/// ## Thread Safety
+/// This structure is immutable after creation and can be safely shared across threads.
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct TransactionEffects {
-    /// The status of the execution
+    /// The status of the execution (success or failure with reason)
     status: ExecutionStatus,
-    /// The epoch when this transaction was executed.
+
+    /// The epoch when this transaction was executed
     executed_epoch: EpochId,
-    /// The transaction digest
+
+    /// The transaction digest that uniquely identifies the transaction
     transaction_digest: TransactionDigest,
-    /// The set of transaction digests this transaction depends on.
+
+    /// The set of transaction digests this transaction depends on
+    /// These are transactions that must be executed before this one
     dependencies: Vec<TransactionDigest>,
-    /// Shared objects that are not mutated in this transaction. Unlike owned objects,
-    /// read-only shared objects' version are not committed in the transaction,
+
+    /// Shared objects that are not mutated in this transaction
+    /// Unlike owned objects, read-only shared objects' versions are not committed in the transaction,
     /// and in order for a node to catch up and execute it without consensus sequencing,
     /// the version needs to be committed in the effects.
     unchanged_shared_objects: Vec<(ObjectID, UnchangedSharedKind)>,
-    /// Objects whose state are changed in the object store.
+
+    /// Objects whose state are changed in the object store
+    /// This includes created, modified, and deleted objects
     changed_objects: Vec<(ObjectID, EffectsObjectChange)>,
-    /// The version number of all the written objects by this transaction.
+
+    /// The version number assigned to all written objects by this transaction
+    /// All objects modified by a transaction receive the same version number
     pub(crate) version: Version,
 }
 
@@ -487,12 +544,21 @@ impl CertifiedTransactionEffects {
     }
 }
 
+/// # ExecutionStatus
+///
+/// Represents the outcome of transaction execution - either success or failure with error details.
+///
+/// ## Purpose
+/// Provides a clear indication of whether a transaction executed successfully or failed,
+/// and if it failed, the specific reason for the failure.
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ExecutionStatus {
+    /// Transaction executed successfully
     Success,
-    /// Gas used in the failed case, and the error.
+
+    /// Transaction execution failed
     Failure {
-        /// The error
+        /// The specific error that caused the failure
         error: ExecutionFailureStatus,
     },
 }
@@ -529,45 +595,78 @@ impl ExecutionStatus {
     }
 }
 
+/// # ExecutionFailureStatus
+///
+/// Detailed error types that can occur during transaction execution.
+///
+/// ## Purpose
+/// Provides specific error information when a transaction fails, allowing clients
+/// to understand exactly why their transaction was not executed successfully.
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Error)]
 pub enum ExecutionFailureStatus {
     //
     // General transaction errors
     //
+    /// Transaction ran out of gas before completion
     #[error("Insufficient Gas.")]
     InsufficientGas,
 
     //
     // Coin errors
     //
+    /// Account doesn't have enough coins to complete the operation
     #[error("Insufficient coin balance for operation.")]
     InsufficientCoinBalance,
+
+    /// The operation would cause a coin balance to exceed the maximum value
     #[error("The coin balance overflows u64")]
     CoinBalanceOverflow,
 
     //
     // Post-execution errors
     //
-    // Indicates the effects from the transaction are too large
+    /// The effects produced by the transaction exceed the maximum allowed size
     #[error(
         "Effects of size {current_size} bytes too large. \
     Limit is {max_size} bytes"
     )]
     EffectsTooLarge { current_size: u64, max_size: u64 },
 
+    /// Transaction was cancelled due to randomness generation failure
     #[error("Certificate is cancelled because randomness could not be generated this epoch")]
     ExecutionCancelledDueToRandomnessUnavailable,
 
+    /// Generic Soma error that wraps other error types
     #[error("Soma Error {0}")]
     SomaError(SomaError),
 }
 
+/// # InputSharedObject
+///
+/// Represents different ways a shared object can be accessed as input to a transaction.
+///
+/// ## Purpose
+/// Tracks how shared objects are used in transactions, distinguishing between read-only
+/// and mutable access, as well as handling special cases like deleted objects.
+///
+/// ## Usage
+/// Used to properly sequence transactions that access the same shared objects and
+/// to ensure correct handling of shared object versions.
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum InputSharedObject {
+    /// A shared object that is mutated by the transaction
     Mutate(ObjectRef),
+
+    /// A shared object that is only read by the transaction
     ReadOnly(ObjectRef),
+
+    /// A deleted shared object that is read by the transaction
     ReadDeleted(ObjectID, Version),
+
+    /// A deleted shared object that appears as mutable in the transaction
     MutateDeleted(ObjectID, Version),
+
+    /// A shared object in a cancelled transaction
     Cancelled(ObjectID, Version),
 }
 
@@ -591,17 +690,33 @@ impl InputSharedObject {
     }
 }
 
+/// # UnchangedSharedKind
+///
+/// Represents different types of shared objects that are not modified by a transaction.
+///
+/// ## Purpose
+/// Tracks shared objects that are accessed but not changed by a transaction,
+/// including special cases like deleted objects and cancelled transactions.
+///
+/// ## Usage
+/// Used to properly track shared object access patterns and ensure correct
+/// sequencing of transactions that access the same shared objects.
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum UnchangedSharedKind {
-    /// Read-only shared objects from the input. We don't really need ObjectDigest
-    /// for protocol correctness, but it will make it easier to verify untrusted read.
+    /// Read-only shared objects from the input
+    /// We don't really need ObjectDigest for protocol correctness,
+    /// but it makes it easier to verify untrusted reads
     ReadOnlyRoot(VersionDigest),
-    /// Deleted shared objects that appear mutably/owned in the input.
+
+    /// Deleted shared objects that appear mutably/owned in the input
     MutateDeleted(Version),
-    /// Deleted shared objects that appear as read-only in the input.
+
+    /// Deleted shared objects that appear as read-only in the input
     ReadDeleted(Version),
-    /// Shared objects in cancelled transaction. The sequence number embed cancellation reason.
+
+    /// Shared objects in cancelled transaction
+    /// The sequence number embeds cancellation reason
     Cancelled(Version),
-    // /// Read of a per-epoch config object that should remain the same during an epoch.
+    // /// Read of a per-epoch config object that should remain the same during an epoch
     // PerEpochConfig,
 }

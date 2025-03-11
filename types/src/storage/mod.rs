@@ -1,3 +1,35 @@
+//! # Storage Module
+//!
+//! ## Overview
+//! This module defines the core storage abstractions and types used throughout the Soma blockchain.
+//! It provides interfaces and data structures for storing and retrieving blockchain objects,
+//! transactions, and other state information.
+//!
+//! ## Responsibilities
+//! - Define storage interfaces for different types of blockchain data
+//! - Provide key types and structures for object storage and retrieval
+//! - Support different storage access patterns (read, write, versioned)
+//! - Handle object lifecycle states (active, deleted, wrapped)
+//! - Manage consensus object storage and versioning
+//!
+//! ## Component Relationships
+//! - Used by the Authority module to persist and retrieve blockchain state
+//! - Provides storage abstractions for transaction processing
+//! - Interfaces with the underlying database implementation
+//! - Supports the object model defined in the object module
+//!
+//! ## Key Workflows
+//! 1. Object storage and retrieval with versioning
+//! 2. Transaction input and output object management
+//! 3. Consensus object handling with special sequencing requirements
+//! 4. Object tombstone management for deleted objects
+//!
+//! ## Design Patterns
+//! - Trait-based interfaces for storage operations
+//! - Type-safe key structures for database access
+//! - Enum-based state representation for object lifecycle
+//! - Separation of read and write operations
+
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -16,9 +48,21 @@ pub mod read_store;
 pub mod storage_error;
 pub mod write_store;
 
-/// A potential input to a transaction.
+/// # InputKey
+///
+/// Represents a key for looking up potential inputs to a transaction.
+///
+/// ## Purpose
+/// Provides a standardized way to reference objects that may be used as inputs
+/// to transactions, with versioning information to ensure the correct object
+/// version is used.
+///
+/// ## Usage
+/// Used during transaction validation and execution to look up and verify
+/// the existence and state of input objects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum InputKey {
+    /// A versioned object reference, including both the object ID and its version
     VersionedObject { id: FullObjectID, version: Version },
 }
 
@@ -51,30 +95,68 @@ impl From<&Object> for InputKey {
     }
 }
 
+/// # WriteKind
+///
+/// Indicates how an object was written to storage during a transaction.
+///
+/// ## Purpose
+/// Tracks the origin and modification type of objects written to storage,
+/// which is important for correctly processing transaction effects and
+/// maintaining object history.
+///
+/// ## Usage
+/// Used in transaction effects to indicate how objects were modified,
+/// which affects how they are processed by the storage layer.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum WriteKind {
     /// The object was in storage already but has been modified
     Mutate,
+
     /// The object was created in this transaction
     Create,
+
     /// The object was previously wrapped in another object, but has been restored to storage
     Unwrap,
 }
 
+/// # MarkerValue
+///
+/// Represents different states that can be marked for an object in storage.
+///
+/// ## Purpose
+/// Tracks special states of objects that affect their availability for future
+/// transactions, such as being received, deleted, or consumed.
+///
+/// ## Usage
+/// Used by the storage layer to maintain object state and prevent double-spending
+/// or use of deleted objects.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum MarkerValue {
     /// An object was received at the given version in the transaction and is no longer able
-    /// to be received at that version in subequent transactions.
+    /// to be received at that version in subsequent transactions
     Received,
-    /// An owned object was deleted  at the given version, and is no longer able to be
-    /// accessed or used in subsequent transactions.
+
+    /// An owned object was deleted at the given version, and is no longer able to be
+    /// accessed or used in subsequent transactions
     OwnedDeleted,
+
     /// A shared object was deleted by the transaction and is no longer able to be accessed or
-    /// used in subsequent transactions.
+    /// used in subsequent transactions
+    /// Includes the digest of the transaction that deleted it
     SharedDeleted(TransactionDigest),
 }
 
-// The primary key type for object storage.
+/// # ObjectKey
+///
+/// The primary key type for object storage, combining an object ID and version.
+///
+/// ## Purpose
+/// Provides a unique identifier for objects in storage that includes both the
+/// object ID and its version, allowing for versioned storage and retrieval.
+///
+/// ## Usage
+/// Used as the primary key in object storage tables and for referencing
+/// specific versions of objects throughout the system.
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct ObjectKey(pub ObjectID, pub Version);
@@ -103,9 +185,24 @@ impl From<&ObjectRef> for ObjectKey {
     }
 }
 
+/// # ObjectOrTombstone
+///
+/// Represents either a full object or a tombstone reference for a deleted object.
+///
+/// ## Purpose
+/// Allows the storage system to handle both active objects and references to
+/// deleted objects (tombstones) in a unified way, which is important for
+/// maintaining object history and preventing object resurrection.
+///
+/// ## Usage
+/// Used when retrieving objects from storage, where the result might be
+/// either a full object or just a reference to a deleted object.
 #[derive(Clone)]
 pub enum ObjectOrTombstone {
+    /// A complete object with all its data
     Object(Object),
+
+    /// A reference to a deleted object (tombstone)
     Tombstone(ObjectRef),
 }
 
@@ -124,17 +221,43 @@ impl From<Object> for ObjectOrTombstone {
     }
 }
 
+/// # ConsensusObjectKey
+///
+/// A key type for consensus objects that includes sequence information.
+///
+/// ## Purpose
+/// Provides a unique identifier for consensus objects that includes both
+/// the sequence key and version, allowing for proper ordering and retrieval.
+///
+/// ## Usage
+/// Used for storing and retrieving consensus objects that require special
+/// sequencing and versioning.
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct ConsensusObjectKey(pub ConsensusObjectSequenceKey, pub Version);
 
-/// FullObjectKey represents a unique object a specific version. For fastpath objects, this
-/// is the same as ObjectKey. For consensus objects, this includes the start version, which
-/// may change if an object is transferred out of and back into consensus.
+/// # FullObjectKey
+///
+/// Represents a unique object at a specific version, handling both fastpath and consensus objects.
+///
+/// ## Purpose
+/// Provides a unified key type that can reference both regular (fastpath) objects
+/// and consensus objects, which have different storage requirements and versioning.
+///
+/// ## Usage
+/// Used as a comprehensive key type for object storage and retrieval that can
+/// handle all object types in the system.
+///
+/// ## Variants
+/// - Fastpath: Regular objects with simple ID and version
+/// - Consensus: Consensus objects that include sequence information
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum FullObjectKey {
+    /// Regular object key with ID and version
     Fastpath(ObjectKey),
+
+    /// Consensus object key with sequence information and version
     Consensus(ConsensusObjectKey),
 }
 
@@ -207,8 +330,23 @@ impl From<&FullObjectRef> for FullObjectKey {
     }
 }
 
-/// Fetch the `ObjectKey`s (IDs and versions) for non-shared input objects.  Includes owned,
-/// and immutable objects as well as the gas objects, but not move packages or shared objects.
+/// # transaction_non_shared_input_object_keys
+///
+/// Fetches the ObjectKeys for non-shared input objects in a transaction.
+///
+/// ## Purpose
+/// Extracts keys for owned and immutable objects used as inputs in a transaction,
+/// which is useful for transaction validation and execution.
+///
+/// ## Arguments
+/// * `tx` - The sender-signed transaction data to extract input object keys from
+///
+/// ## Returns
+/// A Result containing a vector of ObjectKeys for non-shared input objects
+///
+/// ## Behavior
+/// Includes owned and immutable objects as well as gas objects, but excludes
+/// move packages and shared objects.
 pub fn transaction_non_shared_input_object_keys(
     tx: &SenderSignedData,
 ) -> SomaResult<Vec<ObjectKey>> {
@@ -225,6 +363,23 @@ pub fn transaction_non_shared_input_object_keys(
         .collect())
 }
 
+/// # transaction_receiving_object_keys
+///
+/// Extracts the ObjectKeys for objects being received in a transaction.
+///
+/// ## Purpose
+/// Identifies objects that are being received by the transaction, which is
+/// important for tracking object transfers and preventing double-spending.
+///
+/// ## Arguments
+/// * `tx` - The sender-signed transaction data to extract receiving object keys from
+///
+/// ## Returns
+/// A vector of ObjectKeys for objects being received in the transaction
+///
+/// ## Usage
+/// Used during transaction processing to mark objects as received and
+/// prevent them from being received again in other transactions.
 pub fn transaction_receiving_object_keys(tx: &SenderSignedData) -> Vec<ObjectKey> {
     tx.intent_message()
         .value
