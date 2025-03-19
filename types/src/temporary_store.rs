@@ -152,13 +152,26 @@ pub struct DynamicallyLoadedObjectMetadata {
 }
 
 impl ExecutionResults {
+    /// Update version and previous transaction for all written objects.
+    /// 
+    /// IMPORTANT: This method must be called for ALL execution paths
+    /// to ensure consistent object state across validators and fullnodes.
+    /// The previous_transaction field is critical for maintaining the state hash.
     pub fn update_version_and_previous_tx(
         &mut self,
         lamport_version: Version,
         prev_tx: TransactionDigest,
         input_objects: &BTreeMap<ObjectID, Object>,
     ) {
+        info!(
+            lamport_version = ?lamport_version,
+            prev_tx = ?prev_tx,
+            "Updating versions and previous_tx for {} objects", 
+            self.written_objects.len()
+        );
+
         for (id, obj) in self.written_objects.iter_mut() {
+            let old_previous_tx = obj.previous_transaction;
             // Update the version for the written object.
             obj.data.increment_version_to(lamport_version);
 
@@ -193,6 +206,13 @@ impl ExecutionResults {
                     *initial_shared_version = *previous_initial_shared_version;
                 }
             }
+
+            info!(
+                object_id = ?id,
+                old_previous_tx = ?old_previous_tx,
+                new_previous_tx = ?prev_tx,
+                "Setting previous_transaction on object"
+            );
 
             obj.previous_transaction = prev_tx;
         }

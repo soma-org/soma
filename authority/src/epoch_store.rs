@@ -1791,19 +1791,23 @@ impl AuthorityPerEpochStore {
                         .cloned()
                         .unwrap_or_else(|| system_state_obj.version().next());
                     
-                    // Create a copy with the target version
-                    let mut final_system_state = system_state_obj.clone();
-                    
-                    // Set version directly - bypassing increment
-                    final_system_state.data.set_version_to(target_version);
-                    
-                    // Add to results
-                    let id = final_system_state.id();
-                    let input_version = system_state_obj.version();
-                    let input_digest = system_state_obj.digest();
-                    
-                    // Add to written objects
-                    written_objects.insert(id, final_system_state.clone());
+            // Create a copy with the target version
+            let mut final_system_state = system_state_obj.clone();
+            
+            // Set version directly - bypassing increment
+            final_system_state.data.set_version_to(target_version);
+            
+            // CRITICAL FIX: Update the previous_transaction field
+            // This ensures the same behavior as update_object_version_and_prev_tx()
+            final_system_state.previous_transaction = tx_digest;
+            
+            // Add to results
+            let id = final_system_state.id();
+            let input_version = system_state_obj.version();
+            let input_digest = system_state_obj.digest();
+            
+            // Add to written objects
+            written_objects.insert(id, final_system_state.clone());
                     
                     // Add to input objects
                     input_objects_map.insert(id, system_state_obj.clone());
@@ -1873,7 +1877,7 @@ impl AuthorityPerEpochStore {
             );
             
             // For consensus commit, we don't process any state changes, just return success
-            temporary_store.update_object_version_and_prev_tx();
+            // temporary_store.update_object_version_and_prev_tx();
             
             let (inner, effects) = temporary_store.into_effects(
                 shared_object_refs,
