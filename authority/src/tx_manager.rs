@@ -427,6 +427,7 @@ impl TransactionManager {
                     .value
                     .input_objects()
                     .expect("input_objects() cannot fail");
+                info!("Checking for input object kinds: {:?}", input_object_kinds);
                 let mut input_object_keys =
                     match epoch_store.get_input_object_keys(&cert.key(), &input_object_kinds) {
                         Ok(keys) => keys,

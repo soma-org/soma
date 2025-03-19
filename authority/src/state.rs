@@ -830,6 +830,12 @@ impl AuthorityState {
         //         error!(?tx_digest, "tx post processing failed: {e}");
         //     });
 
+        info!(
+            tx_digest=?tx_digest,
+            "About to commit certificate for transaction. Inputs: {:?}",
+            inner_temporary_store.input_objects
+        );
+
         // The insertion to epoch_store is not atomic with the insertion to the perpetual store. This is OK because
         // we insert to the epoch store first. And during lookups we always look up in the perpetual store first.
         epoch_store.insert_tx_key_and_effects_signature(
@@ -1390,7 +1396,16 @@ impl AuthorityState {
             .get_executed_effects(transaction_digest)?;
         match effects {
             Some(effects) => Ok(Some(self.sign_effects(effects, epoch_store)?)),
-            None => Ok(None),
+            None => {
+                if let Err(e) = self.get_transaction_cache_reader().get_transaction_block(transaction_digest) {
+                    error!(
+                        tx_digest=?transaction_digest,
+                        "Failed to get transaction when attempting to sign effects: {:?}",
+                        e
+                    );
+                }
+                Ok(None)
+            },
         }
     }
 

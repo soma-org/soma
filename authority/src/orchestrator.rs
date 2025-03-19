@@ -126,7 +126,7 @@ where
                 transaction,
                 response.effects_cert.executed_epoch(),
             );
-            Self::execute_finalized_tx_locally_with_timeout(
+            Self::wait_for_finalized_tx_executed_locally_with_timeout(
                 &self.validator_state,
                 &epoch_store,
                 &executable_tx,
@@ -229,35 +229,28 @@ where
         })
     }
 
-    #[instrument(name = "tx_orchestrator_execute_finalized_tx_locally_with_timeout", level = "debug", skip_all, fields(tx_digest = ?transaction.digest()), err)]
-    async fn execute_finalized_tx_locally_with_timeout(
+    #[instrument(name = "tx_orchestrator_wait_for_finalized_tx_executed_locally_with_timeout", level = "debug", skip_all, fields(tx_digest = ?transaction.digest()), err)]
+    async fn wait_for_finalized_tx_executed_locally_with_timeout(
         validator_state: &Arc<AuthorityState>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
         transaction: &VerifiedExecutableTransaction,
         effects_cert: &VerifiedCertifiedTransactionEffects,
     ) -> SomaResult {
-        // TODO: attempt a finalized tx at most once per request.
-        // Every WaitForLocalExecution request will be attempted to execute twice,
-        // one from the subscriber queue, one from the proactive execution before
-        // returning results to clients. This is not insanely bad because:
-        // 1. it's possible that one attempt finishes before the other, so there's
-        //      zero extra work except DB checks
-        // 2. an up-to-date fullnode should have minimal overhead to sync parents
-        //      (for one extra time)
-        // 3. at the end of day, the tx will be executed at most once per lock guard.
         let tx_digest = transaction.digest();
         if validator_state.is_tx_already_executed(tx_digest)? {
             return Ok(());
         }
 
-        debug!(?tx_digest, "Executing finalized tx locally.");
+        debug!(
+            ?tx_digest,
+            "Waiting for finalized tx to be executed locally."
+        );
+        
         match timeout(
             LOCAL_EXECUTION_TIMEOUT,
-            validator_state.fullnode_execute_certificate_with_effects(
-                transaction,
-                effects_cert,
-                epoch_store,
-            ),
+            validator_state
+                .get_transaction_cache_reader()
+                .notify_read_executed_effects_digests(&[*tx_digest]),
         )
         .instrument(error_span!(
             "transaction_orchestrator::local_execution",
@@ -268,26 +261,21 @@ where
             Err(_elapsed) => {
                 debug!(
                     ?tx_digest,
-                    "Executing tx locally by orchestrator timed out within {:?}.",
+                    "Waiting for finalized tx to be executed locally timed out within {:?}.",
                     LOCAL_EXECUTION_TIMEOUT
                 );
 
                 Err(SomaError::TimeoutError)
             }
-            Ok(Err(err)) => {
+            Ok(_) => {
                 debug!(
                     ?tx_digest,
-                    "Executing tx locally by orchestrator failed with error: {:?}", err
+                    "Successfully confirmed tx executed locally."
                 );
-
-                Err(SomaError::TransactionOrchestratorLocalExecutionError {
-                    error: err.to_string(),
-                })
+                Ok(())
             }
-            Ok(Ok(_)) => Ok(()),
         }
     }
-
     async fn loop_execute_finalized_tx_locally(
         validator_state: Arc<AuthorityState>,
         mut effects_receiver: Receiver<QuorumDriverEffectsQueueResult>,
@@ -319,7 +307,7 @@ where
                         effects_cert.executed_epoch(),
                     );
 
-                    let _ = Self::execute_finalized_tx_locally_with_timeout(
+                    let _ = Self::wait_for_finalized_tx_executed_locally_with_timeout(
                         &validator_state,
                         &epoch_store,
                         &executable_tx,

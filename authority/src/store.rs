@@ -437,6 +437,7 @@ impl AuthorityStore {
         &self,
         transactions: &[(TransactionDigest, VerifiedTransaction)],
     ) -> SomaResult {
+        info!(?transactions, "commit_transactions");
         for (digest, transaction) in transactions {
             self.perpetual_tables
                 .transactions

@@ -41,3 +41,6 @@ To ensure consistency across documentation:
 
 Before running "cargo test" make sure to prepand " RUSTFLAGS="--cfg msim" " to the front to 
 ensure the tests are run in the correct environment. This is important for the test suite to work correctly.
+
+Do NOT read a .log file directly, rather use grep to search for the relevant information from the log file.
+This will ensure that you are not overwhelmed with the amount of information in the log file.

@@ -175,9 +175,11 @@ impl ConsensusOutputCache {
         &self,
         key: &TransactionKey,
     ) -> Option<Vec<(ConsensusObjectSequenceKey, Version)>> {
-        self.shared_version_assignments
+        let output = self.shared_version_assignments
             .get(key)
-            .map(|locks| locks.clone())
+            .map(|locks| locks.clone());
+        info!("get_assigned_shared_object_versions: {:?} -> {:?}", key, output);
+        output
     }
 
     pub fn insert_shared_object_assignments(&self, versions: &AssignedTxAndVersions) {

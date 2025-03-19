@@ -583,6 +583,12 @@ impl WritebackCache {
         self.executed_effects_digests_notify_read
             .notify(&tx_digest, &effects_digest);
 
+        // After successful write
+        info!(
+            tx_digest=?transaction.digest(),
+            "Successfully completed transaction output write"
+        );
+
         Ok(())
     }
 
@@ -655,6 +661,7 @@ impl WritebackCache {
 
         // Update cache before removing from self.dirty to avoid
         // unnecessary cache misses
+        info!("Inserting transaction data for tx digest: {}", tx_digest);
         self.cached
             .transactions
             .insert(tx_digest, transaction.clone());
@@ -708,6 +715,10 @@ impl WritebackCache {
     }
 
     async fn persist_transactions(&self, digests: &[TransactionDigest]) -> SomaResult {
+        info!(
+            "Persisting transactions: {:?}",
+            digests.iter().map(|d| d.to_string()).collect::<Vec<_>>()
+        );
         let mut txns = Vec::with_capacity(digests.len());
         for tx_digest in digests {
             let Some(tx) = self
@@ -876,8 +887,11 @@ impl TransactionCacheRead for WritebackCache {
                 // }
 
                 if let Some(tx) = self.cached.transactions.get(digest) {
+                    info!("Cache hit for tx: {}", digest);
                     return Ok(CacheResult::Hit(Some(tx.clone())));
                 }
+
+                info!("Cache miss for tx: {}", digest);
 
                 Ok(CacheResult::Miss)
             },

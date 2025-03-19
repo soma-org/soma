@@ -1983,7 +1983,7 @@ impl AuthorityPerEpochStore {
             }
             
             // Update versions before generating effects
-            temporary_store.update_object_version_and_prev_tx();
+            // temporary_store.update_object_version_and_prev_tx();
             
             // Generate final effects
             let (inner, effects) = temporary_store.into_effects(
@@ -2394,20 +2394,36 @@ impl AuthorityPerEpochStore {
         cache_reader: &dyn ObjectCacheRead,
         certificates: &[VerifiedExecutableTransaction],
     ) -> SomaResult {
-        // Check if we've already assigned versions for these transactions
         let mut cert_versions_to_assign = Vec::new();
         
         for cert in certificates {
             let tx_key = cert.key();
             
-            // If we've already assigned versions for this transaction, use those
-            if let Some(assigned_versions) = self.get_assigned_shared_object_versions(&tx_key) {
-                info!("Using previously assigned versions for tx {:?}: {:?}", 
-                      cert.digest(), assigned_versions);
-                // No need to re-assign versions
-            } else {
-                // Only add certs that don't already have assigned versions
+            // Check if this is an epoch change transaction
+            let is_epoch_change = matches!(
+                cert.data().transaction_data().kind,
+                TransactionKind::EndOfEpochTransaction(_)
+            );
+            
+            // Check if this transaction requires shared object versioning
+            let requires_versioning = cert.contains_shared_object();
+            
+            // Always reassign versions for epoch change transactions to ensure freshness
+            // Otherwise, only assign if not already assigned
+            if requires_versioning && (is_epoch_change || self.get_assigned_shared_object_versions(&tx_key).is_none()) {
+                info!(
+                    tx_digest = ?cert.digest(),
+                    is_epoch_change = is_epoch_change,
+                    "Preparing to assign shared object versions"
+                );
                 cert_versions_to_assign.push(cert.clone());
+            } else if let Some(assigned_versions) = self.get_assigned_shared_object_versions(&tx_key) {
+                debug!(
+                    tx_digest = ?cert.digest(),
+                    ?assigned_versions,
+                    is_epoch_change = is_epoch_change,
+                    "Using previously assigned versions for transaction"
+                );
             }
         }
         
@@ -2416,7 +2432,7 @@ impl AuthorityPerEpochStore {
             return Ok(());
         }
         
-        // Only compute and assign versions for transactions that don't already have them
+        // Only compute and assign versions for transactions that need them
         let assigned_versions = SharedObjVerManager::assign_versions_from_consensus(
             self,
             cache_reader,
@@ -2425,11 +2441,23 @@ impl AuthorityPerEpochStore {
         )?
         .assigned_versions;
         
-        info!("Assigning shared object version idempotent: {:?}", assigned_versions);
+        info!(
+            assigned_transactions = cert_versions_to_assign.len(),
+            "Assigning shared object versions idempotent"
+        );
+        
+        // For detailed debugging in critical environments
+        for (key, versions) in &assigned_versions {
+            trace!(
+                ?key, 
+                ?versions,
+                "Assigned versions for transaction"
+            );
+        }
+        
         self.set_assigned_shared_object_versions(assigned_versions);
         Ok(())
     }
-
      /// Assign a sequence number for the shared objects of the input transaction based on the
     /// effects of that transaction.
     /// Used by full nodes who don't listen to consensus, and validators who catch up by state sync.
