@@ -599,7 +599,7 @@ impl WritebackCache {
         epoch: EpochId,
         digests: &[TransactionDigest],
     ) -> SomaResult {
-        trace!(?digests);
+        debug!(?digests);
 
         let mut all_outputs = Vec::with_capacity(digests.len());
         for tx in digests {
@@ -881,10 +881,10 @@ impl TransactionCacheRead for WritebackCache {
         do_fallback_lookup(
             digests,
             |digest| {
-                // if let Some(tx) = self.dirty.pending_transaction_writes.get(digest) {
-
-                //     return Ok(CacheResult::Hit(Some(tx.transaction.clone())));
-                // }
+                if let Some(tx) = self.dirty.pending_transaction_writes.get(digest) {
+                    info!("Uncommitted cache hit for tx: {}", digest);
+                    return Ok(CacheResult::Hit(Some(tx.transaction.clone())));
+                }
 
                 if let Some(tx) = self.cached.transactions.get(digest) {
                     info!("Cache hit for tx: {}", digest);

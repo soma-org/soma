@@ -1397,13 +1397,6 @@ impl AuthorityState {
         match effects {
             Some(effects) => Ok(Some(self.sign_effects(effects, epoch_store)?)),
             None => {
-                if let Err(e) = self.get_transaction_cache_reader().get_transaction_block(transaction_digest) {
-                    error!(
-                        tx_digest=?transaction_digest,
-                        "Failed to get transaction when attempting to sign effects: {:?}",
-                        e
-                    );
-                }
                 Ok(None)
             },
         }
