@@ -267,7 +267,7 @@ impl ConsensusHandler {
             // Get epoch state hash digest
             let state_digest = self
                 .state
-                .get_root_state_digest(commit_sub_dag_index.try_into().unwrap(), vec![effects])
+                .get_root_state_digest(commit_sub_dag_index.try_into().unwrap(), vec![])
                 .await
                 .expect("Failed to get root state digest");
 
