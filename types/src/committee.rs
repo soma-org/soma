@@ -394,7 +394,14 @@ impl Committee {
     }
 
     pub fn stakes(&self) -> impl Iterator<Item = VotingPower> + '_ {
-        self.voting_rights.iter().map(|(_, stake)| *stake)
+        self.voting_rights.iter().map(|(_, stake)| {
+            // TODO: change this after implementing VOTING POWER
+            if *stake > 0 {
+                return *stake;
+            } else {
+                self.total_stake() / self.size() as u64
+            }
+        })
     }
 
     pub fn authority_exists(&self, name: &AuthorityName) -> bool {
@@ -459,7 +466,14 @@ impl Committee {
     pub fn stake_by_index(&self, index: AuthorityIndex) -> VotingPower {
         self.voting_rights
             .get(index.value())
-            .map(|(_, stake)| *stake)
+            .map(|(_, stake)| 
+                // TODO: change this after implementing VOTING POWER
+                if *stake > 0 {
+                    return *stake;
+                } else {
+                    self.total_stake() / self.size() as u64
+                }
+            )
             .unwrap_or(0)
     }
 
@@ -515,7 +529,14 @@ impl CommitteeTrait<AuthorityName> for Committee {
     fn weight(&self, author: &AuthorityName) -> VotingPower {
         match self.voting_rights.binary_search_by_key(author, |(a, _)| *a) {
             Err(_) => 0,
-            Ok(idx) => self.voting_rights[idx].1,
+            Ok(idx) => {
+                // TODO: change this after implementing voting power
+                let mut weight = self.voting_rights[idx].1;
+                if weight == 0 {
+                    weight = self.total_stake() / self.size() as u64;
+                }
+                weight
+            }
         }
     }
 }
