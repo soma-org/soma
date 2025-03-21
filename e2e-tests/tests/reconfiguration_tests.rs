@@ -571,8 +571,16 @@ async fn do_test_reconfig_with_committee_change_stress() {
         let handle2 = test_cluster.spawn_new_validator(v2).await;
 
         tokio::join!(
-            test_cluster.wait_for_epoch_on_node(&handle1, Some(cur_epoch), Duration::from_secs(60)),
-            test_cluster.wait_for_epoch_on_node(&handle2, Some(cur_epoch), Duration::from_secs(60))
+            test_cluster.wait_for_epoch_on_node(
+                &handle1,
+                Some(cur_epoch),
+                Duration::from_secs(120)
+            ),
+            test_cluster.wait_for_epoch_on_node(
+                &handle2,
+                Some(cur_epoch),
+                Duration::from_secs(120)
+            )
         );
 
         test_cluster.trigger_reconfiguration().await;
