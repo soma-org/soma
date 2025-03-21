@@ -153,7 +153,12 @@ impl<const STRENGTH: bool> StakeAggregator<AuthoritySignInfo, STRENGTH> {
                             // In the happy path, the aggregated signature verifies ok and no need to verify
                             // individual.
                             Ok(_) => InsertResult::QuorumReached(aggregated),
-                            Err(_) => {
+                            Err(err) => {
+                                warn!(
+                                    "Failed to verify aggregated signature: {:?}. \
+                                    Fallback to verifying individual signatures.",
+                                    err
+                                );
                                 // If the aggregated signature fails to verify, fallback to iterating through
                                 // all signatures and verify individually. Decrement total votes and continue
                                 // to find new authority for signature to reach the quorum.

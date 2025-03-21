@@ -381,7 +381,7 @@ where
     }
 
     /// Submits the transaction to a quorum of validators to make a certificate.
-    #[instrument(level = "trace", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     pub async fn process_transaction(
         &self,
         transaction: Transaction,
@@ -486,7 +486,17 @@ where
                 debug!(?tx_digest, name=?name.concise(), weight, "Received prev effects from validator handle_transaction");
                 self.handle_transaction_response_with_executed(state, None, effects)
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                debug!(
+                    ?tx_digest,
+                    name=?name,
+                    weight,
+                    ?err,
+                    error_type=std::any::type_name_of_val(&err),  // Log the error type
+                    "Error processing transaction from validator"
+                );
+                Err(err)
+            },
         }
     }
 
@@ -512,7 +522,14 @@ where
                 }
                 Ok(None)
             }
-            InsertResult::Failed { error } => Err(error),
+            InsertResult::Failed { error } => {
+                warn!(
+                    ?plain_tx,
+                    ?error,
+                    "Failed to insert transaction signature"
+                );
+                Err(error)
+            },
             InsertResult::QuorumReached(cert_sig) => {
                 let certificate =
                     CertifiedTransaction::new_from_data_and_sig(plain_tx.into_data(), cert_sig);
@@ -643,6 +660,19 @@ where
         state: ProcessTransactionState,
     ) -> AggregatorProcessTransactionError {
         let quorum_threshold = self.committee.quorum_threshold();
+        let validity_threshold = self.committee.validity_threshold();
+    
+        // Group errors for logging
+        let grouped_errors = group_errors(state.errors.clone());
+        for (error, stake, validators) in &grouped_errors {
+            info!(
+                ?original_tx_digest,
+                ?error,
+                stake = *stake,
+                validator_count = validators.len(),
+                "Error received from validators"
+            );
+        }
 
         // Handle possible conflicts first as `FatalConflictingTransaction` is
         // more meaningful than `FatalTransaction`.
@@ -680,6 +710,10 @@ where
             };
         }
 
+        info!(
+            ?original_tx_digest,
+            "Returning RetryableTransaction error - transaction may succeed on retry"
+        );
         // No conflicting transaction, the system is not overloaded and transaction state is still retryable.
         AggregatorProcessTransactionError::RetryableTransaction {
             errors: group_errors(state.errors),

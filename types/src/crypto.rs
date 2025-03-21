@@ -418,7 +418,7 @@ impl AuthoritySignInfoTrait for AuthoritySignInfo {
             });
         }
         let weight = committee.weight(&self.authority);
-        if weight <= 0 {
+        if weight < 0 { // TODO: weight <= 0
             return Err(SomaError::UnknownSigner {
                 signer: Some(self.authority.concise().to_string()),
                 index: None,
@@ -559,7 +559,12 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
                 })?;
 
             // Update weight.
-            let voting_rights = committee.weight(authority);
+            let mut voting_rights = committee.weight(authority);
+            // TODO: remove the following after VOTING POWER is implemented
+            if voting_rights == 0 {
+                voting_rights = committee.total_stake() / committee.size() as u64;
+            }
+
             if voting_rights < 0 {
                 // TODO: voting_rights <= 0
                 return Err(SomaError::UnknownSigner {
