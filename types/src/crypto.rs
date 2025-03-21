@@ -560,7 +560,8 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
 
             // Update weight.
             let voting_rights = committee.weight(authority);
-            if voting_rights <= 0 {
+            if voting_rights < 0 {
+                // TODO: voting_rights <= 0
                 return Err(SomaError::UnknownSigner {
                     signer: Some(authority.concise().to_string()),
                     index: Some(authority_index),
@@ -615,7 +616,16 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
         // Calculate total stake and verify it meets the quorum threshold
         let total_stake: VotingPower = auth_sign_infos
             .iter()
-            .map(|a| committee.weight(&a.authority))
+            .map(|a| {
+                let v = committee.weight(&a.authority);
+                // TODO: remove this after implementing voting power
+                let votes = if v > 0 {
+                    v
+                } else {
+                    committee.total_stake() / committee.size() as u64
+                };
+                votes
+            })
             .sum();
         if !(total_stake >= Self::quorum_threshold(committee)) {
             return Err(SomaError::InvalidSignature {

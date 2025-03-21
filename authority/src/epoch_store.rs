@@ -2452,7 +2452,7 @@ impl AuthorityPerEpochStore {
         
         // For detailed debugging in critical environments
         for (key, versions) in &assigned_versions {
-            trace!(
+            debug!(
                 ?key, 
                 ?versions,
                 "Assigned versions for transaction"
@@ -2460,6 +2460,82 @@ impl AuthorityPerEpochStore {
         }
         
         self.set_assigned_shared_object_versions(assigned_versions);
+        Ok(())
+    }
+
+    pub fn assign_shared_object_versions_state_sync(
+        &self,
+        cache_reader: &dyn ObjectCacheRead,
+        certificates: &[VerifiedExecutableTransaction],
+    ) -> SomaResult {
+        let mut cert_versions_to_assign = Vec::new();
+        
+        // Step 1: Filter out certificates that already have version assignments
+        for cert in certificates {
+            let tx_key = cert.key();
+            
+            if cert.contains_shared_object() {
+                // Check if this transaction already has versions assigned
+                let already_assigned = self.get_assigned_shared_object_versions(&tx_key).is_some();
+                
+                if !already_assigned {
+                    info!(
+                        tx_digest = ?cert.digest(),
+                        "Adding certificate for shared object version assignment"
+                    );
+                    cert_versions_to_assign.push(cert.clone());
+                } else {
+                    // Important: Skip already assigned certificates
+                    debug!(
+                        tx_digest = ?cert.digest(),
+                        "Certificate already has assigned shared object versions"
+                    );
+                }
+            }
+        }
+        
+        // Step 2: If all transactions already have assigned versions, we're done
+        if cert_versions_to_assign.is_empty() {
+            return Ok(());
+        }
+        
+        // Step 3: Only compute and assign versions for transactions that need them
+        let ConsensusSharedObjVerAssignment {
+            shared_input_next_versions,
+            assigned_versions,
+        } = SharedObjVerManager::assign_versions_from_consensus(
+            self,
+            cache_reader,
+            &cert_versions_to_assign,
+            &BTreeMap::new(),
+        )?;
+        
+        // Step 4: Update next_shared_object_versions table with new versions
+        {
+            let tables = self.tables()?;
+            let mut next_versions = tables.next_shared_object_versions.write();
+            
+            for (key, version) in &shared_input_next_versions {
+                // Update only if the new version is higher than what's already there
+                let should_update = match next_versions.get(key) {
+                    Some(existing) => *version > *existing,
+                    None => true,
+                };
+                
+                if should_update {
+                    debug!(
+                        ?key, 
+                        ?version, 
+                        "Updating next_shared_object_versions"
+                    );
+                    next_versions.insert(*key, *version);
+                }
+            }
+        }
+        
+        // Step 5: Store the assigned versions in the cache
+        self.set_assigned_shared_object_versions(assigned_versions);
+        
         Ok(())
     }
      /// Assign a sequence number for the shared objects of the input transaction based on the
