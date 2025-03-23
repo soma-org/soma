@@ -46,10 +46,10 @@ use self::{
 
 use super::{
     broadcaster::Broadcaster, encoder_core::EncoderCore, encoder_service::EncoderInternalService,
-    pipeline_dispatcher::PipelineDispatcher, slot_tracker,
+    pipeline_dispatcher::InternalPipelineDispatcher, slot_tracker,
 };
 
-// pub struct Encoder(EncoderNode<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
+// pub struct Encoder(EncoderNode<ActorInternalPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
 
 // impl Encoder {
 //     pub async fn start(
@@ -59,7 +59,7 @@ use super::{
 //         project_root: &Path,
 //         entry_point: &Path,
 //     ) -> Self {
-//         let encoder_node: EncoderNode<ActorPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager> =
+//         let encoder_node: EncoderNode<ActorInternalPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager> =
 //             EncoderNode::start(
 //                 encoder_context,
 //                 network_keypair,
@@ -92,7 +92,7 @@ impl EncoderNode {
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
             EncoderInternalService<
-                PipelineDispatcher<
+                InternalPipelineDispatcher<
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
                     FilesystemObjectStorage,
@@ -229,7 +229,7 @@ impl EncoderNode {
         let reveal_votes_handle = reveal_votes_manager.handle();
         let scores_handle = scores_manager.handle();
 
-        let pipeline_dispatcher = PipelineDispatcher::new(
+        let pipeline_dispatcher = InternalPipelineDispatcher::new(
             certified_commit_handle,
             commit_votes_handle,
             reveal_handle,
@@ -254,7 +254,7 @@ impl EncoderNode {
     pub(crate) async fn stop(mut self) {
         <EncoderInternalTonicManager as EncoderInternalNetworkManager<
             EncoderInternalService<
-                PipelineDispatcher<
+                InternalPipelineDispatcher<
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
                     FilesystemObjectStorage,

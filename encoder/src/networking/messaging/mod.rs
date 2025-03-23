@@ -8,11 +8,16 @@ mod tonic_gen {
         env!("OUT_DIR"),
         "/soma.EncoderInternalTonicService.rs"
     ));
+    include!(concat!(
+        env!("OUT_DIR"),
+        "/soma.EncoderExternalTonicService.rs"
+    ));
 }
 
 use crate::types::certified::Certified;
 use crate::types::encoder_committee::EncoderIndex;
 use crate::types::shard_commit::ShardCommit;
+use crate::types::shard_input::ShardInput;
 use crate::types::shard_reveal::ShardReveal;
 use crate::types::shard_scores::ShardScores;
 use crate::types::shard_votes::{CommitRound, RevealRound, ShardVotes};
@@ -23,6 +28,7 @@ use fastcrypto::bls12381::min_sig;
 use multiaddr::Protocol;
 use shared::crypto::keys::NetworkKeyPair;
 use shared::multiaddr::Multiaddr;
+use shared::network_committee::NetworkingIndex;
 use shared::serialized::Serialized;
 use shared::signed::Signature;
 use shared::{signed::Signed, verified::Verified};
@@ -77,6 +83,16 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
 }
 
 #[async_trait]
+pub(crate) trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
+    async fn send_input(
+        &self,
+        peer: EncoderIndex,
+        input: &Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
+}
+
+#[async_trait]
 pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_commit(
         &self,
@@ -106,6 +122,12 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
     async fn handle_send_scores(&self, peer: EncoderIndex, scores_bytes: Bytes) -> ShardResult<()>;
 }
 
+#[async_trait]
+pub(crate) trait EncoderExternalNetworkService: Send + Sync + Sized + 'static {
+    async fn handle_send_input(&self, peer: NetworkingIndex, input_bytes: Bytes)
+        -> ShardResult<()>;
+}
+
 /// `EncoderNetworkManager` handles starting and stopping the network related services
 /// The network manager also provides clients to other encoders in an efficient way.
 pub(crate) trait EncoderInternalNetworkManager<S>: Send + Sync
@@ -114,6 +136,23 @@ where
 {
     /// type alias
     type Client: EncoderInternalNetworkClient;
+    /// Creates a new manager by taking an encoder context and a network keypair.
+    /// The network keypair is used for TLS authentication.
+    fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self;
+    /// Returns a client
+    fn client(&self) -> Arc<Self::Client>;
+    /// Starts the network services
+    async fn start(&mut self, service: Arc<S>);
+    /// Stops the network services
+    async fn stop(&mut self);
+}
+
+pub(crate) trait EncoderExternalNetworkManager<S>: Send + Sync
+where
+    S: EncoderExternalNetworkService,
+{
+    /// type alias
+    type Client: EncoderExternalNetworkClient;
     /// Creates a new manager by taking an encoder context and a network keypair.
     /// The network keypair is used for TLS authentication.
     fn new(context: Arc<EncoderContext>, network_keypair: NetworkKeyPair) -> Self;

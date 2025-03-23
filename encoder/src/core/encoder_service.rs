@@ -7,6 +7,7 @@ use shared::{
     entropy::EntropyVDF,
     error::SharedError,
     metadata::{verify_metadata, EncryptionAPI, MetadataAPI},
+    network_committee::NetworkingIndex,
     scope::Scope,
     serialized::Serialized,
     signed::{Signature, Signed},
@@ -17,7 +18,7 @@ use std::sync::Arc;
 use crate::{
     actors::{pipelines::certified_commit, workers::vdf::VDFProcessor, ActorHandle},
     error::{ShardError, ShardResult},
-    networking::messaging::EncoderInternalNetworkService,
+    networking::messaging::{EncoderExternalNetworkService, EncoderInternalNetworkService},
     storage::datastore::Store,
     types::{
         certified::{Certified, CertifiedAPI},
@@ -31,9 +32,9 @@ use crate::{
     },
 };
 
-use super::pipeline_dispatcher::Dispatcher;
+use super::pipeline_dispatcher::{ExternalDispatcher, InternalDispatcher};
 
-pub(crate) struct EncoderInternalService<D: Dispatcher> {
+pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
     context: Arc<EncoderContext>,
     dispatcher: D,
     vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
@@ -42,7 +43,7 @@ pub(crate) struct EncoderInternalService<D: Dispatcher> {
     encoder_keypair: Arc<EncoderKeyPair>,
 }
 
-impl<D: Dispatcher> EncoderInternalService<D> {
+impl<D: InternalDispatcher> EncoderInternalService<D> {
     pub(crate) fn new(
         context: Arc<EncoderContext>,
         dispatcher: D,
@@ -66,7 +67,7 @@ impl<D: Dispatcher> EncoderInternalService<D> {
 // TODO: check for sending the correct peer to the dispatcher e.g. either require the peer to match or
 // use the correct value e.g. voter for shard votes
 #[async_trait]
-impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> {
+impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalService<D> {
     async fn handle_send_commit(
         &self,
         peer: EncoderIndex,
@@ -442,6 +443,45 @@ impl<D: Dispatcher> EncoderInternalNetworkService for EncoderInternalService<D> 
             .dispatcher
             .dispatch_scores(peer, auth_token, shard, verified_scores)
             .await?;
+        Ok(())
+    }
+}
+
+pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
+    context: Arc<EncoderContext>,
+    dispatcher: D,
+    vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
+    shard_verifier: ShardVerifier,
+    store: Arc<dyn Store>,
+    encoder_keypair: Arc<EncoderKeyPair>,
+}
+
+impl<D: ExternalDispatcher> EncoderExternalService<D> {
+    pub(crate) fn new(
+        context: Arc<EncoderContext>,
+        dispatcher: D,
+        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
+        shard_verifier: ShardVerifier,
+        store: Arc<dyn Store>,
+        encoder_keypair: Arc<EncoderKeyPair>,
+    ) -> Self {
+        Self {
+            context,
+            dispatcher,
+            vdf,
+            shard_verifier,
+            store,
+            encoder_keypair,
+        }
+    }
+}
+#[async_trait]
+impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
+    async fn handle_send_input(
+        &self,
+        peer: NetworkingIndex,
+        input_bytes: Bytes,
+    ) -> ShardResult<()> {
         Ok(())
     }
 }

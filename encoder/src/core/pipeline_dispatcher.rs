@@ -27,7 +27,7 @@ use crate::{
 };
 
 #[async_trait]
-pub trait Dispatcher: Sync + Send + 'static {
+pub trait InternalDispatcher: Sync + Send + 'static {
     async fn dispatch_certified_commit(
         &self,
         peer: EncoderIndex,
@@ -68,7 +68,7 @@ pub trait Dispatcher: Sync + Send + 'static {
 }
 
 #[derive(Clone)]
-pub(crate) struct PipelineDispatcher<
+pub(crate) struct InternalPipelineDispatcher<
     E: EncoderInternalNetworkClient,
     O: ObjectNetworkClient,
     S: ObjectStorage,
@@ -81,7 +81,7 @@ pub(crate) struct PipelineDispatcher<
 }
 
 impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage>
-    PipelineDispatcher<E, O, S>
+    InternalPipelineDispatcher<E, O, S>
 {
     pub(crate) fn new(
         certified_commit_handle: ActorHandle<CertifiedCommitProcessor<E, O, S>>,
@@ -101,8 +101,8 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage>
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> Dispatcher
-    for PipelineDispatcher<E, O, S>
+impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> InternalDispatcher
+    for InternalPipelineDispatcher<E, O, S>
 {
     async fn dispatch_certified_commit(
         &self,
@@ -182,6 +182,41 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
         self.scores_handle
             .background_process((shard, scores), cancellation)
             .await?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait ExternalDispatcher: Sync + Send + 'static {
+    async fn dispatch_input(
+        &self,
+        peer: EncoderIndex,
+        auth_token: ShardAuthToken,
+        shard: Shard,
+        // probe_metadata: ProbeMetadata,
+        // certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+    ) -> ShardResult<()>;
+}
+
+#[derive(Clone)]
+pub(crate) struct ExternalPipelineDispatcher {}
+
+impl ExternalPipelineDispatcher {
+    pub(crate) fn new() -> Self {
+        Self {}
+    }
+}
+
+#[async_trait]
+impl ExternalDispatcher for ExternalPipelineDispatcher {
+    async fn dispatch_input(
+        &self,
+        peer: EncoderIndex,
+        auth_token: ShardAuthToken,
+        shard: Shard,
+        // probe_metadata: ProbeMetadata,
+        // certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+    ) -> ShardResult<()> {
         Ok(())
     }
 }
