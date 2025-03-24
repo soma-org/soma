@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use fastcrypto::{bls12381::min_sig, traits::KeyPair, traits::Signer};
+use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use shared::{
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, ProtocolKeyPair},
+    crypto::keys::EncoderKeyPair,
     digest::Digest,
     entropy::EntropyVDF,
     error::SharedError,
@@ -16,7 +16,7 @@ use shared::{
 use std::sync::Arc;
 
 use crate::{
-    actors::{pipelines::certified_commit, workers::vdf::VDFProcessor, ActorHandle},
+    actors::{workers::vdf::VDFProcessor, ActorHandle},
     error::{ShardError, ShardResult},
     networking::messaging::{EncoderExternalNetworkService, EncoderInternalNetworkService},
     storage::datastore::Store,
@@ -25,6 +25,7 @@ use crate::{
         encoder_committee::EncoderIndex,
         encoder_context::EncoderContext,
         shard_commit::{ShardCommit, ShardCommitAPI},
+        shard_input::{ShardInput, ShardInputAPI},
         shard_reveal::{ShardReveal, ShardRevealAPI},
         shard_scores::{ShardScores, ShardScoresAPI},
         shard_verifier::ShardVerifier,
@@ -163,7 +164,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         // produce the partial signature attesting to seeing the commit
         let keypair = self.encoder_keypair.inner().copy();
         let partial_sig = Signed::new(signed_commit, Scope::ShardCertificate, &keypair.private())
-            .map_err(ShardError::SerializationFailure)?;
+            .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
 
         Ok(partial_sig.serialized())
     }
@@ -482,6 +483,20 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
         peer: NetworkingIndex,
         input_bytes: Bytes,
     ) -> ShardResult<()> {
+        let input: Signed<ShardInput, min_sig::BLS12381Signature> =
+            bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
+        let (auth_token_digest, shard) = self
+            .shard_verifier
+            .verify(&self.context, &self.vdf, input.auth_token())
+            .await?;
+        let auth_token = input.auth_token().clone();
+        let verified_input = Verified::new(input.clone(), input_bytes, |input| Ok(()))
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+
+        let _ = self
+            .dispatcher
+            .dispatch_input(peer, auth_token, shard, verified_input)
+            .await?;
         Ok(())
     }
 }

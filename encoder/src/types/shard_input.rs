@@ -1,6 +1,7 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::metadata::{Metadata, MetadataCommitment};
+
+use super::shard_verifier::ShardAuthToken;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardInputAPI)]
@@ -10,36 +11,22 @@ pub enum ShardInput {
 
 #[enum_dispatch]
 pub trait ShardInputAPI {
-    // fn transaction_certificate(&self) -> &TransactionCertificate;
-    fn commitment(&self) -> &MetadataCommitment;
-    fn data(&self) -> &Metadata;
+    fn auth_token(&self) -> &ShardAuthToken;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ShardInputV1 {
-    // transaction_certificate: TransactionCertificate,
-    commitment: MetadataCommitment,
-    data: Metadata,
+    auth_token: ShardAuthToken,
 }
 
 impl ShardInputV1 {
-    pub(crate) fn new(commitment: MetadataCommitment, data: Metadata) -> Self {
-        Self {
-            // transaction_certificate,
-            commitment,
-            data,
-        }
+    pub(crate) fn new(auth_token: ShardAuthToken) -> Self {
+        Self { auth_token }
     }
 }
 
 impl ShardInputAPI for ShardInputV1 {
-    // fn transaction_certificate(&self) -> &TransactionCertificate {
-    //     &self.transaction_certificate
-    // }
-    fn commitment(&self) -> &MetadataCommitment {
-        &self.commitment
-    }
-    fn data(&self) -> &Metadata {
-        &self.data
+    fn auth_token(&self) -> &ShardAuthToken {
+        &self.auth_token
     }
 }

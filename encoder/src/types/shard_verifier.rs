@@ -43,6 +43,9 @@ pub struct ShardAuthToken {
 }
 
 impl ShardAuthToken {
+    pub fn metadata_commitment(&self) -> MetadataCommitment {
+        self.metadata_commitment.clone()
+    }
     pub fn epoch(&self) -> Epoch {
         self.proof.epoch()
     }

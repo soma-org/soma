@@ -1,17 +1,22 @@
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
-use shared::{metadata::Metadata, probe::ProbeMetadata, signed::Signed, verified::Verified};
+use shared::{
+    metadata::Metadata, network_committee::NetworkingIndex, probe::ProbeMetadata, signed::Signed,
+    verified::Verified,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     actors::{
         pipelines::{
             certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
-            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
+            input::InputProcessor, reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
+            scores::ScoresProcessor,
         },
         ActorHandle,
     },
     error::ShardResult,
+    intelligence::model::Model,
     networking::{messaging::EncoderInternalNetworkClient, object::ObjectNetworkClient},
     storage::object::ObjectStorage,
     types::{
@@ -19,6 +24,7 @@ use crate::{
         encoder_committee::EncoderIndex,
         shard::Shard,
         shard_commit::ShardCommit,
+        shard_input::ShardInput,
         shard_reveal::ShardReveal,
         shard_scores::ShardScores,
         shard_verifier::ShardAuthToken,
@@ -190,33 +196,48 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
 pub trait ExternalDispatcher: Sync + Send + 'static {
     async fn dispatch_input(
         &self,
-        peer: EncoderIndex,
+        peer: NetworkingIndex,
         auth_token: ShardAuthToken,
         shard: Shard,
-        // probe_metadata: ProbeMetadata,
-        // certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+        input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
 }
 
 #[derive(Clone)]
-pub(crate) struct ExternalPipelineDispatcher {}
+pub(crate) struct ExternalPipelineDispatcher<
+    O: ObjectNetworkClient,
+    M: Model,
+    E: EncoderInternalNetworkClient,
+    S: ObjectStorage,
+> {
+    input_handle: ActorHandle<InputProcessor<O, M, E, S>>,
+}
 
-impl ExternalPipelineDispatcher {
-    pub(crate) fn new() -> Self {
-        Self {}
+impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: ObjectStorage>
+    ExternalPipelineDispatcher<O, M, E, S>
+{
+    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<O, M, E, S>>) -> Self {
+        Self { input_handle }
     }
 }
 
 #[async_trait]
-impl ExternalDispatcher for ExternalPipelineDispatcher {
+impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: ObjectStorage>
+    ExternalDispatcher for ExternalPipelineDispatcher<O, M, E, S>
+{
     async fn dispatch_input(
         &self,
-        peer: EncoderIndex,
+        peer: NetworkingIndex,
         auth_token: ShardAuthToken,
         shard: Shard,
-        // probe_metadata: ProbeMetadata,
-        // certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+        input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
+        // TODO: use or remove peer
+        // TODO: need to create correct child cancellation token here
+        let cancellation = CancellationToken::new();
+        self.input_handle
+            .background_process((auth_token, shard, input), cancellation)
+            .await?;
         Ok(())
     }
 }

@@ -71,6 +71,7 @@ struct Inner {
         BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
     reveal_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
 
+    #[allow(clippy::type_complexity)]
     scores: BTreeMap<
         (Epoch, Digest<Shard>, EncoderIndex),
         (

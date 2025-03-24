@@ -61,7 +61,7 @@ pub(crate) enum ShardError {
     MalformedCommit(bcs::Error),
 
     #[error("Error serializing: {0}")]
-    SerializationFailure(SharedError),
+    SerializationFailure(String),
 
     #[error("Error deserializing type: {0}")]
     MalformedType(bcs::Error),

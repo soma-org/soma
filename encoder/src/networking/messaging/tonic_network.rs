@@ -6,7 +6,7 @@ use shared::{
     crypto::keys::NetworkKeyPair, network_committee::NetworkingIndex, signed::Signed,
     verified::Verified,
 };
-use std::{io::Read, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 use tonic::{transport::Server, Request, Response};
 use tower_http::add_extension::AddExtensionLayer;
@@ -590,10 +590,10 @@ impl<S: EncoderExternalNetworkService> EncoderExternalTonicService
         else {
             return Err(tonic::Status::internal("PeerInfo not found"));
         };
-        let scores = request.into_inner().input;
+        let input = request.into_inner().input;
 
         self.service
-            .handle_send_input(peer, scores)
+            .handle_send_input(peer, input)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 

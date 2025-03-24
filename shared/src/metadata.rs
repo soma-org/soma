@@ -196,6 +196,10 @@ impl MetadataCommitment {
     pub fn new(metadata: Metadata, nonce: [u8; 32]) -> Self {
         MetadataCommitment { metadata, nonce }
     }
+
+    pub fn metadata(&self) -> Metadata {
+        self.metadata.clone()
+    }
 }
 
 pub fn verify_metadata(
