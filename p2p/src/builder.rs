@@ -137,6 +137,7 @@ impl StateSyncHandle {
     /// persistent storage. This includes CommitContents and all Transactions and
     /// TransactionEffects included therein.
     pub async fn send_commit(&self, commit: CommittedSubDag) {
+        debug!("Sending commit from consensus to state sync: {}", commit);
         self.sender
             .send(StateSyncMessage::VerifiedCommit(Box::new(commit)))
             .await

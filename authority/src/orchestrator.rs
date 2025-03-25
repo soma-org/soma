@@ -245,7 +245,7 @@ where
             ?tx_digest,
             "Waiting for finalized tx to be executed locally."
         );
-        
+
         match timeout(
             LOCAL_EXECUTION_TIMEOUT,
             validator_state
@@ -268,10 +268,7 @@ where
                 Err(SomaError::TimeoutError)
             }
             Ok(_) => {
-                debug!(
-                    ?tx_digest,
-                    "Successfully confirmed tx executed locally."
-                );
+                debug!(?tx_digest, "Successfully confirmed tx executed locally.");
                 Ok(())
             }
         }

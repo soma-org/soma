@@ -265,7 +265,7 @@ where
     pub async fn start(mut self) {
         info!("State-Synchronizer started");
 
-        let mut interval = tokio::time::interval(Duration::from_millis(100));
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
         //TODO: self.config.interval_period()
         for peer_id in self.active_peers.peers().iter() {
             self.spawn_get_latest_from_peer(*peer_id);
@@ -308,7 +308,7 @@ where
 
             self.maybe_start_sync_task();
 
-            sleep(Duration::from_millis(100)).await;
+            tokio::task::yield_now().await;
         }
 
         info!("State-Synchronizer ended");
@@ -704,7 +704,7 @@ async fn sync_from_peer<S>(
                                 "Missing committee for epoch {}, waiting for sync to catch up",
                                 epoch
                             );
-                            sleep(Duration::from_secs(1)).await;
+                            sleep(Duration::from_millis(50)).await;
                             continue;
                         }
                         _ => {
@@ -781,7 +781,7 @@ async fn sync_from_peer<S>(
             }
         }
 
-        sleep(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
     }
 }
 

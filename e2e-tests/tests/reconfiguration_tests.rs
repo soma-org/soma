@@ -589,7 +589,7 @@ async fn do_test_reconfig_with_committee_change_stress() {
             .soma_node
             .with(|node| node.state().epoch_store_for_testing().committee().clone());
         cur_epoch = committee.epoch();
-        // TODO: assert_eq!(committee.num_members(), 7); (i think that swarm.active_validators() is not updating)
+        assert_eq!(committee.num_members(), 7);
         assert!(committee.authority_exists(&handle1.state().name));
         assert!(committee.authority_exists(&handle2.state().name));
         removed_validators
@@ -678,9 +678,9 @@ async fn execute_add_validator_transactions(
     });
 }
 
-// async fn test_inactive_validator_pool_read()
-// async fn test_validator_candidate_pool_read()
-// async fn test_reconfig_with_failing_validator(
-// async fn test_create_advance_epoch_tx_race()
-// async fn test_expired_locks()
-// async fn do_test_passive_reconfig()
+// TODO: async fn test_inactive_validator_pool_read()
+// TODO: async fn test_validator_candidate_pool_read()
+// TODO: async fn test_reconfig_with_failing_validator(
+// TODO: async fn test_create_advance_epoch_tx_race()
+// TODO: async fn test_expired_locks()
+// TODO: async fn do_test_passive_reconfig()

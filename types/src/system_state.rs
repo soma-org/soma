@@ -268,8 +268,8 @@ pub struct ValidatorSet {
     /// Validators that will be added to the active set in the next epoch
     pub pending_active_validators: Vec<Validator>,
 
-    /// Indices of active validators that will be removed in the next epoch
-    pub pending_removals: Vec<u64>,
+    /// Active validators that will be removed in the next epoch
+    pub pending_removals: Vec<Validator>,
 
     // pub inactive_validators: Vec<Validator>,
     /// Validators that are candidates for joining the active set
@@ -359,16 +359,16 @@ impl ValidatorSet {
     /// Returns SomaError::NotAValidator if the validator is not in the active set
     /// Returns SomaError::ValidatorAlreadyRemoved if the validator is already marked for removal
     pub fn request_remove_validator(&mut self, address: SomaAddress) -> SomaResult {
-        let validator_index = self
+        let validator = self
             .active_validators
             .iter()
-            .position(|v| address == v.metadata.soma_address)
-            .map(|i| i as u64);
-        if let Some(index) = validator_index {
-            if self.pending_removals.contains(&(index as u64)) {
+            .find(|v| address == v.metadata.soma_address);
+
+        if let Some(v) = validator {
+            if self.pending_removals.contains(&v) {
                 return Err(SomaError::ValidatorAlreadyRemoved);
             }
-            self.pending_removals.push(index as u64);
+            self.pending_removals.push(v.clone());
         } else {
             return Err(SomaError::NotAValidator);
         }
@@ -392,12 +392,18 @@ impl ValidatorSet {
 
         // TODO: process pending stakes and withdrawals
 
-        while let Some(validator) = self.pending_active_validators.pop() {
-            self.active_validators.push(validator);
+        while let Some(validator) = self.pending_removals.pop() {
+            let validator_index = self
+                .active_validators
+                .iter()
+                .position(|v| validator.metadata.soma_address == v.metadata.soma_address)
+                .map(|i| i as u64)
+                .expect("Cannot remove validator that is not in active validators");
+            self.active_validators.remove(validator_index as usize);
         }
 
-        while let Some(index) = self.pending_removals.pop() {
-            self.active_validators.remove(index as usize);
+        while let Some(validator) = self.pending_active_validators.pop() {
+            self.active_validators.push(validator);
         }
 
         // TODO: kick low validators out
