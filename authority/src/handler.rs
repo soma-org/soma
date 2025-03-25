@@ -1,4 +1,5 @@
 use crate::adapter::ConsensusAdapter;
+use crate::cache::ObjectCacheRead;
 use crate::reconfiguration::ReconfigurationInitiator;
 use crate::state;
 use crate::{
@@ -65,6 +66,7 @@ impl ConsensusHandlerInitializer {
         ConsensusHandler::new(
             self.epoch_store.clone(),
             self.state.transaction_manager().clone(),
+            self.state.get_object_cache_reader().clone(),
             committee,
             self.throughput_calculator.clone(),
             self.state_sync_handle.clone(),
@@ -81,6 +83,8 @@ pub struct ConsensusHandler {
     // /// It is used for avoiding replaying already processed transactions,
     // /// checking chain consistency, and accumulating per-epoch consensus output stats.
     last_consensus_stats: ExecutionIndices,
+    /// cache reader is needed when determining the next version to assign for shared objects.
+    cache_reader: Arc<dyn ObjectCacheRead>,
     /// The  committee used to do stake computations
     committee: Committee,
     /// Lru cache to quickly discard transactions processed by consensus
@@ -100,6 +104,7 @@ impl ConsensusHandler {
     pub fn new(
         epoch_store: Arc<AuthorityPerEpochStore>,
         transaction_manager: Arc<TransactionManager>,
+        cache_reader: Arc<dyn ObjectCacheRead>,
         committee: Committee,
         throughput_calculator: Arc<ConsensusThroughputCalculator>,
         state_sync_handle: StateSyncHandle,
@@ -116,6 +121,7 @@ impl ConsensusHandler {
             epoch_store,
             committee,
             last_consensus_stats,
+            cache_reader,
             transaction_scheduler,
             processed_cache: LruCache::new(NonZeroUsize::new(PROCESSED_CACHE_CAP).unwrap()),
             throughput_calculator,
@@ -244,6 +250,7 @@ impl ConsensusHandler {
             .process_consensus_transactions_and_commit_boundary(
                 all_transactions,
                 &self.last_consensus_stats,
+                self.cache_reader.as_ref(),
                 &ConsensusCommitInfo::new(self.epoch_store.protocol_config(), &consensus_output),
             )
             .await
@@ -260,7 +267,7 @@ impl ConsensusHandler {
             // Get epoch state hash digest
             let state_digest = self
                 .state
-                .get_root_state_digest(commit_sub_dag_index.try_into().unwrap(), vec![effects])
+                .get_root_state_digest(commit_sub_dag_index.try_into().unwrap(), vec![])
                 .await
                 .expect("Failed to get root state digest");
 

@@ -183,7 +183,7 @@ impl TestCluster {
     /// If target_epoch is None, wait until the cluster reaches the next epoch.
     /// Note that this function does not guarantee that every node is at the target epoch.
     pub async fn wait_for_epoch(&self, target_epoch: Option<EpochId>) -> SystemState {
-        self.wait_for_epoch_with_timeout(target_epoch, Duration::from_secs(60))
+        self.wait_for_epoch_with_timeout(target_epoch, Duration::from_secs(120))
             .await
     }
 

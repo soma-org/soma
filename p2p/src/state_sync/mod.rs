@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::{
     sync::{broadcast, mpsc},
-    task::JoinSet,
+    task::{AbortHandle, JoinSet},
     time::sleep,
 };
 use tonic::{transport::Channel, Request, Response};
@@ -219,6 +219,7 @@ pub struct StateSyncEventLoop<S> {
     weak_sender: mpsc::WeakSender<StateSyncMessage>,
 
     tasks: JoinSet<()>,
+    sync_task: Option<AbortHandle>,
 
     store: S,
     peer_heights: Arc<RwLock<PeerHeights>>,
@@ -255,6 +256,7 @@ where
             active_peers,
             peer_event_receiver,
             block_verifier,
+            sync_task: None,
         }
     }
 
@@ -301,20 +303,26 @@ where
                             }
                         },
                     };
+
+                    if matches!(&self.sync_task, Some(t) if t.is_finished()) {
+                        self.sync_task = None;
+                    }
                 },
             }
 
             // Schedule new fetches if we're behind
-
             self.maybe_start_sync_task();
-
-            sleep(Duration::from_millis(100)).await;
         }
 
         info!("State-Synchronizer ended");
     }
 
     fn maybe_start_sync_task(&mut self) {
+        // Only run one sync task at a time
+        if self.sync_task.is_some() {
+            return;
+        }
+
         let highest_synced_commit = self
             .store
             .get_highest_synced_commit()
@@ -341,7 +349,8 @@ where
                 // The if condition ensures this is Some
                 highest_known_commit.unwrap(),
             );
-            self.tasks.spawn(task);
+            let task_handle = self.tasks.spawn(task);
+            self.sync_task = Some(task_handle);
         }
     }
 
@@ -779,8 +788,11 @@ async fn sync_from_peer<S>(
                     }
                 }
             }
+
+            break 'retry;
         }
 
+        // Retry timeout
         sleep(Duration::from_secs(1)).await;
     }
 }

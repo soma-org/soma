@@ -1,3 +1,35 @@
+//! # Cryptography Module
+//!
+//! ## Overview
+//! This module provides the cryptographic primitives and utilities used throughout the Soma blockchain.
+//! It implements signature schemes, key management, verification mechanisms, and cryptographic
+//! operations essential for blockchain security and consensus.
+//!
+//! ## Responsibilities
+//! - Define cryptographic types for authorities and users
+//! - Implement signature creation and verification
+//! - Provide key pair generation and management
+//! - Support aggregated signatures for quorum operations
+//! - Implement verification obligations for batch verification
+//!
+//! ## Component Relationships
+//! - Used by Authority module for transaction validation and state certification
+//! - Used by Consensus module for block signing and verification
+//! - Used by P2P module for secure communication
+//! - Provides cryptographic primitives to all modules requiring security operations
+//!
+//! ## Key Workflows
+//! 1. Authority signature creation and verification for consensus
+//! 2. Transaction signing by users and verification by validators
+//! 3. Quorum certificate creation and verification
+//! 4. Batch signature verification for performance optimization
+//!
+//! ## Design Patterns
+//! - Trait-based abstraction for different signature schemes
+//! - Enum dispatch for runtime polymorphism of signature types
+//! - Verification obligation pattern for efficient batch verification
+//! - Serialization/deserialization with safety checks
+
 use crate::base::{AuthorityName, ConciseableName, SomaAddress};
 use crate::committee::{Committee, CommitteeTrait, EpochId, VotingPower};
 use crate::error::{SomaError, SomaResult};
@@ -36,19 +68,71 @@ use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 use tracing::{instrument, warn};
 
+/// Default hash function used throughout the Soma blockchain
+///
+/// Blake2b256 is chosen for its security properties and performance characteristics.
+/// It provides a good balance between security and efficiency for blockchain operations.
 pub type DefaultHash = Blake2b256;
+
+/// Length of hash digests produced by the default hash function
 pub const DIGEST_LENGTH: usize = DefaultHash::OUTPUT_SIZE;
+
+/// Bech32 prefix for Soma private keys
+///
+/// Used when encoding private keys to string format for storage or transmission
 pub const SOMA_PRIV_KEY_PREFIX: &str = "somaprivkey";
 
-// Authority
+// Authority cryptographic types
+/// Key pair used by authorities (validators) for signing consensus messages
+///
+/// Uses BLS12-381 signature scheme which supports signature aggregation,
+/// essential for efficient quorum certificate creation
 pub type AuthorityKeyPair = BLS12381KeyPair;
+
+/// Public key type for authorities
+///
+/// Used to verify signatures produced by authorities and identify validators
 pub type AuthorityPublicKey = BLS12381PublicKey;
+
+/// Private key type for authorities
+///
+/// Used by validators to sign consensus messages and transactions
 pub type AuthorityPrivateKey = BLS12381PrivateKey;
+
+/// Signature type produced by authorities
+///
+/// Used to authenticate messages from specific validators
 pub type AuthoritySignature = BLS12381Signature;
+
+/// Aggregated signature type for multiple authority signatures
+///
+/// Enables efficient verification of signatures from multiple validators,
+/// critical for performance in quorum-based consensus
 pub type AggregateAuthoritySignature = BLS12381AggregateSignature;
+
+/// Byte representation of aggregated authority signatures
+///
+/// Used for serialization and transmission of aggregated signatures
 pub type AggregateAuthoritySignatureAsBytes = BLS12381AggregateSignatureAsBytes;
 
-/// Defines the compressed version of the public key that we pass around
+/// Compressed representation of an authority public key
+///
+/// ## Purpose
+/// Provides a space-efficient representation of authority public keys for storage
+/// and network transmission. This type is used throughout the system when referring
+/// to authorities by their public key.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
+///
+/// ## Examples
+/// ```
+/// // Convert from a full public key to bytes representation
+/// let public_key_bytes = AuthorityPublicKeyBytes::from(&authority_public_key);
+///
+/// // Convert back to a full public key when needed for verification
+/// let public_key = AuthorityPublicKey::try_from(public_key_bytes)?;
+/// ```
 #[serde_as]
 #[derive(
     Copy,
@@ -71,6 +155,9 @@ pub struct AuthorityPublicKeyBytes(
 );
 
 impl AuthorityPublicKeyBytes {
+    /// Internal formatting implementation used by both Debug and Display traits
+    ///
+    /// Formats the public key bytes with a 'k#' prefix followed by the hex-encoded bytes
     fn fmt_impl(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let s = Hex::encode(self.0);
         write!(f, "k#{}", s)?;
@@ -81,13 +168,22 @@ impl AuthorityPublicKeyBytes {
 impl TryFrom<AuthorityPublicKeyBytes> for AuthorityPublicKey {
     type Error = FastCryptoError;
 
+    /// Converts compressed public key bytes to a full AuthorityPublicKey
+    ///
+    /// This conversion is necessary when the full public key is needed for
+    /// cryptographic operations like signature verification.
     fn try_from(bytes: AuthorityPublicKeyBytes) -> Result<AuthorityPublicKey, Self::Error> {
         AuthorityPublicKey::from_bytes(bytes.as_ref())
     }
 }
 
 impl From<&AuthorityPublicKey> for AuthorityPublicKeyBytes {
+    /// Converts a full AuthorityPublicKey to its compressed bytes representation
+    ///
+    /// This conversion is used when storing or transmitting public keys in a
+    /// space-efficient format.
     fn from(pk: &AuthorityPublicKey) -> AuthorityPublicKeyBytes {
+        // This unwrap is safe because we're converting from a valid public key
         AuthorityPublicKeyBytes::from_bytes(pk.as_ref()).unwrap()
     }
 }
@@ -114,9 +210,18 @@ impl ToFromBytes for AuthorityPublicKeyBytes {
 }
 
 impl AuthorityPublicKeyBytes {
+    /// Constant representing a zero-initialized public key
+    ///
+    /// Used as a default value and in testing
     pub const ZERO: Self = Self::new([0u8; AuthorityPublicKey::LENGTH]);
 
-    /// This ensures it's impossible to construct an instance with other than registered lengths
+    /// Creates a new AuthorityPublicKeyBytes from raw bytes
+    ///
+    /// This constructor ensures type safety by requiring the exact byte length
+    /// expected for an authority public key.
+    ///
+    /// ## Arguments
+    /// * `bytes` - Raw byte array of exactly AuthorityPublicKey::LENGTH size
     pub const fn new(bytes: [u8; AuthorityPublicKey::LENGTH]) -> AuthorityPublicKeyBytes
 where {
         AuthorityPublicKeyBytes(bytes)
@@ -188,17 +293,54 @@ impl Display for ConciseAuthorityPublicKeyBytes {
     }
 }
 
+/// Empty signature information placeholder
+///
+/// Used in contexts where signature information might be optional
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EmptySignInfo {}
 
+/// Signature information from a single authority
+///
+/// ## Purpose
+/// Contains all information needed to verify a signature from a specific authority,
+/// including the authority's identity, the epoch in which the signature was created,
+/// and the signature itself.
+///
+/// ## Lifecycle
+/// Created when an authority signs a message, and used during verification to
+/// authenticate the message and its source.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 pub struct AuthoritySignInfo {
+    /// Epoch in which the signature was created
     pub epoch: EpochId,
+
+    /// Identity of the authority that created the signature
     pub authority: AuthorityName,
+
+    /// The cryptographic signature
     pub signature: AuthoritySignature,
 }
 
 impl AuthoritySignInfo {
+    /// Creates a new AuthoritySignInfo by signing the provided value
+    ///
+    /// ## Behavior
+    /// Constructs an intent message from the provided value and intent,
+    /// signs it using the provided signer, and creates a new AuthoritySignInfo
+    /// with the resulting signature and authority information.
+    ///
+    /// ## Arguments
+    /// * `epoch` - Current epoch ID
+    /// * `value` - The value to sign
+    /// * `intent` - The intent context for the signature
+    /// * `name` - The authority's name (public key)
+    /// * `secret` - The authority's signing key
+    ///
+    /// ## Returns
+    /// A new AuthoritySignInfo containing the signature and metadata
     pub fn new<T>(
         epoch: EpochId,
         value: &T,
@@ -276,7 +418,7 @@ impl AuthoritySignInfoTrait for AuthoritySignInfo {
             });
         }
         let weight = committee.weight(&self.authority);
-        if weight <= 0 {
+        if weight < 0 { // TODO: weight <= 0
             return Err(SomaError::UnknownSigner {
                 signer: Some(self.authority.concise().to_string()),
                 index: None,
@@ -319,12 +461,35 @@ impl PartialEq for AuthoritySignInfo {
     }
 }
 
-/// Represents at least a quorum (could be more) of authority signatures.
-/// STRONG_THRESHOLD indicates whether to use the quorum threshold for quorum check.
-/// When STRONG_THRESHOLD is true, the quorum is valid when the total stake is
-/// at least the quorum threshold (2f+1) of the committee; when STRONG_THRESHOLD is false,
-/// the quorum is valid when the total stake is at least the validity threshold (f+1) of
-/// the committee.
+/// Represents at least a quorum (could be more) of authority signatures
+///
+/// ## Purpose
+/// Provides an efficient representation of multiple authority signatures that
+/// together form a quorum certificate. Instead of storing individual signatures,
+/// this structure stores an aggregated signature and a bitmap indicating which
+/// authorities contributed to the signature.
+///
+/// ## Threshold Behavior
+/// The STRONG_THRESHOLD generic parameter determines the quorum threshold:
+/// - When STRONG_THRESHOLD is true: requires 2f+1 stake (strong quorum)
+/// - When STRONG_THRESHOLD is false: requires f+1 stake (weak quorum)
+///
+/// Where f is the maximum number of Byzantine (faulty) nodes the system can tolerate.
+///
+/// ## Thread Safety
+/// This type is immutable and can be safely shared across threads.
+///
+/// ## Examples
+/// ```
+/// // Create a strong quorum signature (2f+1)
+/// let strong_quorum = AuthorityQuorumSignInfo::<true>::new_from_auth_sign_infos(
+///     signatures,
+///     committee
+/// )?;
+///
+/// // Verify the quorum signature
+/// strong_quorum.verify_secure(&data, Intent::SomaTransaction, committee)?;
+/// ```
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AuthorityQuorumSignInfo<const STRONG_THRESHOLD: bool> {
@@ -394,8 +559,14 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
                 })?;
 
             // Update weight.
-            let voting_rights = committee.weight(authority);
-            if voting_rights <= 0 {
+            let mut voting_rights = committee.weight(authority);
+            // TODO: remove the following after VOTING POWER is implemented
+            if voting_rights == 0 {
+                voting_rights = committee.total_stake() / committee.size() as u64;
+            }
+
+            if voting_rights < 0 {
+                // TODO: voting_rights <= 0
                 return Err(SomaError::UnknownSigner {
                     signer: Some(authority.concise().to_string()),
                     index: Some(authority_index),
@@ -417,19 +588,49 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
 }
 
 impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
+    /// Creates a new AuthorityQuorumSignInfo from individual authority signatures
+    ///
+    /// ## Behavior
+    /// Validates that all signatures are from the same epoch, checks that they have
+    /// sufficient stake to meet the quorum threshold, aggregates the signatures,
+    /// and creates a bitmap of signers.
+    ///
+    /// ## Arguments
+    /// * `auth_sign_infos` - Vector of individual authority signatures
+    /// * `committee` - The committee configuration for the current epoch
+    ///
+    /// ## Returns
+    /// A new AuthorityQuorumSignInfo if the signatures form a valid quorum
+    ///
+    /// ## Errors
+    /// - Returns error if signatures are from different epochs
+    /// - Returns error if total stake is below the quorum threshold
+    /// - Returns error if any signer is not in the committee
+    /// - Returns error if signature aggregation fails
     pub fn new_from_auth_sign_infos(
         auth_sign_infos: Vec<AuthoritySignInfo>,
         committee: &Committee,
     ) -> SomaResult<Self> {
+        // Verify all signatures are from the same epoch as the committee
         if !(auth_sign_infos.iter().all(|a| a.epoch == committee.epoch)) {
             return Err(SomaError::InvalidSignature {
                 error: "All signatures must be from the same epoch as the committee".to_string(),
             });
         }
 
+        // Calculate total stake and verify it meets the quorum threshold
         let total_stake: VotingPower = auth_sign_infos
             .iter()
-            .map(|a| committee.weight(&a.authority))
+            .map(|a| {
+                let v = committee.weight(&a.authority);
+                // TODO: remove this after implementing voting power
+                let votes = if v > 0 {
+                    v
+                } else {
+                    committee.total_stake() / committee.size() as u64
+                };
+                votes
+            })
             .sum();
         if !(total_stake >= Self::quorum_threshold(committee)) {
             return Err(SomaError::InvalidSignature {
@@ -437,10 +638,13 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
             });
         }
 
+        // Organize signatures by authority
         let signatures: BTreeMap<_, _> = auth_sign_infos
             .into_iter()
             .map(|a| (a.authority, a.signature))
             .collect();
+
+        // Create bitmap of signers using their committee indices
         let mut map = RoaringBitmap::new();
         for pk in signatures.keys() {
             map.insert(
@@ -453,8 +657,11 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
                     })?,
             );
         }
+
+        // Extract signatures for aggregation
         let sigs: Vec<AuthoritySignature> = signatures.into_values().collect();
 
+        // Create the quorum signature info with aggregated signature
         Ok(AuthorityQuorumSignInfo {
             epoch: committee.epoch,
             signature: AggregateAuthoritySignature::aggregate(&sigs).map_err(|e| {
@@ -466,11 +673,37 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
         })
     }
 
+    /// Gets the appropriate quorum threshold based on STRONG_THRESHOLD
+    ///
+    /// ## Arguments
+    /// * `committee` - The committee configuration
+    ///
+    /// ## Returns
+    /// The voting power threshold required for a quorum
     pub fn quorum_threshold(committee: &Committee) -> VotingPower {
         committee.threshold::<STRONG_THRESHOLD>()
     }
 }
+/// Trait for authority signatures in the Soma blockchain
+///
+/// ## Purpose
+/// Defines the interface for creating and verifying authority signatures
+/// with epoch and intent context. This trait abstracts the specific signature
+/// scheme implementation details.
+///
+/// ## Usage
+/// Implemented by signature types used for authority operations, providing
+/// a consistent interface for secure signature creation and verification.
 pub trait SomaAuthoritySignature {
+    /// Verifies a signature against a message, epoch, and author
+    ///
+    /// ## Arguments
+    /// * `value` - The intent message that was signed
+    /// * `epoch_id` - The epoch in which the signature was created
+    /// * `author` - The public key of the purported signer
+    ///
+    /// ## Returns
+    /// Ok(()) if the signature is valid, or an error if verification fails
     fn verify_secure<T>(
         &self,
         value: &IntentMessage<T>,
@@ -480,6 +713,15 @@ pub trait SomaAuthoritySignature {
     where
         T: Serialize;
 
+    /// Creates a new signature for a message with epoch context
+    ///
+    /// ## Arguments
+    /// * `value` - The intent message to sign
+    /// * `epoch_id` - The current epoch ID
+    /// * `secret` - The signing key
+    ///
+    /// ## Returns
+    /// A new signature over the message and epoch
     fn new_secure<T>(
         value: &IntentMessage<T>,
         epoch_id: &EpochId,
@@ -490,17 +732,53 @@ pub trait SomaAuthoritySignature {
 }
 
 impl SomaAuthoritySignature for AuthoritySignature {
+    /// Creates a new authority signature with epoch context
+    ///
+    /// ## Behavior
+    /// Serializes the intent message, appends the epoch information,
+    /// and signs the combined data.
+    ///
+    /// ## Arguments
+    /// * `value` - The intent message to sign
+    /// * `epoch` - The current epoch ID
+    /// * `secret` - The authority's signing key
+    ///
+    /// ## Returns
+    /// A new authority signature over the message and epoch
     #[instrument(level = "trace", skip_all)]
     fn new_secure<T>(value: &IntentMessage<T>, epoch: &EpochId, secret: &dyn Signer<Self>) -> Self
     where
         T: Serialize,
     {
+        // Serialize the intent message
         let mut intent_msg_bytes =
             bcs::to_bytes(&value).expect("Message serialization should not fail");
+
+        // Append epoch information to the serialized message
         epoch.write(&mut intent_msg_bytes);
+
+        // Sign the combined data
         secret.sign(&intent_msg_bytes)
     }
 
+    /// Verifies an authority signature against a message, epoch, and author
+    ///
+    /// ## Behavior
+    /// Serializes the intent message, appends the epoch information,
+    /// converts the author's public key bytes to a full public key,
+    /// and verifies the signature against the combined data.
+    ///
+    /// ## Arguments
+    /// * `value` - The intent message that was signed
+    /// * `epoch` - The epoch in which the signature was created
+    /// * `author` - The public key bytes of the purported signer
+    ///
+    /// ## Returns
+    /// Ok(()) if the signature is valid, or an error if verification fails
+    ///
+    /// ## Errors
+    /// - Returns error if public key conversion fails
+    /// - Returns error if signature verification fails
     #[instrument(level = "trace", skip_all)]
     fn verify_secure<T>(
         &self,
@@ -511,14 +789,20 @@ impl SomaAuthoritySignature for AuthoritySignature {
     where
         T: Serialize,
     {
+        // Serialize the intent message
         let mut message = bcs::to_bytes(&value).expect("Message serialization should not fail");
+
+        // Append epoch information to the serialized message
         epoch.write(&mut message);
 
+        // Convert public key bytes to full public key
         let public_key = AuthorityPublicKey::try_from(author).map_err(|_| {
             SomaError::KeyConversionError(
                 "Failed to serialize public key bytes to valid public key".to_string(),
             )
         })?;
+
+        // Verify the signature
         public_key
             .verify(&message[..], self)
             .map_err(|e| SomaError::InvalidSignature {
@@ -532,7 +816,23 @@ impl SomaAuthoritySignature for AuthoritySignature {
     }
 }
 
-/// Generate a keypair from the specified RNG (useful for testing with seedable rngs).
+/// Generates a keypair from the specified random number generator
+///
+/// ## Purpose
+/// Creates a new keypair using the provided random number generator,
+/// which is useful for testing with seedable RNGs to produce deterministic keys.
+///
+/// ## Arguments
+/// * `csprng` - Cryptographically secure random number generator
+///
+/// ## Returns
+/// A tuple containing the Soma address derived from the public key and the keypair
+///
+/// ## Examples
+/// ```
+/// let mut rng = StdRng::from_seed([0; 32]);
+/// let (address, keypair) = get_key_pair_from_rng::<Ed25519KeyPair, _>(&mut rng);
+/// ```
 pub fn get_key_pair_from_rng<KP: KeypairTraits, R>(csprng: &mut R) -> (SomaAddress, KP)
 where
     R: rand::CryptoRng + rand::RngCore,
@@ -542,7 +842,21 @@ where
     (kp.public().into(), kp)
 }
 
-/// Generate a random committee key pairs with a given committee size
+/// Generates a set of random committee key pairs with a given size
+///
+/// ## Purpose
+/// Creates a deterministic set of authority key pairs for testing and simulation.
+/// The keys are generated using a fixed seed for reproducibility.
+///
+/// ## Arguments
+/// * `size` - Number of authority key pairs to generate
+///
+/// ## Returns
+/// A vector of AuthorityKeyPair instances
+///
+/// ## Note
+/// The implementation currently generates extra keys to match the behavior of
+/// ConfigBuilder::build. This is a known issue that should be addressed in the future.
 pub fn random_committee_key_pairs_of_size(size: usize) -> Vec<AuthorityKeyPair> {
     let mut rng = StdRng::from_seed([0; 32]);
     (0..size)

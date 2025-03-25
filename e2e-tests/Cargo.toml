@@ -14,3 +14,5 @@ bcs.workspace = true
 msim.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+chrono = "0.4"
+regex = "1.11"

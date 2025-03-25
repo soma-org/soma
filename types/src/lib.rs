@@ -33,7 +33,7 @@ pub mod transaction;
 pub mod tx_outputs;
 
 use base::SomaAddress;
-use object::ObjectID;
+use object::{ObjectID, Version, OBJECT_START_VERSION};
 
 macro_rules! built_in_ids {
     ($($addr:ident / $id:ident = $init:expr);* $(;)?) => {
@@ -55,3 +55,5 @@ const fn builtin_address(suffix: u16) -> SomaAddress {
 built_in_ids! {
     SYSTEM_STATE_ADDRESS / SYSTEM_STATE_OBJECT_ID = 0x5;
 }
+
+pub const SYSTEM_STATE_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;

@@ -178,17 +178,22 @@ impl SomaNode {
             )))
         };
 
+        info!("creating commit store");
+
+        let commit_store = CommitStore::new();
+
         let epoch_store = AuthorityPerEpochStore::new(
             config.protocol_public_key(),
             committee.clone(),
             epoch_start_configuration,
+            commit_store
+                .get_highest_executed_commit_index()
+                .expect("commit store read cannot fail")
+                .unwrap_or(0),
         );
 
         info!("created epoch store");
 
-        info!("creating commit store");
-
-        let commit_store = CommitStore::new();
         commit_store.insert_genesis_commit(genesis.commit());
 
         info!("creating long term consensus store");
@@ -245,6 +250,7 @@ impl SomaNode {
         )
         .await;
 
+        commit_store.insert_genesis_commit(genesis.commit());
         // ensure genesis txn was executed
         if epoch_store.epoch() == 0 {
             let txn = &genesis.transaction();
@@ -271,7 +277,7 @@ impl SomaNode {
                 .expect("commit_transaction_outputs cannot fail");
 
             epoch_store
-                .handle_committed_transactions(tx_digests)
+                .handle_committed_transactions(0, tx_digests)
                 .expect("cannot fail");
         }
 
@@ -774,11 +780,11 @@ impl SomaNode {
     ) -> Arc<AuthorityPerEpochStore> {
         let next_epoch = next_epoch_committee.epoch();
 
-        // let last_checkpoint = self
-        //     .checkpoint_store
-        //     .get_epoch_last_checkpoint(cur_epoch_store.epoch())
-        //     .expect("Error loading last checkpoint for current epoch")
-        //     .expect("Could not load last checkpoint for current epoch");
+        let last_commit = self
+            .commit_store
+            .get_epoch_last_commit(cur_epoch_store.epoch())
+            .expect("Error loading last checkpoint for current epoch")
+            .expect("Could not load last checkpoint for current epoch");
 
         let epoch_start_configuration = EpochStartConfiguration::new(next_epoch_start_system_state);
 
@@ -788,6 +794,7 @@ impl SomaNode {
                 cur_epoch_store,
                 next_epoch_committee,
                 epoch_start_configuration,
+                last_commit.commit_ref.index,
             )
             .await
             .expect("Reconfigure authority state cannot fail");

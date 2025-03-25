@@ -15,6 +15,7 @@ use types::{
 
 use crate::store::TypedStoreError;
 
+pub mod causal_order;
 pub mod executor;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

@@ -1,3 +1,37 @@
+//! # Authority State
+//!
+//! ## Overview
+//! The Authority State module is the core state management component of the Soma blockchain validator.
+//! It manages the validator's view of the blockchain state, processes transactions, and handles
+//! epoch transitions.
+//!
+//! ## Responsibilities
+//! - Maintaining the validator's state (objects, transactions, effects)
+//! - Processing and executing transactions and certificates
+//! - Managing epoch transitions and reconfiguration
+//! - Coordinating transaction execution with consensus
+//! - Providing transaction status and effects
+//! - Ensuring thread-safe access to state
+//!
+//! ## Component Relationships
+//! - Interacts with Consensus module to process ordered transactions
+//! - Uses TransactionManager to track and execute pending transactions
+//! - Manages AuthorityPerEpochStore for epoch-specific state
+//! - Coordinates with StateAccumulator for state verification
+//! - Provides interfaces for external services to query state
+//!
+//! ## Key Workflows
+//! 1. Transaction processing: validation, execution, and effects generation
+//! 2. Certificate execution: processing verified certificates from consensus
+//! 3. Epoch reconfiguration: transitioning between epochs with validator set changes
+//! 4. State synchronization: ensuring consistent state across validators
+//!
+//! ## Design Patterns
+//! - Thread-safe state access via Arc<RwLock<>> and ArcSwap patterns
+//! - Epoch-based isolation for reconfiguration safety
+//! - Transactional execution with atomic commits
+//! - Lock-based concurrency control for shared objects
+
 use std::ops::Add;
 use std::{pin::Pin, sync::Arc};
 
@@ -15,10 +49,12 @@ use types::effects::{
 };
 use types::envelope::Message;
 use types::error::ExecutionError;
+use types::object::ObjectRef;
 use types::state_sync::CommitTimestamp;
 use types::storage::object_store::ObjectStore;
 use types::system_state::{EpochStartSystemStateTrait, SystemState};
-use types::transaction::{EndOfEpochTransactionKind, SenderSignedData};
+use types::temporary_store::InnerTemporaryStore;
+use types::transaction::{EndOfEpochTransactionKind, InputObjects, SenderSignedData};
 use types::tx_outputs::{TransactionOutputs, WrittenObjects};
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
@@ -41,57 +77,125 @@ use crate::cache::{
     ExecutionCacheCommit, ExecutionCacheTraitPointers, ExecutionCacheWrite, ObjectCacheRead,
     TransactionCacheRead,
 };
-use crate::epoch_store::CertTxGuard;
+use crate::consensus_quarantine;
+use crate::epoch_store::{CertLockGuard, CertTxGuard};
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::state_accumulator::StateAccumulator;
+use crate::tx_input_loader::TransactionInputLoader;
 use crate::{
     client::NetworkAuthorityClient, epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration, tx_manager::TransactionManager,
 };
 use types::storage::committee_store::CommitteeStore;
 
-/// a Trait object for `Signer` that is:
-/// - Pin, i.e. confined to one place in memory (we don't want to copy private keys).
-/// - Sync, i.e. can be safely shared between threads.
+/// # StableSyncAuthoritySigner
 ///
-/// Typically instantiated with Box::pin(keypair) where keypair is a `KeyPair`
+/// A trait object for `Signer` that provides thread-safe and memory-safe access to authority signing capabilities.
+///
+/// ## Purpose
+/// Provides a secure way to handle cryptographic signing operations for an authority without
+/// exposing or copying private key material.
+///
+/// ## Thread Safety
+/// - `Pin`: Ensures the signer is confined to one place in memory for security (prevents copying private keys)
+/// - `Arc<dyn Signer>`: Allows safe sharing between threads
+/// - `Send + Sync`: Enables concurrent access from multiple threads
+///
+/// ## Usage
+/// Typically instantiated with `Box::pin(keypair)` where keypair is a `KeyPair` implementation
+/// that provides the cryptographic signing capabilities for the authority.
 ///
 pub type StableSyncAuthoritySigner = Pin<Arc<dyn Signer<AuthoritySignature> + Send + Sync>>;
 
+/// # AuthorityState
+///
+/// The core state management component of a Soma blockchain validator or fullnode.
+///
+/// ## Purpose
+/// AuthorityState is responsible for maintaining the validator's view of the blockchain state,
+/// processing transactions, executing certificates, and managing epoch transitions.
+/// It serves as the central coordination point for transaction processing and state management.
+///
+/// ## Lifecycle
+/// - Created during node startup with validator identity and initial epoch information
+/// - Persists throughout the node's lifetime, managing epoch transitions
+/// - Handles transaction processing and certificate execution
+/// - Coordinates with consensus for transaction ordering
+///
+/// ## Thread Safety
+/// This struct is designed for concurrent access with careful lock management:
+/// - Uses `ArcSwap` for epoch store updates
+/// - Employs `RwLock` for execution epoch management
+/// - Coordinates transaction execution with transaction-specific locks
+///
+/// ## Key Components
+/// - Epoch management via epoch_store and execution_lock
+/// - Transaction processing via transaction_manager
+/// - State verification via accumulator
+/// - Object and transaction storage via execution_cache_trait_pointers
 pub struct AuthorityState {
-    // Fixed size, static, identity of the authority
-    /// The name of this authority.
+    /// The name (public key) of this authority.
     pub name: AuthorityName,
-    /// The signature key of the authority.
+
+    /// The signature key of the authority used for signing transactions and effects.
     pub secret: StableSyncAuthoritySigner,
 
+    /// The epoch-specific store, swapped atomically during reconfiguration.
+    /// Contains epoch-specific committee information, protocol configs, and state.
     epoch_store: ArcSwap<AuthorityPerEpochStore>,
 
-    /// This lock denotes current 'execution epoch'.
-    /// Execution acquires read lock, checks certificate epoch and holds it until all writes are complete.
-    /// Reconfiguration acquires write lock, changes the epoch and revert all transactions
-    /// from previous epoch that are executed but did not make into checkpoint.
+    /// Lock that denotes current 'execution epoch'.
+    /// - Execution acquires read lock, checks certificate epoch and holds it until all writes are complete.
+    /// - Reconfiguration acquires write lock, changes the epoch and reverts all transactions
+    ///   from previous epoch that are executed but did not make it into a checkpoint.
     execution_lock: RwLock<EpochId>,
 
+    /// Store for committee information across epochs.
     committee_store: Arc<CommitteeStore>,
 
-    // Manages pending certificates and their missing input objects.
+    /// Manages pending certificates and their missing input objects.
+    /// Responsible for transaction dependency tracking and execution ordering.
     transaction_manager: Arc<TransactionManager>,
+
+    /// Node configuration parameters.
     pub config: NodeConfig,
-    // pub validator_tx_finalizer: Option<Arc<ValidatorTxFinalizer<NetworkAuthorityClient>>>,
-    /// Shuts down the execution task. Used only in testing.
+
+    /// Channel sender to shut down the execution task. Used only in testing.
     #[allow(unused)]
     tx_execution_shutdown: Mutex<Option<oneshot::Sender<()>>>,
 
-    /// The database
+    /// Loader for transaction input objects.
+    input_loader: TransactionInputLoader,
+
+    /// Trait objects for accessing the execution cache and storage.
     execution_cache_trait_pointers: ExecutionCacheTraitPointers,
 
-    // The state accumulator
+    /// The state accumulator for verifying state consistency.
     accumulator: Arc<StateAccumulator>,
 }
 
 impl AuthorityState {
+    /// # Create a new AuthorityState
+    ///
+    /// Creates and initializes a new authority state with the provided components.
+    ///
+    /// ## Arguments
+    /// * `name` - The authority's name (public key)
+    /// * `secret` - The authority's signing key
+    /// * `epoch_store` - The initial epoch store for the authority
+    /// * `committee_store` - Store for committee information across epochs
+    /// * `config` - Node configuration parameters
+    /// * `execution_cache_trait_pointers` - Trait objects for accessing execution cache and storage
+    /// * `accumulator` - State accumulator for verifying state consistency
+    ///
+    /// ## Returns
+    /// An Arc-wrapped AuthorityState instance
+    ///
+    /// ## Behavior
+    /// - Initializes the transaction manager
+    /// - Sets up the execution lock with the current epoch
+    /// - Spawns a background task to process ready certificates
     #[allow(clippy::disallowed_methods)] // allow unbounded_channel()
     pub async fn new(
         name: AuthorityName,
@@ -104,6 +208,7 @@ impl AuthorityState {
     ) -> Arc<Self> {
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
         let transaction_manager = Arc::new(TransactionManager::new(
+            execution_cache_trait_pointers.object_cache_reader.clone(),
             &epoch_store,
             tx_ready_certificates,
             execution_cache_trait_pointers
@@ -113,6 +218,9 @@ impl AuthorityState {
         let (tx_execution_shutdown, rx_execution_shutdown) = oneshot::channel();
 
         let epoch = epoch_store.epoch();
+        let input_loader =
+            TransactionInputLoader::new(execution_cache_trait_pointers.object_cache_reader.clone());
+
         let state = Arc::new(AuthorityState {
             name,
             secret,
@@ -122,6 +230,7 @@ impl AuthorityState {
             committee_store,
             transaction_manager,
             config,
+            input_loader,
             execution_cache_trait_pointers,
             accumulator,
         });
@@ -137,26 +246,87 @@ impl AuthorityState {
         state
     }
 
+    /// # Get transaction cache reader
+    ///
+    /// Returns a reference to the transaction cache reader component.
+    ///
+    /// ## Purpose
+    /// Provides access to transaction-related data in the cache, including transaction
+    /// blocks, effects, and execution status.
+    ///
+    /// ## Usage
+    /// Used throughout the authority state to read transaction data without directly
+    /// accessing the underlying storage.
     pub fn get_transaction_cache_reader(&self) -> &Arc<dyn TransactionCacheRead> {
         &self.execution_cache_trait_pointers.transaction_cache_reader
     }
 
+    /// # Get cache writer
+    ///
+    /// Returns a reference to the execution cache writer component.
+    ///
+    /// ## Purpose
+    /// Provides the ability to write transaction outputs, acquire locks, and
+    /// update the execution cache.
+    ///
+    /// ## Usage
+    /// Used during transaction execution to write results to the cache.
     pub fn get_cache_writer(&self) -> &Arc<dyn ExecutionCacheWrite> {
         &self.execution_cache_trait_pointers.cache_writer
     }
 
+    /// # Get object store
+    ///
+    /// Returns a reference to the object store component.
+    ///
+    /// ## Purpose
+    /// Provides access to the persistent storage of objects.
+    ///
+    /// ## Usage
+    /// Used during transaction execution and state verification to access
+    /// the current state of objects.
     pub fn get_object_store(&self) -> &Arc<dyn ObjectStore + Send + Sync> {
         &self.execution_cache_trait_pointers.object_store
     }
 
+    /// # Get object cache reader
+    ///
+    /// Returns a reference to the object cache reader component.
+    ///
+    /// ## Purpose
+    /// Provides access to object-related data in the cache, including
+    /// object versions, locks, and the system state object.
+    ///
+    /// ## Usage
+    /// Used throughout the authority state to read object data without
+    /// directly accessing the underlying storage.
     pub fn get_object_cache_reader(&self) -> &Arc<dyn ObjectCacheRead> {
         &self.execution_cache_trait_pointers.object_cache_reader
     }
 
+    /// # Get accumulator store
+    ///
+    /// Returns a reference to the accumulator store component.
+    ///
+    /// ## Purpose
+    /// Provides access to the storage for the state accumulator, which is used
+    /// to verify the consistency of the blockchain state.
+    ///
+    /// ## Usage
+    /// Used during state verification and accumulation processes.
     pub fn get_accumulator_store(&self) -> &Arc<dyn AccumulatorStore> {
         &self.execution_cache_trait_pointers.accumulator_store
     }
 
+    /// # Get cache commit
+    ///
+    /// Returns a reference to the execution cache commit component.
+    ///
+    /// ## Purpose
+    /// Provides the ability to commit transaction outputs to persistent storage.
+    ///
+    /// ## Usage
+    /// Used after transaction execution to ensure durability of the results.
     pub fn get_cache_commit(&self) -> &Arc<dyn ExecutionCacheCommit> {
         &self.execution_cache_trait_pointers.cache_commit
     }
@@ -169,25 +339,70 @@ impl AuthorityState {
         transaction: VerifiedTransaction,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult<VerifiedSignedTransaction> {
+        // Ensure that validator cannot reconfigure while we are signing the tx
+        let _execution_lock = self.execution_lock_for_signing();
+
+        let tx_digest = transaction.digest();
+        let tx_data = transaction.data().transaction_data();
+
+        let input_object_kinds = tx_data.input_objects()?;
+        let receiving_objects_refs = tx_data.receiving_objects();
+        let (input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
+            Some(tx_digest),
+            &input_object_kinds,
+            &receiving_objects_refs,
+            epoch_store.epoch(),
+        )?;
+
+        let owned_objects = input_objects.filter_owned_objects();
+
         let signed_transaction = VerifiedSignedTransaction::new(
             epoch_store.epoch(),
-            transaction,
+            transaction.clone(),
             self.name,
             &*self.secret,
         );
+
+        // TODO: check_transaction_input
+        // TODO: check_transaction_for_signing
 
         // Check and write locks, to signed transaction, into the database
         // The call to self.set_transaction_lock checks the lock is not conflicting,
         // and returns ConflictingTransaction error in case there is a lock on a different
         // existing transaction.
-        // self.get_cache_writer()
-        //     .acquire_transaction_locks(epoch_store, &owned_objects, signed_transaction.clone())
-        //     .await?;
+        self.get_cache_writer().acquire_transaction_locks(
+            epoch_store,
+            &owned_objects,
+            *tx_digest,
+            signed_transaction.clone(),
+        )?;
 
         Ok(signed_transaction)
     }
 
-    /// Initiate a new transaction.
+    /// # Initiate a new transaction
+    ///
+    /// Processes a new transaction by validating it, signing it, and acquiring locks on input objects.
+    ///
+    /// ## Arguments
+    /// * `epoch_store` - The current epoch store
+    /// * `transaction` - The verified transaction to process
+    ///
+    /// ## Returns
+    /// A response containing the transaction status, which may be:
+    /// - `TransactionStatus::Signed` - If the transaction was successfully signed
+    /// - Other status if the transaction was already processed
+    ///
+    /// ## Behavior
+    /// 1. Checks if the transaction has already been processed
+    /// 2. Verifies the validator is not halted for epoch end
+    /// 3. Reads input objects and validates transaction
+    /// 4. Signs the transaction and acquires locks on owned objects
+    /// 5. Returns the transaction status
+    ///
+    /// ## Errors
+    /// - `ValidatorHaltedAtEpochEnd` - If the validator is no longer accepting transactions
+    /// - Various errors from transaction validation or lock acquisition
     #[instrument(level = "trace", skip_all)]
     pub async fn handle_transaction(
         &self,
@@ -302,7 +517,26 @@ impl AuthorityState {
         Ok(())
     }
 
-    /// Executes a certificate for its effects.
+    /// # Execute a certificate for its effects
+    ///
+    /// Processes a verified certificate by executing it and returning its effects.
+    ///
+    /// ## Arguments
+    /// * `certificate` - The verified certificate to execute
+    /// * `epoch_store` - The current epoch store
+    ///
+    /// ## Returns
+    /// The transaction effects resulting from execution
+    ///
+    /// ## Behavior
+    /// 1. For owned object transactions (no shared objects), immediately enqueues for execution
+    /// 2. For shared object transactions, relies on consensus to sequence them first
+    /// 3. Waits for transaction execution to complete and returns the effects
+    /// 4. Ensures execution happens within the current epoch
+    ///
+    /// ## Errors
+    /// - `EpochEnded` - If the epoch ends during execution
+    /// - Various errors from transaction execution
     #[instrument(level = "trace", skip_all)]
     pub async fn execute_certificate(
         &self,
@@ -311,10 +545,42 @@ impl AuthorityState {
     ) -> SomaResult<TransactionEffects> {
         debug!("execute_certificate");
 
-        self.enqueue_certificates_for_execution(vec![certificate.clone()], epoch_store);
-        self.notify_read_effects(certificate).await
+        // self.enqueue_certificates_for_execution(vec![certificate.clone()], epoch_store);
+        // self.notify_read_effects(certificate).await
+
+        // TODO(fastpath): use a separate function to check if a transaction should be executed in fastpath.
+        if !certificate.contains_shared_object() {
+            // Shared object transactions need to be sequenced by the consensus before enqueueing
+            // for execution, done in AuthorityPerEpochStore::handle_consensus_transaction().
+            // For owned object transactions, they can be enqueued for execution immediately.
+            self.enqueue_certificates_for_execution(vec![certificate.clone()], epoch_store);
+        }
+
+        // tx could be reverted when epoch ends, so we must be careful not to return a result
+        // here after the epoch ends.
+        epoch_store
+            .within_alive_epoch(self.notify_read_effects(certificate))
+            .await
+            .map_err(|_| SomaError::EpochEnded(epoch_store.epoch()))
+            .and_then(|r| r)
     }
 
+    /// # Wait for transaction effects
+    ///
+    /// Waits for a transaction's execution to complete and returns its effects.
+    ///
+    /// ## Arguments
+    /// * `certificate` - The verified certificate whose effects to wait for
+    ///
+    /// ## Returns
+    /// The transaction effects once execution is complete
+    ///
+    /// ## Behavior
+    /// This is a blocking operation that waits until the transaction has been
+    /// executed and its effects are available in the transaction cache.
+    ///
+    /// ## Usage
+    /// Used after enqueueing a transaction for execution to wait for its completion.
     pub async fn notify_read_effects(
         &self,
         certificate: &VerifiedCertificate,
@@ -335,7 +601,7 @@ impl AuthorityState {
     /// It is caller's responsibility to ensure input objects are available and locks are set.
     /// If this cannot be satisfied by the caller, execute_certificate() should be called instead.
     ///
-    /// Should only be called within sui-core.
+    /// Should only be called within core.
     #[instrument(level = "debug", skip_all)]
     pub async fn try_execute_immediately(
         &self,
@@ -348,6 +614,26 @@ impl AuthorityState {
 
         let tx_digest = certificate.digest();
 
+        // This acquires a lock on the tx digest to prevent multiple concurrent executions of the
+        // same tx. While we don't need this for safety (tx sequencing is ultimately atomic), it is
+        // very common to receive the same tx multiple times simultaneously due to gossip, so we
+        // may as well hold the lock and save the cpu time for other requests.
+        let tx_guard = epoch_store.acquire_tx_guard(certificate).await?;
+
+        // The cert could have been processed by a concurrent attempt of the same cert, so check if
+        // the effects have already been written.
+        if let Some(effects) = self
+            .get_transaction_cache_reader()
+            .get_executed_effects(tx_digest)?
+        {
+            info!("processed by concurrent attempt of the same cert");
+            tx_guard.release();
+            return Ok((effects, None));
+        }
+
+        let input_objects =
+            self.read_objects_for_execution(tx_guard.as_lock_guard(), certificate, epoch_store)?;
+
         if expected_effects_digest.is_none() {
             // We could be re-executing a previously executed but uncommitted transaction, perhaps after
             // restarting with a new binary. In this situation, if we have published an effects signature,
@@ -356,15 +642,10 @@ impl AuthorityState {
             expected_effects_digest = epoch_store.get_signed_effects_digest(tx_digest)?;
         }
 
-        // This acquires a lock on the tx digest to prevent multiple concurrent executions of the
-        // same tx. While we don't need this for safety (tx sequencing is ultimately atomic), it is
-        // very common to receive the same tx multiple times simultaneously due to gossip, so we
-        // may as well hold the lock and save the cpu time for other requests.
-        let tx_guard = epoch_store.acquire_tx_guard(certificate).await?;
-
         self.process_certificate(
             tx_guard,
             certificate,
+            input_objects,
             expected_effects_digest,
             commit,
             epoch_store,
@@ -373,11 +654,48 @@ impl AuthorityState {
         .tap_err(|e| info!(?tx_digest, "process_certificate failed: {e}"))
     }
 
+    /// # Read objects for transaction execution
+    ///
+    /// Loads all input objects required for executing a transaction.
+    ///
+    /// ## Arguments
+    /// * `tx_lock` - Lock guard for the transaction
+    /// * `certificate` - The verified transaction to execute
+    /// * `epoch_store` - The current epoch store
+    ///
+    /// ## Returns
+    /// The input objects needed for transaction execution
+    ///
+    /// ## Behavior
+    /// Uses the transaction input loader to read all objects specified in the transaction's
+    /// input objects list, ensuring they are available and at the correct versions.
+    ///
+    /// ## Errors
+    /// - If any input object is not found
+    /// - If object versions don't match what's specified in the transaction
+    /// - If locks cannot be acquired for owned objects
+    pub fn read_objects_for_execution(
+        &self,
+        tx_lock: &CertLockGuard,
+        certificate: &VerifiedExecutableTransaction,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<InputObjects> {
+        let input_objects = &certificate.data().transaction_data().input_objects()?;
+        self.input_loader.read_objects_for_execution(
+            epoch_store,
+            &certificate.key(),
+            tx_lock,
+            input_objects,
+            epoch_store.epoch(),
+        )
+    }
+
     #[instrument(level = "debug", skip_all)]
     pub(crate) async fn process_certificate(
         &self,
         tx_guard: CertTxGuard,
         certificate: &VerifiedExecutableTransaction,
+        input_objects: InputObjects,
         expected_effects_digest: Option<TransactionEffectsDigest>,
         commit: Option<CommitIndex>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
@@ -428,19 +746,23 @@ impl AuthorityState {
         // non-transient (transaction input is invalid, move vm errors). However, all errors from
         // this function occur before we have written anything to the db, so we commit the tx
         // guard and rely on the client to retry the tx (if it was transient).
-        let (written_objects, effects, execution_error_opt) =
-            match self.prepare_certificate(&execution_guard, certificate, epoch_store) {
-                Err(e) => {
-                    info!(name = ?self.name, ?digest, "Error preparing transaction: {e}");
-                    tx_guard.release();
-                    return Err(e);
-                }
-                Ok(res) => res,
-            };
+        let (inner, effects, execution_error_opt) = match self.prepare_certificate(
+            &execution_guard,
+            certificate,
+            input_objects,
+            epoch_store,
+        ) {
+            Err(e) => {
+                info!(name = ?self.name, ?digest, "Error preparing transaction: {e}");
+                tx_guard.release();
+                return Err(e);
+            }
+            Ok(res) => res,
+        };
 
         self.commit_certificate(
             certificate,
-            &written_objects,
+            inner,
             &effects,
             tx_guard,
             execution_guard,
@@ -451,6 +773,20 @@ impl AuthorityState {
         Ok((effects, execution_error_opt))
     }
 
+    /// # Check if transaction is already executed
+    ///
+    /// Determines whether a transaction has already been executed.
+    ///
+    /// ## Arguments
+    /// * `digest` - The transaction digest to check
+    ///
+    /// ## Returns
+    /// * `true` - If the transaction has been executed
+    /// * `false` - If the transaction has not been executed
+    ///
+    /// ## Purpose
+    /// Used to avoid re-executing transactions and to determine
+    /// if a transaction needs to be processed.
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> SomaResult<bool> {
         self.get_transaction_cache_reader()
             .is_tx_already_executed(digest)
@@ -460,7 +796,7 @@ impl AuthorityState {
     async fn commit_certificate(
         &self,
         certificate: &VerifiedExecutableTransaction,
-        written_objects: &WrittenObjects,
+        inner_temporary_store: InnerTemporaryStore,
         effects: &TransactionEffects,
         tx_guard: CertTxGuard,
         _execution_guard: ExecutionLockReadGuard<'_>,
@@ -468,6 +804,7 @@ impl AuthorityState {
     ) -> SomaResult {
         let tx_key = certificate.key();
         let tx_digest = certificate.digest();
+        let output_keys = inner_temporary_store.get_output_keys(effects);
 
         // Only need to sign effects if we are a validator, and if the executed_in_epoch_table is not yet enabled.
         // TODO: once executed_in_epoch_table is enabled everywhere, we can remove the code below entirely.
@@ -493,6 +830,12 @@ impl AuthorityState {
         //         error!(?tx_digest, "tx post processing failed: {e}");
         //     });
 
+        info!(
+            tx_digest=?tx_digest,
+            "About to commit certificate for transaction. Inputs: {:?}",
+            inner_temporary_store.input_objects
+        );
+
         // The insertion to epoch_store is not atomic with the insertion to the perpetual store. This is OK because
         // we insert to the epoch store first. And during lookups we always look up in the perpetual store first.
         epoch_store.insert_tx_key_and_effects_signature(
@@ -505,7 +848,7 @@ impl AuthorityState {
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
             effects.clone(),
-            written_objects.clone(),
+            inner_temporary_store,
         );
         self.get_cache_writer()
             .write_transaction_outputs(epoch_store.epoch(), transaction_outputs.into())
@@ -518,7 +861,7 @@ impl AuthorityState {
         // This provides necessary information to transaction manager to start executing
         // additional ready transactions.
         self.transaction_manager
-            .notify_commit(tx_digest, epoch_store);
+            .notify_commit(tx_digest, output_keys, epoch_store);
 
         Ok(())
     }
@@ -537,26 +880,55 @@ impl AuthorityState {
         &self,
         _execution_guard: &ExecutionLockReadGuard<'_>,
         certificate: &VerifiedExecutableTransaction,
+        input_objects: InputObjects,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SomaResult<(WrittenObjects, TransactionEffects, Option<ExecutionError>)> {
+    ) -> SomaResult<(
+        InnerTemporaryStore,
+        TransactionEffects,
+        Option<ExecutionError>,
+    )> {
         let prepare_certificate_start_time = tokio::time::Instant::now();
 
         // TODO: We need to move this to a more appropriate place to avoid redundant checks.
         let tx_data = certificate.data().transaction_data();
 
+        // TODO: check_certificate_input
+
+        let owned_object_refs = input_objects.filter_owned_objects();
+        // TODO: CRASHING self.check_owned_locks(&owned_object_refs)?;
         let tx_digest = *certificate.digest();
         let protocol_config = epoch_store.protocol_config();
         let transaction_data = &certificate.data().intent_message().value;
         let (kind, signer) = transaction_data.execution_parts();
 
-        let (written_objects, effects, execution_error_opt) = epoch_store.execute_transaction(
+        let (inner, effects, execution_error_opt) = epoch_store.execute_transaction(
             self.get_object_store().as_ref(),
             tx_digest,
             kind,
             signer,
+            input_objects,
         );
 
-        Ok((written_objects, effects, execution_error_opt))
+        Ok((inner, effects, execution_error_opt))
+    }
+
+    /// # Check if owned objects are live
+    ///
+    /// Verifies that all owned objects referenced in a transaction are live and available.
+    ///
+    /// ## Arguments
+    /// * `owned_object_refs` - References to owned objects to check
+    ///
+    /// ## Returns
+    /// * `Ok(())` - If all objects are live and available
+    /// * `Err(...)` - If any object is not live or not available
+    ///
+    /// ## Purpose
+    /// Used during transaction validation to ensure that all owned objects
+    /// referenced by the transaction are available for use.
+    fn check_owned_locks(&self, owned_object_refs: &[ObjectRef]) -> SomaResult {
+        self.get_object_cache_reader()
+            .check_owned_objects_are_live(owned_object_refs)
     }
 
     #[instrument(level = "error", skip_all)]
@@ -565,6 +937,7 @@ impl AuthorityState {
         cur_epoch_store: &AuthorityPerEpochStore,
         new_committee: Committee,
         epoch_start_configuration: EpochStartConfiguration,
+        epoch_last_commit: CommitIndex,
         // expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
         let new_epoch = new_committee.epoch;
@@ -575,7 +948,12 @@ impl AuthorityState {
         // TODO: check system consistency using accumulator after reverting uncommitted epoch transactions
 
         let new_epoch_store = self
-            .reopen_epoch_db(cur_epoch_store, new_committee, epoch_start_configuration)
+            .reopen_epoch_db(
+                cur_epoch_store,
+                new_committee,
+                epoch_start_configuration,
+                epoch_last_commit,
+            )
             .await?;
         assert_eq!(new_epoch_store.epoch(), new_epoch);
         self.transaction_manager.reconfigure(new_epoch);
@@ -608,25 +986,71 @@ impl AuthorityState {
         *execution_lock = new_epoch;
     }
 
-    /// Load the current epoch store. This can change during reconfiguration. To ensure that
-    /// we never end up accessing different epoch stores in a single task, we need to make sure
-    /// that this is called once per task. Each call needs to be carefully audited to ensure it is
-    /// the case. This also means we should minimize the number of call-sites. Only call it when
-    /// there is no way to obtain it from somewhere else.
+    /// # Load the current epoch store
+    ///
+    /// Provides access to the current epoch store, which contains epoch-specific state and configuration.
+    ///
+    /// ## Returns
+    /// A guard containing a reference to the current epoch store
+    ///
+    /// ## Thread Safety
+    /// This method is designed for concurrent access with careful usage patterns:
+    /// - Should be called only once per task to ensure consistent epoch view
+    /// - Uses ArcSwap for atomic updates during reconfiguration
+    ///
+    /// ## Usage Guidelines
+    /// - Call this method only when there is no other way to obtain the epoch store
+    /// - Minimize call sites to reduce the risk of inconsistent epoch state
+    /// - Each call must be carefully audited to ensure proper usage
     pub fn load_epoch_store_one_call_per_task(&self) -> Guard<Arc<AuthorityPerEpochStore>> {
         self.epoch_store.load()
     }
 
-    // Load the epoch store, should be used in tests only.
+    /// # Load epoch store for testing
+    ///
+    /// Provides access to the current epoch store for testing purposes.
+    ///
+    /// ## Returns
+    /// A guard containing a reference to the current epoch store
+    ///
+    /// ## Usage
+    /// This method should only be used in test code, not in production paths.
+    /// It's a convenience wrapper around load_epoch_store_one_call_per_task.
     pub fn epoch_store_for_testing(&self) -> Guard<Arc<AuthorityPerEpochStore>> {
         self.load_epoch_store_one_call_per_task()
     }
 
+    /// # Clone committee for testing
+    ///
+    /// Creates a clone of the current committee for testing purposes.
+    ///
+    /// ## Returns
+    /// A clone of the current committee
+    ///
+    /// ## Usage
+    /// This method should only be used in test code, not in production paths.
+    /// It provides a convenient way to access the current committee configuration.
     pub fn clone_committee_for_testing(&self) -> Committee {
         Committee::clone(self.epoch_store_for_testing().committee())
     }
 
-    /// Adds certificates to transaction manager for ordered execution.
+    /// # Enqueue certificates for execution
+    ///
+    /// Adds certificates to the transaction manager for ordered execution.
+    ///
+    /// ## Arguments
+    /// * `certs` - A vector of verified certificates to execute
+    /// * `epoch_store` - The current epoch store
+    ///
+    /// ## Purpose
+    /// Submits transactions to the transaction manager, which will
+    /// handle dependency tracking and execution ordering.
+    ///
+    /// ## Behavior
+    /// The transaction manager will:
+    /// 1. Track dependencies between transactions
+    /// 2. Execute transactions when their dependencies are satisfied
+    /// 3. Handle retries and error conditions
     pub fn enqueue_certificates_for_execution(
         &self,
         certs: Vec<VerifiedCertificate>,
@@ -636,6 +1060,22 @@ impl AuthorityState {
             .enqueue_certificates(certs, epoch_store, None)
     }
 
+    /// # Enqueue transactions with expected effects digest
+    ///
+    /// Adds transactions to the transaction manager with their expected effects digests.
+    ///
+    /// ## Arguments
+    /// * `certs` - A vector of tuples containing verified executable transactions and their expected effects digests
+    /// * `epoch_store` - The current epoch store
+    ///
+    /// ## Purpose
+    /// Used when executing transactions where the effects are already known,
+    /// such as during state synchronization or when re-executing transactions
+    /// after a node restart.
+    ///
+    /// ## Behavior
+    /// The transaction manager will verify that the actual effects match the
+    /// expected effects digest after execution.
     pub(crate) fn enqueue_with_expected_effects_digest(
         &self,
         certs: Vec<(VerifiedExecutableTransaction, TransactionEffectsDigest)>,
@@ -645,15 +1085,49 @@ impl AuthorityState {
             .enqueue_with_expected_effects_digest(certs, epoch_store)
     }
 
+    /// # Get transaction manager
+    ///
+    /// Returns a reference to the transaction manager.
+    ///
+    /// ## Returns
+    /// A reference to the transaction manager
+    ///
+    /// ## Purpose
+    /// Provides access to the transaction manager for coordinating
+    /// transaction execution and dependency tracking.
     pub fn transaction_manager(&self) -> &Arc<TransactionManager> {
         &self.transaction_manager
     }
 
+    /// # Clone committee store
+    ///
+    /// Returns a cloned reference to the committee store.
+    ///
+    /// ## Returns
+    /// An Arc-wrapped reference to the committee store
+    ///
+    /// ## Purpose
+    /// Provides access to committee information across epochs,
+    /// which is useful for validators that need to verify transactions
+    /// from different epochs.
     pub fn clone_committee_store(&self) -> Arc<CommitteeStore> {
         self.committee_store.clone()
     }
 
-    // This function is only used for testing.
+    /// # Get system state object for testing
+    ///
+    /// Retrieves the current system state object.
+    ///
+    /// ## Returns
+    /// The current system state object
+    ///
+    /// ## Purpose
+    /// Used in testing to access the system state, which contains
+    /// information about the current epoch, validator set, and other
+    /// system-wide parameters.
+    ///
+    /// ## Usage
+    /// This method should only be used in test code, not in production paths.
     pub fn get_system_state_object_for_testing(&self) -> SystemState {
         self.get_object_cache_reader()
             .get_system_state_object()
@@ -679,24 +1153,86 @@ impl AuthorityState {
         }
     }
 
+    /// Acquires the execution lock for the duration of a transaction signing request.
+    /// This prevents reconfiguration from starting until we are finished handling the signing request.
+    /// Otherwise, in-memory lock state could be cleared (by `ObjectLocks::clear_cached_locks`)
+    /// while we are attempting to acquire locks for the transaction.
+    pub fn execution_lock_for_signing(&self) -> SomaResult<ExecutionLockReadGuard> {
+        self.execution_lock
+            .try_read()
+            .map_err(|_| SomaError::ValidatorHaltedAtEpochEnd)
+    }
+
     pub async fn execution_lock_for_reconfiguration(&self) -> ExecutionLockWriteGuard {
         self.execution_lock.write().await
     }
 
+    /// # Check if node is a validator
+    ///
+    /// Determines whether this node is a validator in the current epoch.
+    ///
+    /// ## Arguments
+    /// * `epoch_store` - The current epoch store
+    ///
+    /// ## Returns
+    /// * `true` - If this node is a validator in the current epoch
+    /// * `false` - If this node is not a validator (i.e., it's a fullnode)
+    ///
+    /// ## Purpose
+    /// Used to determine the node's role and responsibilities in the network.
+    /// Validators have additional responsibilities like signing transactions and
+    /// participating in consensus.
     pub fn is_validator(&self, epoch_store: &AuthorityPerEpochStore) -> bool {
         epoch_store.committee().authority_exists(&self.name)
     }
 
+    /// # Check if node is a fullnode
+    ///
+    /// Determines whether this node is a fullnode (non-validator) in the current epoch.
+    ///
+    /// ## Arguments
+    /// * `epoch_store` - The current epoch store
+    ///
+    /// ## Returns
+    /// * `true` - If this node is a fullnode
+    /// * `false` - If this node is a validator
+    ///
+    /// ## Purpose
+    /// Used to determine the node's role and responsibilities in the network.
+    /// Fullnodes have different behavior than validators, such as not signing
+    /// transaction effects and not participating in consensus.
     pub fn is_fullnode(&self, epoch_store: &AuthorityPerEpochStore) -> bool {
         !self.is_validator(epoch_store)
     }
 
+    /// # Reopen epoch database
+    ///
+    /// Creates a new epoch store for the next epoch during reconfiguration.
+    ///
+    /// ## Arguments
+    /// * `cur_epoch_store` - The current epoch store
+    /// * `new_committee` - The committee for the new epoch
+    /// * `epoch_start_configuration` - Configuration for the new epoch
+    /// * `epoch_last_commit` - The last commit index of the current epoch
+    ///
+    /// ## Returns
+    /// A new epoch store for the next epoch
+    ///
+    /// ## Behavior
+    /// 1. Creates a new epoch store with the new committee and configuration
+    /// 2. Atomically swaps the current epoch store with the new one
+    /// 3. Signals the current epoch store that it has been terminated
+    ///
+    /// ## Purpose
+    /// Used during epoch transitions to set up the state for the new epoch
+    /// while ensuring a clean handoff from the previous epoch.
     #[instrument(level = "error", skip_all)]
     async fn reopen_epoch_db(
         &self,
         cur_epoch_store: &AuthorityPerEpochStore,
         new_committee: Committee,
         epoch_start_configuration: EpochStartConfiguration,
+        epoch_last_commit: CommitIndex,
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
         let new_epoch = new_committee.epoch;
         info!(new_epoch = ?new_epoch, "re-opening AuthorityEpochTables for new epoch");
@@ -705,13 +1241,38 @@ impl AuthorityState {
             new_committee.epoch
         );
 
-        let new_epoch_store =
-            cur_epoch_store.new_at_next_epoch(self.name, new_committee, epoch_start_configuration);
+        let new_epoch_store = cur_epoch_store.new_at_next_epoch(
+            self.name,
+            new_committee,
+            epoch_start_configuration,
+            epoch_last_commit,
+        );
         self.epoch_store.store(new_epoch_store.clone());
         cur_epoch_store.epoch_terminated().await;
         Ok(new_epoch_store)
     }
 
+    /// # Create and execute epoch advancement transaction
+    ///
+    /// Creates and executes a special system transaction to advance to the next epoch.
+    ///
+    /// ## Arguments
+    /// * `epoch_store` - The current epoch store
+    /// * `epoch_start_timestamp_ms` - The timestamp for the start of the new epoch
+    ///
+    /// ## Returns
+    /// A tuple containing the new system state and transaction effects
+    ///
+    /// ## Behavior
+    /// 1. Creates a special end-of-epoch transaction
+    /// 2. Executes it directly without going through consensus
+    /// 3. Updates the system state with the new epoch information
+    /// 4. Writes the transaction outputs to storage
+    ///
+    /// ## Purpose
+    /// Used during epoch transitions to update the system state object
+    /// with the new epoch information. This is a critical part of the
+    /// reconfiguration process.
     #[instrument(level = "error", skip_all)]
     pub async fn create_and_execute_advance_epoch_tx(
         &self,
@@ -735,7 +1296,7 @@ impl AuthorityState {
             "Creating advance epoch transaction"
         );
 
-        let _tx_lock = epoch_store.acquire_tx_lock(tx_digest).await;
+        let tx_lock = epoch_store.acquire_tx_lock(tx_digest).await;
 
         // The tx could have been executed by state sync already - if so simply return an error.
         // The checkpoint builder will shortly be terminated by reconfiguration anyway.
@@ -754,18 +1315,27 @@ impl AuthorityState {
             .execution_lock_for_executable_transaction(&executable_tx)
             .await?;
 
-        let (written_objects, effects, _execution_error_opt) =
-            self.prepare_certificate(&execution_guard, &executable_tx, epoch_store)?;
+        // We must manually assign the shared object versions to the transaction before executing it.
+        // This is because we do not sequence end-of-epoch transactions through consensus.
+        epoch_store.assign_shared_object_versions_idempotent(
+            self.get_object_cache_reader().as_ref(),
+            &[executable_tx.clone()],
+        )?;
 
-        let system_obj = written_objects.get(&SYSTEM_STATE_OBJECT_ID).unwrap();
+        let input_objects =
+            self.read_objects_for_execution(&tx_lock, &executable_tx, epoch_store)?;
+
+        let (inner, effects, _execution_error_opt) =
+            self.prepare_certificate(&execution_guard, &executable_tx, input_objects, epoch_store)?;
+
+        let system_obj = inner.written.get(&SYSTEM_STATE_OBJECT_ID).unwrap();
         let system_state =
             bcs::from_bytes::<SystemState>(system_obj.as_inner().data.contents()).unwrap();
 
         self.get_cache_writer()
             .write_transaction_outputs(
                 epoch_store.epoch(),
-                TransactionOutputs::build_transaction_outputs(tx, effects.clone(), written_objects)
-                    .into(),
+                TransactionOutputs::build_transaction_outputs(tx, effects.clone(), inner).into(),
             )
             .await?;
 
@@ -826,7 +1396,9 @@ impl AuthorityState {
             .get_executed_effects(transaction_digest)?;
         match effects {
             Some(effects) => Ok(Some(self.sign_effects(effects, epoch_store)?)),
-            None => Ok(None),
+            None => {
+                Ok(None)
+            },
         }
     }
 

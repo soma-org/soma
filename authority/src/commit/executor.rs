@@ -80,16 +80,10 @@ impl CommitExecutor {
     /// Ensure that all commits in the current epoch will be executed.
     /// We don't technically need &mut on self, but passing it to make sure only one instance is
     /// running at one time.
-    pub async fn run_epoch(
-        &mut self,
-        epoch_store: Arc<AuthorityPerEpochStore>,
-        // run_with_range: Option<RunWithRange>,
-    ) -> StopReason {
+    pub async fn run_epoch(&mut self, epoch_store: Arc<AuthorityPerEpochStore>) -> StopReason {
         debug!("Commit executor running for epoch {}", epoch_store.epoch(),);
 
         // Decide the first commit to schedule for execution.
-        // If we haven't executed anything in the past, we schedule commit 0.
-        // Otherwise we schedule the one after highest executed.
         let mut highest_executed = self.commit_store.get_highest_executed_commit().unwrap();
 
         // Complete epoch after executing the last commit of the epoch
@@ -97,8 +91,6 @@ impl CommitExecutor {
             if epoch_store.epoch() == highest_executed.epoch()
                 && highest_executed.is_last_commit_of_epoch()
             {
-                // We can arrive at this point if we bump the highest_executed_commit watermark, and then
-                // crash before completing reconfiguration.
                 info!(index = ?highest_executed.commit_ref.index, "final commit of epoch has already been executed");
                 return StopReason::EpochComplete;
             }
@@ -108,20 +100,15 @@ impl CommitExecutor {
             .as_ref()
             .map(|c| c.commit_ref.index + 1)
             .unwrap_or_else(|| {
-                // TODO this invariant may no longer hold once we introduce snapshots
                 assert_eq!(epoch_store.epoch(), 0);
                 0
             });
-        let mut pending: CommitExecutionBuffer = FuturesOrdered::new();
-
-        let mut now_time = Instant::now();
 
         loop {
-            // If we have executed the last commit of the current epoch, stop.
-            // Note: when we arrive here with highest_executed == the final commit of the epoch,
-            // we are in an edge case where highest_executed does not actually correspond to the watermark.
-            // The watermark is only bumped past the epoch final commit after execution of the change
-            // epoch tx.
+            // Yield to allow other tokio tasks to run
+            tokio::task::yield_now().await;
+
+            // Check for epoch completion
             if self
                 .check_epoch_last_commit(epoch_store.clone(), &highest_executed)
                 .await
@@ -130,66 +117,115 @@ impl CommitExecutor {
                     .prune_local_summaries()
                     .tap_err(|e| error!("Failed to prune local summaries: {}", e))
                     .ok();
-
-                // be extra careful to ensure we don't have orphans
-                assert!(
-                    pending.is_empty(),
-                    "Pending commit execution buffer should be empty after processing last commit of epoch",
-                );
                 debug!(epoch = epoch_store.epoch(), "finished epoch");
                 return StopReason::EpochComplete;
             }
 
-            self.schedule_synced_commits(
-                &mut pending,
-                // next_to_schedule will be updated to the next commit to schedule.
-                // This makes sure we don't re-schedule the same commit multiple times.
-                &mut next_to_schedule,
-                epoch_store.clone(),
-            );
-
-            // let panic_timeout = Duration::from_secs(45);
-            let warning_timeout = Duration::from_secs(5);
-
-            tokio::select! {
-                // Check for completed workers and ratchet the highest_commit_executed
-                // watermark accordingly. Note that given that commits are guaranteed to
-                // be processed (added to FuturesOrdered) in index order, using FuturesOrdered
-                // guarantees that we will also ratchet the watermarks in order.
-                Some(Ok((commit, tx_digests, commit_acc))) = pending.next() => {
-                    self.process_executed_commit(&epoch_store, &commit, &tx_digests, commit_acc).await;
-                    highest_executed = Some(commit.clone());
+            // Get the latest synced commit to determine what needs to be processed
+            let latest_synced_commit = match self
+                .commit_store
+                .get_highest_synced_commit()
+                .expect("Failed to read highest synced commit")
+            {
+                Some(commit) => commit,
+                None => {
+                    // Wait for commits to be synced
+                    self.process_mailbox(Duration::from_millis(100)).await;
+                    continue;
                 }
+            };
 
-                received = self.mailbox.recv() => match received {
-                    Ok(commit) => {
-                        // info!(
-                        //     index = ?commit.commit_ref.index,
-                        //     "Received committed sub dag from state sync"
-                        // );
-                    },
-                    Err(RecvError::Lagged(num_skipped)) => {
-                        debug!(
-                            "Commit Execution Recv channel overflowed with {:?} messages",
-                            num_skipped,
-                        );
+            // Process commits sequentially
+            if next_to_schedule <= latest_synced_commit.commit_ref.index {
+                let commit = match self.commit_store.get_commit_by_index(next_to_schedule) {
+                    Ok(Some(commit)) => commit,
+                    _ => {
+                        // Wait for the specific commit to be available
+                        self.process_mailbox(Duration::from_millis(100)).await;
+                        continue;
                     }
-                    Err(RecvError::Closed) => {
-                        panic!("Commit Execution Sender (StateSync) closed channel unexpectedly");
-                    },
-                },
+                };
 
-                _ = tokio::time::sleep(warning_timeout) => {
+                // Skip commits from future epochs
+                if commit.epoch() > epoch_store.epoch() {
                     warn!(
-                        "Received no new synced commits for {warning_timeout:?}. Next commit to be scheduled: {next_to_schedule}",
+                        commit_index = ?commit.commit_ref.index,
+                        commit_epoch = ?commit.epoch(),
+                        current_epoch = ?epoch_store.epoch(),
+                        "Received commit from future epoch, skipping"
                     );
+                    self.process_mailbox(Duration::from_millis(100)).await;
+                    continue;
                 }
 
-                // _ = panic_timeout
-                //             .map(|d| Either::Left(tokio::time::sleep(d)))
-                //             .unwrap_or_else(|| Either::Right(futures::future::pending())) => {
-                //                 panic!("No new synced commits received for {panic_timeout:?}");
-                // },
+                // Execute commit sequentially
+                info!(
+                    commit_index = ?commit.commit_ref.index,
+                    "Executing commit sequentially"
+                );
+
+                epoch_store.notify_synced_commit(commit.commit_ref.index);
+
+                match execute_commit(
+                    commit.clone(),
+                    &self.state,
+                    self.object_cache_reader.as_ref(),
+                    self.transaction_cache_reader.as_ref(),
+                    self.commit_store.clone(),
+                    epoch_store.clone(),
+                    self.tx_manager.clone(),
+                    self.accumulator.clone(),
+                )
+                .await
+                {
+                    Ok((tx_digests, commit_acc)) => {
+                        // Process the executed commit before moving to the next one
+                        self.process_executed_commit(
+                            &epoch_store,
+                            &commit,
+                            &tx_digests,
+                            commit_acc,
+                        )
+                        .await;
+                        highest_executed = Some(commit);
+                        next_to_schedule += 1;
+
+                        // Yield after execution to allow other tasks to run
+                        tokio::task::yield_now().await;
+                    }
+                    Err(err) => {
+                        error!("Error executing commit {}: {:?}", next_to_schedule, err);
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            } else {
+                // Wait for more commits to be synced
+                self.process_mailbox(Duration::from_millis(500)).await;
+            }
+        }
+    }
+
+    // Helper method to process the mailbox without blocking for too long
+    async fn process_mailbox(&mut self, max_wait: Duration) {
+        match tokio::time::timeout(max_wait, self.mailbox.recv()).await {
+            Ok(Ok(commit)) => {
+                debug!(
+                    index = ?commit.commit_ref.index,
+                    "Received committed sub dag from state sync"
+                );
+            }
+            Ok(Err(RecvError::Lagged(num_skipped))) => {
+                debug!(
+                    "Commit Execution Recv channel overflowed with {:?} messages",
+                    num_skipped,
+                );
+            }
+            Ok(Err(RecvError::Closed)) => {
+                panic!("Commit Execution Sender (StateSync) closed channel unexpectedly");
+            }
+            Err(_) => {
+                // Timeout reached, which is expected
+                tokio::task::yield_now().await;
             }
         }
     }
@@ -335,11 +371,29 @@ impl CommitExecutor {
             return change_epoch_tx_digest.clone();
         }
 
+        // Check if the change epoch transaction has shared objects
+        if change_epoch_tx.contains_shared_object() {
+            info!("contains shared object");
+            // Assign shared object versions for the change epoch transaction
+            epoch_store
+                .assign_shared_object_versions_idempotent(
+                    self.object_cache_reader.as_ref(),
+                    &[change_epoch_tx.clone()],
+                )
+                .unwrap_or_else(|e| {
+                    panic!(
+                    "Failed to assign shared object versions for change epoch transaction: {:?}",
+                    e
+                )
+                });
+        }
+
         self.tx_manager.enqueue(
             vec![change_epoch_tx.clone()],
             &epoch_store,
             Some(commit.commit_ref.index),
         );
+
         handle_execution_effects(
             &self.state,
             vec![change_epoch_tx_digest.clone()],
@@ -477,7 +531,7 @@ impl CommitExecutor {
             .expect("commit_transaction_outputs cannot fail");
 
         epoch_store
-            .handle_committed_transactions(all_tx_digests)
+            .handle_committed_transactions(commit.commit_ref.index, all_tx_digests)
             .expect("cannot fail");
 
         if !commit.is_last_commit_of_epoch() {
@@ -563,6 +617,30 @@ async fn execute_commit(
         transaction_cache_reader,
         epoch_store.clone(),
     );
+
+    // Assign shared object versions for all transactions with shared objects
+    // We first need to collect all transactions that have shared objects
+    let txns_with_shared_objects: Vec<_> = executable_txns
+        .iter()
+        .filter(|txn| txn.contains_shared_object())
+        .map(|txn| txn.clone())
+        .collect();
+
+    if !txns_with_shared_objects.is_empty() {
+        info!("contains shared object");
+        // Use the idempotent version since we don't have effects yet
+        epoch_store
+            .assign_shared_object_versions_state_sync(
+                object_cache_reader,
+                &txns_with_shared_objects,
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to assign shared object versions for commit {}: {:?}",
+                    commit.commit_ref.index, e
+                )
+            });
+    }
 
     let commit_acc = execute_transactions(
         all_tx_digests.clone(),
@@ -707,18 +785,6 @@ async fn execute_transactions(
     commit: CommittedSubDag,
     prepare_start: Instant,
 ) -> SomaResult<Option<Accumulator>> {
-    // for tx in &executable_txns {
-    //     if tx.contains_shared_object() {
-    //         epoch_store
-    //             .acquire_shared_locks_from_effects(
-    //                 tx,
-    //                 digest_to_effects.get(tx.digest()).unwrap(),
-    //                 object_cache_reader,
-    //             )
-    //             .await?;
-    //     }
-    // }
-
     let prepare_elapsed = prepare_start.elapsed();
 
     if commit.commit_ref.index % COMMIT_PROGRESS_LOG_COUNT_INTERVAL == 0 {

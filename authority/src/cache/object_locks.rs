@@ -95,7 +95,10 @@ impl ObjectLocks {
         };
 
         if prev_lock != new_lock {
-            debug!("lock conflict detected: {:?} != {:?}", prev_lock, new_lock);
+            debug!(
+                "lock conflict detected for {:?}: {:?} != {:?}",
+                obj_ref, prev_lock, new_lock
+            );
             Err(SomaError::ObjectLockConflict {
                 obj_ref: *obj_ref,
                 pending_transaction: prev_lock,
@@ -110,25 +113,25 @@ impl ObjectLocks {
         self.locked_transactions.clear();
     }
 
-    fn verify_object(obj_ref: &ObjectRef, object: &Object) -> SomaResult {
-        debug_assert_eq!(obj_ref.0, object.id());
-        if obj_ref.1 != object.version() {
+    fn verify_live_object(obj_ref: &ObjectRef, live_object: &Object) -> SomaResult {
+        debug_assert_eq!(obj_ref.0, live_object.id());
+        if obj_ref.1 != live_object.version() {
             debug!(
-                "object version unavailable for consumption: {:?} (current: {:?})",
+                "object version unavailable for consumption: {:?} (current: {})",
                 obj_ref,
-                object.version()
+                live_object.version().value()
             );
             return Err(SomaError::ObjectVersionUnavailableForConsumption {
                 provided_obj_ref: *obj_ref,
-                current_version: object.version(),
+                current_version: live_object.version(),
             });
         }
 
-        let digest = object.digest();
-        if obj_ref.2 != digest {
+        let live_digest = live_object.digest();
+        if obj_ref.2 != live_digest {
             return Err(SomaError::InvalidObjectDigest {
                 object_id: obj_ref.0,
-                expected_digest: digest,
+                expected_digest: live_digest,
             });
         }
 
@@ -140,7 +143,6 @@ impl ObjectLocks {
             let entry = self.locked_transactions.entry(*obj_ref);
             let mut occupied = match entry {
                 DashMapEntry::Vacant(_) => {
-                    error!("lock must exist for object: {:?}", obj_ref);
                     panic!("lock must exist for object: {:?}", obj_ref);
                     continue;
                 }
@@ -182,25 +184,24 @@ impl ObjectLocks {
     }
 
     #[instrument(level = "debug", skip_all)]
-    pub(crate) async fn acquire_transaction_locks(
+    pub(crate) fn acquire_transaction_locks(
         &self,
         cache: &WritebackCache,
         epoch_store: &AuthorityPerEpochStore,
-        input_objects: &[ObjectRef],
-        transaction: VerifiedSignedTransaction,
+        owned_input_objects: &[ObjectRef],
+        tx_digest: TransactionDigest,
+        signed_transaction: VerifiedSignedTransaction,
     ) -> SomaResult {
-        let tx_digest = *transaction.digest();
-
-        let object_ids = input_objects.iter().map(|o| o.0).collect::<Vec<_>>();
+        let object_ids = owned_input_objects.iter().map(|o| o.0).collect::<Vec<_>>();
         let live_objects = Self::multi_get_objects_must_exist(cache, &object_ids)?;
 
         // Only live objects can be locked
-        for (obj_ref, live_object) in input_objects.iter().zip(live_objects.iter()) {
-            Self::verify_object(obj_ref, live_object)?;
+        for (obj_ref, live_object) in owned_input_objects.iter().zip(live_objects.iter()) {
+            Self::verify_live_object(obj_ref, live_object)?;
         }
 
         let mut locks_to_write: Vec<(_, TransactionDigest)> =
-            Vec::with_capacity(input_objects.len());
+            Vec::with_capacity(owned_input_objects.len());
 
         // Sort the objects before locking. This is not required by the protocol (since it's okay to
         // reject any equivocating tx). However, this does prevent a confusing error on the client.
@@ -211,8 +212,8 @@ impl ObjectLocks {
         // error when trying to acquire the second. The error returned to the client would say that there
         // is a conflicting tx on that object, but in fact neither object was locked and the tx was never
         // signed. If one client then retries, they will succeed (counterintuitively).
-        let input_objects = {
-            let mut o = input_objects.to_vec();
+        let owned_input_objects = {
+            let mut o = owned_input_objects.to_vec();
             o.sort_by_key(|o| o.0);
             o
         };
@@ -221,7 +222,7 @@ impl ObjectLocks {
         // then they are either trying to lock the same transaction (in which case both will succeed),
         // or they are trying to lock the same object in two different transactions, in which case
         // the sender has equivocated, and we are under no obligation to help them form a cert.
-        for obj_ref in input_objects.iter() {
+        for obj_ref in owned_input_objects.iter() {
             match self.try_set_transaction_lock(obj_ref, tx_digest, epoch_store) {
                 Ok(()) => locks_to_write.push((*obj_ref, tx_digest)),
                 Err(e) => {
@@ -238,7 +239,7 @@ impl ObjectLocks {
         // commit all writes to DB
         epoch_store
             .tables()?
-            .write_transaction_locks(transaction, locks_to_write.iter().cloned())?;
+            .write_transaction_locks(signed_transaction, locks_to_write.iter().cloned())?;
 
         // remove pending locks from unbounded storage
         self.clear_cached_locks(&locks_to_write);

@@ -31,7 +31,7 @@ impl StateAccumulator {
             .flat_map(|fx| {
                 fx.all_changed_objects()
                     .into_iter()
-                    .map(|(object_ref, _)| object_ref.2)
+                    .map(|(object_ref, _, _)| object_ref.2)
             })
             .collect::<Vec<ObjectDigest>>();
         let removals = effects
@@ -39,7 +39,7 @@ impl StateAccumulator {
             .flat_map(|fx| {
                 fx.old_object_metadata()
                     .into_iter()
-                    .map(|object_ref| object_ref.2)
+                    .map(|(object_ref, _)| object_ref.2)
             })
             .collect::<Vec<ObjectDigest>>();
 

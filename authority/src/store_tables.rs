@@ -12,7 +12,7 @@ use types::{
     effects::TransactionEffects,
     error::{SomaError, SomaResult},
     object::{LiveObject, Object, ObjectID, ObjectInner, ObjectRef, Version},
-    storage::{object_store::ObjectStore, ObjectKey},
+    storage::{object_store::ObjectStore, FullObjectKey, MarkerValue, ObjectKey},
     system_state::EpochStartSystemStateTrait,
     transaction::TrustedTransaction,
 };
@@ -78,6 +78,14 @@ pub struct AuthorityPerpetualTables {
     // of last commit of epoch. These values should only ever be written once
     // and never changed
     pub(crate) root_state_hash_by_epoch: RwLock<BTreeMap<EpochId, (CommitIndex, Accumulator)>>,
+
+    /// Table that stores the set of received objects and deleted objects and the version at
+    /// which they were received. This is used to prevent possible race conditions around receiving
+    /// objects (since they are not locked by the transaction manager) and for tracking shared
+    /// objects that have been deleted. This table is meant to be pruned per-epoch, and all
+    /// previous epochs other than the current epoch may be pruned safely.
+    pub(crate) object_per_epoch_marker_table:
+        RwLock<BTreeMap<(EpochId, FullObjectKey), MarkerValue>>,
 }
 
 impl AuthorityPerpetualTables {
@@ -94,6 +102,7 @@ impl AuthorityPerpetualTables {
             epoch_start_configuration: RwLock::new(BTreeMap::new()),
             objects: RwLock::new(BTreeMap::new()),
             object_transaction_locks: RwLock::new(BTreeMap::new()),
+            object_per_epoch_marker_table: RwLock::new(BTreeMap::new()),
             root_state_hash_by_epoch: RwLock::new(BTreeMap::new()),
         }
     }
