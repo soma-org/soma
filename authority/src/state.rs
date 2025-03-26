@@ -54,7 +54,7 @@ use types::state_sync::CommitTimestamp;
 use types::storage::object_store::ObjectStore;
 use types::system_state::{EpochStartSystemStateTrait, SystemState};
 use types::temporary_store::InnerTemporaryStore;
-use types::transaction::{EndOfEpochTransactionKind, InputObjects, SenderSignedData};
+use types::transaction::{InputObjects, SenderSignedData};
 use types::tx_outputs::{TransactionOutputs, WrittenObjects};
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
@@ -79,6 +79,7 @@ use crate::cache::{
 };
 use crate::consensus_quarantine;
 use crate::epoch_store::{CertLockGuard, CertTxGuard};
+use crate::execution::execute_transaction;
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::state_accumulator::StateAccumulator;
@@ -901,7 +902,8 @@ impl AuthorityState {
         let transaction_data = &certificate.data().intent_message().value;
         let (kind, signer) = transaction_data.execution_parts();
 
-        let (inner, effects, execution_error_opt) = epoch_store.execute_transaction(
+        let (inner, effects, execution_error_opt) = execute_transaction(
+            epoch_store.epoch(),
             self.get_object_store().as_ref(),
             tx_digest,
             kind,
@@ -1281,9 +1283,8 @@ impl AuthorityState {
     ) -> anyhow::Result<(SystemState, TransactionEffects)> {
         let next_epoch = epoch_store.epoch() + 1;
 
-        let tx = VerifiedTransaction::new_end_of_epoch_transaction(
-            EndOfEpochTransactionKind::new_change_epoch(next_epoch, epoch_start_timestamp_ms),
-        );
+        let tx =
+            VerifiedTransaction::new_change_epoch_transaction(next_epoch, epoch_start_timestamp_ms);
 
         let executable_tx =
             VerifiedExecutableTransaction::new_system(tx.clone(), epoch_store.epoch());
@@ -1396,9 +1397,7 @@ impl AuthorityState {
             .get_executed_effects(transaction_digest)?;
         match effects {
             Some(effects) => Ok(Some(self.sign_effects(effects, epoch_store)?)),
-            None => {
-                Ok(None)
-            },
+            None => Ok(None),
         }
     }
 

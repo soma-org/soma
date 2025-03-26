@@ -5,6 +5,7 @@ pub mod client;
 pub mod commit;
 pub mod consensus_quarantine;
 pub mod epoch_store;
+pub mod execution;
 pub mod execution_driver;
 pub mod handler;
 pub mod manager;

@@ -20,10 +20,7 @@ use types::{
     digests::TransactionDigest,
     effects::TransactionEffects,
     error::SomaResult,
-    transaction::{
-        EndOfEpochTransactionKind, VerifiedCertificate, VerifiedExecutableTransaction,
-        VerifiedTransaction,
-    },
+    transaction::{VerifiedCertificate, VerifiedExecutableTransaction, VerifiedTransaction},
 };
 
 use crate::{
@@ -345,9 +342,8 @@ impl CommitExecutor {
     ) -> TransactionDigest {
         let next_epoch = cur_epoch + 1;
 
-        let tx = VerifiedTransaction::new_end_of_epoch_transaction(
-            EndOfEpochTransactionKind::new_change_epoch(next_epoch, epoch_start_timestamp_ms),
-        );
+        let tx =
+            VerifiedTransaction::new_change_epoch_transaction(next_epoch, epoch_start_timestamp_ms);
         let change_epoch_tx =
             VerifiedExecutableTransaction::new_system(tx.clone(), epoch_store.epoch());
         let change_epoch_tx_digest = change_epoch_tx.digest();

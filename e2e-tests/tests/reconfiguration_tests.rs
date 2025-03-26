@@ -34,8 +34,7 @@ use types::{
     crypto::{KeypairTraits, PublicKey},
     system_state::SystemStateTrait,
     transaction::{
-        AddValidatorArgs, RemoveValidatorArgs, StateTransaction, StateTransactionKind, Transaction,
-        TransactionData, TransactionKind,
+        AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
     },
 };
 
@@ -604,14 +603,11 @@ async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNo
     let tx = handle.with(|node| {
         Transaction::from_data_and_signer(
             TransactionData::new(
-                TransactionKind::StateTransaction(StateTransaction {
-                    kind: StateTransactionKind::RemoveValidator(RemoveValidatorArgs {
-                        pubkey_bytes: bcs::to_bytes(
-                            &node.get_config().account_key_pair.keypair().public(),
-                        )
-                        .unwrap(),
-                    }),
-                    sender: (&node.get_config().account_key_pair.keypair().public()).into(),
+                TransactionKind::RemoveValidator(RemoveValidatorArgs {
+                    pubkey_bytes: bcs::to_bytes(
+                        &node.get_config().account_key_pair.keypair().public(),
+                    )
+                    .unwrap(),
                 }),
                 (&node.get_config().account_key_pair.keypair().public()).into(),
             ),
@@ -638,18 +634,15 @@ async fn execute_add_validator_transactions(
 
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
-            TransactionKind::StateTransaction(StateTransaction {
-                kind: StateTransactionKind::AddValidator(AddValidatorArgs {
-                    pubkey_bytes: bcs::to_bytes(&new_validator.key_pair.public()).unwrap(),
-                    network_pubkey_bytes: bcs::to_bytes(&new_validator.network_key_pair.public())
-                        .unwrap(),
-                    worker_pubkey_bytes: bcs::to_bytes(&new_validator.worker_key_pair.public())
-                        .unwrap(),
-                    net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
-                    p2p_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
-                    primary_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
-                }),
-                sender: (&new_validator.account_key_pair.public()).into(),
+            TransactionKind::AddValidator(AddValidatorArgs {
+                pubkey_bytes: bcs::to_bytes(&new_validator.key_pair.public()).unwrap(),
+                network_pubkey_bytes: bcs::to_bytes(&new_validator.network_key_pair.public())
+                    .unwrap(),
+                worker_pubkey_bytes: bcs::to_bytes(&new_validator.worker_key_pair.public())
+                    .unwrap(),
+                net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
+                p2p_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
+                primary_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
             }),
             (&new_validator.account_key_pair.public()).into(),
         ),

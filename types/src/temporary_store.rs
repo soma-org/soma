@@ -153,7 +153,7 @@ pub struct DynamicallyLoadedObjectMetadata {
 
 impl ExecutionResults {
     /// Update version and previous transaction for all written objects.
-    /// 
+    ///
     /// IMPORTANT: This method must be called for ALL execution paths
     /// to ensure consistent object state across validators and fullnodes.
     /// The previous_transaction field is critical for maintaining the state hash.
@@ -166,7 +166,7 @@ impl ExecutionResults {
         info!(
             lamport_version = ?lamport_version,
             prev_tx = ?prev_tx,
-            "Updating versions and previous_tx for {} objects", 
+            "Updating versions and previous_tx for {} objects",
             self.written_objects.len()
         );
 
