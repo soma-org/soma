@@ -51,9 +51,6 @@ pub fn execute_transaction(
     let shared_object_refs = input_objects.filter_shared_objects();
     let transaction_dependencies = input_objects.transaction_dependencies();
 
-    // TODO: Find gas object for coin transactions
-    // let gas_object_id = find_gas_object_id(&input_objects);
-
     // Check for shared objects with assigned versions
     let (has_assigned_shared_versions, shared_objects_to_load, shared_object_versions) =
         has_assigned_shared_versions(store, &input_objects);
@@ -70,33 +67,15 @@ pub fn execute_transaction(
             shared_object_versions,
             shared_object_refs,
             transaction_dependencies,
-            // gas_object_id,
             epoch_id,
         );
     }
 
-    // Special case for consensus commit prologues
-    if let TransactionKind::ConsensusCommitPrologue(_) = &kind {
-        let temporary_store =
-            TemporaryStore::new(input_objects, kind.receiving_objects(), tx_digest, epoch_id);
-
-        // For consensus commit, we don't process any state changes, just return success
-        let (inner, effects) = temporary_store.into_effects(
-            shared_object_refs,
-            &tx_digest,
-            transaction_dependencies,
-            ExecutionStatus::Success,
-            epoch_id,
-        );
-
-        return (inner, effects, None);
-    }
-
-    // Standard execution path for transactions without assigned shared versions
+    // Standard execution path for all transactions (including ConsensusCommitPrologue)
     let mut temporary_store =
         TemporaryStore::new(input_objects, kind.receiving_objects(), tx_digest, epoch_id);
 
-    // Create appropriate executor
+    // Create appropriate executor - this will create the ConsensusCommitExecutor for commit prologues
     let executor = create_executor(&kind);
     let is_epoch_change = kind.is_epoch_change();
 
@@ -205,13 +184,6 @@ fn load_shared_objects(
     temporary_store: &mut TemporaryStore,
     shared_objects_to_load: &HashSet<ObjectID>,
 ) -> SomaResult<()> {
-    let mut objects = shared_objects_to_load.clone();
-    // TODO: Revisit this
-    // Always ensure system state is loaded
-    if !shared_objects_to_load.contains(&SYSTEM_STATE_OBJECT_ID) {
-        objects.insert(SYSTEM_STATE_OBJECT_ID);
-    }
-
     for object_id in shared_objects_to_load {
         match store.get_object(object_id) {
             Ok(Some(object)) => {
@@ -219,19 +191,17 @@ fn load_shared_objects(
                 temporary_store.input_objects.insert(*object_id, object);
             }
             Ok(None) => {
-                if object_id == &SYSTEM_STATE_OBJECT_ID {
-                    return Err(SomaError::from(format!(
-                        "System state object not found in the temporary store"
-                    )));
-                }
+                // Any required shared object not found is an error
+                return Err(SomaError::from(format!(
+                    "Required shared object {} not found in store",
+                    object_id
+                )));
             }
             Err(err) => {
-                if object_id == &SYSTEM_STATE_OBJECT_ID {
-                    return Err(SomaError::from(format!(
-                        "Failed to fetch shared object {}: {}",
-                        object_id, err
-                    )));
-                }
+                return Err(SomaError::from(format!(
+                    "Failed to fetch shared object {}: {}",
+                    object_id, err
+                )));
             }
         }
     }
@@ -250,7 +220,6 @@ fn handle_shared_object_transaction(
     shared_object_versions: HashMap<ObjectID, Version>,
     shared_object_refs: Vec<SharedInput>,
     transaction_dependencies: BTreeSet<TransactionDigest>,
-    // gas_object_id: Option<ObjectID>,
     epoch_id: EpochId,
 ) -> (
     InnerTemporaryStore,
@@ -275,8 +244,6 @@ fn handle_shared_object_transaction(
     // Create appropriate executor
     let executor = create_executor(&kind);
 
-    let requires_system_state = kind.requires_system_state();
-
     // Execute the transaction
     let result = executor.execute(&mut temporary_store, signer, kind, tx_digest);
 
@@ -300,55 +267,44 @@ fn handle_shared_object_transaction(
     let mut input_objects_map = BTreeMap::new();
     let mut mutable_inputs = BTreeMap::new();
 
-    // Collect system state object versions if needed
-    if requires_system_state {
-        if let Some(system_state_obj) = temporary_store.read_object(&SYSTEM_STATE_OBJECT_ID) {
+    // Process all modified shared objects generically
+    for object_id in &shared_objects_to_load {
+        if let Some(obj) = temporary_store.read_object(object_id) {
             // Get target version from shared_object_versions
             let target_version = shared_object_versions
-                .get(&SYSTEM_STATE_OBJECT_ID)
+                .get(object_id)
                 .cloned()
-                .unwrap_or_else(|| system_state_obj.version().next());
+                .unwrap_or_else(|| obj.version().next());
 
             // Create a copy with the target version
-            let mut final_system_state = system_state_obj.clone();
+            let mut final_obj = obj.clone();
 
             // Set version directly - bypassing increment
-            final_system_state.data.set_version_to(target_version);
+            final_obj.data.set_version_to(target_version);
 
             // Update the previous_transaction field
-            final_system_state.previous_transaction = tx_digest;
+            final_obj.previous_transaction = tx_digest;
 
             // Add to results
-            let id = final_system_state.id();
-            let input_version = system_state_obj.version();
-            let input_digest = system_state_obj.digest();
+            let id = final_obj.id();
+            let input_version = obj.version();
+            let input_digest = obj.digest();
 
             // Add to written objects
-            written_objects.insert(id, final_system_state.clone());
+            written_objects.insert(id, final_obj.clone());
 
             // Add to input objects
-            input_objects_map.insert(id, system_state_obj.clone());
+            input_objects_map.insert(id, obj.clone());
 
-            // Record mutable input
-            if !system_state_obj.owner().is_immutable() {
-                mutable_inputs.insert(
-                    id,
-                    (
-                        (input_version, input_digest),
-                        system_state_obj.owner().clone(),
-                    ),
-                );
+            // Record mutable input if not immutable
+            if !obj.owner().is_immutable() {
+                mutable_inputs.insert(id, ((input_version, input_digest), obj.owner().clone()));
             }
 
             // Create effect object change
-            let input_state = ObjectIn::Exist((
-                (input_version, input_digest),
-                system_state_obj.owner().clone(),
-            ));
-            let output_state = ObjectOut::ObjectWrite((
-                final_system_state.digest(),
-                final_system_state.owner().clone(),
-            ));
+            let input_state = ObjectIn::Exist(((input_version, input_digest), obj.owner().clone()));
+            let output_state =
+                ObjectOut::ObjectWrite((final_obj.digest(), final_obj.owner().clone()));
 
             object_changes.insert(
                 id,
@@ -393,9 +349,6 @@ fn handle_shared_object_transaction(
 
     (inner_store, effects, execution_error)
 }
-
-// Helper function for returning errors
-
 // Helper function to generate error results consistently
 fn error_result(
     tx_digest: TransactionDigest,
