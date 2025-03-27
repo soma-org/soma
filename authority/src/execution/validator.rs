@@ -1,7 +1,8 @@
 use types::{
     base::SomaAddress,
     digests::TransactionDigest,
-    error::{SomaError, SomaResult},
+    effects::ExecutionFailureStatus,
+    error::{ExecutionResult, SomaError, SomaResult},
     object::ObjectID,
     system_state::SystemState,
     temporary_store::TemporaryStore,
@@ -24,7 +25,7 @@ impl ValidatorExecutor {
         state: &mut SystemState,
         tx_kind: &TransactionKind,
         signer: SomaAddress,
-    ) -> SomaResult<()> {
+    ) -> ExecutionResult<()> {
         match tx_kind {
             TransactionKind::AddValidator(args) => state.request_add_validator(
                 signer,
@@ -38,9 +39,7 @@ impl ValidatorExecutor {
             TransactionKind::RemoveValidator(args) => {
                 state.request_remove_validator(signer, args.pubkey_bytes.clone())
             }
-            _ => Err(SomaError::from(format!(
-                "Invalid transaction type for validator executor"
-            ))),
+            _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
     }
 }
@@ -53,20 +52,23 @@ impl TransactionExecutor for ValidatorExecutor {
         kind: TransactionKind,
         tx_digest: TransactionDigest,
         // _gas_object_id: Option<ObjectID>,
-    ) -> SomaResult<()> {
+    ) -> ExecutionResult<()> {
         // Get system state object
         let state_object = store
             .read_object(&SYSTEM_STATE_OBJECT_ID)
-            .ok_or_else(|| {
-                SomaError::from(format!(
-                    "System state object not found in the temporary store"
-                ))
+            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
+                object_id: SYSTEM_STATE_OBJECT_ID,
             })?
             .clone();
 
         // Deserialize system state
         let mut state = bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents())
-            .map_err(|e| SomaError::from(format!("Failed to deserialize system state: {}", e)))?;
+            .map_err(|e| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize system state: {}",
+                    e
+                )))
+            })?;
 
         // Process the transaction
         let result = self.process_system_state(&mut state, &kind, signer);
@@ -76,7 +78,10 @@ impl TransactionExecutor for ValidatorExecutor {
 
         // Update state object with new state
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
-            SomaError::from(format!("Failed to serialize updated system state: {}", e))
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "Failed to serialize updated system state: {}",
+                e
+            )))
         })?;
 
         let mut updated_state_object = state_object;

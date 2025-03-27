@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use change_epoch::ChangeEpochExecutor;
+use coin::CoinExecutor;
+use object::ObjectExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use types::{
     base::SomaAddress,
@@ -10,16 +12,17 @@ use types::{
         object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut},
         ExecutionFailureStatus, ExecutionStatus, TransactionEffects,
     },
-    error::{ExecutionError, SomaError, SomaResult},
+    error::{ExecutionError, ExecutionResult, SomaError, SomaResult},
     object::{ObjectID, Version},
     storage::object_store::ObjectStore,
     temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore},
     transaction::{InputObjectKind, InputObjects, ObjectReadResultKind, TransactionKind},
-    SYSTEM_STATE_OBJECT_ID,
 };
 use validator::ValidatorExecutor;
 
 mod change_epoch;
+mod coin;
+mod object;
 mod system;
 mod validator;
 
@@ -32,7 +35,7 @@ trait TransactionExecutor {
         kind: TransactionKind,
         tx_digest: TransactionDigest,
         // gas_object_id: Option<ObjectID>,
-    ) -> SomaResult<()>;
+    ) -> ExecutionResult<()>;
 }
 
 pub fn execute_transaction(
@@ -85,15 +88,10 @@ pub fn execute_transaction(
     // Convert result to execution status and error
     let (execution_status, execution_error) = match result {
         Ok(()) => (ExecutionStatus::Success, None),
-        Err(err) => {
-            let error = ExecutionFailureStatus::SomaError(err.clone());
-            (
-                ExecutionStatus::Failure {
-                    error: error.clone(),
-                },
-                Some(ExecutionError::new(error, None)),
-            )
-        }
+        Err(err) => (
+            ExecutionStatus::Failure { error: err.clone() },
+            Some(ExecutionError::new(err, None)),
+        ),
     };
 
     // Get mutable input IDs for invariant checks
@@ -136,10 +134,12 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::Genesis(_) => Box::new(GenesisExecutor::new()),
 
         TransactionKind::ConsensusCommitPrologue(_) => Box::new(ConsensusCommitExecutor::new()),
-        // TransactionKind::TransferCoin { .. } |
-        // TransactionKind::PayCoins { .. } => Box::new(CoinExecutor::new()),
 
-        // TransactionKind::TransferObject { .. } => Box::new(ObjectExecutor::new()),
+        TransactionKind::TransferCoin { .. } | TransactionKind::PayCoins { .. } => {
+            Box::new(CoinExecutor::new())
+        }
+
+        TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
     }
 }
 
@@ -250,15 +250,10 @@ fn handle_shared_object_transaction(
     // Convert result to execution status and error
     let (execution_status, execution_error) = match result {
         Ok(()) => (ExecutionStatus::Success, None),
-        Err(err) => {
-            let error = ExecutionFailureStatus::SomaError(err.clone());
-            (
-                ExecutionStatus::Failure {
-                    error: error.clone(),
-                },
-                Some(ExecutionError::new(error, None)),
-            )
-        }
+        Err(err) => (
+            ExecutionStatus::Failure { error: err.clone() },
+            Some(ExecutionError::new(err, None)),
+        ),
     };
 
     // Prepare to collect objects for the output

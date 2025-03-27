@@ -339,6 +339,33 @@ impl Object {
     pub fn owner(&self) -> &Owner {
         &self.0.owner
     }
+
+    /// Create a new coin with the specified balance
+    pub fn new_coin(balance: u64, owner: Owner, previous_transaction: TransactionDigest) -> Self {
+        let id = ObjectID::random();
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Coin,
+            Version::MIN,
+            bcs::to_bytes(&balance).unwrap(),
+        );
+        Self::new(data, owner, previous_transaction)
+    }
+
+    /// Extract the coin balance if this is a coin object
+    pub fn as_coin(&self) -> Option<u64> {
+        if *self.data.object_type() == ObjectType::Coin {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Update the balance of a coin object
+    pub fn update_coin_balance(&mut self, new_balance: u64) {
+        self.data
+            .update_contents(bcs::to_bytes(&new_balance).unwrap());
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -493,6 +520,8 @@ impl ObjectData {
 pub enum ObjectType {
     /// Represents the global system state object
     SystemState,
+    /// Represents an owned Soma Token object
+    Coin,
 }
 
 /// # ObjectID
@@ -870,16 +899,10 @@ impl LiveObject {
 ///
 /// ## Thread Safety
 /// Owner is Clone and can be safely shared across threads.
-#[derive(
-    Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, JsonSchema, Ord, PartialOrd,
-)]
-#[cfg_attr(feature = "fuzzing", derive(proptest_derive::Arbitrary))]
+#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, Ord, PartialOrd)]
 pub enum Owner {
     /// Object is exclusively owned by a single address, and is mutable.
     AddressOwner(SomaAddress),
-    // /// Object is exclusively owned by a single object, and is mutable.
-    // /// The object ID is converted to SomaAddress as SomaAddress is universal.
-    // ObjectOwner(SomaAddress),
     /// Object is shared, can be used by any address, and is mutable.
     Shared {
         /// The version at which the object became shared

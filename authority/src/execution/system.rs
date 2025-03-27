@@ -1,7 +1,8 @@
 use types::{
     base::SomaAddress,
     digests::TransactionDigest,
-    error::{SomaError, SomaResult},
+    effects::ExecutionFailureStatus,
+    error::{ExecutionResult, SomaError, SomaResult},
     object::ObjectID,
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
@@ -26,7 +27,7 @@ impl TransactionExecutor for GenesisExecutor {
         kind: TransactionKind,
         tx_digest: TransactionDigest,
         // _gas_object_id: Option<ObjectID>,
-    ) -> SomaResult<()> {
+    ) -> ExecutionResult<()> {
         if let TransactionKind::Genesis(genesis) = kind {
             // Create all genesis objects
             for object in genesis.objects {
@@ -34,9 +35,7 @@ impl TransactionExecutor for GenesisExecutor {
             }
             Ok(())
         } else {
-            Err(SomaError::from(format!(
-                "Invalid transaction type for validator executor"
-            )))
+            Err(ExecutionFailureStatus::InvalidTransactionType)
         }
     }
 }
@@ -58,7 +57,7 @@ impl TransactionExecutor for ConsensusCommitExecutor {
         _kind: TransactionKind,
         _tx_digest: TransactionDigest,
         // _gas_object_id: Option<ObjectID>,
-    ) -> SomaResult<()> {
+    ) -> ExecutionResult<()> {
         // For consensus commit, we don't process any state changes, just return success
         Ok(())
     }

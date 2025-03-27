@@ -90,6 +90,21 @@ pub enum TransactionKind {
     // Validator management transactions
     AddValidator(AddValidatorArgs),
     RemoveValidator(RemoveValidatorArgs),
+    // Coin and object transactions
+    TransferCoin {
+        coin: ObjectRef,
+        amount: u64,
+        recipient: SomaAddress,
+    },
+    PayCoins {
+        coins: Vec<ObjectRef>,
+        amounts: Vec<u64>,
+        recipients: Vec<SomaAddress>,
+    },
+    TransferObjects {
+        objects: Vec<ObjectRef>,
+        recipient: SomaAddress,
+    },
 }
 
 /// # AddValidatorArgs
@@ -206,29 +221,19 @@ impl TransactionKind {
 
         // Add transaction-specific inputs
         match self {
-            // TransactionKind::TransferCoin { coin_id, .. } => {
-            //     inputs.push(InputObjectKind::ImmOrOwnedObject((
-            //         *coin_id,
-            //         Version::new(),
-            //         ObjectDigest::new([0; 32]),
-            //     )));
-            // }
-            // TransactionKind::PayCoins { coin_ids, .. } => {
-            //     for coin_id in coin_ids {
-            //         inputs.push(InputObjectKind::ImmOrOwnedObject((
-            //             *coin_id,
-            //             Version::new(),
-            //             ObjectDigest::new([0; 32]),
-            //         )));
-            //     }
-            // }
-            // TransactionKind::TransferObject { object_id, .. } => {
-            //     inputs.push(InputObjectKind::ImmOrOwnedObject((
-            //         *object_id,
-            //         Version::new(),
-            //         ObjectDigest::new([0; 32]),
-            //     )));
-            // }
+            TransactionKind::TransferCoin { coin, .. } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
+            }
+            TransactionKind::PayCoins { coins, .. } => {
+                for coin in coins {
+                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
+                }
+            }
+            TransactionKind::TransferObjects { objects, .. } => {
+                for object in objects {
+                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*object));
+                }
+            }
             _ => {}
         }
 

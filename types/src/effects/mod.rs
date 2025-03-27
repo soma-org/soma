@@ -35,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
+    base::SomaAddress,
     committee::{Committee, EpochId},
     crypto::{
         default_hash, AuthoritySignInfo, AuthoritySignInfoTrait, AuthorityStrongQuorumSignInfo,
@@ -44,7 +45,9 @@ use crate::{
     envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
     error::{SomaError, SomaResult},
     intent::{Intent, IntentScope},
-    object::{ObjectID, ObjectRef, Owner, Version, VersionDigest, OBJECT_START_VERSION},
+    object::{
+        ObjectID, ObjectRef, ObjectType, Owner, Version, VersionDigest, OBJECT_START_VERSION,
+    },
     storage::WriteKind,
     temporary_store::SharedInput,
 };
@@ -610,6 +613,45 @@ pub enum ExecutionFailureStatus {
     /// Transaction ran out of gas before completion
     #[error("Insufficient Gas.")]
     InsufficientGas,
+    #[error(
+        "Invalid owner for object {object_id}. Expected: {expected_owner}, Actual: {actual_owner:?}"
+    )]
+    InvalidOwnership {
+        object_id: ObjectID,
+        expected_owner: SomaAddress,
+        actual_owner: Option<SomaAddress>,
+    },
+    #[error("Insufficient coin balance for operation.")]
+    ObjectNotFound { object_id: ObjectID },
+    #[error("Invalid object type for object {object_id}. Expected: {expected_type:?}, Actual: {actual_type:?}")]
+    InvalidObjectType {
+        object_id: ObjectID,
+        expected_type: ObjectType,
+        actual_type: ObjectType,
+    },
+    /// Error when the transaction type does not match what is expected
+    #[error("The transaction type does not match the expected type")]
+    InvalidTransactionType,
+    #[error("Invalid arguments passed into transaction: {reason}")]
+    InvalidArguments { reason: String },
+
+    //
+    // Validator errors
+    //
+    /// Error when attempting to add a validator that already exists
+    #[error("Cannot add validator that is already active or pending")]
+    DuplicateValidator,
+
+    /// Error when trying to remove a validator that doesn't exist
+    #[error("Cannot remove validator that is not active")]
+    NotAValidator,
+
+    /// Error when trying to remove a validator that was already removed
+    #[error("Cannot remove validator that is already removed")]
+    ValidatorAlreadyRemoved,
+    /// Error when advancing to an unexpected epoch
+    #[error("Advanced to wrong epoch")]
+    AdvancedToWrongEpoch,
 
     //
     // Coin errors
@@ -631,10 +673,6 @@ pub enum ExecutionFailureStatus {
     Limit is {max_size} bytes"
     )]
     EffectsTooLarge { current_size: u64, max_size: u64 },
-
-    /// Transaction was cancelled due to randomness generation failure
-    #[error("Certificate is cancelled because randomness could not be generated this epoch")]
-    ExecutionCancelledDueToRandomnessUnavailable,
 
     /// Generic Soma error that wraps other error types
     #[error("Soma Error {0}")]
