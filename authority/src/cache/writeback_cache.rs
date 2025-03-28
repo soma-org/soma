@@ -47,7 +47,8 @@ use utils::notify_read::NotifyRead;
 
 use super::{
     cache_types::CachedVersionMap, object_locks::ObjectLocks, ExecutionCacheCommit,
-    ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TransactionCacheRead,
+    ExecutionCacheReconfigAPI, ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TestingAPI,
+    TransactionCacheRead,
 };
 
 pub enum CacheResult<T> {
@@ -867,9 +868,25 @@ impl WritebackCache {
         Ok(())
     }
 
+    fn bulk_insert_genesis_objects_impl(&self, objects: &[Object]) {
+        self.store
+            .bulk_insert_genesis_objects(objects)
+            .expect("db error");
+        for obj in objects {
+            self.cached.object_cache.invalidate(&obj.id());
+            self.cached.object_by_id_cache.invalidate(&obj.id());
+        }
+    }
+
     pub fn clear_caches_and_assert_empty(&self) {
         info!("clearing caches");
         self.cached.clear_and_assert_empty();
+    }
+
+    fn insert_genesis_object_impl(&self, object: Object) {
+        self.cached.object_by_id_cache.invalidate(&object.id());
+        self.cached.object_cache.invalidate(&object.id());
+        self.store.insert_genesis_object(object).expect("db error");
     }
 }
 
@@ -1437,5 +1454,25 @@ impl AccumulatorStore for WritebackCache {
 impl StateSyncAPI for WritebackCache {
     fn multi_insert_transactions(&self, transactions: &[VerifiedTransaction]) -> SomaResult {
         Ok(self.store.multi_insert_transactions(transactions.iter())?)
+    }
+}
+
+impl ExecutionCacheReconfigAPI for WritebackCache {
+    fn insert_genesis_object(&self, object: Object) {
+        self.insert_genesis_object_impl(object)
+    }
+
+    fn bulk_insert_genesis_objects(&self, objects: &[Object]) {
+        self.bulk_insert_genesis_objects_impl(objects)
+    }
+
+    fn clear_state_end_of_epoch(&self, execution_guard: &ExecutionLockWriteGuard<'_>) {
+        self.clear_state_end_of_epoch_impl(execution_guard)
+    }
+}
+
+impl TestingAPI for WritebackCache {
+    fn database_for_testing(&self) -> Arc<AuthorityStore> {
+        self.store.clone()
     }
 }

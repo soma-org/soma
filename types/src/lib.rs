@@ -31,6 +31,7 @@ pub mod temporary_store;
 pub mod tls;
 pub mod transaction;
 pub mod tx_outputs;
+pub mod unit_tests;
 
 use base::SomaAddress;
 use object::{ObjectID, Version, OBJECT_START_VERSION};

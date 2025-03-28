@@ -58,6 +58,7 @@ pub use fastcrypto::traits::{
     AggregateAuthenticator, Authenticator, EncodeDecodeBase64, SigningKey,
 };
 use fastcrypto::traits::{ToFromBytes, VerifyingKey};
+use rand::rngs::OsRng;
 use rand::{rngs::StdRng, SeedableRng};
 use roaring::RoaringBitmap;
 use schemars::JsonSchema;
@@ -418,7 +419,8 @@ impl AuthoritySignInfoTrait for AuthoritySignInfo {
             });
         }
         let weight = committee.weight(&self.authority);
-        if weight < 0 { // TODO: weight <= 0
+        if weight < 0 {
+            // TODO: weight <= 0
             return Err(SomaError::UnknownSigner {
                 signer: Some(self.authority.concise().to_string()),
                 index: None,
@@ -842,6 +844,13 @@ where
     (kp.public().into(), kp)
 }
 
+pub fn get_key_pair<KP: KeypairTraits>() -> (SomaAddress, KP)
+where
+    <KP as KeypairTraits>::PubKey: SomaPublicKey,
+{
+    get_key_pair_from_rng(&mut OsRng)
+}
+
 /// Generates a set of random committee key pairs with a given size
 ///
 /// ## Purpose
@@ -876,7 +885,7 @@ pub fn random_committee_key_pairs_of_size(size: usize) -> Vec<AuthorityKeyPair> 
 }
 
 #[enum_dispatch(AuthenticatorTrait)]
-#[derive(Debug, Clone, PartialEq, Eq, JsonSchema, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum GenericSignature {
     Signature(Signature),
 }
@@ -1113,7 +1122,7 @@ impl<'de> Deserialize<'de> for SomaKeyPair {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, JsonSchema, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PublicKey {
     Ed25519(Ed25519PublicKeyAsBytes),
 }
@@ -1152,7 +1161,7 @@ impl AsRef<[u8]> for PublicKey {
 
 // Enums for signature scheme signatures
 #[enum_dispatch]
-#[derive(Clone, JsonSchema, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Signature {
     Ed25519SomaSignature,
 }

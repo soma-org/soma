@@ -118,6 +118,8 @@ hyper-rustls = { version = "0.27", default-features = false, features = [
 cfg-if = "1.0.0"
 base64 = "0.22.1"
 tempfile = "3.12.0"
+regex = "1.11"
+chrono = "0.4"
 
 [patch.crates-io]
 tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99" }

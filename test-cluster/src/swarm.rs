@@ -1,19 +1,18 @@
-use crate::{
-    config::{
-        genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
-        network_config::{ConfigBuilder, NetworkConfig},
-        node_config_builder::FullnodeConfigBuilder,
-        CommitteeConfig,
-    },
-    swarm_node::Node,
-};
+use crate::swarm_node::Node;
 use anyhow::Result;
 use futures::future::try_join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
 use std::{collections::HashMap, net::SocketAddr, num::NonZeroUsize};
 use tracing::info;
-use types::{base::AuthorityName, config::node_config::NodeConfig};
+use types::{
+    base::AuthorityName,
+    config::{
+        genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
+        network_config::{CommitteeConfig, ConfigBuilder, NetworkConfig},
+        node_config::{FullnodeConfigBuilder, NodeConfig},
+    },
+};
 
 /// A handle to an in-memory Sui Network.
 #[derive(Debug)]

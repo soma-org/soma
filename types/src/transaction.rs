@@ -475,6 +475,23 @@ impl TransactionData {
         TransactionData { kind, sender }
     }
 
+    pub fn new_transfer(
+        recipient: SomaAddress,
+        object_ref: ObjectRef,
+        sender: SomaAddress,
+        // gas_payment: ObjectRef,
+        // gas_budget: u64,
+        // gas_price: u64,
+    ) -> Self {
+        Self::new(
+            TransactionKind::TransferObjects {
+                objects: vec![object_ref],
+                recipient: recipient,
+            },
+            sender,
+        )
+    }
+
     pub fn digest(&self) -> TransactionDigest {
         TransactionDigest::new(default_hash(self))
     }

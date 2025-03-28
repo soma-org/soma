@@ -42,7 +42,7 @@ use fastcrypto::{
     hash::HashFunction,
     traits::AllowedRng,
 };
-use rand::Rng;
+use rand::{rngs::OsRng, Rng};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
@@ -54,6 +54,7 @@ use std::{fmt, str::FromStr, sync::Arc};
 
 /// The starting version for all newly created objects
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
+pub const GAS_VALUE_FOR_TESTING: u64 = 100_000;
 
 /// # Version
 ///
@@ -366,6 +367,25 @@ impl Object {
         self.data
             .update_contents(bcs::to_bytes(&new_balance).unwrap());
     }
+
+    pub fn with_id_owner_for_testing(id: ObjectID, owner: SomaAddress) -> Self {
+        // For testing, we provide sufficient gas by default.
+        Self::with_id_owner_coin_for_testing(id, owner, GAS_VALUE_FOR_TESTING)
+    }
+
+    pub fn with_id_owner_coin_for_testing(id: ObjectID, owner: SomaAddress, balance: u64) -> Self {
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Coin,
+            Version::MIN,
+            bcs::to_bytes(&balance).unwrap(),
+        );
+        Self::new(
+            data,
+            Owner::AddressOwner(owner),
+            TransactionDigest::genesis_marker(),
+        )
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -566,7 +586,9 @@ impl ObjectID {
 
     /// Returns a random ObjectID
     pub fn random() -> Self {
-        Self::from(SomaAddress::random())
+        let mut rng = OsRng;
+        let buf: [u8; Self::LENGTH] = rng.gen();
+        ObjectID::new(buf)
     }
 
     /// Returns a random ObjectID using the provided random number generator

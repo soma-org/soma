@@ -1,16 +1,16 @@
 use std::net::{IpAddr, SocketAddr};
 
 use super::local_ip_utils;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use tracing::info;
-use types::{
+use crate::{
     base::SomaAddress,
     crypto::{
         get_key_pair_from_rng, AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair,
     },
     multiaddr::Multiaddr,
 };
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use tracing::info;
 
 // All information needed to build a NodeConfig for a validator.
 #[derive(Serialize, Deserialize)]

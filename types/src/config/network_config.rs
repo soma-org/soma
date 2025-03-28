@@ -5,10 +5,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use fastcrypto::traits::KeyPair;
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
-use types::{
+use crate::{
     committee::{Committee, CommitteeWithNetworkMetadata},
     config::{node_config::NodeConfig, p2p_config::SeedPeer},
     crypto::{get_key_pair_from_rng, SomaKeyPair},
@@ -23,12 +20,25 @@ use types::{
     transaction::{InputObjects, VerifiedTransaction},
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
+use fastcrypto::traits::KeyPair;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 
 use super::{
-    genesis_config::{GenesisConfig, ValidatorGenesisConfigBuilder},
-    node_config_builder::ValidatorConfigBuilder,
-    CommitteeConfig,
+    genesis_config::{
+        AccountConfig, GenesisConfig, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
+    },
+    node_config::ValidatorConfigBuilder,
 };
+
+pub enum CommitteeConfig {
+    Size(NonZeroUsize),
+    Validators(Vec<ValidatorGenesisConfig>),
+    AccountKeys(Vec<SomaKeyPair>),
+    /// Indicates that a committee should be deterministically generated, using the provided rng
+    /// as a source of randomness as well as generating deterministic network port information.
+    Deterministic((NonZeroUsize, Option<Vec<SomaKeyPair>>)),
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NetworkConfig {
@@ -99,6 +109,11 @@ impl<R> ConfigBuilder<R> {
             committee: self.committee,
             genesis_config: self.genesis_config,
         }
+    }
+
+    pub fn with_accounts(mut self, accounts: Vec<AccountConfig>) -> Self {
+        self.get_or_init_genesis_config().accounts = accounts;
+        self
     }
 
     fn get_or_init_genesis_config(&mut self) -> &mut GenesisConfig {

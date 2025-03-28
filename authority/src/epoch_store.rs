@@ -454,22 +454,23 @@ impl AuthorityEpochTables {
         signed_transaction: VerifiedSignedTransaction,
         locks_to_write: impl Iterator<Item = (ObjectRef, TransactionDigest)>,
     ) -> SomaResult {
+        info!("Writing transaction locks for tx: {}", signed_transaction.digest());
         // Insert locks
-        {
-            let mut locked_transactions = self.object_locked_transactions.write();
-            for (obj_ref, lock) in locks_to_write {
-                locked_transactions.insert(obj_ref, lock);
-            }
+        
+        let mut locked_transactions = self.object_locked_transactions.write();
+        for (obj_ref, lock) in locks_to_write {
+            locked_transactions.insert(obj_ref, lock);
         }
+        
 
         // Insert transaction
-        {
-            let mut transactions = self.signed_transactions.write();
-            transactions.insert(
-                *signed_transaction.digest(),
-                signed_transaction.serializable_ref().clone(),
-            );
-        }
+        
+        let mut transactions = self.signed_transactions.write();
+        transactions.insert(
+            *signed_transaction.digest(),
+            signed_transaction.serializable_ref().clone(),
+        );
+        
 
         Ok(())
     }
@@ -1613,6 +1614,37 @@ impl AuthorityPerEpochStore {
     /// Acquire the lock for a tx without writing to the WAL.
     pub async fn acquire_tx_lock(&self, digest: &TransactionDigest) -> CertLockGuard {
         CertLockGuard(self.mutex_table.acquire_lock(*digest).await)
+    }
+
+    #[cfg(test)]
+    pub fn delete_signed_transaction_for_test(&self, transaction: &TransactionDigest) {
+        self.tables()
+            .expect("test should not cross epoch boundary")
+            .signed_transactions.write()
+            .remove(transaction)
+            .unwrap();
+    }
+
+    #[cfg(test)]
+    pub fn delete_object_locks_for_test(&self, objects: &[ObjectRef]) {
+        for object in objects {
+            self.tables()
+                .expect("test should not cross epoch boundary")
+                .object_locked_transactions.write()
+                .remove(object)
+                .unwrap();
+        }
+    }
+
+    pub fn get_signed_transaction(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> SomaResult<Option<VerifiedSignedTransaction>> {
+        Ok(self
+            .tables()?
+            .signed_transactions.read()
+            .get(tx_digest).cloned()
+            .map(|t| t.into()))
     }
 
     pub async fn acquire_tx_guard(

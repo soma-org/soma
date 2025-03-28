@@ -541,6 +541,7 @@ impl SystemState {
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
     ) -> ExecutionResult {
+        // TODO: ADJUST VOTING POWER HERE
         let validator = Validator::new(
             signer,
             PublicKey::from_bytes(&pubkey_bytes).unwrap(),

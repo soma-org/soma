@@ -28,6 +28,10 @@ pub enum StoreObject {
     Deleted,
 }
 
+pub fn get_store_object(object: Object) -> StoreObject {
+    StoreObject::Value(object.into_inner())
+}
+
 /// AuthorityPerpetualTables contains data that must be preserved from one epoch to the next.
 pub struct AuthorityPerpetualTables {
     /// This is a map between the object (ID, version) and the latest state of the object, namely the

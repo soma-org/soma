@@ -1,0 +1,529 @@
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net: allocated fd 4
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: binding (tcp): 127.0.0.1:0 -> Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: bound: 127.0.0.1:32768 -> Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net: allocated fd 5
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: binding (tcp): 127.0.0.1:0 -> Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: bound: 127.0.0.1:32769 -> Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: binding (tcp): 127.0.0.1:0 -> Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: bound: 127.0.0.1:32770 -> Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net: allocated fd 6
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net: closing PlaceholderFileDes(6)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: close: Node(1) 127.0.0.1:32770
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net: closing PlaceholderFileDes(5)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: close: Node(1) 127.0.0.1:32769
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net: closing PlaceholderFileDes(4)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: close: Node(1) 127.0.0.1:32768
+2022-07-15T16:43:13.000000Z INFO types::config::genesis_config: Creating accounts and token allocations...
+2022-07-15T16:43:13.000000Z INFO types::temporary_store: Updating versions and previous_tx for 1 objects
+2022-07-15T16:43:13.000000Z INFO types::temporary_store: Setting previous_transaction on object
+2022-07-15T16:43:13.000000Z DEBUG try_execute_immediately: authority::state: execute_certificate_internal
+2022-07-15T16:43:13.000000Z INFO try_execute_immediately: process_certificate: types::temporary_store: Updating versions and previous_tx for 1 objects
+2022-07-15T16:43:13.000000Z INFO try_execute_immediately: process_certificate: types::temporary_store: Setting previous_transaction on object
+2022-07-15T16:43:13.000000Z INFO try_execute_immediately: process_certificate: authority::state: About to commit certificate for transaction. Inputs: {}
+2022-07-15T16:43:13.000000Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: writing transaction outputs to cache
+2022-07-15T16:43:13.000000Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: inserting object entry
+2022-07-15T16:43:13.000000Z INFO try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: Successfully completed transaction output write
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: 4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA
+2022-07-15T16:43:13.000000Z DEBUG authority::state: handle_transaction
+2022-07-15T16:43:13.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0xfa01529e68b2eabeb33f6d8345c774a9c489b579849c4795fe81cc076f8b5e42, Version(0), o#CVrvXiozAM85vx8PzkymoqfmjWnAhpnMzdwpvFjngpk1): TransactionDigest(4HbaBxUrTkYFKf8dcfki6R3sU6uCXJAgjViNqH6jTVKA) != TransactionDigest(7mFJTztrc3diBfF14h7r2iWcqSbLSt3ZsWGP45u2oHju)
+2022-07-15T16:43:13.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::runtime: delete_node Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net: delete_node Node(1)
+2022-07-15T16:43:13.000000Z DEBUG msim::sim::net::network: delete: Node(1)
+2025-03-28T23:12:47.742870Z DEBUG msim::sim::runtime: watchdog thread exiting
