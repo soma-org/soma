@@ -2,14 +2,18 @@ use std::{collections::HashSet, sync::Arc};
 
 use fastcrypto::traits::KeyPair;
 use shared::{
-    crypto::keys::EncoderKeyPair, digest::Digest, scope::Scope, signed::Signed, verified::Verified,
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey},
+    digest::Digest,
+    scope::Scope,
+    signed::Signed,
+    verified::Verified,
 };
 use tokio::sync::Semaphore;
 
 use crate::{
     core::broadcaster::Broadcaster,
     error::{ShardError, ShardResult},
-    networking::messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
+    messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     storage::datastore::Store,
     types::{
         encoder_committee::{EncoderIndex, Epoch},
@@ -27,7 +31,6 @@ pub(crate) struct BroadcasterProcessor<C: EncoderInternalNetworkClient> {
     semaphore: Arc<Semaphore>,
     broadcaster: Arc<Broadcaster<C>>,
     store: Arc<dyn Store>,
-    own_index: EncoderIndex,
     encoder_keypair: Arc<EncoderKeyPair>,
 }
 
@@ -36,14 +39,12 @@ impl<C: EncoderInternalNetworkClient> BroadcasterProcessor<C> {
         concurrency: usize,
         broadcaster: Broadcaster<C>,
         store: Arc<dyn Store>,
-        own_index: EncoderIndex,
         encoder_keypair: Arc<EncoderKeyPair>,
     ) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(concurrency)),
             broadcaster: Arc::new(broadcaster),
             store,
-            own_index,
             encoder_keypair,
         }
     }
@@ -52,23 +53,24 @@ impl<C: EncoderInternalNetworkClient> BroadcasterProcessor<C> {
 pub(crate) enum BroadcastType {
     CommitVote(Epoch, Digest<Shard>),
     RevealVote(Epoch, Digest<Shard>),
-    RevealKey(Epoch, Digest<Shard>, EncoderIndex),
+    RevealKey(Epoch, Digest<Shard>),
 }
 
 #[async_trait]
 impl<C: EncoderInternalNetworkClient> Processor for BroadcasterProcessor<C> {
-    type Input = (ShardAuthToken, Shard, BroadcastType, Vec<EncoderIndex>);
+    type Input = (ShardAuthToken, Shard, BroadcastType, Vec<EncoderPublicKey>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let broadcaster = self.broadcaster.clone();
         let store = self.store.clone();
         let keypair = self.encoder_keypair.inner().copy();
-        let own_index = self.own_index;
+        let (auth_token, shard, input, peers) = msg.input;
+        // TODO: handle the unwrap better
+        let own_index = self.context.own_encoder_index(auth_token.epoch()).unwrap();
+
         if let Ok(permit) = self.semaphore.clone().acquire_owned().await {
             tokio::spawn(async move {
-                let (auth_token, shard, input, peers) = msg.input;
-
                 match input {
                     BroadcastType::CommitVote(epoch, shard_ref) => {
                         // TODO: look up rejects from store
@@ -128,7 +130,7 @@ impl<C: EncoderInternalNetworkClient> Processor for BroadcasterProcessor<C> {
                             .await;
                         msg.sender.send(result);
                     }
-                    BroadcastType::RevealKey(epoch, shard_ref, slot) => {
+                    BroadcastType::RevealKey(epoch, shard_ref) => {
                         let result: ShardResult<()> = async {
                             let (encryption_key, checksum) =
                                 store.get_reveal(epoch, shard_ref, slot)?;

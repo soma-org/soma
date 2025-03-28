@@ -13,6 +13,10 @@ use thiserror::Error;
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub(crate) enum ShardError {
+    #[error("Cache error")]
+    CacheError,
+    #[error("Wrong epoch")]
+    WrongEpoch,
     #[error("Quorum failed")]
     QuorumFailed,
     #[error("Missing compression metadata")]

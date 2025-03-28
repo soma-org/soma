@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use quick_cache::sync::Cache;
 use shared::{
-    crypto::keys::{EncoderKeyPair, NetworkKeyPair},
+    crypto::keys::{EncoderKeyPair, PeerKeyPair},
     digest::Digest,
     entropy::EntropyVDF,
 };
@@ -24,18 +24,16 @@ use crate::{
     compression::zstd_compressor::ZstdCompressor,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     intelligence::model::python::PythonInterpreter,
-    networking::{
-        messaging::{
-            tonic_network::{EncoderInternalTonicClient, EncoderInternalTonicManager},
-            EncoderInternalNetworkManager,
-        },
-        object::{
-            http_network::{ObjectHttpClient, ObjectHttpManager},
-            DirectNetworkService, ObjectNetworkManager,
-        },
+    messaging::{
+        tonic::internal::{EncoderInternalTonicClient, EncoderInternalTonicManager},
+        EncoderInternalNetworkManager,
+    },
+    networking::object::{
+        http_network::{ObjectHttpClient, ObjectHttpManager},
+        ObjectNetworkManager, ObjectNetworkService,
     },
     storage::{datastore::mem_store::MemStore, object::filesystem::FilesystemObjectStorage},
-    types::{encoder_context::EncoderContext, shard_verifier},
+    types::{context::Context, shard_verifier},
 };
 
 use self::{
@@ -45,7 +43,7 @@ use self::{
 };
 
 use super::{
-    broadcaster::Broadcaster, encoder_core::EncoderCore, encoder_service::EncoderInternalService,
+    broadcaster::Broadcaster, encoder_service::EncoderInternalService,
     pipeline_dispatcher::InternalPipelineDispatcher, slot_tracker,
 };
 
@@ -53,7 +51,7 @@ use super::{
 
 // impl Encoder {
 //     pub async fn start(
-//         encoder_context: Arc<EncoderContext>,
+//         context: Arc<Context>,
 //         network_keypair: NetworkKeyPair,
 //         protocol_keypair: ProtocolKeyPair,
 //         project_root: &Path,
@@ -61,7 +59,7 @@ use super::{
 //     ) -> Self {
 //         let encoder_node: EncoderNode<ActorInternalPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager> =
 //             EncoderNode::start(
-//                 encoder_context,
+//                 context,
 //                 network_keypair,
 //                 protocol_keypair,
 //                 project_root,
@@ -81,14 +79,14 @@ pub struct EncoderNode {
 
 impl EncoderNode {
     pub(crate) async fn start(
-        encoder_context: Arc<EncoderContext>,
-        network_keypair: NetworkKeyPair,
+        context: Context,
+        peer_keypair: Arc<PeerKeyPair>,
         encoder_keypair: EncoderKeyPair,
         project_root: &Path,
         entry_point: &Path,
     ) -> Self {
         let mut network_manager =
-            EncoderInternalTonicManager::new(encoder_context.clone(), network_keypair);
+            EncoderInternalTonicManager::new(context.clone(), peer_keypair.clone());
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
             EncoderInternalService<
@@ -103,11 +101,10 @@ impl EncoderNode {
         // let messaging_client = network_manager.client();
 
         let blob_storage = Arc::new(FilesystemObjectStorage::new("base_path"));
-        let blob_network_service: DirectNetworkService<FilesystemObjectStorage> =
-            DirectNetworkService::new(blob_storage.clone());
-        let mut blob_network_manager: ObjectHttpManager<
-            DirectNetworkService<FilesystemObjectStorage>,
-        > = ObjectHttpManager::new(encoder_context.clone()).unwrap();
+        let object_network_service: ObjectNetworkService<FilesystemObjectStorage> =
+            ObjectNetworkService::new(blob_storage.clone());
+        let mut blob_network_manager: ObjectHttpManager<FilesystemObjectStorage> =
+            ObjectHttpManager::new(peer_keypair).unwrap();
         // tokio::spawn(async move {
         //     blob_network_manager.start(Arc::new(blob_network_service)).await
         // });
@@ -118,10 +115,7 @@ impl EncoderNode {
         let default_buffer = 100_usize;
         let default_concurrency = 100_usize;
 
-        let broadcaster = Arc::new(Broadcaster::new(
-            encoder_context.clone(),
-            messaging_client.clone(),
-        ));
+        let broadcaster = Arc::new(Broadcaster::new(context.clone(), messaging_client.clone()));
 
         let download_processor = Downloader::new(default_concurrency, blob_client.clone());
         let downloader_manager = ActorManager::new(default_buffer, download_processor);
@@ -147,36 +141,26 @@ impl EncoderNode {
         let storage_manager = ActorManager::new(default_buffer, storage_processor);
         let storage_handle = storage_manager.handle();
 
-        let core = EncoderCore::new(
-            messaging_client.clone(),
-            broadcaster,
-            downloader_handle.clone(),
-            encryptor_handle.clone(),
-            compressor_handle.clone(),
-            model_handle,
-            storage_handle.clone(),
-            encoder_keypair.clone(),
-        );
         let vdf = EntropyVDF::new(1);
         let vdf_processor = VDFProcessor::new(vdf, 1);
         let vdf_handle = ActorManager::new(1, vdf_processor).handle();
         let store = Arc::new(MemStore::new());
 
-        let broadcaster = Broadcaster::new(encoder_context.clone(), messaging_client);
+        let broadcaster = Broadcaster::new(context.clone(), messaging_client);
         let broadcast_processor = BroadcasterProcessor::new(
+            context.clone(),
             default_concurrency,
             broadcaster,
             store.clone(),
-            encoder_context.own_encoder_index,
             encoder_keypair.clone(),
         );
         let broadcaster_handle = ActorManager::new(default_buffer, broadcast_processor).handle();
 
         let evaluation_processor = EvaluationProcessor::new(
-            encoder_context.clone(),
             store.clone(),
             broadcaster_handle.clone(),
             storage_handle.clone(),
+            context.clone(),
         );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
 
@@ -190,11 +174,8 @@ impl EncoderNode {
             compressor_handle.clone(),
             storage_handle.clone(),
         );
-        let commit_votes_processor = CommitVotesProcessor::new(
-            store.clone(),
-            encoder_context.own_encoder_index,
-            broadcaster_handle.clone(),
-        );
+        let commit_votes_processor =
+            CommitVotesProcessor::new(store.clone(), broadcaster_handle.clone());
         let reveal_processor = RevealProcessor::new(
             100,
             store.clone(),
@@ -204,17 +185,9 @@ impl EncoderNode {
             compressor_handle.clone(),
             encryptor_handle.clone(),
         );
-        let reveal_votes_processor = RevealVotesProcessor::new(
-            store.clone(),
-            encoder_context.own_encoder_index,
-            evaluation_handle,
-        );
+        let reveal_votes_processor = RevealVotesProcessor::new(store.clone(), evaluation_handle);
 
-        let scores_processor = ScoresProcessor::new(
-            encoder_context.clone(),
-            store.clone(),
-            encoder_context.own_encoder_index,
-        );
+        let scores_processor = ScoresProcessor::new(store.clone());
 
         let certified_commit_manager =
             ActorManager::new(default_buffer, certified_commit_processor);
@@ -240,7 +213,7 @@ impl EncoderNode {
         let verifier = ShardVerifier::new(cache);
 
         let network_service = Arc::new(EncoderInternalService::new(
-            encoder_context,
+            context,
             pipeline_dispatcher,
             vdf_handle,
             verifier,

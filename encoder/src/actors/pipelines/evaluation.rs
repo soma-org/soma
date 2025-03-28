@@ -9,24 +9,17 @@ use crate::{
         ActorHandle, ActorMessage, Processor,
     },
     error::{ShardError, ShardResult},
-    networking::messaging::EncoderInternalNetworkClient,
+    messaging::EncoderInternalNetworkClient,
     storage::{
         datastore::Store,
         object::{ObjectPath, ObjectStorage},
     },
-    types::{
-        encoder_context::EncoderContext, shard::Shard, shard_commit::ShardCommitAPI,
-        shard_verifier::ShardAuthToken,
-    },
+    types::{shard::Shard, shard_commit::ShardCommitAPI, shard_verifier::ShardAuthToken},
 };
 use async_trait::async_trait;
-use burn::backend::{ndarray::NdArrayDevice, NdArray};
-use ndarray::Array2;
-use probe::{Probe, ProbeAPI, SerializedProbe, SerializedProbeAPI};
 use shared::{digest::Digest, metadata::MetadataAPI};
 
 pub(crate) struct EvaluationProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
-    context: Arc<EncoderContext>,
     store: Arc<dyn Store>,
     broadcaster: ActorHandle<BroadcasterProcessor<E>>,
     storage: ActorHandle<StorageProcessor<S>>,
@@ -34,13 +27,11 @@ pub(crate) struct EvaluationProcessor<E: EncoderInternalNetworkClient, S: Object
 
 impl<E: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<E, S> {
     pub(crate) fn new(
-        context: Arc<EncoderContext>,
         store: Arc<dyn Store>,
         broadcaster: ActorHandle<BroadcasterProcessor<E>>,
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
-            context,
             store,
             broadcaster,
             storage,
@@ -57,7 +48,7 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage> Processor for Evaluation
         let result: ShardResult<()> = async {
             let (auth_token, shard) = msg.input;
             let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
-            let epoch = shard.epoch();
+            let epoch = auth_token.epoch();
 
             let accepted_slots = self.store.get_filled_reveal_slots(epoch, shard_ref);
 
@@ -65,15 +56,17 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage> Processor for Evaluation
             for slot in accepted_slots {
                 let certified_commit = self.store.get_certified_commit(epoch, shard_ref, slot)?;
                 let committer = certified_commit.committer();
-                let probe_metadata = self
-                    .context
-                    .encoder_committee
-                    .encoder(committer)
-                    .probe
-                    .clone();
-                let probe_path = ObjectPath::from_checksum(probe_metadata.checksum());
-                let (_, embedding_checksum) = self.store.get_reveal(epoch, shard_ref, slot)?;
-                let embedding_path = ObjectPath::from_checksum(embedding_checksum);
+                // let probe_metadata = self
+                //     .context
+                //     .inner()
+                //     .current_committees()
+                //     .encoder_committee
+                //     .encoder(committer)
+                //     .probe
+                //     .clone();
+                // let probe_path = ObjectPath::from_checksum(probe_metadata.checksum());
+                // let (_, embedding_checksum) = self.store.get_reveal(epoch, shard_ref, slot)?;
+                // let embedding_path = ObjectPath::from_checksum(embedding_checksum);
 
                 // let probe_bytes = match self
                 //     .storage

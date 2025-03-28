@@ -6,7 +6,7 @@ use crate::{
         ActorHandle, ActorMessage, Processor,
     },
     error::{ShardError, ShardResult},
-    networking::messaging::tonic_network::EncoderInternalTonicClient,
+    messaging::tonic::internal::EncoderInternalTonicClient,
     storage::datastore::Store,
     types::{
         encoder_committee::EncoderIndex,
@@ -17,24 +17,24 @@ use crate::{
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
-use shared::{digest::Digest, signed::Signed, verified::Verified};
+use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
 
 pub(crate) struct CommitVotesProcessor {
     store: Arc<dyn Store>,
-    own_index: EncoderIndex,
     broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
+    own_encoder_key: Arc<EncoderPublicKey>,
 }
 
 impl CommitVotesProcessor {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        own_index: EncoderIndex,
         broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
+        own_encoder_key: Arc<EncoderPublicKey>,
     ) -> Self {
         Self {
             store,
-            own_index,
             broadcaster,
+            own_encoder_key,
         }
     }
 }
@@ -52,7 +52,7 @@ impl Processor for CommitVotesProcessor {
         let result: ShardResult<()> = async {
             let (auth_token, shard, votes) = msg.input;
             let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
-            let epoch = shard.epoch();
+            let epoch = auth_token.epoch();
             let (total_finalized_slots, total_accepted_slots) = self.store.add_commit_vote(
                 epoch,
                 shard_ref,
@@ -62,24 +62,15 @@ impl Processor for CommitVotesProcessor {
 
             if total_finalized_slots == shard.inference_size() {
                 if total_accepted_slots >= shard.minimum_inference_size() as usize {
-                    if shard.inference_set().contains(&self.own_index) {
-                        let inference_set = shard.inference_set(); // Vec<EncoderIndex>
-                        let evaluation_set = shard.evaluation_set(); // Vec<EncoderIndex>
-
-                        // Combine into a HashSet to deduplicate
-                        let mut peers_set: HashSet<EncoderIndex> =
-                            inference_set.into_iter().collect();
-                        peers_set.extend(evaluation_set);
-
-                        // Convert back to Vec
-                        let peers: Vec<EncoderIndex> = peers_set.into_iter().collect();
+                    if shard.inference_set_contains(&self.own_encoder_key) {
+                        let peers = shard.shard_set();
                         let _ = self
                             .broadcaster
                             .process(
                                 (
                                     auth_token,
                                     shard,
-                                    BroadcastType::RevealKey(epoch, shard_ref, self.own_index),
+                                    BroadcastType::RevealKey(epoch, shard_ref),
                                     peers,
                                 ),
                                 msg.cancellation.clone(),

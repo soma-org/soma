@@ -23,7 +23,6 @@ pub trait MetadataAPI {
     fn compression(&self) -> Option<Compression>;
     fn encryption(&self) -> Option<Encryption>;
     fn checksum(&self) -> Checksum;
-    fn shape(&self) -> &[SizeInElements];
     fn size(&self) -> SizeInBytes;
 }
 
@@ -40,7 +39,6 @@ impl Metadata {
             compression: None,
             encryption: None,
             checksum: Checksum::new_from_bytes(bytes),
-            shape: vec![],
             size: 0,
         })
     }
@@ -52,14 +50,12 @@ impl Metadata {
         compression: Option<CompressionV1>,
         encryption: Option<EncryptionV1>,
         checksum: Checksum,
-        shape: Vec<SizeInElements>,
         size: SizeInBytes,
     ) -> Metadata {
         Metadata::V1(MetadataV1 {
             compression,
             encryption,
             checksum,
-            shape,
             size,
         })
     }
@@ -84,7 +80,6 @@ struct MetadataV1 {
     compression: Option<CompressionV1>,
     encryption: Option<EncryptionV1>,
     checksum: Checksum,
-    shape: Vec<SizeInElements>,
     size: SizeInBytes,
 }
 
@@ -97,9 +92,6 @@ impl MetadataAPI for MetadataV1 {
     }
     fn checksum(&self) -> Checksum {
         self.checksum
-    }
-    fn shape(&self) -> &[SizeInElements] {
-        &self.shape
     }
     fn size(&self) -> SizeInBytes {
         self.size
@@ -204,7 +196,6 @@ impl MetadataCommitment {
 
 pub fn verify_metadata(
     expected_size: Option<usize>,
-    expected_shape: Option<Vec<usize>>,
     require_compression: Option<bool>,
     require_encryption: Option<bool>,
     max_size: Option<usize>,
@@ -215,17 +206,6 @@ pub fn verify_metadata(
             return Err(SharedError::ValidationError("Size must be non-zero".into()));
         }
 
-        // Shape validation
-        let shape = metadata.shape();
-        if shape.is_empty() {
-            return Err(SharedError::ValidationError("Shape cannot be empty".into()));
-        }
-        if shape.iter().any(|&dim| dim == 0) {
-            return Err(SharedError::ValidationError(
-                "Shape dimensions must be non-zero".into(),
-            ));
-        }
-
         // Check size if specified
         if let Some(expected_size) = expected_size {
             if metadata.size() != expected_size {
@@ -233,17 +213,6 @@ pub fn verify_metadata(
                     "Size mismatch. Expected {}, got {}",
                     expected_size,
                     metadata.size()
-                )));
-            }
-        }
-
-        // Check shape if specified
-        if let Some(expected_shape) = &expected_shape {
-            if metadata.shape() != expected_shape.as_slice() {
-                return Err(SharedError::ValidationError(format!(
-                    "Shape mismatch. Expected {:?}, got {:?}",
-                    expected_shape,
-                    metadata.shape()
                 )));
             }
         }

@@ -6,13 +6,13 @@ use fastcrypto::{
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 
-/// Network key is used for TLS and as the network identity of the authority.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct NetworkPublicKey(ed25519::Ed25519PublicKey);
-pub struct NetworkPrivateKey(ed25519::Ed25519PrivateKey);
-pub struct NetworkKeyPair(ed25519::Ed25519KeyPair);
+/// Peer key is used for Peer and as the network identity of the authority.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PeerPublicKey(ed25519::Ed25519PublicKey);
+pub struct PeerPrivateKey(ed25519::Ed25519PrivateKey);
+pub struct PeerKeyPair(ed25519::Ed25519KeyPair);
 
-impl NetworkPublicKey {
+impl PeerPublicKey {
     pub fn new(key: ed25519::Ed25519PublicKey) -> Self {
         Self(key)
     }
@@ -26,13 +26,13 @@ impl NetworkPublicKey {
     }
 }
 
-impl NetworkPrivateKey {
+impl PeerPrivateKey {
     pub fn into_inner(self) -> ed25519::Ed25519PrivateKey {
         self.0
     }
 }
 
-impl NetworkKeyPair {
+impl PeerKeyPair {
     pub fn new(keypair: ed25519::Ed25519KeyPair) -> Self {
         Self(keypair)
     }
@@ -41,12 +41,12 @@ impl NetworkKeyPair {
         Self(ed25519::Ed25519KeyPair::generate(rng))
     }
 
-    pub fn public(&self) -> NetworkPublicKey {
-        NetworkPublicKey(self.0.public().clone())
+    pub fn public(&self) -> PeerPublicKey {
+        PeerPublicKey(self.0.public().clone())
     }
 
-    pub fn private_key(self) -> NetworkPrivateKey {
-        NetworkPrivateKey(self.0.copy().private())
+    pub fn private_key(self) -> PeerPrivateKey {
+        PeerPrivateKey(self.0.copy().private())
     }
 
     pub fn private_key_bytes(self) -> [u8; 32] {
@@ -54,7 +54,7 @@ impl NetworkKeyPair {
     }
 }
 
-impl Clone for NetworkKeyPair {
+impl Clone for PeerKeyPair {
     fn clone(&self) -> Self {
         Self(self.0.copy())
     }
@@ -237,7 +237,7 @@ impl AuthorityAggregateSignature {
 // ///////////////////////////////////////////////////////////////////////////
 
 /// A BLS public key wrapper for encoding operations
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct EncoderPublicKey(bls12381::min_sig::BLS12381PublicKey);
 
 /// A BLS keypair wrapper for encoding operations

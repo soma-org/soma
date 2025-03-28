@@ -14,8 +14,8 @@ use crate::{
 };
 
 use super::{
+    context::Context,
     encoder_committee::{EncoderIndex, Epoch},
-    encoder_context::EncoderContext,
     shard::{Shard, ShardEntropy},
 };
 
@@ -71,7 +71,7 @@ impl Route {
 impl ShardVerifier {
     pub(crate) async fn verify(
         &self,
-        context: &EncoderContext,
+        context: &Context,
         vdf: &ActorHandle<VDFProcessor<EntropyVDF>>,
         token: &ShardAuthToken,
     ) -> ShardResult<(Digest<ShardAuthToken>, Shard)> {
@@ -87,10 +87,12 @@ impl ShardVerifier {
             };
         }
         let valid_shard_result: ShardResult<Shard> = {
+            let inner_context = context.inner();
+            let committees = inner_context.committees(token.epoch())?;
             // check that the finality proof is valid against the epoch's authorities
             token
                 .proof
-                .verify(&context.authority_committee)
+                .verify(&committees.authority_committee)
                 .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
             // check that the vdf entropy (block entropy) passes verification with the provided proof
@@ -118,9 +120,9 @@ impl ShardVerifier {
             ))
             .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
-            let shard = context.encoder_committee.sample_shard(shard_entropy)?;
+            let shard = committees.encoder_committee.sample_shard(shard_entropy)?;
 
-            if !shard.contains(&context.own_encoder_index) {
+            if !shard.contains(&committees.own_encoder_public_key) {
                 return Err(ShardError::InvalidShardToken(
                     "encoder is not contained in shard".to_string(),
                 ));
@@ -144,11 +146,14 @@ impl ShardVerifier {
 
 #[cfg(test)]
 mod tests {
-    use super::{EncoderContext, EncoderIndex, ShardAuthToken, ShardVerifier, VerificationStatus};
+    use super::{Context, EncoderIndex, ShardAuthToken, ShardVerifier, VerificationStatus};
     use crate::{
         actors::{workers::vdf::VDFProcessor, ActorHandle, ActorManager},
         error::ShardResult,
-        types::encoder_committee::{EncoderCommittee, Epoch},
+        types::{
+            context::InnerContext,
+            encoder_committee::{EncoderCommittee, Epoch},
+        },
     };
     use quick_cache::sync::Cache;
     use shared::{
@@ -162,7 +167,6 @@ mod tests {
         entropy::{BlockEntropyOutput, BlockEntropyProof, EntropyAPI, EntropyVDF},
         finality_proof::{BlockClaim, FinalityProof},
         metadata::{Metadata, MetadataCommitment},
-        network_committee::{NetworkCommittee, NetworkIdentity, NetworkingIndex},
         probe::ProbeMetadata,
         scope::{Scope, ScopedMessage},
         transaction::{
@@ -170,7 +174,6 @@ mod tests {
             TransactionKind,
         },
     };
-    use tokio_util::sync::CancellationToken;
 
     const TEST_ENTROPY_ITERATIONS: u64 = 1;
     const TEST_CACHE_CAPACITY: usize = 100;
@@ -194,7 +197,7 @@ mod tests {
         ShardVerifier,
         ShardAuthToken,
         ActorHandle<VDFProcessor<EntropyVDF>>,
-        EncoderContext,
+        Context,
     ) {
         // Set up VDF processor
         let vdf = EntropyVDF::new(TEST_ENTROPY_ITERATIONS);
@@ -219,7 +222,7 @@ mod tests {
             AuthorityCommittee::local_test_committee(EPOCH, stakes, STARTING_PORT);
 
         // Create encoder context (using index 0 as our own encoder)
-        let encoder_context = EncoderContext::new(
+        let encoder_context = InnerContext::new(
             authority_committee,
             NetworkCommittee::default(),
             NetworkingIndex::new_for_test(0),
@@ -244,7 +247,6 @@ mod tests {
             None,               // no compression
             None,               // no encryption
             Default::default(), // default checksum
-            vec![1, 1],         // simple shape
             1024,               // size in bytes
         );
         let metadata_commitment = MetadataCommitment::new(metadata, [0u8; 32]);

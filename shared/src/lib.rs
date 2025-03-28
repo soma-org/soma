@@ -10,7 +10,6 @@ pub mod error;
 pub mod finality_proof;
 pub mod metadata;
 pub mod multiaddr;
-pub mod network_committee;
 pub mod probe;
 pub mod scope;
 pub mod serialized;

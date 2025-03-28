@@ -5,7 +5,7 @@ use tokio::fs;
 
 use crate::error::{ShardError, ShardResult};
 
-use super::{ObjectPath, ObjectStorage};
+use super::{ObjectPath, ObjectStorage, ServedObjectResponse};
 
 #[derive(Clone)]
 pub struct FilesystemObjectStorage {
@@ -69,6 +69,10 @@ impl ObjectStorage for FilesystemObjectStorage {
                 ))),
             },
         }
+    }
+    async fn serve_object(&self, path: &ObjectPath) -> ShardResult<ServedObjectResponse> {
+        let bytes = self.get_object(path).await?;
+        Ok(ServedObjectResponse::Direct(bytes))
     }
 }
 

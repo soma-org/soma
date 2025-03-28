@@ -6,6 +6,9 @@ edition = "2021"
 [dependencies]
 shared.workspace = true
 probe.workspace = true
+soma-http.workspace = true
+soma-tls.workspace = true
+soma-network.workspace = true
 tokio.workspace = true
 serde.workspace = true
 fastcrypto.workspace = true
@@ -40,6 +43,9 @@ mockall.workspace = true
 quick_cache.workspace = true
 dashmap.workspace = true
 burn.workspace = true
+arc-swap.workspace = true
+http.workspace = true
+tonic-rustls.workspace = true
 
 [dependencies.pyo3]
 workspace = true

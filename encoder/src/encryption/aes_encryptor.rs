@@ -26,7 +26,7 @@ impl Encryptor for Aes256Ctr64LEEncryptor {
                 buffer.extend_from_slice(&contents);
                 cipher.apply_keystream(&mut buffer);
                 Ok(buffer.freeze())
-            }
+            } // TODO: add an error for other match types
         }
     }
 

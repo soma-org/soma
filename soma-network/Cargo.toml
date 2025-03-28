@@ -1,0 +1,16 @@
+[package]
+name = "soma-network"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+http.workspace = true
+http-body.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+tokio-rustls.workspace = true
+pin-project-lite.workspace = true
+tonic.workspace = true
+tower.workspace = true
+tracing.workspace = true
+

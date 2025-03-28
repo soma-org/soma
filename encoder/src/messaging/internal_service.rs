@@ -2,12 +2,11 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use shared::{
-    crypto::keys::EncoderKeyPair,
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerPublicKey},
     digest::Digest,
     entropy::EntropyVDF,
     error::SharedError,
     metadata::{verify_metadata, EncryptionAPI, MetadataAPI},
-    network_committee::NetworkingIndex,
     scope::Scope,
     serialized::Serialized,
     signed::{Signature, Signed},
@@ -16,14 +15,14 @@ use shared::{
 use std::sync::Arc;
 
 use crate::{
-    actors::{workers::vdf::VDFProcessor, ActorHandle},
+    actors::{pipelines::certified_commit, workers::vdf::VDFProcessor, ActorHandle},
+    core::pipeline_dispatcher::InternalDispatcher,
     error::{ShardError, ShardResult},
-    networking::messaging::{EncoderExternalNetworkService, EncoderInternalNetworkService},
+    messaging::{EncoderExternalNetworkService, EncoderInternalNetworkService},
     storage::datastore::Store,
     types::{
         certified::{Certified, CertifiedAPI},
-        encoder_committee::EncoderIndex,
-        encoder_context::EncoderContext,
+        context::Context,
         shard_commit::{ShardCommit, ShardCommitAPI},
         shard_input::{ShardInput, ShardInputAPI},
         shard_reveal::{ShardReveal, ShardRevealAPI},
@@ -33,10 +32,8 @@ use crate::{
     },
 };
 
-use super::pipeline_dispatcher::{ExternalDispatcher, InternalDispatcher};
-
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
-    context: Arc<EncoderContext>,
+    context: Context,
     dispatcher: D,
     vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
     shard_verifier: ShardVerifier,
@@ -46,14 +43,13 @@ pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
 
 impl<D: InternalDispatcher> EncoderInternalService<D> {
     pub(crate) fn new(
-        context: Arc<EncoderContext>,
+        context: Context,
         dispatcher: D,
         vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
         shard_verifier: ShardVerifier,
         store: Arc<dyn Store>,
         encoder_keypair: Arc<EncoderKeyPair>,
     ) -> Self {
-        println!("configured core thread");
         Self {
             context,
             dispatcher,
@@ -71,7 +67,7 @@ impl<D: InternalDispatcher> EncoderInternalService<D> {
 impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalService<D> {
     async fn handle_send_commit(
         &self,
-        peer: EncoderIndex,
+        encoder: &EncoderPublicKey,
         commit_bytes: Bytes,
     ) -> ShardResult<
         Serialized<
@@ -119,8 +115,8 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 let _ = signed_route.verify(
                     Scope::ShardCommitRoute,
                     self.context
-                        .encoder_committee
-                        .encoder(signed_commit.slot())
+                        .encoder(signed_commit.auth_token().epoch(), signed_commit.slot())
+                        .map_err(|e| SharedError::ValidationError(e.to_string()))?
                         .encoder_key
                         .inner(),
                 )?;
@@ -132,8 +128,11 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             let _ = signed_commit.verify(
                 Scope::ShardCommitRoute,
                 self.context
-                    .encoder_committee
-                    .encoder(signed_commit.committer())
+                    .encoder(
+                        signed_commit.auth_token().epoch(),
+                        signed_commit.committer(),
+                    )
+                    .map_err(|e| SharedError::ValidationError(e.to_string()))?
                     .encoder_key
                     .inner(),
             )?;
@@ -141,7 +140,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
 
             let metadata = signed_commit.commit();
             // TODO: update to actually check commit size, shape, etc according to embedding standards
-            let _ = verify_metadata(None, None, None, None, None)(metadata)?;
+            let _ = verify_metadata(None, None, None, None)(metadata)?;
             Ok(())
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
@@ -170,7 +169,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
     }
     async fn handle_send_certified_commit(
         &self,
-        peer: EncoderIndex,
+        encoder: &EncoderPublicKey,
         certified_commit_bytes: Bytes,
     ) -> ShardResult<()> {
         // convert into correct type
@@ -182,10 +181,10 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             .verify(&self.context, &self.vdf, certified_commit.auth_token())
             .await?;
 
-        let committer = self
-            .context
-            .encoder_committee
-            .encoder(certified_commit.committer());
+        let committer = self.context.encoder(
+            certified_commit.auth_token().epoch(),
+            certified_commit.committer(),
+        )?;
 
         let probe_metadata = committer.probe.clone();
         // perform verification on type and auth including signature checks
@@ -206,10 +205,16 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                     }
                 }
 
+                let inner_context = self.context.inner();
+
+                let committees = inner_context
+                    .committees(certified_commit.auth_token().epoch())
+                    .map_err(|e| SharedError::ValidationError(e.to_string()))?;
+
                 // checks to ensure that the number of unique indices meets quorum and verifies the agg signature
                 // using the corresponding public keys from those indices
                 certified_commit
-                    .verify_quorum(Scope::ShardCertificate, &self.context.encoder_committee)?;
+                    .verify_quorum(Scope::ShardCertificate, &committees.encoder_committee)?;
 
                 // It is redundant to reverify the signed commit that is certified since a quorum must be met to produce a valid certificate
                 // at least a quorum number of evaluators must validate the commit, and honest assumptions are out of scope here
@@ -221,7 +226,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         let _ = self
             .dispatcher
             .dispatch_certified_commit(
-                peer,
+                encoder,
                 auth_token,
                 shard,
                 probe_metadata,
@@ -232,7 +237,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
     }
     async fn handle_send_commit_votes(
         &self,
-        peer: EncoderIndex,
+        encoder: &EncoderPublicKey,
         votes_bytes: Bytes,
     ) -> ShardResult<()> {
         // convert into correct type
@@ -268,8 +273,8 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             let _ = votes.verify(
                 Scope::ShardCommitVotes,
                 self.context
-                    .encoder_committee
-                    .encoder(votes.voter())
+                    .encoder(votes.auth_token().epoch(), votes.voter())
+                    .map_err(|e| SharedError::ValidationError(e.to_string()))?
                     .encoder_key
                     .inner(),
             )?;
@@ -279,11 +284,15 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         let _ = self
             .dispatcher
-            .dispatch_commit_votes(peer, auth_token, shard, verified_commit_votes)
+            .dispatch_commit_votes(encoder, auth_token, shard, verified_commit_votes)
             .await?;
         Ok(())
     }
-    async fn handle_send_reveal(&self, peer: EncoderIndex, reveal_bytes: Bytes) -> ShardResult<()> {
+    async fn handle_send_reveal(
+        &self,
+        encoder: &EncoderPublicKey,
+        reveal_bytes: Bytes,
+    ) -> ShardResult<()> {
         // convert into correct type
         let reveal: Signed<ShardReveal, min_sig::BLS12381Signature> =
             bcs::from_bytes(&reveal_bytes).map_err(ShardError::MalformedType)?;
@@ -324,8 +333,8 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             let _ = reveal.verify(
                 Scope::ShardReveal,
                 self.context
-                    .encoder_committee
-                    .encoder(reveal.slot())
+                    .encoder(reveal.auth_token().epoch(), reveal.slot())
+                    .map_err(|e| SharedError::ValidationError(e.to_string()))?
                     .encoder_key
                     .inner(),
             )?;
@@ -336,7 +345,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         let _ = self
             .dispatcher
             .dispatch_reveal(
-                peer,
+                encoder,
                 auth_token,
                 shard,
                 certified_commit.commit().to_owned(),
@@ -347,7 +356,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
     }
     async fn handle_send_reveal_votes(
         &self,
-        peer: EncoderIndex,
+        encoder: &EncoderPublicKey,
         votes_bytes: Bytes,
     ) -> ShardResult<()> {
         // convert into correct type
@@ -382,8 +391,8 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             let _ = votes.verify(
                 Scope::ShardRevealVotes,
                 self.context
-                    .encoder_committee
-                    .encoder(votes.voter())
+                    .encoder(votes.auth_token().epoch(), votes.voter())
+                    .map_err(|e| SharedError::ValidationError(e.to_string()))?
                     .encoder_key
                     .inner(),
             )?;
@@ -393,11 +402,15 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         let _ = self
             .dispatcher
-            .dispatch_reveal_votes(peer, auth_token, shard, verified_reveal_votes)
+            .dispatch_reveal_votes(encoder, auth_token, shard, verified_reveal_votes)
             .await?;
         Ok(())
     }
-    async fn handle_send_scores(&self, peer: EncoderIndex, scores_bytes: Bytes) -> ShardResult<()> {
+    async fn handle_send_scores(
+        &self,
+        encoder: &EncoderPublicKey,
+        scores_bytes: Bytes,
+    ) -> ShardResult<()> {
         let scores: Signed<ShardScores, min_sig::BLS12381Signature> =
             bcs::from_bytes(&scores_bytes).map_err(ShardError::MalformedType)?;
         let (auth_token_digest, shard) = self
@@ -407,7 +420,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         let auth_token = scores.auth_token().clone();
         let verified_scores = Verified::new(scores, scores_bytes, |scores| {
             // NOTE using peer not a field from the type, not sure which is better
-            if !shard.evaluation_set().contains(&peer) {
+            if !shard.evaluation_set().contains(&scores.evaluator()) {
                 return Err(shared::error::SharedError::ValidationError(
                     "sender is not in evaluation set".to_string(),
                 ));
@@ -431,8 +444,8 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             let _ = scores.verify(
                 Scope::ShardScores,
                 self.context
-                    .encoder_committee
-                    .encoder(peer) // NOTE: using the peer not a field from the scores. not sure which is better
+                    .encoder(scores.auth_token().epoch(), scores.evaluator())
+                    .map_err(|e| SharedError::ValidationError(e.to_string()))?
                     .encoder_key
                     .inner(),
             )?;
@@ -442,60 +455,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
         let _ = self
             .dispatcher
-            .dispatch_scores(peer, auth_token, shard, verified_scores)
-            .await?;
-        Ok(())
-    }
-}
-
-pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
-    context: Arc<EncoderContext>,
-    dispatcher: D,
-    vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
-    shard_verifier: ShardVerifier,
-    store: Arc<dyn Store>,
-    encoder_keypair: Arc<EncoderKeyPair>,
-}
-
-impl<D: ExternalDispatcher> EncoderExternalService<D> {
-    pub(crate) fn new(
-        context: Arc<EncoderContext>,
-        dispatcher: D,
-        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
-        shard_verifier: ShardVerifier,
-        store: Arc<dyn Store>,
-        encoder_keypair: Arc<EncoderKeyPair>,
-    ) -> Self {
-        Self {
-            context,
-            dispatcher,
-            vdf,
-            shard_verifier,
-            store,
-            encoder_keypair,
-        }
-    }
-}
-#[async_trait]
-impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
-    async fn handle_send_input(
-        &self,
-        peer: NetworkingIndex,
-        input_bytes: Bytes,
-    ) -> ShardResult<()> {
-        let input: Signed<ShardInput, min_sig::BLS12381Signature> =
-            bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
-        let (auth_token_digest, shard) = self
-            .shard_verifier
-            .verify(&self.context, &self.vdf, input.auth_token())
-            .await?;
-        let auth_token = input.auth_token().clone();
-        let verified_input = Verified::new(input.clone(), input_bytes, |input| Ok(()))
-            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-
-        let _ = self
-            .dispatcher
-            .dispatch_input(peer, auth_token, shard, verified_input)
+            .dispatch_scores(encoder, auth_token, shard, verified_scores)
             .await?;
         Ok(())
     }

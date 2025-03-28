@@ -1,17 +1,15 @@
-use std::{path, sync::Arc};
+use std::sync::Arc;
 
 use bytes::Bytes;
 use shared::{
     checksum::Checksum,
-    metadata::{Metadata, MetadataAPI, MetadataCommitment},
-    network_committee::NetworkingIndex,
+    metadata::{Metadata, MetadataAPI},
 };
 use tokio::sync::Semaphore;
 
 use crate::{
     error::{ShardError, ShardResult},
-    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::object::ObjectPath,
+    networking::object::{ObjectNetworkClient, GET_OBJECT_TIMEOUT},
     types::encoder_committee::{EncoderIndex, Epoch},
 };
 use async_trait::async_trait;
@@ -97,7 +95,6 @@ mod tests {
     use bytes::Bytes;
     use shared::checksum::Checksum;
     use std::{sync::Arc, time::Duration};
-    use tokio::sync::{oneshot, Semaphore};
     use tokio_util::sync::CancellationToken;
 
     // Mock ObjectNetworkClient
@@ -142,13 +139,7 @@ mod tests {
         // Setup
         let test_bytes = Bytes::from("test data");
         let checksum = Checksum::new_from_bytes(&test_bytes);
-        let metadata = Metadata::new_v1(
-            None,
-            None,
-            checksum,
-            vec![1], // Non-empty shape required
-            test_bytes.len(),
-        );
+        let metadata = Metadata::new_v1(None, None, checksum, test_bytes.len());
 
         let peer = EncoderIndex::new_for_test(2);
 
@@ -169,7 +160,7 @@ mod tests {
         // Setup
         let test_bytes = Bytes::from("test data");
         let wrong_checksum = Checksum::new_from_bytes(&Bytes::from("different"));
-        let metadata = Metadata::new_v1(None, None, wrong_checksum, vec![1], test_bytes.len());
+        let metadata = Metadata::new_v1(None, None, wrong_checksum, test_bytes.len());
 
         let peer = EncoderIndex::new_for_test(2);
 
@@ -196,7 +187,6 @@ mod tests {
             None,
             None,
             checksum,
-            vec![1],
             test_bytes.len() + 1, // Wrong size
         );
 
@@ -220,7 +210,7 @@ mod tests {
         // Setup
         let test_bytes = Bytes::from("test data");
         let checksum = Checksum::new_from_bytes(&test_bytes);
-        let metadata = Metadata::new_v1(None, None, checksum, vec![1], test_bytes.len());
+        let metadata = Metadata::new_v1(None, None, checksum, test_bytes.len());
 
         let peer = EncoderIndex::new_for_test(2);
         let (manager, _) = setup_downloader(test_bytes, true); // Should fail
@@ -242,7 +232,7 @@ mod tests {
         // Setup
         let test_bytes = Bytes::from("test data");
         let checksum = Checksum::new_from_bytes(&test_bytes);
-        let metadata = Metadata::new_v1(None, None, checksum, vec![1], test_bytes.len());
+        let metadata = Metadata::new_v1(None, None, checksum, test_bytes.len());
 
         let peer = EncoderIndex::new_for_test(2);
         let (manager, _) = setup_downloader(test_bytes, false);
@@ -267,7 +257,7 @@ mod tests {
         // Setup
         let test_bytes = Bytes::from("test data");
         let checksum = Checksum::new_from_bytes(&test_bytes);
-        let metadata = Metadata::new_v1(None, None, checksum, vec![1], test_bytes.len());
+        let metadata = Metadata::new_v1(None, None, checksum, test_bytes.len());
         let peer = EncoderIndex::new_for_test(2);
 
         let client = Arc::new(MockClient {
@@ -295,7 +285,7 @@ mod tests {
         // Setup
         let test_bytes = Bytes::from("test data");
         let checksum = Checksum::new_from_bytes(&test_bytes);
-        let metadata = Metadata::new_v1(None, None, checksum, vec![1], test_bytes.len());
+        let metadata = Metadata::new_v1(None, None, checksum, test_bytes.len());
 
         let (manager, _) = setup_downloader(test_bytes, false);
         let handle = manager.handle();

@@ -13,10 +13,8 @@ use crate::{
     compression::zstd_compressor::ZstdCompressor,
     core::slot_tracker::SlotTracker,
     error::{ShardError, ShardResult},
-    networking::{
-        messaging::EncoderInternalNetworkClient,
-        object::{http_network::ObjectHttpClient, ObjectNetworkClient},
-    },
+    messaging::EncoderInternalNetworkClient,
+    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient},
     storage::{
         datastore::Store,
         object::{filesystem::FilesystemObjectStorage, ObjectPath, ObjectStorage},
@@ -163,16 +161,8 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
                     .time_since_first_certified_commit(epoch, shard_ref)
                     .unwrap_or(Duration::from_secs(60));
 
-                // TODO: make this cleaner should be built into the shard
-                let inference_set = shard.inference_set(); // Vec<EncoderIndex>
-                let evaluation_set = shard.evaluation_set(); // Vec<EncoderIndex>
+                let peers = shard.shard_set();
 
-                // Combine into a HashSet to deduplicate
-                let mut peers_set: HashSet<EncoderIndex> = inference_set.into_iter().collect();
-                peers_set.extend(evaluation_set);
-
-                // Convert back to Vec
-                let peers: Vec<EncoderIndex> = peers_set.into_iter().collect();
                 let broadcaster = self.broadcaster.clone();
                 let shard_clone = shard.clone();
                 self.slot_tracker

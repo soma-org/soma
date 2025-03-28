@@ -7,7 +7,6 @@ use crate::{
     types::{
         certified::Certified,
         encoder_committee::EncoderIndex,
-        encoder_context::EncoderContext,
         shard::Shard,
         shard_scores::{ShardScores, ShardScoresAPI},
     },
@@ -22,22 +21,12 @@ use shared::{
 };
 
 pub(crate) struct ScoresProcessor {
-    context: Arc<EncoderContext>,
     store: Arc<dyn Store>,
-    own_index: EncoderIndex,
 }
 
 impl ScoresProcessor {
-    pub(crate) fn new(
-        context: Arc<EncoderContext>,
-        store: Arc<dyn Store>,
-        own_index: EncoderIndex,
-    ) -> Self {
-        Self {
-            context,
-            store,
-            own_index,
-        }
+    pub(crate) fn new(store: Arc<dyn Store>) -> Self {
+        Self { store }
     }
 }
 

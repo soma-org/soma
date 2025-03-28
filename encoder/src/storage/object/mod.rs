@@ -39,11 +39,18 @@ impl FromStr for ObjectPath {
     }
 }
 
+#[derive(Debug)]
+pub enum ServedObjectResponse {
+    Direct(Bytes),
+    Redirect(String),
+}
+
 #[async_trait]
 pub(crate) trait ObjectStorage: Send + Sync + Sized + 'static {
     async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ShardResult<()>;
     async fn get_object(&self, path: &ObjectPath) -> ShardResult<Bytes>;
     async fn delete_object(&self, path: &ObjectPath) -> ShardResult<()>;
+    async fn serve_object(&self, path: &ObjectPath) -> ShardResult<ServedObjectResponse>;
 }
 
 #[async_trait]

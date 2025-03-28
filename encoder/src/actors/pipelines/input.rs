@@ -16,11 +16,12 @@ use crate::{
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
     intelligence::model::Model,
-    networking::{messaging::EncoderInternalNetworkClient, object::ObjectNetworkClient},
+    messaging::EncoderInternalNetworkClient,
+    networking::object::ObjectNetworkClient,
     storage::object::{ObjectPath, ObjectStorage},
     types::{
-        encoder_committee::EncoderIndex, encoder_context::EncoderContext, shard::Shard,
-        shard_input::ShardInput, shard_verifier::ShardAuthToken,
+        encoder_committee::EncoderIndex, shard::Shard, shard_input::ShardInput,
+        shard_verifier::ShardAuthToken,
     },
 };
 use async_trait::async_trait;
@@ -45,7 +46,6 @@ pub(crate) struct InputProcessor<
     E: EncoderInternalNetworkClient,
     S: ObjectStorage,
 > {
-    context: Arc<EncoderContext>,
     downloader: ActorHandle<Downloader<O>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     model: ActorHandle<ModelProcessor<M>>,
@@ -60,7 +60,6 @@ impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: Objec
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        context: Arc<EncoderContext>,
         downloader: ActorHandle<Downloader<O>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
         model: ActorHandle<ModelProcessor<M>>,
@@ -70,7 +69,6 @@ impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: Objec
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
-            context,
             downloader,
             compressor,
             model,
@@ -183,7 +181,6 @@ impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: Objec
                 )),
                 Some(EncryptionV1::Aes256Ctr64LE(key_digest)),
                 checksum,
-                shape.to_vec(),
                 download_size,
             );
 

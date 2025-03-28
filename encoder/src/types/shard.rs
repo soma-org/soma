@@ -4,50 +4,42 @@
 //! This allows for the computation set that is generating an embedding to be tuned
 //! independently of security considerations. The seperation of concerns is also slightly
 //! more secure compared to encoders that are directly impacted by the outcome.
-use std::hash::{Hash, Hasher};
+use std::{
+    collections::HashSet,
+    hash::{Hash, Hasher},
+};
 
-use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::{digest::Digest, entropy::BlockEntropyOutput, metadata::MetadataCommitment};
-use strum_macros::Display;
+use shared::{
+    crypto::keys::EncoderPublicKey, digest::Digest, entropy::BlockEntropyOutput,
+    metadata::MetadataCommitment,
+};
 
-use super::encoder_committee::{CountUnit, EncoderIndex, Epoch};
+use super::encoder_committee::{CountUnit, EncoderIndex};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Shard {
-    epoch: Epoch,
     minimum_inference_size: CountUnit,
     evaluation_quorum_threshold: CountUnit,
-    inference_set: Vec<EncoderIndex>,
-    evaluation_set: Vec<EncoderIndex>,
+    inference_set: Vec<EncoderPublicKey>,
+    evaluation_set: Vec<EncoderPublicKey>,
+    shard_ref: ShardRef,
 }
 
 impl Shard {
-    pub(crate) fn new(
-        epoch: Epoch,
-        minimum_inference_size: CountUnit,
-        evaluation_quorum_threshold: CountUnit,
-        inference_set: Vec<EncoderIndex>,
-        evaluation_set: Vec<EncoderIndex>,
-    ) -> Self {
-        Self {
-            epoch,
-            minimum_inference_size,
-            evaluation_quorum_threshold,
-            inference_set,
-            evaluation_set,
-        }
-    }
-    pub(crate) fn epoch(&self) -> Epoch {
-        self.epoch
-    }
-    pub(crate) fn inference_set(&self) -> Vec<EncoderIndex> {
-        self.inference_set.clone()
+    // pub(crate) fn inference_set(&self) -> Vec<EncoderIndex> {
+    //     self.inference_set.clone()
+    // }
+    pub(crate) fn inference_set_contains(&self, encoder: &EncoderPublicKey) -> bool {
+        self.inference_set.contains(encoder)
     }
 
-    pub(crate) fn evaluation_set(&self) -> Vec<EncoderIndex> {
-        self.evaluation_set.clone()
+    pub(crate) fn evaluation_set_contains(&self, encoder: &EncoderPublicKey) -> bool {
+        self.evaluation_set.contains(encoder)
     }
+    // pub(crate) fn evaluation_set(&self) -> Vec<EncoderIndex> {
+    //     self.evaluation_set.clone()
+    // }
     pub(crate) fn inference_size(&self) -> usize {
         self.inference_set.len()
     }
@@ -62,18 +54,16 @@ impl Shard {
         self.evaluation_quorum_threshold
     }
 
-    pub(crate) fn contains(&self, index: &EncoderIndex) -> bool {
-        self.inference_set.contains(index) || self.evaluation_set.contains(index)
+    pub(crate) fn contains(&self, encoder: &EncoderPublicKey) -> bool {
+        self.inference_set.contains(encoder) || self.evaluation_set.contains(encoder)
     }
 
-    // #[cfg(test)]
-    // pub(crate) fn new_for_test(
-    //     epoch: Epoch,
-    //     quorum_threshold: QuorumUnit,
-    //     encoders: Vec<EncoderIndex>,
-    // ) -> Self {
-    //     Self::new(epoch, quorum_threshold, encoders)
-    // }
+    pub(crate) fn shard_set(&self) -> Vec<EncoderPublicKey> {
+        let mut peers_set: HashSet<EncoderPublicKey> =
+            self.inference_set.clone().into_iter().collect();
+        peers_set.extend(self.evaluation_set.clone());
+        peers_set.into_iter().collect()
+    }
 }
 
 /// The Digest<ShardEntropy> acts as a seed for random sampling from the encoder committee.
@@ -96,67 +86,11 @@ impl ShardEntropy {
     }
 }
 
-/// Shard commit is the wrapper that contains the versioned shard commit. It
-/// represents the encoders response to a batch of data
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Display)]
-#[enum_dispatch(ShardRefAPI)]
-pub enum ShardRef {
-    V1(ShardRefV1),
-}
-
-/// `ShardRefAPI` is the trait that every shard commit version must implement
-#[enum_dispatch]
-trait ShardRefAPI {
-    fn epoch(&self) -> &Epoch;
-    fn seed(&self) -> &Digest<ShardEntropy>;
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct ShardRefV1 {
-    /// the epoch that this shard was sampled from, important since committees change each epoch
-    epoch: Epoch,
-    /// the digest from the tbls threshold signature and data hash that when combined forms a unique source of randomness
-    seed: Digest<ShardEntropy>,
-}
-
-impl ShardRefV1 {
-    /// create a shard commit v1
-    pub(crate) const fn new(epoch: Epoch, seed: Digest<ShardEntropy>) -> Self {
-        Self { epoch, seed }
-    }
-}
-
-impl ShardRefAPI for ShardRefV1 {
-    fn epoch(&self) -> &Epoch {
-        &self.epoch
-    }
-
-    fn seed(&self) -> &Digest<ShardEntropy> {
-        &self.seed
-    }
-}
-
-// impl ShardRef {
-//     /// lex min.
-//     const MIN: Self = Self {
-//         epoch: 0,
-//         leader: NetworkingIndex::MIN,
-//         entropy_digest: Digest::MIN,
-//         modality: Modality::text(),
-//     };
-
-//     /// lex max
-//     const MAX: Self = Self {
-//         epoch: u64::MAX,
-//         leader: NetworkingIndex::MAX,
-//         entropy_digest: Digest::MAX,
-//         modality: Modality::video(),
-//     };
-
-// }
+struct ShardRef(Digest<ShardEntropy>);
 
 impl Hash for ShardRef {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.seed().as_ref()[..8]);
+        state.write(&self.0.as_ref()[..8]);
     }
 }

@@ -29,8 +29,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("send_commit")
                 .route_name("SendCommit")
-                .input_type("crate::networking::messaging::tonic_network::SendCommitRequest")
-                .output_type("crate::networking::messaging::tonic_network::SendCommitResponse")
+                .input_type("crate::messaging::tonic::internal::SendCommitRequest")
+                .output_type("crate::messaging::tonic::internal::SendCommitResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -38,12 +38,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("send_certified_commit")
                 .route_name("SendCertifiedCommit")
-                .input_type(
-                    "crate::networking::messaging::tonic_network::SendCertifiedCommitRequest",
-                )
-                .output_type(
-                    "crate::networking::messaging::tonic_network::SendCertifiedCommitResponse",
-                )
+                .input_type("crate::messaging::tonic::internal::SendCertifiedCommitRequest")
+                .output_type("crate::messaging::tonic::internal::SendCertifiedCommitResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -51,8 +47,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("send_commit_votes")
                 .route_name("SendCommitVotes")
-                .input_type("crate::networking::messaging::tonic_network::SendCommitVotesRequest")
-                .output_type("crate::networking::messaging::tonic_network::SendCommitVotesResponse")
+                .input_type("crate::messaging::tonic::internal::SendCommitVotesRequest")
+                .output_type("crate::messaging::tonic::internal::SendCommitVotesResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -60,8 +56,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("send_reveal")
                 .route_name("SendReveal")
-                .input_type("crate::networking::messaging::tonic_network::SendRevealRequest")
-                .output_type("crate::networking::messaging::tonic_network::SendRevealResponse")
+                .input_type("crate::messaging::tonic::internal::SendRevealRequest")
+                .output_type("crate::messaging::tonic::internal::SendRevealResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -69,8 +65,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("send_reveal_votes")
                 .route_name("SendRevealVotes")
-                .input_type("crate::networking::messaging::tonic_network::SendRevealVotesRequest")
-                .output_type("crate::networking::messaging::tonic_network::SendRevealVotesResponse")
+                .input_type("crate::messaging::tonic::internal::SendRevealVotesRequest")
+                .output_type("crate::messaging::tonic::internal::SendRevealVotesResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -78,8 +74,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("send_scores")
                 .route_name("SendScores")
-                .input_type("crate::networking::messaging::tonic_network::SendScoresRequest")
-                .output_type("crate::networking::messaging::tonic_network::SendScoresResponse")
+                .input_type("crate::messaging::tonic::internal::SendScoresRequest")
+                .output_type("crate::messaging::tonic::internal::SendScoresResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -92,8 +88,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("send_input")
                 .route_name("SendInput")
-                .input_type("crate::networking::messaging::tonic_network::SendInputRequest")
-                .output_type("crate::networking::messaging::tonic_network::SendInputResponse")
+                .input_type("crate::messaging::tonic::external::SendInputRequest")
+                .output_type("crate::messaging::tonic::external::SendInputResponse")
                 .codec_path(codec_path)
                 .build(),
         )

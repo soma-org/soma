@@ -6,10 +6,8 @@ use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shared::{
     bitset::BitSet,
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, NetworkKeyPair, NetworkPublicKey},
+    crypto::keys::{EncoderPublicKey, PeerPublicKey},
     digest::Digest,
-    error::SharedResult,
-    multiaddr::Multiaddr,
     probe::ProbeMetadata,
 };
 use std::{
@@ -233,32 +231,31 @@ impl EncoderCommittee {
 impl EncoderCommittee {
     pub fn local_test_committee(
         epoch: Epoch,
-        encoder_details: Vec<(VotingPowerUnit, ProbeMetadata)>,
+        encoder_details: Vec<(VotingPowerUnit, ProbeMetadata, EncoderStatus)>,
         inference_set_size: CountUnit,
         minimum_inference_size: CountUnit,
         evaluation_set_size: CountUnit,
         evaluation_quorum_threshold: CountUnit,
         starting_port: u16,
-    ) -> (Self, Vec<(NetworkKeyPair, EncoderKeyPair)>) {
+    ) -> (Self, Vec<(PeerKeyPair, EncoderKeyPair)>) {
         let mut rng = StdRng::from_seed([0; 32]);
         let mut key_pairs = vec![];
         let encoders = encoder_details
             .into_iter()
             .enumerate()
-            .map(|(i, (power, probe))| {
+            .map(|(i, (power, probe, status))| {
                 let encoder_keypair = EncoderKeyPair::generate(&mut rng);
-                let network_keypair = NetworkKeyPair::generate(&mut rng);
+                let peer_keypair = PeerKeyPair::generate(&mut rng);
                 let port = starting_port + i as u16;
 
-                key_pairs.push((network_keypair.clone(), encoder_keypair.clone()));
+                key_pairs.push((peer_keypair.clone(), encoder_keypair.clone()));
 
                 Encoder {
                     voting_power: power,
-                    address: format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap(),
-                    hostname: format!("test-encoder-{}", i),
                     encoder_key: encoder_keypair.public(),
-                    network_key: network_keypair.public(),
                     probe,
+                    peer: peer_keypair.public(),
+                    status,
                 }
             })
             .collect();
@@ -277,23 +274,18 @@ impl EncoderCommittee {
     }
 }
 
-/// Holds all the data for a given Encoder modality
-// TODO: switch to arc'ing these details to make the code more efficient if the same encoder
-// is a member of multiple modalities
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EncoderStatus {
+    Active,
+    Deactivating,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Encoder {
-    /// Voting power of the authority in the committee.
-    voting_power: VotingPowerUnit,
-    /// Network address for communicating with the authority.
-    pub(crate) address: Multiaddr,
-    /// The authority's hostname, for metrics and logging.
-    hostname: String,
-    /// The authority's public key as Sui identity.
+    pub voting_power: VotingPowerUnit,
     pub encoder_key: EncoderPublicKey,
-    /// The authority's public key for TLS and as network identity.
-    network_key: NetworkPublicKey,
-    /// The digest of the probes are locked in at epoch change.
     pub probe: ProbeMetadata,
+    pub status: EncoderStatus,
 }
 
 /// Represents an EncoderIndex, also modality marked for type safety
@@ -399,7 +391,11 @@ mod tests {
     #[test]
     fn test_committee_sampling_safety() {
         // Test with exact size to force intersecting sets
-        let encoder_details = vec![(100, probe(0)), (100, probe(1)), (100, probe(2))];
+        let encoder_details = vec![
+            (100, probe(0), EncoderStatus::Active),
+            (100, probe(1), EncoderStatus::Active),
+            (100, probe(2), EncoderStatus::Active),
+        ];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
             1,
@@ -437,12 +433,12 @@ mod tests {
     fn test_disjoint_sampling_safety() {
         // Test with larger size to force disjoint sets
         let encoder_details = vec![
-            (1000, probe(0)), // High power
-            (500, probe(1)),
-            (250, probe(2)),
-            (125, probe(3)),
-            (60, probe(4)),
-            (30, probe(5)), // Low power
+            (1000, probe(0), EncoderStatus::Active), // High power
+            (500, probe(1), EncoderStatus::Active),
+            (250, probe(2), EncoderStatus::Active),
+            (125, probe(3), EncoderStatus::Active),
+            (60, probe(4), EncoderStatus::Active),
+            (30, probe(5), EncoderStatus::Active), // Low power
         ];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
@@ -495,10 +491,10 @@ mod tests {
     fn test_weighted_sampling_distribution() {
         // Test extreme voting power differences
         let encoder_details = vec![
-            (10000, probe(0)), // Extremely high power
-            (1, probe(1)),     // Minimal power
-            (1, probe(2)),     // Minimal power
-            (1, probe(3)),     // Minimal power
+            (10000, probe(0), EncoderStatus::Active), // Extremely high power
+            (1, probe(1), EncoderStatus::Active),     // Minimal power
+            (1, probe(2), EncoderStatus::Active),     // Minimal power
+            (1, probe(3), EncoderStatus::Active),     // Minimal power
         ];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
@@ -563,10 +559,10 @@ mod tests {
     #[test]
     fn test_quorum_properties() {
         let encoder_details = vec![
-            (100, probe(0)),
-            (100, probe(1)),
-            (100, probe(2)),
-            (100, probe(3)),
+            (100, probe(0), EncoderStatus::Active),
+            (100, probe(1), EncoderStatus::Active),
+            (100, probe(2), EncoderStatus::Active),
+            (100, probe(3), EncoderStatus::Active),
         ];
 
         let (committee, _) = EncoderCommittee::local_test_committee(
@@ -597,7 +593,10 @@ mod tests {
     #[test]
     #[should_panic(expected = "evaluation set size must be greater or equal to quorum size")]
     fn test_invalid_quorum_config() {
-        let encoder_details = vec![(100, probe(0)), (100, probe(1))];
+        let encoder_details = vec![
+            (100, probe(0), EncoderStatus::Active),
+            (100, probe(1), EncoderStatus::Active),
+        ];
 
         EncoderCommittee::local_test_committee(
             1,
@@ -612,7 +611,10 @@ mod tests {
 
     #[test]
     fn test_epoch_consistency() {
-        let encoder_details = vec![(100, probe(0)), (100, probe(1))];
+        let encoder_details = vec![
+            (100, probe(0), EncoderStatus::Active),
+            (100, probe(1), EncoderStatus::Active),
+        ];
 
         let epoch = 42;
         let (committee, _) = EncoderCommittee::local_test_committee(

@@ -5,7 +5,6 @@ use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
     digest::Digest,
     error::{SharedError, SharedResult},
-    network_committee::NetworkingIndex,
     scope::{Scope, ScopedMessage},
 };
 

@@ -9,10 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     bitset::BitSet,
     crypto::keys::{
-        AuthorityKeyPair, AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair,
-        ProtocolPublicKey,
+        AuthorityKeyPair, AuthorityPublicKey, PeerKeyPair, ProtocolKeyPair, ProtocolPublicKey,
     },
-    multiaddr::Multiaddr,
 };
 
 /// The Committees [`AuthorityCommittee`] [`NetworkCommittee`][net] [`EncoderCommittee`][enc] are updated each epoch.
@@ -144,29 +142,19 @@ impl AuthorityCommittee {
     pub fn local_test_committee(
         epoch: Epoch,
         authorities_stake: Vec<Stake>,
-        starting_port: u16,
-    ) -> (
-        Self,
-        Vec<(NetworkKeyPair, ProtocolKeyPair, AuthorityKeyPair)>,
-    ) {
+    ) -> (Self, Vec<(ProtocolKeyPair, AuthorityKeyPair)>) {
         let mut authorities = vec![];
         let mut key_pairs = vec![];
         let mut rng = StdRng::from_seed([0; 32]);
-        for (i, stake) in authorities_stake.into_iter().enumerate() {
+        for stake in authorities_stake.into_iter() {
             let authority_keypair = AuthorityKeyPair::generate(&mut rng);
             let protocol_keypair = ProtocolKeyPair::generate(&mut rng);
-            let network_keypair = NetworkKeyPair::generate(&mut rng);
-            let port = starting_port + i as u16;
             authorities.push(Authority {
                 stake,
-
-                address: format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap(),
-                hostname: format!("test_host_{i}").to_string(),
                 authority_key: authority_keypair.public(),
                 protocol_key: protocol_keypair.public(),
-                network_key: network_keypair.public(),
             });
-            key_pairs.push((network_keypair, protocol_keypair, authority_keypair));
+            key_pairs.push((protocol_keypair, authority_keypair));
         }
 
         let committee = AuthorityCommittee::new(epoch, authorities);
@@ -182,17 +170,10 @@ impl AuthorityCommittee {
 pub(crate) struct Authority {
     /// Voting power of the authority in the committee.
     pub(crate) stake: Stake,
-    /// Network address for communicating with the authority.
-    pub(crate) address: Multiaddr,
-    /// The authority's hostname, for metrics and logging.
-    pub(crate) hostname: String,
     /// The authority's public key as Sui identity.
-    //TODO: CHANGE THIS TO A CORRECT KEY
     pub(crate) authority_key: AuthorityPublicKey,
     /// The authority's public key for verifying blocks.
     pub(crate) protocol_key: ProtocolPublicKey,
-    /// The authority's public key for TLS and as network identity.
-    pub(crate) network_key: NetworkPublicKey,
 }
 
 /// Each authority is uniquely identified by its AuthorityIndex in the Committee.

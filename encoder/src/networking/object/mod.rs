@@ -6,93 +6,61 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     error::ShardResult,
-    storage::object::{ObjectPath, ObjectSignedUrl, ObjectStorage},
-    types::{
-        encoder_committee::{EncoderIndex, Epoch},
-        encoder_context::EncoderContext,
-    },
+    storage::object::{ObjectPath, ObjectStorage, ServedObjectResponse},
+    types::encoder_committee::{EncoderIndex, Epoch},
 };
 
-use shared::metadata::Metadata;
+use shared::{
+    crypto::keys::{PeerKeyPair, PeerPublicKey},
+    metadata::Metadata,
+    multiaddr::Multiaddr,
+};
 
+// TODO: scale this with size of object?
 pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(60 * 2);
 
 #[async_trait]
 pub(crate) trait ObjectNetworkClient: Send + Sync + Sized + 'static {
     async fn get_object(
         &self,
-        epoch: Epoch,
-        peer: EncoderIndex,
+        peer: &PeerPublicKey,
+        address: &Multiaddr,
         metadata: &Metadata,
         timeout: Duration,
     ) -> ShardResult<Bytes>;
 }
 
-#[derive(Debug)]
-pub enum GetObjectResponse {
-    Direct(Bytes),
-    Redirect(String),
-}
-
-#[async_trait]
-pub(crate) trait ObjectNetworkService: Send + Sync + Sized + 'static {
-    async fn handle_get_object(
-        &self,
-        peer: EncoderIndex,
-        path: &ObjectPath,
-    ) -> ShardResult<GetObjectResponse>;
-}
-
 #[derive(Clone)]
-pub struct DirectNetworkService<S: ObjectStorage> {
+pub struct ObjectNetworkService<S: ObjectStorage> {
     storage: Arc<S>,
 }
 
-impl<S: ObjectStorage> DirectNetworkService<S> {
+impl<S: ObjectStorage> ObjectNetworkService<S> {
     pub(crate) fn new(storage: Arc<S>) -> Self {
         Self { storage }
     }
-}
-pub struct SignedNetworkService<S: ObjectStorage + ObjectSignedUrl> {
-    storage: Arc<S>,
-}
-
-#[async_trait]
-impl<S: ObjectStorage> ObjectNetworkService for DirectNetworkService<S> {
     async fn handle_get_object(
         &self,
-        peer: EncoderIndex,
+        peer: &PeerPublicKey,
         path: &ObjectPath,
-    ) -> ShardResult<GetObjectResponse> {
-        let bytes = self.storage.get_object(path).await?;
-        Ok(GetObjectResponse::Direct(bytes))
-    }
-}
-
-#[async_trait]
-impl<S: ObjectStorage + ObjectSignedUrl> ObjectNetworkService for SignedNetworkService<S> {
-    async fn handle_get_object(
-        &self,
-        peer: EncoderIndex,
-        path: &ObjectPath,
-    ) -> ShardResult<GetObjectResponse> {
-        let url = self.storage.get_signed_url(path).await?;
-        Ok(GetObjectResponse::Redirect(url))
+    ) -> ShardResult<ServedObjectResponse> {
+        // handle auth
+        self.storage.serve_object(path).await
     }
 }
 
 pub(crate) trait ObjectNetworkManager<S>: Send + Sync + Sized
 where
-    S: ObjectNetworkService,
+    S: ObjectStorage,
 {
     /// type alias
     type Client: ObjectNetworkClient;
 
-    fn new(context: Arc<EncoderContext>) -> ShardResult<Self>;
+    fn new(peer_keypair: Arc<PeerKeyPair>) -> ShardResult<Self>;
     /// Returns a client
     fn client(&self) -> Arc<Self::Client>;
     /// Starts the network services
-    async fn start(&mut self, service: Arc<S>);
+    async fn start(&mut self, address: &Multiaddr, service: ObjectNetworkService<S>);
     /// Stops the network services
     async fn stop(&mut self);
 }

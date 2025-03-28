@@ -3,17 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::metadata::Metadata;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct Probe {
-    weights: Bytes,
-}
-
-impl Probe {
-    pub fn new(weights: Bytes) -> Self {
-        Self { weights }
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProbeMetadata {
     metadata: Metadata,

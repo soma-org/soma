@@ -14,7 +14,7 @@ use crate::{
     core::slot_tracker::SlotTracker,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
-    networking::messaging::tonic_network::EncoderInternalTonicClient,
+    messaging::tonic::internal::EncoderInternalTonicClient,
     storage::{
         datastore::Store,
         object::{filesystem::FilesystemObjectStorage, ObjectPath},

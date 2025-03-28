@@ -1,29 +1,26 @@
 //! `ChannelPool` stores tonic channels for re-use.
 use crate::error::{ShardError, ShardResult};
-use crate::networking::messaging::to_host_port_str;
-use crate::types::encoder_context::EncoderContext;
-use parking_lot::RwLock;
-use shared::network_committee::NetworkingIndex;
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use crate::messaging::tonic::CERTIFICATE_NAME;
+use crate::types::parameters::TonicParameters;
+use crate::utils::multiaddr::to_host_port_str;
+use quick_cache::sync::Cache;
+use shared::crypto::keys::{PeerKeyPair, PeerPublicKey};
+use shared::multiaddr::Multiaddr;
+use std::time::Duration;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
-use tracing::{trace, warn};
-
-use super::EncoderIndex;
+use tracing::{debug, trace};
 
 /// `ChannelPool` contains the encoder context and an efficient mapping between networking index
 /// and an open channel. In the future it might be better to have a single `ChannelPool` for both
 /// consensus networking and the encoders to reduce the code, at which time a generic would need to
 /// be used for the context to support contexts for both encoders and authorities.
 pub(crate) struct ChannelPool {
-    /// context allows going from index to address
-    context: Arc<EncoderContext>,
-    /// channels stored using a RWLock to better support the concurrent usage
-    channels: RwLock<BTreeMap<EncoderIndex, Channel>>,
+    channels: Cache<(PeerPublicKey, Multiaddr), Channel>,
 }
 
 /// Type alias since the type definition is so long
 pub(crate) type Channel = tower_http::trace::Trace<
-    tonic::transport::Channel,
+    tonic_rustls::Channel,
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
 >;
 
@@ -33,47 +30,56 @@ pub(crate) type Channel = tower_http::trace::Trace<
 impl ChannelPool {
     /// the new fn takes an encoder context and establishes a new
     /// RwLock to hold the btree of index to channel maps
-    pub(crate) const fn new(context: Arc<EncoderContext>) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         Self {
-            context,
-            channels: RwLock::new(BTreeMap::new()),
+            channels: Cache::new(capacity),
         }
     }
-
-    /// the get channel method first attempts to look up the channel inside the RwLocked BTreeMap. It drops
-    /// the lock and returns if found. Otherwise it uses the network identity to look up the multiaddress, map to a suitable
-    /// tonic address, and then establish a connection. The newly connected channel is stored in the map, and returned.
     pub(crate) async fn get_channel(
         &self,
-        peer: EncoderIndex,
+        address: &Multiaddr,
+        peer_public_key: PeerPublicKey,
+        config: &TonicParameters,
+        peer_keypair: PeerKeyPair,
         timeout: Duration,
     ) -> ShardResult<Channel> {
-        {
-            let channels = self.channels.read();
-            if let Some(channel) = channels.get(&peer) {
-                return Ok(channel.clone());
-            }
-        }
-        let encoder = self.context.encoder_committee.encoder(peer);
+        let cache_key = (peer_public_key.clone(), address.clone());
 
-        let address = to_host_port_str(&encoder.address).map_err(|e| {
+        if let Some(channel) = self.channels.get(&cache_key) {
+            return Ok(channel);
+        }
+
+        let address = to_host_port_str(address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
-        let address = format!("http://{address}");
-
-        let endpoint = tonic::transport::Channel::from_shared(address.clone())
-            .map_err(|e| ShardError::NetworkConfig(format!("Failed to create URI: {e}")))?
+        let address = format!("https://{address}");
+        let buffer_size = config.connection_buffer_size;
+        let client_tls_config = soma_tls::create_rustls_client_config(
+            peer_public_key.clone().into_inner(),
+            CERTIFICATE_NAME.to_string(),
+            Some(peer_keypair.private_key().into_inner()),
+        );
+        let endpoint = tonic_rustls::Channel::from_shared(address.clone())
+            .unwrap()
+            .connect_timeout(timeout)
+            .initial_connection_window_size(Some(buffer_size as u32))
+            .initial_stream_window_size(Some(buffer_size as u32 / 2))
             .keep_alive_while_idle(true)
-            .connect_timeout(timeout);
+            .keep_alive_timeout(config.keepalive_interval)
+            .http2_keep_alive_interval(config.keepalive_interval)
+            // tcp keepalive is probably unnecessary and is unsupported by msim.
+            .user_agent("soma")
+            .unwrap()
+            .tls_config(client_tls_config)
+            .unwrap();
 
         let deadline = tokio::time::Instant::now() + timeout;
-
         let channel = loop {
             trace!("Connecting to endpoint at {address}");
             match endpoint.connect().await {
                 Ok(channel) => break channel,
                 Err(e) => {
-                    warn!("Failed to connect to endpoint at {address}: {e:?}");
+                    debug!("Failed to connect to endpoint at {address}: {e:?}");
                     if tokio::time::Instant::now() >= deadline {
                         return Err(ShardError::NetworkClientConnection(format!(
                             "Timed out connecting to endpoint at {address}: {e:?}"
@@ -93,8 +99,7 @@ impl ChannelPool {
             )
             .service(channel);
 
-        let mut channels = self.channels.write();
-        let channel = channels.entry(peer).or_insert(channel);
-        Ok(channel.clone())
+        self.channels.insert(cache_key, channel.clone());
+        Ok(channel)
     }
 }

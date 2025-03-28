@@ -6,7 +6,7 @@ use parking_lot::RwLock;
 
 use crate::error::{ShardError, ShardResult};
 
-use super::{ObjectPath, ObjectStorage};
+use super::{ObjectPath, ObjectStorage, ServedObjectResponse};
 
 pub struct MemoryObjectStore {
     store: RwLock<HashMap<ObjectPath, Bytes>>,
@@ -36,6 +36,10 @@ impl ObjectStorage for MemoryObjectStore {
     async fn delete_object(&self, path: &ObjectPath) -> ShardResult<()> {
         let _ = self.store.write().remove(path);
         Ok(())
+    }
+    async fn serve_object(&self, path: &ObjectPath) -> ShardResult<ServedObjectResponse> {
+        let bytes = self.get_object(path).await?;
+        Ok(ServedObjectResponse::Direct(bytes))
     }
 }
 

@@ -1,14 +1,13 @@
 use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 
 use super::{
-    EncoderIndex, Epoch, GetObjectResponse, ObjectNetworkClient, ObjectNetworkManager,
-    ObjectNetworkService,
+    EncoderIndex, Epoch, ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService,
+    ObjectStorage,
 };
 use crate::{
     error::{ShardError, ShardResult},
-    networking::messaging::{to_host_port_str, to_socket_addr},
-    storage::object::ObjectPath,
-    types::encoder_context::EncoderContext,
+    messaging::{to_host_port_str, to_socket_addr},
+    storage::object::{ObjectPath, ServedObjectResponse},
 };
 use async_trait::async_trait;
 use axum::{
@@ -21,24 +20,27 @@ use axum::{
 };
 use bytes::Bytes;
 use reqwest::{Client, StatusCode};
-use shared::metadata::{Metadata, MetadataAPI};
+use shared::{
+    crypto::keys::{PeerKeyPair, PeerPublicKey},
+    metadata::{Metadata, MetadataAPI},
+    multiaddr::Multiaddr,
+};
 use tokio::sync::oneshot;
 use url::Url;
 
 pub(crate) struct ObjectHttpClient {
     client: Client,
-    context: Arc<EncoderContext>,
+    peer_keypair: Arc<PeerKeyPair>,
 }
 
 impl ObjectHttpClient {
-    pub fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
+    pub fn new(peer_keypair: Arc<PeerKeyPair>) -> ShardResult<Self> {
         Ok(Self {
             client: Client::builder()
                 .pool_idle_timeout(Duration::from_secs(60 * 5))
                 .build()
                 .map_err(|_| ShardError::FailedBuildingHttpClient)?,
-
-            context,
+            peer_keypair,
         })
     }
 }
@@ -47,14 +49,12 @@ impl ObjectHttpClient {
 impl ObjectNetworkClient for ObjectHttpClient {
     async fn get_object(
         &self,
-        epoch: Epoch,
-        peer: EncoderIndex,
+        peer: &PeerPublicKey,
+        address: &Multiaddr,
         metadata: &Metadata,
         timeout: Duration,
     ) -> ShardResult<Bytes> {
-        let encoder = self.context.encoder_committee.encoder(peer);
-
-        let address = to_host_port_str(&encoder.address).map_err(|e| {
+        let address = to_host_port_str(&address).map_err(|e| {
             ShardError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address = format!("http://{address}/{}", metadata.checksum());
@@ -75,18 +75,18 @@ impl ObjectNetworkClient for ObjectHttpClient {
 }
 
 #[derive(Clone)]
-struct ObjectHttpServiceProxy<S: ObjectNetworkService + Clone> {
-    service: Arc<S>,
+struct ObjectHttpServiceProxy<S: ObjectStorage> {
+    service: ObjectNetworkService<S>,
 }
 
-impl IntoResponse for GetObjectResponse {
+impl IntoResponse for ServedObjectResponse {
     fn into_response(self) -> Response<Body> {
         match self {
-            GetObjectResponse::Direct(bytes) => Response::builder()
+            ServedObjectResponse::Direct(bytes) => Response::builder()
                 .status(StatusCode::OK)
                 .body(Body::from(bytes))
                 .expect("Failed to build direct response"),
-            GetObjectResponse::Redirect(url) => Response::builder()
+            ServedObjectResponse::Redirect(url) => Response::builder()
                 .status(StatusCode::PERMANENT_REDIRECT)
                 .header("Location", url)
                 .body(Body::empty())
@@ -95,8 +95,8 @@ impl IntoResponse for GetObjectResponse {
     }
 }
 
-impl<S: ObjectNetworkService + Clone> ObjectHttpServiceProxy<S> {
-    const fn new(service: Arc<S>) -> Self {
+impl<S: ObjectStorage + Clone> ObjectHttpServiceProxy<S> {
+    const fn new(service: ObjectNetworkService<S>) -> Self {
         Self { service }
     }
 
@@ -110,29 +110,27 @@ impl<S: ObjectNetworkService + Clone> ObjectHttpServiceProxy<S> {
         Path(path): Path<String>,
         State(Self { service }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
-        let peer = EncoderIndex::default();
+        let peer: PeerPublicKey = todo!();
         let path = ObjectPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
         service
-            .handle_get_object(peer, &path)
+            .handle_get_object(&peer, &path)
             .await
             .map_err(|_| StatusCode::NOT_FOUND)
     }
 }
 
-pub struct ObjectHttpManager<S: ObjectNetworkService + Clone> {
-    context: Arc<EncoderContext>,
+pub struct ObjectHttpManager<S: ObjectStorage> {
     client: Arc<ObjectHttpClient>,
     shutdown_tx: Option<oneshot::Sender<()>>,
     marker: PhantomData<S>,
 }
 
-impl<S: ObjectNetworkService + Clone> ObjectNetworkManager<S> for ObjectHttpManager<S> {
+impl<S: ObjectStorage + Clone> ObjectNetworkManager<S> for ObjectHttpManager<S> {
     type Client = ObjectHttpClient;
 
-    fn new(context: Arc<EncoderContext>) -> ShardResult<Self> {
+    fn new(peer_keypair: Arc<PeerKeyPair>) -> ShardResult<Self> {
         Ok(Self {
-            context: context.clone(),
-            client: Arc::new(ObjectHttpClient::new(context)?),
+            client: Arc::new(ObjectHttpClient::new(peer_keypair)?),
             shutdown_tx: None,
             marker: PhantomData,
         })
@@ -142,21 +140,16 @@ impl<S: ObjectNetworkService + Clone> ObjectNetworkManager<S> for ObjectHttpMana
         self.client.clone()
     }
 
-    async fn start(&mut self, service: Arc<S>) {
+    async fn start(&mut self, address: &Multiaddr, service: ObjectNetworkService<S>) {
         let (tx, rx) = oneshot::channel();
         self.shutdown_tx = Some(tx);
 
-        let network_identity = self
-            .context
-            .network_committee
-            .identity(self.context.own_network_index);
-        let own_address = if network_identity.blob_address.is_localhost_ip() {
-            network_identity.blob_address.clone()
+        let own_address = if address.is_localhost_ip() {
+            address.clone()
         } else {
-            network_identity.blob_address.with_zero_ip()
+            address.with_zero_ip()
         };
 
-        // TODO: fix the identity address to support different ports for different services?
         let own_address = to_socket_addr(&own_address).unwrap();
         let listener = tokio::net::TcpListener::bind(own_address).await.unwrap();
 

@@ -3,7 +3,7 @@ use std::{ops::Deref, sync::Arc};
 use crate::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
-    networking::messaging::EncoderInternalNetworkClient,
+    messaging::EncoderInternalNetworkClient,
     storage::{datastore::Store, object::ObjectStorage},
     types::{
         encoder_committee::EncoderIndex,
@@ -20,19 +20,16 @@ use super::evaluation::EvaluationProcessor;
 
 pub(crate) struct RevealVotesProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,
-    own_index: EncoderIndex,
     evaluation_handle: ActorHandle<EvaluationProcessor<E, S>>,
 }
 
 impl<E: EncoderInternalNetworkClient, S: ObjectStorage> RevealVotesProcessor<E, S> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        own_index: EncoderIndex,
         evaluation_handle: ActorHandle<EvaluationProcessor<E, S>>,
     ) -> Self {
         Self {
             store,
-            own_index,
             evaluation_handle,
         }
     }
