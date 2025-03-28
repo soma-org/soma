@@ -90,6 +90,10 @@ use crate::{
 };
 use types::storage::committee_store::CommitteeStore;
 
+#[cfg(test)]
+#[path = "unit_tests/authority_tests.rs"]
+pub mod authority_tests;
+
 /// # StableSyncAuthoritySigner
 ///
 /// A trait object for `Signer` that provides thread-safe and memory-safe access to authority signing capabilities.
