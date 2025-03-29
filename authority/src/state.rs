@@ -607,6 +607,25 @@ impl AuthorityState {
             .map(|mut r| r.pop().expect("must return correct number of effects"))
     }
 
+    /// Test only wrapper for `try_execute_immediately()` above, useful for checking errors if the
+    /// pre-conditions are not satisfied, and executing change epoch transactions.
+    pub async fn try_execute_for_test(
+        &self,
+        certificate: &VerifiedCertificate,
+    ) -> SomaResult<(VerifiedSignedTransactionEffects, Option<ExecutionError>)> {
+        let epoch_store = self.epoch_store_for_testing();
+        let (effects, execution_error_opt) = self
+            .try_execute_immediately(
+                &VerifiedExecutableTransaction::new_from_certificate(certificate.clone()),
+                None,
+                None,
+                &epoch_store,
+            )
+            .await?;
+        let signed_effects = self.sign_effects(effects, &epoch_store)?;
+        Ok((signed_effects, execution_error_opt))
+    }
+
     /// Internal logic to execute a certificate.
     ///
     /// Guarantees that

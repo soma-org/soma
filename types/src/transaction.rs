@@ -378,6 +378,20 @@ pub type Transaction = Envelope<SenderSignedData, EmptySignInfo>;
 pub type VerifiedTransaction = VerifiedEnvelope<SenderSignedData, EmptySignInfo>;
 pub type TrustedTransaction = TrustedEnvelope<SenderSignedData, EmptySignInfo>;
 
+impl Transaction {
+    pub fn verify_signature_for_testing(&self, current_epoch: EpochId) -> SomaResult {
+        verify_sender_signed_data_message_signatures(self.data(), current_epoch)
+    }
+
+    pub fn try_into_verified_for_testing(
+        self,
+        current_epoch: EpochId,
+    ) -> SomaResult<VerifiedTransaction> {
+        self.verify_signature_for_testing(current_epoch)?;
+        Ok(VerifiedTransaction::new_from_verified(self))
+    }
+}
+
 /// # SignedTransaction
 ///
 /// A transaction that is signed by a sender and also by an authority.
@@ -473,6 +487,22 @@ impl TransactionData {
         assert!(kind.is_system_tx());
         let sender = SomaAddress::default();
         TransactionData { kind, sender }
+    }
+
+    pub fn new_pay_coins(
+        coins: Vec<ObjectRef>,
+        amounts: Vec<u64>,
+        recipients: Vec<SomaAddress>,
+        sender: SomaAddress,
+    ) -> Self {
+        Self::new(
+            TransactionKind::PayCoins {
+                coins,
+                amounts,
+                recipients,
+            },
+            sender,
+        )
     }
 
     pub fn new_transfer(
@@ -752,6 +782,14 @@ impl CertifiedTransaction {
     pub fn verify_committee_sigs_only(&self, committee: &Committee) -> SomaResult {
         self.auth_sig()
             .verify_secure(self.data(), Intent::soma_transaction(), committee)
+    }
+
+    pub fn try_into_verified_for_testing(
+        self,
+        committee: &Committee,
+    ) -> SomaResult<VerifiedCertificate> {
+        self.verify_signatures_authenticated(committee)?;
+        Ok(VerifiedCertificate::new_from_verified(self))
     }
 }
 

@@ -6,6 +6,7 @@ use utils::logging::init_tracing;
 
 use crate::authority_test_utils::{init_state_with_ids, init_transfer_transaction};
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn test_conflicting_transactions() {
     // let _ = tracing_subscriber::fmt::try_init();

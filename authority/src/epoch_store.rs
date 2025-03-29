@@ -36,7 +36,7 @@ use std::{
     ops::{Bound, Deref},
     path::PathBuf,
     sync::{Arc, Weak},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use arc_swap::ArcSwapOption;
@@ -1134,6 +1134,32 @@ impl AuthorityPerEpochStore {
 
         Ok((transactions_to_schedule, end_of_publish_quorum))
     }
+
+    // Caller is not required to set ExecutionIndices with the right semantics in
+    // VerifiedSequencedConsensusTransaction.
+    // Also, ConsensusStats and hash will not be updated in the db with this function, unlike in
+    // process_consensus_transactions_and_commit_boundary().
+    pub async fn process_consensus_transactions_for_tests(
+        self: &Arc<Self>,
+        transactions: Vec<SequencedConsensusTransaction>,
+        cache_reader: &dyn ObjectCacheRead,
+        // tx_reader: &dyn TransactionCacheRead,
+        skip_consensus_commit_prologue_in_test: bool,
+    ) -> SomaResult<(Vec<VerifiedExecutableTransaction>, bool)> {
+        self.process_consensus_transactions_and_commit_boundary(
+            transactions,
+            &ExecutionIndices::default(),
+            cache_reader,
+            // tx_reader,
+            &ConsensusCommitInfo::new_for_test(
+                0,
+                Duration::from_millis(80).as_secs(),
+                skip_consensus_commit_prologue_in_test,
+            ),
+        )
+        .await
+    }
+
 
     // Adds the consensus commit prologue transaction to the beginning of input `transactions` to update
     // the system clock used in all transactions in the current consensus commit.

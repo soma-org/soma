@@ -31,6 +31,10 @@ pub mod tx_input_loader;
 pub mod tx_manager;
 pub mod tx_validator;
 
+#[cfg(test)]
+#[path = "unit_tests/pay_coin_tests.rs"]
+mod pay_coin_tests;
+
 // Tonic generated RPC stubs.
 pub mod tonic_gen {
     include!("proto/validator.Validator.rs");

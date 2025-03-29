@@ -593,7 +593,7 @@ pub struct ConsensusCommitInfo {
     pub timestamp: u64,
     pub consensus_commit_digest: ConsensusCommitDigest,
 
-    #[cfg(any(test, feature = "test-utils"))]
+    // #[cfg(any(test, feature = "test-utils"))]
     skip_consensus_commit_prologue_in_test: bool,
 }
 
@@ -604,12 +604,12 @@ impl ConsensusCommitInfo {
             timestamp: consensus_output.commit_timestamp_ms(),
             consensus_commit_digest: consensus_output.consensus_digest(protocol_config),
 
-            #[cfg(any(test, feature = "test-utils"))]
+            // #[cfg(any(test, feature = "test-utils"))]
             skip_consensus_commit_prologue_in_test: false,
         }
     }
 
-    #[cfg(any(test, feature = "test-utils"))]
+    // #[cfg(any(test, feature = "test-utils"))]
     pub fn new_for_test(
         commit_round: u64,
         commit_timestamp: u64,
