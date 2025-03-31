@@ -1215,6 +1215,10 @@ impl AccumulatorStore for AuthorityStore {
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
         Box::new(self.perpetual_tables.iter_live_object_set())
     }
+
+    fn iter_cached_live_object_set_for_testing(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        self.iter_live_object_set()
+    }
 }
 
 use serde::{Deserialize, Serialize};

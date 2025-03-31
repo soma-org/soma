@@ -5,6 +5,7 @@ use std::{
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 use types::{
     accumulator::{Accumulator, CommitIndex},
     committee::EpochId,

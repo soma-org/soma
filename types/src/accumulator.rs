@@ -25,6 +25,8 @@ pub trait AccumulatorStore: ObjectStore + Send + Sync {
     ) -> SomaResult;
 
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_>;
+
+    fn iter_cached_live_object_set_for_testing(&self) -> Box<dyn Iterator<Item = LiveObject> + '_>;
 }
 
 #[derive(Default, Clone)]
@@ -68,6 +70,10 @@ impl AccumulatorStore for TestAccumulatorStore {
     }
 
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        Box::new(std::iter::empty())
+    }
+
+    fn iter_cached_live_object_set_for_testing(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
         Box::new(std::iter::empty())
     }
 }

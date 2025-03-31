@@ -24,7 +24,7 @@ use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};
 use futures::{future::BoxFuture, FutureExt};
 use moka::sync::Cache as MokaCache;
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
@@ -1448,6 +1448,37 @@ impl AccumulatorStore for WritebackCache {
             "cannot iterate live object set with dirty data"
         );
         self.store.iter_live_object_set()
+    }
+
+    // A version of iter_live_object_set that reads the cache. Only use for testing. If used
+    // on a live validator, can cause the server to block for as long as it takes to iterate
+    // the entire live object set.
+    fn iter_cached_live_object_set_for_testing(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        // hold iter until we are finished to prevent any concurrent inserts/deletes
+        let iter = self.dirty.objects.iter();
+        let mut dirty_objects = BTreeMap::new();
+
+        // TODO: add everything from the store
+        // info!("Adding everything from store");
+        // for obj in self.store.iter_live_object_set() {
+        //     dirty_objects.insert(obj.object_id(), obj);
+        // }
+
+        // add everything from the cache, but also remove deletions
+        for entry in iter {
+            let id = *entry.key();
+            let value = entry.value();
+            match value.get_highest().unwrap() {
+                (_, ObjectEntry::Object(object)) => {
+                    dirty_objects.insert(id, LiveObject::Normal(object.clone()));
+                }
+                (_, ObjectEntry::Deleted) => {
+                    dirty_objects.remove(&id);
+                }
+            }
+        }
+
+        Box::new(dirty_objects.into_values())
     }
 }
 

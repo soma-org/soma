@@ -68,6 +68,10 @@ impl StateAccumulator {
         }
     }
 
+    pub fn accumulate_cached_live_object_set_for_testing(&self) -> Accumulator {
+        Self::accumulate_live_object_set_impl(self.store.iter_cached_live_object_set_for_testing())
+    }
+
     pub fn digest_live_object_set(&self) -> ECMHLiveObjectSetDigest {
         let acc = self.accumulate_live_object_set();
         acc.digest().into()

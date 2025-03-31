@@ -1,35 +1,30 @@
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net: allocated fd 4
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: binding (tcp): 127.0.0.1:0 -> Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: bound: 127.0.0.1:32768 -> Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net: allocated fd 5
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: binding (tcp): 127.0.0.1:0 -> Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: bound: 127.0.0.1:32769 -> Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: binding (tcp): 127.0.0.1:0 -> Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: bound: 127.0.0.1:32770 -> Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net: allocated fd 6
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net: closing PlaceholderFileDes(6)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: close: Node(1) 127.0.0.1:32770
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net: closing PlaceholderFileDes(5)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: close: Node(1) 127.0.0.1:32769
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net: closing PlaceholderFileDes(4)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: close: Node(1) 127.0.0.1:32768
-2022-03-14T22:56:58.000000Z INFO types::config::genesis_config: Creating accounts and token allocations...
-2022-03-14T22:56:58.000000Z INFO types::temporary_store: Updating versions and previous_tx for 1 objects
-2022-03-14T22:56:58.000000Z INFO types::temporary_store: Setting previous_transaction on object
-2022-03-14T22:56:58.000000Z DEBUG try_execute_immediately: authority::state: execute_certificate_internal
-2022-03-14T22:56:58.000000Z INFO try_execute_immediately: process_certificate: types::temporary_store: Updating versions and previous_tx for 1 objects
-2022-03-14T22:56:58.000000Z INFO try_execute_immediately: process_certificate: types::temporary_store: Setting previous_transaction on object
-2022-03-14T22:56:58.000000Z INFO try_execute_immediately: process_certificate: authority::state: About to commit certificate for transaction. Inputs: {}
-2022-03-14T22:56:58.000000Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: writing transaction outputs to cache
-2022-03-14T22:56:58.000000Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: inserting object entry
-2022-03-14T22:56:58.000000Z INFO try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: Successfully completed transaction output write
-2022-03-14T22:56:58.000000Z DEBUG authority::state: handle_transaction
-2022-03-14T22:56:58.000000Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: BD4CWWaDtXvTPsheyN7XLbhQudNw8LShkP5xUUZ9XZNN
-2022-03-14T22:56:58.000000Z DEBUG authority::state: handle_transaction
-2022-03-14T22:56:58.000000Z DEBUG acquire_transaction_locks: authority::cache::object_locks: lock conflict detected for (0x6511220af0d2204d0ca29469c27c137093608689f6b12cdf820e795fc63e5263, Version(0), o#C74GQY2gfShAYDXZKbyYiAeoMYTidrxnu1c7mBCVSZG7): TransactionDigest(BD4CWWaDtXvTPsheyN7XLbhQudNw8LShkP5xUUZ9XZNN) != TransactionDigest(CFfX5Qmg4X7EcDCPasehtPvc1Wz1SrqZwvcvosUFZG6J)
-2022-03-14T22:56:58.000000Z INFO authority::state::authority_tests: Lock: AuthoritySignInfo { epoch: 0, authority: k#8c66dc2c1ea9e53f0985c17b4e7af19912b6d3c40e0c5920a5a12509b4eb3619f5e07ec56ea77f0b30629ba1cc72d75b139460782a5f0e2f89fb4c42b4b8a5fae3d260102220e63d0754e7e1846deefd3988eade4ed37f1385437d19de1a1618 }
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::runtime: delete_node Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net: delete_node Node(1)
-2022-03-14T22:56:58.000000Z DEBUG msim::sim::net::network: delete: Node(1)
-2025-03-28T23:33:30.214110Z DEBUG msim::sim::runtime: watchdog thread exiting
-2025-03-28T23:33:30.215366Z WARN msim::sim::rand: failed to initialize std random state, std HashMap will not be deterministic
+2025-03-29T03:09:25.965987Z INFO types::config::genesis_config: Creating accounts and token allocations...
+2025-03-29T03:09:25.966837Z INFO types::temporary_store: Updating versions and previous_tx for 1 objects
+2025-03-29T03:09:25.966916Z INFO types::temporary_store: Setting previous_transaction on object
+2025-03-29T03:09:25.970922Z DEBUG try_execute_immediately: authority::state: execute_certificate_internal
+2025-03-29T03:09:25.971496Z INFO try_execute_immediately: process_certificate: types::temporary_store: Updating versions and previous_tx for 1 objects
+2025-03-29T03:09:25.971551Z INFO try_execute_immediately: process_certificate: types::temporary_store: Setting previous_transaction on object
+2025-03-29T03:09:25.971912Z INFO try_execute_immediately: process_certificate: authority::state: About to commit certificate for transaction. Inputs: {}
+2025-03-29T03:09:25.972060Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: writing transaction outputs to cache
+2025-03-29T03:09:25.972155Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: inserting object entry
+2025-03-29T03:09:25.972346Z INFO try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: Successfully completed transaction output write
+2025-03-29T03:09:25.973598Z DEBUG authority::state: handle_transaction
+2025-03-29T03:09:25.974210Z INFO acquire_transaction_locks: authority::epoch_store: Writing transaction locks for tx: Hw6uxFYjEazkn4jLKHuw6VVj1v5WdTKieunmcNwLNRK7
+2025-03-29T03:09:25.976336Z DEBUG try_execute_immediately: authority::state: execute_certificate_internal
+2025-03-29T03:09:25.976606Z INFO try_execute_immediately: process_certificate: types::temporary_store: Updating versions and previous_tx for 4 objects
+2025-03-29T03:09:25.976659Z INFO try_execute_immediately: process_certificate: types::temporary_store: Setting previous_transaction on object
+2025-03-29T03:09:25.976708Z INFO try_execute_immediately: process_certificate: types::temporary_store: Setting previous_transaction on object
+2025-03-29T03:09:25.976754Z INFO try_execute_immediately: process_certificate: types::temporary_store: Setting previous_transaction on object
+2025-03-29T03:09:25.976792Z INFO try_execute_immediately: process_certificate: types::temporary_store: Setting previous_transaction on object
+2025-03-29T03:09:25.977123Z INFO try_execute_immediately: process_certificate: authority::state: About to commit certificate for transaction. Inputs: {0xc8dcfb7262c6a5bee60b150629ffff05056dcfde9dcabf34094855c15b7ead36: Object(ObjectInner { data: ObjectData { object_type: Coin, version: Version(0), contents: [200, 220, 251, 114, 98, 198, 165, 190, 230, 11, 21, 6, 41, 255, 255, 5, 5, 109, 207, 222, 157, 202, 191, 52, 9, 72, 85, 193, 91, 126, 173, 54, 128, 240, 250, 2, 0, 0, 0, 0] }, owner: AddressOwner(0xe9a7b8fd94ee7d8918c145c9f9087412855373e4e3b391d7e2beda63dcbcfda8), previous_transaction: TransactionDigest(11111111111111111111111111111111) })}
+2025-03-29T03:09:25.977333Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: writing transaction outputs to cache
+2025-03-29T03:09:25.977388Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: inserting object entry
+2025-03-29T03:09:25.977452Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: inserting object entry
+2025-03-29T03:09:25.977510Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: inserting object entry
+2025-03-29T03:09:25.977568Z DEBUG try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: inserting object entry
+2025-03-29T03:09:25.977697Z INFO try_execute_immediately: process_certificate: write_transaction_outputs: authority::cache::writeback_cache: Successfully completed transaction output write
+2025-03-29T03:09:25.978550Z INFO authority::pay_coin_tests: Effects: TransactionEffects { status: Success, executed_epoch: 0, transaction_digest: TransactionDigest(Hw6uxFYjEazkn4jLKHuw6VVj1v5WdTKieunmcNwLNRK7), dependencies: [TransactionDigest(11111111111111111111111111111111)], unchanged_shared_objects: [], changed_objects: [(0x1f72d30d0e9f187b900ff138c34fd8b31799ee7dc582ea4a709f09bd24edd61c, EffectsObjectChange { input_state: NotExist, output_state: ObjectWrite((o#6GXTDWNFxpUPUDvpwVhUYozETRT5GFSnF5LNW7XWMq9G, AddressOwner(0x0303030303030303030303030303030303030303030303030303030303030303))), id_operation: Created }), (0x54c361397a773734429e0b5a8ed7cb5115e0ade8173c04098d8d6573521834a8, EffectsObjectChange { input_state: NotExist, output_state: ObjectWrite((o#HXdEV4kcijzsU1Kcbd6XyavgGnz2jAP5RQUbc8sZ1rwS, AddressOwner(0x0202020202020202020202020202020202020202020202020202020202020202))), id_operation: Created }), (0xc1b21cb9ea16773a0a8844ed353b273cebe7290fe84604cce245b1e8ed7d6baf, EffectsObjectChange { input_state: NotExist, output_state: ObjectWrite((o#F5MM9riaoRL3qkK94dQLtXyixk8VJCW9t9TQjf4d5Aom, AddressOwner(0x0101010101010101010101010101010101010101010101010101010101010101))), id_operation: Created }), (0xc8dcfb7262c6a5bee60b150629ffff05056dcfde9dcabf34094855c15b7ead36, EffectsObjectChange { input_state: Exist(((Version(0), o#C9Qb4R6vbVARTuoMpqNCZ2kP76YfCoLXWCSYWsmvrnuw), AddressOwner(0xe9a7b8fd94ee7d8918c145c9f9087412855373e4e3b391d7e2beda63dcbcfda8))), output_state: ObjectWrite((o#9u5ovtVihusYhYxhFcpod3jA3P35XnwQ84aTgY2KS7Yf, AddressOwner(0xe9a7b8fd94ee7d8918c145c9f9087412855373e4e3b391d7e2beda63dcbcfda8))), id_operation: None })], version: Version(1) }
+2025-03-29T03:09:25.978614Z INFO authority::pay_coin_tests: Recipient 0x0303030303030303030303030303030303030303030303030303030303030303 received: 300, 300
+2025-03-29T03:09:25.978634Z INFO authority::pay_coin_tests: Recipient 0x0202020202020202020202020202020202020202020202020202020202020202 received: 200, 200
+2025-03-29T03:09:25.978654Z INFO authority::pay_coin_tests: Recipient 0x0101010101010101010101010101010101010101010101010101010101010101 received: 100, 100
+2025-03-29T03:09:25.978677Z INFO authority::pay_coin_tests: Sender final balance: 49999400

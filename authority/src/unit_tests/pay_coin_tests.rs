@@ -12,6 +12,7 @@ use types::{
     transaction::TransactionData,
     unit_tests::utils::to_sender_signed_transaction,
 };
+use utils::logging::init_tracing;
 
 use crate::{
     authority_test_utils::send_and_confirm_transaction, state::AuthorityState,
@@ -20,7 +21,8 @@ use crate::{
 
 #[tokio::test]
 async fn test_pay_coin_success_one_input_coin() -> anyhow::Result<()> {
-    let _ = tracing_subscriber::fmt::try_init();
+    init_tracing();
+    // let _ = tracing_subscriber::fmt::try_init();
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let object_id = ObjectID::random();
     let coin_amount = 50000000;
@@ -76,11 +78,23 @@ async fn test_pay_coin_success_one_input_coin() -> anyhow::Result<()> {
     let coin_val3 = *recipient_amount_map
         .get(&addr3)
         .ok_or(SomaError::InvalidAddress)?;
-    info!("Recipient 1 received: {}", created_obj1.as_coin().unwrap());
+    info!(
+        "Recipient {addr1} received: {}, {}",
+        created_obj1.as_coin().unwrap(),
+        coin_val1
+    );
     assert_eq!(created_obj1.as_coin().unwrap(), coin_val1);
-    info!("Recipient 2 received: {}", created_obj2.as_coin().unwrap());
+    info!(
+        "Recipient {addr2} received: {}, {}",
+        created_obj2.as_coin().unwrap(),
+        coin_val2
+    );
     assert_eq!(created_obj2.as_coin().unwrap(), coin_val2);
-    info!("Recipient 3 received: {}", created_obj3.as_coin().unwrap());
+    info!(
+        "Recipient {addr3} received: {}, {}",
+        created_obj3.as_coin().unwrap(),
+        coin_val3
+    );
     assert_eq!(created_obj3.as_coin().unwrap(), coin_val3);
 
     // make sure the first object still belongs to the sender,
