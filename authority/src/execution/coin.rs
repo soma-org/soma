@@ -23,7 +23,7 @@ impl CoinExecutor {
         &self,
         store: &mut TemporaryStore,
         coin_ref: ObjectRef,
-        amount: u64,
+        amount: Option<u64>,
         recipient: SomaAddress,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
@@ -41,52 +41,43 @@ impl CoinExecutor {
         // Check this is a coin object and get balance
         let source_balance = verify_coin(&source_object)?;
 
-        // Check sufficient balance for amount and gas fee
-        let required_balance = amount; // + GAS_FEE;
+        match amount {
+            // Pay specific amount
+            Some(specific_amount) => {
+                // Check sufficient balance
+                if source_balance < specific_amount {
+                    return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
+                }
 
-        if source_balance < required_balance {
-            return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-        }
+                // Calculate remaining balance after transfer
+                let remaining_balance = source_balance - specific_amount;
 
-        // Calculate remaining balance after transfer and fee
-        let remaining_balance = source_balance - amount; // - GAS_FEE;
+                // If transferring the entire balance, just change ownership
+                if specific_amount == source_balance {
+                    let mut updated_source = source_object.clone();
+                    updated_source.owner = Owner::AddressOwner(recipient);
+                    store.mutate_input_object(updated_source);
+                    return Ok(());
+                }
 
-        // OPTIMIZATION 1: If transferring the entire balance (minus gas),
-        // don't create a new object, just change ownership
-        if amount == source_balance {
-            // if amount == source_balance - GAS_FEE {
-            let mut updated_source = source_object.clone();
-            updated_source.update_coin_balance(amount);
-            updated_source.owner = Owner::AddressOwner(recipient);
-            store.mutate_input_object(updated_source);
-            return Ok(());
-        }
+                // Create new coin for recipient
+                let new_coin =
+                    Object::new_coin(specific_amount, Owner::AddressOwner(recipient), tx_digest);
+                store.create_object(new_coin);
 
-        // TODO: OPTIMIZATION 2: Handle dust amounts by including them in the transferred amount
-        // if remaining_balance > 0 && remaining_balance < MIN_COIN_AMOUNT && amount > MIN_COIN_AMOUNT
-        // {
-        //     // Adjust the transfer to include the dust in the new coin
-        //     let adjusted_amount = amount + remaining_balance;
-        //     let new_coin =
-        //         Object::new_coin(adjusted_amount, Owner::AddressOwner(recipient), tx_digest);
-        //     store.create_object(new_coin);
+                // Update source coin
+                let mut updated_source = source_object.clone();
+                updated_source.update_coin_balance(remaining_balance);
+                store.mutate_input_object(updated_source);
+            }
 
-        //     // Delete the original coin
-        //     store.delete_input_object(&coin_id);
-        //     return Ok(());
-        // }
-
-        // STANDARD CASE: Create new coin for recipient and update or delete source
-        let new_coin = Object::new_coin(amount, Owner::AddressOwner(recipient), tx_digest);
-        store.create_object(new_coin);
-
-        // Update source coin or delete if empty
-        if remaining_balance > 0 {
-            let mut updated_source = source_object.clone();
-            updated_source.update_coin_balance(remaining_balance);
-            store.mutate_input_object(updated_source);
-        } else {
-            store.delete_input_object(&coin_id);
+            // Pay all (transfer the entire coin)
+            None => {
+                // Just change the ownership of the existing coin
+                let mut updated_source = source_object.clone();
+                updated_source.owner = Owner::AddressOwner(recipient);
+                store.mutate_input_object(updated_source);
+            }
         }
 
         Ok(())
@@ -97,23 +88,11 @@ impl CoinExecutor {
         &self,
         store: &mut TemporaryStore,
         coin_refs: Vec<ObjectRef>,
-        amounts: Vec<u64>,
+        amounts: Option<Vec<u64>>,
         recipients: Vec<SomaAddress>,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
-        // Validate args
-        if amounts.len() != recipients.len() {
-            return Err(ExecutionFailureStatus::InvalidArguments {
-                reason: format!(
-                    "Amounts and recipients must match. Got {} amounts and {} recipients",
-                    amounts.len(),
-                    recipients.len()
-                ),
-            }
-            .into());
-        }
-
         if coin_refs.is_empty() {
             return Err(ExecutionFailureStatus::InvalidArguments {
                 reason: "Must provide at least one coin".to_string(),
@@ -121,70 +100,163 @@ impl CoinExecutor {
             .into());
         }
 
-        // STEP 1: MERGE (conceptually) - Calculate total available balance
-        let mut total_available: u64 = 0;
-        let mut primary_coin_id: Option<ObjectID> = None;
-
-        // Track which coins to delete
-        let mut coins_to_delete = Vec::new();
-
-        for coin_ref in &coin_refs {
-            let coin_id = coin_ref.0;
-            let coin_object = store
-                .read_object(&coin_id)
-                .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: coin_id })?;
-
-            // Check ownership
-            check_ownership(&coin_object, signer)?;
-
-            // Check this is a coin object
-            let balance = verify_coin(&coin_object)?;
-
-            total_available += balance;
-
-            // Set first coin as primary coin
-            if primary_coin_id.is_none() {
-                primary_coin_id = Some(coin_id);
-            } else {
-                // Mark all non-primary coins for deletion
-                coins_to_delete.push(coin_id);
+        if recipients.is_empty() {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Must provide at least one recipient".to_string(),
             }
+            .into());
         }
 
-        // Calculate total needed
-        let total_payments: u64 = amounts.iter().sum();
-        let total_needed: u64 = total_payments; // + GAS_FEE;
+        match amounts {
+            // Specific amounts provided
+            Some(specific_amounts) => {
+                // Validate args
+                if specific_amounts.len() != recipients.len() {
+                    return Err(ExecutionFailureStatus::InvalidArguments {
+                        reason: format!(
+                            "Amounts and recipients must match. Got {} amounts and {} recipients",
+                            specific_amounts.len(),
+                            recipients.len()
+                        ),
+                    }
+                    .into());
+                }
 
-        // Check sufficient balance
-        if total_available < total_needed {
-            return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-        }
+                // STEP 1: Calculate total available balance
+                let mut total_available: u64 = 0;
+                let mut primary_coin_id: Option<ObjectID> = None;
+                let mut coins_to_delete = Vec::new();
 
-        // STEP 2: SPLIT & TRANSFER - Create new coins for each recipient
-        for (amount, recipient) in amounts.iter().zip(recipients.iter()) {
-            let new_coin = Object::new_coin(*amount, Owner::AddressOwner(*recipient), tx_digest);
-            store.create_object(new_coin);
-        }
+                for coin_ref in &coin_refs {
+                    let coin_id = coin_ref.0;
+                    let coin_object = store.read_object(&coin_id).ok_or_else(|| {
+                        ExecutionFailureStatus::ObjectNotFound { object_id: coin_id }
+                    })?;
 
-        // STEP 3: UPDATE PRIMARY - Update or delete primary coin
-        let remaining_balance = total_available - total_needed;
+                    // Check ownership
+                    check_ownership(&coin_object, signer)?;
 
-        if let Some(primary_id) = primary_coin_id {
-            if remaining_balance > 0 {
-                // Update primary coin with remaining balance
-                let primary_object = store.read_object(&primary_id).unwrap();
-                let mut updated_primary = primary_object.clone();
-                updated_primary.update_coin_balance(remaining_balance);
-                store.mutate_input_object(updated_primary);
-            } else {
-                // Delete primary coin if empty
-                store.delete_input_object(&primary_id);
+                    // Check this is a coin object
+                    let balance = verify_coin(&coin_object)?;
+
+                    total_available += balance;
+
+                    // Set first coin as primary coin
+                    if primary_coin_id.is_none() {
+                        primary_coin_id = Some(coin_id);
+                    } else {
+                        // Mark all non-primary coins for deletion
+                        coins_to_delete.push(coin_id);
+                    }
+                }
+
+                // Calculate total needed
+                let total_payments: u64 = specific_amounts.iter().sum();
+
+                // Check sufficient balance
+                if total_available < total_payments {
+                    return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
+                }
+
+                // STEP 2: Create new coins for each recipient
+                for (amount, recipient) in specific_amounts.iter().zip(recipients.iter()) {
+                    let new_coin =
+                        Object::new_coin(*amount, Owner::AddressOwner(*recipient), tx_digest);
+                    store.create_object(new_coin);
+                }
+
+                // STEP 3: Update primary coin
+                let remaining_balance = total_available - total_payments;
+
+                if let Some(primary_id) = primary_coin_id {
+                    if remaining_balance > 0 {
+                        // Update primary coin with remaining balance
+                        let primary_object = store.read_object(&primary_id).unwrap();
+                        let mut updated_primary = primary_object.clone();
+                        updated_primary.update_coin_balance(remaining_balance);
+                        store.mutate_input_object(updated_primary);
+                    } else {
+                        // Delete primary coin if empty
+                        store.delete_input_object(&primary_id);
+                    }
+                }
+
+                // STEP 4: Delete all other coins
+                for coin_id in coins_to_delete {
+                    store.delete_input_object(&coin_id);
+                }
             }
-        }
 
-        // STEP 4: Delete all other coins
-        for coin_id in coins_to_delete {
-            store.delete_input_object(&coin_id);
+            // Pay all coins to a single recipient
+            None => {
+                // Only allow a single recipient for pay-all
+                if recipients.len() != 1 {
+                    return Err(ExecutionFailureStatus::InvalidArguments {
+                        reason: "Pay-all operation only supports a single recipient".to_string(),
+                    }
+                    .into());
+                }
+
+                let recipient = recipients[0];
+
+                // Pay all coins to this recipient
+                if coin_refs.len() == 1 {
+                    // For a single coin, just change ownership
+                    let coin_id = coin_refs[0].0;
+                    let coin_object = store.read_object(&coin_id).ok_or_else(|| {
+                        ExecutionFailureStatus::ObjectNotFound { object_id: coin_id }
+                    })?;
+
+                    // Check ownership
+                    check_ownership(&coin_object, signer)?;
+
+                    // Verify it's a coin
+                    verify_coin(&coin_object)?;
+
+                    // Transfer ownership
+                    let mut updated_coin = coin_object.clone();
+                    updated_coin.owner = Owner::AddressOwner(recipient);
+                    store.mutate_input_object(updated_coin);
+                } else {
+                    // For multiple coins, merge them all into the first coin and transfer
+                    let first_coin_id = coin_refs[0].0;
+                    let first_coin_object = store.read_object(&first_coin_id).ok_or_else(|| {
+                        ExecutionFailureStatus::ObjectNotFound {
+                            object_id: first_coin_id,
+                        }
+                    })?;
+
+                    // Check ownership of first coin
+                    check_ownership(&first_coin_object, signer)?;
+
+                    // Get balance of first coin
+                    let mut total_balance = verify_coin(&first_coin_object)?;
+
+                    // Process all other coins
+                    for coin_ref in coin_refs.iter().skip(1) {
+                        let coin_id = coin_ref.0;
+                        let coin_object = store.read_object(&coin_id).ok_or_else(|| {
+                            ExecutionFailureStatus::ObjectNotFound { object_id: coin_id }
+                        })?;
+
+                        // Check ownership
+                        check_ownership(&coin_object, signer)?;
+
+                        // Verify it's a coin and add balance
+                        let balance = verify_coin(&coin_object)?;
+                        total_balance += balance;
+
+                        // Delete this coin (we'll merge into the first)
+                        store.delete_input_object(&coin_id);
+                    }
+
+                    // Update the first coin with total balance and change ownership
+                    let mut updated_first_coin = first_coin_object.clone();
+                    updated_first_coin.update_coin_balance(total_balance);
+                    updated_first_coin.owner = Owner::AddressOwner(recipient);
+                    store.mutate_input_object(updated_first_coin);
+                }
+            }
         }
 
         Ok(())

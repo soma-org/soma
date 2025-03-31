@@ -93,12 +93,12 @@ pub enum TransactionKind {
     // Coin and object transactions
     TransferCoin {
         coin: ObjectRef,
-        amount: u64,
+        amount: Option<u64>,
         recipient: SomaAddress,
     },
     PayCoins {
         coins: Vec<ObjectRef>,
-        amounts: Vec<u64>,
+        amounts: Option<Vec<u64>>,
         recipients: Vec<SomaAddress>,
     },
     TransferObjects {
@@ -491,7 +491,7 @@ impl TransactionData {
 
     pub fn new_pay_coins(
         coins: Vec<ObjectRef>,
-        amounts: Vec<u64>,
+        amounts: Option<Vec<u64>>,
         recipients: Vec<SomaAddress>,
         sender: SomaAddress,
     ) -> Self {
@@ -500,6 +500,22 @@ impl TransactionData {
                 coins,
                 amounts,
                 recipients,
+            },
+            sender,
+        )
+    }
+
+    pub fn new_transfer_coin(
+        recipient: SomaAddress,
+        sender: SomaAddress,
+        amount: Option<u64>,
+        object_ref: ObjectRef,
+    ) -> Self {
+        Self::new(
+            TransactionKind::TransferCoin {
+                coin: object_ref,
+                amount,
+                recipient,
             },
             sender,
         )

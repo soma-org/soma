@@ -1,16 +1,19 @@
 use std::sync::Arc;
 
-use fastcrypto::{ed25519::Ed25519KeyPair, hash::MultisetHash};
+use fastcrypto::{ed25519::Ed25519KeyPair, hash::MultisetHash, traits::KeyPair};
 use tracing::info;
 use types::{
     base::SomaAddress,
+    config::network_config::ConfigBuilder,
     consensus::ConsensusTransaction,
+    crypto::AuthorityKeyPair,
     effects::SignedTransactionEffects,
     error::{ExecutionError, SomaError},
+    genesis::Genesis,
     object::{Object, ObjectID, ObjectRef},
     transaction::{
         CertifiedTransaction, Transaction, TransactionData, VerifiedCertificate,
-        VerifiedExecutableTransaction, VerifiedTransaction,
+        VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction,
     },
     unit_tests::utils::to_sender_signed_transaction,
 };
@@ -30,6 +33,43 @@ pub async fn init_state_with_ids<I: IntoIterator<Item = (SomaAddress, ObjectID)>
         state.insert_genesis_object(obj).await;
     }
     state
+}
+
+pub async fn init_state_with_objects<I: IntoIterator<Item = Object>>(
+    objects: I,
+) -> Arc<AuthorityState> {
+    let network_config = ConfigBuilder::new().build();
+    let genesis = network_config.genesis;
+    let keypair = network_config.validator_configs[0]
+        .protocol_key_pair()
+        .copy();
+    init_state_with_objects_and_committee(objects, &genesis, &keypair).await
+}
+
+pub async fn init_state_with_objects_and_committee<I: IntoIterator<Item = Object>>(
+    objects: I,
+    genesis: &Genesis,
+    authority_key: &AuthorityKeyPair,
+) -> Arc<AuthorityState> {
+    let state = init_state_with_committee(genesis, authority_key).await;
+    for o in objects {
+        state.insert_genesis_object(o).await;
+    }
+    state
+}
+
+pub async fn init_state_with_committee(
+    genesis: &Genesis,
+    authority_key: &AuthorityKeyPair,
+) -> Arc<AuthorityState> {
+    // let mut protocol_config =
+    //     ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
+
+    TestAuthorityBuilder::new()
+        .with_genesis_and_keypair(genesis, authority_key)
+        // .with_protocol_config(protocol_config)
+        .build()
+        .await
 }
 
 pub fn init_transfer_transaction(
@@ -54,6 +94,29 @@ pub fn init_transfer_transaction(
         .epoch_store_for_testing()
         .verify_transaction(tx)
         .unwrap()
+}
+
+pub fn init_certified_transaction(
+    transaction: Transaction,
+    authority_state: &AuthorityState,
+) -> VerifiedCertificate {
+    let epoch_store = authority_state.epoch_store_for_testing();
+    let transaction = epoch_store.verify_transaction(transaction).unwrap();
+
+    let vote = VerifiedSignedTransaction::new(
+        0,
+        transaction.clone(),
+        authority_state.name,
+        &*authority_state.secret,
+    );
+    CertifiedTransaction::new(
+        transaction.into_message(),
+        vec![vote.auth_sig().clone()],
+        epoch_store.committee(),
+    )
+    .unwrap()
+    .try_into_verified_for_testing(epoch_store.committee())
+    .unwrap()
 }
 
 pub async fn send_and_confirm_transaction(
