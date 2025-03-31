@@ -1,6 +1,6 @@
 use std::sync::{atomic::AtomicI16, Arc};
 
-use types::multiaddr::Multiaddr;
+use crate::multiaddr::Multiaddr;
 
 /// A singleton struct to manage IP addresses and ports for simtest.
 /// This allows us to generate unique IP addresses and ports for each node in simtest.

@@ -43,7 +43,8 @@ use crate::{
         Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
     },
     crypto::{self, NetworkPublicKey, ProtocolPublicKey},
-    error::{SomaError, SomaResult},
+    effects::ExecutionFailureStatus,
+    error::{ExecutionResult, SomaError, SomaResult},
     multiaddr::Multiaddr,
     parameters,
     peer_id::PeerId,
@@ -319,7 +320,7 @@ impl ValidatorSet {
     /// ## Errors
     /// Returns SomaError::DuplicateValidator if the validator is already
     /// in the active or pending set
-    pub fn request_add_validator(&mut self, validator: Validator) -> SomaResult {
+    pub fn request_add_validator(&mut self, validator: Validator) -> ExecutionResult {
         // assert!(
         //     self.validator_candidates.contains(validator_address),
         //     ENotValidatorCandidate
@@ -332,7 +333,7 @@ impl ValidatorSet {
         if self.active_validators.contains(&validator)
             || self.pending_active_validators.contains(&validator)
         {
-            return Err(SomaError::DuplicateValidator);
+            return Err(ExecutionFailureStatus::DuplicateValidator);
         }
 
         self.pending_active_validators.push(validator);
@@ -358,7 +359,7 @@ impl ValidatorSet {
     /// ## Errors
     /// Returns SomaError::NotAValidator if the validator is not in the active set
     /// Returns SomaError::ValidatorAlreadyRemoved if the validator is already marked for removal
-    pub fn request_remove_validator(&mut self, address: SomaAddress) -> SomaResult {
+    pub fn request_remove_validator(&mut self, address: SomaAddress) -> ExecutionResult {
         let validator = self
             .active_validators
             .iter()
@@ -366,11 +367,11 @@ impl ValidatorSet {
 
         if let Some(v) = validator {
             if self.pending_removals.contains(&v) {
-                return Err(SomaError::ValidatorAlreadyRemoved);
+                return Err(ExecutionFailureStatus::ValidatorAlreadyRemoved);
             }
             self.pending_removals.push(v.clone());
         } else {
-            return Err(SomaError::NotAValidator);
+            return Err(ExecutionFailureStatus::NotAValidator);
         }
         Ok(())
     }
@@ -539,7 +540,8 @@ impl SystemState {
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
-    ) -> SomaResult {
+    ) -> ExecutionResult {
+        // TODO: ADJUST VOTING POWER HERE
         let validator = Validator::new(
             signer,
             PublicKey::from_bytes(&pubkey_bytes).unwrap(),
@@ -579,7 +581,7 @@ impl SystemState {
         &mut self,
         signer: SomaAddress,
         pubkey_bytes: Vec<u8>,
-    ) -> SomaResult {
+    ) -> ExecutionResult {
         self.validators.request_remove_validator(signer)
     }
 
@@ -604,12 +606,16 @@ impl SystemState {
     /// ## Errors
     /// Returns SomaError::AdvancedToWrongEpoch if the new epoch number is not
     /// the current epoch + 1
-    pub fn advance_epoch(&mut self, new_epoch: u64, epoch_start_timestamp_ms: u64) -> SomaResult {
+    pub fn advance_epoch(
+        &mut self,
+        new_epoch: u64,
+        epoch_start_timestamp_ms: u64,
+    ) -> ExecutionResult {
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
 
         // Sanity check to make sure we are advancing to the right epoch.
         if new_epoch == self.epoch {
-            return Err(SomaError::AdvancedToWrongEpoch);
+            return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);
         }
 
         self.epoch += 1;

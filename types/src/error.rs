@@ -44,6 +44,7 @@ use crate::consensus::{
 };
 
 use crate::crypto::NetworkPublicKey;
+use crate::transaction::TransactionKind;
 use crate::{
     base::AuthorityName,
     committee::{Committee, EpochId, VotingPower},
@@ -139,22 +140,6 @@ pub enum SomaError {
     /// Error when a value wasn't signed by the expected signer
     #[error("Value was not signed by the correct sender: {}", error)]
     IncorrectSigner { error: String },
-
-    /// Error when attempting to add a validator that already exists
-    #[error("Cannot add validator that is already active or pending")]
-    DuplicateValidator,
-
-    /// Error when trying to remove a validator that doesn't exist
-    #[error("Cannot remove validator that is not active")]
-    NotAValidator,
-
-    /// Error when trying to remove a validator that was already removed
-    #[error("Cannot remove validator that is already removed")]
-    ValidatorAlreadyRemoved,
-
-    /// Error when advancing to an unexpected epoch
-    #[error("Advanced to wrong epoch")]
-    AdvancedToWrongEpoch,
 
     /// Error from a failed RPC call
     ///
@@ -472,6 +457,8 @@ impl From<ConsensusError> for SomaError {
 /// This provides a standard error type that can be used for dynamic errors
 /// that need to be transported across thread boundaries.
 type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+pub type ExecutionResult<T = ()> = Result<T, ExecutionFailureStatus>;
 
 /// Type alias for the specific error kind used in transaction execution.
 ///

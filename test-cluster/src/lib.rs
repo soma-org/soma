@@ -3,11 +3,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use config::{
-    genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
-    network_config::NetworkConfig,
-    node_config_builder::{FullnodeConfigBuilder, ValidatorConfigBuilder},
-};
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
@@ -17,6 +12,11 @@ use tracing::{error, info};
 use types::{
     base::{AuthorityName, ConciseableName, SomaAddress},
     committee::{CommitteeTrait, EpochId},
+    config::{
+        genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
+        network_config::NetworkConfig,
+        node_config::{FullnodeConfigBuilder, ValidatorConfigBuilder},
+    },
     config::{node_config::NodeConfig, p2p_config::SeedPeer},
     error::SomaResult,
     genesis::Genesis,
@@ -25,7 +25,6 @@ use types::{
     transaction::Transaction,
 };
 
-pub mod config;
 mod container;
 mod swarm;
 mod swarm_node;

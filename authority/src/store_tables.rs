@@ -5,6 +5,7 @@ use std::{
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 use types::{
     accumulator::{Accumulator, CommitIndex},
     committee::EpochId,
@@ -26,6 +27,10 @@ use crate::{
 pub enum StoreObject {
     Value(ObjectInner),
     Deleted,
+}
+
+pub fn get_store_object(object: Object) -> StoreObject {
+    StoreObject::Value(object.into_inner())
 }
 
 /// AuthorityPerpetualTables contains data that must be preserved from one epoch to the next.

@@ -85,208 +85,26 @@ pub enum TransactionKind {
     Genesis(GenesisTransaction),
     /// Records consensus commit information in the blockchain state
     ConsensusCommitPrologue(ConsensusCommitPrologue),
-    /// User-initiated transaction that modifies blockchain state
-    StateTransaction(StateTransaction),
-    /// EndOfEpochTransaction replaces ChangeEpoch with a list of transactions that are allowed to
-    /// run at the end of the epoch.
-    EndOfEpochTransaction(EndOfEpochTransactionKind),
-}
-
-/// # StateTransaction
-///
-/// Represents a user-initiated transaction that modifies the blockchain state.
-///
-/// ## Purpose
-/// Encapsulates the transaction type, sender information, and input objects
-/// required for executing state changes on the blockchain.
-///
-/// ## Lifecycle
-/// Created by users, validated by validators, executed by the authority module,
-/// and committed to the blockchain state.
-///
-/// ## Thread Safety
-/// This type is immutable and can be safely shared across threads.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct StateTransaction {
-    /// The specific type of state transaction
-    pub kind: StateTransactionKind,
-    /// Input objects or primitive values (currently commented out)
-    // pub inputs: Vec<CallArg>,
-    /// The address of the transaction sender
-    pub sender: SomaAddress,
-}
-
-impl StateTransaction {
-    fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {
-        vec![SharedInputObject::SYSTEM_OBJ].into_iter()
-    }
-
-    // fn receiving_objects(&self) -> Vec<ObjectRef> {
-    //     let StateTransaction { inputs, .. } = self;
-    //     inputs
-    //         .iter()
-    //         .flat_map(|arg| arg.receiving_objects())
-    //         .collect()
-    // }
-
-    fn input_objects(&self) -> SomaResult<Vec<InputObjectKind>> {
-        // let StateTransaction { inputs, .. } = self;
-        // let input_arg_objects = inputs
-        //     .iter()
-        //     .flat_map(|arg| arg.input_objects())
-        //     .collect::<Vec<_>>();
-        // // all objects, not just mutable, must be unique
-        // let mut used = HashSet::new();
-        // if !input_arg_objects.iter().all(|o| used.insert(o.object_id())) {
-        //     return Err(SomaError::DuplicateObjectRefInput);
-        // }
-
-        // let command_input_objects: BTreeSet<InputObjectKind> = commands
-        //     .iter()
-        //     .flat_map(|command| command.input_objects())
-        //     .collect();
-        Ok(vec![InputObjectKind::SharedObject {
-            id: SharedInputObject::SYSTEM_OBJ.id,
-            initial_shared_version: SharedInputObject::SYSTEM_OBJ.initial_shared_version,
-            mutable: SharedInputObject::SYSTEM_OBJ.mutable,
-        }]
-        .into_iter()
-        // .chain(command_input_objects)
-        .collect())
-    }
-}
-
-/// # CallArg
-///
-/// Represents an argument to a transaction call, which can be either pure data or an object reference.
-///
-/// ## Purpose
-/// Provides a unified way to pass different types of arguments to transactions,
-/// distinguishing between pure data values and object references.
-///
-/// ## Variants
-/// - `Pure`: Raw bytes representing a primitive value or serialized data
-/// - `Object`: A reference to an object that will be used in the transaction
-///
-/// ## Thread Safety
-/// This type is immutable and can be safely shared across threads.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub enum CallArg {
-    /// Contains no objects, just pure data as bytes
-    Pure(Vec<u8>),
-    /// A reference to an object
-    Object(ObjectArg),
-}
-
-impl CallArg {
-    pub const SYSTEM_MUT: Self = Self::Object(ObjectArg::SYSTEM_MUT);
-
-    fn input_objects(&self) -> Vec<InputObjectKind> {
-        match self {
-            CallArg::Pure(_) => vec![],
-            CallArg::Object(ObjectArg::ImmOrOwnedObject(object_ref)) => {
-                vec![InputObjectKind::ImmOrOwnedObject(*object_ref)]
-            }
-            CallArg::Object(ObjectArg::SharedObject {
-                id,
-                initial_shared_version,
-                mutable,
-            }) => {
-                let id = *id;
-                let initial_shared_version = *initial_shared_version;
-                let mutable = *mutable;
-                vec![InputObjectKind::SharedObject {
-                    id,
-                    initial_shared_version,
-                    mutable,
-                }]
-            }
-            // Receiving objects are not part of the input objects.
-            CallArg::Object(ObjectArg::Receiving(_)) => vec![],
-        }
-    }
-
-    fn receiving_objects(&self) -> Vec<ObjectRef> {
-        match self {
-            CallArg::Pure(_) => vec![],
-            CallArg::Object(o) => match o {
-                ObjectArg::ImmOrOwnedObject(_) => vec![],
-                ObjectArg::SharedObject { .. } => vec![],
-                ObjectArg::Receiving(obj_ref) => vec![*obj_ref],
-            },
-        }
-    }
-}
-
-/// # ObjectArg
-///
-/// Represents different ways an object can be referenced in a transaction.
-///
-/// ## Purpose
-/// Distinguishes between different object access patterns in transactions,
-/// including immutable/owned objects, shared objects, and objects being received.
-///
-/// ## Variants
-/// - `ImmOrOwnedObject`: An immutable or owned object reference
-/// - `SharedObject`: A shared object that may be accessed by multiple transactions
-/// - `Receiving`: An object that will be received in this transaction
-///
-/// ## Thread Safety
-/// This type is immutable and can be safely shared across threads.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
-pub enum ObjectArg {
-    /// A object from fastpath (immutable or owned by the transaction sender)
-    ImmOrOwnedObject(ObjectRef),
-    /// A object from consensus (historically consensus objects were always shared).
-    /// SharedObject::mutable controls whether caller asks for a mutable reference to shared object.
-    SharedObject {
-        /// The object's unique identifier
-        id: ObjectID,
-        /// The initial version when the object became shared
-        initial_shared_version: Version,
-        /// Whether the transaction requires mutable access to the object
-        mutable: bool,
-    },
-    /// An object that can be received in this transaction
-    Receiving(ObjectRef),
-}
-
-impl ObjectArg {
-    pub const SYSTEM_MUT: Self = Self::SharedObject {
-        id: SYSTEM_STATE_OBJECT_ID,
-        initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
-        mutable: true,
-    };
-
-    pub fn id(&self) -> ObjectID {
-        match self {
-            ObjectArg::Receiving((id, _, _))
-            | ObjectArg::ImmOrOwnedObject((id, _, _))
-            | ObjectArg::SharedObject { id, .. } => *id,
-        }
-    }
-}
-
-/// # StateTransactionKind
-///
-/// Represents the different types of state-modifying transactions supported by the system.
-///
-/// ## Purpose
-/// Categorizes state transactions based on their specific function,
-/// allowing for specialized processing and validation rules.
-///
-/// ## Variants
-/// - `AddValidator`: Transaction to add a new validator to the network
-/// - `RemoveValidator`: Transaction to remove an existing validator from the network
-///
-/// ## Thread Safety
-/// This type is immutable and can be safely shared across threads.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub enum StateTransactionKind {
-    /// Transaction to add a new validator to the network
+    /// Transaction that changes the epoch, run by each validator at end of epoch
+    ChangeEpoch(ChangeEpoch),
+    // Validator management transactions
     AddValidator(AddValidatorArgs),
-    /// Transaction to remove an existing validator from the network
     RemoveValidator(RemoveValidatorArgs),
+    // Coin and object transactions
+    TransferCoin {
+        coin: ObjectRef,
+        amount: Option<u64>,
+        recipient: SomaAddress,
+    },
+    PayCoins {
+        coins: Vec<ObjectRef>,
+        amounts: Option<Vec<u64>>,
+        recipients: Vec<SomaAddress>,
+    },
+    TransferObjects {
+        objects: Vec<ObjectRef>,
+        recipient: SomaAddress,
+    },
 }
 
 /// # AddValidatorArgs
@@ -341,38 +159,48 @@ pub struct RemoveValidatorArgs {
 
 impl TransactionKind {
     pub fn is_system_tx(&self) -> bool {
-        // Keep this as an exhaustive match so that we can't forget to update it.
-        match self {
+        matches!(
+            self,
             TransactionKind::Genesis(_)
-            | TransactionKind::ConsensusCommitPrologue(_)
-            | TransactionKind::EndOfEpochTransaction(_) => true,
-            TransactionKind::StateTransaction(_) => false,
-        }
+                | TransactionKind::ConsensusCommitPrologue(_)
+                | TransactionKind::ChangeEpoch(_)
+        )
+    }
+
+    pub fn is_validator_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::AddValidator(_) | TransactionKind::RemoveValidator(_)
+        )
+    }
+
+    pub fn requires_system_state(&self) -> bool {
+        self.is_validator_tx() || self.is_epoch_change()
+    }
+
+    pub fn is_epoch_change(&self) -> bool {
+        matches!(self, TransactionKind::ChangeEpoch(_))
     }
 
     pub fn contains_shared_object(&self) -> bool {
         self.shared_input_objects().next().is_some()
     }
-
-    /// Returns an iterator of all shared input objects used by this transaction.
-    /// It covers both Call and ChangeEpoch transaction kind, because both makes Move calls.
-    pub fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {
-        match &self {
-            Self::EndOfEpochTransaction(_) => {
-                Either::Left(iter::once(SharedInputObject::SYSTEM_OBJ))
-            }
-            Self::StateTransaction(st) => Either::Right(Either::Left(st.shared_input_objects())),
-            _ => Either::Right(Either::Right(iter::empty())),
-        }
+    pub fn receiving_objects(&self) -> Vec<ObjectRef> {
+        // Implementation for collecting receiving objects
+        // For now, return empty as current transaction types don't use this
+        vec![]
     }
 
-    pub fn receiving_objects(&self) -> Vec<ObjectRef> {
-        match &self {
-            TransactionKind::Genesis(_)
-            | TransactionKind::EndOfEpochTransaction(_)
-            | TransactionKind::ConsensusCommitPrologue(_) => vec![],
-            TransactionKind::StateTransaction(_) => vec![],
-        }
+    /// Returns an iterator of all shared input objects used by this transaction.
+    pub fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {
+        // Return iterator of shared objects used by this transaction
+        let system_obj = if self.requires_system_state() {
+            Some(SharedInputObject::SYSTEM_OBJ)
+        } else {
+            None
+        };
+
+        system_obj.into_iter()
     }
 
     /// Return the metadata of each of the input objects for the transaction.
@@ -380,19 +208,35 @@ impl TransactionKind {
     /// for a Move package, we provide the object id only since they never change on chain.
     /// TODO: use an iterator over references here instead of a Vec to avoid allocations.
     pub fn input_objects(&self) -> SomaResult<Vec<InputObjectKind>> {
-        let input_objects = match &self {
-            Self::EndOfEpochTransaction(_) => {
-                vec![InputObjectKind::SharedObject {
-                    id: SYSTEM_STATE_OBJECT_ID,
-                    initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                }]
+        let mut input_objects = Vec::new();
+
+        // Add system state object if needed
+        if self.requires_system_state() {
+            input_objects.push(InputObjectKind::SharedObject {
+                id: SYSTEM_STATE_OBJECT_ID,
+                initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
+                mutable: true,
+            });
+        }
+
+        // Add transaction-specific inputs
+        match self {
+            TransactionKind::TransferCoin { coin, .. } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
             }
-            Self::Genesis(_) | Self::ConsensusCommitPrologue(_) => {
-                vec![]
+            TransactionKind::PayCoins { coins, .. } => {
+                for coin in coins {
+                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
+                }
             }
-            Self::StateTransaction(s) => return s.input_objects(),
-        };
+            TransactionKind::TransferObjects { objects, .. } => {
+                for object in objects {
+                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*object));
+                }
+            }
+            _ => {}
+        }
+
         // Ensure that there are no duplicate inputs. This cannot be removed because:
         // In [`AuthorityState::check_locks`], we check that there are no duplicate mutable
         // input objects, which would have made this check here unnecessary. However we
@@ -428,25 +272,6 @@ pub struct GenesisTransaction {
     pub objects: Vec<Object>,
 }
 
-/// # EndOfEpochTransactionKind
-///
-/// Represents the different types of transactions that can occur at the end of an epoch.
-///
-/// ## Purpose
-/// Encapsulates transactions that handle epoch transitions and related system operations
-/// that must occur at epoch boundaries.
-///
-/// ## Variants
-/// - `ChangeEpoch`: Transaction that transitions the blockchain to a new epoch
-///
-/// ## Thread Safety
-/// This type is immutable and can be safely shared across threads.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub enum EndOfEpochTransactionKind {
-    /// Transaction that transitions the blockchain to a new epoch
-    ChangeEpoch(ChangeEpoch),
-}
-
 /// # ChangeEpoch
 ///
 /// Contains the information needed to transition the blockchain to a new epoch.
@@ -467,38 +292,6 @@ pub struct ChangeEpoch {
     pub epoch: EpochId,
     /// Unix timestamp when epoch started
     pub epoch_start_timestamp_ms: u64,
-}
-
-impl EndOfEpochTransactionKind {
-    pub fn new_change_epoch(next_epoch: EpochId, epoch_start_timestamp_ms: u64) -> Self {
-        Self::ChangeEpoch(ChangeEpoch {
-            epoch: next_epoch,
-            epoch_start_timestamp_ms,
-        })
-    }
-
-    fn input_objects(&self) -> Vec<InputObjectKind> {
-        match self {
-            Self::ChangeEpoch(_) => {
-                vec![InputObjectKind::SharedObject {
-                    id: SYSTEM_STATE_OBJECT_ID,
-                    initial_shared_version: SYSTEM_STATE_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                }]
-            }
-        }
-    }
-
-    fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {
-        match self {
-            Self::ChangeEpoch(_) => Either::<
-                std::vec::IntoIter<SharedInputObject>,
-                std::iter::Empty<SharedInputObject>,
-            >::Left(
-                vec![SharedInputObject::SYSTEM_OBJ].into_iter()
-            ),
-        }
-    }
 }
 
 /// # CertificateProof
@@ -584,6 +377,20 @@ pub type TrustedExecutableTransaction = TrustedEnvelope<SenderSignedData, Certif
 pub type Transaction = Envelope<SenderSignedData, EmptySignInfo>;
 pub type VerifiedTransaction = VerifiedEnvelope<SenderSignedData, EmptySignInfo>;
 pub type TrustedTransaction = TrustedEnvelope<SenderSignedData, EmptySignInfo>;
+
+impl Transaction {
+    pub fn verify_signature_for_testing(&self, current_epoch: EpochId) -> SomaResult {
+        verify_sender_signed_data_message_signatures(self.data(), current_epoch)
+    }
+
+    pub fn try_into_verified_for_testing(
+        self,
+        current_epoch: EpochId,
+    ) -> SomaResult<VerifiedTransaction> {
+        self.verify_signature_for_testing(current_epoch)?;
+        Ok(VerifiedTransaction::new_from_verified(self))
+    }
+}
 
 /// # SignedTransaction
 ///
@@ -680,6 +487,55 @@ impl TransactionData {
         assert!(kind.is_system_tx());
         let sender = SomaAddress::default();
         TransactionData { kind, sender }
+    }
+
+    pub fn new_pay_coins(
+        coins: Vec<ObjectRef>,
+        amounts: Option<Vec<u64>>,
+        recipients: Vec<SomaAddress>,
+        sender: SomaAddress,
+    ) -> Self {
+        Self::new(
+            TransactionKind::PayCoins {
+                coins,
+                amounts,
+                recipients,
+            },
+            sender,
+        )
+    }
+
+    pub fn new_transfer_coin(
+        recipient: SomaAddress,
+        sender: SomaAddress,
+        amount: Option<u64>,
+        object_ref: ObjectRef,
+    ) -> Self {
+        Self::new(
+            TransactionKind::TransferCoin {
+                coin: object_ref,
+                amount,
+                recipient,
+            },
+            sender,
+        )
+    }
+
+    pub fn new_transfer(
+        recipient: SomaAddress,
+        object_ref: ObjectRef,
+        sender: SomaAddress,
+        // gas_payment: ObjectRef,
+        // gas_budget: u64,
+        // gas_price: u64,
+    ) -> Self {
+        Self::new(
+            TransactionKind::TransferObjects {
+                objects: vec![object_ref],
+                recipient: recipient,
+            },
+            sender,
+        )
     }
 
     pub fn digest(&self) -> TransactionDigest {
@@ -943,6 +799,14 @@ impl CertifiedTransaction {
         self.auth_sig()
             .verify_secure(self.data(), Intent::soma_transaction(), committee)
     }
+
+    pub fn try_into_verified_for_testing(
+        self,
+        committee: &Committee,
+    ) -> SomaResult<VerifiedCertificate> {
+        self.verify_signatures_authenticated(committee)?;
+        Ok(VerifiedCertificate::new_from_verified(self))
+    }
 }
 
 impl VerifiedTransaction {
@@ -970,8 +834,15 @@ impl VerifiedTransaction {
         .pipe(Self::new_system_transaction)
     }
 
-    pub fn new_end_of_epoch_transaction(txn: EndOfEpochTransactionKind) -> Self {
-        TransactionKind::EndOfEpochTransaction(txn).pipe(Self::new_system_transaction)
+    pub fn new_change_epoch_transaction(
+        next_epoch: EpochId,
+        epoch_start_timestamp_ms: u64,
+    ) -> Self {
+        TransactionKind::ChangeEpoch(ChangeEpoch {
+            epoch: next_epoch,
+            epoch_start_timestamp_ms,
+        })
+        .pipe(Self::new_system_transaction)
     }
 
     fn new_system_transaction(system_transaction: TransactionKind) -> Self {

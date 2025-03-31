@@ -1,10 +1,12 @@
 pub mod adapter;
 pub mod aggregator;
+pub mod authority_test_utils;
 pub mod cache;
 pub mod client;
 pub mod commit;
 pub mod consensus_quarantine;
 pub mod epoch_store;
+pub mod execution;
 pub mod execution_driver;
 pub mod handler;
 pub mod manager;
@@ -23,10 +25,15 @@ pub mod state_accumulator;
 pub mod state_sync_store;
 pub mod store;
 pub mod store_tables;
+pub mod test_authority_builder;
 pub mod throughput;
 pub mod tx_input_loader;
 pub mod tx_manager;
 pub mod tx_validator;
+
+#[cfg(test)]
+#[path = "unit_tests/pay_coin_tests.rs"]
+mod pay_coin_tests;
 
 // Tonic generated RPC stubs.
 pub mod tonic_gen {

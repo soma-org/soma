@@ -73,6 +73,12 @@ impl AccumulatorStore for TestP2pStore {
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = crate::object::LiveObject> + '_> {
         todo!()
     }
+
+    fn iter_cached_live_object_set_for_testing(
+        &self,
+    ) -> Box<dyn Iterator<Item = crate::object::LiveObject> + '_> {
+        todo!()
+    }
 }
 
 impl WriteStore for TestP2pStore {

@@ -32,7 +32,7 @@ use types::{
 use crate::{
     epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration,
-    store_tables::{AuthorityPerpetualTables, StoreObject},
+    store_tables::{get_store_object, AuthorityPerpetualTables, StoreObject},
 };
 
 pub struct AuthorityStore {
@@ -533,6 +533,35 @@ impl AuthorityStore {
         Ok(result)
     }
 
+    /// Insert a genesis object.
+    /// TODO: delete this method entirely (still used by authority_tests.rs)
+    pub(crate) fn insert_genesis_object(&self, object: Object) -> SomaResult {
+        // We only side load objects with a genesis parent transaction.
+        debug_assert!(object.previous_transaction == TransactionDigest::genesis_marker());
+        let object_ref = object.compute_object_reference();
+        self.insert_object_direct(object_ref, &object)
+    }
+
+    /// Insert an object directly into the store, and also update relevant tables
+    /// NOTE: does not handle transaction lock.
+    /// This is used to insert genesis objects
+    fn insert_object_direct(&self, object_ref: ObjectRef, object: &Object) -> SomaResult {
+        // Insert object
+        let store_object = get_store_object(object.clone());
+        self.perpetual_tables
+            .objects
+            .write()
+            .insert(ObjectKey::from(object_ref), store_object);
+
+        // Update the index
+        if object.get_single_owner().is_some() {
+            // Only initialize lock for address owned objects.
+            self.initialize_object_transaction_locks_impl(&[object_ref], false)?;
+        }
+
+        Ok(())
+    }
+
     /// This function should only be used for initializing genesis and should remain private.
     #[instrument(level = "debug", skip_all)]
     pub(crate) fn bulk_insert_genesis_objects(&self, objects: &[Object]) -> SomaResult<()> {
@@ -925,6 +954,38 @@ impl AuthorityStore {
         Ok(())
     }
 
+    #[cfg(test)]
+    pub(crate) fn reset_locks_for_test(
+        &self,
+        transactions: &[TransactionDigest],
+        objects: &[ObjectRef],
+        epoch_store: &AuthorityPerEpochStore,
+    ) {
+        for tx in transactions {
+            epoch_store.delete_signed_transaction_for_test(tx);
+            epoch_store.delete_object_locks_for_test(objects);
+        }
+
+        // let mut batch = self.perpetual_tables.live_owned_object_markers.batch();
+        // batch
+        //     .delete_batch(
+        //         &self.perpetual_tables.live_owned_object_markers,
+        //         objects.iter(),
+        //     )
+        //     .unwrap();
+        // batch.write().unwrap();
+
+        for object in objects {
+            self.perpetual_tables
+                .object_transaction_locks
+                .write()
+                .remove(object);
+        }
+
+        self.initialize_object_transaction_locks_impl(objects, false)
+            .unwrap();
+    }
+
     /// Return the object with version less then or eq to the provided seq number.
     /// This is used by indexer to find the correct version of dynamic field child object.
     /// We do not store the version of the child object, but because of lamport timestamp,
@@ -1153,6 +1214,10 @@ impl AccumulatorStore for AuthorityStore {
 
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
         Box::new(self.perpetual_tables.iter_live_object_set())
+    }
+
+    fn iter_cached_live_object_set_for_testing(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        self.iter_live_object_set()
     }
 }
 

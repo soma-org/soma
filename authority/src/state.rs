@@ -49,12 +49,12 @@ use types::effects::{
 };
 use types::envelope::Message;
 use types::error::ExecutionError;
-use types::object::ObjectRef;
+use types::object::{Object, ObjectID, ObjectRef};
 use types::state_sync::CommitTimestamp;
 use types::storage::object_store::ObjectStore;
 use types::system_state::{EpochStartSystemStateTrait, SystemState};
 use types::temporary_store::InnerTemporaryStore;
-use types::transaction::{EndOfEpochTransactionKind, InputObjects, SenderSignedData};
+use types::transaction::{InputObjects, SenderSignedData};
 use types::tx_outputs::{TransactionOutputs, WrittenObjects};
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
@@ -74,20 +74,26 @@ use types::{
 };
 
 use crate::cache::{
-    ExecutionCacheCommit, ExecutionCacheTraitPointers, ExecutionCacheWrite, ObjectCacheRead,
-    TransactionCacheRead,
+    ExecutionCacheCommit, ExecutionCacheReconfigAPI, ExecutionCacheTraitPointers,
+    ExecutionCacheWrite, ObjectCacheRead, TransactionCacheRead,
 };
 use crate::consensus_quarantine;
 use crate::epoch_store::{CertLockGuard, CertTxGuard};
+use crate::execution::execute_transaction;
 use crate::execution_driver::execution_process;
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::state_accumulator::StateAccumulator;
+use crate::store::{AuthorityStore, ObjectLockStatus};
 use crate::tx_input_loader::TransactionInputLoader;
 use crate::{
     client::NetworkAuthorityClient, epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration, tx_manager::TransactionManager,
 };
 use types::storage::committee_store::CommitteeStore;
+
+#[cfg(test)]
+#[path = "unit_tests/authority_tests.rs"]
+pub mod authority_tests;
 
 /// # StableSyncAuthoritySigner
 ///
@@ -329,6 +335,16 @@ impl AuthorityState {
     /// Used after transaction execution to ensure durability of the results.
     pub fn get_cache_commit(&self) -> &Arc<dyn ExecutionCacheCommit> {
         &self.execution_cache_trait_pointers.cache_commit
+    }
+
+    pub fn get_reconfig_api(&self) -> &Arc<dyn ExecutionCacheReconfigAPI> {
+        &self.execution_cache_trait_pointers.reconfig_api
+    }
+
+    pub fn database_for_testing(&self) -> Arc<AuthorityStore> {
+        self.execution_cache_trait_pointers
+            .testing_api
+            .database_for_testing()
     }
 
     /// This is a private method and should be kept that way. It doesn't check whether
@@ -589,6 +605,25 @@ impl AuthorityState {
             .notify_read_executed_effects(&[*certificate.digest()])
             .await
             .map(|mut r| r.pop().expect("must return correct number of effects"))
+    }
+
+    /// Test only wrapper for `try_execute_immediately()` above, useful for checking errors if the
+    /// pre-conditions are not satisfied, and executing change epoch transactions.
+    pub async fn try_execute_for_test(
+        &self,
+        certificate: &VerifiedCertificate,
+    ) -> SomaResult<(VerifiedSignedTransactionEffects, Option<ExecutionError>)> {
+        let epoch_store = self.epoch_store_for_testing();
+        let (effects, execution_error_opt) = self
+            .try_execute_immediately(
+                &VerifiedExecutableTransaction::new_from_certificate(certificate.clone()),
+                None,
+                None,
+                &epoch_store,
+            )
+            .await?;
+        let signed_effects = self.sign_effects(effects, &epoch_store)?;
+        Ok((signed_effects, execution_error_opt))
     }
 
     /// Internal logic to execute a certificate.
@@ -901,7 +936,8 @@ impl AuthorityState {
         let transaction_data = &certificate.data().intent_message().value;
         let (kind, signer) = transaction_data.execution_parts();
 
-        let (inner, effects, execution_error_opt) = epoch_store.execute_transaction(
+        let (inner, effects, execution_error_opt) = execute_transaction(
+            epoch_store.epoch(),
             self.get_object_store().as_ref(),
             tx_digest,
             kind,
@@ -1134,6 +1170,63 @@ impl AuthorityState {
             .unwrap()
     }
 
+    #[instrument(level = "trace", skip_all)]
+    pub async fn get_object(&self, object_id: &ObjectID) -> Option<Object> {
+        self.get_object_store().get_object(object_id).unwrap()
+    }
+
+    /// Get the TransactionEnvelope that currently locks the given object, if any.
+    /// Since object locks are only valid for one epoch, we also need the epoch_id in the query.
+    /// Returns ObjectNotFound if no lock records for the given object can be found.
+    /// Returns ObjectVersionUnavailableForConsumption if the object record is at a different version.
+    /// Returns Some(VerifiedEnvelope) if the given ObjectRef is locked by a certain transaction.
+    /// Returns None if a lock record is initialized for the given ObjectRef but not yet locked by any transaction,
+    ///     or cannot find the transaction in transaction table, because of data race etc.
+    #[instrument(level = "trace", skip_all)]
+    pub async fn get_transaction_lock(
+        &self,
+        object_ref: &ObjectRef,
+        epoch_store: &AuthorityPerEpochStore,
+    ) -> SomaResult<Option<VerifiedSignedTransaction>> {
+        let lock_info = self
+            .get_object_cache_reader()
+            .get_lock(*object_ref, epoch_store)?;
+        let lock_info = match lock_info {
+            ObjectLockStatus::LockedAtDifferentVersion { locked_ref } => {
+                return Err(SomaError::ObjectVersionUnavailableForConsumption {
+                    provided_obj_ref: *object_ref,
+                    current_version: locked_ref.1,
+                }
+                .into());
+            }
+            ObjectLockStatus::Initialized => {
+                return Ok(None);
+            }
+            ObjectLockStatus::LockedToTx { locked_by_tx } => locked_by_tx,
+        };
+
+        epoch_store.get_signed_transaction(&lock_info)
+    }
+
+    pub async fn get_object_or_tombstone(&self, object_id: ObjectID) -> Option<ObjectRef> {
+        self.get_object_cache_reader()
+            .get_latest_object_ref_or_tombstone(object_id)
+            .unwrap()
+    }
+
+    pub async fn insert_genesis_object(&self, object: Object) {
+        self.get_reconfig_api().insert_genesis_object(object);
+    }
+
+    pub async fn insert_genesis_objects(&self, objects: &[Object]) {
+        futures::future::join_all(
+            objects
+                .iter()
+                .map(|o| self.insert_genesis_object(o.clone())),
+        )
+        .await;
+    }
+
     /// Attempts to acquire execution lock for an executable transaction.
     /// Returns the lock if the transaction is matching current executed epoch
     /// Returns None otherwise
@@ -1281,9 +1374,8 @@ impl AuthorityState {
     ) -> anyhow::Result<(SystemState, TransactionEffects)> {
         let next_epoch = epoch_store.epoch() + 1;
 
-        let tx = VerifiedTransaction::new_end_of_epoch_transaction(
-            EndOfEpochTransactionKind::new_change_epoch(next_epoch, epoch_start_timestamp_ms),
-        );
+        let tx =
+            VerifiedTransaction::new_change_epoch_transaction(next_epoch, epoch_start_timestamp_ms);
 
         let executable_tx =
             VerifiedExecutableTransaction::new_system(tx.clone(), epoch_store.epoch());
@@ -1396,9 +1488,7 @@ impl AuthorityState {
             .get_executed_effects(transaction_digest)?;
         match effects {
             Some(effects) => Ok(Some(self.sign_effects(effects, epoch_store)?)),
-            None => {
-                Ok(None)
-            },
+            None => Ok(None),
         }
     }
 
@@ -1479,6 +1569,45 @@ impl AuthorityState {
         self.accumulator
             .digest_epoch(epoch_store.clone(), commit_index)
             .await
+    }
+
+    /// NOTE: this function is only to be used for fuzzing and testing. Never use in prod
+    pub async fn insert_objects_unsafe_for_testing_only(&self, objects: &[Object]) -> SomaResult {
+        self.get_reconfig_api().bulk_insert_genesis_objects(objects);
+        self.get_reconfig_api()
+            .clear_state_end_of_epoch(&self.execution_lock_for_reconfiguration().await);
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub async fn get_latest_object_lock_for_testing(
+        &self,
+        object_id: ObjectID,
+    ) -> SomaResult<Option<VerifiedSignedTransaction>> {
+        let epoch_store = self.load_epoch_store_one_call_per_task();
+        let (_, seq, _) = self
+            .get_object_or_tombstone(object_id)
+            .await
+            .ok_or_else(|| SomaError::ObjectNotFound {
+                object_id,
+                version: None,
+            })?;
+        let object = self
+            .get_object_store()
+            .get_object_by_key(&object_id, seq)?
+            .ok_or_else(|| SomaError::ObjectNotFound {
+                object_id,
+                version: Some(seq),
+            })?;
+        let lock = if !object.is_address_owned() {
+            // Only address owned objects have locks.
+            None
+        } else {
+            self.get_transaction_lock(&object.compute_object_reference(), &epoch_store)
+                .await?
+        };
+
+        Ok(lock)
     }
 }
 

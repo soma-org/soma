@@ -42,7 +42,7 @@ use fastcrypto::{
     hash::HashFunction,
     traits::AllowedRng,
 };
-use rand::Rng;
+use rand::{rngs::OsRng, Rng};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
@@ -54,6 +54,7 @@ use std::{fmt, str::FromStr, sync::Arc};
 
 /// The starting version for all newly created objects
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
+pub const GAS_VALUE_FOR_TESTING: u64 = 100_000;
 
 /// # Version
 ///
@@ -339,6 +340,52 @@ impl Object {
     pub fn owner(&self) -> &Owner {
         &self.0.owner
     }
+
+    /// Create a new coin with the specified balance
+    pub fn new_coin(balance: u64, owner: Owner, previous_transaction: TransactionDigest) -> Self {
+        let id = ObjectID::random();
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Coin,
+            Version::MIN,
+            bcs::to_bytes(&balance).unwrap(),
+        );
+        Self::new(data, owner, previous_transaction)
+    }
+
+    /// Extract the coin balance if this is a coin object
+    pub fn as_coin(&self) -> Option<u64> {
+        if *self.data.object_type() == ObjectType::Coin {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Update the balance of a coin object
+    pub fn update_coin_balance(&mut self, new_balance: u64) {
+        self.data
+            .update_contents(bcs::to_bytes(&new_balance).unwrap());
+    }
+
+    pub fn with_id_owner_for_testing(id: ObjectID, owner: SomaAddress) -> Self {
+        // For testing, we provide sufficient gas by default.
+        Self::with_id_owner_coin_for_testing(id, owner, GAS_VALUE_FOR_TESTING)
+    }
+
+    pub fn with_id_owner_coin_for_testing(id: ObjectID, owner: SomaAddress, balance: u64) -> Self {
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Coin,
+            Version::MIN,
+            bcs::to_bytes(&balance).unwrap(),
+        );
+        Self::new(
+            data,
+            Owner::AddressOwner(owner),
+            TransactionDigest::genesis_marker(),
+        )
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -493,6 +540,8 @@ impl ObjectData {
 pub enum ObjectType {
     /// Represents the global system state object
     SystemState,
+    /// Represents an owned Soma Token object
+    Coin,
 }
 
 /// # ObjectID
@@ -537,7 +586,9 @@ impl ObjectID {
 
     /// Returns a random ObjectID
     pub fn random() -> Self {
-        Self::from(SomaAddress::random())
+        let mut rng = OsRng;
+        let buf: [u8; Self::LENGTH] = rng.gen();
+        ObjectID::new(buf)
     }
 
     /// Returns a random ObjectID using the provided random number generator
@@ -870,16 +921,10 @@ impl LiveObject {
 ///
 /// ## Thread Safety
 /// Owner is Clone and can be safely shared across threads.
-#[derive(
-    Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, JsonSchema, Ord, PartialOrd,
-)]
-#[cfg_attr(feature = "fuzzing", derive(proptest_derive::Arbitrary))]
+#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, Ord, PartialOrd)]
 pub enum Owner {
     /// Object is exclusively owned by a single address, and is mutable.
     AddressOwner(SomaAddress),
-    // /// Object is exclusively owned by a single object, and is mutable.
-    // /// The object ID is converted to SomaAddress as SomaAddress is universal.
-    // ObjectOwner(SomaAddress),
     /// Object is shared, can be used by any address, and is mutable.
     Shared {
         /// The version at which the object became shared

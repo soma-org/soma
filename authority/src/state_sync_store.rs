@@ -342,4 +342,12 @@ impl AccumulatorStore for StateSyncStore {
     fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = types::object::LiveObject> + '_> {
         self.cache_traits.accumulator_store.iter_live_object_set()
     }
+
+    fn iter_cached_live_object_set_for_testing(
+        &self,
+    ) -> Box<dyn Iterator<Item = types::object::LiveObject> + '_> {
+        self.cache_traits
+            .accumulator_store
+            .iter_cached_live_object_set_for_testing()
+    }
 }

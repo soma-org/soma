@@ -5,7 +5,7 @@ use std::{
     sync::OnceLock,
 };
 
-use fastcrypto::traits::Signer;
+use fastcrypto::traits::{KeyPair, Signer};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
@@ -13,8 +13,8 @@ use crate::{
     base::AuthorityName,
     committee::{Committee, EpochId},
     crypto::{
-        AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature,
-        AuthorityStrongQuorumSignInfo, EmptySignInfo,
+        AuthorityKeyPair, AuthorityQuorumSignInfo, AuthoritySignInfo, AuthoritySignInfoTrait,
+        AuthoritySignature, AuthorityStrongQuorumSignInfo, EmptySignInfo,
     },
     error::SomaResult,
     intent::{Intent, IntentScope},
@@ -134,15 +134,6 @@ where
     }
 }
 
-impl<T> Envelope<T, AuthorityStrongQuorumSignInfo>
-where
-    T: Message + Serialize,
-{
-    pub fn epoch(&self) -> EpochId {
-        self.auth_signature.epoch
-    }
-}
-
 impl<T: Message + PartialEq, S: PartialEq> PartialEq for Envelope<T, S> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data && self.auth_signature == other.auth_signature
@@ -153,6 +144,51 @@ impl Envelope<SenderSignedData, AuthoritySignInfo> {
     pub fn verify_committee_sigs_only(&self, committee: &Committee) -> SomaResult {
         self.auth_signature
             .verify_secure(self.data(), Intent::soma_transaction(), committee)
+    }
+}
+
+impl<T, const S: bool> Envelope<T, AuthorityQuorumSignInfo<S>>
+where
+    T: Message + Serialize,
+{
+    pub fn new(
+        data: T,
+        signatures: Vec<AuthoritySignInfo>,
+        committee: &Committee,
+    ) -> SomaResult<Self> {
+        let cert = Self {
+            digest: OnceLock::new(),
+            data,
+            auth_signature: AuthorityQuorumSignInfo::<S>::new_from_auth_sign_infos(
+                signatures, committee,
+            )?,
+        };
+
+        Ok(cert)
+    }
+
+    pub fn new_from_keypairs_for_testing(
+        data: T,
+        keypairs: &[AuthorityKeyPair],
+        committee: &Committee,
+    ) -> Self {
+        let signatures = keypairs
+            .iter()
+            .map(|keypair| {
+                AuthoritySignInfo::new(
+                    committee.epoch(),
+                    &data,
+                    Intent::soma_transaction(),
+                    keypair.public().into(),
+                    keypair,
+                )
+            })
+            .collect();
+        Self::new(data, signatures, committee).unwrap()
+    }
+
+    pub fn epoch(&self) -> EpochId {
+        self.auth_signature.epoch
     }
 }
 

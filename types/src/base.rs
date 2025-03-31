@@ -463,6 +463,12 @@ impl FromStr for SomaAddress {
     }
 }
 
+/// Generate a fake SomaAddress with repeated one byte.
+pub fn dbg_addr(name: u8) -> SomaAddress {
+    let addr = [name; SOMA_ADDRESS_LENGTH];
+    SomaAddress(addr)
+}
+
 /// Represents a complete object identifier that can distinguish between different
 /// processing paths for objects.
 ///

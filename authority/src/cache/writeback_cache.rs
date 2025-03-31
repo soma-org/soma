@@ -24,7 +24,7 @@ use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};
 use futures::{future::BoxFuture, FutureExt};
 use moka::sync::Cache as MokaCache;
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
@@ -47,7 +47,8 @@ use utils::notify_read::NotifyRead;
 
 use super::{
     cache_types::CachedVersionMap, object_locks::ObjectLocks, ExecutionCacheCommit,
-    ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TransactionCacheRead,
+    ExecutionCacheReconfigAPI, ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TestingAPI,
+    TransactionCacheRead,
 };
 
 pub enum CacheResult<T> {
@@ -867,9 +868,25 @@ impl WritebackCache {
         Ok(())
     }
 
+    fn bulk_insert_genesis_objects_impl(&self, objects: &[Object]) {
+        self.store
+            .bulk_insert_genesis_objects(objects)
+            .expect("db error");
+        for obj in objects {
+            self.cached.object_cache.invalidate(&obj.id());
+            self.cached.object_by_id_cache.invalidate(&obj.id());
+        }
+    }
+
     pub fn clear_caches_and_assert_empty(&self) {
         info!("clearing caches");
         self.cached.clear_and_assert_empty();
+    }
+
+    fn insert_genesis_object_impl(&self, object: Object) {
+        self.cached.object_by_id_cache.invalidate(&object.id());
+        self.cached.object_cache.invalidate(&object.id());
+        self.store.insert_genesis_object(object).expect("db error");
     }
 }
 
@@ -1432,10 +1449,61 @@ impl AccumulatorStore for WritebackCache {
         );
         self.store.iter_live_object_set()
     }
+
+    // A version of iter_live_object_set that reads the cache. Only use for testing. If used
+    // on a live validator, can cause the server to block for as long as it takes to iterate
+    // the entire live object set.
+    fn iter_cached_live_object_set_for_testing(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+        // hold iter until we are finished to prevent any concurrent inserts/deletes
+        let iter = self.dirty.objects.iter();
+        let mut dirty_objects = BTreeMap::new();
+
+        // TODO: add everything from the store
+        // info!("Adding everything from store");
+        // for obj in self.store.iter_live_object_set() {
+        //     dirty_objects.insert(obj.object_id(), obj);
+        // }
+
+        // add everything from the cache, but also remove deletions
+        for entry in iter {
+            let id = *entry.key();
+            let value = entry.value();
+            match value.get_highest().unwrap() {
+                (_, ObjectEntry::Object(object)) => {
+                    dirty_objects.insert(id, LiveObject::Normal(object.clone()));
+                }
+                (_, ObjectEntry::Deleted) => {
+                    dirty_objects.remove(&id);
+                }
+            }
+        }
+
+        Box::new(dirty_objects.into_values())
+    }
 }
 
 impl StateSyncAPI for WritebackCache {
     fn multi_insert_transactions(&self, transactions: &[VerifiedTransaction]) -> SomaResult {
         Ok(self.store.multi_insert_transactions(transactions.iter())?)
+    }
+}
+
+impl ExecutionCacheReconfigAPI for WritebackCache {
+    fn insert_genesis_object(&self, object: Object) {
+        self.insert_genesis_object_impl(object)
+    }
+
+    fn bulk_insert_genesis_objects(&self, objects: &[Object]) {
+        self.bulk_insert_genesis_objects_impl(objects)
+    }
+
+    fn clear_state_end_of_epoch(&self, execution_guard: &ExecutionLockWriteGuard<'_>) {
+        self.clear_state_end_of_epoch_impl(execution_guard)
+    }
+}
+
+impl TestingAPI for WritebackCache {
+    fn database_for_testing(&self) -> Arc<AuthorityStore> {
+        self.store.clone()
     }
 }

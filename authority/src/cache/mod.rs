@@ -22,6 +22,7 @@ use writeback_cache::WritebackCache;
 
 use crate::{
     epoch_store::AuthorityPerEpochStore,
+    state::ExecutionLockWriteGuard,
     store::{AuthorityStore, LockResult},
 };
 
@@ -35,10 +36,11 @@ pub struct ExecutionCacheTraitPointers {
     pub cache_writer: Arc<dyn ExecutionCacheWrite>,
     pub object_cache_reader: Arc<dyn ObjectCacheRead>,
     pub object_store: Arc<dyn ObjectStore + Send + Sync>,
-    // pub reconfig_api: Arc<dyn ExecutionCacheReconfigAPI>,
+    pub reconfig_api: Arc<dyn ExecutionCacheReconfigAPI>,
     pub accumulator_store: Arc<dyn AccumulatorStore>,
     pub state_sync_store: Arc<dyn StateSyncAPI>,
     pub cache_commit: Arc<dyn ExecutionCacheCommit>,
+    pub testing_api: Arc<dyn TestingAPI>,
 }
 
 impl ExecutionCacheTraitPointers {
@@ -48,10 +50,11 @@ impl ExecutionCacheTraitPointers {
             + ExecutionCacheWrite
             + ObjectCacheRead
             + ObjectStore
-            // + ExecutionCacheReconfigAPI
+            + ExecutionCacheReconfigAPI
             + AccumulatorStore
             + StateSyncAPI
             + ExecutionCacheCommit
+            + TestingAPI
             + 'static,
     {
         Self {
@@ -60,10 +63,11 @@ impl ExecutionCacheTraitPointers {
             object_cache_reader: cache.clone(),
             object_store: cache.clone(),
             // backing_store: cache.clone(),
-            // reconfig_api: cache.clone(),
+            reconfig_api: cache.clone(),
             accumulator_store: cache.clone(),
             state_sync_store: cache.clone(),
             cache_commit: cache.clone(),
+            testing_api: cache.clone(),
         }
     }
 }
@@ -472,4 +476,19 @@ pub trait ObjectCacheRead: Send + Sync {
 // is certified output, and can be immediately persisted to the store.
 pub trait StateSyncAPI: Send + Sync {
     fn multi_insert_transactions(&self, transactions: &[VerifiedTransaction]) -> SomaResult;
+}
+
+pub trait ExecutionCacheReconfigAPI: Send + Sync {
+    fn insert_genesis_object(&self, object: Object);
+    fn bulk_insert_genesis_objects(&self, objects: &[Object]);
+    fn clear_state_end_of_epoch(&self, execution_guard: &ExecutionLockWriteGuard<'_>);
+
+    // TODO: Implement other ReconfigAPI methods
+    // fn set_epoch_start_configuration(&self, epoch_start_config: &EpochStartConfiguration);
+    // fn revert_state_update(&self, digest: &TransactionDigest);
+    // fn checkpoint_db(&self, path: &Path) -> SuiResult;
+}
+
+pub trait TestingAPI: Send + Sync {
+    fn database_for_testing(&self) -> Arc<AuthorityStore>;
 }
