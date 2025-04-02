@@ -48,6 +48,7 @@ use crate::{
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
     storage::InputKey,
     transaction::InputObjects,
+    tx_fee::TransactionFee,
     tx_outputs::WrittenObjects,
 };
 
@@ -265,6 +266,8 @@ pub struct TemporaryStore {
 
     /// The current epoch
     cur_epoch: EpochId,
+
+    pub gas_object_id: Option<ObjectID>,
 }
 
 impl TemporaryStore {
@@ -293,6 +296,7 @@ impl TemporaryStore {
                 .next()
                 .is_none());
         }
+
         Self {
             tx_digest,
             input_objects: objects,
@@ -303,6 +307,7 @@ impl TemporaryStore {
             loaded_runtime_objects: BTreeMap::new(),
             mutable_input_refs,
             deleted_consensus_objects,
+            gas_object_id: None,
         }
     }
 
@@ -373,6 +378,7 @@ impl TemporaryStore {
         mut transaction_dependencies: BTreeSet<TransactionDigest>,
         status: ExecutionStatus,
         epoch: EpochId,
+        fee: Option<TransactionFee>,
     ) -> (InnerTemporaryStore, TransactionEffects) {
         self.update_object_version_and_prev_tx();
 
@@ -409,6 +415,7 @@ impl TemporaryStore {
             lamport_version,
             object_changes,
             transaction_dependencies.into_iter().collect(),
+            fee,
         );
 
         (inner, effects)
@@ -436,6 +443,10 @@ impl TemporaryStore {
         debug_assert!(self.input_objects.contains_key(id));
         self.execution_results.modified_objects.insert(*id);
         self.execution_results.deleted_object_ids.insert(*id);
+    }
+
+    pub fn is_deleted(&self, id: &ObjectID) -> bool {
+        self.execution_results.deleted_object_ids.contains(id)
     }
 
     pub fn read_object(&self, id: &ObjectID) -> Option<Object> {

@@ -8,7 +8,7 @@ use types::{
     transaction::TransactionKind,
 };
 
-use super::TransactionExecutor;
+use super::{FeeCalculator, TransactionExecutor};
 
 /// Executor for Genesis transactions
 pub struct GenesisExecutor;
@@ -40,6 +40,8 @@ impl TransactionExecutor for GenesisExecutor {
     }
 }
 
+impl FeeCalculator for GenesisExecutor {}
+
 /// Executor for consensus commit transactions
 pub struct ConsensusCommitExecutor;
 
@@ -62,3 +64,5 @@ impl TransactionExecutor for ConsensusCommitExecutor {
         Ok(())
     }
 }
+
+impl FeeCalculator for ConsensusCommitExecutor {}

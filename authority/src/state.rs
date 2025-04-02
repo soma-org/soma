@@ -934,7 +934,7 @@ impl AuthorityState {
         let tx_digest = *certificate.digest();
         let protocol_config = epoch_store.protocol_config();
         let transaction_data = &certificate.data().intent_message().value;
-        let (kind, signer) = transaction_data.execution_parts();
+        let (kind, signer, gas_payment) = transaction_data.execution_parts();
 
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
@@ -942,6 +942,7 @@ impl AuthorityState {
             tx_digest,
             kind,
             signer,
+            gas_payment,
             input_objects,
         );
 

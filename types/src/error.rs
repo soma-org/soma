@@ -402,6 +402,12 @@ impl From<SomaError> for Status {
     }
 }
 
+impl From<SomaError> for ExecutionFailureStatus {
+    fn from(error: SomaError) -> Self {
+        ExecutionFailureStatus::SomaError(error)
+    }
+}
+
 impl From<String> for SomaError {
     /// Converts a String to a GenericAuthorityError SomaError.
     ///

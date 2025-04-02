@@ -9,7 +9,7 @@ use types::{
     SYSTEM_STATE_OBJECT_ID,
 };
 
-use super::TransactionExecutor;
+use super::{FeeCalculator, TransactionExecutor};
 
 /// Executor for system state transactions (validators)
 pub struct ChangeEpochExecutor;
@@ -19,6 +19,8 @@ impl ChangeEpochExecutor {
         Self {}
     }
 }
+
+impl FeeCalculator for ChangeEpochExecutor {}
 
 impl TransactionExecutor for ChangeEpochExecutor {
     fn execute(

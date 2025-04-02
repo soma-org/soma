@@ -8,7 +8,7 @@ use types::{
     transaction::TransactionKind,
 };
 
-use super::TransactionExecutor;
+use super::{FeeCalculator, TransactionExecutor};
 
 /// Executor for object transfer transactions
 pub struct ObjectExecutor;
@@ -64,6 +64,8 @@ impl TransactionExecutor for ObjectExecutor {
         }
     }
 }
+
+impl FeeCalculator for ObjectExecutor {}
 
 /// Checks ownership of an object against the expected owner
 pub(crate) fn check_ownership(

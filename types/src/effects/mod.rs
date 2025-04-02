@@ -50,6 +50,7 @@ use crate::{
     },
     storage::WriteKind,
     temporary_store::SharedInput,
+    tx_fee::TransactionFee,
 };
 
 pub mod object_change;
@@ -98,6 +99,8 @@ pub struct TransactionEffects {
     /// This includes created, modified, and deleted objects
     changed_objects: Vec<(ObjectID, EffectsObjectChange)>,
 
+    transaction_fee: Option<TransactionFee>,
+
     /// The version number assigned to all written objects by this transaction
     /// All objects modified by a transaction receive the same version number
     pub(crate) version: Version,
@@ -114,6 +117,10 @@ impl TransactionEffectsAPI for TransactionEffects {
 
     fn executed_epoch(&self) -> EpochId {
         self.executed_epoch
+    }
+
+    fn transaction_fee(&self) -> Option<&TransactionFee> {
+        self.transaction_fee.as_ref()
     }
 
     fn modified_at_versions(&self) -> Vec<(ObjectID, Version)> {
@@ -181,6 +188,14 @@ impl TransactionEffectsAPI for TransactionEffects {
                     _ => None,
                 },
             )
+            .collect()
+    }
+
+    /// Return an iterator of mutated objects, but excluding the gas object.
+    fn mutated_excluding_gas(&self) -> Vec<(ObjectRef, Owner)> {
+        self.mutated()
+            .into_iter()
+            .filter(|o| o.0 != self.transaction_fee().unwrap().gas_object_ref)
             .collect()
     }
 
@@ -301,6 +316,7 @@ impl TransactionEffects {
         version: Version,
         changed_objects: BTreeMap<ObjectID, EffectsObjectChange>,
         dependencies: Vec<TransactionDigest>,
+        transaction_fee: Option<TransactionFee>,
     ) -> Self {
         let unchanged_shared_objects = shared_objects
             .into_iter()
@@ -336,6 +352,7 @@ impl TransactionEffects {
             changed_objects,
             unchanged_shared_objects,
             dependencies,
+            transaction_fee,
         };
         #[cfg(debug_assertions)]
         result.check_invariant();
@@ -463,6 +480,7 @@ impl Default for TransactionEffects {
             changed_objects: vec![],
             dependencies: vec![],
             unchanged_shared_objects: vec![],
+            transaction_fee: None,
         }
     }
 }
@@ -522,6 +540,9 @@ pub trait TransactionEffectsAPI {
     fn transaction_digest_mut_for_testing(&mut self) -> &mut TransactionDigest;
     fn dependencies_mut_for_testing(&mut self) -> &mut Vec<TransactionDigest>;
     fn unsafe_add_input_shared_object_for_testing(&mut self, kind: InputSharedObject);
+
+    fn transaction_fee(&self) -> Option<&TransactionFee>;
+    fn mutated_excluding_gas(&self) -> Vec<(ObjectRef, Owner)>;
 }
 
 pub type TransactionEffectsEnvelope<S> = Envelope<TransactionEffects, S>;

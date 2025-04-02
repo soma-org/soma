@@ -475,18 +475,28 @@ pub struct TransactionData {
     pub kind: TransactionKind,
     /// The address of the transaction sender
     pub sender: SomaAddress,
+
+    pub gas_payment: Vec<ObjectRef>,
 }
 
 impl TransactionData {
-    pub fn new(kind: TransactionKind, sender: SomaAddress) -> Self {
-        TransactionData { kind, sender }
+    pub fn new(kind: TransactionKind, sender: SomaAddress, gas_payment: Vec<ObjectRef>) -> Self {
+        TransactionData {
+            kind,
+            sender,
+            gas_payment,
+        }
     }
 
     fn new_system_transaction(kind: TransactionKind) -> Self {
         // assert transaction kind if a system transaction
         assert!(kind.is_system_tx());
         let sender = SomaAddress::default();
-        TransactionData { kind, sender }
+        TransactionData {
+            kind,
+            sender,
+            gas_payment: vec![],
+        }
     }
 
     pub fn new_pay_coins(
@@ -495,13 +505,18 @@ impl TransactionData {
         recipients: Vec<SomaAddress>,
         sender: SomaAddress,
     ) -> Self {
+        // Use the first coin in the list as gas payment
+        if coins.is_empty() {
+            panic!("PayCoins transaction must have at least one coin");
+        }
         Self::new(
             TransactionKind::PayCoins {
-                coins,
+                coins: coins.clone(),
                 amounts,
                 recipients,
             },
             sender,
+            vec![coins[0]],
         )
     }
 
@@ -518,6 +533,7 @@ impl TransactionData {
                 recipient,
             },
             sender,
+            vec![object_ref],
         )
     }
 
@@ -525,9 +541,7 @@ impl TransactionData {
         recipient: SomaAddress,
         object_ref: ObjectRef,
         sender: SomaAddress,
-        // gas_payment: ObjectRef,
-        // gas_budget: u64,
-        // gas_price: u64,
+        gas_payment: Vec<ObjectRef>,
     ) -> Self {
         Self::new(
             TransactionKind::TransferObjects {
@@ -535,6 +549,7 @@ impl TransactionData {
                 recipient: recipient,
             },
             sender,
+            gas_payment,
         )
     }
 
@@ -554,8 +569,8 @@ impl TransactionData {
         self.kind.is_system_tx()
     }
 
-    pub fn execution_parts(&self) -> (TransactionKind, SomaAddress) {
-        (self.kind().clone(), self.sender())
+    pub fn execution_parts(&self) -> (TransactionKind, SomaAddress, Vec<ObjectRef>) {
+        (self.kind().clone(), self.sender(), self.gas())
     }
 
     pub fn kind(&self) -> &TransactionKind {
@@ -564,6 +579,10 @@ impl TransactionData {
 
     fn sender(&self) -> SomaAddress {
         self.sender
+    }
+
+    fn gas(&self) -> Vec<ObjectRef> {
+        self.gas_payment.clone()
     }
 
     fn contains_shared_object(&self) -> bool {
@@ -575,15 +594,29 @@ impl TransactionData {
     }
 
     pub fn input_objects(&self) -> SomaResult<Vec<InputObjectKind>> {
+        // Get inputs from transaction kind
         let mut inputs = self.kind.input_objects()?;
 
-        // if !self.kind.is_system_tx() {
-        //     inputs.extend(
-        //         self.gas()
-        //             .iter()
-        //             .map(|obj_ref| InputObjectKind::ImmOrOwnedMoveObject(*obj_ref)),
-        //     );
-        // }
+        // For non-system transactions, add gas objects not already included in inputs
+        if !self.kind.is_system_tx() {
+            // Create a set of object IDs already in the inputs
+            let input_object_ids: HashSet<ObjectID> =
+                inputs.iter().map(|input| input.object_id()).collect();
+
+            // Only add gas objects that aren't already in the inputs
+            for gas_ref in &self.gas_payment {
+                if !input_object_ids.contains(&gas_ref.0) {
+                    inputs.push(InputObjectKind::ImmOrOwnedObject(*gas_ref));
+                }
+            }
+        }
+
+        // Check for duplicates in the combined list
+        let mut used = HashSet::new();
+        if !inputs.iter().all(|o| used.insert(o.object_id())) {
+            return Err(SomaError::DuplicateObjectRefInput);
+        }
+
         Ok(inputs)
     }
 

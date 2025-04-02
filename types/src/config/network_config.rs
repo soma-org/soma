@@ -271,6 +271,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             BTreeSet::new(), // No transaction dependencies for genesis
             ExecutionStatus::Success,
             0, // epoch_id
+            None,
         );
 
         let genesis = Genesis::new(

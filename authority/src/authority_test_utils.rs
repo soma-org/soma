@@ -78,14 +78,15 @@ pub fn init_transfer_transaction(
     secret: &Ed25519KeyPair,
     recipient: SomaAddress,
     object_ref: ObjectRef,
-    // gas_object_ref: ObjectRef,
+    gas_object_ref: ObjectRef,
     // gas_budget: u64,
     // gas_price: u64,
 ) -> VerifiedTransaction {
     let data = TransactionData::new_transfer(
-        recipient, object_ref,
+        recipient,
+        object_ref,
         sender,
-        // gas_object_ref,
+        vec![gas_object_ref],
         // gas_budget,
         // gas_price,
     );

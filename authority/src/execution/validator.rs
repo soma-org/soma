@@ -10,7 +10,7 @@ use types::{
     SYSTEM_STATE_OBJECT_ID,
 };
 
-use super::TransactionExecutor;
+use super::{FeeCalculator, TransactionExecutor};
 
 /// Executor for system state transactions (validators)
 pub struct ValidatorExecutor;
@@ -91,3 +91,5 @@ impl TransactionExecutor for ValidatorExecutor {
         Ok(())
     }
 }
+
+impl FeeCalculator for ValidatorExecutor {}

@@ -143,9 +143,7 @@ async fn test_handle_transfer_transaction_double_spend() {
         &sender_key,
         recipient,
         object.compute_object_reference(),
-        // gas_object.compute_object_reference(),
-        // rgp * TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
-        // rgp,
+        gas_object.compute_object_reference(),
     );
 
     let signed_transaction = authority_state
@@ -170,16 +168,14 @@ async fn test_conflicting_transactions() {
     let recipient1 = dbg_addr(2);
     let recipient2 = dbg_addr(3);
     let object_id = ObjectID::random();
-    // let gas_object_id = ObjectID::random();
-    let authority_state = init_state_with_ids(vec![
-        (sender, object_id), /* , (sender, gas_object_id)*/
-    ])
-    .await;
+    let gas_object_id = ObjectID::random();
+    let authority_state =
+        init_state_with_ids(vec![(sender, object_id), (sender, gas_object_id)]).await;
 
     // // let rgp = authority_state.reference_gas_price_for_testing().unwrap();
     let epoch_store = authority_state.load_epoch_store_one_call_per_task();
     let object = authority_state.get_object(&object_id).await.unwrap();
-    // // let gas_object = authority_state.get_object(&gas_object_id).await.unwrap();
+    let gas_object = authority_state.get_object(&gas_object_id).await.unwrap();
 
     let tx1 = init_transfer_transaction(
         &authority_state,
@@ -187,9 +183,7 @@ async fn test_conflicting_transactions() {
         &sender_key,
         recipient1,
         object.compute_object_reference(),
-        // gas_object.compute_object_reference(),
-        // rgp * TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
-        // rgp,
+        gas_object.compute_object_reference(),
     );
 
     let tx2 = init_transfer_transaction(
@@ -198,9 +192,7 @@ async fn test_conflicting_transactions() {
         &sender_key,
         recipient2,
         object.compute_object_reference(),
-        // gas_object.compute_object_reference(),
-        // rgp * TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
-        // rgp,
+        gas_object.compute_object_reference(),
     );
 
     // repeatedly attempt to submit conflicting transactions at the same time, and verify that
@@ -232,10 +224,10 @@ async fn test_conflicting_transactions() {
         .get_latest_object_lock_for_testing(object_id)
         .await
         .unwrap();
-    // let gas_lock = authority_state
-    //     .get_latest_object_lock_for_testing(gas_object.id())
-    //     .await
-    //     .unwrap();
+    let gas_lock = authority_state
+        .get_latest_object_lock_for_testing(gas_object.id())
+        .await
+        .unwrap();
 
     let lock_digest = (lock.clone()).unwrap().digest().clone();
 
@@ -246,17 +238,15 @@ async fn test_conflicting_transactions() {
 
     info!("Lock: {}", lock.unwrap().auth_sig());
 
-    // assert_eq!(
-    //     &ok.clone().status.into_signed_for_testing(),
-    //     gas_lock
-    //         .expect("gas should be locked")
-    //         .auth_sig()
-    // );
+    assert_eq!(
+        &ok.clone().status.into_signed_for_testing(),
+        gas_lock.expect("gas should be locked").auth_sig()
+    );
 
     authority_state.database_for_testing().reset_locks_for_test(
         &[lock_digest],
         &[
-            // gas_object.compute_object_reference(),
+            gas_object.compute_object_reference(),
             object.compute_object_reference(),
         ],
         &authority_state.epoch_store_for_testing(),
