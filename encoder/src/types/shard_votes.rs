@@ -3,7 +3,10 @@ use std::marker::PhantomData;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
-use super::{encoder_committee::EncoderIndex, shard_verifier::ShardAuthToken};
+use super::{
+    encoder_committee::{EvaluationEncoder, InferenceEncoder},
+    shard_verifier::ShardAuthToken,
+};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CommitRound;
@@ -19,18 +22,18 @@ pub enum ShardVotes<T> {
 
 #[enum_dispatch]
 pub trait ShardVotesAPI<T> {
-    fn voter(&self) -> EncoderIndex;
+    fn voter(&self) -> &EvaluationEncoder;
     fn auth_token(&self) -> &ShardAuthToken;
-    fn rejects(&self) -> &[EncoderIndex];
+    fn rejects(&self) -> &[InferenceEncoder];
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct ShardVotesV1<T> {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,
-    voter: EncoderIndex,
+    voter: EvaluationEncoder,
     /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
-    rejects: Vec<EncoderIndex>,
+    rejects: Vec<InferenceEncoder>,
     // type marker see `CommitRound` and `RevealRound`
     marker: PhantomData<T>,
 }
@@ -38,8 +41,8 @@ pub(crate) struct ShardVotesV1<T> {
 impl<T> ShardVotesV1<T> {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
-        voter: EncoderIndex,
-        rejects: Vec<EncoderIndex>,
+        voter: EvaluationEncoder,
+        rejects: Vec<InferenceEncoder>,
     ) -> Self {
         Self {
             auth_token,
@@ -51,13 +54,13 @@ impl<T> ShardVotesV1<T> {
 }
 
 impl<T> ShardVotesAPI<T> for ShardVotesV1<T> {
-    fn voter(&self) -> EncoderIndex {
-        self.voter
+    fn voter(&self) -> &EvaluationEncoder {
+        &self.voter
     }
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn rejects(&self) -> &[EncoderIndex] {
+    fn rejects(&self) -> &[InferenceEncoder] {
         &self.rejects
     }
 }

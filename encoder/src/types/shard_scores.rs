@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use shared::{digest::Digest, signed::Signed};
 
 use super::{
-    encoder_committee::{EncoderIndex, Epoch},
+    encoder_committee::{Epoch, EvaluationEncoder, InferenceEncoder},
     shard::Shard,
     shard_verifier::ShardAuthToken,
 };
@@ -23,23 +23,23 @@ pub enum ShardScores {
 #[enum_dispatch]
 pub(crate) trait ShardScoresAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn evaluator(&self) -> EncoderIndex;
+    fn evaluator(&self) -> &EvaluationEncoder;
     fn signed_score_set(&self) -> Signed<ScoreSet, min_sig::BLS12381Signature>;
     fn unique_slots(&self) -> usize;
-    fn slots(&self) -> Vec<EncoderIndex>;
+    fn inference_encoders(&self) -> Vec<InferenceEncoder>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct ShardScoresV1 {
     auth_token: ShardAuthToken,
-    evaluator: EncoderIndex,
+    evaluator: EvaluationEncoder,
     signed_score_set: Signed<ScoreSet, min_sig::BLS12381Signature>,
 }
 
 impl ShardScoresV1 {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
-        evaluator: EncoderIndex,
+        evaluator: EvaluationEncoder,
         signed_score_set: Signed<ScoreSet, min_sig::BLS12381Signature>,
     ) -> Self {
         Self {
@@ -54,28 +54,28 @@ impl ShardScoresAPI for ShardScoresV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn evaluator(&self) -> EncoderIndex {
-        self.evaluator
+    fn evaluator(&self) -> &EvaluationEncoder {
+        &self.evaluator
     }
     fn signed_score_set(&self) -> Signed<ScoreSet, min_sig::BLS12381Signature> {
         self.signed_score_set.clone()
     }
     fn unique_slots(&self) -> usize {
-        let unique_slots: &HashSet<EncoderIndex> = &self
+        let unique_slots: &HashSet<InferenceEncoder> = &self
             .signed_score_set
             .deref()
             .scores()
             .iter()
-            .map(|score| score.slot())
+            .map(|score| score.inference_encoder().clone())
             .collect();
         unique_slots.len()
     }
-    fn slots(&self) -> Vec<EncoderIndex> {
+    fn inference_encoders(&self) -> Vec<InferenceEncoder> {
         self.signed_score_set
             .deref()
             .scores()
             .iter()
-            .map(|score| score.slot())
+            .map(|score| score.inference_encoder().clone())
             .collect()
     }
 }
@@ -112,13 +112,13 @@ impl ScoreSetV1 {
 
 impl ScoreSetAPI for ScoreSetV1 {
     fn scores(&self) -> Vec<Score> {
-        self.scores.iter().map(|s| Score::V1(*s)).collect()
+        self.scores.iter().map(|s| Score::V1(s.clone())).collect()
     }
 }
 
 #[enum_dispatch]
 pub trait ScoreAPI {
-    fn slot(&self) -> EncoderIndex;
+    fn inference_encoder(&self) -> &InferenceEncoder;
     fn rank(&self) -> u8;
 }
 
@@ -128,20 +128,23 @@ pub enum Score {
     V1(ScoreV1),
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ScoreV1 {
-    slot: EncoderIndex,
+    inference_encoder: InferenceEncoder,
     rank: u8,
 }
 impl ScoreV1 {
-    pub fn new(slot: EncoderIndex, rank: u8) -> Self {
-        Self { slot, rank }
+    pub fn new(inference_encoder: InferenceEncoder, rank: u8) -> Self {
+        Self {
+            inference_encoder,
+            rank,
+        }
     }
 }
 
 impl ScoreAPI for ScoreV1 {
-    fn slot(&self) -> EncoderIndex {
-        self.slot
+    fn inference_encoder(&self) -> &InferenceEncoder {
+        &self.inference_encoder
     }
     fn rank(&self) -> u8 {
         self.rank

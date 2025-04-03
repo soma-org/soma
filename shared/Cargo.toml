@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+vdf.workspace = true
 serde.workspace = true
 fastcrypto.workspace = true
 multiaddr.workspace = true
@@ -19,8 +20,8 @@ serde_repr.workspace = true
 bcs.workspace = true
 strum_macros.workspace = true
 thiserror.workspace = true
-fastcrypto-vdf.workspace = true
 hex.workspace = true
+quick_cache.workspace = true
 
 
 [lints]

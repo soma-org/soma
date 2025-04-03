@@ -10,10 +10,6 @@ use std::time::Duration;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, trace};
 
-/// `ChannelPool` contains the encoder context and an efficient mapping between networking index
-/// and an open channel. In the future it might be better to have a single `ChannelPool` for both
-/// consensus networking and the encoders to reduce the code, at which time a generic would need to
-/// be used for the context to support contexts for both encoders and authorities.
 pub(crate) struct ChannelPool {
     channels: Cache<(PeerPublicKey, Multiaddr), Channel>,
 }
@@ -24,12 +20,7 @@ pub(crate) type Channel = tower_http::trace::Trace<
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
 >;
 
-/// `ChannelPool` implements methods to create a new channel pool and get a channel from a
-/// pre-existing channel pool. Note under the current construction, you would need to create
-/// a new channel and reestablish the channels every epoch.
 impl ChannelPool {
-    /// the new fn takes an encoder context and establishes a new
-    /// RwLock to hold the btree of index to channel maps
     pub(crate) fn new(capacity: usize) -> Self {
         Self {
             channels: Cache::new(capacity),
@@ -45,6 +36,8 @@ impl ChannelPool {
     ) -> ShardResult<Channel> {
         let cache_key = (peer_public_key.clone(), address.clone());
 
+        // TODO: potentially add a TTL value to the channel such that past some amount of time, the
+        // channel will be refreshed.
         if let Some(channel) = self.channels.get(&cache_key) {
             return Ok(channel);
         }

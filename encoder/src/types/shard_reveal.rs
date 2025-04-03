@@ -2,7 +2,10 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::crypto::EncryptionKey;
 
-use super::{encoder_committee::EncoderIndex, shard_verifier::ShardAuthToken};
+use super::{
+    encoder_committee::{EncoderIndex, InferenceEncoder},
+    shard_verifier::ShardAuthToken,
+};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -16,7 +19,7 @@ pub enum ShardReveal {
 #[enum_dispatch]
 pub(crate) trait ShardRevealAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn slot(&self) -> EncoderIndex;
+    fn inference_encoder(&self) -> &InferenceEncoder;
     /// returns the encryption key
     fn key(&self) -> &EncryptionKey;
 }
@@ -24,19 +27,19 @@ pub(crate) trait ShardRevealAPI {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct ShardRevealV1 {
     auth_token: ShardAuthToken,
-    slot: EncoderIndex,
+    inference_encoder: InferenceEncoder,
     key: EncryptionKey,
 }
 
 impl ShardRevealV1 {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
-        slot: EncoderIndex,
+        inference_encoder: InferenceEncoder,
         key: EncryptionKey,
     ) -> Self {
         Self {
             auth_token,
-            slot,
+            inference_encoder,
             key,
         }
     }
@@ -46,8 +49,8 @@ impl ShardRevealAPI for ShardRevealV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn slot(&self) -> EncoderIndex {
-        self.slot
+    fn inference_encoder(&self) -> &InferenceEncoder {
+        &self.inference_encoder
     }
     fn key(&self) -> &EncryptionKey {
         &self.key

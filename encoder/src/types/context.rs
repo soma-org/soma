@@ -29,43 +29,11 @@ impl Context {
     pub fn update(&self, inner: InnerContext) {
         self.inner.store(Arc::new(inner));
     }
-    pub fn encoder_networking_details(
-        &self,
-        encoder: &EncoderPublicKey,
-    ) -> ShardResult<NetworkingDetails> {
-        match self.inner.load().encoder_networking.get(encoder) {
-            Some(networking_details) => Ok(networking_details.clone()),
-            None => Err(ShardError::NotFound(
-                "failed to get networking details".to_string(),
-            )),
-        }
-    }
-
-    // pub fn encoder_networking(
-    //     &self,
-    //     epoch: Epoch,
-    //     encoder: EncoderIndex,
-    // ) -> ShardResult<NetworkingDetails> {
-    //     self.inner.load().encoder_networking_details(epoch, encoder)
-    // }
 
     pub fn own_encoder_index(&self, epoch: Epoch) -> ShardResult<EncoderIndex> {
         Ok(self.inner.load().committees(epoch)?.own_encoder_index)
     }
 
-    pub fn parameters(&self) -> Parameters {
-        self.inner.load().parameters.clone()
-    }
-
-    pub fn own_networking_details(&self) -> ShardResult<NetworkingDetails> {
-        let inner = self.inner.load();
-        match inner.encoder_networking.get(&inner.own_encoder_public_key) {
-            Some(networking_details) => Ok(networking_details.clone()),
-            None => Err(ShardError::NotFound(
-                "failed to get networking details".to_string(),
-            )),
-        }
-    }
     pub fn encoder(&self, epoch: Epoch, encoder: EncoderIndex) -> ShardResult<Encoder> {
         Ok(self
             .inner
@@ -81,20 +49,12 @@ impl Context {
     // TODO add the top level handlers here
 }
 
-#[derive(Clone)]
-pub(crate) struct NetworkingDetails {
-    pub tls_key: PeerPublicKey,
-    pub address: Multiaddr,
-}
-
 /// EncoderContext is updated each epoch and provides the various services running
 /// information on committeees, configurations, and access to common metric reporting
 #[derive(Clone)]
 pub(crate) struct InnerContext {
     committees: [Committees; 2],
-    encoder_networking: HashMap<EncoderPublicKey, NetworkingDetails>,
     current_epoch: Epoch,
-    parameters: Parameters,
     own_encoder_public_key: EncoderPublicKey,
 }
 
@@ -113,20 +73,6 @@ impl InnerContext {
         }
         Err(ShardError::WrongEpoch)
     }
-    fn encoder_networking_details(
-        &self,
-        epoch: Epoch,
-        peer: EncoderIndex,
-    ) -> ShardResult<NetworkingDetails> {
-        let committees = self.committees(epoch)?;
-        let encoder_pub_key = &committees.encoder_committee.encoder(peer).encoder_key;
-        match self.encoder_networking.get(encoder_pub_key) {
-            Some(networking_details) => Ok(networking_details.clone()),
-            None => Err(ShardError::NotFound(
-                "failed to get networking details".to_string(),
-            )),
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -137,7 +83,6 @@ pub(crate) struct Committees {
     pub encoder_committee: EncoderCommittee,
     /// The services own index for each respective modality
     pub own_encoder_index: EncoderIndex,
-    pub own_encoder_public_key: EncoderPublicKey,
 }
 
 impl Committees {
@@ -153,7 +98,6 @@ impl Committees {
             authority_committee,
             encoder_committee,
             own_encoder_index,
-            own_encoder_public_key,
         }
     }
 }

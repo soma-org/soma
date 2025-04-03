@@ -4,47 +4,33 @@
 //! This allows for the computation set that is generating an embedding to be tuned
 //! independently of security considerations. The seperation of concerns is also slightly
 //! more secure compared to encoders that are directly impacted by the outcome.
-use std::{
-    collections::HashSet,
-    hash::{Hash, Hasher},
-};
-
 use serde::{Deserialize, Serialize};
-use shared::{
-    crypto::keys::EncoderPublicKey, digest::Digest, entropy::BlockEntropyOutput,
-    metadata::MetadataCommitment,
-};
+use shared::{digest::Digest, entropy::BlockEntropyOutput, metadata::MetadataCommitment};
 
-use super::encoder_committee::{CountUnit, EncoderIndex};
+use super::encoder_committee::{CountUnit, EvaluationEncoder, InferenceEncoder};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Shard {
     minimum_inference_size: CountUnit,
     evaluation_quorum_threshold: CountUnit,
-    inference_set: Vec<EncoderPublicKey>,
-    evaluation_set: Vec<EncoderPublicKey>,
-    shard_ref: ShardRef,
+    inference_set: Vec<InferenceEncoder>,
+    evaluation_set: Vec<EvaluationEncoder>,
+    seed: Digest<ShardEntropy>,
 }
 
 impl Shard {
-    // pub(crate) fn inference_set(&self) -> Vec<EncoderIndex> {
-    //     self.inference_set.clone()
-    // }
-    pub(crate) fn inference_set_contains(&self, encoder: &EncoderPublicKey) -> bool {
-        self.inference_set.contains(encoder)
+    pub(crate) fn inference_set_contains(&self, inference_encoder: &InferenceEncoder) -> bool {
+        self.inference_set.contains(inference_encoder)
     }
 
-    pub(crate) fn evaluation_set_contains(&self, encoder: &EncoderPublicKey) -> bool {
-        self.evaluation_set.contains(encoder)
+    pub(crate) fn evaluation_set_contains(&self, evaluation_encoder: &EvaluationEncoder) -> bool {
+        self.evaluation_set.contains(evaluation_encoder)
     }
-    // pub(crate) fn evaluation_set(&self) -> Vec<EncoderIndex> {
-    //     self.evaluation_set.clone()
-    // }
-    pub(crate) fn inference_size(&self) -> usize {
+    pub(crate) fn inference_set_size(&self) -> usize {
         self.inference_set.len()
     }
 
-    pub(crate) fn evaluation_size(&self) -> usize {
+    pub(crate) fn evaluation_set_size(&self) -> usize {
         self.evaluation_set.len()
     }
     pub(crate) fn minimum_inference_size(&self) -> CountUnit {
@@ -52,17 +38,6 @@ impl Shard {
     }
     pub(crate) fn evaluation_quorum_threshold(&self) -> CountUnit {
         self.evaluation_quorum_threshold
-    }
-
-    pub(crate) fn contains(&self, encoder: &EncoderPublicKey) -> bool {
-        self.inference_set.contains(encoder) || self.evaluation_set.contains(encoder)
-    }
-
-    pub(crate) fn shard_set(&self) -> Vec<EncoderPublicKey> {
-        let mut peers_set: HashSet<EncoderPublicKey> =
-            self.inference_set.clone().into_iter().collect();
-        peers_set.extend(self.evaluation_set.clone());
-        peers_set.into_iter().collect()
     }
 }
 
@@ -83,14 +58,5 @@ impl ShardEntropy {
             metadata_commitment,
             entropy,
         }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct ShardRef(Digest<ShardEntropy>);
-
-impl Hash for ShardRef {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.0.as_ref()[..8]);
     }
 }

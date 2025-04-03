@@ -2,7 +2,7 @@ use quick_cache::sync::Cache;
 use serde::{Deserialize, Serialize};
 use shared::{
     digest::Digest,
-    entropy::{BlockEntropyOutput, BlockEntropyProof, EntropyVDF},
+    entropy::{BlockEntropy, BlockEntropyProof, EntropyVDF},
     finality_proof::FinalityProof,
     metadata::MetadataCommitment,
 };
@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     context::Context,
-    encoder_committee::{EncoderIndex, Epoch},
+    encoder_committee::Epoch,
     shard::{Shard, ShardEntropy},
 };
 
@@ -26,11 +26,15 @@ pub(crate) enum VerificationStatus {
 }
 pub(crate) struct ShardVerifier {
     cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
+    vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
 }
 
 impl ShardVerifier {
-    pub(crate) fn new(cache: Cache<Digest<ShardAuthToken>, VerificationStatus>) -> Self {
-        Self { cache }
+    pub(crate) fn new(
+        cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
+        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
+    ) -> Self {
+        Self { cache, vdf }
     }
 }
 
@@ -38,7 +42,7 @@ impl ShardVerifier {
 pub struct ShardAuthToken {
     proof: FinalityProof,
     metadata_commitment: MetadataCommitment,
-    block_entropy: BlockEntropyOutput,
+    block_entropy: BlockEntropy,
     entropy_proof: BlockEntropyProof,
 }
 
@@ -51,29 +55,12 @@ impl ShardAuthToken {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Route {
-    // the selected encoder to commit on their behalf
-    destination: EncoderIndex,
-    // digest is used to stop replay attacks
-    auth_token_digest: Digest<ShardAuthToken>,
-}
-
-impl Route {
-    pub fn destination(&self) -> EncoderIndex {
-        self.destination
-    }
-    pub fn auth_token_digest(&self) -> Digest<ShardAuthToken> {
-        self.auth_token_digest
-    }
-}
-
 impl ShardVerifier {
     pub(crate) async fn verify(
         &self,
         context: &Context,
-        vdf: &ActorHandle<VDFProcessor<EntropyVDF>>,
         token: &ShardAuthToken,
+        iterations: u64,
     ) -> ShardResult<(Digest<ShardAuthToken>, Shard)> {
         let digest =
             Digest::new(token).map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
@@ -86,9 +73,9 @@ impl ShardVerifier {
                 )),
             };
         }
+        let inner_context = context.inner();
+        let committees = inner_context.committees(token.epoch())?;
         let valid_shard_result: ShardResult<Shard> = {
-            let inner_context = context.inner();
-            let committees = inner_context.committees(token.epoch())?;
             // check that the finality proof is valid against the epoch's authorities
             token
                 .proof
@@ -96,16 +83,18 @@ impl ShardVerifier {
                 .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
             // check that the vdf entropy (block entropy) passes verification with the provided proof
-            vdf.process(
-                (
-                    token.proof.epoch(),
-                    token.proof.block_ref(),
-                    token.block_entropy.clone(),
-                    token.entropy_proof.clone(),
-                ),
-                CancellationToken::new(),
-            )
-            .await?;
+            self.vdf
+                .process(
+                    (
+                        token.proof.epoch(),
+                        token.proof.block_ref(),
+                        token.block_entropy.clone(),
+                        token.entropy_proof.clone(),
+                        iterations,
+                    ),
+                    CancellationToken::new(),
+                )
+                .await?;
 
             // TODO: need to actually check the transaction itself
             // specifically the metadata_commitment digest matches what is provided
@@ -122,7 +111,7 @@ impl ShardVerifier {
 
             let shard = committees.encoder_committee.sample_shard(shard_entropy)?;
 
-            if !shard.contains(&committees.own_encoder_public_key) {
+            if !shard.contains(&committees.own_encoder_index) {
                 return Err(ShardError::InvalidShardToken(
                     "encoder is not contained in shard".to_string(),
                 ));
@@ -146,7 +135,7 @@ impl ShardVerifier {
 
 #[cfg(test)]
 mod tests {
-    use super::{Context, EncoderIndex, ShardAuthToken, ShardVerifier, VerificationStatus};
+    use super::{Context, ShardAuthToken, ShardVerifier, VerificationStatus};
     use crate::{
         actors::{workers::vdf::VDFProcessor, ActorHandle, ActorManager},
         error::ShardResult,
@@ -164,7 +153,7 @@ mod tests {
             keys::{AuthorityAggregateSignature, AuthoritySignature, ProtocolKeySignature},
         },
         digest::Digest,
-        entropy::{BlockEntropyOutput, BlockEntropyProof, EntropyAPI, EntropyVDF},
+        entropy::{BlockEntropy, BlockEntropyProof, EntropyAPI, EntropyVDF},
         finality_proof::{BlockClaim, FinalityProof},
         metadata::{Metadata, MetadataCommitment},
         probe::ProbeMetadata,

@@ -1,7 +1,6 @@
 use shared::{
     block::BlockRef,
-    entropy::{BlockEntropyOutput, BlockEntropyProof, EntropyAPI, EntropyVDF},
-    error::SharedError,
+    entropy::{BlockEntropy, BlockEntropyProof, EntropyAPI},
 };
 use tokio::{
     sync::mpsc::{self, Sender},
@@ -19,12 +18,12 @@ pub(crate) struct VDFProcessor<E: EntropyAPI> {
 }
 
 impl<E: EntropyAPI> VDFProcessor<E> {
-    pub(crate) fn new(vdf: E, buffer: usize) -> Self {
+    pub(crate) fn new(mut vdf: E, buffer: usize) -> Self {
         let (tx, mut rx) = mpsc::channel::<ActorMessage<Self>>(buffer);
         let worker_handle = tokio::task::spawn_blocking(move || {
             while let Some(msg) = rx.blocking_recv() {
-                let (epoch, block_ref, entropy, proof) = msg.input;
-                match vdf.verify_entropy(epoch, block_ref, &entropy, &proof) {
+                let (epoch, block_ref, entropy, proof, iterations) = msg.input;
+                match vdf.verify_entropy(epoch, block_ref, &entropy, &proof, iterations) {
                     Ok(_) => {
                         let _ = msg.sender.send(Ok(()));
                     }
@@ -41,7 +40,7 @@ impl<E: EntropyAPI> VDFProcessor<E> {
 
 #[async_trait]
 impl<E: EntropyAPI> Processor for VDFProcessor<E> {
-    type Input = (Epoch, BlockRef, BlockEntropyOutput, BlockEntropyProof);
+    type Input = (Epoch, BlockRef, BlockEntropy, BlockEntropyProof, u64);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
@@ -64,9 +63,7 @@ mod tests {
     use crate::error::{ShardError, ShardResult};
     use bytes::Bytes;
     use shared::error::SharedResult;
-    use std::sync::Arc;
     use std::time::Duration;
-    use tokio::sync::mpsc;
     use tokio::sync::oneshot::Sender;
     use tokio::time::sleep;
     use tokio_util::sync::CancellationToken;
@@ -79,20 +76,22 @@ mod tests {
 
     impl EntropyAPI for MockEntropyAPI {
         fn get_entropy(
-            &self,
+            &mut self,
             _epoch: Epoch,
             _block_ref: BlockRef,
-        ) -> SharedResult<(BlockEntropyOutput, BlockEntropyProof)> {
+            _iterations: u64,
+        ) -> SharedResult<(BlockEntropy, BlockEntropyProof)> {
             // Not needed for processor tests
             unimplemented!()
         }
 
         fn verify_entropy(
-            &self,
+            &mut self,
             _epoch: Epoch,
             _block_ref: BlockRef,
-            _tx_entropy: &BlockEntropyOutput,
-            _tx_entropy_proof: &BlockEntropyProof,
+            _block_entropy: &BlockEntropy,
+            _block_entropy_proof: &BlockEntropyProof,
+            _iterations: u64,
         ) -> SharedResult<()> {
             if self.should_succeed {
                 Ok(())
@@ -110,8 +109,9 @@ mod tests {
             input: (
                 1,                   // epoch
                 BlockRef::default(), // Using default for simplicity
-                BlockEntropyOutput::new(Bytes::new()),
+                BlockEntropy::new(Bytes::new()),
                 BlockEntropyProof::new(Bytes::new()),
+                1,
             ),
             sender,
             cancellation: CancellationToken::new(),

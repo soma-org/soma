@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "shared","cli", "encoder", "soma-python", "probe", "soma-http", "soma-tls", "soma-network"]
+members = [ "shared","cli", "encoder", "soma-python", "probe", "soma-http", "soma-tls", "soma-network", "vdf"]
 
 [workspace.lints.rust]
 unsafe_code = "warn"
@@ -24,6 +24,7 @@ private_intra_doc_links = "warn"
 encoder = { path = "encoder" }
 shared = { path = "shared" }
 probe = { path = "probe" }
+vdf = { path = "vdf" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
@@ -33,7 +34,7 @@ tokio = { version = "1.0", features = ["full"] }
 bcs = "0.1.6"
 bs58 = "0.5.1"
 enum_dispatch = "0.3.13"
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", features = ["copy_key"] }
+fastcrypto = { version = "0.1.9", features = ["copy_key"] }
 serde = { version = "1.0", features = ["derive"] }
 bytes = { version = "1.7.1", features = ["serde"] }
 strum_macros = "0.26"
@@ -42,7 +43,7 @@ base64 = "0.22.1"
 multiaddr = "0.18.1"
 tracing = "0.1.40"
 eyre = "0.6.12"
-rand = "0.8.5"
+rand = "0.8"
 serde_repr = "0.1.19"
 url = { version = "2.5.2", features = ["serde"] }
 prost = "0.13.2"
@@ -76,7 +77,6 @@ clap = {version = "4.5", features = ["derive"]}
 tempdir = "0.3.7"
 arbtest = "0.3.2"
 mockall = "0.13.1"
-fastcrypto-vdf = { git = "https://github.com/MystenLabs/fastcrypto", features = ["experimental"] }
 quick_cache = "0.6.10"
 hex = "0.4.3"
 dashmap = "6.1.0"
@@ -107,3 +107,11 @@ webpki = { version = "0.103", package = "rustls-webpki", features = [
   "ring",
 ] }
 x509-parser = { version = "0.17.0", features = ["verify"] }
+lazy_static = "1.5.0"
+num-bigint = { version = "0.4", features = ["serde", "rand"] }
+num-traits = "0.2"
+num-integer = "0.1"
+num-prime = { version = "0.4", features = ["big-int"] }
+rand_chacha = "0.3"
+criterion = "0.5"
+num-bigint-dig = "0.8"

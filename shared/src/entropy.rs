@@ -1,11 +1,12 @@
-use std::sync::{Arc, Mutex};
+use std::convert::Infallible;
 
 use bytes::Bytes;
-use fastcrypto_vdf::{
+use quick_cache::unsync::Cache;
+use serde::{Deserialize, Serialize};
+use vdf::{
     class_group::{discriminant::DISCRIMINANT_3072, QuadraticForm},
     vdf::{wesolowski::DefaultVDF, VDF},
 };
-use serde::{Deserialize, Serialize};
 
 use crate::{
     block::{BlockRef, Epoch},
@@ -13,9 +14,9 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct BlockEntropyOutput(Bytes);
+pub struct BlockEntropy(Bytes);
 
-impl BlockEntropyOutput {
+impl BlockEntropy {
     pub fn new(bytes: Bytes) -> Self {
         Self(bytes)
     }
@@ -28,61 +29,64 @@ impl BlockEntropyProof {
         Self(bytes)
     }
 }
-type EntropyIterations = u64;
+type Iterations = u64;
 
 pub trait EntropyAPI: Send + Sync + Sized + 'static {
     fn get_entropy(
-        &self,
+        &mut self,
         epoch: Epoch,
         block_ref: BlockRef,
-    ) -> SharedResult<(BlockEntropyOutput, BlockEntropyProof)>;
+        iterations: Iterations,
+    ) -> SharedResult<(BlockEntropy, BlockEntropyProof)>;
 
     fn verify_entropy(
-        &self,
+        &mut self,
         epoch: Epoch,
         block_ref: BlockRef,
-        tx_entropy: &BlockEntropyOutput,
-        tx_entropy_proof: &BlockEntropyProof,
+        block_entropy: &BlockEntropy,
+        block_entropy_proof: &BlockEntropyProof,
+        iterations: Iterations,
     ) -> SharedResult<()>;
 }
 
 pub struct EntropyVDF {
-    vdf: Arc<Mutex<DefaultVDF>>,
+    vdfs: Cache<Iterations, DefaultVDF>,
 }
 
 impl EntropyVDF {
-    pub fn new(iterations: EntropyIterations) -> Self {
+    pub fn new(cache_capacity: usize) -> Self {
         Self {
-            vdf: Arc::new(Mutex::new(DefaultVDF::new(
-                DISCRIMINANT_3072.clone(),
-                iterations,
-            ))),
+            vdfs: Cache::new(cache_capacity),
         }
     }
 }
 
 impl EntropyAPI for EntropyVDF {
     fn get_entropy(
-        &self,
+        &mut self,
         epoch: Epoch,
         block_ref: BlockRef,
-    ) -> SharedResult<(BlockEntropyOutput, BlockEntropyProof)> {
+        iterations: Iterations,
+    ) -> SharedResult<(BlockEntropy, BlockEntropyProof)> {
         let seed = bcs::to_bytes(&(epoch, block_ref)).map_err(SharedError::SerializationFailure)?;
         let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
             .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
 
-        let (output, proof) = {
-            let vdf = self
-                .vdf
-                .lock()
-                .map_err(|e| SharedError::FastCrypto(e.to_string()))?; // Lock acquired
-            vdf.evaluate(&input)
-                .map_err(|e| SharedError::FailedVDF(e.to_string()))?
-        };
+        let vdf = self
+            .vdfs
+            .get_or_insert_with(&iterations, || -> Result<DefaultVDF, Infallible> {
+                Ok(DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations))
+            })
+            .unwrap()
+            .unwrap();
+
+        let (output, proof) = vdf
+            .evaluate(&input)
+            .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
 
         let entropy_bytes = bcs::to_bytes(&output).map_err(SharedError::SerializationFailure)?;
 
-        let entropy = BlockEntropyOutput(Bytes::copy_from_slice(&entropy_bytes));
+        let entropy = BlockEntropy(Bytes::copy_from_slice(&entropy_bytes));
         let proof_bytes = bcs::to_bytes(&proof).map_err(SharedError::SerializationFailure)?;
 
         let proof = BlockEntropyProof(Bytes::copy_from_slice(&proof_bytes));
@@ -90,11 +94,12 @@ impl EntropyAPI for EntropyVDF {
     }
 
     fn verify_entropy(
-        &self,
+        &mut self,
         epoch: Epoch,
         block_ref: BlockRef,
-        tx_entropy: &BlockEntropyOutput,
+        tx_entropy: &BlockEntropy,
         tx_entropy_proof: &BlockEntropyProof,
+        iterations: Iterations,
     ) -> SharedResult<()> {
         let seed = bcs::to_bytes(&(epoch, block_ref)).map_err(SharedError::SerializationFailure)?;
         let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
@@ -107,9 +112,13 @@ impl EntropyAPI for EntropyVDF {
             bcs::from_bytes(&tx_entropy_proof.0).map_err(SharedError::MalformedType)?;
 
         let vdf = self
-            .vdf
-            .lock()
-            .map_err(|e| SharedError::FastCrypto(e.to_string()))?; // Lock acquired
+            .vdfs
+            .get_or_insert_with(&iterations, || -> Result<DefaultVDF, Infallible> {
+                Ok(DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations))
+            })
+            .unwrap()
+            .unwrap();
+
         vdf.verify(&input, &entropy, &proof)
             .map_err(|e| SharedError::FailedVDF(e.to_string()))
     }
@@ -124,8 +133,9 @@ mod tests {
     #[test]
     fn test_entropy_vdf_e2e() {
         // Initialize VDF with same parameters as the reference test
-        let iterations: EntropyIterations = 1;
-        let vdf = EntropyVDF::new(iterations);
+        let cache_capacity = 2_usize;
+        let iterations: Iterations = 1;
+        let vdf = EntropyVDF::new(cache_capacity);
 
         // Create test epoch and block reference
         let epoch: Epoch = 1;
@@ -160,7 +170,7 @@ mod tests {
             .is_err());
 
         // Negative test - verify with wrong entropy should fail
-        let wrong_entropy = BlockEntropyOutput(Bytes::from(vec![1, 2, 3, 4]));
+        let wrong_entropy = BlockEntropy(Bytes::from(vec![1, 2, 3, 4]));
         assert!(vdf
             .verify_entropy(epoch, block_ref, &wrong_entropy, &proof)
             .is_err());

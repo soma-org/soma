@@ -2,9 +2,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use shared::{
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerPublicKey},
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey},
     digest::Digest,
-    entropy::EntropyVDF,
     error::SharedError,
     metadata::{verify_metadata, EncryptionAPI, MetadataAPI},
     scope::Scope,
@@ -15,16 +14,14 @@ use shared::{
 use std::sync::Arc;
 
 use crate::{
-    actors::{pipelines::certified_commit, workers::vdf::VDFProcessor, ActorHandle},
     core::pipeline_dispatcher::InternalDispatcher,
     error::{ShardError, ShardResult},
-    messaging::{EncoderExternalNetworkService, EncoderInternalNetworkService},
+    messaging::EncoderInternalNetworkService,
     storage::datastore::Store,
     types::{
         certified::{Certified, CertifiedAPI},
         context::Context,
         shard_commit::{ShardCommit, ShardCommitAPI},
-        shard_input::{ShardInput, ShardInputAPI},
         shard_reveal::{ShardReveal, ShardRevealAPI},
         shard_scores::{ShardScores, ShardScoresAPI},
         shard_verifier::ShardVerifier,
@@ -35,7 +32,6 @@ use crate::{
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
     context: Context,
     dispatcher: D,
-    vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
     shard_verifier: ShardVerifier,
     store: Arc<dyn Store>,
     encoder_keypair: Arc<EncoderKeyPair>,
@@ -45,7 +41,6 @@ impl<D: InternalDispatcher> EncoderInternalService<D> {
     pub(crate) fn new(
         context: Context,
         dispatcher: D,
-        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
         shard_verifier: ShardVerifier,
         store: Arc<dyn Store>,
         encoder_keypair: Arc<EncoderKeyPair>,
@@ -53,7 +48,6 @@ impl<D: InternalDispatcher> EncoderInternalService<D> {
         Self {
             context,
             dispatcher,
-            vdf,
             shard_verifier,
             store,
             encoder_keypair,
@@ -79,7 +73,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             bcs::from_bytes(&commit_bytes).map_err(ShardError::MalformedType)?;
         let (auth_token_digest, shard) = self
             .shard_verifier
-            .verify(&self.context, &self.vdf, signed_commit.auth_token())
+            .verify(&self.context, signed_commit.auth_token())
             .await?;
 
         // perform verification on type and auth including signature checks

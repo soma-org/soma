@@ -3,14 +3,12 @@ use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::{EncoderKeyPair, PeerPublicKey},
-    entropy::EntropyVDF,
     signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
 
 use crate::{
-    actors::{workers::vdf::VDFProcessor, ActorHandle},
     core::pipeline_dispatcher::ExternalDispatcher,
     error::{ShardError, ShardResult},
     messaging::EncoderExternalNetworkService,
@@ -25,7 +23,6 @@ use crate::{
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
     context: Arc<Context>,
     dispatcher: D,
-    vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
     shard_verifier: ShardVerifier,
     store: Arc<dyn Store>,
     encoder_keypair: Arc<EncoderKeyPair>,
@@ -35,7 +32,6 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
     pub(crate) fn new(
         context: Arc<Context>,
         dispatcher: D,
-        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
         shard_verifier: ShardVerifier,
         store: Arc<dyn Store>,
         encoder_keypair: Arc<EncoderKeyPair>,
@@ -43,7 +39,6 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
         Self {
             context,
             dispatcher,
-            vdf,
             shard_verifier,
             store,
             encoder_keypair,

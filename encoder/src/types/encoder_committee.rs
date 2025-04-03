@@ -5,10 +5,7 @@
 use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shared::{
-    bitset::BitSet,
-    crypto::keys::{EncoderPublicKey, PeerPublicKey},
-    digest::Digest,
-    probe::ProbeMetadata,
+    bitset::BitSet, crypto::keys::EncoderPublicKey, digest::Digest, probe::ProbeMetadata,
 };
 use std::{
     fmt::{Display, Formatter},
@@ -275,17 +272,38 @@ impl EncoderCommittee {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EncoderStatus {
-    Active,
-    Deactivating,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Encoder {
     pub voting_power: VotingPowerUnit,
     pub encoder_key: EncoderPublicKey,
     pub probe: ProbeMetadata,
-    pub status: EncoderStatus,
+}
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash, Serialize, Deserialize)]
+pub(crate) struct InferenceEncoder(EncoderPublicKey);
+impl InferenceEncoder {
+    pub(crate) fn new(encoder: EncoderPublicKey) -> Self {
+        Self(encoder)
+    }
+}
+impl std::ops::Deref for InferenceEncoder {
+    type Target = EncoderPublicKey;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash, Serialize, Deserialize)]
+pub(crate) struct EvaluationEncoder(EncoderPublicKey);
+impl EvaluationEncoder {
+    pub(crate) fn new(encoder: EncoderPublicKey) -> Self {
+        Self(encoder)
+    }
+}
+impl std::ops::Deref for EvaluationEncoder {
+    type Target = EncoderPublicKey;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 /// Represents an EncoderIndex, also modality marked for type safety
