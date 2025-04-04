@@ -27,15 +27,9 @@ async fn test_transfer_coin_no_amount() {
     let authority_state = init_state_with_objects(vec![coin_object.clone()]).await;
 
     let epoch_store = authority_state.load_epoch_store_one_call_per_task();
-    // let rgp = epoch_store.reference_gas_price();
 
     let coin_ref = coin_object.compute_object_reference();
-    let tx_data = TransactionData::new_transfer_coin(
-        recipient, sender, None,
-        coin_ref,
-        // rgp * TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
-        // rgp,
-    );
+    let tx_data = TransactionData::new_transfer_coin(recipient, sender, None, coin_ref);
 
     // Make sure transaction handling works as usual.
     let transaction = to_sender_signed_transaction(tx_data, &sender_key);
@@ -50,24 +44,25 @@ async fn test_transfer_coin_no_amount() {
         .execute_certificate(&certificate, &authority_state.epoch_store_for_testing())
         .await
         .unwrap();
-    // Check that the transaction was successful, and the gas object is the only mutated object,
-    // and got transferred. Also check on its version and new balance.
+    // Check that the transaction was successful, and the gas object is deleted,
+    // and new coin got created. Also check on its new balance.
     assert!(effects.status().is_ok());
-    assert_eq!(effects.mutated().len(), 1);
-    assert_eq!(effects.mutated()[0].1, Owner::AddressOwner(recipient));
+    assert!(effects.mutated().is_empty());
+    assert_eq!(effects.deleted().len(), 1);
+    assert_eq!(effects.created().len(), 1);
 
-    // TODO: after implementing gas
-    // assert!(effects.mutated_excluding_gas().is_empty());
-    // assert!(gas_ref.1 < effects.gas_object().0 .1);
-    // assert_eq!(effects.gas_object().1, Owner::AddressOwner(recipient));
-    let new_balance = authority_state
-        .get_object(&coin_object_id)
-        .await
-        .unwrap()
-        .as_coin()
-        .unwrap();
+    let deleted = effects.deleted()[0];
+
+    assert_eq!(coin_object_id, deleted.0);
+
+    let created = &effects.created()[0];
+
+    let created_coin = authority_state.get_object(&created.0 .0).await.unwrap();
+    assert_eq!(created.1, Owner::AddressOwner(recipient));
+
+    let new_balance = created_coin.as_coin().unwrap();
     assert_eq!(
-        new_balance, /*+ effects.gas_cost_summary().net_gas_usage()*/
+        new_balance + effects.transaction_fee().unwrap().total_fee,
         init_balance
     );
 }
@@ -80,17 +75,9 @@ async fn test_transfer_coin_with_amount() {
     let gas_object = Object::with_id_owner_for_testing(gas_object_id, sender);
     let init_balance = gas_object.as_coin().unwrap();
     let authority_state = init_state_with_objects(vec![gas_object.clone()]).await;
-    // let rgp = authority_state.reference_gas_price_for_testing().unwrap();
 
     let gas_ref = gas_object.compute_object_reference();
-    let tx_data = TransactionData::new_transfer_coin(
-        recipient,
-        sender,
-        Some(500),
-        gas_ref,
-        // rgp * TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
-        // rgp,
-    );
+    let tx_data = TransactionData::new_transfer_coin(recipient, sender, Some(500), gas_ref);
     let transaction = to_sender_signed_transaction(tx_data, &sender_key);
     let certificate = init_certified_transaction(transaction, &authority_state);
     let effects = authority_state
@@ -101,7 +88,6 @@ async fn test_transfer_coin_with_amount() {
     // and an amount is split out and send to the recipient.
     assert!(effects.status().is_ok());
     assert_eq!(effects.mutated().len(), 1);
-    // TODO: assert!(effects.mutated_excluding_gas().is_empty());
     assert_eq!(effects.created().len(), 1);
     assert_eq!(effects.created()[0].1, Owner::AddressOwner(recipient));
     let new_gas = authority_state
@@ -109,8 +95,7 @@ async fn test_transfer_coin_with_amount() {
         .await
         .unwrap();
     assert_eq!(new_gas.as_coin().unwrap(), 500);
-    // assert!(gas_ref.1 < effects.gas_object().0 .1);
-    // assert_eq!(effects.gas_object().1, Owner::AddressOwner(sender));
+    assert!(gas_ref.1 < effects.mutated()[0].0 .1);
     assert_eq!(effects.mutated()[0].1, Owner::AddressOwner(sender));
     let new_balance = authority_state
         .get_object(&gas_object_id)
@@ -119,7 +104,7 @@ async fn test_transfer_coin_with_amount() {
         .as_coin()
         .unwrap();
     assert_eq!(
-        new_balance as i64 + 500, //+ effects.gas_cost_summary().net_gas_usage() + 500,
+        (new_balance + 500 + effects.transaction_fee().unwrap().total_fee) as i64,
         init_balance as i64
     );
 }

@@ -29,7 +29,7 @@ impl TransactionExecutor for ChangeEpochExecutor {
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        // _gas_object_id: Option<ObjectID>,
+        _value_fee: u64,
     ) -> ExecutionResult<()> {
         // Get system state object
         let state_object = store

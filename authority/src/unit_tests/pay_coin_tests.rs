@@ -40,7 +40,6 @@ async fn test_pay_coin_success_one_input_coin() -> anyhow::Result<()> {
         Some(vec![100, 200, 300]),
         sender,
         SomaKeyPair::Ed25519(sender_key),
-        // coin_amount - 300 - 200 - 100,
     )
     .await;
 
@@ -80,23 +79,8 @@ async fn test_pay_coin_success_one_input_coin() -> anyhow::Result<()> {
     let coin_val3 = *recipient_amount_map
         .get(&addr3)
         .ok_or(SomaError::InvalidAddress)?;
-    info!(
-        "Recipient {addr1} received: {}, {}",
-        created_obj1.as_coin().unwrap(),
-        coin_val1
-    );
     assert_eq!(created_obj1.as_coin().unwrap(), coin_val1);
-    info!(
-        "Recipient {addr2} received: {}, {}",
-        created_obj2.as_coin().unwrap(),
-        coin_val2
-    );
     assert_eq!(created_obj2.as_coin().unwrap(), coin_val2);
-    info!(
-        "Recipient {addr3} received: {}, {}",
-        created_obj3.as_coin().unwrap(),
-        coin_val3
-    );
     assert_eq!(created_obj3.as_coin().unwrap(), coin_val3);
 
     // make sure the first object still belongs to the sender,
@@ -106,11 +90,12 @@ async fn test_pay_coin_success_one_input_coin() -> anyhow::Result<()> {
         effects.mutated()[0].1.get_address_owner_address().unwrap(),
         sender
     );
-    // TODO: let gas_used = effects.gas_cost_summary().net_gas_usage() as u64;
+    let gas_used = effects.transaction_fee().unwrap().total_fee as u64;
+    info!("{:?}", effects.transaction_fee().unwrap());
     let gas_object = res.authority_state.get_object(&object_id).await.unwrap();
     assert_eq!(
         gas_object.as_coin().unwrap(),
-        coin_amount - 100 - 200 - 300, // - gas_used,
+        coin_amount - 100 - 200 - 300 - gas_used,
     );
 
     info!("Sender final balance: {}", gas_object.as_coin().unwrap());
@@ -136,7 +121,6 @@ async fn test_pay_coin_success_multiple_input_coins() -> anyhow::Result<()> {
         Some(vec![500, 1500]),
         sender,
         SomaKeyPair::Ed25519(sender_key),
-        // 5000000,
     )
     .await;
     let recipient_amount_map: HashMap<_, u64> =
@@ -175,12 +159,12 @@ async fn test_pay_coin_success_multiple_input_coins() -> anyhow::Result<()> {
         effects.mutated()[0].1.get_address_owner_address().unwrap(),
         sender
     );
-    // TODO: let gas_used = effects.gas_cost_summary().net_gas_usage() as u64;
-    // let gas_object = res.authority_state.get_object(&object_id1).await.unwrap();
-    // assert_eq!(
-    //     GasCoin::try_from(&gas_object)?.value(),
-    //     5002000 - 500 - 1500 - gas_used,
-    // );
+    let gas_used = effects.transaction_fee().unwrap().total_fee as u64;
+    let gas_object = res.authority_state.get_object(&object_id1).await.unwrap();
+    assert_eq!(
+        gas_object.as_coin().unwrap(),
+        5002000 - 500 - 1500 - gas_used,
+    );
 
     // make sure the second and third input coins are deleted
     let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
@@ -207,18 +191,18 @@ async fn test_pay_all_coins_success_one_input_coin() -> anyhow::Result<()> {
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // make sure the first object now belongs to the recipient,
-    // the value is equal to all residual values after gas payment.
-    let obj_ref = &effects.mutated()[0].0;
-    assert_eq!(obj_ref.0, object_id);
+    let obj_ref = &effects.created()[0].0;
+    let deleted = &effects.deleted()[0];
+    // input gas should be deleted
+    assert_eq!(deleted.0, object_id);
     assert_eq!(
-        effects.mutated()[0].1.get_address_owner_address().unwrap(),
+        effects.created()[0].1.get_address_owner_address().unwrap(),
         recipient
     );
 
-    // TODO: let gas_used = effects.gas_cost_summary().gas_used();
-    // let gas_object = res.authority_state.get_object(&object_id).await.unwrap();
-    // assert_eq!(GasCoin::try_from(&gas_object)?.value(), 3000000 - gas_used,);
+    let gas_used = effects.transaction_fee().unwrap().total_fee;
+    let obj = res.authority_state.get_object(&obj_ref.0).await.unwrap();
+    assert_eq!(obj.as_coin().unwrap(), 3000000 - gas_used);
     Ok(())
 }
 
@@ -226,9 +210,11 @@ async fn test_pay_all_coins_success_one_input_coin() -> anyhow::Result<()> {
 async fn test_pay_all_coins_success_multiple_input_coins() -> anyhow::Result<()> {
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let object_id1 = ObjectID::random();
+    let object_id2 = ObjectID::random();
+    let object_id3 = ObjectID::random();
     let coin_obj1 = Object::with_id_owner_coin_for_testing(object_id1, sender, 3000000);
-    let coin_obj2 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 1000);
-    let coin_obj3 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 1000);
+    let coin_obj2 = Object::with_id_owner_coin_for_testing(object_id2, sender, 1000);
+    let coin_obj3 = Object::with_id_owner_coin_for_testing(object_id3, sender, 1000);
     let recipient = dbg_addr(2);
     let res = execute_pay_coin(
         vec![coin_obj1, coin_obj2, coin_obj3],
@@ -236,37 +222,42 @@ async fn test_pay_all_coins_success_multiple_input_coins() -> anyhow::Result<()>
         None,
         sender,
         SomaKeyPair::Ed25519(sender_key),
-        // 3000000,
     )
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    info!("{:?}", effects);
-
-    // make sure the first object now belongs to the recipient,
-    // the value is equal to all residual values after gas payment.
-    let obj_ref = &effects.mutated()[0].0;
-    assert_eq!(obj_ref.0, object_id1);
+    let obj_ref = &effects.created()[0].0;
+    let deleted = &effects.deleted();
+    // inputs should be deleted
+    for input in vec![object_id1, object_id2, object_id3] {
+        assert!(deleted
+            .iter()
+            .map(|(id, _, _)| *id)
+            .collect::<Vec<ObjectID>>()
+            .contains(&input));
+    }
     assert_eq!(
-        effects.mutated()[0].1.get_address_owner_address().unwrap(),
+        effects.created()[0].1.get_address_owner_address().unwrap(),
         recipient
     );
 
-    // TODO: let gas_used = effects.gas_cost_summary().gas_used();
-    // let gas_object = res.authority_state.get_object(&object_id1).await.unwrap();
-    // assert_eq!(GasCoin::try_from(&gas_object)?.value(), 3002000 - gas_used,);
+    let gas_used = effects.transaction_fee().unwrap().total_fee;
+    let obj = res.authority_state.get_object(&obj_ref.0).await.unwrap();
+    assert_eq!(obj.as_coin().unwrap(), 3002000 - gas_used);
     Ok(())
 }
 
 #[tokio::test]
 async fn test_pay_coin_failure_insufficient_total_balance_multiple_input_coins() {
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin1 =
-        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 4000 /*204000*/);
-    let coin2 =
-        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 3000 /*303000*/);
+    let coin1 = Object::with_id_owner_coin_for_testing(
+        ObjectID::random(),
+        sender,
+        4000 + 1000 + 4 * 300 + 7, // base fee + operation fee + value fee
+    );
+    let coin2 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 3000);
     let recipient1 = dbg_addr(1);
     let recipient2 = dbg_addr(2);
 
@@ -276,7 +267,6 @@ async fn test_pay_coin_failure_insufficient_total_balance_multiple_input_coins()
         Some(vec![4000, 4000]),
         sender,
         SomaKeyPair::Ed25519(sender_key),
-        // 500000,
     )
     .await;
     assert_eq!(
@@ -291,7 +281,7 @@ async fn test_pay_coin_failure_insufficient_total_balance_multiple_input_coins()
 async fn test_pay_coin_failure_insufficient_total_balance_one_input_coin() {
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
     let coin1 =
-        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100 /*500100*/);
+        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100 + 1000 + 3 * 300); // base fee + operation fee + operation fee + 0 value fee
     let recipient1 = dbg_addr(1);
     let recipient2 = dbg_addr(2);
 
@@ -301,7 +291,6 @@ async fn test_pay_coin_failure_insufficient_total_balance_one_input_coin() {
         Some(vec![100, 100]),
         sender,
         SomaKeyPair::Ed25519(sender_key),
-        // 500000,
     )
     .await;
 
@@ -312,6 +301,102 @@ async fn test_pay_coin_failure_insufficient_total_balance_one_input_coin() {
         },
     );
 }
+
+#[tokio::test]
+async fn test_pay_coin_failure_insufficient_gas_one_input_coin() {
+    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let coin1 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 900);
+    let recipient1 = dbg_addr(1);
+    let recipient2 = dbg_addr(2);
+
+    let res = execute_pay_coin(
+        vec![coin1],
+        vec![recipient1, recipient2],
+        Some(vec![100, 100]),
+        sender,
+        SomaKeyPair::Ed25519(sender_key),
+    )
+    .await;
+
+    assert_eq!(
+        res.txn_result.as_ref().unwrap().status(),
+        &ExecutionStatus::Failure {
+            error: ExecutionFailureStatus::InsufficientGas,
+        },
+    );
+}
+
+#[tokio::test]
+async fn test_pay_coin_failure_insufficient_gas_multiple_input_coins() {
+    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let coin1 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 800);
+    let coin2 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 700);
+    let recipient1 = dbg_addr(1);
+    let recipient2 = dbg_addr(2);
+
+    let res = execute_pay_coin(
+        vec![coin1, coin2],
+        vec![recipient1, recipient2],
+        Some(vec![100, 100]),
+        sender,
+        SomaKeyPair::Ed25519(sender_key),
+    )
+    .await;
+
+    assert_eq!(
+        res.txn_result.as_ref().unwrap().status(),
+        &ExecutionStatus::Failure {
+            error: ExecutionFailureStatus::InsufficientGas,
+        },
+    );
+}
+
+#[tokio::test]
+async fn test_pay_all_coins_failure_insufficient_gas_one_input_coin() {
+    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let coin1 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 800);
+    let recipient = dbg_addr(2);
+
+    let res = execute_pay_coin(
+        vec![coin1],
+        vec![recipient],
+        None,
+        sender,
+        SomaKeyPair::Ed25519(sender_key),
+    )
+    .await;
+
+    assert_eq!(
+        res.txn_result.as_ref().unwrap().status(),
+        &ExecutionStatus::Failure {
+            error: ExecutionFailureStatus::InsufficientGas,
+        },
+    );
+}
+
+#[tokio::test]
+async fn test_pay_all_coins_failure_insufficient_gas_multiple_input_coins() {
+    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let coin1 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 750);
+    let coin2 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 750);
+    let recipient = dbg_addr(2);
+    let res = execute_pay_coin(
+        vec![coin1, coin2],
+        vec![recipient],
+        None,
+        sender,
+        SomaKeyPair::Ed25519(sender_key),
+    )
+    .await;
+
+    assert_eq!(
+        res.txn_result.as_ref().unwrap().status(),
+        &ExecutionStatus::Failure {
+            error: ExecutionFailureStatus::InsufficientGas,
+        },
+    );
+}
+
 struct PayCoinTransactionBlockExecutionResult {
     pub authority_state: Arc<AuthorityState>,
     pub txn_result: Result<SignedTransactionEffects, SomaError>,
@@ -349,52 +434,3 @@ async fn execute_pay_coin(
         txn_result,
     }
 }
-
-// async fn execute_pay_all_coins(
-//     input_coin_objects: Vec<&Object>,
-//     recipient: SuiAddress,
-//     sender: SuiAddress,
-//     sender_key: AccountKeyPair,
-//     gas_budget: u64,
-// ) -> PaySuiTransactionBlockExecutionResult {
-//     let dir = tempfile::TempDir::new().unwrap();
-//     let network_config = sui_swarm_config::network_config_builder::ConfigBuilder::new(&dir)
-//         .with_reference_gas_price(700)
-//         .with_objects(
-//             input_coin_objects
-//                 .clone()
-//                 .into_iter()
-//                 .map(ToOwned::to_owned),
-//         )
-//         .build();
-//     let genesis = network_config.genesis;
-//     let keypair = network_config.validator_configs[0].protocol_key_pair();
-
-//     let authority_state = init_state_with_committee(&genesis, keypair).await;
-//     let rgp = authority_state.reference_gas_price_for_testing().unwrap();
-
-//     let mut input_coins = Vec::new();
-//     for coin in input_coin_objects {
-//         let id = coin.id();
-//         let object_ref = genesis
-//             .objects()
-//             .iter()
-//             .find(|o| o.id() == id)
-//             .unwrap()
-//             .compute_object_reference();
-//         input_coins.push(object_ref);
-//     }
-
-//     let mut builder = ProgrammableTransactionBuilder::new();
-//     builder.pay_all_sui(recipient);
-//     let pt = builder.finish();
-//     let data = TransactionData::new_programmable(sender, input_coins, pt, gas_budget, rgp);
-//     let tx = to_sender_signed_transaction(data, &sender_key);
-//     let txn_result = send_and_confirm_transaction(&authority_state, tx)
-//         .await
-//         .map(|(_, effects)| effects);
-//     PaySuiTransactionBlockExecutionResult {
-//         authority_state,
-//         txn_result,
-//     }
-// }

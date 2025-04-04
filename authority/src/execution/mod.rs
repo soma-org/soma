@@ -37,7 +37,7 @@ trait TransactionExecutor: FeeCalculator {
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        // gas_object_id: Option<ObjectID>,
+        value_fee: u64,
     ) -> ExecutionResult<()>;
 }
 
@@ -143,7 +143,13 @@ pub fn execute_transaction(
     let pre_execution_deleted = temporary_store.execution_results.deleted_object_ids.clone();
 
     // Execute the transaction
-    let result = executor.execute(&mut temporary_store, signer, kind.clone(), tx_digest);
+    let result = executor.execute(
+        &mut temporary_store,
+        signer,
+        kind.clone(),
+        tx_digest,
+        gas_result.value_fee,
+    );
 
     // Check execution status
     let (mut execution_status, mut execution_error) = match result {
@@ -381,7 +387,13 @@ fn handle_shared_object_transaction(
     let executor = create_executor(&kind);
 
     // Execute the transaction
-    let result = executor.execute(&mut temporary_store, signer, kind.clone(), tx_digest);
+    let result = executor.execute(
+        &mut temporary_store,
+        signer,
+        kind.clone(),
+        tx_digest,
+        gas_result.value_fee,
+    );
 
     // Convert result to execution status and error
     let (execution_status, execution_error) = match result {

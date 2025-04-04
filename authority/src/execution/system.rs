@@ -26,7 +26,7 @@ impl TransactionExecutor for GenesisExecutor {
         _signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        // _gas_object_id: Option<ObjectID>,
+        _value_fee: u64,
     ) -> ExecutionResult<()> {
         if let TransactionKind::Genesis(genesis) = kind {
             // Create all genesis objects
@@ -58,7 +58,7 @@ impl TransactionExecutor for ConsensusCommitExecutor {
         _signer: SomaAddress,
         _kind: TransactionKind,
         _tx_digest: TransactionDigest,
-        // _gas_object_id: Option<ObjectID>,
+        _value_fee: u64,
     ) -> ExecutionResult<()> {
         // For consensus commit, we don't process any state changes, just return success
         Ok(())

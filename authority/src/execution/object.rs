@@ -55,6 +55,7 @@ impl TransactionExecutor for ObjectExecutor {
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
+        _value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
             TransactionKind::TransferObjects { objects, recipient } => {

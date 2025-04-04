@@ -439,10 +439,11 @@ impl TemporaryStore {
     /// Delete a mutable input object. This is used to delete input objects outside of PT execution.
     pub fn delete_input_object(&mut self, id: &ObjectID) {
         // there should be no deletion after write
-        debug_assert!(!self.execution_results.written_objects.contains_key(id));
+        // debug_assert!(!self.execution_results.written_objects.contains_key(id));
         debug_assert!(self.input_objects.contains_key(id));
         self.execution_results.modified_objects.insert(*id);
         self.execution_results.deleted_object_ids.insert(*id);
+        self.execution_results.written_objects.remove(id);
     }
 
     pub fn is_deleted(&self, id: &ObjectID) -> bool {
@@ -462,6 +463,7 @@ impl TemporaryStore {
     pub fn mutate_input_object(&mut self, object: Object) {
         let id = object.id();
         debug_assert!(self.input_objects.contains_key(&id));
+        debug_assert!(!self.is_deleted(&id));
 
         self.execution_results.modified_objects.insert(id);
         self.execution_results.written_objects.insert(id, object);

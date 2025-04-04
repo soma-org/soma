@@ -1,3 +1,4 @@
+use tracing::info;
 use types::{
     base::SomaAddress,
     effects::ExecutionFailureStatus,
@@ -18,6 +19,8 @@ pub(crate) struct GasPreparationResult {
     pub transaction_fee: Option<TransactionFee>,
     /// Amount of base fee that was deducted
     base_fee_deducted: u64,
+    /// Pre-calculated value fee to ensure consistency
+    pub value_fee: u64,
 }
 
 /// Prepares gas for a transaction
@@ -37,6 +40,7 @@ pub fn prepare_gas(
             primary_gas_id: None,
             transaction_fee: None,
             base_fee_deducted: 0,
+            value_fee: 0,
         });
     }
 
@@ -94,6 +98,9 @@ pub fn prepare_gas(
     let gas_ref = gas_obj.compute_object_reference();
     let base_fee_obj = TransactionFee::new(base_fee, 0, 0, gas_ref);
 
+    // Calculate value fee before deducting any gas
+    let value_fee = executor.calculate_value_fee(temporary_store, kind);
+
     match deduct_gas_fee(temporary_store, &base_fee_obj) {
         Ok(_) => {
             // Base fee deducted successfully
@@ -107,6 +114,7 @@ pub fn prepare_gas(
                 primary_gas_id,
                 transaction_fee,
                 base_fee_deducted: base_fee,
+                value_fee,
             })
         }
         Err(err) => {
@@ -228,53 +236,38 @@ pub fn calculate_and_deduct_remaining_fees(
 
     let gas_id = gas_result.primary_gas_id.unwrap();
 
-    // Calculate operation and value fees
-    if let Some(remaining_fee) = calculate_remaining_fee(executor, temporary_store, kind, gas_id) {
-        // Attempt to deduct the remaining fee
-        match deduct_gas_fee(temporary_store, &remaining_fee) {
-            Ok(_) => {
-                // Combine base fee with operation and value fees for reporting
-                let final_fee = merge_fee_components(gas_result.base_fee_deducted, remaining_fee);
+    // Use pre-calculated value fee instead of recalculating
+    let value_fee = gas_result.value_fee;
 
-                Ok(Some(final_fee))
-            }
-            Err(err) => Err(err),
-        }
-    } else {
-        // No remaining fees to deduct (unusual case)
-        Ok(gas_result.transaction_fee.clone())
-    }
-}
+    // Calculate operation fee (without recalculating value fee)
+    let operation_fee = temporary_store.execution_results.written_objects.len() as u64
+        * executor.write_fee_per_object();
 
-// Helper function to calculate remaining fee (after base fee is deducted)
-fn calculate_remaining_fee(
-    executor: &dyn TransactionExecutor,
-    store: &TemporaryStore,
-    kind: &TransactionKind,
-    primary_gas_id: ObjectID,
-) -> Option<TransactionFee> {
     // Get gas object
-    let gas_obj = match store.read_object(&primary_gas_id) {
+    let gas_obj = match temporary_store.read_object(&gas_id) {
         Some(obj) => obj,
-        None => return None,
+        None => return Err(ExecutionFailureStatus::ObjectNotFound { object_id: gas_id }),
     };
-
-    // Calculate value fee using the executor
-    let value_fee = executor.calculate_value_fee(store, kind);
-
-    // Calculate operation fee (skip base fee since it was already deducted)
-    let operation_fee =
-        store.execution_results.written_objects.len() as u64 * executor.write_fee_per_object();
 
     let gas_object_ref = gas_obj.compute_object_reference();
 
-    // Create TransactionFee
-    Some(TransactionFee::new(
+    // Create TransactionFee with pre-calculated value fee
+    let remaining_fee = TransactionFee::new(
         0, // Base fee already deducted
         operation_fee,
         value_fee,
         gas_object_ref,
-    ))
+    );
+
+    // Attempt to deduct the remaining fee
+    match deduct_gas_fee(temporary_store, &remaining_fee) {
+        Ok(_) => {
+            // Combine base fee with operation and value fees for reporting
+            let final_fee = merge_fee_components(gas_result.base_fee_deducted, remaining_fee);
+            Ok(Some(final_fee))
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> ExecutionResult<u64> {

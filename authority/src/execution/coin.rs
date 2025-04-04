@@ -27,6 +27,7 @@ impl CoinExecutor {
         recipient: SomaAddress,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
+        value_fee: u64,
     ) -> ExecutionResult<()> {
         let coin_id = coin_ref.0;
 
@@ -49,16 +50,6 @@ impl CoinExecutor {
             Some(specific_amount) => {
                 // If this is a gas coin, we need to ensure there's enough left for fees
                 if is_gas_coin {
-                    // Calculate the value fee
-                    let value_fee = self.calculate_value_fee(
-                        store,
-                        &TransactionKind::TransferCoin {
-                            coin: coin_ref,
-                            amount: Some(specific_amount),
-                            recipient,
-                        },
-                    );
-
                     // For write fee, we'll create one new coin and update the source
                     let write_fee = self.calculate_operation_fee(2);
 
@@ -125,14 +116,6 @@ impl CoinExecutor {
                     // We only need to account for value and operation fees
 
                     // Use the FeeCalculator trait methods to calculate fees
-                    let value_fee = self.calculate_value_fee(
-                        store,
-                        &TransactionKind::TransferCoin {
-                            coin: coin_ref,
-                            amount: None,
-                            recipient,
-                        },
-                    );
 
                     // For write fee, we know we'll create one new object and update the original
                     let write_fee = self.calculate_operation_fee(2);
@@ -181,6 +164,7 @@ impl CoinExecutor {
         recipients: Vec<SomaAddress>,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
+        value_fee: u64,
     ) -> ExecutionResult<()> {
         if coin_refs.is_empty() {
             return Err(ExecutionFailureStatus::InvalidArguments {
@@ -254,15 +238,6 @@ impl CoinExecutor {
                 let total_payments: u64 = specific_amounts.iter().sum();
 
                 // Calculate estimated remaining fees (base fee already deducted)
-                // Value fee using the trait method
-                let value_fee = self.calculate_value_fee(
-                    store,
-                    &TransactionKind::PayCoins {
-                        coins: coin_refs.clone(),
-                        amounts: Some(specific_amounts.clone()),
-                        recipients: recipients.clone(),
-                    },
-                );
 
                 // Write fee: 1 update for gas coin + 1 for each recipient
                 let write_fee = self.calculate_operation_fee(1 + recipients.len() as u64);
@@ -356,14 +331,6 @@ impl CoinExecutor {
                     }
 
                     // Calculate value fee using the trait method
-                    let value_fee = self.calculate_value_fee(
-                        store,
-                        &TransactionKind::PayCoins {
-                            coins: coin_refs.clone(),
-                            amounts: None,
-                            recipients: recipients.clone(),
-                        },
-                    );
 
                     // For write fee, we know we'll create one new object and keep gas coin
                     let write_fee = self.calculate_operation_fee(2);
@@ -477,18 +444,23 @@ impl TransactionExecutor for CoinExecutor {
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
+        value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
             TransactionKind::TransferCoin {
                 coin,
                 amount,
                 recipient,
-            } => self.execute_transfer_coin(store, coin, amount, recipient, signer, tx_digest),
+            } => self.execute_transfer_coin(
+                store, coin, amount, recipient, signer, tx_digest, value_fee,
+            ),
             TransactionKind::PayCoins {
                 coins,
                 amounts,
                 recipients,
-            } => self.execute_pay_coins(store, coins, amounts, recipients, signer, tx_digest),
+            } => self.execute_pay_coins(
+                store, coins, amounts, recipients, signer, tx_digest, value_fee,
+            ),
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
     }
@@ -500,13 +472,21 @@ impl FeeCalculator for CoinExecutor {
             TransactionKind::TransferCoin { coin, amount, .. } => {
                 // For TransferCoin, value fee is percentage of amount being transferred
                 if let Some(specific_amount) = amount {
-                    // Charge 0.1% of transferred amount
-                    specific_amount / 1000
+                    if *specific_amount == 0 {
+                        return 0;
+                    }
+                    // Calculate 0.1% (10 basis points)
+                    let fee = (specific_amount * 10) / 10000;
+                    fee
                 } else {
                     // For full transfer, get the actual coin balance
                     if let Some(coin_obj) = store.read_object(&coin.0) {
                         if let Some(balance) = coin_obj.as_coin() {
-                            return balance / 1000;
+                            if balance == 0 {
+                                return 0;
+                            }
+                            let fee = (balance * 10) / 10000;
+                            return fee;
                         }
                     }
                     // Default if we can't determine the actual value
@@ -517,7 +497,11 @@ impl FeeCalculator for CoinExecutor {
                 // For specific amounts
                 if let Some(specific_amounts) = amounts {
                     let total: u64 = specific_amounts.iter().sum();
-                    return total / 1000;
+                    if total == 0 {
+                        return 0;
+                    }
+                    let fee = (total * 10) / 10000;
+                    return fee;
                 }
 
                 // For pay_all, calculate total of actual balances
@@ -530,8 +514,12 @@ impl FeeCalculator for CoinExecutor {
                     }
                 }
 
+                if total_balance == 0 {
+                    return 0;
+                }
                 // Calculate fee as 0.1% of total transferred
-                total_balance / 1000
+                let fee = (total_balance * 10) / 10000;
+                return fee;
             }
             _ => 0, // Default fee
         }
