@@ -24,18 +24,21 @@ use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};
 use futures::{future::BoxFuture, FutureExt};
 use moka::sync::Cache as MokaCache;
 use parking_lot::Mutex;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, AccumulatorStore, CommitIndex},
-    base::FullObjectID,
+    base::{FullObjectID, SomaAddress},
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
     envelope::Message,
     error::{SomaError, SomaResult},
-    object::{LiveObject, Object, ObjectID, ObjectRef, Version},
+    object::{LiveObject, Object, ObjectID, ObjectRef, ObjectType, Version},
     storage::{
         object_store::ObjectStore, FullObjectKey, MarkerValue, ObjectKey, ObjectOrTombstone,
     },
@@ -1076,6 +1079,15 @@ impl ObjectStore for WritebackCache {
         ObjectCacheRead::get_object_by_key(self, object_id, version)
             .map_err(types::storage::storage_error::Error::custom)
     }
+
+    fn get_gas_objects_owned_by_address(
+        &self,
+        address: SomaAddress,
+        limit: Option<usize>,
+    ) -> types::storage::storage_error::Result<Vec<ObjectRef>> {
+        ObjectCacheRead::get_gas_objects_owned_by_address(self, address, limit)
+            .map_err(types::storage::storage_error::Error::custom)
+    }
 }
 
 impl ObjectCacheRead for WritebackCache {
@@ -1412,6 +1424,103 @@ impl ObjectCacheRead for WritebackCache {
 
     fn get_system_state_object(&self) -> SomaResult<SystemState> {
         get_system_state(self)
+    }
+
+    fn get_gas_objects_owned_by_address(
+        &self,
+        address: SomaAddress,
+        limit: Option<usize>,
+    ) -> SomaResult<Vec<ObjectRef>> {
+        let mut result = Vec::new();
+        let mut seen_object_ids: HashSet<ObjectID> = HashSet::new();
+
+        // First, check the dirty cache for recently modified objects
+        for entry in self.dirty.objects.iter() {
+            if let Some((_, obj_entry)) = entry.get_highest() {
+                match obj_entry {
+                    ObjectEntry::Object(object) => {
+                        if let Some(owner_address) = object.get_single_owner() {
+                            if owner_address == address
+                                && *object.data.object_type() == ObjectType::Coin
+                            {
+                                let obj_ref = object.compute_object_reference();
+                                result.push(obj_ref);
+                                seen_object_ids.insert(object.id());
+
+                                // Apply limit if specified
+                                if let Some(lim) = limit {
+                                    if result.len() >= lim {
+                                        return Ok(result);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    ObjectEntry::Deleted => {
+                        // Skip deleted objects
+                        seen_object_ids.insert(*entry.key());
+                    }
+                }
+            }
+        }
+
+        // Then check the cached committed objects for any we haven't seen yet
+        for (object_id, entry) in self.cached.object_by_id_cache.iter() {
+            if seen_object_ids.contains(&object_id) {
+                continue;
+            }
+
+            let entry = entry.lock();
+            match &*entry {
+                LatestObjectCacheEntry::Object(_, ObjectEntry::Object(object)) => {
+                    if let Some(owner_address) = object.get_single_owner() {
+                        if owner_address == address
+                            && *object.data.object_type() == ObjectType::Coin
+                        {
+                            let obj_ref = object.compute_object_reference();
+                            result.push(obj_ref);
+                            seen_object_ids.insert(*object_id);
+
+                            // Apply limit if specified
+                            if let Some(lim) = limit {
+                                if result.len() >= lim {
+                                    return Ok(result);
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    seen_object_ids.insert(*object_id);
+                }
+            }
+        }
+
+        // Finally, search in the underlying store for any remaining objects
+        // This requires scanning all objects in the store that we haven't seen yet
+        // In a real implementation, you'd want an index on address ownership
+
+        // Get all remaining coin objects from the store
+        // This is a simplification - in practice you'd need a more efficient approach
+        let store_objects = self.store.get_gas_objects_owned_by_address(address, None)?;
+
+        for obj in store_objects {
+            let object_id = obj.0;
+            if seen_object_ids.contains(&object_id) {
+                continue;
+            }
+
+            result.push(obj);
+
+            // Apply limit if specified
+            if let Some(lim) = limit {
+                if result.len() >= lim {
+                    break;
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 

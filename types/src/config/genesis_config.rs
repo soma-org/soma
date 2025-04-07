@@ -28,6 +28,7 @@ pub struct ValidatorGenesisConfig {
 pub struct AccountConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub address: Option<SomaAddress>,
+    pub gas_amounts: Vec<u64>,
 }
 
 // All information needed to build a NodeConfig for a state sync fullnode.
@@ -45,17 +46,35 @@ pub struct GenesisConfig {
     pub accounts: Vec<AccountConfig>,
 }
 
+pub const DEFAULT_GAS_AMOUNT: u64 = 30_000_000;
 const DEFAULT_NUMBER_OF_ACCOUNTS: usize = 5;
+const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
+
+/// The number of Shannons per Soma token
+pub const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
+
+/// Total supply denominated in Soma
+pub const TOTAL_SUPPLY_SOMA: u64 = 1_000_000;
+
+// Note: cannot use checked arithmetic here since `const unwrap` is still unstable.
+/// Total supply denominated in Shannons
+pub const TOTAL_SUPPLY_SHANNONS: u64 = TOTAL_SUPPLY_SOMA * SHANNONS_PER_SOMA;
 
 impl GenesisConfig {
     pub fn for_local_testing() -> Self {
-        Self::custom_genesis(DEFAULT_NUMBER_OF_ACCOUNTS)
+        Self::custom_genesis(
+            DEFAULT_NUMBER_OF_ACCOUNTS,
+            DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT,
+        )
     }
 
-    pub fn custom_genesis(num_accounts: usize) -> Self {
+    pub fn custom_genesis(num_accounts: usize, num_objects_per_account: usize) -> Self {
         let mut accounts = Vec::new();
         for _ in 0..num_accounts {
-            accounts.push(AccountConfig { address: None })
+            accounts.push(AccountConfig {
+                address: None,
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
+            })
         }
 
         Self {
@@ -67,8 +86,9 @@ impl GenesisConfig {
     pub fn generate_accounts<R: rand::RngCore + rand::CryptoRng>(
         &self,
         mut rng: R,
-    ) -> Result<Vec<SomaKeyPair>> {
+    ) -> Result<(Vec<SomaKeyPair>, Vec<TokenAllocation>)> {
         let mut addresses = Vec::new();
+        let mut allocations = Vec::new();
 
         info!("Creating accounts and token allocations...");
 
@@ -83,9 +103,18 @@ impl GenesisConfig {
             };
 
             addresses.push(address);
+
+            // Populate gas itemized objects
+            account.gas_amounts.iter().for_each(|a| {
+                allocations.push(TokenAllocation {
+                    recipient_address: address,
+                    amount_shannons: *a,
+                    staked_with_validator: None,
+                });
+            });
         }
 
-        Ok(keys)
+        Ok((keys, allocations))
     }
 }
 
@@ -175,14 +204,42 @@ pub struct GenesisCeremonyParameters {
     /// The duration of an epoch, in milliseconds.
     #[serde(default = "GenesisCeremonyParameters::default_epoch_duration_ms")]
     pub epoch_duration_ms: u64,
+
+    /// TODO: protocol version that the chain starts at.
+    //  #[serde(default = "ProtocolVersion::max")]
+    //  pub protocol_version: ProtocolVersion,
+
+    /// The starting epoch in which stake subsidies start being paid out.
+    #[serde(default)]
+    pub stake_subsidy_start_epoch: u64,
+
+    /// The amount of stake subsidy to be drawn down per distribution.
+    /// This amount decays and decreases over time.
+    #[serde(
+        default = "GenesisCeremonyParameters::default_initial_stake_subsidy_distribution_amount"
+    )]
+    pub stake_subsidy_initial_distribution_amount: u64,
+
+    /// Number of distributions to occur before the distribution amount decays.
+    #[serde(default = "GenesisCeremonyParameters::default_stake_subsidy_period_length")]
+    pub stake_subsidy_period_length: u64,
+
+    /// The rate at which the distribution amount decays at the end of each
+    /// period. Expressed in basis points.
+    #[serde(default = "GenesisCeremonyParameters::default_stake_subsidy_decrease_rate")]
+    pub stake_subsidy_decrease_rate: u16,
 }
 
 impl GenesisCeremonyParameters {
     pub fn new() -> Self {
         Self {
             chain_start_timestamp_ms: Self::default_timestamp_ms(),
-
             epoch_duration_ms: Self::default_epoch_duration_ms(),
+            stake_subsidy_start_epoch: 0,
+            stake_subsidy_initial_distribution_amount:
+                Self::default_initial_stake_subsidy_distribution_amount(),
+            stake_subsidy_period_length: Self::default_stake_subsidy_period_length(),
+            stake_subsidy_decrease_rate: Self::default_stake_subsidy_decrease_rate(),
         }
     }
 
@@ -197,10 +254,110 @@ impl GenesisCeremonyParameters {
         // 24 hrs
         24 * 60 * 60 * 1000
     }
+
+    fn default_initial_stake_subsidy_distribution_amount() -> u64 {
+        // 1M SOMA
+        1_000 * SHANNONS_PER_SOMA
+    }
+
+    fn default_stake_subsidy_period_length() -> u64 {
+        // 10 distributions or epochs
+        10
+    }
+
+    fn default_stake_subsidy_decrease_rate() -> u16 {
+        // 10% in basis points
+        1000
+    }
 }
 
 impl Default for GenesisCeremonyParameters {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct TokenAllocation {
+    pub recipient_address: SomaAddress,
+    pub amount_shannons: u64,
+
+    /// Indicates if this allocation should be staked at genesis and with which validator
+    pub staked_with_validator: Option<SomaAddress>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct TokenDistributionSchedule {
+    pub stake_subsidy_fund_shannons: u64,
+    pub allocations: Vec<TokenAllocation>,
+}
+
+impl TokenDistributionSchedule {
+    pub fn validate(&self) {
+        let mut total = self.stake_subsidy_fund_shannons;
+
+        for allocation in &self.allocations {
+            total += allocation.amount_shannons;
+        }
+
+        if total != TOTAL_SUPPLY_SHANNONS {
+            panic!("TokenDistributionSchedule adds up to {total} and not expected {TOTAL_SUPPLY_SHANNONS}");
+        }
+    }
+
+    pub fn check_all_stake_operations_are_for_valid_validators<
+        I: IntoIterator<Item = SomaAddress>,
+    >(
+        &self,
+        validators: I,
+    ) {
+        use std::collections::HashMap;
+
+        let mut validators: HashMap<SomaAddress, u64> =
+            validators.into_iter().map(|a| (a, 0)).collect();
+
+        // Check that all allocations are for valid validators, while summing up all allocations
+        // for each validator
+        for allocation in &self.allocations {
+            if let Some(staked_with_validator) = &allocation.staked_with_validator {
+                *validators
+                    .get_mut(staked_with_validator)
+                    .expect("allocation must be staked with valid validator") +=
+                    allocation.amount_shannons;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenDistributionScheduleBuilder {
+    pool: u64,
+    allocations: Vec<TokenAllocation>,
+}
+
+impl TokenDistributionScheduleBuilder {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            pool: TOTAL_SUPPLY_SHANNONS,
+            allocations: vec![],
+        }
+    }
+
+    pub fn add_allocation(&mut self, allocation: TokenAllocation) {
+        self.pool = self.pool.checked_sub(allocation.amount_shannons).unwrap();
+        self.allocations.push(allocation);
+    }
+
+    pub fn build(&self) -> TokenDistributionSchedule {
+        let schedule = TokenDistributionSchedule {
+            stake_subsidy_fund_shannons: self.pool,
+            allocations: self.allocations.clone(),
+        };
+
+        schedule.validate();
+        schedule
     }
 }

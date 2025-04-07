@@ -13,13 +13,16 @@ use types::{
     base::{AuthorityName, ConciseableName, SomaAddress},
     committee::{CommitteeTrait, EpochId},
     config::{
-        genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
+        genesis_config::{
+            AccountConfig, GenesisConfig, ValidatorGenesisConfig, DEFAULT_GAS_AMOUNT,
+        },
         network_config::NetworkConfig,
-        node_config::{FullnodeConfigBuilder, ValidatorConfigBuilder},
+        node_config::{FullnodeConfigBuilder, NodeConfig, ValidatorConfigBuilder},
+        p2p_config::SeedPeer,
     },
-    config::{node_config::NodeConfig, p2p_config::SeedPeer},
     error::SomaResult,
     genesis::Genesis,
+    object::ObjectRef,
     peer_id::PeerId,
     system_state::{SystemState, SystemStateTrait},
     transaction::Transaction,
@@ -279,6 +282,19 @@ impl TestCluster {
             .with_async(|node| async { node.execute_transaction(tx).await })
             .await
     }
+
+    pub async fn get_gas_objects_owned_by_address(
+        &self,
+        address: SomaAddress,
+        limit: Option<usize>,
+    ) -> SomaResult<Vec<ObjectRef>> {
+        self.fullnode_handle
+            .soma_node
+            .with_async(|node| async {
+                node.get_gas_objects_owned_by_address(address, limit).await
+            })
+            .await
+    }
 }
 
 pub struct TestClusterBuilder {
@@ -368,6 +384,7 @@ impl TestClusterBuilder {
             .accounts
             .extend(addresses.into_iter().map(|address| AccountConfig {
                 address: Some(address),
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT, DEFAULT_GAS_AMOUNT],
             }));
         self
     }

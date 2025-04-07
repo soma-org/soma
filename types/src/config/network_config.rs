@@ -6,9 +6,10 @@ use std::{
 };
 
 use crate::{
+    base::SomaAddress,
     committee::{Committee, CommitteeWithNetworkMetadata},
     config::{node_config::NodeConfig, p2p_config::SeedPeer},
-    crypto::{get_key_pair_from_rng, SomaKeyPair},
+    crypto::{get_key_pair_from_rng, PublicKey, SomaKeyPair},
     digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
@@ -26,7 +27,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     genesis_config::{
-        AccountConfig, GenesisConfig, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
+        AccountConfig, GenesisConfig, TokenAllocation, TokenDistributionScheduleBuilder,
+        ValidatorGenesisConfig, ValidatorGenesisConfigBuilder, DEFAULT_GAS_AMOUNT,
     },
     node_config::ValidatorConfigBuilder,
 };
@@ -187,7 +189,33 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             .genesis_config
             .unwrap_or_else(GenesisConfig::for_local_testing);
 
-        let account_keys = genesis_config.generate_accounts(&mut rng).unwrap();
+        let (account_keys, allocations) = genesis_config.generate_accounts(&mut rng).unwrap();
+
+        let token_distribution_schedule = {
+            let mut builder = TokenDistributionScheduleBuilder::new();
+            for allocation in allocations {
+                builder.add_allocation(allocation);
+            }
+            // Add allocations for each validator
+            for validator in &validators {
+                let account_key: PublicKey = validator.account_key_pair.public();
+                let address = SomaAddress::from(&account_key);
+                // Give each validator some gas so they can pay for their transactions.
+                let gas_coin = TokenAllocation {
+                    recipient_address: address,
+                    amount_shannons: DEFAULT_GAS_AMOUNT,
+                    staked_with_validator: None,
+                };
+                // TODO: let stake = TokenAllocation {
+                //     recipient_address: address,
+                //     amount_shannons: validator.stake,
+                //     staked_with_validator: Some(address),
+                // };
+                builder.add_allocation(gas_coin);
+                // builder.add_allocation(stake);
+            }
+            builder.build()
+        };
 
         let now = Instant::now();
         let duration_since_unix_epoch =
@@ -243,7 +271,17 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             },
             TransactionDigest::default(),
         );
-        let objects = vec![state_object.clone()];
+
+        let mut objects = vec![state_object.clone()];
+
+        for allocation in token_distribution_schedule.allocations {
+            let coin_object = Object::new_coin(
+                allocation.amount_shannons,
+                Owner::AddressOwner(allocation.recipient_address),
+                TransactionDigest::default(),
+            );
+            objects.push(coin_object);
+        }
 
         let tx = VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
         let digest = *tx.digest();

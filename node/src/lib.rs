@@ -46,13 +46,14 @@ use tokio::{
 };
 use tracing::{error_span, info, warn, Instrument};
 use types::{
-    base::AuthorityName,
+    base::{AuthorityName, SomaAddress},
     client::Config,
     committee::Committee,
     config::node_config::{ConsensusConfig, NodeConfig},
     consensus::context::{Clock, Context},
     crypto::KeypairTraits,
     error::{SomaError, SomaResult},
+    object::ObjectRef,
     p2p::{
         active_peers::{self, ActivePeers},
         channel_manager::{ChannelManager, ChannelManagerRequest},
@@ -832,6 +833,8 @@ impl SomaNode {
             .map(|to| to.clone_authority_aggregator())
     }
 
+    // TODO: TEST CLUSTER HELPERS - MOVE THESE TO WALLET CONTEXT / RPC / SDK
+
     pub async fn execute_transaction(&self, transaction: Transaction) -> SomaResult {
         let _ = self
             .transaction_orchestrator
@@ -845,6 +848,17 @@ impl SomaNode {
             .await
             .unwrap();
         Ok(())
+    }
+
+    pub async fn get_gas_objects_owned_by_address(
+        &self,
+        address: SomaAddress,
+        limit: Option<usize>,
+    ) -> SomaResult<Vec<ObjectRef>> {
+        self.state
+            .get_object_store()
+            .get_gas_objects_owned_by_address(address, limit)
+            .map_err(|err| SomaError::Storage(err.to_string()))
     }
 
     pub fn get_config(&self) -> &NodeConfig {

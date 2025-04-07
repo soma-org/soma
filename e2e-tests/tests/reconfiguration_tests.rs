@@ -219,6 +219,11 @@ async fn do_test_reconfig_with_committee_change_stress() {
 async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNodeHandle) {
     let address = handle.with(|node| node.get_config().soma_address());
 
+    let gas_object = test_cluster
+        .get_gas_objects_owned_by_address(address, Some(1))
+        .await
+        .expect("Can't get gas object for address");
+
     let tx = handle.with(|node| {
         Transaction::from_data_and_signer(
             TransactionData::new(
@@ -229,6 +234,7 @@ async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNo
                     .unwrap(),
                 }),
                 (&node.get_config().account_key_pair.keypair().public()).into(),
+                gas_object,
             ),
             vec![node.get_config().account_key_pair.keypair()],
         )
@@ -251,6 +257,16 @@ async fn execute_add_validator_transactions(
         system_state.validators.pending_active_validators.len()
     });
 
+    let gas_object = test_cluster
+        .get_gas_objects_owned_by_address(
+            (&new_validator.account_key_pair.public()).into(),
+            Some(1),
+        )
+        .await
+        .expect("Can't get gas object for address");
+
+    info!("Gas object id {}", gas_object[0].0);
+
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
             TransactionKind::AddValidator(AddValidatorArgs {
@@ -264,6 +280,7 @@ async fn execute_add_validator_transactions(
                 primary_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
             }),
             (&new_validator.account_key_pair.public()).into(),
+            gas_object,
         ),
         vec![&new_validator.account_key_pair],
     );

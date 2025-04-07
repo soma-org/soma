@@ -1171,6 +1171,15 @@ impl ObjectStore for AuthorityStore {
     ) -> Result<Option<Object>, types::storage::storage_error::Error> {
         self.perpetual_tables.get_object_by_key(object_id, version)
     }
+
+    fn get_gas_objects_owned_by_address(
+        &self,
+        address: types::base::SomaAddress,
+        limit: Option<usize>,
+    ) -> types::storage::storage_error::Result<Vec<ObjectRef>> {
+        self.perpetual_tables
+            .get_gas_objects_owned_by_address(address, limit)
+    }
 }
 
 impl AccumulatorStore for AuthorityStore {

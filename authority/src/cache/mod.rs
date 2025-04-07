@@ -4,7 +4,7 @@ use futures::{future::BoxFuture, FutureExt};
 use tracing::debug;
 use types::{
     accumulator::AccumulatorStore,
-    base::FullObjectID,
+    base::{FullObjectID, SomaAddress},
     committee::EpochId,
     digests::{TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
@@ -469,6 +469,13 @@ pub trait ObjectCacheRead: Send + Sync {
 
     // This method is considered "private" - only used by multi_get_objects_with_more_accurate_error_return
     fn _get_live_objref(&self, object_id: ObjectID) -> SomaResult<ObjectRef>;
+
+    /// Get gas objects (coins) owned by an address, up to the specified limit
+    fn get_gas_objects_owned_by_address(
+        &self,
+        address: SomaAddress,
+        limit: Option<usize>,
+    ) -> SomaResult<Vec<ObjectRef>>;
 }
 
 // StateSyncAPI is for writing any data that was not the result of transaction execution,

@@ -42,6 +42,7 @@ use crate::{
     committee::{
         Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
     },
+    config::genesis_config::TokenDistributionSchedule,
     crypto::{self, NetworkPublicKey, ProtocolPublicKey},
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError, SomaResult},
@@ -480,6 +481,8 @@ pub struct SystemState {
 
     /// The timestamp when the current epoch started (in milliseconds)
     pub epoch_start_timestamp_ms: u64,
+    // TODO: Schedule of stake subsidies given out each epoch.
+    // stake_subsidy: StakeSubsidy,
 }
 
 impl SystemState {
@@ -498,10 +501,18 @@ impl SystemState {
         validators: Vec<Validator>,
         epoch_start_timestamp_ms: u64,
         parameters: SystemParameters,
+        // token_distribution_schedule: TokenDistributionSchedule,
     ) -> Self {
+        // let TokenDistributionSchedule {
+        //     stake_subsidy_fund_shannons,
+        //     allocations,
+        // } = token_distribution_schedule;
+
+        let validators = ValidatorSet::new(validators);
+
         Self {
             epoch: 0,
-            validators: ValidatorSet::new(validators),
+            validators,
             parameters,
             epoch_start_timestamp_ms,
         }

@@ -655,33 +655,33 @@ impl TransactionManager {
                         true
                     });
                 }
-            } else {
-                // Original handling for transactions without shared objects
-                let mut waiting_input_objects = BTreeSet::new();
-                std::mem::swap(
-                    &mut waiting_input_objects,
-                    &mut pending_cert.waiting_input_objects,
-                );
-                
-                for key in waiting_input_objects {
-                    if !object_availability[&key].unwrap() {
-                        // The input object is not yet available.
-                        info!(
-                            "input object is not yet available {} {:?}",
-                            key.id().id(),
-                            key.version()
-                        );
-                        pending_cert.waiting_input_objects.insert(key);
+            }
 
-                        assert!(
-                            inner.missing_inputs.entry(key).or_default().insert(digest),
-                            "Duplicated certificate {:?} for missing object {:?}",
-                            digest,
-                            key
-                        );
-                        let input_txns = inner.input_objects.entry(key.id()).or_default();
-                        input_txns.insert(digest, pending_cert_enqueue_time);
-                    }
+            // Common handling for all transactions, whether they have shared objects or not
+            let mut waiting_input_objects = BTreeSet::new();
+            std::mem::swap(
+                &mut waiting_input_objects,
+                &mut pending_cert.waiting_input_objects,
+            );
+
+            for key in waiting_input_objects {
+                if !object_availability[&key].unwrap() {
+                    // The input object is not yet available.
+                    info!(
+                        "input object is not yet available {} {:?}",
+                        key.id().id(),
+                        key.version()
+                    );
+                    pending_cert.waiting_input_objects.insert(key);
+
+                    assert!(
+                        inner.missing_inputs.entry(key).or_default().insert(digest),
+                        "Duplicated certificate {:?} for missing object {:?}",
+                        digest,
+                        key
+                    );
+                    let input_txns = inner.input_objects.entry(key.id()).or_default();
+                    input_txns.insert(digest, pending_cert_enqueue_time);
                 }
             }
 

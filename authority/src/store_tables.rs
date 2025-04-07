@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use types::{
     accumulator::{Accumulator, CommitIndex},
+    base::SomaAddress,
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
     error::{SomaError, SomaResult},
-    object::{LiveObject, Object, ObjectID, ObjectInner, ObjectRef, Version},
+    object::{LiveObject, Object, ObjectID, ObjectInner, ObjectRef, ObjectType, Owner, Version},
     storage::{object_store::ObjectStore, FullObjectKey, MarkerValue, ObjectKey},
     system_state::EpochStartSystemStateTrait,
     transaction::TrustedTransaction,
@@ -367,6 +368,61 @@ impl ObjectStore for AuthorityPerpetualTables {
             .transpose()
             .map_err(types::storage::storage_error::Error::custom)?
             .flatten())
+    }
+
+    fn get_gas_objects_owned_by_address(
+        &self,
+        address: SomaAddress,
+        limit: Option<usize>,
+    ) -> Result<Vec<ObjectRef>, types::storage::storage_error::Error> {
+        let mut result = Vec::new();
+
+        // Group objects by ID to find latest versions
+        let mut latest_objects: BTreeMap<ObjectID, (Version, StoreObject)> = BTreeMap::new();
+
+        // First, scan all objects to find latest versions
+        {
+            let objects_guard = self.objects.read();
+            for (key, value) in objects_guard.iter() {
+                // Check if we have a newer version of this object
+                if let Some((curr_version, _)) = latest_objects.get(&key.0) {
+                    if key.1 <= *curr_version {
+                        continue; // Skip if we already have a newer version
+                    }
+                }
+
+                latest_objects.insert(key.0, (key.1, value.clone()));
+            }
+        }
+
+        // Now filter by ownership and object type, and collect ObjectRefs
+        for (object_id, (version, store_object)) in latest_objects {
+            match store_object {
+                StoreObject::Value(object_inner) => {
+                    // Check if it's a coin owned by the target address
+                    if let Owner::AddressOwner(owner) = &object_inner.owner {
+                        if *owner == address && *object_inner.data.object_type() == ObjectType::Coin
+                        {
+                            let obj_ref = object_inner.compute_object_reference();
+                            result.push(obj_ref);
+
+                            // Apply limit if specified
+                            if let Some(lim) = limit {
+                                if result.len() >= lim {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                StoreObject::Deleted => {
+                    // Skip deleted objects
+                    continue;
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 

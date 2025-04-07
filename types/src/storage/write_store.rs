@@ -10,7 +10,7 @@ use super::{
     consensus::ConsensusStore,
     object_store::ObjectStore,
     read_store::{ReadCommitteeStore, ReadStore},
-    storage_error::Result,
+    storage_error::{self, Result},
 };
 
 pub trait WriteStore: ReadStore {
@@ -108,6 +108,14 @@ impl ObjectStore for TestP2pStore {
         object_id: &crate::object::ObjectID,
         version: crate::object::Version,
     ) -> Result<Option<crate::object::Object>> {
+        todo!()
+    }
+
+    fn get_gas_objects_owned_by_address(
+        &self,
+        address: crate::base::SomaAddress,
+        limit: Option<usize>,
+    ) -> Result<Vec<crate::object::ObjectRef>> {
         todo!()
     }
 }
