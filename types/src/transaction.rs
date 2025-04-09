@@ -90,6 +90,7 @@ pub enum TransactionKind {
     // Validator management transactions
     AddValidator(AddValidatorArgs),
     RemoveValidator(RemoveValidatorArgs),
+    // TODO: add validator metadata change, commission rate, and report/unreport txs
     // Coin and object transactions
     TransferCoin {
         coin: ObjectRef,
@@ -104,6 +105,14 @@ pub enum TransactionKind {
     TransferObjects {
         objects: Vec<ObjectRef>,
         recipient: SomaAddress,
+    },
+    // Staking txs
+    AddStake {
+        validator_address: SomaAddress,
+        amount: u64,
+    },
+    WithdrawStake {
+        staked_soma: ObjectRef,
     },
 }
 

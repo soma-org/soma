@@ -21,7 +21,7 @@ use types::{
 use types::{
     accumulator::AccumulatorStore,
     crypto::{NetworkKeyPair, ProtocolKeyPair},
-    system_state::EpochStartSystemStateTrait,
+    system_state::epoch_start::EpochStartSystemStateTrait,
 };
 use types::{committee::EpochId, config::node_config::NodeConfig};
 use types::{

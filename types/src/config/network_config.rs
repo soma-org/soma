@@ -16,7 +16,7 @@ use crate::{
     multiaddr::Multiaddr,
     object::{Object, ObjectData, ObjectType, Owner, Version},
     peer_id::PeerId,
-    system_state::{SystemParameters, SystemState, Validator},
+    system_state::{validator::Validator, SystemParameters, SystemState},
     temporary_store::TemporaryStore,
     transaction::{InputObjects, VerifiedTransaction},
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
@@ -250,6 +250,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         v.consensus_address.clone(),
                         v.network_address.clone(),
                         voting_power,
+                        10, // TODO: change default commission rate
                     )
                 })
                 .collect(),
@@ -258,6 +259,12 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 epoch_duration_ms: genesis_config.parameters.epoch_duration_ms,
                 ..Default::default()
             },
+            token_distribution_schedule.stake_subsidy_fund_shannons,
+            genesis_config
+                .parameters
+                .stake_subsidy_initial_distribution_amount,
+            genesis_config.parameters.stake_subsidy_period_length,
+            genesis_config.parameters.stake_subsidy_decrease_rate,
         );
         let state_object = Object::new(
             ObjectData::new_with_id(

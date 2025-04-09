@@ -15,7 +15,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{error, info, instrument, warn};
 use types::committee::AuthorityIndex;
 use types::consensus::commit::CommittedSubDag;
-use types::system_state::EpochStartSystemStateTrait;
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::{
     accumulator::CommitIndex,
     base::AuthorityName,

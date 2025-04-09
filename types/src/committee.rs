@@ -92,6 +92,11 @@ pub const QUORUM_THRESHOLD: VotingPower = 6_667;
 /// one honest validator has processed a message.
 pub const VALIDITY_THRESHOLD: VotingPower = 3_334;
 
+
+// Cap voting power of an individual validator at 25%.
+// TODO: determine what this should be
+pub const MAX_VOTING_POWER: u64 = 2_500;
+
 /// Represents a committee of validators for a specific epoch.
 ///
 /// The Committee structure tracks validator membership, voting power distribution,

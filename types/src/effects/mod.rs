@@ -686,6 +686,24 @@ pub enum ExecutionFailureStatus {
     CoinBalanceOverflow,
 
     //
+    // Validator / Staking errors
+    //
+    #[error("Validator not found.")]
+    ValidatorNotFound,
+
+    #[error("Staking Pool not found.")]
+    StakingPoolNotFound,
+
+    #[error("Validator cannot report oneself.")]
+    CannotReportOneself,
+
+    #[error("Report record cannot be undone if not reported.")]
+    ReportRecordNotFound,
+
+    #[error("Cannot add validator with below minimum stake requirements")]
+    StakeBelowMinimum,
+
+    //
     // Post-execution errors
     //
     /// The effects produced by the transaction exceed the maximum allowed size

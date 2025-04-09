@@ -68,7 +68,8 @@ use types::{
         write_store::WriteStore,
     },
     system_state::{
-        EpochStartSystemState, EpochStartSystemStateTrait, SystemState, SystemStateTrait,
+        epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
+        SystemState, SystemStateTrait,
     },
     transaction::{
         CertificateProof, ExecutableTransaction, Transaction, VerifiedExecutableTransaction,

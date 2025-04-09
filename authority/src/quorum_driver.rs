@@ -27,7 +27,7 @@ use tokio::{
 use tonic::async_trait;
 use tracing::{debug, error, info, instrument, trace_span, warn};
 use types::storage::committee_store::CommitteeStore;
-use types::system_state::EpochStartSystemStateTrait;
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::{
     base::AuthorityName,
     committee::{Committee, EpochId, VotingPower},

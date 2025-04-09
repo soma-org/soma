@@ -4,6 +4,7 @@ use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
 use object::ObjectExecutor;
 use prepare_gas::{calculate_and_deduct_remaining_fees, prepare_gas, GasPreparationResult};
+use staking::StakingExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use types::{
     base::SomaAddress,
@@ -26,6 +27,7 @@ mod change_epoch;
 mod coin;
 mod object;
 mod prepare_gas;
+mod staking;
 mod system;
 mod validator;
 
@@ -254,6 +256,10 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         }
 
         TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
+
+        TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => {
+            Box::new(StakingExecutor::new())
+        }
     }
 }
 

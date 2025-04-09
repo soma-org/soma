@@ -15,7 +15,7 @@ use types::{
     error::{SomaError, SomaResult},
     object::{LiveObject, Object, ObjectID, ObjectInner, ObjectRef, ObjectType, Owner, Version},
     storage::{object_store::ObjectStore, FullObjectKey, MarkerValue, ObjectKey},
-    system_state::EpochStartSystemStateTrait,
+    system_state::epoch_start::EpochStartSystemStateTrait,
     transaction::TrustedTransaction,
 };
 

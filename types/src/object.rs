@@ -35,6 +35,7 @@ use crate::{
     crypto::{default_hash, DefaultHash},
     digests::{ObjectDigest, TransactionDigest},
     error::{SomaError, SomaResult},
+    system_state::staking::StakedSoma,
 };
 use anyhow::anyhow;
 use fastcrypto::{
@@ -386,6 +387,36 @@ impl Object {
             TransactionDigest::genesis_marker(),
         )
     }
+
+    /// Create a new Object containing a StakedSoma
+    pub fn new_staked_soma_object(
+        staked_soma: StakedSoma,
+        owner: Owner,
+        previous_transaction: TransactionDigest,
+    ) -> Object {
+        // Serialize StakedSoma to bytes
+        let staked_soma_bytes = bcs::to_bytes(&staked_soma).unwrap();
+
+        // Create ObjectData
+        let data = ObjectData::new_with_id(
+            ObjectID::random(),     // Generate a random ID for the new object
+            ObjectType::StakedSoma, // Assuming you've added this to your ObjectType enum
+            Version::MIN,           // Start with minimum version
+            staked_soma_bytes,
+        );
+
+        // Create and return the Object
+        Object::new(data, owner, previous_transaction)
+    }
+
+    /// Extract StakedSoma from an Object
+    pub fn as_staked_soma(&self) -> Option<StakedSoma> {
+        if *self.data.object_type() == ObjectType::StakedSoma {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -542,6 +573,8 @@ pub enum ObjectType {
     SystemState,
     /// Represents an owned Soma Token object
     Coin,
+    /// Represents an owned Staked Soma object
+    StakedSoma,
 }
 
 /// # ObjectID

@@ -68,7 +68,7 @@ use types::{
     signature_verifier::SignatureVerifier,
     storage::{object_store::ObjectStore, InputKey},
     system_state::{
-        self, get_system_state, EpochStartSystemState, EpochStartSystemStateTrait, SystemState,
+        self, get_system_state, epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, SystemState,
         SystemStateTrait,
     },
     temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore},

@@ -52,7 +52,7 @@ use types::error::ExecutionError;
 use types::object::{Object, ObjectID, ObjectRef};
 use types::state_sync::CommitTimestamp;
 use types::storage::object_store::ObjectStore;
-use types::system_state::{EpochStartSystemStateTrait, SystemState};
+use types::system_state::{epoch_start::EpochStartSystemStateTrait, SystemState};
 use types::temporary_store::InnerTemporaryStore;
 use types::transaction::{InputObjects, SenderSignedData};
 use types::tx_outputs::{TransactionOutputs, WrittenObjects};
