@@ -3,15 +3,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct StakeSubsidy {
     /// Balance set aside for stake subsidies
-    balance: u64,
+    pub balance: u64,
     /// Number of times subsidies have been distributed
-    distribution_counter: u64,
+    pub distribution_counter: u64,
     /// Current subsidy amount per epoch
-    current_distribution_amount: u64,
+    pub current_distribution_amount: u64,
     /// Number of distributions before amount decays
-    period_length: u64,
+    pub period_length: u64,
     /// Decay rate in basis points
-    decrease_rate: u16,
+    pub decrease_rate: u16,
 }
 
 impl StakeSubsidy {

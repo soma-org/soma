@@ -65,6 +65,13 @@ pub mod staking;
 pub mod subsidy;
 pub mod validator;
 
+#[cfg(test)]
+#[path = "unit_tests/staking_pool_tests.rs"]
+mod staking_pool_tests;
+#[cfg(test)]
+#[path = "unit_tests/test_utils.rs"]
+pub mod test_utils;
+
 /// The public key type used for validator protocol keys
 ///
 /// This is a BLS12-381 public key used for validator signatures in the consensus protocol.
