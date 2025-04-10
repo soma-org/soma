@@ -1,5 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str::FromStr,
+};
 
+use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -335,41 +339,30 @@ impl ValidatorSet {
         validator_set
     }
 
-    /// # Request to add a validator
-    ///
-    /// Requests to add a validator to the active set in the next epoch.
-    ///
-    /// ## Behavior
-    /// The validator is added to the pending_active_validators list and will
-    /// become active in the next epoch when advance_epoch() is called.
-    ///
-    /// ## Arguments
-    /// * `validator` - The validator to add
-    ///
-    /// ## Returns
-    /// Ok(()) if the validator was successfully added to the pending set,
-    /// or an error if the validator is already active or pending
-    ///
-    /// ## Errors
-    /// Returns SomaError::DuplicateValidator if the validator is already
-    /// in the active or pending set
-    pub fn request_add_validator(&mut self, validator: Validator) -> ExecutionResult {
-        // assert!(
-        //     self.validator_candidates.contains(validator_address),
-        //     ENotValidatorCandidate
-        // );
-        // let wrapper = self.validator_candidates.remove(validator_address);
-        // let validator = wrapper.destroy();
-        // assert!(validator.is_preactive(), EValidatorNotCandidate);
-        // assert!(validator.total_stake_amount() >= min_joining_stake_amount, EMinJoiningStakeNotReached);
+    /// Request to add a validator (either new or previously removed)
+    pub fn request_add_validator(
+        &mut self,
+        validator: Validator,
+    ) -> Result<(), ExecutionFailureStatus> {
+        let address = validator.metadata.soma_address;
 
-        if self.active_validators.contains(&validator)
-            || self.pending_active_validators.contains(&validator)
-        {
+        // Check for an existing validator with the same address
+        if self.find_validator_with_pending_mut(address).is_some() {
             return Err(ExecutionFailureStatus::DuplicateValidator);
         }
 
+        // TODO: Check for duplicate information with other validators
+        // if self.is_duplicate_validator(&validator) {
+        //     return Err(ExecutionFailureStatus::DuplicateValidator);
+        // }
+
+        // Add the staking pool mapping
+        let new_pool_id = validator.staking_pool.id;
+        self.staking_pool_mappings.insert(new_pool_id, address);
+
+        // Add to pending validators
         self.pending_active_validators.push(validator);
+
         Ok(())
     }
 
@@ -468,12 +461,14 @@ impl ValidatorSet {
         // Distribute rewards to validators
         self.distribute_rewards(&adjusted_reward_amounts, total_rewards);
 
-        // Process pending stakes and withdrawals for each validator
-        self.process_pending_stakes_and_withdraws(new_epoch);
+        // Process pending stakes and withdrawals for active validators
+        self.process_active_validator_stakes(new_epoch);
 
-        // Process validator changes (additions and removals)
-        self.process_pending_validators(new_epoch);
-        self.process_pending_removals(validator_report_records);
+        // Process pending stakes and withdrawals for pending validators
+        // This ensures pending validators accumulate stake during epoch changes
+        self.process_pending_validator_stakes(new_epoch);
+
+        self.process_pending_removals(validator_report_records, new_epoch);
 
         // Check and process validators with low stake
         self.update_and_process_low_stake_departures(
@@ -481,6 +476,7 @@ impl ValidatorSet {
             validator_very_low_stake_threshold,
             validator_low_stake_grace_period,
             validator_report_records,
+            new_epoch,
         );
 
         // Update total stake
@@ -491,6 +487,28 @@ impl ValidatorSet {
 
         // TODO: Apply staged metadata changes
         // self.apply_staged_metadata();
+    }
+
+    /// Find a validator by address (including pending validators)
+    pub fn find_validator_with_pending_mut(
+        &mut self,
+        validator_address: SomaAddress,
+    ) -> Option<&mut Validator> {
+        // First check active validators
+        for validator in &mut self.active_validators {
+            if validator.metadata.soma_address == validator_address {
+                return Some(validator);
+            }
+        }
+
+        // Then check pending validators
+        for validator in &mut self.pending_active_validators {
+            if validator.metadata.soma_address == validator_address {
+                return Some(validator);
+            }
+        }
+
+        None
     }
 
     /// Find a validator by address
@@ -516,6 +534,13 @@ impl ValidatorSet {
     /// Check if an address is an active validator
     pub fn is_active_validator(&self, address: SomaAddress) -> bool {
         self.find_validator(address).is_some()
+    }
+
+    /// Check if an address belongs to a pending active validator
+    pub fn is_pending_validator(&self, address: SomaAddress) -> bool {
+        self.pending_active_validators
+            .iter()
+            .any(|v| v.metadata.soma_address == address)
     }
 
     /// Calculate unadjusted reward distribution without slashing
@@ -734,6 +759,7 @@ impl ValidatorSet {
         very_low_stake_threshold: u64,
         low_stake_grace_period: u64,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+        new_epoch: u64,
     ) {
         // Start from the back to avoid index issues when removing
         let mut i = self.active_validators.len();
@@ -765,28 +791,38 @@ impl ValidatorSet {
                 // If grace period exceeded, remove validator
                 if new_low_stake_period > low_stake_grace_period {
                     let validator = self.active_validators.swap_remove(i);
-                    self.process_validator_departure(validator, validator_report_records, false);
+                    self.process_validator_departure(
+                        validator,
+                        validator_report_records,
+                        new_epoch,
+                        false,
+                    );
                 }
             } else {
                 // Stake critically low - remove immediately
                 let validator = self.active_validators.swap_remove(i);
-                self.process_validator_departure(validator, validator_report_records, false);
+                self.process_validator_departure(
+                    validator,
+                    validator_report_records,
+                    new_epoch,
+                    false,
+                );
             }
         }
     }
 
-    /// Process validator departure (voluntary or forced)
+    /// Handle validator departure while maintaining staking pool
     pub fn process_validator_departure(
         &mut self,
-        mut validator: Validator,
+        validator: Validator,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+        new_epoch: u64,
         is_voluntary: bool,
     ) {
         let validator_address = validator.metadata.soma_address;
         let pool_id = validator.staking_pool.id;
 
         // Remove from mappings
-        self.staking_pool_mappings.remove(&pool_id);
         self.at_risk_validators.remove(&validator_address);
 
         // Update total stake
@@ -796,10 +832,11 @@ impl ValidatorSet {
         self.clean_report_records(validator_report_records, validator_address);
 
         // Deactivate the validator
-        validator.deactivate(0); // Epoch parameter needed
+        let mut inactive_validator = validator;
+        inactive_validator.deactivate(new_epoch);
 
-        // Move to inactive validators
-        self.inactive_validators.insert(pool_id, validator);
+        // Move to inactive validators, preserving staking pool
+        self.inactive_validators.insert(pool_id, inactive_validator);
     }
 
     /// Remove validator from report records
@@ -821,7 +858,7 @@ impl ValidatorSet {
     }
 
     /// Process pending stakes and withdrawals for all validators
-    fn process_pending_stakes_and_withdraws(&mut self, new_epoch: u64) {
+    fn process_active_validator_stakes(&mut self, new_epoch: u64) {
         for validator in &mut self.active_validators {
             // Process pending stakes and withdrawals
             validator.staking_pool.process_pending_stake_withdraw();
@@ -838,19 +875,38 @@ impl ValidatorSet {
         }
     }
 
-    /// Process validators waiting to be added to the active set
-    pub fn process_pending_validators(&mut self, new_epoch: u64) {
-        // Process each pending validator
-        while let Some(mut validator) = self.pending_active_validators.pop() {
-            // Activate the validator's staking pool
-            validator.activate(new_epoch);
+    /// Process pending stakes for pending validators
+    fn process_pending_validator_stakes(&mut self, new_epoch: u64) {
+        for validator in &mut self.pending_active_validators {
+            // Process pending stakes and withdrawals
+            validator.staking_pool.process_pending_stake_withdraw();
+            validator.staking_pool.process_pending_stake();
 
-            // Add validator to staking_pool_mappings
-            self.staking_pool_mappings
-                .insert(validator.staking_pool.id, validator.metadata.soma_address);
+            // Note: We don't update exchange rates for pending validators
+            // since they don't have active pools yet
+        }
+    }
 
-            // Add to active validators
-            self.active_validators.push(validator);
+    /// Process validators during epoch advancement
+    pub fn process_pending_validators(&mut self, new_epoch: u64, min_validator_joining_stake: u64) {
+        let mut i = 0;
+
+        // Only keep pending validators that meet minimum requirements
+        while i < self.pending_active_validators.len() {
+            let validator = &mut self.pending_active_validators[i];
+
+            // Check if validator meets minimum stake requirement
+            if validator.staking_pool.soma_balance >= min_validator_joining_stake {
+                // Activate validator's staking pool
+                validator.activate(new_epoch);
+
+                // Move to active validators
+                let validator = self.pending_active_validators.remove(i);
+                self.active_validators.push(validator);
+            } else {
+                // Keep in pending and check the next one
+                i += 1;
+            }
         }
     }
 
@@ -858,6 +914,7 @@ impl ValidatorSet {
     pub fn process_pending_removals(
         &mut self,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+        new_epoch: u64,
     ) {
         // Sort removal list in descending order to avoid index shifting issues
         // self.pending_removals.sort_by(|a, b| b.cmp(a));
@@ -873,7 +930,7 @@ impl ValidatorSet {
             self.active_validators.remove(validator_index as usize);
 
             // Process as voluntary departure
-            self.process_validator_departure(validator, validator_report_records, true);
+            self.process_validator_departure(validator, validator_report_records, new_epoch, true);
         }
     }
 }

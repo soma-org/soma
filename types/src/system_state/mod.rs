@@ -263,7 +263,6 @@ impl SystemState {
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
     ) -> ExecutionResult {
-        // TODO: ADJUST VOTING POWER HERE
         let validator = Validator::new(
             signer,
             PublicKey::from_bytes(&pubkey_bytes).unwrap(),
@@ -277,13 +276,8 @@ impl SystemState {
             Multiaddr::from_str(bcs::from_bytes(&p2p_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&primary_address).unwrap()).unwrap(),
             0,
-            10, // TODO: Change this
+            10,
         );
-
-        // Check minimum stake requirement
-        if validator.staking_pool.soma_balance < self.parameters.min_validator_joining_stake {
-            return Err(ExecutionFailureStatus::StakeBelowMinimum);
-        }
 
         // Request to add validator to the validator set
         self.validators
@@ -321,51 +315,57 @@ impl SystemState {
     pub fn request_add_stake(
         &mut self,
         signer: SomaAddress,
-        validator_address: SomaAddress,
+        address: SomaAddress,
         amount: u64,
     ) -> ExecutionResult<StakedSoma> {
-        // Find validator by address
-        let validator = self
-            .validators
-            .find_validator_mut(validator_address)
-            .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+        // TODO: make this work for validators and encoders
+        // Try to find the validator in active or pending validators
+        let validator = self.validators.find_validator_with_pending_mut(address);
 
-        // Add stake to validator
-        let staked_soma = validator.request_add_stake(amount, signer, self.epoch);
+        if let Some(validator) = validator {
+            // Found in active or pending validators
+            let staked_soma = validator.request_add_stake(amount, signer, self.epoch);
 
-        // Update staking pool mappings if needed
-        self.validators
-            .staking_pool_mappings
-            .insert(staked_soma.pool_id, validator_address);
+            // Update staking pool mappings
+            self.validators
+                .staking_pool_mappings
+                .insert(staked_soma.pool_id, address);
 
-        Ok(staked_soma)
+            Ok(staked_soma)
+        } else {
+            Err(ExecutionFailureStatus::ValidatorNotFound)
+        }
     }
 
     /// Request to withdraw stake
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma) -> ExecutionResult<u64> {
         let pool_id = staked_soma.pool_id;
 
-        // Check if pool belongs to an active validator
-        if let Some(&validator_address) = self.validators.staking_pool_mappings.get(&pool_id) {
-            // Get active validator
-            let validator = self
-                .validators
-                .find_validator_mut(validator_address)
-                .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
-
-            // Process withdrawal
-            let withdrawn_amount = validator.request_withdraw_stake(staked_soma, self.epoch);
-            Ok(withdrawn_amount)
-        } else if let Some(inactive_validator) =
-            self.validators.inactive_validators.get_mut(&pool_id)
-        {
-            // Handle withdrawal from inactive validator
+        // TODO: make this work for validators and encoders
+        // First check inactive validators since that's the most common case for withdrawal
+        // from pools that don't match active validators
+        if let Some(inactive_validator) = self.validators.inactive_validators.get_mut(&pool_id) {
+            // Process withdrawal from inactive validator
             let withdrawn_amount =
                 inactive_validator.request_withdraw_stake(staked_soma, self.epoch);
-            Ok(withdrawn_amount)
-        } else {
-            Err(ExecutionFailureStatus::StakingPoolNotFound)
+            return Ok(withdrawn_amount);
         }
+
+        // Check active and pending validators via staking pool mappings
+        if let Some(&validator_address) = self.validators.staking_pool_mappings.get(&pool_id) {
+            // Find in active or pending validators
+            if let Some(validator) = self
+                .validators
+                .find_validator_with_pending_mut(validator_address)
+            {
+                // Process withdrawal
+                let withdrawn_amount = validator.request_withdraw_stake(staked_soma, self.epoch);
+                return Ok(withdrawn_amount);
+            }
+        }
+
+        // No validator found with this pool ID
+        Err(ExecutionFailureStatus::StakingPoolNotFound)
     }
 
     /// Report a validator for misbehavior
@@ -512,6 +512,11 @@ impl SystemState {
             self.parameters.validator_very_low_stake_threshold,
             self.parameters.validator_low_stake_grace_period,
         );
+
+        // Now process pending validators AFTER processing rewards
+        // Only validators that meet minimum stake requirements will be activated
+        self.validators
+            .process_pending_validators(new_epoch, self.parameters.min_validator_joining_stake);
 
         Ok(())
     }

@@ -108,8 +108,9 @@ pub enum TransactionKind {
     },
     // Staking txs
     AddStake {
-        validator_address: SomaAddress,
-        amount: u64,
+        address: SomaAddress,
+        coin_ref: ObjectRef,
+        amount: Option<u64>, // Optional to allow staking entire coin
     },
     WithdrawStake {
         staked_soma: ObjectRef,
@@ -242,6 +243,13 @@ impl TransactionKind {
                 for object in objects {
                     input_objects.push(InputObjectKind::ImmOrOwnedObject(*object));
                 }
+            }
+            TransactionKind::AddStake { coin_ref, .. } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
+            }
+
+            TransactionKind::WithdrawStake { staked_soma } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
             }
             _ => {}
         }
