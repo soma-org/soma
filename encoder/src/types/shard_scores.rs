@@ -3,7 +3,7 @@ use std::{collections::HashSet, ops::Deref};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::{digest::Digest, signed::Signed};
+use shared::{digest::Digest, error::SharedResult, scope::Scope, signed::Signed};
 
 use super::{
     encoder_committee::{Epoch, EvaluationEncoder, InferenceEncoder},
@@ -25,7 +25,7 @@ pub(crate) trait ShardScoresAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn evaluator(&self) -> &EvaluationEncoder;
     fn signed_score_set(&self) -> Signed<ScoreSet, min_sig::BLS12381Signature>;
-    fn unique_slots(&self) -> usize;
+    fn unique_scores(&self) -> usize;
     fn inference_encoders(&self) -> Vec<InferenceEncoder>;
 }
 
@@ -60,7 +60,7 @@ impl ShardScoresAPI for ShardScoresV1 {
     fn signed_score_set(&self) -> Signed<ScoreSet, min_sig::BLS12381Signature> {
         self.signed_score_set.clone()
     }
-    fn unique_slots(&self) -> usize {
+    fn unique_scores(&self) -> usize {
         let unique_slots: &HashSet<InferenceEncoder> = &self
             .signed_score_set
             .deref()
@@ -149,4 +149,32 @@ impl ScoreAPI for ScoreV1 {
     fn rank(&self) -> u8 {
         self.rank
     }
+}
+
+pub(crate) fn verify_signed_scores(
+    signed_scores: &Signed<ShardScores, min_sig::BLS12381Signature>,
+    shard: &Shard,
+) -> SharedResult<()> {
+    if !shard.evaluation_set_contains(&signed_scores.evaluator()) {
+        return Err(shared::error::SharedError::ValidationError(
+            "sender is not in evaluation set".to_string(),
+        ));
+    }
+
+    if signed_scores.unique_scores() != shard.inference_set_size() {
+        return Err(shared::error::SharedError::ValidationError(
+            "unique slots for scores does not match shard size".to_string(),
+        ));
+    }
+    for inference_encoder in signed_scores.inference_encoders() {
+        if !shard.inference_set_contains(&inference_encoder) {
+            return Err(shared::error::SharedError::ValidationError(
+                "score slot not in inference set".to_string(),
+            ));
+        }
+    }
+
+    let _ = signed_scores.verify(Scope::ShardScores, signed_scores.evaluator().inner())?;
+
+    Ok(())
 }

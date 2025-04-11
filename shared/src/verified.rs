@@ -1,14 +1,12 @@
 use crate::{
-    crypto::keys::ProtocolKeyPair,
     digest::Digest,
     error::{SharedError, SharedResult},
-    scope::Scope,
 };
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
 use serde::Serialize;
 use std::sync::Arc;
 
-use super::{serialized::Serialized, signed::Signed};
+use super::serialized::Serialized;
 
 #[derive(Debug)]
 pub struct Verified<T: Serialize> {

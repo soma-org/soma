@@ -16,12 +16,12 @@ use crate::{
 use super::{
     context::Context,
     encoder_committee::Epoch,
-    shard::{Shard, ShardEntropy},
+    shard::{Shard, ShardEntropy, ShardRole},
 };
 
 #[derive(Clone)]
 pub(crate) enum VerificationStatus {
-    Valid(Shard),
+    Valid((ShardRole, Shard)),
     Invalid,
 }
 pub(crate) struct ShardVerifier {
@@ -60,22 +60,21 @@ impl ShardVerifier {
         &self,
         context: &Context,
         token: &ShardAuthToken,
-        iterations: u64,
-    ) -> ShardResult<(Digest<ShardAuthToken>, Shard)> {
+    ) -> ShardResult<(ShardRole, Shard)> {
         let digest =
             Digest::new(token).map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
         // check cache
         if let Some(status) = self.cache.get(&digest) {
             return match status {
-                VerificationStatus::Valid(shard) => Ok((digest, shard)),
+                VerificationStatus::Valid(shard) => Ok(shard),
                 VerificationStatus::Invalid => Err(ShardError::InvalidShardToken(
-                    "invalid shard token".to_string(),
+                    "invalid shard auth token".to_string(),
                 )),
             };
         }
         let inner_context = context.inner();
         let committees = inner_context.committees(token.epoch())?;
-        let valid_shard_result: ShardResult<Shard> = {
+        let valid_shard_result: ShardResult<(ShardRole, Shard)> = {
             // check that the finality proof is valid against the epoch's authorities
             token
                 .proof
@@ -90,7 +89,7 @@ impl ShardVerifier {
                         token.proof.block_ref(),
                         token.block_entropy.clone(),
                         token.entropy_proof.clone(),
-                        iterations,
+                        committees.vdf_iterations,
                     ),
                     CancellationToken::new(),
                 )
@@ -111,18 +110,14 @@ impl ShardVerifier {
 
             let shard = committees.encoder_committee.sample_shard(shard_entropy)?;
 
-            if !shard.contains(&committees.own_encoder_index) {
-                return Err(ShardError::InvalidShardToken(
-                    "encoder is not contained in shard".to_string(),
-                ));
-            }
-            Ok(shard)
+            let role = shard.role(inner_context.own_encoder_key().clone())?;
+            Ok((role, shard))
         };
         match &valid_shard_result {
-            Ok(shard) => {
+            Ok(role_and_shard) => {
                 self.cache
-                    .insert(digest, VerificationStatus::Valid(shard.clone()));
-                return Ok((digest, shard.to_owned()));
+                    .insert(digest, VerificationStatus::Valid(role_and_shard.clone()));
+                return Ok(role_and_shard.to_owned());
             }
             // unwrapping manually here so we can cache the invalid verification
             Err(_) => self.cache.insert(digest, VerificationStatus::Invalid),
@@ -153,7 +148,7 @@ mod tests {
             keys::{AuthorityAggregateSignature, AuthoritySignature, ProtocolKeySignature},
         },
         digest::Digest,
-        entropy::{BlockEntropy, BlockEntropyProof, EntropyAPI, EntropyVDF},
+        entropy::{EntropyAPI, EntropyVDF},
         finality_proof::{BlockClaim, FinalityProof},
         metadata::{Metadata, MetadataCommitment},
         probe::ProbeMetadata,

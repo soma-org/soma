@@ -36,15 +36,6 @@ fn build_tonic_services(out_dir: &Path) {
         )
         .method(
             tonic_build::manual::Method::builder()
-                .name("send_certified_commit")
-                .route_name("SendCertifiedCommit")
-                .input_type("crate::messaging::tonic::internal::SendCertifiedCommitRequest")
-                .output_type("crate::messaging::tonic::internal::SendCertifiedCommitResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            tonic_build::manual::Method::builder()
                 .name("send_commit_votes")
                 .route_name("SendCommitVotes")
                 .input_type("crate::messaging::tonic::internal::SendCommitVotesRequest")

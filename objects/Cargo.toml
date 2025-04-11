@@ -1,0 +1,32 @@
+[package]
+name = "objects"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde.workspace = true
+shared.workspace = true
+multiaddr.workspace = true
+async-trait.workspace = true 
+bytes.workspace = true
+tokio.workspace = true
+axum.workspace = true
+url.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+strum_macros.workspace = true
+soma-network.workspace = true
+soma-tls.workspace = true
+soma-http.workspace = true
+fastcrypto.workspace = true
+axum-server.workspace = true
+tower-http.workspace = true
+quick_cache.workspace = true
+parking_lot.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+tempdir.workspace = true

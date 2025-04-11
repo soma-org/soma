@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "shared","cli", "encoder", "soma-python", "probe", "soma-http", "soma-tls", "soma-network", "vdf"]
+members = [ "shared","cli", "encoder", "soma-python", "probe", "soma-http", "soma-tls", "soma-network", "vdf", "objects"]
 
 [workspace.lints.rust]
 unsafe_code = "warn"
@@ -66,9 +66,11 @@ pyo3-build-config = "0.23"
 numpy = "0.23"
 ndarray = { version = "0.16", features = ["serde"] }
 reqwest = { version = "0.12", default-features = false, features = [
+"stream",
   "http2",
   "json",
   "rustls-tls",
+  "zstd"
 ] }
 axum = "0.7.9"
 zstd = "0.13.2"

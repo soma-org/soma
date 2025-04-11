@@ -2,12 +2,11 @@
 mod actors;
 mod compression;
 mod core;
+mod datastore;
 mod encryption;
 mod error;
 mod intelligence;
 mod messaging;
-mod networking;
-mod storage;
 mod types;
 mod utils;
 pub use core::encoder_node::EncoderNode;

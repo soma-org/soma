@@ -53,6 +53,7 @@ impl Processor for CommitVotesProcessor {
             let (auth_token, shard, votes) = msg.input;
             let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
             let epoch = auth_token.epoch();
+            // TODO: need to ensure that a person can only vote once with a locked in digest
             let (total_finalized_slots, total_accepted_slots) = self.store.add_commit_vote(
                 epoch,
                 shard_ref,

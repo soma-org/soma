@@ -1,6 +1,5 @@
 //! `ChannelPool` stores tonic channels for re-use.
 use crate::error::{ShardError, ShardResult};
-use crate::messaging::tonic::CERTIFICATE_NAME;
 use crate::types::parameters::TonicParameters;
 use crate::utils::multiaddr::to_host_port_str;
 use quick_cache::sync::Cache;

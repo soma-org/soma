@@ -4,12 +4,12 @@
 use eyre::{eyre, Result};
 use std::{
     borrow::Cow,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 use tracing::error;
 
-pub use ::multiaddr::Error;
-pub use ::multiaddr::Protocol;
+pub use multiaddr::Error;
+pub use multiaddr::Protocol;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Multiaddr(::multiaddr::Multiaddr);
@@ -331,6 +331,58 @@ pub(crate) fn parse_ip6(address: &Multiaddr) -> Result<(SocketAddr, &'static str
     let socket_addr = SocketAddr::new(ip_addr, tcp_port);
 
     Ok((socket_addr, http_or_https))
+}
+
+pub fn to_host_port_str(addr: &Multiaddr) -> Result<String, &'static str> {
+    let mut iter = addr.iter();
+
+    match (iter.next(), iter.next()) {
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port))) => {
+            Ok(format!("{}:{}", ipaddr, port))
+        }
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(format!("{}:{}", ipaddr, port))
+        }
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port))) => {
+            Ok(format!("{}:{}", ipaddr, port))
+        }
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(format!("{}:{}", ipaddr, port))
+        }
+        (Some(Protocol::Dns(hostname)), Some(Protocol::Udp(port))) => {
+            Ok(format!("{}:{}", hostname, port))
+        }
+        (Some(Protocol::Dns(hostname)), Some(Protocol::Tcp(port))) => {
+            Ok(format!("{}:{}", hostname, port))
+        }
+
+        _ => {
+            tracing::warn!("unsupported multiaddr: '{addr}'");
+            Err("invalid address")
+        }
+    }
+}
+/// Converts multiaddress to socket address
+pub fn to_socket_addr(addr: &Multiaddr) -> Result<SocketAddr, &'static str> {
+    let mut iter = addr.iter();
+    match (iter.next(), iter.next()) {
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port))) => {
+            Ok(SocketAddr::V4(SocketAddrV4::new(ipaddr, port)))
+        }
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(SocketAddr::V4(SocketAddrV4::new(ipaddr, port)))
+        }
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port))) => {
+            Ok(SocketAddr::V6(SocketAddrV6::new(ipaddr, port, 0, 0)))
+        }
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(SocketAddr::V6(SocketAddrV6::new(ipaddr, port, 0, 0)))
+        }
+        _ => {
+            tracing::warn!("unsupported multiaddr: '{addr}'");
+            Err("invalid address")
+        }
+    }
 }
 
 #[cfg(test)]

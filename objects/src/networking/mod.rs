@@ -1,33 +1,34 @@
 pub(crate) mod http_network;
 
 use async_trait::async_trait;
-use bytes::Bytes;
+use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
-
-use crate::{
-    error::ShardResult,
-    storage::object::{ObjectPath, ObjectStorage, ServedObjectResponse},
-    types::encoder_committee::{EncoderIndex, Epoch},
-};
+use tokio::io::AsyncWrite;
 
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
     metadata::Metadata,
-    multiaddr::Multiaddr,
+};
+use soma_network::multiaddr::Multiaddr;
+
+use crate::{
+    error::ObjectResult,
+    parameters::Parameters,
+    storage::{ObjectPath, ObjectStorage},
 };
 
-// TODO: scale this with size of object?
-pub(crate) const GET_OBJECT_TIMEOUT: std::time::Duration = Duration::from_secs(60 * 2);
-
 #[async_trait]
-pub(crate) trait ObjectNetworkClient: Send + Sync + Sized + 'static {
-    async fn get_object(
+pub(crate) trait ObjectNetworkClient: Send + Sync + 'static {
+    async fn download_object<W>(
         &self,
+        writer: &mut W,
         peer: &PeerPublicKey,
         address: &Multiaddr,
         metadata: &Metadata,
         timeout: Duration,
-    ) -> ShardResult<Bytes>;
+    ) -> ObjectResult<()>
+    where
+        W: AsyncWrite + Unpin + Send;
 }
 
 #[derive(Clone)]
@@ -39,13 +40,13 @@ impl<S: ObjectStorage> ObjectNetworkService<S> {
     pub(crate) fn new(storage: Arc<S>) -> Self {
         Self { storage }
     }
-    async fn handle_get_object(
+    async fn handle_download_object(
         &self,
-        peer: &PeerPublicKey,
+        _peer: &PeerPublicKey,
         path: &ObjectPath,
-    ) -> ShardResult<ServedObjectResponse> {
-        // handle auth
-        self.storage.serve_object(path).await
+    ) -> ObjectResult<S::Reader> {
+        // perform any additional verification, rate limiting, etc.
+        self.storage.stream_object(path).await
     }
 }
 
@@ -56,7 +57,11 @@ where
     /// type alias
     type Client: ObjectNetworkClient;
 
-    fn new(peer_keypair: Arc<PeerKeyPair>) -> ShardResult<Self>;
+    fn new(
+        own_key: PeerKeyPair,
+        parameters: Arc<Parameters>,
+        allower: AllowPublicKeys,
+    ) -> ObjectResult<Self>;
     /// Returns a client
     fn client(&self) -> Arc<Self::Client>;
     /// Starts the network services

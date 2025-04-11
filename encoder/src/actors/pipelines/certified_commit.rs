@@ -1,5 +1,3 @@
-use std::{collections::HashSet, ops::Deref, sync::Arc, time::Duration};
-
 use crate::{
     actors::{
         workers::{
@@ -14,14 +12,13 @@ use crate::{
     core::slot_tracker::SlotTracker,
     error::{ShardError, ShardResult},
     messaging::EncoderInternalNetworkClient,
-    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient},
+    networking::object::ObjectNetworkClient,
     storage::{
         datastore::Store,
-        object::{filesystem::FilesystemObjectStorage, ObjectPath, ObjectStorage},
+        object::{ObjectPath, ObjectStorage},
     },
     types::{
         certified::Certified,
-        encoder_committee::EncoderIndex,
         shard::Shard,
         shard_commit::{ShardCommit, ShardCommitAPI},
         shard_verifier::ShardAuthToken,
@@ -37,6 +34,7 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 pub(crate) struct CertifiedCommitProcessor<
     E: EncoderInternalNetworkClient,

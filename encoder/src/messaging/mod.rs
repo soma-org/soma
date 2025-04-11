@@ -5,14 +5,13 @@ pub(crate) mod internal_service;
 pub(crate) mod tonic;
 
 use crate::error::ShardResult;
-/// Includes the generated protobuf/gRPC service code
-use crate::types::certified::Certified;
 use crate::types::parameters::Parameters;
 use crate::types::shard_commit::ShardCommit;
+use crate::types::shard_commit_votes::ShardCommitVotes;
 use crate::types::shard_input::ShardInput;
 use crate::types::shard_reveal::ShardReveal;
+use crate::types::shard_reveal_votes::ShardRevealVotes;
 use crate::types::shard_scores::ShardScores;
-use crate::types::shard_votes::{CommitRound, RevealRound, ShardVotes};
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
@@ -37,19 +36,12 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
         encoder: &EncoderPublicKey,
         commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
         timeout: Duration,
-    ) -> ShardResult<Bytes>;
-
-    async fn send_certified_commit(
-        &self,
-        encoder: &EncoderPublicKey,
-        certified_commit: &Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
-        timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_commit_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
+        votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
@@ -62,7 +54,7 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_reveal_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
+        votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
     async fn send_scores(
@@ -89,15 +81,6 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
         &self,
         encoder: &EncoderPublicKey,
         commit_bytes: Bytes,
-    ) -> ShardResult<
-        Serialized<
-            Signature<Signed<ShardCommit, min_sig::BLS12381Signature>, min_sig::BLS12381Signature>,
-        >,
-    >;
-    async fn handle_send_certified_commit(
-        &self,
-        encoder: &EncoderPublicKey,
-        certified_commit_bytes: Bytes,
     ) -> ShardResult<()>;
     async fn handle_send_commit_votes(
         &self,

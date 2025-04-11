@@ -1,12 +1,6 @@
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
-use shared::{
-    crypto::keys::{EncoderPublicKey, PeerPublicKey},
-    metadata::Metadata,
-    probe::ProbeMetadata,
-    signed::Signed,
-    verified::Verified,
-};
+use shared::{signed::Signed, verified::Verified};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -24,53 +18,36 @@ use crate::{
     networking::object::ObjectNetworkClient,
     storage::object::ObjectStorage,
     types::{
-        certified::Certified,
-        shard::Shard,
-        shard_commit::ShardCommit,
-        shard_input::ShardInput,
-        shard_reveal::ShardReveal,
+        shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
+        shard_input::ShardInput, shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes,
         shard_scores::ShardScores,
-        shard_verifier::ShardAuthToken,
-        shard_votes::{CommitRound, RevealRound, ShardVotes},
     },
 };
 
 #[async_trait]
 pub trait InternalDispatcher: Sync + Send + 'static {
-    async fn dispatch_certified_commit(
+    async fn dispatch_commit(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        probe_metadata: ProbeMetadata,
-        certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+        commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     async fn dispatch_commit_votes(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        votes: Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
+        votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     async fn dispatch_reveal(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        metadata: Metadata,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     async fn dispatch_reveal_votes(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        votes: Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
+        votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     async fn dispatch_scores(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
         scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
@@ -113,13 +90,10 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage>
 impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> InternalDispatcher
     for InternalPipelineDispatcher<E, O, S>
 {
-    async fn dispatch_certified_commit(
+    async fn dispatch_commit(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        probe_metadata: ProbeMetadata,
-        certified_commit: Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+        commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
         // TODO: need to create correct child cancellation token here
@@ -134,10 +108,8 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
     }
     async fn dispatch_commit_votes(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        votes: Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
+        votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
         // TODO: need to create correct child cancellation token here
@@ -149,10 +121,7 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
     }
     async fn dispatch_reveal(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        metadata: Metadata,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
@@ -165,10 +134,8 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
     }
     async fn dispatch_reveal_votes(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
-        votes: Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
+        votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         // TODO: use or remove peer
         // TODO: need to create correct child cancellation token here
@@ -180,8 +147,6 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
     }
     async fn dispatch_scores(
         &self,
-        encoder: &EncoderPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
         scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
@@ -199,8 +164,6 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
 pub trait ExternalDispatcher: Sync + Send + 'static {
     async fn dispatch_input(
         &self,
-        peer: &PeerPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
         input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
@@ -230,8 +193,6 @@ impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: Objec
 {
     async fn dispatch_input(
         &self,
-        peer: &PeerPublicKey,
-        auth_token: ShardAuthToken,
         shard: Shard,
         input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {

@@ -10,8 +10,6 @@ pub(crate) mod channel_pool;
 pub(crate) mod external;
 pub(crate) mod internal;
 
-pub(crate) const CERTIFICATE_NAME: &str = "soma";
-
 mod generated {
     include!(concat!(
         env!("OUT_DIR"),

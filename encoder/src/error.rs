@@ -13,6 +13,8 @@ use thiserror::Error;
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub(crate) enum ShardError {
+    #[error("Not a member of the shard")]
+    InvalidShardMember,
     #[error("Cache error")]
     CacheError,
     #[error("Wrong epoch")]

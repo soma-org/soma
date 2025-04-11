@@ -5,13 +5,18 @@ pub(crate) mod mem_store;
 use std::time::Duration;
 
 use fastcrypto::bls12381::min_sig;
-use shared::{checksum::Checksum, crypto::EncryptionKey, digest::Digest, signed::Signed};
+use shared::{
+    checksum::Checksum,
+    crypto::{keys::EncoderPublicKey, EncryptionKey},
+    digest::Digest,
+    signed::Signed,
+};
 
 use crate::{
     error::ShardResult,
     types::{
         certified::Certified,
-        encoder_committee::{EncoderIndex, Epoch},
+        encoder_committee::{EncoderIndex, Epoch, InferenceEncoder},
         shard::Shard,
         shard_commit::ShardCommit,
         shard_scores::{Score, ScoreSet, ShardScores},
@@ -25,8 +30,8 @@ pub(crate) trait Store: Send + Sync + 'static {
         &self,
         epoch: Epoch,
         shard_ref: Digest<Shard>,
-        slot: EncoderIndex,
-        committer: EncoderIndex,
+        inference_encoder: InferenceEncoder,
+        committer: EncoderPublicKey,
         digest: Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     fn atomic_certified_commit(
@@ -88,6 +93,13 @@ pub(crate) trait Store: Send + Sync + 'static {
         shard_ref: Digest<Shard>,
     ) -> ShardResult<Vec<EncoderIndex>>;
     fn add_scores(
+        &self,
+        epoch: Epoch,
+        shard_ref: Digest<Shard>,
+        evaluator: EncoderIndex,
+        signed_scores: Signed<ScoreSet, min_sig::BLS12381Signature>,
+    ) -> ShardResult<Vec<(EncoderIndex, Signed<ScoreSet, min_sig::BLS12381Signature>)>>;
+    fn get_commit_encryption(
         &self,
         epoch: Epoch,
         shard_ref: Digest<Shard>,

@@ -1,18 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use shared::{
-    authority_committee::AuthorityCommittee,
-    crypto::keys::{EncoderPublicKey, PeerPublicKey},
-    multiaddr::Multiaddr,
-};
+use shared::{authority_committee::AuthorityCommittee, crypto::keys::EncoderPublicKey};
 
 use crate::error::{ShardError, ShardResult};
 
-use super::{
-    encoder_committee::{Encoder, EncoderCommittee, EncoderIndex, Epoch},
-    parameters::Parameters,
-};
+use super::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex, Epoch};
 
 #[derive(Clone)]
 pub(crate) struct Context {
@@ -73,6 +66,9 @@ impl InnerContext {
         }
         Err(ShardError::WrongEpoch)
     }
+    pub(crate) fn own_encoder_key(&self) -> &EncoderPublicKey {
+        &self.own_encoder_public_key
+    }
 }
 
 #[derive(Clone)]
@@ -83,6 +79,8 @@ pub(crate) struct Committees {
     pub encoder_committee: EncoderCommittee,
     /// The services own index for each respective modality
     pub own_encoder_index: EncoderIndex,
+    // TODO: move this to a more robust protocol config
+    pub vdf_iterations: u64,
 }
 
 impl Committees {
@@ -91,13 +89,14 @@ impl Committees {
         authority_committee: AuthorityCommittee,
         encoder_committee: EncoderCommittee,
         own_encoder_index: EncoderIndex,
-        own_encoder_public_key: EncoderPublicKey,
+        vdf_iterations: u64,
     ) -> Self {
         Self {
             epoch,
             authority_committee,
             encoder_committee,
             own_encoder_index,
+            vdf_iterations,
         }
     }
 }

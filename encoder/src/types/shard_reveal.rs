@@ -1,11 +1,15 @@
 use enum_dispatch::enum_dispatch;
+use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::crypto::EncryptionKey;
-
-use super::{
-    encoder_committee::{EncoderIndex, InferenceEncoder},
-    shard_verifier::ShardAuthToken,
+use shared::{
+    crypto::EncryptionKey,
+    digest::Digest,
+    error::{SharedError, SharedResult},
+    scope::Scope,
+    signed::Signed,
 };
+
+use super::{encoder_committee::InferenceEncoder, shard::Shard, shard_verifier::ShardAuthToken};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -55,4 +59,25 @@ impl ShardRevealAPI for ShardRevealV1 {
     fn key(&self) -> &EncryptionKey {
         &self.key
     }
+}
+
+pub(crate) fn verify_signed_shard_reveal(
+    signed_shard_reveal: &Signed<ShardReveal, min_sig::BLS12381Signature>,
+    shard: &Shard,
+) -> SharedResult<()> {
+    // the reveal slot must be a member of the shard inference slot
+    // in the case of routing, the original slot is still expected to handle the reveal since this allows
+    // routing to take place without needing to reorganize all the communication of the shard
+    if !shard.inference_set_contains(&signed_shard_reveal.inference_encoder()) {
+        return Err(shared::error::SharedError::ValidationError(
+            "inference encoder is not in inference set".to_string(),
+        ));
+    }
+
+    // the reveal message must be signed by the slot
+    let _ = signed_shard_reveal.verify(
+        Scope::ShardReveal,
+        signed_shard_reveal.inference_encoder().inner(),
+    )?;
+    Ok(())
 }

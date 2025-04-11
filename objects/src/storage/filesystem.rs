@@ -1,11 +1,14 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::path::{Path, PathBuf};
-use tokio::fs;
+use tokio::{
+    fs,
+    io::{AsyncBufRead, BufReader},
+};
 
-use crate::error::{ShardError, ShardResult};
+use crate::error::{ObjectError, ObjectResult};
 
-use super::{ObjectPath, ObjectStorage, ServedObjectResponse};
+use super::{ObjectPath, ObjectStorage};
 
 #[derive(Clone)]
 pub struct FilesystemObjectStorage {
@@ -26,53 +29,60 @@ impl FilesystemObjectStorage {
 
 #[async_trait]
 impl ObjectStorage for FilesystemObjectStorage {
-    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ShardResult<()> {
+    type Reader = BufReader<fs::File>;
+
+    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ObjectResult<()> {
         let full_path = self.get_full_path(path);
 
         // Create parent directories if they don't exist
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent).await.map_err(|e| {
-                ShardError::ObjectStorage(format!("Failed to create directories: {}", e))
+                ObjectError::ObjectStorage(format!("Failed to create directories: {}", e))
             })?;
         }
 
         // Write the file contents
         fs::write(&full_path, contents)
             .await
-            .map_err(|e| ShardError::ObjectStorage(format!("Failed to write file: {}", e)))?;
+            .map_err(|e| ObjectError::ObjectStorage(format!("Failed to write file: {}", e)))?;
 
         Ok(())
     }
 
-    async fn get_object(&self, path: &ObjectPath) -> ShardResult<Bytes> {
+    async fn get_object(&self, path: &ObjectPath) -> ObjectResult<Bytes> {
         let full_path = self.get_full_path(path);
 
         // Read the file contents
         let contents = fs::read(&full_path).await.map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => ShardError::NotFound(path.path.clone()),
-            _ => ShardError::ObjectStorage(format!("Failed to read file: {}", e)),
+            std::io::ErrorKind::NotFound => ObjectError::NotFound(path.path.clone()),
+            _ => ObjectError::ObjectStorage(format!("Failed to read file: {}", e)),
         })?;
-
         Ok(Bytes::from(contents))
     }
 
-    async fn delete_object(&self, path: &ObjectPath) -> ShardResult<()> {
+    async fn delete_object(&self, path: &ObjectPath) -> ObjectResult<()> {
         let full_path = self.get_full_path(path);
 
         match fs::remove_file(&full_path).await {
             Ok(()) => Ok(()),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => Ok(()), // Consider file-not-found as success for idempotency
-                _ => Err(ShardError::ObjectStorage(format!(
+                _ => Err(ObjectError::ObjectStorage(format!(
                     "Failed to delete file: {}",
                     e
                 ))),
             },
         }
     }
-    async fn serve_object(&self, path: &ObjectPath) -> ShardResult<ServedObjectResponse> {
-        let bytes = self.get_object(path).await?;
-        Ok(ServedObjectResponse::Direct(bytes))
+    async fn stream_object(&self, path: &ObjectPath) -> ObjectResult<Self::Reader> {
+        let full_path = self.get_full_path(path);
+        let file = fs::File::open(&full_path)
+            .await
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => ObjectError::NotFound(path.path.clone()),
+                _ => ObjectError::ObjectStorage(format!("Failed to open file: {}", e)),
+            })?;
+        Ok(BufReader::new(file))
     }
 }
 
@@ -83,7 +93,7 @@ mod tests {
     use tempdir::TempDir;
 
     #[tokio::test]
-    async fn test_filesystem_blob_storage() -> ShardResult<()> {
+    async fn test_filesystem_blob_storage() -> ObjectResult<()> {
         // Create a temporary directory that will be automatically cleaned up
         let temp_dir = TempDir::new("blob_storage_test").expect("Failed to create temp dir");
 
@@ -108,7 +118,7 @@ mod tests {
 
         // Verify the object is deleted by attempting to get it
         match storage.get_object(&test_path).await {
-            Err(ShardError::NotFound(_)) => Ok(()),
+            Err(ObjectError::NotFound(_)) => Ok(()),
             _ => panic!("Expected NotFound error after deletion"),
         }
     }

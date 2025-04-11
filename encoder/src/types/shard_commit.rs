@@ -3,9 +3,19 @@ use std::ops::Deref;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, metadata::Metadata, signed::Signed};
+use shared::{
+    crypto::keys::EncoderPublicKey,
+    digest::Digest,
+    error::SharedResult,
+    metadata::{verify_metadata, Metadata},
+    scope::Scope,
+    signed::Signed,
+};
 
-use super::{encoder_committee::InferenceEncoder, shard_verifier::ShardAuthToken};
+use super::{
+    context::Committees, encoder_committee::InferenceEncoder, shard::Shard,
+    shard_verifier::ShardAuthToken,
+};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Route {
@@ -40,7 +50,7 @@ pub(crate) trait ShardCommitAPI {
     fn committer(&self) -> &EncoderPublicKey;
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>>;
     // TODO: make this a wrapped version of metadata specific for embeddings!
-    fn commit(&self) -> &Metadata;
+    fn commit_metadata(&self) -> &Metadata;
 }
 
 impl ShardCommit {
@@ -89,7 +99,58 @@ impl ShardCommitAPI for ShardCommitV1 {
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>> {
         &self.route
     }
-    fn commit(&self) -> &Metadata {
+    fn commit_metadata(&self) -> &Metadata {
         &self.commit
     }
+}
+
+pub(crate) fn verify_signed_shard_commit(
+    signed_shard_commit: &Signed<ShardCommit, min_sig::BLS12381Signature>,
+    shard: &Shard,
+) -> SharedResult<()> {
+    let auth_token_digest = Digest::new(signed_shard_commit.auth_token())?;
+    // check that inference_encoder of the commit is inside the shards inference set
+    if !shard.inference_set_contains(&signed_shard_commit.inference_encoder()) {
+        return Err(shared::error::SharedError::ValidationError(
+            "shard commit inference encoder is not in shard".to_string(),
+        ));
+    }
+    // verify the commits metadata
+    // TODO: verify the metadata is in-line with the requirement per the auth token
+    verify_metadata(
+        signed_shard_commit.commit_metadata(),
+        None,
+        None,
+        None,
+        None,
+    )?;
+
+    // If there exists a route, we need to verify it, otherwise skip
+    if let Some(signed_route) = signed_shard_commit.route() {
+        // if the route destination encoder already has a role in the shard, this should
+        // cause an error
+        if let Ok(_) = shard.role(signed_route.destination().clone()) {
+            return Err(shared::error::SharedError::ValidationError(
+                "route destination may not be a member of the shard".to_string(),
+            ));
+        }
+
+        // the digest of the auth token supplied with the commit must match the digest included in the signed
+        // route message. By forcing a signature of this digest, signed route messages cannot be replayed for different shards
+        if signed_route.auth_token_digest() != auth_token_digest {
+            return Err(shared::error::SharedError::ValidationError("s".to_string()));
+        }
+
+        // check signature of route is by the slot
+        // the original slot must sign off on the route in order to be eligible
+        let _ = signed_route.verify(
+            Scope::ShardCommitRoute,
+            signed_shard_commit.inference_encoder().inner(),
+        )?;
+    }
+
+    let _ =
+        signed_shard_commit.verify(Scope::ShardCommit, signed_shard_commit.committer().inner())?;
+
+    Ok(())
 }

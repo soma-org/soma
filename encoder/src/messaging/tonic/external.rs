@@ -3,11 +3,11 @@ use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey},
-    multiaddr::Multiaddr,
     signed::Signed,
     verified::Verified,
 };
 use soma_http::ServerHandle;
+use soma_network::multiaddr::{to_socket_addr, Multiaddr};
 use soma_tls::AllowPublicKeys;
 use std::{
     sync::Arc,
@@ -26,7 +26,6 @@ use crate::{
         EncoderExternalNetworkClient, EncoderExternalNetworkManager, EncoderExternalNetworkService,
     },
     types::{parameters::Parameters, shard_input::ShardInput},
-    utils::multiaddr::to_socket_addr,
 };
 use tracing::{info, trace, warn};
 

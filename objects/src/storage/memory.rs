@@ -1,12 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Cursor};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use parking_lot::RwLock;
+use tokio::io::BufReader;
 
-use crate::error::{ShardError, ShardResult};
+use crate::error::{ObjectError, ObjectResult};
 
-use super::{ObjectPath, ObjectStorage, ServedObjectResponse};
+use super::{ObjectPath, ObjectStorage};
 
 pub struct MemoryObjectStore {
     store: RwLock<HashMap<ObjectPath, Bytes>>,
@@ -22,24 +23,25 @@ impl MemoryObjectStore {
 
 #[async_trait]
 impl ObjectStorage for MemoryObjectStore {
-    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ShardResult<()> {
+    type Reader = BufReader<Cursor<Bytes>>;
+    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ObjectResult<()> {
         let _ = self.store.write().insert(path.clone(), contents);
         Ok(())
     }
-    async fn get_object(&self, path: &ObjectPath) -> ShardResult<Bytes> {
+    async fn get_object(&self, path: &ObjectPath) -> ObjectResult<Bytes> {
         let store = self.store.read();
         match store.get(path) {
             Some(bytes) => Ok(bytes.clone()),
-            None => Err(ShardError::ObjectStorage("object not found".to_string())),
+            None => Err(ObjectError::ObjectStorage("object not found".to_string())),
         }
     }
-    async fn delete_object(&self, path: &ObjectPath) -> ShardResult<()> {
+    async fn delete_object(&self, path: &ObjectPath) -> ObjectResult<()> {
         let _ = self.store.write().remove(path);
         Ok(())
     }
-    async fn serve_object(&self, path: &ObjectPath) -> ShardResult<ServedObjectResponse> {
+    async fn stream_object(&self, path: &ObjectPath) -> ObjectResult<Self::Reader> {
         let bytes = self.get_object(path).await?;
-        Ok(ServedObjectResponse::Direct(bytes))
+        Ok(BufReader::new(Cursor::new(bytes)))
     }
 }
 
@@ -48,7 +50,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_memory_storage() -> ShardResult<()> {
+    async fn test_memory_storage() -> ObjectResult<()> {
         let path = ObjectPath::new("test".to_string())?;
         let contents = Bytes::from("test");
         let store = MemoryObjectStore::new_for_test();

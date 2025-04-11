@@ -32,12 +32,8 @@ use crate::{
         EncoderPublicKey,
     },
     types::{
-        certified::Certified,
-        parameters::Parameters,
-        shard_commit::ShardCommit,
-        shard_reveal::ShardReveal,
-        shard_scores::ShardScores,
-        shard_votes::{CommitRound, RevealRound, ShardVotes},
+        parameters::Parameters, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
+        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
     },
     utils::multiaddr::to_socket_addr,
 };
@@ -117,33 +113,14 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
         encoder: &EncoderPublicKey,
         commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
         timeout: Duration,
-    ) -> ShardResult<Bytes> {
+    ) -> ShardResult<()> {
         let mut request = Request::new(SendCommitRequest {
             commit: commit.bytes(),
         });
         request.set_timeout(timeout);
-        let response = self
-            .get_client(encoder, timeout)
-            .await?
-            .send_commit(request)
-            .await
-            .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
-        Ok(response.into_inner().partial_signature)
-    }
-
-    async fn send_certified_commit(
-        &self,
-        encoder: &EncoderPublicKey,
-        certified_commit: &Verified<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
-        timeout: Duration,
-    ) -> ShardResult<()> {
-        let mut request = Request::new(SendCertifiedCommitRequest {
-            certified_commit: certified_commit.bytes(),
-        });
-        request.set_timeout(timeout);
         self.get_client(encoder, timeout)
             .await?
-            .send_certified_commit(request)
+            .send_commit(request)
             .await
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
@@ -152,7 +129,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_commit_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
+        votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendCommitVotesRequest {
@@ -187,7 +164,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_reveal_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardVotes<RevealRound>, min_sig::BLS12381Signature>>,
+        votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendRevealVotesRequest {
@@ -280,35 +257,12 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
         };
         let commit = request.into_inner().commit;
 
-        let partial_signature = self
-            .service
+        self.service
             .handle_send_commit(&peer, commit)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
-        Ok(Response::new(SendCommitResponse {
-            partial_signature: partial_signature.bytes(),
-        }))
-    }
-    async fn send_certified_commit(
-        &self,
-        request: Request<SendCertifiedCommitRequest>,
-    ) -> Result<Response<SendCertifiedCommitResponse>, tonic::Status> {
-        let Some(peer) = request
-            .extensions()
-            .get::<EncoderInfo>()
-            .map(|p| p.peer.clone())
-        else {
-            return Err(tonic::Status::internal("PeerInfo not found"));
-        };
-        let certified_commit = request.into_inner().certified_commit;
-
-        self.service
-            .handle_send_certified_commit(&peer, certified_commit)
-            .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
-
-        Ok(Response::new(SendCertifiedCommitResponse {}))
+        Ok(Response::new(SendCommitResponse {}))
     }
     async fn send_commit_votes(
         &self,
@@ -606,20 +560,7 @@ pub(crate) struct SendCommitRequest {
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendCommitResponse {
-    #[prost(bytes = "bytes", tag = "1")]
-    partial_signature: Bytes,
-}
-
-// ////////////////////////////////////////////////////////////////////
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendCertifiedCommitRequest {
-    #[prost(bytes = "bytes", tag = "1")]
-    certified_commit: Bytes,
-}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendCertifiedCommitResponse {}
+pub(crate) struct SendCommitResponse {}
 
 // ////////////////////////////////////////////////////////////////////
 #[derive(Clone, prost::Message)]

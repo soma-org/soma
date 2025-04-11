@@ -49,6 +49,7 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage> Processor for RevealVote
             let (auth_token, shard, votes) = msg.input;
             let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
             let epoch = shard.epoch();
+            // TODO: need to ensure that a person can only vote once with a locked in digest
             let (total_finalized_slots, total_accepted_slots) = self.store.add_reveal_vote(
                 epoch,
                 shard_ref,

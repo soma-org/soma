@@ -13,4 +13,7 @@ pin-project-lite.workspace = true
 tonic.workspace = true
 tower.workspace = true
 tracing.workspace = true
+multiaddr.workspace = true
+eyre.workspace = true
+serde.workspace = true
 

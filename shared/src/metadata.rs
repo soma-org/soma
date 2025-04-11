@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use super::digest::Digest;
 
 type SizeInBytes = usize;
-type SizeInElements = usize;
 
 /// MetadataAPI is built to at least contain the relevant queries on pieces of Metadata
 /// like their checksum, if compression was used the algorithm and uncompressed size,
@@ -195,82 +194,81 @@ impl MetadataCommitment {
 }
 
 pub fn verify_metadata(
+    metadata: &Metadata,
     expected_size: Option<usize>,
     require_compression: Option<bool>,
     require_encryption: Option<bool>,
     max_size: Option<usize>,
-) -> impl Fn(&Metadata) -> SharedResult<()> {
-    move |metadata: &Metadata| {
-        // Basic validations that always run
-        if metadata.size() == 0 {
-            return Err(SharedError::ValidationError("Size must be non-zero".into()));
-        }
-
-        // Check size if specified
-        if let Some(expected_size) = expected_size {
-            if metadata.size() != expected_size {
-                return Err(SharedError::ValidationError(format!(
-                    "Size mismatch. Expected {}, got {}",
-                    expected_size,
-                    metadata.size()
-                )));
-            }
-        }
-
-        // Check max size if specified
-        if let Some(max_size) = max_size {
-            if metadata.size() > max_size {
-                return Err(SharedError::ValidationError(format!(
-                    "Size {} exceeds maximum allowed size {}",
-                    metadata.size(),
-                    max_size
-                )));
-            }
-        }
-
-        // Check compression requirements
-        match (metadata.compression(), require_compression) {
-            (Some(compression), Some(false)) => {
-                return Err(SharedError::ValidationError(
-                    "Compression not allowed for this metadata".into(),
-                ));
-            }
-            (None, Some(true)) => {
-                return Err(SharedError::ValidationError(
-                    "Compression required but not present".into(),
-                ));
-            }
-            (Some(compression), _) => {
-                let uncompressed_size = compression.uncompressed_size();
-                if uncompressed_size == 0 {
-                    return Err(SharedError::ValidationError(
-                        "Uncompressed size must be non-zero".into(),
-                    ));
-                }
-                if metadata.size() > uncompressed_size {
-                    return Err(SharedError::ValidationError(
-                        "Compressed size cannot be larger than uncompressed size".into(),
-                    ));
-                }
-            }
-            _ => {}
-        }
-
-        // Check encryption requirements
-        match (metadata.encryption(), require_encryption) {
-            (Some(_), Some(false)) => {
-                return Err(SharedError::ValidationError(
-                    "Encryption not allowed for this metadata".into(),
-                ));
-            }
-            (None, Some(true)) => {
-                return Err(SharedError::ValidationError(
-                    "Encryption required but not present".into(),
-                ));
-            }
-            _ => {}
-        }
-
-        Ok(())
+) -> SharedResult<()> {
+    // Basic validations that always run
+    if metadata.size() == 0 {
+        return Err(SharedError::ValidationError("Size must be non-zero".into()));
     }
+
+    // Check size if specified
+    if let Some(expected_size) = expected_size {
+        if metadata.size() != expected_size {
+            return Err(SharedError::ValidationError(format!(
+                "Size mismatch. Expected {}, got {}",
+                expected_size,
+                metadata.size()
+            )));
+        }
+    }
+
+    // Check max size if specified
+    if let Some(max_size) = max_size {
+        if metadata.size() > max_size {
+            return Err(SharedError::ValidationError(format!(
+                "Size {} exceeds maximum allowed size {}",
+                metadata.size(),
+                max_size
+            )));
+        }
+    }
+
+    // Check compression requirements
+    match (metadata.compression(), require_compression) {
+        (Some(_), Some(false)) => {
+            return Err(SharedError::ValidationError(
+                "Compression not allowed for this metadata".into(),
+            ));
+        }
+        (None, Some(true)) => {
+            return Err(SharedError::ValidationError(
+                "Compression required but not present".into(),
+            ));
+        }
+        (Some(compression), _) => {
+            let uncompressed_size = compression.uncompressed_size();
+            if uncompressed_size == 0 {
+                return Err(SharedError::ValidationError(
+                    "Uncompressed size must be non-zero".into(),
+                ));
+            }
+            if metadata.size() > uncompressed_size {
+                return Err(SharedError::ValidationError(
+                    "Compressed size cannot be larger than uncompressed size".into(),
+                ));
+            }
+        }
+        _ => {}
+    }
+
+    // Check encryption requirements
+    match (metadata.encryption(), require_encryption) {
+        (Some(_), Some(false)) => {
+            return Err(SharedError::ValidationError(
+                "Encryption not allowed for this metadata".into(),
+            ));
+        }
+        (None, Some(true)) => {
+            return Err(SharedError::ValidationError(
+                "Encryption required but not present".into(),
+            ));
+        }
+        _ => {}
+    }
+
+    Ok(())
 }

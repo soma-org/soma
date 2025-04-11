@@ -1,12 +1,14 @@
 pub(crate) mod filesystem;
 pub(crate) mod memory;
 
-use crate::error::ShardResult;
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::str::FromStr;
+use tokio::io::AsyncBufRead;
 
 use shared::checksum::Checksum;
+
+use crate::error::ObjectResult;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ObjectPath {
@@ -15,7 +17,7 @@ pub(crate) struct ObjectPath {
 }
 
 impl ObjectPath {
-    pub(crate) fn new(path: String) -> ShardResult<Self> {
+    pub(crate) fn new(path: String) -> ObjectResult<Self> {
         // TODO: add path validation according to a protocol
         Ok(Self { path })
     }
@@ -32,30 +34,25 @@ impl ObjectPath {
 }
 
 impl FromStr for ObjectPath {
-    type Err = crate::error::ShardError;
+    type Err = crate::error::ObjectError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         ObjectPath::new(s.to_string())
     }
 }
 
-#[derive(Debug)]
-pub enum ServedObjectResponse {
-    Direct(Bytes),
-    Redirect(String),
-}
-
 #[async_trait]
 pub(crate) trait ObjectStorage: Send + Sync + Sized + 'static {
-    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ShardResult<()>;
-    async fn get_object(&self, path: &ObjectPath) -> ShardResult<Bytes>;
-    async fn delete_object(&self, path: &ObjectPath) -> ShardResult<()>;
-    async fn serve_object(&self, path: &ObjectPath) -> ShardResult<ServedObjectResponse>;
+    type Reader: AsyncBufRead + Send + Sync;
+    async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ObjectResult<()>;
+    async fn get_object(&self, path: &ObjectPath) -> ObjectResult<Bytes>;
+    async fn delete_object(&self, path: &ObjectPath) -> ObjectResult<()>;
+    async fn stream_object(&self, path: &ObjectPath) -> ObjectResult<Self::Reader>;
 }
 
 #[async_trait]
 pub(crate) trait ObjectSignedUrl: Send + Sync + 'static {
-    async fn get_signed_url(&self, path: &ObjectPath) -> ShardResult<String>;
+    async fn get_signed_url(&self, path: &ObjectPath) -> ObjectResult<String>;
 }
 
 #[cfg(test)]
