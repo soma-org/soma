@@ -4,6 +4,7 @@ use std::{
 };
 
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -302,7 +303,7 @@ pub struct ValidatorSet {
     pub pending_active_validators: Vec<Validator>,
 
     /// Active validators that will be removed in the next epoch
-    pub pending_removals: Vec<Validator>,
+    pub pending_removals: Vec<usize>,
 
     pub staking_pool_mappings: BTreeMap<ObjectID, SomaAddress>,
 
@@ -402,13 +403,13 @@ impl ValidatorSet {
         let validator = self
             .active_validators
             .iter()
-            .find(|v| address == v.metadata.soma_address);
+            .find_position(|v| address == v.metadata.soma_address);
 
-        if let Some(v) = validator {
-            if self.pending_removals.contains(&v) {
+        if let Some((i, _)) = validator {
+            if self.pending_removals.contains(&i) {
                 return Err(ExecutionFailureStatus::ValidatorAlreadyRemoved);
             }
-            self.pending_removals.push(v.clone());
+            self.pending_removals.push(i);
         } else {
             return Err(ExecutionFailureStatus::NotAValidator);
         }
@@ -497,9 +498,6 @@ impl ValidatorSet {
 
         // Update total stake
         self.total_stake = self.calculate_total_stake();
-
-        // Recalculate voting power
-        self.set_voting_power();
 
         // TODO: Apply staged metadata changes
         // self.apply_staged_metadata();
@@ -802,6 +800,7 @@ impl ValidatorSet {
 
             // Update remaining power
             remaining_power -= actual;
+
             i += 1;
         }
 
@@ -1005,17 +1004,11 @@ impl ValidatorSet {
         new_epoch: u64,
     ) {
         // Sort removal list in descending order to avoid index shifting issues
-        // self.pending_removals.sort_by(|a, b| b.cmp(a));
+        self.pending_removals.sort_by(|a, b| b.cmp(a));
 
         // Process each removal
-        while let Some(validator) = self.pending_removals.pop() {
-            let validator_index = self
-                .active_validators
-                .iter()
-                .position(|v| validator.metadata.soma_address == v.metadata.soma_address)
-                .map(|i| i as u64)
-                .expect("Cannot remove validator that is not in active validators");
-            self.active_validators.remove(validator_index as usize);
+        while let Some(index) = self.pending_removals.pop() {
+            let validator = self.active_validators.remove(index);
 
             // Process as voluntary departure
             self.process_validator_departure(validator, validator_report_records, new_epoch, true);

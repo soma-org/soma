@@ -407,26 +407,17 @@ pub fn advance_epoch_with_rewards(
     system_state.advance_epoch(next_epoch, reward_amount, new_timestamp, 1000)
 }
 
-/// Request to add a validator
-pub fn add_validator(
-    system_state: &mut SystemState,
-    validator_address: SomaAddress,
-    pubkey_bytes: Vec<u8>,
-    network_pubkey_bytes: Vec<u8>,
-    worker_pubkey_bytes: Vec<u8>,
-    net_address: Vec<u8>,
-    p2p_address: Vec<u8>,
-    primary_address: Vec<u8>,
-) -> ExecutionResult {
-    system_state.request_add_validator(
-        validator_address,
-        pubkey_bytes,
-        network_pubkey_bytes,
-        worker_pubkey_bytes,
-        net_address,
-        p2p_address,
-        primary_address,
-    )
+// Helper to add a validator candidate
+pub fn add_validator(system_state: &mut SystemState, address: SomaAddress) -> Validator {
+    let validator = create_validator_for_testing(address, 0);
+
+    // Add the validator to pending active validators
+    system_state
+        .validators
+        .request_add_validator(validator.clone())
+        .expect("Failed to add validator candidate");
+
+    validator
 }
 
 /// Request to remove a validator

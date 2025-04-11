@@ -66,6 +66,9 @@ pub mod subsidy;
 pub mod validator;
 
 #[cfg(test)]
+#[path = "unit_tests/delegation_tests.rs"]
+mod delegation_tests;
+#[cfg(test)]
 #[path = "unit_tests/rewards_distribution_tests.rs"]
 mod rewards_distribution_tests;
 #[cfg(test)]
@@ -224,7 +227,11 @@ impl SystemState {
             stake_subsidy_decrease_rate,
         );
 
-        let validators = ValidatorSet::new(validators);
+        let mut validators = ValidatorSet::new(validators);
+
+        for validator in &mut validators.active_validators {
+            validator.activate(0);
+        }
 
         Self {
             epoch: 0,
@@ -358,8 +365,10 @@ impl SystemState {
         // from pools that don't match active validators
         if let Some(inactive_validator) = self.validators.inactive_validators.get_mut(&pool_id) {
             // Process withdrawal from inactive validator
+
             let withdrawn_amount =
                 inactive_validator.request_withdraw_stake(staked_soma, self.epoch);
+
             return Ok(withdrawn_amount);
         }
 
@@ -527,6 +536,10 @@ impl SystemState {
         // Only validators that meet minimum stake requirements will be activated
         self.validators
             .process_pending_validators(new_epoch, self.parameters.min_validator_joining_stake);
+
+        // Finally readjust voting power after new validators are added
+        // Recalculate voting power
+        self.validators.set_voting_power();
 
         Ok(rewards)
     }

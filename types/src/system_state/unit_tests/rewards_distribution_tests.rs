@@ -671,11 +671,6 @@ mod rewards_distribution_tests {
         let mut validator =
             test_utils::create_validator_for_testing(addr, init_stake_amount * SHANNONS_PER_SOMA);
 
-        // For these tests, activate the validator immediately
-        if init_stake_amount > 0 {
-            validator.staking_pool.activation_epoch = Some(0);
-        }
-
         validator
     }
 
