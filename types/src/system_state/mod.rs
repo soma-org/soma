@@ -66,8 +66,8 @@ pub mod subsidy;
 pub mod validator;
 
 #[cfg(test)]
-#[path = "unit_tests/staking_pool_tests.rs"]
-mod staking_pool_tests;
+#[path = "unit_tests/rewards_distribution_tests.rs"]
+mod rewards_distribution_tests;
 #[cfg(test)]
 #[path = "unit_tests/test_utils.rs"]
 pub mod test_utils;
@@ -330,6 +330,11 @@ impl SystemState {
         let validator = self.validators.find_validator_with_pending_mut(address);
 
         if let Some(validator) = validator {
+            if amount == 0 {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: "Stake amount cannot be 0!".to_string(),
+                });
+            }
             // Found in active or pending validators
             let staked_soma = validator.request_add_stake(amount, signer, self.epoch);
 
@@ -480,9 +485,10 @@ impl SystemState {
     pub fn advance_epoch(
         &mut self,
         new_epoch: u64,
-        // epoch_total_transaction_fees: u64,
+        epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
-    ) -> ExecutionResult<()> {
+        reward_slashing_rate: u64,
+    ) -> ExecutionResult<HashMap<SomaAddress, StakedSoma>> {
         // Verify we're advancing to the correct epoch
         if new_epoch != self.epoch + 1 {
             return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);
@@ -492,11 +498,8 @@ impl SystemState {
         let prev_epoch_start_timestamp = self.epoch_start_timestamp_ms;
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
 
-        // TODO: Fixed reward slashing rate at 50%
-        let reward_slashing_rate: u64 = 5000; // 50% in basis points
-
         // Calculate stake subsidy if appropriate
-        let mut total_rewards = 0; // TODO: epoch_total_transaction_fees;
+        let mut total_rewards = epoch_total_transaction_fees;
         if self.epoch >= 0 // TODO: self.parameters.stake_subsidy_start_epoch
             && epoch_start_timestamp_ms
                 >= prev_epoch_start_timestamp + self.parameters.epoch_duration_ms
@@ -510,7 +513,7 @@ impl SystemState {
         self.epoch = new_epoch;
 
         // Process validator set epoch advancement
-        self.validators.advance_epoch(
+        let rewards = self.validators.advance_epoch(
             new_epoch,
             &mut total_rewards,
             reward_slashing_rate,
@@ -525,7 +528,7 @@ impl SystemState {
         self.validators
             .process_pending_validators(new_epoch, self.parameters.min_validator_joining_stake);
 
-        Ok(())
+        Ok(rewards)
     }
 }
 

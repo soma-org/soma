@@ -3,6 +3,7 @@ use types::{
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError},
+    object::{Object, Owner},
     system_state::SystemState,
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
@@ -49,15 +50,27 @@ impl TransactionExecutor for ChangeEpochExecutor {
             })?;
 
         // Process the transaction
-        let result = match kind {
+        let validator_rewards = match kind {
             TransactionKind::ChangeEpoch(change_epoch) => {
-                state.advance_epoch(change_epoch.epoch, change_epoch.epoch_start_timestamp_ms)
+                // TODO: Pass in cumulative epoch transaction fees to split rewards
+                // TODO: Fixed reward slashing rate at 50%
+                let reward_slashing_rate: u64 = 5000; // 50% in basis points
+                state.advance_epoch(
+                    change_epoch.epoch,
+                    0,
+                    change_epoch.epoch_start_timestamp_ms,
+                    reward_slashing_rate,
+                )
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
-        };
+        }?;
 
-        // Early return on error
-        result?;
+        for (validator, reward) in validator_rewards {
+            // Create StakedSoma object
+            let staked_soma_object =
+                Object::new_staked_soma_object(reward, Owner::AddressOwner(validator), tx_digest);
+            store.create_object(staked_soma_object);
+        }
 
         // Update state object with new state
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {

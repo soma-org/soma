@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -195,17 +195,6 @@ impl Validator {
         withdrawn_amount
     }
 
-    /// Add validator's own reward (commission)
-    pub fn deposit_validator_reward(&mut self, amount: u64) {
-        if amount == 0 {
-            return;
-        }
-
-        // Add to validator's stake
-        self.next_epoch_stake += amount;
-        self.staking_pool.soma_balance += amount;
-    }
-
     /// Add rewards to staking pool for delegation rewards
     pub fn deposit_staker_rewards(&mut self, amount: u64) {
         if amount == 0 {
@@ -213,6 +202,7 @@ impl Validator {
         }
 
         // Credit rewards to staking pool for auto-compounding
+        self.next_epoch_stake += amount;
         self.staking_pool.deposit_rewards(amount);
     }
 
@@ -257,6 +247,29 @@ impl Validator {
 
         // Set deactivation epoch
         self.staking_pool.deactivation_epoch = Some(deactivation_epoch);
+    }
+
+    fn adjust_commission_rate(&mut self) {
+        self.commission_rate = self.next_epoch_commission_rate;
+    }
+}
+
+#[cfg(test)]
+impl Validator {
+    /// Get the pool token exchange rate at a specific epoch
+    pub fn pool_token_exchange_rate_at_epoch(&self, epoch: u64) -> PoolTokenExchangeRate {
+        self.staking_pool.pool_token_exchange_rate_at_epoch(epoch)
+    }
+
+    /// Calculate rewards for this validator's initial stake (self-stake)
+    pub fn calculate_rewards(
+        &self,
+        initial_stake: u64,
+        stake_activation_epoch: u64,
+        current_epoch: u64,
+    ) -> u64 {
+        self.staking_pool
+            .calculate_rewards(initial_stake, stake_activation_epoch, current_epoch)
     }
 }
 
@@ -424,7 +437,7 @@ impl ValidatorSet {
         validator_low_stake_threshold: u64,
         validator_very_low_stake_threshold: u64,
         validator_low_stake_grace_period: u64,
-    ) {
+    ) -> HashMap<SomaAddress, StakedSoma> {
         // Calculate total voting power
         let total_voting_power = self.active_validators.iter().map(|v| v.voting_power).sum();
 
@@ -459,7 +472,10 @@ impl ValidatorSet {
         );
 
         // Distribute rewards to validators
-        self.distribute_rewards(&adjusted_reward_amounts, total_rewards);
+        let validator_rewards =
+            self.distribute_rewards(&adjusted_reward_amounts, total_rewards, new_epoch);
+
+        self.adjust_commission_rates();
 
         // Process pending stakes and withdrawals for active validators
         self.process_active_validator_stakes(new_epoch);
@@ -487,6 +503,8 @@ impl ValidatorSet {
 
         // TODO: Apply staged metadata changes
         // self.apply_staged_metadata();
+
+        return validator_rewards;
     }
 
     /// Find a validator by address (including pending validators)
@@ -671,9 +689,15 @@ impl ValidatorSet {
     }
 
     /// Distribute rewards to validators and their stakers
-    pub fn distribute_rewards(&mut self, adjusted_rewards: &[u64], total_rewards: &mut u64) {
+    pub fn distribute_rewards(
+        &mut self,
+        adjusted_rewards: &[u64],
+        total_rewards: &mut u64,
+        new_epoch: u64,
+    ) -> HashMap<SomaAddress, StakedSoma> {
         assert!(!self.active_validators.is_empty(), "Validator set empty");
 
+        let mut rewards = HashMap::new();
         let mut distributed_total = 0;
 
         for (i, validator) in self.active_validators.iter_mut().enumerate() {
@@ -688,7 +712,15 @@ impl ValidatorSet {
             let staker_reward = reward_amount - validator_commission;
 
             // Apply rewards
-            validator.deposit_validator_reward(validator_commission);
+            if validator_commission > 0 {
+                let reward = validator.request_add_stake(
+                    validator_commission,
+                    validator.metadata.soma_address,
+                    new_epoch - 1,
+                );
+                rewards.insert(validator.metadata.soma_address, reward);
+            }
+
             validator.deposit_staker_rewards(staker_reward);
 
             distributed_total += reward_amount;
@@ -696,6 +728,7 @@ impl ValidatorSet {
 
         // Deduct distributed rewards from total
         *total_rewards = total_rewards.saturating_sub(distributed_total);
+        return rewards;
     }
 
     /// Calculate total stake across all validators
@@ -706,6 +739,13 @@ impl ValidatorSet {
             .sum()
     }
 
+    /// Process the pending stake changes for each validator.
+    fn adjust_commission_rates(&mut self) {
+        self.active_validators
+            .iter_mut()
+            .for_each(|validator| validator.adjust_commission_rate());
+    }
+
     /// Update validator voting power based on stake
     pub fn set_voting_power(&mut self) {
         let total_stake = self.calculate_total_stake();
@@ -713,41 +753,89 @@ impl ValidatorSet {
             return;
         }
 
-        // First pass: calculate uncapped voting power
+        // Calculate dynamic threshold
+        // Ensure threshold is at least high enough to distribute all power
+        let validator_count = self.active_validators.len();
+        let min_threshold = if validator_count > 0 {
+            (TOTAL_VOTING_POWER + validator_count as u64 - 1) / validator_count as u64
+        // divide_and_round_up
+        } else {
+            TOTAL_VOTING_POWER
+        };
+        let threshold = std::cmp::min(
+            TOTAL_VOTING_POWER,
+            std::cmp::max(MAX_VOTING_POWER, min_threshold),
+        );
+
+        // Sort validators by stake in descending order for consistent processing
+        self.active_validators.sort_by(|a, b| {
+            b.staking_pool
+                .soma_balance
+                .cmp(&a.staking_pool.soma_balance)
+        });
+
+        // First pass: calculate capped voting power based on stake
         let mut total_power = 0;
         for validator in &mut self.active_validators {
             let stake_fraction = (validator.staking_pool.soma_balance as u128)
                 * (TOTAL_VOTING_POWER as u128)
                 / (total_stake as u128);
-
-            // Apply cap to individual voting power
-            validator.voting_power = std::cmp::min(stake_fraction as u64, MAX_VOTING_POWER);
+            validator.voting_power = std::cmp::min(stake_fraction as u64, threshold);
             total_power += validator.voting_power;
         }
 
-        // Second pass: distribute remaining power if needed
-        let remaining_power = TOTAL_VOTING_POWER.saturating_sub(total_power);
-        if remaining_power > 0 {
-            // Sort validators by stake for fair distribution
-            self.active_validators.sort_by(|a, b| {
-                b.staking_pool
-                    .soma_balance
-                    .cmp(&a.staking_pool.soma_balance)
-            });
+        // Second pass: distribute remaining power proportionally
+        let mut remaining_power = TOTAL_VOTING_POWER.saturating_sub(total_power);
+        let mut i = 0;
+        while i < self.active_validators.len() && remaining_power > 0 {
+            // Calculate planned distribution (evenly among remaining validators)
+            let validators_left = self.active_validators.len() - i;
+            let planned = (remaining_power + validators_left as u64 - 1) / validators_left as u64; // divide_and_round_up
 
-            // Distribute remaining power to validators not at cap
-            let mut i = 0;
-            let mut remaining = remaining_power;
-            while remaining > 0 && i < self.active_validators.len() {
-                let validator = &mut self.active_validators[i];
+            // Target power capped by threshold
+            let validator = &mut self.active_validators[i];
+            let target = std::cmp::min(threshold, validator.voting_power + planned);
 
-                if validator.voting_power < MAX_VOTING_POWER {
-                    let share = std::cmp::min(remaining, MAX_VOTING_POWER - validator.voting_power);
-                    validator.voting_power += share;
-                    remaining -= share;
+            // Actual power to distribute to this validator
+            let actual = std::cmp::min(remaining_power, target - validator.voting_power);
+            validator.voting_power += actual;
+
+            // Update remaining power
+            remaining_power -= actual;
+            i += 1;
+        }
+
+        // Verify all power was distributed
+        assert!(
+            remaining_power == 0,
+            "Failed to distribute all voting power"
+        );
+
+        // Verify relative power ordering respects stake ordering
+        self.verify_voting_power_ordering();
+    }
+
+    // Add this helper function to verify relative power ordering
+    fn verify_voting_power_ordering(&self) {
+        for i in 0..self.active_validators.len() {
+            for j in i + 1..self.active_validators.len() {
+                let stake_i = self.active_validators[i].staking_pool.soma_balance;
+                let stake_j = self.active_validators[j].staking_pool.soma_balance;
+                let power_i = self.active_validators[i].voting_power;
+                let power_j = self.active_validators[j].voting_power;
+
+                if stake_i > stake_j {
+                    assert!(
+                        power_i >= power_j,
+                        "Voting power order mismatch with stake order"
+                    );
                 }
-
-                i += 1;
+                if stake_i < stake_j {
+                    assert!(
+                        power_i <= power_j,
+                        "Voting power order mismatch with stake order"
+                    );
+                }
             }
         }
     }

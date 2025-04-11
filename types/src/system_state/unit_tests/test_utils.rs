@@ -19,10 +19,282 @@ use fastcrypto::{
 };
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use std::str::FromStr;
+use std::{
+    collections::{BTreeMap, HashMap},
+    str::FromStr,
+};
+use tracing_subscriber::fmt::init;
 
 // Constants for testing
 pub const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
+
+#[cfg(test)]
+#[derive(Clone)]
+pub struct ValidatorRewards {
+    // Initial stake amounts for each validator
+    initial_stakes: BTreeMap<SomaAddress, u64>,
+
+    // Commission rewards for validators per epoch
+    // First key is validator address, second key is epoch, value is StakedSoma
+    commission_rewards: BTreeMap<SomaAddress, BTreeMap<u64, StakedSoma>>,
+}
+
+#[cfg(test)]
+impl ValidatorRewards {
+    /// Create a new ValidatorRewards tracker
+    pub fn new(validators: &[Validator]) -> Self {
+        let mut initial_stakes = BTreeMap::new();
+        for validator in validators {
+            initial_stakes.insert(
+                validator.metadata.soma_address,
+                validator.staking_pool.soma_balance,
+            );
+        }
+
+        Self {
+            initial_stakes,
+            commission_rewards: BTreeMap::new(),
+        }
+    }
+
+    /// Get the initial stake for a validator
+    pub fn get_initial_stake(&self, validator_addr: SomaAddress) -> u64 {
+        *self.initial_stakes.get(&validator_addr).unwrap_or(&0)
+    }
+
+    /// Add commission rewards for an epoch
+    pub fn add_commission_rewards(
+        &mut self,
+        epoch: u64,
+        rewards: HashMap<SomaAddress, StakedSoma>,
+    ) {
+        for (addr, staked_soma) in rewards {
+            self.commission_rewards
+                .entry(addr)
+                .or_insert_with(BTreeMap::new)
+                .insert(epoch, staked_soma);
+        }
+    }
+
+    /// Calculate a validator's self-stake including initial stake rewards and commission rewards
+    pub fn calculate_self_stake_with_rewards(
+        &self,
+        validator: &Validator,
+        current_epoch: u64,
+    ) -> u64 {
+        let addr = validator.metadata.soma_address;
+        let initial_stake = self.get_initial_stake(addr);
+
+        // Calculate rewards for initial stake
+        let mut self_stake = validator.calculate_rewards(
+            initial_stake,
+            0, // Initial stake is active from epoch 0
+            current_epoch,
+        );
+
+        // Add commission rewards
+        if let Some(rewards_by_epoch) = self.commission_rewards.get(&addr) {
+            for (&reward_epoch, staked_soma) in rewards_by_epoch {
+                if reward_epoch <= current_epoch {
+                    // Calculate rewards for this commission reward
+                    let reward_with_growth = validator.staking_pool.calculate_rewards(
+                        staked_soma.principal,
+                        staked_soma.stake_activation_epoch,
+                        current_epoch,
+                    );
+                    self_stake += reward_with_growth;
+                }
+            }
+        }
+
+        self_stake
+    }
+}
+
+// Helper function to request to add stake to a validator
+pub fn stake_with(
+    system_state: &mut SystemState,
+    staker: SomaAddress,
+    validator: SomaAddress,
+    amount: u64,
+) -> StakedSoma {
+    system_state
+        .request_add_stake(staker, validator, amount * SHANNONS_PER_SOMA)
+        .expect("Failed to add stake")
+}
+
+// Helper function to request to withdraw stake
+pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSoma) -> u64 {
+    system_state
+        .request_withdraw_stake(staked_soma)
+        .expect("Failed to withdraw stake")
+}
+
+// Helper function to distribute rewards and advance epoch
+pub fn advance_epoch_with_reward_amounts(
+    system_state: &mut SystemState,
+    reward_amount: u64,
+    validator_stakes: &mut ValidatorRewards,
+) {
+    // Calculate next epoch
+    let next_epoch = system_state.epoch + 1;
+
+    // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
+    let new_timestamp =
+        system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
+
+    // Advance the epoch
+    let rewards = system_state
+        .advance_epoch(
+            next_epoch,
+            reward_amount * SHANNONS_PER_SOMA,
+            new_timestamp,
+            1000,
+        )
+        .expect("Failed to advance epoch");
+
+    validator_stakes.add_commission_rewards(next_epoch, rewards);
+}
+
+// Helper function to advance epoch with reward amounts and slashing rates
+pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
+    system_state: &mut SystemState,
+    reward_amount: u64,
+    reward_slashing_rate: u64,
+    validator_stakes: &mut ValidatorRewards,
+) {
+    // Calculate next epoch
+    let next_epoch = system_state.epoch + 1;
+
+    // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
+    let new_timestamp =
+        system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
+
+    // Advance the epoch
+    let rewards = system_state
+        .advance_epoch(
+            next_epoch,
+            reward_amount * SHANNONS_PER_SOMA,
+            new_timestamp,
+            reward_slashing_rate,
+        )
+        .expect("Failed to advance epoch");
+
+    validator_stakes.add_commission_rewards(next_epoch, rewards);
+}
+
+// Helper to assert validator total stake amounts
+pub fn assert_validator_total_stake_amounts(
+    system_state: &SystemState,
+    validator_addrs: Vec<SomaAddress>,
+    expected_amounts: Vec<u64>,
+) {
+    assert_eq!(
+        validator_addrs.len(),
+        expected_amounts.len(),
+        "Address and amount arrays must be the same length"
+    );
+
+    for (i, addr) in validator_addrs.iter().enumerate() {
+        let validator = system_state
+            .validators
+            .active_validators
+            .iter()
+            .find(|v| v.metadata.soma_address == *addr)
+            .expect("Validator not found");
+
+        let actual_amount = validator.staking_pool.soma_balance;
+        let expected_amount = expected_amounts[i];
+
+        assert_eq!(
+            actual_amount, expected_amount,
+            "Validator {} expected stake {}, but got {}",
+            addr, expected_amount, actual_amount
+        );
+    }
+}
+
+// Helper to assert validator self stake amounts (principal + rewards)
+pub fn assert_validator_self_stake_amounts(
+    system_state: &SystemState,
+    validator_addrs: Vec<SomaAddress>,
+    expected_amounts: Vec<u64>,
+    validator_stakes: &ValidatorRewards,
+) {
+    assert_eq!(
+        validator_addrs.len(),
+        expected_amounts.len(),
+        "Address and amount arrays must be the same length"
+    );
+
+    for (i, addr) in validator_addrs.iter().enumerate() {
+        let validator = system_state
+            .validators
+            .active_validators
+            .iter()
+            .find(|v| v.metadata.soma_address == *addr)
+            .expect("Validator not found");
+
+        // Calculate self-stake with rewards
+
+        let self_stake_with_rewards =
+            validator_stakes.calculate_self_stake_with_rewards(validator, system_state.epoch);
+
+        let expected_amount = expected_amounts[i];
+
+        assert_eq!(
+            self_stake_with_rewards, expected_amount,
+            "Validator {} expected self-stake {}, but got {}",
+            addr, expected_amount, self_stake_with_rewards
+        );
+    }
+}
+
+// Helper to assert validator non-self stake amounts (delegated stake + rewards)
+pub fn assert_validator_non_self_stake_amounts(
+    system_state: &SystemState,
+    validator_addrs: Vec<SomaAddress>,
+    expected_amounts: Vec<u64>,
+    validator_stakes: &ValidatorRewards,
+) {
+    assert_eq!(
+        validator_addrs.len(),
+        expected_amounts.len(),
+        "Address and amount arrays must be the same length"
+    );
+
+    for (i, addr) in validator_addrs.iter().enumerate() {
+        let validator = system_state
+            .validators
+            .active_validators
+            .iter()
+            .find(|v| v.metadata.soma_address == *addr)
+            .expect("Validator not found");
+
+        // Get self-stake
+        let self_stake_with_rewards =
+            validator_stakes.calculate_self_stake_with_rewards(validator, system_state.epoch);
+
+        // Non-self stake is total stake minus self stake with rewards
+        let non_self_stake = validator.staking_pool.soma_balance - self_stake_with_rewards;
+
+        let expected_amount = expected_amounts[i];
+
+        assert_eq!(
+            non_self_stake, expected_amount,
+            "Validator {} expected non-self stake {}, but got {}",
+            addr, expected_amount, non_self_stake
+        );
+    }
+}
+
+// Helper to get total SUI balance for a staker (this would be simpler in a real test environment)
+pub fn total_soma_balance(
+    staker_withdrawals: &BTreeMap<SomaAddress, u64>,
+    staker: SomaAddress,
+) -> u64 {
+    *staker_withdrawals.get(&staker).unwrap_or(&0)
+}
 
 /// Create a test validator with specified address and stake amount
 pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -> Validator {
@@ -42,9 +314,6 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
     let p2p_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8081").unwrap();
     let primary_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8082").unwrap();
 
-    // Commission rate (10% in basis points)
-    let commission_rate = 1000;
-
     // Create validator
     let mut validator = Validator::new(
         addr,
@@ -55,10 +324,11 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
         p2p_address,
         primary_address,
         0, // Initial voting power is 0, will be set later
-        commission_rate,
+        0,
     );
 
     // Initialize staking pool with stake
+    validator.next_epoch_stake = init_stake_amount;
     validator.staking_pool.soma_balance = init_stake_amount;
     validator.staking_pool.pool_token_balance = init_stake_amount;
 
@@ -81,7 +351,7 @@ pub fn create_validators_with_stakes(stakes: Vec<u64>) -> Vec<Validator> {
 /// Create a test system state with specified validators and subsidy parameters
 pub fn create_test_system_state(
     validators: Vec<Validator>,
-    sui_supply_amount: u64,
+    supply_amount: u64,
     stake_subsidy_initial_amount: u64,
     stake_subsidy_period_length: u64,
     stake_subsidy_decrease_rate: u16,
@@ -97,7 +367,7 @@ pub fn create_test_system_state(
 
     // Create system state
     let epoch_start_timestamp_ms = 1000;
-    let stake_subsidy_fund = sui_supply_amount * SHANNONS_PER_SOMA;
+    let stake_subsidy_fund = supply_amount * SHANNONS_PER_SOMA;
 
     SystemState::create(
         validators,
@@ -124,9 +394,8 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
 /// Advance epoch with rewards
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
-    storage_charge: u64,
-    computation_charge: u64,
-) -> ExecutionResult<()> {
+    reward_amount: u64,
+) -> ExecutionResult<HashMap<SomaAddress, StakedSoma>> {
     // Calculate next epoch
     let next_epoch = system_state.epoch + 1;
 
@@ -135,22 +404,7 @@ pub fn advance_epoch_with_rewards(
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
     // Advance the epoch
-    system_state.advance_epoch(next_epoch, new_timestamp)
-}
-
-/// Request to add stake to a validator
-pub fn stake_with(
-    system_state: &mut SystemState,
-    staker: SomaAddress,
-    validator: SomaAddress,
-    amount: u64,
-) -> ExecutionResult<StakedSoma> {
-    system_state.request_add_stake(staker, validator, amount * SHANNONS_PER_SOMA)
-}
-
-/// Request to withdraw stake
-pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSoma) -> ExecutionResult<u64> {
-    system_state.request_withdraw_stake(staked_soma)
+    system_state.advance_epoch(next_epoch, reward_amount, new_timestamp, 1000)
 }
 
 /// Request to add a validator
@@ -208,75 +462,4 @@ pub fn stake_plus_current_rewards_for_validator(
         }
     }
     None
-}
-
-/// Assert that validators have the expected self-stake amounts
-pub fn assert_validator_self_stake_amounts(
-    system_state: &SystemState,
-    validator_addrs: Vec<SomaAddress>,
-    stake_amounts: Vec<u64>,
-) {
-    assert_eq!(
-        validator_addrs.len(),
-        stake_amounts.len(),
-        "Address and amount arrays must have the same length"
-    );
-
-    for (i, addr) in validator_addrs.iter().enumerate() {
-        let expected_amount = stake_amounts[i] * SHANNONS_PER_SOMA;
-        let actual_amount = stake_plus_current_rewards_for_validator(system_state, *addr)
-            .expect("Validator not found");
-
-        assert_eq!(
-            actual_amount, expected_amount,
-            "Validator {} expected stake {} but got {}",
-            addr, expected_amount, actual_amount
-        );
-    }
-}
-
-/// Assert that validators have the expected total stake amounts
-pub fn assert_validator_total_stake_amounts(
-    system_state: &SystemState,
-    validator_addrs: Vec<SomaAddress>,
-    stake_amounts: Vec<u64>,
-) {
-    assert_eq!(
-        validator_addrs.len(),
-        stake_amounts.len(),
-        "Address and amount arrays must have the same length"
-    );
-
-    for (i, addr) in validator_addrs.iter().enumerate() {
-        let expected_amount = stake_amounts[i] * SHANNONS_PER_SOMA;
-        let actual_amount =
-            validator_stake_amount(system_state, *addr).expect("Validator not found");
-
-        assert_eq!(
-            actual_amount, expected_amount,
-            "Validator {} expected stake {} but got {}",
-            addr, expected_amount, actual_amount
-        );
-    }
-}
-
-/// Distribute rewards and advance epoch (similar to Move's distribute_rewards_and_advance_epoch)
-pub fn distribute_rewards_and_advance_epoch(
-    system_state: &mut SystemState,
-    reward_amount: u64,
-) -> u64 {
-    // Calculate next epoch
-    let next_epoch = system_state.epoch + 1;
-
-    // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
-    let new_timestamp =
-        system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
-
-    // Advance the epoch
-    system_state
-        .advance_epoch(next_epoch, new_timestamp)
-        .unwrap();
-
-    // Return new epoch number
-    system_state.epoch
 }

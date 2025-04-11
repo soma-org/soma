@@ -291,6 +291,64 @@ impl StakingPool {
     }
 }
 
+#[cfg(test)]
+impl StakingPool {
+    /// Calculate the rewards for a staked principal at the current epoch
+    ///
+    /// This function simulates the functionality of `calculate_rewards` in Move for testing
+    /// purposes, allowing us to calculate rewards for self-stake amounts
+    ///
+    /// # Arguments
+    /// * `principal` - The original staked amount
+    /// * `stake_activation_epoch` - The epoch when the stake became active
+    /// * `current_epoch` - The current epoch
+    ///
+    /// # Returns
+    /// The total amount (principal + rewards) that would be withdrawn at the current epoch
+    pub fn calculate_rewards(
+        &self,
+        principal: u64,
+        stake_activation_epoch: u64,
+        current_epoch: u64,
+    ) -> u64 {
+        if current_epoch < stake_activation_epoch {
+            return principal; // Stake not active yet, no rewards
+        }
+
+        // Get exchange rate at staking epoch
+        let exchange_rate_at_staking =
+            self.pool_token_exchange_rate_at_epoch(stake_activation_epoch);
+
+        // Calculate pool tokens equivalent to principal
+        let pool_token_amount = if exchange_rate_at_staking.soma_amount == 0
+            || exchange_rate_at_staking.pool_token_amount == 0
+        {
+            principal
+        } else {
+            (principal as u128 * exchange_rate_at_staking.pool_token_amount as u128
+                / exchange_rate_at_staking.soma_amount as u128) as u64
+        };
+
+        // Get current exchange rate
+        let current_exchange_rate = self.pool_token_exchange_rate_at_epoch(current_epoch);
+
+        // Calculate current SOMA value of the pool tokens
+        let total_soma_amount = if current_exchange_rate.soma_amount == 0
+            || current_exchange_rate.pool_token_amount == 0
+        {
+            pool_token_amount
+        } else {
+            (pool_token_amount as u128 * current_exchange_rate.soma_amount as u128
+                / current_exchange_rate.pool_token_amount as u128) as u64
+        };
+
+        // Return the total amount (principal + rewards)
+        // If total_soma_amount < principal (which shouldn't happen in normal operation),
+        // return original principal to avoid underflow
+        std::cmp::max(total_soma_amount, principal)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct PoolTokenExchangeRate {
     /// Amount of SOMA tokens
