@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[async_trait]
-pub(crate) trait ObjectNetworkClient: Send + Sync + 'static {
+pub trait ObjectNetworkClient: Send + Sync + 'static {
     async fn download_object<W>(
         &self,
         writer: &mut W,
@@ -37,10 +37,10 @@ pub struct ObjectNetworkService<S: ObjectStorage> {
 }
 
 impl<S: ObjectStorage> ObjectNetworkService<S> {
-    pub(crate) fn new(storage: Arc<S>) -> Self {
+    fn new(storage: Arc<S>) -> Self {
         Self { storage }
     }
-    async fn handle_download_object(
+    pub(crate) async fn handle_download_object(
         &self,
         _peer: &PeerPublicKey,
         path: &ObjectPath,
@@ -50,7 +50,7 @@ impl<S: ObjectStorage> ObjectNetworkService<S> {
     }
 }
 
-pub(crate) trait ObjectNetworkManager<S>: Send + Sync + Sized
+pub trait ObjectNetworkManager<S>: Send + Sync + Sized
 where
     S: ObjectStorage,
 {

@@ -4,7 +4,6 @@ use crate::{
     messaging::EncoderInternalNetworkService,
     types::{
         context::Context,
-        shard::ShardRole,
         shard_commit::{verify_signed_shard_commit, ShardCommit, ShardCommitAPI},
         shard_commit_votes::{verify_shard_commit_votes, ShardCommitVotes, ShardCommitVotesAPI},
         shard_reveal::{verify_signed_shard_reveal, ShardReveal, ShardRevealAPI},
@@ -49,31 +48,23 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 "sender must be committer".to_string(),
             ));
         }
-        let (own_role, shard) = self
+        let shard = self
             .shard_verifier
             .verify(&self.context, signed_commit.auth_token())
             .await?;
 
-        match own_role {
-            ShardRole::Evaluation(_own_role) => {
-                let verified_commit =
-                    Verified::new(signed_commit.clone(), commit_bytes, |signed_commit| {
-                        verify_signed_shard_commit(&signed_commit, &shard)?;
-                        Ok(())
-                    })
-                    .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        let verified_commit = Verified::new(signed_commit.clone(), commit_bytes, |signed_commit| {
+            verify_signed_shard_commit(&signed_commit, &shard)?;
+            Ok(())
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-                let _ = self
-                    .dispatcher
-                    .dispatch_commit(shard, verified_commit)
-                    .await?;
+        let _ = self
+            .dispatcher
+            .dispatch_commit(shard, verified_commit)
+            .await?;
 
-                Ok(())
-            }
-            _ => Err(ShardError::FailedTypeVerification(
-                "send commit should only be sent to evaluation encoders".to_string(),
-            )),
-        }
+        Ok(())
     }
     async fn handle_send_commit_votes(
         &self,
@@ -87,7 +78,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 "sender must be voter".to_string(),
             ));
         }
-        let (own_role, shard) = self
+        let shard = self
             .shard_verifier
             .verify(&self.context, votes.auth_token())
             .await?;
@@ -96,22 +87,10 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             verify_shard_commit_votes(votes, &shard)
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-        match own_role {
-            ShardRole::Inference(_own_role) => {
-                // TODO: seperate these dispatches out
-                let _ = self
-                    .dispatcher
-                    .dispatch_commit_votes(shard, verified_commit_votes)
-                    .await?;
-            }
-            ShardRole::Evaluation(_own_role) => {
-                // TODO: seperate these dispatches out
-                let _ = self
-                    .dispatcher
-                    .dispatch_commit_votes(shard, verified_commit_votes)
-                    .await?;
-            }
-        }
+        let _ = self
+            .dispatcher
+            .dispatch_commit_votes(shard, verified_commit_votes)
+            .await?;
 
         Ok(())
     }
@@ -127,28 +106,21 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 "sender must be inference encoder for reveal".to_string(),
             ));
         }
-        let (own_role, shard) = self
+        let shard = self
             .shard_verifier
             .verify(&self.context, reveal.auth_token())
             .await?;
 
-        match own_role {
-            ShardRole::Evaluation(_own_role) => {
-                let verified_reveal = Verified::new(reveal.clone(), reveal_bytes, |reveal| {
-                    verify_signed_shard_reveal(reveal, &shard)
-                })
-                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        let verified_reveal = Verified::new(reveal.clone(), reveal_bytes, |reveal| {
+            verify_signed_shard_reveal(reveal, &shard)
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-                let _ = self
-                    .dispatcher
-                    .dispatch_reveal(shard, verified_reveal)
-                    .await?;
-                Ok(())
-            }
-            _ => Err(ShardError::FailedTypeVerification(
-                "send commit should only be sent to evaluation encoders".to_string(),
-            )),
-        }
+        let _ = self
+            .dispatcher
+            .dispatch_reveal(shard, verified_reveal)
+            .await?;
+        Ok(())
     }
     async fn handle_send_reveal_votes(
         &self,
@@ -162,28 +134,21 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 "sender must be voter".to_string(),
             ));
         }
-        let (own_role, shard) = self
+        let shard = self
             .shard_verifier
             .verify(&self.context, votes.auth_token())
             .await?;
 
-        match own_role {
-            ShardRole::Evaluation(_own_role) => {
-                let verified_reveal_votes = Verified::new(votes, votes_bytes, |votes| {
-                    verify_shard_reveal_votes(votes, &shard)
-                })
-                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-                let _ = self
-                    .dispatcher
-                    .dispatch_reveal_votes(shard, verified_reveal_votes)
-                    .await?;
+        let verified_reveal_votes = Verified::new(votes, votes_bytes, |votes| {
+            verify_shard_reveal_votes(votes, &shard)
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        let _ = self
+            .dispatcher
+            .dispatch_reveal_votes(shard, verified_reveal_votes)
+            .await?;
 
-                Ok(())
-            }
-            _ => Err(ShardError::FailedTypeVerification(
-                "send commit should only be sent to evaluation encoders".to_string(),
-            )),
-        }
+        Ok(())
     }
     async fn handle_send_scores(
         &self,
@@ -197,26 +162,19 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 "sender must be score producer".to_string(),
             ));
         }
-        let (own_role, shard) = self
+        let shard = self
             .shard_verifier
             .verify(&self.context, scores.auth_token())
             .await?;
 
-        match own_role {
-            ShardRole::Evaluation(_own_role) => {
-                let verified_scores = Verified::new(scores, scores_bytes, |scores| {
-                    verify_signed_scores(scores, &shard)
-                })
-                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
-                let _ = self
-                    .dispatcher
-                    .dispatch_scores(shard, verified_scores)
-                    .await?;
-                Ok(())
-            }
-            _ => Err(ShardError::FailedTypeVerification(
-                "send commit should only be sent to evaluation encoders".to_string(),
-            )),
-        }
+        let verified_scores = Verified::new(scores, scores_bytes, |scores| {
+            verify_signed_scores(scores, &shard)
+        })
+        .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        let _ = self
+            .dispatcher
+            .dispatch_scores(shard, verified_scores)
+            .await?;
+        Ok(())
     }
 }

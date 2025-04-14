@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
+use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use shared::{signed::Signed, verified::Verified};
 use tokio_util::sync::CancellationToken;
 
@@ -15,8 +16,6 @@ use crate::{
     error::ShardResult,
     intelligence::model::Model,
     messaging::EncoderInternalNetworkClient,
-    networking::object::ObjectNetworkClient,
-    storage::object::ObjectStorage,
     types::{
         shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
         shard_input::ShardInput, shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes,
@@ -95,14 +94,9 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
         shard: Shard,
         commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // TODO: use or remove peer
-        // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.certified_commit_handle
-            .background_process(
-                (auth_token, shard, probe_metadata, certified_commit),
-                cancellation,
-            )
+            .background_process((shard, commit), cancellation)
             .await?;
         Ok(())
     }
@@ -111,11 +105,9 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
         shard: Shard,
         votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // TODO: use or remove peer
-        // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.commit_votes_handle
-            .background_process((auth_token, shard, votes), cancellation)
+            .background_process((shard, votes), cancellation)
             .await?;
         Ok(())
     }
@@ -124,11 +116,9 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
         shard: Shard,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // TODO: use or remove peer
-        // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.reveal_handle
-            .background_process((auth_token, shard, metadata, reveal), cancellation)
+            .background_process((shard, reveal), cancellation)
             .await?;
         Ok(())
     }
@@ -137,11 +127,9 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
         shard: Shard,
         votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // TODO: use or remove peer
-        // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.reveal_votes_handle
-            .background_process((auth_token, shard, votes), cancellation)
+            .background_process((shard, votes), cancellation)
             .await?;
         Ok(())
     }
@@ -150,8 +138,6 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
         shard: Shard,
         scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // TODO: use or remove peer
-        // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.scores_handle
             .background_process((shard, scores), cancellation)
@@ -196,11 +182,9 @@ impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: Objec
         shard: Shard,
         input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // TODO: use or remove peer
-        // TODO: need to create correct child cancellation token here
         let cancellation = CancellationToken::new();
         self.input_handle
-            .background_process((auth_token, shard, input), cancellation)
+            .background_process((shard, input), cancellation)
             .await?;
         Ok(())
     }

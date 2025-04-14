@@ -28,6 +28,7 @@ vdf = { path = "vdf" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
+objects = { path = "objects" }
 
 # external deps
 tokio = { version = "1.0", features = ["full"] }

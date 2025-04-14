@@ -12,10 +12,7 @@ use shared::{
     signed::Signed,
 };
 
-use super::{
-    context::Committees, encoder_committee::InferenceEncoder, shard::Shard,
-    shard_verifier::ShardAuthToken,
-};
+use super::{shard::Shard, shard_verifier::ShardAuthToken};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Route {
@@ -46,7 +43,7 @@ pub enum ShardCommit {
 #[enum_dispatch]
 pub(crate) trait ShardCommitAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn inference_encoder(&self) -> &InferenceEncoder;
+    fn encoder(&self) -> &EncoderPublicKey;
     fn committer(&self) -> &EncoderPublicKey;
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>>;
     // TODO: make this a wrapped version of metadata specific for embeddings!
@@ -56,13 +53,13 @@ pub(crate) trait ShardCommitAPI {
 impl ShardCommit {
     pub(crate) fn new_v1(
         auth_token: ShardAuthToken,
-        inference_encoder: InferenceEncoder,
+        encoder: EncoderPublicKey,
         route: Option<Signed<Route, min_sig::BLS12381Signature>>,
         commit: Metadata,
     ) -> ShardCommit {
         ShardCommit::V1(ShardCommitV1 {
             auth_token,
-            inference_encoder,
+            encoder,
             route,
             commit,
         })
@@ -76,7 +73,7 @@ struct ShardCommitV1 {
     // the auth token protects against replay attacks since this entire thing is signed with
     // a unique shard auth token that is specific to the shard
     auth_token: ShardAuthToken,
-    inference_encoder: InferenceEncoder,
+    encoder: EncoderPublicKey,
     // signed by the source (eligible inference encoder)
     route: Option<Signed<Route, min_sig::BLS12381Signature>>,
     commit: Metadata,
@@ -86,8 +83,8 @@ impl ShardCommitAPI for ShardCommitV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn inference_encoder(&self) -> &InferenceEncoder {
-        &self.inference_encoder
+    fn encoder(&self) -> &EncoderPublicKey {
+        &self.encoder
     }
 
     fn committer(&self) -> &EncoderPublicKey {
@@ -110,7 +107,7 @@ pub(crate) fn verify_signed_shard_commit(
 ) -> SharedResult<()> {
     let auth_token_digest = Digest::new(signed_shard_commit.auth_token())?;
     // check that inference_encoder of the commit is inside the shards inference set
-    if !shard.inference_set_contains(&signed_shard_commit.inference_encoder()) {
+    if !shard.contains(&signed_shard_commit.encoder()) {
         return Err(shared::error::SharedError::ValidationError(
             "shard commit inference encoder is not in shard".to_string(),
         ));

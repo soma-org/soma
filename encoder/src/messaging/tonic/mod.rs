@@ -1,10 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use arc_swap::ArcSwap;
-use shared::{
-    crypto::keys::{EncoderPublicKey, PeerPublicKey},
-    multiaddr::Multiaddr,
-};
+use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use soma_network::multiaddr::Multiaddr;
 
 pub(crate) mod channel_pool;
 pub(crate) mod external;

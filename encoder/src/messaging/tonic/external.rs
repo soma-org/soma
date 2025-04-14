@@ -7,7 +7,10 @@ use shared::{
     verified::Verified,
 };
 use soma_http::ServerHandle;
-use soma_network::multiaddr::{to_socket_addr, Multiaddr};
+use soma_network::{
+    multiaddr::{to_socket_addr, Multiaddr},
+    CERTIFICATE_NAME,
+};
 use soma_tls::AllowPublicKeys;
 use std::{
     sync::Arc,
@@ -19,10 +22,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use crate::{
     error::{ShardError, ShardResult},
     messaging::{
-        tonic::{
-            generated::encoder_external_tonic_service_server::EncoderExternalTonicServiceServer,
-            CERTIFICATE_NAME,
-        },
+        tonic::generated::encoder_external_tonic_service_server::EncoderExternalTonicServiceServer,
         EncoderExternalNetworkClient, EncoderExternalNetworkManager, EncoderExternalNetworkService,
     },
     types::{parameters::Parameters, shard_input::ShardInput},

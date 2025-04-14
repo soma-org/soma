@@ -4,7 +4,6 @@ use crate::{
     messaging::EncoderExternalNetworkService,
     types::{
         context::Context,
-        shard::ShardRole,
         shard_input::{ShardInput, ShardInputAPI},
         shard_verifier::ShardVerifier,
     },
@@ -39,26 +38,18 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
     ) -> ShardResult<()> {
         let input: Signed<ShardInput, min_sig::BLS12381Signature> =
             bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
-        let (own_role, _shard) = self
+        let shard = self
             .shard_verifier
             .verify(&self.context, input.auth_token())
             .await?;
 
-        match own_role {
-            ShardRole::Inference(_own_role) => {
-                let _verified_input = Verified::new(input.clone(), input_bytes, |_input| Ok(()))
-                    .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        let verified_input = Verified::new(input.clone(), input_bytes, |_input| Ok(()))
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-                // TODO: reimplement this
-                // let _ = self
-                //     .dispatcher
-                //     .dispatch_input(peer, auth_token, shard, verified_input)
-                //     .await?;
-                Ok(())
-            }
-            _ => Err(ShardError::FailedTypeVerification(
-                "send commit should only be sent to evaluation encoders".to_string(),
-            )),
-        }
+        let _ = self
+            .dispatcher
+            .dispatch_input(shard, verified_input)
+            .await?;
+        Ok(())
     }
 }

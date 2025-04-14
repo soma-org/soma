@@ -12,11 +12,6 @@ use crate::{
     core::slot_tracker::SlotTracker,
     error::{ShardError, ShardResult},
     messaging::EncoderInternalNetworkClient,
-    networking::object::ObjectNetworkClient,
-    storage::{
-        datastore::Store,
-        object::{ObjectPath, ObjectStorage},
-    },
     types::{
         certified::Certified,
         shard::Shard,

@@ -10,56 +10,36 @@ use shared::{
     metadata::MetadataCommitment,
 };
 
-use crate::error::{ShardError, ShardResult};
-
-use super::encoder_committee::{CountUnit, EvaluationEncoder, InferenceEncoder};
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub(crate) enum ShardRole {
-    Inference(InferenceEncoder),
-    Evaluation(EvaluationEncoder),
-}
+use super::encoder_committee::CountUnit;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Shard {
-    minimum_inference_size: CountUnit,
-    evaluation_quorum_threshold: CountUnit,
-    inference_set: Vec<InferenceEncoder>,
-    evaluation_set: Vec<EvaluationEncoder>,
+    quorum_threshold: CountUnit,
+    encoders: Vec<EncoderPublicKey>,
     seed: Digest<ShardEntropy>,
 }
 
 impl Shard {
-    pub(crate) fn inference_set_contains(&self, inference_encoder: &InferenceEncoder) -> bool {
-        self.inference_set.contains(inference_encoder)
-    }
-
-    pub(crate) fn evaluation_set_contains(&self, evaluation_encoder: &EvaluationEncoder) -> bool {
-        self.evaluation_set.contains(evaluation_encoder)
-    }
-    pub(crate) fn inference_set_size(&self) -> usize {
-        self.inference_set.len()
-    }
-
-    pub(crate) fn evaluation_set_size(&self) -> usize {
-        self.evaluation_set.len()
-    }
-    pub(crate) fn minimum_inference_size(&self) -> CountUnit {
-        self.minimum_inference_size
-    }
-    pub(crate) fn evaluation_quorum_threshold(&self) -> CountUnit {
-        self.evaluation_quorum_threshold
-    }
-    pub(crate) fn role(&self, encoder: EncoderPublicKey) -> ShardResult<ShardRole> {
-        let ie = InferenceEncoder::new(encoder.clone());
-        let ee = EvaluationEncoder::new(encoder);
-
-        if self.inference_set_contains(&ie) {
-            return Ok(ShardRole::Inference(ie));
-        } else if self.evaluation_set_contains(&ee) {
-            return Ok(ShardRole::Evaluation(ee));
+    pub(crate) fn new(
+        quorum_threshold: CountUnit,
+        encoders: Vec<EncoderPublicKey>,
+        seed: Digest<ShardEntropy>,
+    ) -> Self {
+        Self {
+            quorum_threshold,
+            encoders,
+            seed,
         }
-        Err(ShardError::InvalidShardMember)
+    }
+    pub(crate) fn size(&self) -> usize {
+        self.encoders.len()
+    }
+    pub(crate) fn contains(&self, encoder: &EncoderPublicKey) -> bool {
+        self.encoders.contains(encoder)
+    }
+
+    pub(crate) fn quorum_threshold(&self) -> CountUnit {
+        self.quorum_threshold
     }
 }
 

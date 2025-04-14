@@ -5,11 +5,14 @@ use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
-    multiaddr::Multiaddr,
     signed::Signed,
     verified::Verified,
 };
 use soma_http::ServerHandle;
+use soma_network::{
+    multiaddr::{to_socket_addr, Multiaddr},
+    CERTIFICATE_NAME,
+};
 use soma_tls::AllowPublicKeys;
 use std::{
     collections::BTreeMap,
@@ -22,11 +25,8 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use crate::{
     error::{ShardError, ShardResult},
     messaging::{
-        tonic::{
-            generated::encoder_internal_tonic_service_server::{
-                EncoderInternalTonicService, EncoderInternalTonicServiceServer,
-            },
-            CERTIFICATE_NAME,
+        tonic::generated::encoder_internal_tonic_service_server::{
+            EncoderInternalTonicService, EncoderInternalTonicServiceServer,
         },
         EncoderInternalNetworkClient, EncoderInternalNetworkManager, EncoderInternalNetworkService,
         EncoderPublicKey,
@@ -35,7 +35,6 @@ use crate::{
         parameters::Parameters, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
         shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
     },
-    utils::multiaddr::to_socket_addr,
 };
 use tracing::{error, info, trace, warn};
 

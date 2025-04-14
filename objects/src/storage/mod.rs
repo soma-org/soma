@@ -42,7 +42,7 @@ impl FromStr for ObjectPath {
 }
 
 #[async_trait]
-pub(crate) trait ObjectStorage: Send + Sync + Sized + 'static {
+pub trait ObjectStorage: Send + Sync + Sized + 'static {
     type Reader: AsyncBufRead + Send + Sync;
     async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ObjectResult<()>;
     async fn get_object(&self, path: &ObjectPath) -> ObjectResult<Bytes>;

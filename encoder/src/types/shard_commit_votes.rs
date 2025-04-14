@@ -1,14 +1,12 @@
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::{digest::Digest, error::SharedResult, scope::Scope, signed::Signed};
-
-use super::{
-    encoder_committee::{EvaluationEncoder, InferenceEncoder},
-    shard::Shard,
-    shard_commit::ShardCommit,
-    shard_verifier::ShardAuthToken,
+use shared::{
+    crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
+    signed::Signed,
 };
+
+use super::{shard::Shard, shard_commit::ShardCommit, shard_verifier::ShardAuthToken};
 
 /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -19,12 +17,12 @@ pub enum ShardCommitVotes {
 
 #[enum_dispatch]
 pub trait ShardCommitVotesAPI {
-    fn voter(&self) -> &EvaluationEncoder;
+    fn voter(&self) -> &EncoderPublicKey;
     fn auth_token(&self) -> &ShardAuthToken;
     fn accepts(
         &self,
     ) -> &[(
-        InferenceEncoder,
+        EncoderPublicKey,
         Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     )];
 }
@@ -33,9 +31,9 @@ pub trait ShardCommitVotesAPI {
 pub(crate) struct ShardCommitVotesV1 {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,
-    voter: EvaluationEncoder,
+    voter: EncoderPublicKey,
     accepts: Vec<(
-        InferenceEncoder,
+        EncoderPublicKey,
         Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     )>,
 }
@@ -43,9 +41,9 @@ pub(crate) struct ShardCommitVotesV1 {
 impl ShardCommitVotesV1 {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
-        voter: EvaluationEncoder,
+        voter: EncoderPublicKey,
         accepts: Vec<(
-            InferenceEncoder,
+            EncoderPublicKey,
             Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
         )>,
     ) -> Self {
@@ -58,7 +56,7 @@ impl ShardCommitVotesV1 {
 }
 
 impl ShardCommitVotesAPI for ShardCommitVotesV1 {
-    fn voter(&self) -> &EvaluationEncoder {
+    fn voter(&self) -> &EncoderPublicKey {
         &self.voter
     }
     fn auth_token(&self) -> &ShardAuthToken {
@@ -67,7 +65,7 @@ impl ShardCommitVotesAPI for ShardCommitVotesV1 {
     fn accepts(
         &self,
     ) -> &[(
-        InferenceEncoder,
+        EncoderPublicKey,
         Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     )] {
         &self.accepts
@@ -80,13 +78,13 @@ pub(crate) fn verify_shard_commit_votes(
 ) -> SharedResult<()> {
     // the voter must be a member of the evaluation set
     // evaluation sets do not change for a given shard
-    if !shard.evaluation_set_contains(&votes.voter()) {
+    if !shard.contains(&votes.voter()) {
         return Err(shared::error::SharedError::ValidationError(
             "voter is not in evaluation set".to_string(),
         ));
     }
-    for (inference_encoder, _signed_commit_digest) in votes.accepts() {
-        if !shard.inference_set_contains(inference_encoder) {
+    for (encoder, signed_commit_digest) in votes.accepts() {
+        if !shard.contains(encoder) {
             return Err(shared::error::SharedError::ValidationError(
                 "rejected inference encoder not in inference set".to_string(),
             ));
