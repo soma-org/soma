@@ -14,9 +14,12 @@ use crate::{
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
-    object::{Object, ObjectData, ObjectType, Owner, Version},
+    object::{self, Object, ObjectData, ObjectType, Owner, Version},
     peer_id::PeerId,
-    system_state::{validator::Validator, SystemParameters, SystemState},
+    system_state::{
+        validator::{self, Validator},
+        SystemParameters, SystemState,
+    },
     temporary_store::TemporaryStore,
     transaction::{InputObjects, VerifiedTransaction},
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
@@ -24,6 +27,7 @@ use crate::{
 use fastcrypto::traits::KeyPair;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use super::{
     genesis_config::{
@@ -206,13 +210,13 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     amount_shannons: DEFAULT_GAS_AMOUNT,
                     staked_with_validator: None,
                 };
-                // TODO: let stake = TokenAllocation {
-                //     recipient_address: address,
-                //     amount_shannons: validator.stake,
-                //     staked_with_validator: Some(address),
-                // };
+                let stake = TokenAllocation {
+                    recipient_address: address,
+                    amount_shannons: validator.stake,
+                    staked_with_validator: Some(address),
+                };
                 builder.add_allocation(gas_coin);
-                // builder.add_allocation(stake);
+                builder.add_allocation(stake);
             }
             builder.build()
         };
@@ -225,22 +229,11 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             };
         // let unix_epoch_instant = now.checked_sub(duration_since_unix_epoch).unwrap();
 
-        let num_validators = validators.len() as u64;
-        let base_voting_power = (10000 as u64).div(num_validators);
-        let remainder = 10000 - (base_voting_power * num_validators);
-
-        let system_state = SystemState::create(
+        let mut system_state = SystemState::create(
             validators
                 .iter()
                 .enumerate()
                 .map(|(i, v)| {
-                    // Add 1 to the first 'remainder' validators to distribute the remainder
-                    let voting_power = if (i as u64) < remainder {
-                        base_voting_power + 1
-                    } else {
-                        base_voting_power
-                    };
-
                     Validator::new(
                         (&v.account_key_pair.public()).into(),
                         (v.key_pair.public()).clone(),
@@ -249,8 +242,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         v.network_address.clone(),
                         v.consensus_address.clone(),
                         v.network_address.clone(),
-                        voting_power,
-                        10, // TODO: change default commission rate
+                        0,
+                        v.commission_rate,
                     )
                 })
                 .collect(),
@@ -266,6 +259,36 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             genesis_config.parameters.stake_subsidy_period_length,
             genesis_config.parameters.stake_subsidy_decrease_rate,
         );
+
+        let mut objects = vec![];
+
+        for allocation in token_distribution_schedule.allocations {
+            if let Some(validator) = allocation.staked_with_validator {
+                let staked_soma = system_state
+                    .request_add_stake_at_genesis(
+                        allocation.recipient_address,
+                        validator,
+                        allocation.amount_shannons,
+                    )
+                    .expect("Could not stake in validator at Genesis.");
+                let staked_soma_object = Object::new_staked_soma_object(
+                    staked_soma,
+                    Owner::AddressOwner(allocation.recipient_address),
+                    TransactionDigest::default(),
+                );
+                objects.push(staked_soma_object);
+            } else {
+                let coin_object = Object::new_coin(
+                    allocation.amount_shannons,
+                    Owner::AddressOwner(allocation.recipient_address),
+                    TransactionDigest::default(),
+                );
+                objects.push(coin_object);
+            }
+        }
+
+        system_state.validators.set_voting_power();
+
         let state_object = Object::new(
             ObjectData::new_with_id(
                 SYSTEM_STATE_OBJECT_ID,
@@ -279,16 +302,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             TransactionDigest::default(),
         );
 
-        let mut objects = vec![state_object.clone()];
-
-        for allocation in token_distribution_schedule.allocations {
-            let coin_object = Object::new_coin(
-                allocation.amount_shannons,
-                Owner::AddressOwner(allocation.recipient_address),
-                TransactionDigest::default(),
-            );
-            objects.push(coin_object);
-        }
+        objects.push(state_object);
 
         let tx = VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
         let digest = *tx.digest();
@@ -306,8 +320,10 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             0, // epoch_id
         );
 
-        // Add the system state object to the store
-        temp_store.create_object(state_object);
+        // Add the created objects to the store
+        for object in objects {
+            temp_store.create_object(object);
+        }
 
         // Generate effects using the into_effects method
         let (inner, effects) = temp_store.into_effects(

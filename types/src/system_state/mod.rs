@@ -356,6 +356,34 @@ impl SystemState {
         }
     }
 
+    pub fn request_add_stake_at_genesis(
+        &mut self,
+        signer: SomaAddress,
+        address: SomaAddress,
+        amount: u64,
+    ) -> ExecutionResult<StakedSoma> {
+        let validator = self.validators.find_validator_with_pending_mut(address);
+
+        if let Some(validator) = validator {
+            if amount == 0 {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: "Stake amount cannot be 0!".to_string(),
+                });
+            }
+            // Found in active or pending validators
+            let staked_soma = validator.request_add_stake_at_genesis(amount, signer, self.epoch);
+
+            // Update staking pool mappings
+            self.validators
+                .staking_pool_mappings
+                .insert(staked_soma.pool_id, address);
+
+            Ok(staked_soma)
+        } else {
+            Err(ExecutionFailureStatus::ValidatorNotFound)
+        }
+    }
+
     /// Request to withdraw stake
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma) -> ExecutionResult<u64> {
         let pool_id = staked_soma.pool_id;

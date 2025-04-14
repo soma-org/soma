@@ -183,6 +183,24 @@ impl Validator {
         staked_soma
     }
 
+    pub fn request_add_stake_at_genesis(
+        &mut self,
+        stake: u64,
+        staker_address: SomaAddress,
+        current_epoch: u64,
+    ) -> StakedSoma {
+        assert!(current_epoch == 0, "Must be called during genesis");
+        assert!(stake > 0, "Stake amount must be positive");
+
+        // Add stake to the staking pool
+        let staked_soma = self.staking_pool.request_add_stake(stake, 0);
+
+        self.staking_pool.process_pending_stake();
+        self.next_epoch_stake += stake;
+
+        staked_soma
+    }
+
     /// Request to withdraw stake from the validator
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma, current_epoch: u64) -> u64 {
         // Process withdrawal in staking pool

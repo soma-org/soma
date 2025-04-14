@@ -6,6 +6,7 @@ use object::ObjectExecutor;
 use prepare_gas::{calculate_and_deduct_remaining_fees, prepare_gas, GasPreparationResult};
 use staking::StakingExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
+use tracing::info;
 use types::{
     base::SomaAddress,
     committee::EpochId,
@@ -235,6 +236,10 @@ pub fn execute_transaction(
         epoch_id,
         final_transaction_fee,
     );
+
+    if matches!(kind, TransactionKind::Genesis(_)) {
+        info!("GENESIS EFFECTS: {:?}", effects);
+    }
 
     (inner, effects, execution_error)
 }
@@ -639,6 +644,10 @@ fn handle_shared_object_transaction(
         transaction_dependencies.into_iter().collect(),
         final_transaction_fee, // Include transaction fee
     );
+
+    if matches!(kind, TransactionKind::Genesis(_)) {
+        info!("GENESIS EFFECTS: {:?}", effects);
+    }
 
     // Create InnerTemporaryStore
     let inner_store = InnerTemporaryStore::new(

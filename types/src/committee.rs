@@ -92,7 +92,6 @@ pub const QUORUM_THRESHOLD: VotingPower = 6_667;
 /// one honest validator has processed a message.
 pub const VALIDITY_THRESHOLD: VotingPower = 3_334;
 
-
 // Cap voting power of an individual validator at 10%.
 // TODO: determine what this should be
 pub const MAX_VOTING_POWER: u64 = 1_000;
@@ -208,7 +207,7 @@ impl Committee {
 
         voting_rights_vec.sort_by_key(|(a, _)| *a);
         let total_votes: VotingPower = voting_rights_vec.iter().map(|(_, votes)| *votes).sum();
-        // TODO: assert_eq!(total_votes, TOTAL_VOTING_POWER); MAKE SURE VOTING POWER IS ADJUSTED PROPERLY IN ADVANCE EPOCH TX
+        assert_eq!(total_votes, TOTAL_VOTING_POWER);
 
         let (expanded_keys, index_map) = Self::load_inner(&voting_rights_vec);
 
@@ -399,14 +398,7 @@ impl Committee {
     }
 
     pub fn stakes(&self) -> impl Iterator<Item = VotingPower> + '_ {
-        self.voting_rights.iter().map(|(_, stake)| {
-            // TODO: change this after implementing VOTING POWER
-            if *stake > 0 {
-                return *stake;
-            } else {
-                self.total_stake() / self.size() as u64
-            }
-        })
+        self.voting_rights.iter().map(|(_, stake)| *stake)
     }
 
     pub fn authority_exists(&self, name: &AuthorityName) -> bool {
@@ -471,14 +463,7 @@ impl Committee {
     pub fn stake_by_index(&self, index: AuthorityIndex) -> VotingPower {
         self.voting_rights
             .get(index.value())
-            .map(|(_, stake)| 
-                // TODO: change this after implementing VOTING POWER
-                if *stake > 0 {
-                    return *stake;
-                } else {
-                    self.total_stake() / self.size() as u64
-                }
-            )
+            .map(|(_, stake)| *stake)
             .unwrap_or(0)
     }
 
@@ -534,14 +519,7 @@ impl CommitteeTrait<AuthorityName> for Committee {
     fn weight(&self, author: &AuthorityName) -> VotingPower {
         match self.voting_rights.binary_search_by_key(author, |(a, _)| *a) {
             Err(_) => 0,
-            Ok(idx) => {
-                // TODO: change this after implementing voting power
-                let mut weight = self.voting_rights[idx].1;
-                if weight == 0 {
-                    weight = self.total_stake() / self.size() as u64;
-                }
-                weight
-            }
+            Ok(idx) => self.voting_rights[idx].1,
         }
     }
 }

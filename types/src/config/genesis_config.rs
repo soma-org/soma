@@ -22,6 +22,9 @@ pub struct ValidatorGenesisConfig {
     pub network_address: Multiaddr,
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
+    #[serde(default = "default_stake")]
+    pub stake: u64,
+    pub commission_rate: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -46,7 +49,8 @@ pub struct GenesisConfig {
     pub accounts: Vec<AccountConfig>,
 }
 
-pub const DEFAULT_GAS_AMOUNT: u64 = 30_000_000;
+pub const DEFAULT_GAS_AMOUNT: u64 = 30 * SHANNONS_PER_SOMA;
+const DEFAULT_COMMISSION_RATE: u64 = 200;
 const DEFAULT_NUMBER_OF_ACCOUNTS: usize = 5;
 const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
 
@@ -126,6 +130,7 @@ pub struct ValidatorGenesisConfigBuilder {
     /// If set, the validator will use deterministic addresses based on the port offset.
     /// This is useful for benchmarking.
     port_offset: Option<u16>,
+    stake: Option<u64>,
 }
 
 impl ValidatorGenesisConfigBuilder {
@@ -148,6 +153,11 @@ impl ValidatorGenesisConfigBuilder {
         self
     }
 
+    pub fn with_stake(mut self, stake: u64) -> Self {
+        self.stake = Some(stake);
+        self
+    }
+
     pub fn with_deterministic_ports(mut self, port_offset: u16) -> Self {
         self.port_offset = Some(port_offset);
         self
@@ -155,6 +165,7 @@ impl ValidatorGenesisConfigBuilder {
 
     pub fn build<R: rand::RngCore + rand::CryptoRng>(self, rng: &mut R) -> ValidatorGenesisConfig {
         let ip = self.ip.unwrap_or_else(local_ip_utils::get_new_ip);
+        let stake = self.stake.unwrap_or(default_stake());
         let localhost = local_ip_utils::localhost_for_testing();
         let protocol_key_pair = self
             .protocol_key_pair
@@ -191,6 +202,8 @@ impl ValidatorGenesisConfigBuilder {
             network_address,
             consensus_address,
             p2p_address,
+            stake,
+            commission_rate: DEFAULT_COMMISSION_RATE,
         }
     }
 }
@@ -256,7 +269,7 @@ impl GenesisCeremonyParameters {
     }
 
     fn default_initial_stake_subsidy_distribution_amount() -> u64 {
-        // 1M SOMA
+        // 1k SOMA
         1_000 * SHANNONS_PER_SOMA
     }
 
@@ -360,4 +373,8 @@ impl TokenDistributionScheduleBuilder {
         schedule.validate();
         schedule
     }
+}
+
+fn default_stake() -> u64 {
+    200 * SHANNONS_PER_SOMA
 }

@@ -8,8 +8,10 @@ use tokio::time::sleep;
 use tracing::info;
 use types::{
     base::SomaAddress,
-    config::genesis_config::{ValidatorGenesisConfig, ValidatorGenesisConfigBuilder},
-    crypto::KeypairTraits,
+    config::genesis_config::{
+        ValidatorGenesisConfig, ValidatorGenesisConfigBuilder, DEFAULT_GAS_AMOUNT,
+    },
+    crypto::{KeypairTraits, SomaKeyPair},
     system_state::SystemStateTrait,
     transaction::{
         AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
@@ -265,8 +267,6 @@ async fn execute_add_validator_transactions(
         .await
         .expect("Can't get gas object for address");
 
-    info!("Gas object id {}", gas_object[0].0);
-
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
             TransactionKind::AddValidator(AddValidatorArgs {
@@ -293,6 +293,14 @@ async fn execute_add_validator_transactions(
 
     test_cluster.execute_transaction(tx).await;
 
+    execute_add_stake_transaction(
+        new_validator.account_key_pair.copy(),
+        test_cluster,
+        (&new_validator.account_key_pair.public()).into(),
+        DEFAULT_GAS_AMOUNT / 4,
+    )
+    .await;
+
     // Check that we can get the pending validator from 0x5.
     test_cluster.fullnode_handle.soma_node.with(|node| {
         let system_state = node.state().get_system_state_object_for_testing();
@@ -305,6 +313,36 @@ async fn execute_add_validator_transactions(
             (&new_validator.account_key_pair.public()).into()
         );
     });
+}
+
+/// Execute a single stake transaction to add stake to a validator.
+async fn execute_add_stake_transaction(
+    signer: SomaKeyPair,
+    test_cluster: &TestCluster,
+    address: SomaAddress,
+    stake: u64,
+) {
+    let gas_object = test_cluster
+        .get_gas_objects_owned_by_address((&signer.public()).into(), Some(1))
+        .await
+        .expect("Can't get gas object for address");
+
+    let tx = Transaction::from_data_and_signer(
+        TransactionData::new(
+            TransactionKind::AddStake {
+                address: address,
+                coin_ref: gas_object[0],
+                amount: Some(stake),
+            },
+            (&signer.public()).into(),
+            gas_object,
+        ),
+        vec![&signer],
+    );
+
+    info!(?tx, "Executing stake validator tx {}", address.to_string());
+
+    test_cluster.execute_transaction(tx).await;
 }
 
 // TODO: async fn test_inactive_validator_pool_read()

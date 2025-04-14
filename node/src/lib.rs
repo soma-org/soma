@@ -196,8 +196,6 @@ impl SomaNode {
 
         info!("created epoch store");
 
-        commit_store.insert_genesis_commit(genesis.commit());
-
         info!("creating long term consensus store");
         let consensus_store = Arc::new(MemStore::new());
 
