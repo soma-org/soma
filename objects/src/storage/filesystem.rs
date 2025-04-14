@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::path::{Path, PathBuf};
-use tokio::{
-    fs,
-    io::{AsyncBufRead, BufReader},
-};
+use tokio::{fs, io::BufReader};
 
 use crate::error::{ObjectError, ObjectResult};
 
@@ -30,6 +27,7 @@ impl FilesystemObjectStorage {
 #[async_trait]
 impl ObjectStorage for FilesystemObjectStorage {
     type Reader = BufReader<fs::File>;
+    type Writer = fs::File;
 
     async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ObjectResult<()> {
         let full_path = self.get_full_path(path);
@@ -60,6 +58,24 @@ impl ObjectStorage for FilesystemObjectStorage {
         Ok(Bytes::from(contents))
     }
 
+    async fn get_object_writer(&self, path: &ObjectPath) -> ObjectResult<Self::Writer> {
+        let full_path = self.get_full_path(path);
+
+        // Ensure the parent directories exist
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent).await.map_err(|e| {
+                ObjectError::ObjectStorage(format!("Failed to create directories: {}", e))
+            })?;
+        }
+
+        // Open (or create) the file for writing
+        let file = fs::File::create(&full_path)
+            .await
+            .map_err(|e| ObjectError::ObjectStorage(format!("Failed to create file: {}", e)))?;
+
+        Ok(file)
+    }
+
     async fn delete_object(&self, path: &ObjectPath) -> ObjectResult<()> {
         let full_path = self.get_full_path(path);
 
@@ -83,6 +99,26 @@ impl ObjectStorage for FilesystemObjectStorage {
                 _ => ObjectError::ObjectStorage(format!("Failed to open file: {}", e)),
             })?;
         Ok(BufReader::new(file))
+    }
+
+    async fn exists(&self, path: &ObjectPath) -> ObjectResult<()> {
+        let full_path = self.get_full_path(path);
+        match fs::metadata(&full_path).await {
+            Ok(metadata) => {
+                if metadata.is_file() {
+                    Ok(())
+                } else {
+                    Err(ObjectError::NotFound(path.path.clone()))
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Err(ObjectError::NotFound(path.path.clone()))
+            }
+            Err(e) => Err(ObjectError::ObjectStorage(format!(
+                "Failed to check existence: {}",
+                e
+            ))),
+        }
     }
 }
 

@@ -7,9 +7,8 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     actors::{
         pipelines::{
-            certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
-            input::InputProcessor, reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
-            scores::ScoresProcessor,
+            commit::CommitProcessor, commit_votes::CommitVotesProcessor, input::InputProcessor,
+            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         ActorHandle,
     },
@@ -58,7 +57,7 @@ pub(crate) struct InternalPipelineDispatcher<
     O: ObjectNetworkClient,
     S: ObjectStorage,
 > {
-    certified_commit_handle: ActorHandle<CertifiedCommitProcessor<E, O, S>>,
+    certified_commit_handle: ActorHandle<CommitProcessor<E, O, S>>,
     commit_votes_handle: ActorHandle<CommitVotesProcessor>,
     reveal_handle: ActorHandle<RevealProcessor>,
     reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,
@@ -69,7 +68,7 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage>
     InternalPipelineDispatcher<E, O, S>
 {
     pub(crate) fn new(
-        certified_commit_handle: ActorHandle<CertifiedCommitProcessor<E, O, S>>,
+        certified_commit_handle: ActorHandle<CommitProcessor<E, O, S>>,
         commit_votes_handle: ActorHandle<CommitVotesProcessor>,
         reveal_handle: ActorHandle<RevealProcessor>,
         reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,

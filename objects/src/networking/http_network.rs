@@ -1,9 +1,11 @@
 use std::{
+    collections::BTreeMap,
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use axum::{
     body::Body,
@@ -17,7 +19,7 @@ use quick_cache::sync::Cache;
 use reqwest::Client;
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
-    metadata::{Metadata, MetadataAPI},
+    metadata::{self, Metadata, MetadataAPI},
 };
 use soma_http::ServerHandle;
 use soma_tls::{create_rustls_client_config, AllowPublicKeys, TlsConnectionInfo};
@@ -38,6 +40,15 @@ use soma_network::{
 use super::{
     ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService, ObjectPath, ObjectStorage,
 };
+
+// TODO: move this to parameters
+const BASE_LATENCY_SECS: u64 = 2;
+const MIN_BYTES_PER_SEC: u64 = 50_000; // 50 KB/s
+
+fn calculate_timeout(bytes: usize) -> Duration {
+    let seconds = BASE_LATENCY_SECS + (bytes as u64 / MIN_BYTES_PER_SEC);
+    Duration::from_secs(seconds)
+}
 
 pub(crate) struct ClientPool {
     clients: Cache<PeerPublicKey, Client>,
@@ -106,16 +117,19 @@ impl ObjectNetworkClient for ObjectHttpClient {
         peer: &PeerPublicKey,
         address: &Multiaddr,
         metadata: &Metadata,
-        timeout: Duration,
     ) -> ObjectResult<()>
     where
         W: AsyncWrite + Unpin + Send,
     {
-        let address = to_host_port_str(address).map_err(|e| {
+        let address = to_host_port_str(&address).map_err(|e| {
             ObjectError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address = format!("https://{address}/{}", metadata.checksum());
         let url = Url::from_str(&address).map_err(|e| ObjectError::UrlParseError(e.to_string()))?;
+
+        let timeout = calculate_timeout(metadata.size());
+
+        // TODO: NEED TO ADD METADATA CHECKSUM AND SIZE VERIFICATION
 
         let mut response = self
             .get_client(peer)
@@ -147,7 +161,7 @@ impl ObjectNetworkClient for ObjectHttpClient {
             .flush()
             .await
             .map_err(|e| ObjectError::WriteError(e.to_string()))?;
-        Ok(())
+        return Ok(());
     }
 }
 #[derive(Clone)]

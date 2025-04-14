@@ -10,6 +10,8 @@ use shared::{
     metadata::MetadataCommitment,
 };
 
+use crate::error::{ShardError, ShardResult};
+
 use super::encoder_committee::CountUnit;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -40,6 +42,10 @@ impl Shard {
 
     pub(crate) fn quorum_threshold(&self) -> CountUnit {
         self.quorum_threshold
+    }
+
+    pub(crate) fn digest(&self) -> ShardResult<Digest<Self>> {
+        Digest::new(self).map_err(ShardError::DigestFailure)
     }
 }
 

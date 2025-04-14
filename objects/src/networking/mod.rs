@@ -2,7 +2,7 @@ pub(crate) mod http_network;
 
 use async_trait::async_trait;
 use soma_tls::AllowPublicKeys;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use tokio::io::AsyncWrite;
 
 use shared::{
@@ -25,7 +25,6 @@ pub trait ObjectNetworkClient: Send + Sync + 'static {
         peer: &PeerPublicKey,
         address: &Multiaddr,
         metadata: &Metadata,
-        timeout: Duration,
     ) -> ObjectResult<()>
     where
         W: AsyncWrite + Unpin + Send;

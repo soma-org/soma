@@ -4,13 +4,15 @@ use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::EncoderPublicKey,
+    crypto::{keys::EncoderPublicKey, EncryptionKey},
     digest::Digest,
     error::SharedResult,
-    metadata::{verify_metadata, Metadata},
+    metadata::{verify_metadata, EncryptionAPI, Metadata, MetadataAPI},
     scope::Scope,
     signed::Signed,
 };
+
+use crate::error::ShardError;
 
 use super::{shard::Shard, shard_verifier::ShardAuthToken};
 
@@ -46,7 +48,7 @@ pub(crate) trait ShardCommitAPI {
     fn encoder(&self) -> &EncoderPublicKey;
     fn committer(&self) -> &EncoderPublicKey;
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>>;
-    // TODO: make this a wrapped version of metadata specific for embeddings!
+    fn reveal_key_digest(&self) -> Digest<EncryptionKey>;
     fn commit_metadata(&self) -> &Metadata;
 }
 
@@ -98,6 +100,13 @@ impl ShardCommitAPI for ShardCommitV1 {
     }
     fn commit_metadata(&self) -> &Metadata {
         &self.commit
+    }
+    fn reveal_key_digest(&self) -> SharedResult<Digest<EncryptionKey>> {
+        // TODO: remove encryption from metadata and add to the commit
+        match self.commit.encryption() {
+            Some(encryption) => Ok(encryption.key_digest()),
+            None => Err(ShardError::EncryptionFailed),
+        }
     }
 }
 

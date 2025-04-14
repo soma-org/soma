@@ -4,31 +4,31 @@ pub(crate) mod memory;
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::str::FromStr;
-use tokio::io::AsyncBufRead;
+use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use shared::checksum::Checksum;
 
 use crate::error::ObjectResult;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct ObjectPath {
+pub struct ObjectPath {
     // TODO: make this better
     path: String,
 }
 
 impl ObjectPath {
-    pub(crate) fn new(path: String) -> ObjectResult<Self> {
+    pub fn new(path: String) -> ObjectResult<Self> {
         // TODO: add path validation according to a protocol
         Ok(Self { path })
     }
 
-    pub(crate) fn from_checksum(checksum: Checksum) -> Self {
+    pub fn from_checksum(checksum: Checksum) -> Self {
         Self {
             path: checksum.to_string(),
         }
     }
 
-    pub(crate) fn path(&self) -> String {
+    pub fn path(&self) -> String {
         self.path.clone()
     }
 }
@@ -44,15 +44,13 @@ impl FromStr for ObjectPath {
 #[async_trait]
 pub trait ObjectStorage: Send + Sync + Sized + 'static {
     type Reader: AsyncBufRead + Send + Sync;
+    type Writer: AsyncWrite + Unpin + Send;
     async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ObjectResult<()>;
     async fn get_object(&self, path: &ObjectPath) -> ObjectResult<Bytes>;
+    async fn get_object_writer(&self, path: &ObjectPath) -> ObjectResult<Self::Writer>;
     async fn delete_object(&self, path: &ObjectPath) -> ObjectResult<()>;
     async fn stream_object(&self, path: &ObjectPath) -> ObjectResult<Self::Reader>;
-}
-
-#[async_trait]
-pub(crate) trait ObjectSignedUrl: Send + Sync + 'static {
-    async fn get_signed_url(&self, path: &ObjectPath) -> ObjectResult<String>;
+    async fn exists(&self, path: &ObjectPath) -> ObjectResult<()>;
 }
 
 #[cfg(test)]
