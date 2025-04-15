@@ -1,3 +1,4 @@
+use tracing::info;
 use types::{
     base::SomaAddress,
     digests::TransactionDigest,
@@ -25,6 +26,8 @@ impl ValidatorExecutor {
         state: &mut SystemState,
         tx_kind: &TransactionKind,
         signer: SomaAddress,
+        tx_digest: TransactionDigest,
+        store: &mut TemporaryStore,
     ) -> ExecutionResult<()> {
         match tx_kind {
             TransactionKind::AddValidator(args) => state.request_add_validator(
@@ -35,6 +38,7 @@ impl ValidatorExecutor {
                 args.net_address.clone(),
                 args.p2p_address.clone(),
                 args.primary_address.clone(),
+                ObjectID::derive_id(tx_digest, store.next_creation_num()),
             ),
             TransactionKind::RemoveValidator(args) => {
                 state.request_remove_validator(signer, args.pubkey_bytes.clone())
@@ -71,7 +75,7 @@ impl TransactionExecutor for ValidatorExecutor {
             })?;
 
         // Process the transaction
-        let result = self.process_system_state(&mut state, &kind, signer);
+        let result = self.process_system_state(&mut state, &kind, signer, tx_digest, store);
 
         // Early return on error
         result?;

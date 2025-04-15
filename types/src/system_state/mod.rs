@@ -38,7 +38,7 @@ use fastcrypto::{bls12381, ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use serde::{Deserialize, Serialize};
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
-use tracing::error;
+use tracing::{error, info};
 use validator::{Validator, ValidatorSet};
 
 use crate::{
@@ -51,6 +51,7 @@ use crate::{
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError, SomaResult},
     multiaddr::Multiaddr,
+    object::ObjectID,
     parameters,
     peer_id::PeerId,
     SYSTEM_STATE_OBJECT_ID,
@@ -123,9 +124,9 @@ impl Default for SystemParameters {
     fn default() -> Self {
         Self {
             epoch_duration_ms: 1000 * 60, // TODO: 1000 * 60 * 60 * 24, // 1 day
-            min_validator_joining_stake: 30_000_000 * SHANNONS_PER_SOMA,
-            validator_low_stake_threshold: 20_000_000 * SHANNONS_PER_SOMA,
-            validator_very_low_stake_threshold: 15_000_000 * SHANNONS_PER_SOMA,
+            min_validator_joining_stake: 10 * SHANNONS_PER_SOMA, // TODO: 30_000_000 * SHANNONS_PER_SOMA,
+            validator_low_stake_threshold: 20 * SHANNONS_PER_SOMA, // TODO: 20_000_000 * SHANNONS_PER_SOMA,
+            validator_very_low_stake_threshold: 15 * SHANNONS_PER_SOMA, // TODO: 15_000_000 * SHANNONS_PER_SOMA,
             validator_low_stake_grace_period: 7,
         }
     }
@@ -276,6 +277,7 @@ impl SystemState {
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
+        staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         let validator = Validator::new(
             signer,
@@ -291,6 +293,7 @@ impl SystemState {
             Multiaddr::from_str(bcs::from_bytes(&primary_address).unwrap()).unwrap(),
             0,
             10,
+            staking_pool_id,
         );
 
         // Request to add validator to the validator set

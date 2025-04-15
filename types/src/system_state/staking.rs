@@ -28,9 +28,9 @@ pub struct StakingPool {
 }
 
 impl StakingPool {
-    pub fn new() -> Self {
+    pub fn new(id: ObjectID) -> Self {
         Self {
-            id: ObjectID::random(),
+            id,
             activation_epoch: None,
             deactivation_epoch: None,
             soma_balance: 0,

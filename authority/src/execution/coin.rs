@@ -66,6 +66,7 @@ impl CoinExecutor {
 
                     // Create new coin for recipient
                     let new_coin = Object::new_coin(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         specific_amount,
                         Owner::AddressOwner(recipient),
                         tx_digest,
@@ -96,6 +97,7 @@ impl CoinExecutor {
 
                     // Create new coin for recipient
                     let new_coin = Object::new_coin(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         specific_amount,
                         Owner::AddressOwner(recipient),
                         tx_digest,
@@ -133,6 +135,7 @@ impl CoinExecutor {
 
                     // Create new coin for recipient with (balance - fee)
                     let new_coin = Object::new_coin(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         transfer_amount,
                         Owner::AddressOwner(recipient),
                         tx_digest,
@@ -252,8 +255,12 @@ impl CoinExecutor {
 
                 // STEP 2: Create new coins for each recipient
                 for (amount, recipient) in specific_amounts.iter().zip(recipients.iter()) {
-                    let new_coin =
-                        Object::new_coin(*amount, Owner::AddressOwner(*recipient), tx_digest);
+                    let new_coin = Object::new_coin(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                        *amount,
+                        Owner::AddressOwner(*recipient),
+                        tx_digest,
+                    );
                     store.create_object(new_coin);
                 }
 
@@ -348,6 +355,7 @@ impl CoinExecutor {
 
                     // Create new coin for recipient with (total balance - fee)
                     let new_coin = Object::new_coin(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         transfer_amount,
                         Owner::AddressOwner(recipient),
                         tx_digest,

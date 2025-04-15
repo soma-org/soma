@@ -3,7 +3,7 @@ use types::{
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError},
-    object::{Object, Owner},
+    object::{Object, ObjectID, Owner},
     system_state::SystemState,
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
@@ -67,8 +67,12 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
         for (validator, reward) in validator_rewards {
             // Create StakedSoma object
-            let staked_soma_object =
-                Object::new_staked_soma_object(reward, Owner::AddressOwner(validator), tx_digest);
+            let staked_soma_object = Object::new_staked_soma_object(
+                ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                reward,
+                Owner::AddressOwner(validator),
+                tx_digest,
+            );
             store.create_object(staked_soma_object);
         }
 

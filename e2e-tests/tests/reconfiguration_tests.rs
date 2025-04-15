@@ -297,7 +297,7 @@ async fn execute_add_validator_transactions(
         new_validator.account_key_pair.copy(),
         test_cluster,
         (&new_validator.account_key_pair.public()).into(),
-        DEFAULT_GAS_AMOUNT / 4,
+        DEFAULT_GAS_AMOUNT / 2,
     )
     .await;
 

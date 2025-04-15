@@ -184,8 +184,15 @@ impl TransactionKind {
         )
     }
 
+    pub fn is_staking_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. }
+        )
+    }
+
     pub fn requires_system_state(&self) -> bool {
-        self.is_validator_tx() || self.is_epoch_change()
+        self.is_validator_tx() || self.is_epoch_change() || self.is_staking_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {

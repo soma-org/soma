@@ -3,7 +3,7 @@ use types::{
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError},
-    object::{Object, ObjectRef, ObjectType, Owner},
+    object::{Object, ObjectID, ObjectRef, ObjectType, Owner},
     system_state::SystemState,
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
@@ -82,6 +82,7 @@ impl StakingExecutor {
 
                     // Create StakedSoma object
                     let staked_soma_object = Object::new_staked_soma_object(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         staked_soma,
                         Owner::AddressOwner(signer),
                         tx_digest,
@@ -107,6 +108,7 @@ impl StakingExecutor {
 
                     // Create StakedSoma object
                     let staked_soma_object = Object::new_staked_soma_object(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         staked_soma,
                         Owner::AddressOwner(signer),
                         tx_digest,
@@ -151,6 +153,7 @@ impl StakingExecutor {
 
                     // Create StakedSoma object
                     let staked_soma_object = Object::new_staked_soma_object(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         staked_soma,
                         Owner::AddressOwner(signer),
                         tx_digest,
@@ -168,6 +171,7 @@ impl StakingExecutor {
 
                     // Create StakedSoma object
                     let staked_soma_object = Object::new_staked_soma_object(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         staked_soma,
                         Owner::AddressOwner(signer),
                         tx_digest,
@@ -247,7 +251,12 @@ impl StakingExecutor {
         store.delete_input_object(&staked_soma_ref.0);
 
         // Create a Coin object with the withdrawn amount
-        let new_coin = Object::new_coin(withdrawn_amount, Owner::AddressOwner(signer), tx_digest);
+        let new_coin = Object::new_coin(
+            ObjectID::derive_id(tx_digest, store.next_creation_num()),
+            withdrawn_amount,
+            Owner::AddressOwner(signer),
+            tx_digest,
+        );
         store.create_object(new_coin);
 
         // Update system state

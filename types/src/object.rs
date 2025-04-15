@@ -343,8 +343,12 @@ impl Object {
     }
 
     /// Create a new coin with the specified balance
-    pub fn new_coin(balance: u64, owner: Owner, previous_transaction: TransactionDigest) -> Self {
-        let id = ObjectID::random();
+    pub fn new_coin(
+        id: ObjectID,
+        balance: u64,
+        owner: Owner,
+        previous_transaction: TransactionDigest,
+    ) -> Self {
         let data = ObjectData::new_with_id(
             id,
             ObjectType::Coin,
@@ -390,6 +394,7 @@ impl Object {
 
     /// Create a new Object containing a StakedSoma
     pub fn new_staked_soma_object(
+        id: ObjectID,
         staked_soma: StakedSoma,
         owner: Owner,
         previous_transaction: TransactionDigest,
@@ -399,7 +404,7 @@ impl Object {
 
         // Create ObjectData
         let data = ObjectData::new_with_id(
-            ObjectID::random(),     // Generate a random ID for the new object
+            id,
             ObjectType::StakedSoma, // Assuming you've added this to your ObjectType enum
             Version::MIN,           // Start with minimum version
             staked_soma_bytes,

@@ -14,7 +14,7 @@ use crate::{
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
     multiaddr::Multiaddr,
-    object::{self, Object, ObjectData, ObjectType, Owner, Version},
+    object::{self, Object, ObjectData, ObjectID, ObjectType, Owner, Version},
     peer_id::PeerId,
     system_state::{
         validator::{self, Validator},
@@ -244,6 +244,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         v.network_address.clone(),
                         0,
                         v.commission_rate,
+                        ObjectID::random(),
                     )
                 })
                 .collect(),
@@ -272,6 +273,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     )
                     .expect("Could not stake in validator at Genesis.");
                 let staked_soma_object = Object::new_staked_soma_object(
+                    ObjectID::random(),
                     staked_soma,
                     Owner::AddressOwner(allocation.recipient_address),
                     TransactionDigest::default(),
@@ -279,6 +281,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 objects.push(staked_soma_object);
             } else {
                 let coin_object = Object::new_coin(
+                    ObjectID::random(),
                     allocation.amount_shannons,
                     Owner::AddressOwner(allocation.recipient_address),
                     TransactionDigest::default(),

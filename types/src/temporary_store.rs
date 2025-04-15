@@ -264,6 +264,8 @@ pub struct TemporaryStore {
     /// Consensus objects that were deleted in previous transactions
     deleted_consensus_objects: BTreeMap<ObjectID, Version /* start_version */>,
 
+    creation_counter: u64,
+
     /// The current epoch
     cur_epoch: EpochId,
 
@@ -308,6 +310,7 @@ impl TemporaryStore {
             mutable_input_refs,
             deleted_consensus_objects,
             gas_object_id: None,
+            creation_counter: 0,
         }
     }
 
@@ -317,6 +320,13 @@ impl TemporaryStore {
             self.tx_digest,
             &self.input_objects,
         );
+    }
+
+    /// Get the next creation number and increment the counter
+    pub fn next_creation_num(&mut self) -> u64 {
+        let num = self.creation_counter;
+        self.creation_counter += 1;
+        num
     }
 
     /// Given an object ID, if it's not modified, returns None.

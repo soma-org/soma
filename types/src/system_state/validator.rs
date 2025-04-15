@@ -6,6 +6,7 @@ use std::{
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{
     base::SomaAddress,
@@ -131,6 +132,7 @@ impl Validator {
         primary_address: Multiaddr,
         voting_power: u64,
         commission_rate: u64,
+        staking_pool_id: ObjectID,
     ) -> Self {
         Self {
             metadata: ValidatorMetadata {
@@ -151,7 +153,7 @@ impl Validator {
             commission_rate,
             next_epoch_stake: 0,
             next_epoch_commission_rate: commission_rate,
-            staking_pool: StakingPool::new(),
+            staking_pool: StakingPool::new(staking_pool_id),
         }
     }
 
@@ -765,6 +767,7 @@ impl ValidatorSet {
     /// Update validator voting power based on stake
     pub fn set_voting_power(&mut self) {
         let total_stake = self.calculate_total_stake();
+        self.total_stake = self.calculate_total_stake();
         if total_stake == 0 {
             return;
         }
@@ -1022,7 +1025,7 @@ impl ValidatorSet {
         new_epoch: u64,
     ) {
         // Sort removal list in descending order to avoid index shifting issues
-        self.pending_removals.sort_by(|a, b| b.cmp(a));
+        sort_removal_list(&mut self.pending_removals);
 
         // Process each removal
         while let Some(index) = self.pending_removals.pop() {
@@ -1031,5 +1034,23 @@ impl ValidatorSet {
             // Process as voluntary departure
             self.process_validator_departure(validator, validator_report_records, new_epoch, true);
         }
+    }
+}
+
+fn sort_removal_list(withdraw_list: &mut Vec<usize>) {
+    let length = withdraw_list.len();
+    let mut i = 1;
+    while i < length {
+        let cur = withdraw_list[i];
+        let mut j = i;
+        while j > 0 {
+            j = j - 1;
+            if withdraw_list[j] > cur {
+                withdraw_list.swap(j, j + 1);
+            } else {
+                break;
+            }
+        }
+        i = i + 1;
     }
 }

@@ -5,6 +5,7 @@ use crate::{
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
     multiaddr::Multiaddr,
+    object::ObjectID,
     system_state::{
         staking::{PoolTokenExchangeRate, StakedSoma, StakingPool},
         subsidy::StakeSubsidy,
@@ -325,6 +326,7 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
         primary_address,
         0, // Initial voting power is 0, will be set later
         0,
+        ObjectID::random(),
     );
 
     // Initialize staking pool with stake

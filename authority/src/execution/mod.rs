@@ -237,10 +237,6 @@ pub fn execute_transaction(
         final_transaction_fee,
     );
 
-    if matches!(kind, TransactionKind::Genesis(_)) {
-        info!("GENESIS EFFECTS: {:?}", effects);
-    }
-
     (inner, effects, execution_error)
 }
 
@@ -468,7 +464,7 @@ fn handle_shared_object_transaction(
     // Prepare to collect objects for the output
     let mut object_changes = BTreeMap::new();
     let mut written_objects = BTreeMap::new();
-    let mut input_objects_map = BTreeMap::new();
+    let mut input_objects_map: BTreeMap<ObjectID, Object> = BTreeMap::new();
     let mut mutable_inputs = BTreeMap::new();
 
     // Process all objects in temporary_store's execution results
@@ -493,14 +489,20 @@ fn handle_shared_object_transaction(
 
             // Add to results
             let id = final_obj.id();
-            let input_version = obj.version();
-            let input_digest = obj.digest();
+
+            let Some(original) = temporary_store.input_objects.get(&id) else {
+                panic!("Shared object is not in inputs")
+            };
+
+            // Add to input objects map
+            input_objects_map.insert(id.into(), original.clone());
+
+            // Get original version and digest
+            let input_version = original.version();
+            let input_digest = original.digest();
 
             // Add to written objects
             written_objects.insert(id, final_obj.clone());
-
-            // Add to input objects
-            input_objects_map.insert(id, obj.clone());
 
             // Record mutable input if not immutable
             if !obj.owner().is_immutable() {
@@ -644,10 +646,6 @@ fn handle_shared_object_transaction(
         transaction_dependencies.into_iter().collect(),
         final_transaction_fee, // Include transaction fee
     );
-
-    if matches!(kind, TransactionKind::Genesis(_)) {
-        info!("GENESIS EFFECTS: {:?}", effects);
-    }
 
     // Create InnerTemporaryStore
     let inner_store = InnerTemporaryStore::new(
