@@ -1,7 +1,11 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use arc_swap::ArcSwap;
-use shared::{authority_committee::AuthorityCommittee, crypto::keys::EncoderPublicKey};
+use shared::{
+    authority_committee::AuthorityCommittee,
+    crypto::keys::{EncoderPublicKey, PeerPublicKey},
+};
+use soma_network::multiaddr::Multiaddr;
 
 use crate::error::{ShardError, ShardResult};
 
@@ -49,6 +53,7 @@ pub(crate) struct InnerContext {
     committees: [Committees; 2],
     current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
+    encoder_object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
 }
 
 impl InnerContext {
@@ -68,6 +73,14 @@ impl InnerContext {
     }
     pub(crate) fn own_encoder_key(&self) -> &EncoderPublicKey {
         &self.own_encoder_public_key
+    }
+    pub(crate) fn object_server(
+        &self,
+        encoder: &EncoderPublicKey,
+    ) -> Option<(PeerPublicKey, Multiaddr)> {
+        self.encoder_object_servers
+            .get(encoder)
+            .map(|(peer_key, address)| (peer_key.clone(), address.clone()))
     }
 }
 

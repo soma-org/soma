@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     actors::{
-        workers::{
-            broadcaster::BroadcasterProcessor,
-            storage::{StorageProcessor, StorageProcessorInput, StorageProcessorOutput},
-        },
+        workers::{broadcaster::BroadcasterProcessor, storage::StorageProcessor},
         ActorHandle, ActorMessage, Processor,
     },
     datastore::Store,
@@ -15,7 +12,6 @@ use crate::{
 };
 use async_trait::async_trait;
 use objects::storage::ObjectStorage;
-use shared::{digest::Digest, metadata::MetadataAPI};
 
 pub(crate) struct EvaluationProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,

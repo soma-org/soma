@@ -15,10 +15,15 @@ use axum::{
     routing::get,
     Router,
 };
+use fastcrypto::hash::HashFunction;
 use quick_cache::sync::Cache;
 use reqwest::Client;
 use shared::{
-    crypto::keys::{PeerKeyPair, PeerPublicKey},
+    checksum::Checksum,
+    crypto::{
+        keys::{PeerKeyPair, PeerPublicKey},
+        DefaultHashFunction,
+    },
     metadata::{self, Metadata, MetadataAPI},
 };
 use soma_http::ServerHandle;
@@ -121,7 +126,7 @@ impl ObjectNetworkClient for ObjectHttpClient {
     where
         W: AsyncWrite + Unpin + Send,
     {
-        let address = to_host_port_str(&address).map_err(|e| {
+        let address = to_host_port_str(address).map_err(|e| {
             ObjectError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address = format!("https://{address}/{}", metadata.checksum());
@@ -146,11 +151,15 @@ impl ObjectNetworkClient for ObjectHttpClient {
                 response.status().as_u16()
             )));
         }
+        let mut hasher = DefaultHashFunction::new();
+        let mut total_size: usize = 0;
         while let Some(chunk) = response
             .chunk()
             .await
             .map_err(|e| ObjectError::NetworkRequest(e.to_string()))?
         {
+            hasher.update(&chunk);
+            total_size += chunk.len();
             writer
                 .write_all(&chunk)
                 .await
@@ -161,6 +170,25 @@ impl ObjectNetworkClient for ObjectHttpClient {
             .flush()
             .await
             .map_err(|e| ObjectError::WriteError(e.to_string()))?;
+
+        let checksum = Checksum::new_from_hash(hasher.finalize().into());
+
+        if total_size != metadata.size() {
+            return Err(ObjectError::VerificationError(format!(
+                "Size mismatch: expected {}, got {}",
+                metadata.size(),
+                total_size
+            )));
+        }
+
+        // Verify checksum
+        if checksum != metadata.checksum() {
+            return Err(ObjectError::VerificationError(format!(
+                "Checksum mismatch: expected {}, got {}",
+                metadata.checksum(),
+                checksum
+            )));
+        }
         return Ok(());
     }
 }

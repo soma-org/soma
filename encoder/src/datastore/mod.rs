@@ -9,7 +9,7 @@ use crate::{
     error::ShardResult,
     types::{
         shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes,
+        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
     },
 };
 
@@ -58,6 +58,12 @@ pub(crate) trait Store: Send + Sync + 'static {
         &self,
         shard: &Shard,
         votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()>;
+
+    fn add_signed_scores(
+        &self,
+        shard: &Shard,
+        votes: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     // ///////////////////////////////
     // fn get_filled_certified_commit_slots(

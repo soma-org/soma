@@ -12,6 +12,7 @@ use crate::{
         shard_commit_votes::{ShardCommitVotes, ShardCommitVotesAPI},
         shard_reveal::{ShardReveal, ShardRevealAPI},
         shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
+        shard_scores::{ShardScores, ShardScoresAPI},
     },
 };
 
@@ -54,6 +55,8 @@ struct Inner {
         (Epoch, Digest<Shard>, Encoder),
         Signed<ShardRevealVotes, min_sig::BLS12381Signature>,
     >,
+    signed_scores:
+        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardScores, min_sig::BLS12381Signature>>,
     // // EPOCH, SHARD_REF
     // first_commit_timestamp_ms: BTreeMap<(Epoch, Digest<Shard>), u64>,
     // // EPOCH, SHARD_REF
@@ -100,6 +103,7 @@ impl MemStore {
                 signed_reveals: BTreeMap::new(),
                 signed_commit_votes: BTreeMap::new(),
                 signed_reveal_votes: BTreeMap::new(),
+                signed_scores: BTreeMap::new(),
                 // first_commit_timestamp_ms: BTreeMap::new(),
                 // first_reveal_timestamp_ms: BTreeMap::new(),
                 // commit_slot_accept_voters: BTreeMap::new(),
@@ -315,6 +319,31 @@ impl Store for MemStore {
             }
             None => {
                 inner.signed_reveal_votes.insert(encoder_key, votes.clone());
+            }
+        };
+        Ok(())
+    }
+    fn add_signed_scores(
+        &self,
+        shard: &Shard,
+        scores: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        let epoch = scores.auth_token().epoch();
+        let shard_digest = shard.digest()?;
+        let encoder = scores.evaluator();
+        let encoder_key = (epoch, shard_digest, encoder.clone());
+        let scores = scores.deref();
+        let mut inner = self.inner.write();
+        match inner.signed_scores.get(&encoder_key) {
+            Some(existing) => {
+                if existing != scores {
+                    return Err(ShardError::Conflict(
+                        "encoder has a different reveal vote".to_string(),
+                    ));
+                }
+            }
+            None => {
+                inner.signed_scores.insert(encoder_key, scores.clone());
             }
         };
         Ok(())

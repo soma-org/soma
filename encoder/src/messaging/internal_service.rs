@@ -16,13 +16,7 @@ use crate::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use rand::{rngs::StdRng, SeedableRng};
-use shared::{
-    crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey},
-    signed::Signed,
-    verified::Verified,
-};
-use soma_network::multiaddr::Multiaddr;
+use shared::{crypto::keys::EncoderPublicKey, signed::Signed, verified::Verified};
 use std::sync::Arc;
 
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
@@ -68,23 +62,20 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             .await?;
 
         let verified_commit = Verified::new(signed_commit.clone(), commit_bytes, |signed_commit| {
-            verify_signed_shard_commit(&signed_commit, &shard)?;
+            verify_signed_shard_commit(signed_commit, &shard)?;
             Ok(())
         })
         .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-        let _ = self.store.lock_signed_commit(&shard, &signed_commit)?;
+        self.store.lock_signed_commit(&shard, &signed_commit)?;
 
-        // TODO: MUST FIX THIS
-        let mut rng = StdRng::from_seed([0; 32]);
-        let peer = PeerKeyPair::generate(&mut rng).public();
-
-        let address = Multiaddr::empty();
-
-        let _ = self
-            .dispatcher
-            .dispatch_commit(shard, verified_commit, peer, address)
-            .await?;
+        if let Some((peer, address)) = self.context.inner().object_server(peer) {
+            self.dispatcher
+                .dispatch_commit(shard, verified_commit, peer, address)
+                .await?;
+        } else {
+            return Err(ShardError::NotFound("object server not found".to_string()));
+        }
 
         Ok(())
     }

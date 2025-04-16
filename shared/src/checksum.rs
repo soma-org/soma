@@ -16,6 +16,10 @@ impl Checksum {
     pub(crate) const MIN: Self = Self([u8::MIN; DIGEST_LENGTH]);
     pub(crate) const MAX: Self = Self([u8::MAX; DIGEST_LENGTH]);
 
+    pub fn new_from_hash(hash: [u8; DIGEST_LENGTH]) -> Self {
+        Self(hash)
+    }
+
     // TODO: make this work better for chunking intelligently
     pub fn new_from_bytes(bytes: &[u8]) -> Self {
         let mut hasher = DefaultHashFunction::new();

@@ -67,11 +67,18 @@ impl<C: ObjectNetworkClient, S: ObjectStorage> Processor for Downloader<C, S> {
                 .await
                 .map_err(ShardError::ObjectError)?;
             // download the object, streaming it directly into storage
-            let _ = self
+            if let Err(e) = self
                 .client
                 .download_object(&mut writer, &input.peer, &input.address, &input.metadata)
                 .await
-                .map_err(ShardError::ObjectError)?;
+            {
+                // if there is an error, delete the object
+                self.storage
+                    .delete_object(&object_path)
+                    .await
+                    .map_err(ShardError::ObjectError)?;
+                return Err(ShardError::ObjectError(e));
+            }
 
             Ok(())
         }

@@ -2,31 +2,26 @@ use std::sync::Arc;
 
 use crate::{
     actors::{ActorMessage, Processor},
+    core::shard_tracker::ShardTracker,
     datastore::Store,
-    error::{ShardError, ShardResult},
-    types::{
-        certified::Certified,
-        encoder_committee::EncoderIndex,
-        shard::Shard,
-        shard_scores::{ShardScores, ShardScoresAPI},
-    },
+    error::ShardResult,
+    types::{shard::Shard, shard_scores::ShardScores},
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
-use shared::{
-    crypto::keys::{EncoderAggregateSignature, EncoderSignature},
-    digest::Digest,
-    signed::Signed,
-    verified::Verified,
-};
+use shared::{signed::Signed, verified::Verified};
 
 pub(crate) struct ScoresProcessor {
     store: Arc<dyn Store>,
+    shard_tracker: ShardTracker,
 }
 
 impl ScoresProcessor {
-    pub(crate) fn new(store: Arc<dyn Store>) -> Self {
-        Self { store }
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker) -> Self {
+        Self {
+            store,
+            shard_tracker,
+        }
     }
 }
 
@@ -40,37 +35,9 @@ impl Processor for ScoresProcessor {
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            // let (shard, shard_scores) = msg.input;
-            // let epoch = shard.epoch();
-            // let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
-            // let signed_score_set = shard_scores.signed_score_set();
-
-            // let evaluator = shard_scores.evaluator();
-
-            // let matching_scores =
-            //     self.store
-            //         .add_scores(epoch, shard_ref, evaluator, signed_score_set.clone())?;
-
-            // if matching_scores.len() >= shard.evaluation_quorum_threshold() as usize {
-            //     let (signatures, evaluator_indices): (Vec<EncoderSignature>, Vec<EncoderIndex>) = {
-            //         let mut sigs = Vec::new();
-            //         let mut indices = Vec::new();
-
-            //         for (evaluator_index, signed_scores) in matching_scores.iter() {
-            //             let sig = EncoderSignature::from_bytes(&signed_scores.raw_signature())
-            //                 .map_err(ShardError::SignatureAggregationFailure)?;
-            //             sigs.push(sig);
-            //             indices.push(*evaluator_index);
-            //         }
-            //         (sigs, indices)
-            //     };
-
-            //     let agg = EncoderAggregateSignature::new(&signatures)
-            //         .map_err(ShardError::SignatureAggregationFailure)?;
-
-            //     let cert = Certified::new_v1(signed_score_set.into_inner(), evaluator_indices, agg);
-            //     println!("{:?}", cert);
-            // }
+            let (shard, scores) = msg.input;
+            self.store.add_signed_scores(&shard, &scores)?;
+            self.shard_tracker.track_valid_scores(shard, scores).await?;
             Ok(())
         }
         .await;

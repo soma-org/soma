@@ -36,10 +36,9 @@ impl Processor for RevealProcessor {
         let result: ShardResult<()> = async {
             let (shard, verified_reveal) = msg.input;
 
-            let _ = self.store.add_signed_reveal(&shard, &verified_reveal)?;
+            self.store.add_signed_reveal(&shard, &verified_reveal)?;
 
-            let _ = self
-                .shard_tracker
+            self.shard_tracker
                 .track_valid_reveal(shard, verified_reveal)
                 .await?;
 

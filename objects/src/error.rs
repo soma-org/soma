@@ -19,5 +19,7 @@ pub enum ObjectError {
     ObjectStorage(String),
     #[error("Not found: {0}")]
     NotFound(String),
+    #[error("Verification error: {0}")]
+    VerificationError(String),
 }
 pub type ObjectResult<T> = Result<T, ObjectError>;
