@@ -16,7 +16,13 @@ use crate::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use shared::{crypto::keys::EncoderPublicKey, signed::Signed, verified::Verified};
+use rand::{rngs::StdRng, SeedableRng};
+use shared::{
+    crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey},
+    signed::Signed,
+    verified::Verified,
+};
+use soma_network::multiaddr::Multiaddr;
 use std::sync::Arc;
 
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
@@ -69,9 +75,15 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
 
         let _ = self.store.lock_signed_commit(&shard, &signed_commit)?;
 
+        // TODO: MUST FIX THIS
+        let mut rng = StdRng::from_seed([0; 32]);
+        let peer = PeerKeyPair::generate(&mut rng).public();
+
+        let address = Multiaddr::empty();
+
         let _ = self
             .dispatcher
-            .dispatch_commit(shard, verified_commit)
+            .dispatch_commit(shard, verified_commit, peer, address)
             .await?;
 
         Ok(())

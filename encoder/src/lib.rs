@@ -9,5 +9,5 @@ mod intelligence;
 mod messaging;
 mod types;
 mod utils;
-pub use core::encoder_node::EncoderNode;
+// pub use core::encoder_node::EncoderNode;
 pub use intelligence::model::python::REGISTERED_MODULE_ATTR;

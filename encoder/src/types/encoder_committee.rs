@@ -100,7 +100,7 @@ impl EncoderCommittee {
 
     /// Returns true if the provided count has reached quorum (2f+1).
     pub(crate) fn reached_quorum(&self, count: CountUnit) -> bool {
-        count >= self.evaluation_quorum_threshold()
+        count >= self.quorum_threshold()
     }
 
     /// Coverts an index to an EncoderIndex, if valid.
@@ -132,11 +132,12 @@ impl EncoderCommittee {
             self.voting_power(encoder_index) as f64
         };
 
-        let encoder_pubkeys = sample_weighted(&mut rng, self.size(), weight_fn, self.shard_size())
-            .map_err(|e| ShardError::WeightedSampleError(e.to_string()))?
-            .into_iter()
-            .map(|index| self.encoder(EncoderIndex(index)).encoder_key)
-            .collect::<Vec<_>>();
+        let encoder_pubkeys =
+            sample_weighted(&mut rng, self.size(), weight_fn, self.shard_size() as usize)
+                .map_err(|e| ShardError::WeightedSampleError(e.to_string()))?
+                .into_iter()
+                .map(|index| self.encoder(EncoderIndex(index as u32)).encoder_key.clone())
+                .collect::<Vec<_>>();
 
         Ok(Shard::new(self.quorum_threshold, encoder_pubkeys, entropy))
     }

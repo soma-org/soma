@@ -16,11 +16,7 @@ pub(crate) struct RevealProcessor {
 }
 
 impl RevealProcessor {
-    pub(crate) fn new(
-        cache_size: usize,
-        store: Arc<dyn Store>,
-        shard_tracker: ShardTracker,
-    ) -> Self {
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker) -> Self {
         Self {
             store,
             shard_tracker,
@@ -44,7 +40,8 @@ impl Processor for RevealProcessor {
 
             let _ = self
                 .shard_tracker
-                .add_valid_reveal(shard, verified_reveal)?;
+                .track_valid_reveal(shard, verified_reveal)
+                .await?;
 
             Ok(())
         }

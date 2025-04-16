@@ -1,5 +1,6 @@
 // use consensus_config::{AuthorityIndex, Epoch, Stake};
 use fastcrypto::error::FastCryptoError;
+use objects::error::ObjectError;
 use shared::error::SharedError;
 use strum_macros::IntoStaticStr;
 use thiserror::Error;
@@ -41,8 +42,8 @@ pub(crate) enum ShardError {
     #[error("Thread error: {0}")]
     ThreadError(String),
 
-    #[error("Conflicting commit: {0}")]
-    ConflictingCommit(String),
+    #[error("Conflict: {0}")]
+    Conflict(String),
     #[error("invalid reveal: {0}")]
     InvalidReveal(String),
     #[error("Compression failed: {0}")]
@@ -56,6 +57,9 @@ pub(crate) enum ShardError {
 
     #[error("Digest failure: {0}")]
     DigestFailure(SharedError),
+
+    #[error("Object error: {0}")]
+    ObjectError(ObjectError),
 
     #[error("Not found: {0}")]
     NotFound(String),

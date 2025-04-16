@@ -1,40 +1,26 @@
-use std::{collections::HashSet, ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
-    actors::{
-        workers::broadcaster::{BroadcastType, BroadcasterProcessor},
-        ActorHandle, ActorMessage, Processor,
-    },
-    error::{ShardError, ShardResult},
-    messaging::tonic::internal::EncoderInternalTonicClient,
-    storage::datastore::Store,
-    types::{
-        encoder_committee::EncoderIndex,
-        shard::Shard,
-        shard_verifier::ShardAuthToken,
-        shard_votes::{CommitRound, ShardVotes},
-    },
+    actors::{ActorMessage, Processor},
+    core::shard_tracker::ShardTracker,
+    datastore::Store,
+    error::ShardResult,
+    types::{shard::Shard, shard_commit_votes::ShardCommitVotes},
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
+use shared::{signed::Signed, verified::Verified};
 
 pub(crate) struct CommitVotesProcessor {
     store: Arc<dyn Store>,
-    broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
-    own_encoder_key: Arc<EncoderPublicKey>,
+    shard_tracker: ShardTracker,
 }
 
 impl CommitVotesProcessor {
-    pub(crate) fn new(
-        store: Arc<dyn Store>,
-        broadcaster: ActorHandle<BroadcasterProcessor<EncoderInternalTonicClient>>,
-        own_encoder_key: Arc<EncoderPublicKey>,
-    ) -> Self {
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker) -> Self {
         Self {
             store,
-            broadcaster,
-            own_encoder_key,
+            shard_tracker,
         }
     }
 }
@@ -42,48 +28,20 @@ impl CommitVotesProcessor {
 #[async_trait]
 impl Processor for CommitVotesProcessor {
     type Input = (
-        ShardAuthToken,
         Shard,
-        Verified<Signed<ShardVotes<CommitRound>, min_sig::BLS12381Signature>>,
+        Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
     );
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (auth_token, shard, votes) = msg.input;
-            let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
-            let epoch = auth_token.epoch();
-            // TODO: need to ensure that a person can only vote once with a locked in digest
-            let (total_finalized_slots, total_accepted_slots) = self.store.add_commit_vote(
-                epoch,
-                shard_ref,
-                shard.clone(),
-                votes.deref().to_owned().deref().to_owned(),
-            )?;
+            let (shard, votes) = msg.input;
 
-            if total_finalized_slots == shard.inference_size() {
-                if total_accepted_slots >= shard.minimum_inference_size() as usize {
-                    if shard.inference_set_contains(&self.own_encoder_key) {
-                        let peers = shard.shard_set();
-                        let _ = self
-                            .broadcaster
-                            .process(
-                                (
-                                    auth_token,
-                                    shard,
-                                    BroadcastType::RevealKey(epoch, shard_ref),
-                                    peers,
-                                ),
-                                msg.cancellation.clone(),
-                            )
-                            .await;
-                        // trigger reveal if member of inference set
-                    }
-                    // TODO: figure out how rejections are accounted for and whether eval set needs to do anything
-                } else {
-                    // trigger cancellation, this shard cannot proceed
-                }
-            }
+            self.store.add_commit_votes(&shard, &votes)?;
+            self.shard_tracker
+                .track_valid_commit_votes(shard, votes)
+                .await?;
+
             Ok(())
         }
         .await;

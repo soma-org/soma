@@ -9,7 +9,10 @@ use tokio::{
 
 use crate::{
     error::ShardResult,
-    types::{shard::Shard, shard_commit::ShardCommit, shard_reveal::ShardReveal},
+    types::{
+        shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
+        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes,
+    },
 };
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
@@ -32,7 +35,8 @@ impl ShardTracker {
         }
     }
 
-    pub(crate) async fn add_valid_commit(
+    pub(crate) async fn track_valid_commit(
+        &self,
         shard: Shard,
         signed_commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
@@ -69,8 +73,47 @@ impl ShardTracker {
 
         Ok(())
     }
+    pub(crate) async fn track_valid_commit_votes(
+        &self,
+        shard: Shard,
+        commit_votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        // let (total_finalized_slots, total_accepted_slots) = self.store.add_commit_vote(
+        //     epoch,
+        //     shard_ref,
+        //     shard.clone(),
+        //     votes.deref().to_owned().deref().to_owned(),
+        // )?;
 
-    pub(crate) async fn add_valid_reveal(
+        // if total_finalized_slots == shard.inference_size() {
+        //     if total_accepted_slots >= shard.minimum_inference_size() as usize {
+        //         if shard.inference_set_contains(&self.own_encoder_key) {
+        //             let peers = shard.shard_set();
+        //             let _ = self
+        //                 .broadcaster
+        //                 .process(
+        //                     (
+        //                         auth_token,
+        //                         shard,
+        //                         BroadcastType::RevealKey(epoch, shard_ref),
+        //                         peers,
+        //                     ),
+        //                     msg.cancellation.clone(),
+        //                 )
+        //                 .await;
+        //             // trigger reveal if member of inference set
+        //         }
+        //         // TODO: figure out how rejections are accounted for and whether eval set needs to do anything
+        //     } else {
+        //         // trigger cancellation, this shard cannot proceed
+        //     }
+        // }
+        //
+        Ok(())
+    }
+
+    pub(crate) async fn track_valid_reveal(
+        &self,
         shard: Shard,
         signed_reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
@@ -109,6 +152,33 @@ impl ShardTracker {
         // }
         // if count == shard.inference_size() {
         //     self.slot_tracker.trigger_reveal_vote(shard_ref).await;
+        // }
+        Ok(())
+    }
+
+    pub(crate) async fn track_valid_reveal_votes(
+        &self,
+        shard: Shard,
+        reveal_votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        // // TODO: need to ensure that a person can only vote once with a locked in digest
+        // let (total_finalized_slots, total_accepted_slots) = self.store.add_reveal_vote(
+        //     epoch,
+        //     shard_ref,
+        //     shard.clone(),
+        //     votes.deref().to_owned().deref().to_owned(),
+        // )?;
+
+        // if total_finalized_slots == shard.inference_size() {
+        //     if total_accepted_slots >= shard.minimum_inference_size() as usize {
+        //         if shard.evaluation_set().contains(&self.own_index) {
+        //             self.evaluation_handle
+        //                 .process((auth_token, shard), msg.cancellation.clone())
+        //                 .await?;
+        //         }
+        //     } else {
+        //         // trigger cancellation, this shard cannot proceed
+        //     }
         // }
         Ok(())
     }

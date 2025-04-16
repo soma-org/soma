@@ -3,12 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use tokio::sync::Semaphore;
 
-use crate::{
-    compression::Compressor,
-    error::ShardResult,
-    networking::object::{http_network::ObjectHttpClient, ObjectNetworkClient, GET_OBJECT_TIMEOUT},
-    storage::object::ObjectPath,
-};
+use crate::{compression::Compressor, error::ShardResult};
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};

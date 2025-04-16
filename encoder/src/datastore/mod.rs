@@ -7,7 +7,10 @@ use shared::{signed::Signed, verified::Verified};
 
 use crate::{
     error::ShardResult,
-    types::{shard::Shard, shard_commit::ShardCommit, shard_reveal::ShardReveal},
+    types::{
+        shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
+        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes,
+    },
 };
 
 /// The store is a common interface for accessing encoder data
@@ -43,6 +46,18 @@ pub(crate) trait Store: Send + Sync + 'static {
         &self,
         shard: &Shard,
         signed_reveal: &Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()>;
+
+    fn add_commit_votes(
+        &self,
+        shard: &Shard,
+        votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()>;
+
+    fn add_reveal_votes(
+        &self,
+        shard: &Shard,
+        votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     // ///////////////////////////////
     // fn get_filled_certified_commit_slots(

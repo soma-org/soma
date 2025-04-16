@@ -55,7 +55,7 @@ impl<T: Serialize + PartialEq + Eq> CertifiedAPI for CertifiedV1<T> {
         let unique_indices: std::collections::HashSet<_> = self.indices.iter().cloned().collect();
 
         // Get evaluation quorum threshold from committee
-        let threshold = committee.evaluation_quorum_threshold();
+        let threshold = committee.quorum_threshold();
 
         // Check if we have enough unique indices to meet quorum
         if unique_indices.len() < threshold as usize {

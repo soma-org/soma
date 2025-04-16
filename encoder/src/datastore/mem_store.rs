@@ -1,25 +1,17 @@
 use fastcrypto::bls12381::min_sig;
 use parking_lot::RwLock;
-use shared::{
-    checksum::Checksum,
-    crypto::{keys::EncoderPublicKey, EncryptionKey},
-    digest::Digest,
-    signed::Signed,
-    verified::Verified,
-};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    ops::Deref,
-};
+use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
+use std::{collections::BTreeMap, ops::Deref};
 
 use crate::{
     error::{ShardError, ShardResult},
     types::{
-        encoder_committee::{EncoderIndex, Epoch},
+        encoder_committee::Epoch,
         shard::Shard,
         shard_commit::{ShardCommit, ShardCommitAPI},
+        shard_commit_votes::{ShardCommitVotes, ShardCommitVotesAPI},
         shard_reveal::{ShardReveal, ShardRevealAPI},
-        shard_scores::{ScoreSet, ShardScores}, // shard_votes::{CommitRound, RevealRound, ShardVotes, ShardVotesAPI},
+        shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
     },
 };
 
@@ -50,38 +42,48 @@ struct Inner {
     signed_commits:
         BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardCommit, min_sig::BLS12381Signature>>,
 
-    // EPOCH, SHARD_REF, SLOT
-    reveals: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), (EncryptionKey, Checksum)>,
-    // EPOCH, SHARD_REF
-    first_commit_timestamp_ms: BTreeMap<(Epoch, Digest<Shard>), u64>,
-    // EPOCH, SHARD_REF
-    first_reveal_timestamp_ms: BTreeMap<(Epoch, Digest<Shard>), u64>,
+    signed_reveals:
+        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardReveal, min_sig::BLS12381Signature>>,
 
-    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
-    commit_slot_accept_voters:
-        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
-    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
-    commit_slot_reject_voters:
-        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
-    // EPOCH, SHARD_REF, SLOT -> FINALITY STATUS
-    commit_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
-
-    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
-    reveal_slot_accept_voters:
-        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
-    // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
-    reveal_slot_reject_voters:
-        BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
-    reveal_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
-
-    #[allow(clippy::type_complexity)]
-    scores: BTreeMap<
-        (Epoch, Digest<Shard>, EncoderIndex),
-        (
-            Digest<ScoreSet>,
-            Signed<ScoreSet, min_sig::BLS12381Signature>,
-        ),
+    signed_commit_votes: BTreeMap<
+        (Epoch, Digest<Shard>, Encoder),
+        Signed<ShardCommitVotes, min_sig::BLS12381Signature>,
     >,
+
+    signed_reveal_votes: BTreeMap<
+        (Epoch, Digest<Shard>, Encoder),
+        Signed<ShardRevealVotes, min_sig::BLS12381Signature>,
+    >,
+    // // EPOCH, SHARD_REF
+    // first_commit_timestamp_ms: BTreeMap<(Epoch, Digest<Shard>), u64>,
+    // // EPOCH, SHARD_REF
+    // first_reveal_timestamp_ms: BTreeMap<(Epoch, Digest<Shard>), u64>,
+
+    // // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    // commit_slot_accept_voters:
+    //     BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    // commit_slot_reject_voters:
+    //     BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // // EPOCH, SHARD_REF, SLOT -> FINALITY STATUS
+    // commit_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
+
+    // // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    // reveal_slot_accept_voters:
+    //     BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // // EPOCH, SHARD_REF, SLOT -> EVAL SET VOTER
+    // reveal_slot_reject_voters:
+    //     BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), BTreeSet<EncoderIndex>>,
+    // reveal_slot_finality: BTreeMap<(Epoch, Digest<Shard>, EncoderIndex), SlotFinality>,
+
+    // #[allow(clippy::type_complexity)]
+    // scores: BTreeMap<
+    //     (Epoch, Digest<Shard>, EncoderIndex),
+    //     (
+    //         Digest<ScoreSet>,
+    //         Signed<ScoreSet, min_sig::BLS12381Signature>,
+    //     ),
+    // >,
 }
 
 pub(crate) enum SlotFinality {
@@ -95,16 +97,18 @@ impl MemStore {
                 signed_commit_digests: BTreeMap::new(),
                 shard_committers: BTreeMap::new(),
                 signed_commits: BTreeMap::new(),
-                reveals: BTreeMap::new(),
-                first_commit_timestamp_ms: BTreeMap::new(),
-                first_reveal_timestamp_ms: BTreeMap::new(),
-                commit_slot_accept_voters: BTreeMap::new(),
-                commit_slot_reject_voters: BTreeMap::new(),
-                commit_slot_finality: BTreeMap::new(),
-                reveal_slot_accept_voters: BTreeMap::new(),
-                reveal_slot_reject_voters: BTreeMap::new(),
-                reveal_slot_finality: BTreeMap::new(),
-                scores: BTreeMap::new(),
+                signed_reveals: BTreeMap::new(),
+                signed_commit_votes: BTreeMap::new(),
+                signed_reveal_votes: BTreeMap::new(),
+                // first_commit_timestamp_ms: BTreeMap::new(),
+                // first_reveal_timestamp_ms: BTreeMap::new(),
+                // commit_slot_accept_voters: BTreeMap::new(),
+                // commit_slot_reject_voters: BTreeMap::new(),
+                // commit_slot_finality: BTreeMap::new(),
+                // reveal_slot_accept_voters: BTreeMap::new(),
+                // reveal_slot_reject_voters: BTreeMap::new(),
+                // reveal_slot_finality: BTreeMap::new(),
+                // scores: BTreeMap::new(),
             }),
         }
     }
@@ -135,14 +139,14 @@ impl Store for MemStore {
         match (committer_check, slot_check) {
             // Committer has committed before
             (Some(existing_digest), _) if existing_digest != &signed_commit_digest => {
-                return Err(ShardError::ConflictingCommit(
+                return Err(ShardError::Conflict(
                     "existing commit from committer".to_string(),
                 ));
             }
             // Slot is taken with different commit
             (_, Some(existing)) if existing != &signed_commit_digest => {
-                return Err(ShardError::ConflictingCommit(
-                    "slot already has commit".to_string(),
+                return Err(ShardError::Conflict(
+                    "encoder already has commit".to_string(),
                 ));
             }
             // If we made it here, either there are no existing commits
@@ -165,7 +169,7 @@ impl Store for MemStore {
         &self,
         shard: &Shard,
         signed_commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
-    ) -> ShardResult<usize> {
+    ) -> ShardResult<()> {
         let epoch = signed_commit.auth_token().epoch();
         let shard_digest = shard.digest()?;
         let encoder = signed_commit.encoder();
@@ -176,14 +180,16 @@ impl Store for MemStore {
 
         match inner.signed_commits.get(&encoder_key) {
             Some(existing_commit) => {
-                if existing_commit != &signed_commit {
-                    return Err(ShardError::ConflictingCommit(
+                if existing_commit != signed_commit {
+                    return Err(ShardError::Conflict(
                         "encoder has a different existing commit".to_string(),
                     ));
                 }
             }
             None => {
-                inner.signed_commits.insert(encoder_key, signed_commit);
+                inner
+                    .signed_commits
+                    .insert(encoder_key, signed_commit.clone());
             }
         };
         Ok(())
@@ -220,10 +226,10 @@ impl Store for MemStore {
             Some(signed_commits) => {
                 let key_digest =
                     Digest::new(signed_reveal.key()).map_err(ShardError::DigestFailure)?;
-                if signed_commits.reveal_key_digest() != key_digest {
-                    Err(ShardError::InvalidReveal(
+                if signed_commits.reveal_key_digest()? != key_digest {
+                    return Err(ShardError::Conflict(
                         "encryption key digest did not match commmit".to_string(),
-                    ))
+                    ));
                 }
                 Ok(())
             }
@@ -245,16 +251,70 @@ impl Store for MemStore {
 
         let mut inner = self.inner.write();
 
-        match inner.signed_commits.get(&encoder_key) {
+        match inner.signed_reveals.get(&encoder_key) {
             Some(existing_reveal) => {
-                if existing_reveal != &signed_reveal {
-                    return Err(ShardError::ConflictingCommit(
+                if existing_reveal != signed_reveal {
+                    return Err(ShardError::Conflict(
                         "encoder has a different existing signed reveal".to_string(),
                     ));
                 }
             }
             None => {
-                inner.signed_reveals.insert(encoder_key, signed_reveal);
+                inner
+                    .signed_reveals
+                    .insert(encoder_key, signed_reveal.clone());
+            }
+        };
+        Ok(())
+    }
+    fn add_commit_votes(
+        &self,
+        shard: &Shard,
+        votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        let epoch = votes.auth_token().epoch();
+        let shard_digest = shard.digest()?;
+        let encoder = votes.voter();
+        let encoder_key = (epoch, shard_digest, encoder.clone());
+        let votes = votes.deref();
+        let mut inner = self.inner.write();
+
+        match inner.signed_commit_votes.get(&encoder_key) {
+            Some(existing) => {
+                if existing != votes {
+                    return Err(ShardError::Conflict(
+                        "encoder has a different commit vote".to_string(),
+                    ));
+                }
+            }
+            None => {
+                inner.signed_commit_votes.insert(encoder_key, votes.clone());
+            }
+        };
+        Ok(())
+    }
+
+    fn add_reveal_votes(
+        &self,
+        shard: &Shard,
+        votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
+    ) -> ShardResult<()> {
+        let epoch = votes.auth_token().epoch();
+        let shard_digest = shard.digest()?;
+        let encoder = votes.voter();
+        let encoder_key = (epoch, shard_digest, encoder.clone());
+        let votes = votes.deref();
+        let mut inner = self.inner.write();
+        match inner.signed_reveal_votes.get(&encoder_key) {
+            Some(existing) => {
+                if existing != votes {
+                    return Err(ShardError::Conflict(
+                        "encoder has a different reveal vote".to_string(),
+                    ));
+                }
+            }
+            None => {
+                inner.signed_reveal_votes.insert(encoder_key, votes.clone());
             }
         };
         Ok(())

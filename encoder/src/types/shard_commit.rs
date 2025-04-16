@@ -1,5 +1,5 @@
-use std::ops::Deref;
-
+use super::{shard::Shard, shard_verifier::ShardAuthToken};
+use crate::error::{ShardError, ShardResult};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
@@ -11,10 +11,6 @@ use shared::{
     scope::Scope,
     signed::Signed,
 };
-
-use crate::error::ShardError;
-
-use super::{shard::Shard, shard_verifier::ShardAuthToken};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Route {
@@ -48,10 +44,9 @@ pub(crate) trait ShardCommitAPI {
     fn encoder(&self) -> &EncoderPublicKey;
     fn committer(&self) -> &EncoderPublicKey;
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>>;
-    fn reveal_key_digest(&self) -> Digest<EncryptionKey>;
+    fn reveal_key_digest(&self) -> ShardResult<Digest<EncryptionKey>>;
     fn commit_metadata(&self) -> &Metadata;
 }
-
 impl ShardCommit {
     pub(crate) fn new_v1(
         auth_token: ShardAuthToken,
@@ -93,7 +88,7 @@ impl ShardCommitAPI for ShardCommitV1 {
         self.route
             .as_ref()
             .map(|r| r.destination())
-            .unwrap_or(self.inference_encoder.deref())
+            .unwrap_or(self.encoder())
     }
     fn route(&self) -> &Option<Signed<Route, min_sig::BLS12381Signature>> {
         &self.route
@@ -101,7 +96,7 @@ impl ShardCommitAPI for ShardCommitV1 {
     fn commit_metadata(&self) -> &Metadata {
         &self.commit
     }
-    fn reveal_key_digest(&self) -> SharedResult<Digest<EncryptionKey>> {
+    fn reveal_key_digest(&self) -> ShardResult<Digest<EncryptionKey>> {
         // TODO: remove encryption from metadata and add to the commit
         match self.commit.encryption() {
             Some(encryption) => Ok(encryption.key_digest()),
@@ -135,7 +130,7 @@ pub(crate) fn verify_signed_shard_commit(
     if let Some(signed_route) = signed_shard_commit.route() {
         // if the route destination encoder already has a role in the shard, this should
         // cause an error
-        if let Ok(_) = shard.role(signed_route.destination().clone()) {
+        if shard.contains(signed_route.destination()) {
             return Err(shared::error::SharedError::ValidationError(
                 "route destination may not be a member of the shard".to_string(),
             ));
@@ -151,7 +146,7 @@ pub(crate) fn verify_signed_shard_commit(
         // the original slot must sign off on the route in order to be eligible
         let _ = signed_route.verify(
             Scope::ShardCommitRoute,
-            signed_shard_commit.inference_encoder().inner(),
+            signed_shard_commit.encoder().inner(),
         )?;
     }
 

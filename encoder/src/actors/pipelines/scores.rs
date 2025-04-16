@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     actors::{ActorMessage, Processor},
+    datastore::Store,
     error::{ShardError, ShardResult},
-    storage::datastore::Store,
     types::{
         certified::Certified,
         encoder_committee::EncoderIndex,
@@ -40,37 +40,37 @@ impl Processor for ScoresProcessor {
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, shard_scores) = msg.input;
-            let epoch = shard.epoch();
-            let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
-            let signed_score_set = shard_scores.signed_score_set();
+            // let (shard, shard_scores) = msg.input;
+            // let epoch = shard.epoch();
+            // let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
+            // let signed_score_set = shard_scores.signed_score_set();
 
-            let evaluator = shard_scores.evaluator();
+            // let evaluator = shard_scores.evaluator();
 
-            let matching_scores =
-                self.store
-                    .add_scores(epoch, shard_ref, evaluator, signed_score_set.clone())?;
+            // let matching_scores =
+            //     self.store
+            //         .add_scores(epoch, shard_ref, evaluator, signed_score_set.clone())?;
 
-            if matching_scores.len() >= shard.evaluation_quorum_threshold() as usize {
-                let (signatures, evaluator_indices): (Vec<EncoderSignature>, Vec<EncoderIndex>) = {
-                    let mut sigs = Vec::new();
-                    let mut indices = Vec::new();
+            // if matching_scores.len() >= shard.evaluation_quorum_threshold() as usize {
+            //     let (signatures, evaluator_indices): (Vec<EncoderSignature>, Vec<EncoderIndex>) = {
+            //         let mut sigs = Vec::new();
+            //         let mut indices = Vec::new();
 
-                    for (evaluator_index, signed_scores) in matching_scores.iter() {
-                        let sig = EncoderSignature::from_bytes(&signed_scores.raw_signature())
-                            .map_err(ShardError::SignatureAggregationFailure)?;
-                        sigs.push(sig);
-                        indices.push(*evaluator_index);
-                    }
-                    (sigs, indices)
-                };
+            //         for (evaluator_index, signed_scores) in matching_scores.iter() {
+            //             let sig = EncoderSignature::from_bytes(&signed_scores.raw_signature())
+            //                 .map_err(ShardError::SignatureAggregationFailure)?;
+            //             sigs.push(sig);
+            //             indices.push(*evaluator_index);
+            //         }
+            //         (sigs, indices)
+            //     };
 
-                let agg = EncoderAggregateSignature::new(&signatures)
-                    .map_err(ShardError::SignatureAggregationFailure)?;
+            //     let agg = EncoderAggregateSignature::new(&signatures)
+            //         .map_err(ShardError::SignatureAggregationFailure)?;
 
-                let cert = Certified::new_v1(signed_score_set.into_inner(), evaluator_indices, agg);
-                println!("{:?}", cert);
-            }
+            //     let cert = Certified::new_v1(signed_score_set.into_inner(), evaluator_indices, agg);
+            //     println!("{:?}", cert);
+            // }
             Ok(())
         }
         .await;

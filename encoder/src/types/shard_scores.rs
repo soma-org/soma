@@ -3,13 +3,12 @@ use std::{collections::HashSet, ops::Deref};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::{digest::Digest, error::SharedResult, scope::Scope, signed::Signed};
-
-use super::{
-    encoder_committee::{Epoch, EvaluationEncoder, InferenceEncoder},
-    shard::Shard,
-    shard_verifier::ShardAuthToken,
+use shared::{
+    crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
+    signed::Signed,
 };
+
+use super::{encoder_committee::Epoch, shard::Shard, shard_verifier::ShardAuthToken};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -23,23 +22,23 @@ pub enum ShardScores {
 #[enum_dispatch]
 pub(crate) trait ShardScoresAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn evaluator(&self) -> &EvaluationEncoder;
+    fn evaluator(&self) -> &EncoderPublicKey;
     fn signed_score_set(&self) -> Signed<ScoreSet, min_sig::BLS12381Signature>;
     fn unique_scores(&self) -> usize;
-    fn inference_encoders(&self) -> Vec<InferenceEncoder>;
+    fn encoders(&self) -> Vec<EncoderPublicKey>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct ShardScoresV1 {
     auth_token: ShardAuthToken,
-    evaluator: EvaluationEncoder,
+    evaluator: EncoderPublicKey,
     signed_score_set: Signed<ScoreSet, min_sig::BLS12381Signature>,
 }
 
 impl ShardScoresV1 {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
-        evaluator: EvaluationEncoder,
+        evaluator: EncoderPublicKey,
         signed_score_set: Signed<ScoreSet, min_sig::BLS12381Signature>,
     ) -> Self {
         Self {
@@ -54,28 +53,28 @@ impl ShardScoresAPI for ShardScoresV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn evaluator(&self) -> &EvaluationEncoder {
+    fn evaluator(&self) -> &EncoderPublicKey {
         &self.evaluator
     }
     fn signed_score_set(&self) -> Signed<ScoreSet, min_sig::BLS12381Signature> {
         self.signed_score_set.clone()
     }
     fn unique_scores(&self) -> usize {
-        let unique_slots: &HashSet<InferenceEncoder> = &self
+        let unique_slots: &HashSet<EncoderPublicKey> = &self
             .signed_score_set
             .deref()
             .scores()
             .iter()
-            .map(|score| score.inference_encoder().clone())
+            .map(|score| score.encoder().clone())
             .collect();
         unique_slots.len()
     }
-    fn inference_encoders(&self) -> Vec<InferenceEncoder> {
+    fn encoders(&self) -> Vec<EncoderPublicKey> {
         self.signed_score_set
             .deref()
             .scores()
             .iter()
-            .map(|score| score.inference_encoder().clone())
+            .map(|score| score.encoder().clone())
             .collect()
     }
 }
@@ -118,7 +117,7 @@ impl ScoreSetAPI for ScoreSetV1 {
 
 #[enum_dispatch]
 pub trait ScoreAPI {
-    fn inference_encoder(&self) -> &InferenceEncoder;
+    fn encoder(&self) -> &EncoderPublicKey;
     fn rank(&self) -> u8;
 }
 
@@ -130,21 +129,18 @@ pub enum Score {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ScoreV1 {
-    inference_encoder: InferenceEncoder,
+    encoder: EncoderPublicKey,
     rank: u8,
 }
 impl ScoreV1 {
-    pub fn new(inference_encoder: InferenceEncoder, rank: u8) -> Self {
-        Self {
-            inference_encoder,
-            rank,
-        }
+    pub fn new(encoder: EncoderPublicKey, rank: u8) -> Self {
+        Self { encoder, rank }
     }
 }
 
 impl ScoreAPI for ScoreV1 {
-    fn inference_encoder(&self) -> &InferenceEncoder {
-        &self.inference_encoder
+    fn encoder(&self) -> &EncoderPublicKey {
+        &self.encoder
     }
     fn rank(&self) -> u8 {
         self.rank
@@ -155,21 +151,21 @@ pub(crate) fn verify_signed_scores(
     signed_scores: &Signed<ShardScores, min_sig::BLS12381Signature>,
     shard: &Shard,
 ) -> SharedResult<()> {
-    if !shard.evaluation_set_contains(&signed_scores.evaluator()) {
+    if !shard.contains(&signed_scores.evaluator()) {
         return Err(shared::error::SharedError::ValidationError(
-            "sender is not in evaluation set".to_string(),
+            "evaluator is not in the shard".to_string(),
         ));
     }
 
-    if signed_scores.unique_scores() != shard.inference_set_size() {
+    if signed_scores.unique_scores() != shard.size() {
         return Err(shared::error::SharedError::ValidationError(
-            "unique slots for scores does not match shard size".to_string(),
+            "unique scores does not match shard size".to_string(),
         ));
     }
-    for inference_encoder in signed_scores.inference_encoders() {
-        if !shard.inference_set_contains(&inference_encoder) {
+    for encoder in signed_scores.encoders() {
+        if !shard.contains(&encoder) {
             return Err(shared::error::SharedError::ValidationError(
-                "score slot not in inference set".to_string(),
+                "scored encoder is not in shard".to_string(),
             ));
         }
     }

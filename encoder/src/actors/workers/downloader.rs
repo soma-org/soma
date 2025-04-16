@@ -10,7 +10,7 @@ use shared::{
 };
 use soma_network::multiaddr::Multiaddr;
 
-use crate::error::ShardResult;
+use crate::error::{ShardError, ShardResult};
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};
@@ -54,18 +54,24 @@ impl<C: ObjectNetworkClient, S: ObjectStorage> Processor for Downloader<C, S> {
             let object_path = ObjectPath::from_checksum(input.metadata.checksum());
 
             // check if the object exists
-            if self.storage.exists(&object_path).await?.is_ok() {
+            // TODO: explicitly match on the not found error only
+            if self.storage.exists(&object_path).await.is_ok() {
                 // if it exists, no need to download
                 return Ok(());
             }
 
             // get an object writer for the storage backend
-            let writer = self.storage.get_object_writer(&object_path).await?;
+            let mut writer = self
+                .storage
+                .get_object_writer(&object_path)
+                .await
+                .map_err(ShardError::ObjectError)?;
             // download the object, streaming it directly into storage
             let _ = self
                 .client
-                .download_object(writer, &input.peer, &input.address, &input.metadata)
-                .await?;
+                .download_object(&mut writer, &input.peer, &input.address, &input.metadata)
+                .await
+                .map_err(ShardError::ObjectError)?;
 
             Ok(())
         }
