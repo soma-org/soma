@@ -2,6 +2,7 @@
 mod rewards_distribution_tests {
     use crate::{
         base::{dbg_addr, SomaAddress},
+        config::genesis_config::SHANNONS_PER_SOMA,
         system_state::{
             test_utils::{
                 self, advance_epoch_with_reward_amounts,
@@ -15,9 +16,6 @@ mod rewards_distribution_tests {
         },
     };
     use std::collections::BTreeMap;
-
-    // Constants for testing
-    const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
 
     // Create constant validator addresses for testing
     fn validator_addr_1() -> SomaAddress {

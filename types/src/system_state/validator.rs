@@ -10,7 +10,10 @@ use tracing::info;
 
 use crate::{
     base::SomaAddress,
-    committee::{MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER},
+    committee::{
+        MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_LOW_POWER,
+        VALIDATOR_MIN_POWER, VALIDATOR_VERY_LOW_POWER,
+    },
     crypto,
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
@@ -455,8 +458,6 @@ impl ValidatorSet {
         total_rewards: &mut u64,
         reward_slashing_rate: u64,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
-        validator_low_stake_threshold: u64,
-        validator_very_low_stake_threshold: u64,
         validator_low_stake_grace_period: u64,
     ) -> HashMap<SomaAddress, StakedSoma> {
         // Calculate total voting power
@@ -507,17 +508,19 @@ impl ValidatorSet {
 
         self.process_pending_removals(validator_report_records, new_epoch);
 
-        // Check and process validators with low stake
-        self.update_and_process_low_stake_departures(
-            validator_low_stake_threshold,
-            validator_very_low_stake_threshold,
+        // Process validators with low voting power and get new total stake
+        let new_total_stake = self.update_validator_positions_and_calculate_total_stake(
             validator_low_stake_grace_period,
             validator_report_records,
             new_epoch,
         );
+        self.total_stake = new_total_stake;
 
-        // Update total stake
-        self.total_stake = self.calculate_total_stake();
+        // Now process pending validators AFTER processing low voting power validators
+        self.process_pending_validators(new_epoch);
+
+        // Finally readjust voting power after all validator changes
+        self.set_voting_power();
 
         // TODO: Apply staged metadata changes
         // self.apply_staged_metadata();
@@ -860,28 +863,38 @@ impl ValidatorSet {
         }
     }
 
-    /// Process validators with low stake amounts
-    pub fn update_and_process_low_stake_departures(
+    /// Process validators with voting power below thresholds
+    pub fn update_validator_positions_and_calculate_total_stake(
         &mut self,
-        low_stake_threshold: u64,
-        very_low_stake_threshold: u64,
         low_stake_grace_period: u64,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         new_epoch: u64,
-    ) {
-        // Start from the back to avoid index issues when removing
+    ) -> u64 {
+        // Calculate total stake including pending validators
+        let pending_total_stake: u64 = self
+            .pending_active_validators
+            .iter()
+            .map(|v| v.staking_pool.soma_balance)
+            .sum();
+        let initial_total_stake = self.calculate_total_stake() + pending_total_stake;
+
+        // Process active validators for removal if below thresholds
+        let mut total_removed_stake = 0;
         let mut i = self.active_validators.len();
 
         while i > 0 {
             i -= 1;
             let validator = &self.active_validators[i];
             let validator_address = validator.metadata.soma_address;
-            let stake = validator.staking_pool.soma_balance;
+            let validator_stake = validator.staking_pool.soma_balance;
 
-            if stake >= low_stake_threshold {
+            // Calculate voting power as a proportion of total stake
+            let voting_power = derive_raw_voting_power(validator_stake, initial_total_stake);
+
+            if voting_power >= VALIDATOR_LOW_POWER {
                 // Validator is safe - remove from at-risk if present
                 self.at_risk_validators.remove(&validator_address);
-            } else if stake >= very_low_stake_threshold {
+            } else if voting_power >= VALIDATOR_VERY_LOW_POWER {
                 // Below threshold but above critical - increment grace period
                 let new_low_stake_period =
                     if let Some(&period) = self.at_risk_validators.get(&validator_address) {
@@ -899,24 +912,31 @@ impl ValidatorSet {
                 // If grace period exceeded, remove validator
                 if new_low_stake_period > low_stake_grace_period {
                     let validator = self.active_validators.swap_remove(i);
+                    let removed_stake = validator.staking_pool.soma_balance;
                     self.process_validator_departure(
                         validator,
                         validator_report_records,
                         new_epoch,
-                        false,
+                        false, // not voluntary departure
                     );
+                    total_removed_stake += removed_stake;
                 }
             } else {
-                // Stake critically low - remove immediately
+                // Voting power critically low - remove immediately
                 let validator = self.active_validators.swap_remove(i);
+                let removed_stake = validator.staking_pool.soma_balance;
                 self.process_validator_departure(
                     validator,
                     validator_report_records,
                     new_epoch,
-                    false,
+                    false, // not voluntary departure
                 );
+                total_removed_stake += removed_stake;
             }
         }
+
+        // Return new total stake (initial minus removed)
+        initial_total_stake - total_removed_stake
     }
 
     /// Handle validator departure while maintaining staking pool
@@ -996,15 +1016,20 @@ impl ValidatorSet {
     }
 
     /// Process validators during epoch advancement
-    pub fn process_pending_validators(&mut self, new_epoch: u64, min_validator_joining_stake: u64) {
-        let mut i = 0;
+    pub fn process_pending_validators(&mut self, new_epoch: u64) {
+        // Calculate total stake for voting power calculations
+        let total_stake = self.calculate_total_stake();
 
-        // Only keep pending validators that meet minimum requirements
+        let mut i = 0;
         while i < self.pending_active_validators.len() {
             let validator = &mut self.pending_active_validators[i];
+            let validator_stake = validator.staking_pool.soma_balance;
 
-            // Check if validator meets minimum stake requirement
-            if validator.staking_pool.soma_balance >= min_validator_joining_stake {
+            // Calculate voting power
+            let voting_power = derive_raw_voting_power(validator_stake, total_stake);
+
+            // Check if validator meets minimum voting power requirement
+            if voting_power >= VALIDATOR_MIN_POWER {
                 // Activate validator's staking pool
                 validator.activate(new_epoch);
 
@@ -1053,4 +1078,12 @@ fn sort_removal_list(withdraw_list: &mut Vec<usize>) {
         }
         i = i + 1;
     }
+}
+
+/// Helper function to derive raw voting power from stake amount
+fn derive_raw_voting_power(stake: u64, total_stake: u64) -> u64 {
+    if total_stake == 0 {
+        return 0;
+    }
+    ((stake as u128) * (TOTAL_VOTING_POWER as u128) / (total_stake as u128)) as u64
 }

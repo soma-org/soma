@@ -301,6 +301,7 @@ pub struct TestClusterBuilder {
     num_validators: Option<usize>,
     genesis_config: Option<GenesisConfig>,
     network_config: Option<NetworkConfig>,
+    validators: Option<Vec<ValidatorGenesisConfig>>,
 }
 
 impl TestClusterBuilder {
@@ -309,6 +310,7 @@ impl TestClusterBuilder {
             num_validators: None,
             genesis_config: None,
             network_config: None,
+            validators: None,
         }
     }
 
@@ -336,6 +338,17 @@ impl TestClusterBuilder {
         self
     }
 
+    /// Provide validator genesis configs, overrides the `num_validators` setting.
+    pub fn with_validators(mut self, validators: Vec<ValidatorGenesisConfig>) -> Self {
+        self.validators = Some(validators);
+        self
+    }
+
+    pub fn with_accounts(mut self, accounts: Vec<AccountConfig>) -> Self {
+        self.get_or_init_genesis_config().accounts = accounts;
+        self
+    }
+
     pub async fn build(mut self) -> TestCluster {
         let swarm = self.start_swarm().await.unwrap();
         let fullnode = swarm.fullnodes().next().unwrap();
@@ -350,11 +363,15 @@ impl TestClusterBuilder {
     }
 
     async fn start_swarm(&mut self) -> Result<Swarm, anyhow::Error> {
-        let mut builder: SwarmBuilder = Swarm::builder()
-            .committee_size(
+        let mut builder: SwarmBuilder = Swarm::builder().with_fullnode_count(1);
+
+        if let Some(validators) = self.validators.take() {
+            builder = builder.with_validators(validators);
+        } else {
+            builder = builder.committee_size(
                 NonZeroUsize::new(self.num_validators.unwrap_or(NUM_VALIDATORS)).unwrap(),
             )
-            .with_fullnode_count(1);
+        };
 
         if let Some(genesis_config) = self.genesis_config.take() {
             builder = builder.with_genesis_config(genesis_config);
@@ -384,7 +401,7 @@ impl TestClusterBuilder {
             .accounts
             .extend(addresses.into_iter().map(|address| AccountConfig {
                 address: Some(address),
-                gas_amounts: vec![DEFAULT_GAS_AMOUNT, DEFAULT_GAS_AMOUNT],
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10],
             }));
         self
     }

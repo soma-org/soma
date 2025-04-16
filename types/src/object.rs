@@ -55,7 +55,7 @@ use std::{fmt, str::FromStr, sync::Arc};
 
 /// The starting version for all newly created objects
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
-pub const GAS_VALUE_FOR_TESTING: u64 = 100_000;
+pub const GAS_VALUE_FOR_TESTING: u64 = 300_000_000_000_000;
 
 /// # Version
 ///

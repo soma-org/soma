@@ -96,6 +96,27 @@ pub const VALIDITY_THRESHOLD: VotingPower = 3_334;
 // TODO: determine what this should be
 pub const MAX_VOTING_POWER: u64 = 1_000;
 
+/// Minimum amount of voting power required to become a validator
+/// .12% of voting power
+// TODO: consider making this .06 or .03
+pub const VALIDATOR_MIN_POWER: u64 = 12;
+
+/// Low voting power threshold for validators
+/// Validators below this threshold fall into the "at risk" group.
+/// .08% of voting power
+// TODO: consider making this .04 or .02
+pub const VALIDATOR_LOW_POWER: u64 = 8;
+
+/// Very low voting power threshold for validators
+/// Validators below this threshold will be removed immediately at epoch change.
+/// .04% of voting power
+// TODO: consider making this .02 or .01
+pub const VALIDATOR_VERY_LOW_POWER: u64 = 4;
+
+/// A validator can have stake below `validator_low_stake_threshold`
+/// for this many epochs before being kicked out.
+pub const VALIDATOR_LOW_STAKE_GRACE_PERIOD: u64 = 7;
+
 /// Represents a committee of validators for a specific epoch.
 ///
 /// The Committee structure tracks validator membership, voting power distribution,

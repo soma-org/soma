@@ -98,18 +98,6 @@ pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
 
-    /// Lower-bound on the amount of stake required to become a validator.
-    pub min_validator_joining_stake: u64,
-
-    /// Validators with stake amount below `validator_low_stake_threshold` are considered to
-    /// have low stake and will be escorted out of the validator set after being below this
-    /// threshold for more than `validator_low_stake_grace_period` number of epochs.
-    pub validator_low_stake_threshold: u64,
-
-    /// Validators with stake below `validator_very_low_stake_threshold` will be removed
-    /// immediately at epoch change, no grace period.
-    pub validator_very_low_stake_threshold: u64,
-
     /// A validator can have stake below `validator_low_stake_threshold`
     /// for this many epochs before being kicked out.
     pub validator_low_stake_grace_period: u64,
@@ -124,9 +112,6 @@ impl Default for SystemParameters {
     fn default() -> Self {
         Self {
             epoch_duration_ms: 1000 * 60, // TODO: 1000 * 60 * 60 * 24, // 1 day
-            min_validator_joining_stake: 10 * SHANNONS_PER_SOMA, // TODO: 30_000_000 * SHANNONS_PER_SOMA,
-            validator_low_stake_threshold: 20 * SHANNONS_PER_SOMA, // TODO: 20_000_000 * SHANNONS_PER_SOMA,
-            validator_very_low_stake_threshold: 15 * SHANNONS_PER_SOMA, // TODO: 15_000_000 * SHANNONS_PER_SOMA,
             validator_low_stake_grace_period: 7,
         }
     }
@@ -558,19 +543,8 @@ impl SystemState {
             &mut total_rewards,
             reward_slashing_rate,
             &mut self.validator_report_records,
-            self.parameters.validator_low_stake_threshold,
-            self.parameters.validator_very_low_stake_threshold,
             self.parameters.validator_low_stake_grace_period,
         );
-
-        // Now process pending validators AFTER processing rewards
-        // Only validators that meet minimum stake requirements will be activated
-        self.validators
-            .process_pending_validators(new_epoch, self.parameters.min_validator_joining_stake);
-
-        // Finally readjust voting power after new validators are added
-        // Recalculate voting power
-        self.validators.set_voting_power();
 
         Ok(rewards)
     }

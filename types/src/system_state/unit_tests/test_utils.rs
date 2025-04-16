@@ -1,6 +1,7 @@
 use crate::{
     base::SomaAddress,
     committee::TOTAL_VOTING_POWER,
+    config::genesis_config::SHANNONS_PER_SOMA,
     crypto::{self, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair},
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
@@ -25,9 +26,6 @@ use std::{
     str::FromStr,
 };
 use tracing_subscriber::fmt::init;
-
-// Constants for testing
-pub const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
 
 #[cfg(test)]
 #[derive(Clone)]
@@ -361,9 +359,6 @@ pub fn create_test_system_state(
     // System parameters
     let parameters = SystemParameters {
         epoch_duration_ms: 42, // Doesn't matter what number we put here for tests
-        min_validator_joining_stake: 1 * SHANNONS_PER_SOMA,
-        validator_low_stake_threshold: 1 * SHANNONS_PER_SOMA,
-        validator_very_low_stake_threshold: 0,
         validator_low_stake_grace_period: 7,
     };
 

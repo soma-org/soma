@@ -49,7 +49,7 @@ pub struct GenesisConfig {
     pub accounts: Vec<AccountConfig>,
 }
 
-pub const DEFAULT_GAS_AMOUNT: u64 = 30 * SHANNONS_PER_SOMA;
+pub const DEFAULT_GAS_AMOUNT: u64 = 30_000_000_000_000_000;
 const DEFAULT_COMMISSION_RATE: u64 = 200;
 const DEFAULT_NUMBER_OF_ACCOUNTS: usize = 5;
 const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
@@ -58,7 +58,7 @@ const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
 pub const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
 
 /// Total supply denominated in Soma
-pub const TOTAL_SUPPLY_SOMA: u64 = 1_000_000;
+pub const TOTAL_SUPPLY_SOMA: u64 = 10_000_000_000;
 
 // Note: cannot use checked arithmetic here since `const unwrap` is still unstable.
 /// Total supply denominated in Shannons
@@ -77,7 +77,7 @@ impl GenesisConfig {
         for _ in 0..num_accounts {
             accounts.push(AccountConfig {
                 address: None,
-                gas_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10; num_objects_per_account],
             })
         }
 
@@ -269,8 +269,8 @@ impl GenesisCeremonyParameters {
     }
 
     fn default_initial_stake_subsidy_distribution_amount() -> u64 {
-        // 1k SOMA
-        1_000 * SHANNONS_PER_SOMA
+        // 1M SOMA
+        1_000_000 * SHANNONS_PER_SOMA
     }
 
     fn default_stake_subsidy_period_length() -> u64 {
@@ -376,5 +376,5 @@ impl TokenDistributionScheduleBuilder {
 }
 
 fn default_stake() -> u64 {
-    200 * SHANNONS_PER_SOMA
+    20_000_000_000_000_000
 }

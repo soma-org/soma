@@ -2,6 +2,7 @@
 mod delegation_tests {
     use crate::{
         base::{dbg_addr, SomaAddress},
+        config::genesis_config::SHANNONS_PER_SOMA,
         effects::ExecutionFailureStatus,
         error::SomaError,
         system_state::{
@@ -17,9 +18,6 @@ mod delegation_tests {
         },
     };
     use std::collections::BTreeMap;
-
-    // Constants for testing
-    const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
 
     // Create constant validator addresses for testing
     fn validator_addr_1() -> SomaAddress {

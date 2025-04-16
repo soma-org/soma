@@ -207,7 +207,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 // Give each validator some gas so they can pay for their transactions.
                 let gas_coin = TokenAllocation {
                     recipient_address: address,
-                    amount_shannons: DEFAULT_GAS_AMOUNT,
+                    amount_shannons: DEFAULT_GAS_AMOUNT * 10,
                     staked_with_validator: None,
                 };
                 let stake = TokenAllocation {
