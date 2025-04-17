@@ -52,6 +52,7 @@ use types::{
     config::node_config::{ConsensusConfig, NodeConfig},
     consensus::context::{Clock, Context},
     crypto::KeypairTraits,
+    effects::TransactionEffects,
     error::{SomaError, SomaResult},
     object::ObjectRef,
     p2p::{
@@ -834,8 +835,11 @@ impl SomaNode {
 
     // TODO: TEST CLUSTER HELPERS - MOVE THESE TO WALLET CONTEXT / RPC / SDK
 
-    pub async fn execute_transaction(&self, transaction: Transaction) -> SomaResult {
-        let _ = self
+    pub async fn execute_transaction(
+        &self,
+        transaction: Transaction,
+    ) -> SomaResult<TransactionEffects> {
+        let (response, _) = self
             .transaction_orchestrator
             .as_ref()
             .expect("Node is not a fullnode")
@@ -846,7 +850,7 @@ impl SomaNode {
             )
             .await
             .unwrap();
-        Ok(())
+        Ok(response.effects.effects)
     }
 
     pub async fn get_gas_objects_owned_by_address(

@@ -20,6 +20,7 @@ use types::{
         node_config::{FullnodeConfigBuilder, NodeConfig, ValidatorConfigBuilder},
         p2p_config::SeedPeer,
     },
+    effects::TransactionEffects,
     error::SomaResult,
     genesis::Genesis,
     object::ObjectRef,
@@ -276,7 +277,7 @@ impl TestCluster {
             .expect("timed out waiting for reconfiguration to complete");
     }
 
-    pub async fn execute_transaction(&self, tx: Transaction) -> SomaResult {
+    pub async fn execute_transaction(&self, tx: Transaction) -> SomaResult<TransactionEffects> {
         self.fullnode_handle
             .soma_node
             .with_async(|node| async { node.execute_transaction(tx).await })
