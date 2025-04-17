@@ -43,6 +43,15 @@ impl ValidatorExecutor {
             TransactionKind::RemoveValidator(args) => {
                 state.request_remove_validator(signer, args.pubkey_bytes.clone())
             }
+            TransactionKind::ReportValidator { reportee } => {
+                state.report_validator(signer, *reportee)
+            }
+            TransactionKind::UndoReportValidator { reportee } => {
+                state.undo_report_validator(signer, *reportee)
+            }
+            TransactionKind::SetCommissionRate { new_rate } => {
+                state.request_set_commission_rate(signer, *new_rate)
+            }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
     }

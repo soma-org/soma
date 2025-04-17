@@ -90,7 +90,17 @@ pub enum TransactionKind {
     // Validator management transactions
     AddValidator(AddValidatorArgs),
     RemoveValidator(RemoveValidatorArgs),
-    // TODO: add validator metadata change, commission rate, and report/unreport txs
+    // Reporting validators
+    ReportValidator {
+        reportee: SomaAddress,
+    },
+    UndoReportValidator {
+        reportee: SomaAddress,
+    },
+    // Metadata Changes
+    SetCommissionRate {
+        new_rate: u64,
+    },
     // Coin and object transactions
     TransferCoin {
         coin: ObjectRef,
@@ -180,7 +190,11 @@ impl TransactionKind {
     pub fn is_validator_tx(&self) -> bool {
         matches!(
             self,
-            TransactionKind::AddValidator(_) | TransactionKind::RemoveValidator(_)
+            TransactionKind::AddValidator(_)
+                | TransactionKind::RemoveValidator(_)
+                | TransactionKind::ReportValidator { .. }
+                | TransactionKind::UndoReportValidator { .. }
+                | TransactionKind::SetCommissionRate { .. }
         )
     }
 

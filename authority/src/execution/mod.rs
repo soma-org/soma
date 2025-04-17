@@ -242,9 +242,11 @@ pub fn execute_transaction(
 
 fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
     match kind {
-        TransactionKind::AddValidator(_) | TransactionKind::RemoveValidator(_) => {
-            Box::new(ValidatorExecutor::new())
-        }
+        TransactionKind::AddValidator(_)
+        | TransactionKind::RemoveValidator(_)
+        | TransactionKind::ReportValidator { .. }
+        | TransactionKind::UndoReportValidator { .. }
+        | TransactionKind::SetCommissionRate { .. } => Box::new(ValidatorExecutor::new()),
 
         TransactionKind::ChangeEpoch(_) => Box::new(ChangeEpochExecutor::new()),
 
