@@ -54,6 +54,7 @@ use crate::{
     object::ObjectID,
     parameters,
     peer_id::PeerId,
+    transaction::UpdateValidatorMetadataArgs,
     SYSTEM_STATE_OBJECT_ID,
 };
 use crate::{
@@ -311,6 +312,21 @@ impl SystemState {
         pubkey_bytes: Vec<u8>,
     ) -> ExecutionResult {
         self.validators.request_remove_validator(signer)
+    }
+
+    pub fn request_update_validator_metadata(
+        &mut self,
+        signer: SomaAddress,
+        args: &UpdateValidatorMetadataArgs,
+    ) -> ExecutionResult<()> {
+        let validator = self
+            .validators
+            .find_validator_mut(signer)
+            // Ensure only active validators can stage changes for the next epoch
+            .ok_or(ExecutionFailureStatus::NotAValidator)?;
+
+        // Delegate the processing of optional fields to the validator
+        validator.stage_next_epoch_metadata(args)
     }
 
     /// Request to add stake to a validator

@@ -52,6 +52,9 @@ impl ValidatorExecutor {
             TransactionKind::SetCommissionRate { new_rate } => {
                 state.request_set_commission_rate(signer, *new_rate)
             }
+            TransactionKind::UpdateValidatorMetadata(args) => {
+                state.request_update_validator_metadata(signer, args)
+            }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
     }

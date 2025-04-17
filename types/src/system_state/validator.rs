@@ -6,7 +6,7 @@ use std::{
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{
     base::SomaAddress,
@@ -14,11 +14,12 @@ use crate::{
         MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_LOW_POWER,
         VALIDATOR_MIN_POWER, VALIDATOR_VERY_LOW_POWER,
     },
-    crypto,
+    crypto::{self, NetworkPublicKey},
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
     multiaddr::Multiaddr,
     object::ObjectID,
+    transaction::UpdateValidatorMetadataArgs,
 };
 
 use super::{
@@ -76,6 +77,8 @@ pub struct ValidatorMetadata {
 
     /// Optional new primary address for the next epoch
     pub next_epoch_primary_address: Option<Multiaddr>,
+
+    pub next_epoch_worker_pubkey: Option<crate::crypto::NetworkPublicKey>,
 }
 
 /// # Validator
@@ -151,6 +154,7 @@ impl Validator {
                 next_epoch_net_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
+                next_epoch_worker_pubkey: None,
             },
             voting_power,
             commission_rate,
@@ -275,6 +279,129 @@ impl Validator {
 
     fn adjust_commission_rate(&mut self) {
         self.commission_rate = self.next_epoch_commission_rate;
+    }
+
+    pub fn stage_next_epoch_metadata(
+        &mut self,
+        args: &UpdateValidatorMetadataArgs,
+    ) -> ExecutionResult<()> {
+        // Process Network Address
+        if let Some(ref addr_bytes) = args.next_epoch_network_address {
+            let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Failed to BCS deserialize network address string"),
+                }
+            })?;
+            let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid network multiaddr format: {}", e),
+                }
+            })?;
+            // TODO: Additional validation? Check for duplicates against other *staged* values?
+            self.metadata.next_epoch_net_address = Some(multiaddr);
+        }
+
+        // Process P2P Address
+        if let Some(ref addr_bytes) = args.next_epoch_p2p_address {
+            let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Failed to BCS deserialize p2p address string"),
+                }
+            })?;
+            let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid p2p multiaddr format: {}", e),
+                }
+            })?;
+            self.metadata.next_epoch_p2p_address = Some(multiaddr);
+        }
+
+        // Process Primary Address
+        if let Some(ref addr_bytes) = args.next_epoch_primary_address {
+            let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Failed to BCS deserialize primary address string"),
+                }
+            })?;
+            let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid primary multiaddr format: {}", e),
+                }
+            })?;
+            self.metadata.next_epoch_primary_address = Some(multiaddr);
+        }
+
+        // Process Protocol Public Key
+        if let Some(ref key_bytes) = args.next_epoch_protocol_pubkey {
+            let pubkey = PublicKey::from_bytes(key_bytes).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid protocol public key format: {}", e),
+                }
+            })?;
+            // TODO: Proof of possession validation if needed
+            self.metadata.next_epoch_protocol_pubkey = Some(pubkey);
+            // Handle PoP if necessary:
+            // if let Some(pop_bytes) = &args.next_epoch_proof_of_possession {
+            //     verify_pop(&pubkey, pop_bytes)?;
+            //     self.metadata.next_epoch_proof_of_possession = Some(pop_bytes.clone());
+            // } else if self.metadata.next_epoch_protocol_pubkey.is_some() {
+            //     // If protocol key changes, PoP might be mandatory
+            //     return Err(ExecutionFailureStatus::MissingProofOfPossession);
+            // }
+        }
+
+        // Process Worker Public Key
+        if let Some(ref key_bytes) = args.next_epoch_worker_pubkey {
+            let pubkey = Ed25519PublicKey::from_bytes(key_bytes).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid worker public key format: {}", e),
+                }
+            })?;
+            let network_pubkey = NetworkPublicKey::new(pubkey);
+            self.metadata.next_epoch_worker_pubkey = Some(network_pubkey);
+        }
+
+        // Process Network Public Key
+        if let Some(ref key_bytes) = args.next_epoch_network_pubkey {
+            let pubkey = Ed25519PublicKey::from_bytes(key_bytes).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid network public key format: {}", e),
+                }
+            })?;
+            let network_pubkey = NetworkPublicKey::new(pubkey);
+            self.metadata.next_epoch_network_pubkey = Some(network_pubkey);
+        }
+
+        // TODO: Add duplicate checks here? E.g., ensure staged network key != staged worker key?
+
+        Ok(())
+    }
+
+    /// Apply staged metadata changes. Called during epoch transition.
+    fn effectuate_staged_metadata(&mut self) {
+        if let Some(addr) = self.metadata.next_epoch_net_address.take() {
+            self.metadata.net_address = addr;
+        }
+        if let Some(addr) = self.metadata.next_epoch_p2p_address.take() {
+            self.metadata.p2p_address = addr;
+        }
+        if let Some(addr) = self.metadata.next_epoch_primary_address.take() {
+            self.metadata.primary_address = addr;
+        }
+
+        if let Some(key) = self.metadata.next_epoch_protocol_pubkey.take() {
+            self.metadata.protocol_pubkey = key;
+            // Apply staged PoP if it exists
+            // if let Some(pop) = self.metadata.next_epoch_proof_of_possession.take() {
+            //     self.metadata.proof_of_possession = pop;
+            // }
+        }
+        if let Some(key) = self.metadata.next_epoch_network_pubkey.take() {
+            self.metadata.network_pubkey = key;
+        }
+        if let Some(key) = self.metadata.next_epoch_worker_pubkey.take() {
+            self.metadata.worker_pubkey = key;
+        }
     }
 }
 
@@ -519,13 +646,70 @@ impl ValidatorSet {
         // Now process pending validators AFTER processing low voting power validators
         self.process_pending_validators(new_epoch);
 
+        self.effectuate_staged_metadata();
+
         // Finally readjust voting power after all validator changes
         self.set_voting_power();
 
-        // TODO: Apply staged metadata changes
-        // self.apply_staged_metadata();
-
         return validator_rewards;
+    }
+
+    /// Effectuate pending next epoch metadata changes for all active validators.
+    fn effectuate_staged_metadata(&mut self) {
+        for validator in &mut self.active_validators {
+            validator.effectuate_staged_metadata();
+            // TODO: Add validation after effectuation if needed, e.g., check for duplicates based on new metadata.
+            // self.assert_no_active_duplicates(validator); // Example if needed
+        }
+        // Optional: Check for duplicates *after* all changes are applied
+        self.check_for_duplicate_metadata_post_effectuation();
+    }
+
+    /// Helper function to check for duplicate metadata after effectuation (optional)
+    fn check_for_duplicate_metadata_post_effectuation(&self) {
+        let mut seen_protocol_keys = HashSet::new();
+        let mut seen_network_keys = HashSet::new();
+        let mut seen_worker_keys = HashSet::new();
+        let mut seen_net_addrs = HashSet::new();
+        let mut seen_p2p_addrs = HashSet::new();
+        // Add others as needed (primary, worker addr)
+
+        for validator in &self.active_validators {
+            let meta = &validator.metadata;
+            if !seen_protocol_keys.insert(meta.protocol_pubkey.as_bytes()) {
+                error!(
+                    "Duplicate protocol key found after effectuation: {:?}",
+                    meta.protocol_pubkey
+                );
+                // Potentially panic or handle error, though epoch change is usually non-recoverable
+            }
+            if !seen_network_keys.insert(meta.network_pubkey.to_bytes()) {
+                error!(
+                    "Duplicate network key found after effectuation: {:?}",
+                    meta.network_pubkey
+                );
+            }
+            if !seen_worker_keys.insert(meta.worker_pubkey.to_bytes()) {
+                error!(
+                    "Duplicate worker key found after effectuation: {:?}",
+                    meta.worker_pubkey
+                );
+            }
+            if !seen_net_addrs.insert(meta.net_address.to_string()) {
+                // Use string representation for Multiaddr comparison
+                error!(
+                    "Duplicate network address found after effectuation: {}",
+                    meta.net_address
+                );
+            }
+            if !seen_p2p_addrs.insert(meta.p2p_address.to_string()) {
+                error!(
+                    "Duplicate P2P address found after effectuation: {}",
+                    meta.p2p_address
+                );
+            }
+            // Add checks for primary_address, worker_address if they exist and need uniqueness
+        }
     }
 
     /// Find a validator by address (including pending validators)

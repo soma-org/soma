@@ -98,6 +98,7 @@ pub enum TransactionKind {
         reportee: SomaAddress,
     },
     // Metadata Changes
+    UpdateValidatorMetadata(UpdateValidatorMetadataArgs),
     SetCommissionRate {
         new_rate: u64,
     },
@@ -177,6 +178,23 @@ pub struct RemoveValidatorArgs {
     pub pubkey_bytes: Vec<u8>,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct UpdateValidatorMetadataArgs {
+    /// Optional new network address (serialized Multiaddr)
+    pub next_epoch_network_address: Option<Vec<u8>>,
+    /// Optional new P2P address (serialized Multiaddr)
+    pub next_epoch_p2p_address: Option<Vec<u8>>,
+    /// Optional new primary address (serialized Multiaddr)
+    pub next_epoch_primary_address: Option<Vec<u8>>,
+
+    /// Optional new protocol public key (BLS)
+    pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
+    /// Optional new worker public key (Ed25519)
+    pub next_epoch_worker_pubkey: Option<Vec<u8>>,
+    /// Optional new network public key (Ed25519)
+    pub next_epoch_network_pubkey: Option<Vec<u8>>,
+}
+
 impl TransactionKind {
     pub fn is_system_tx(&self) -> bool {
         matches!(
@@ -195,6 +213,7 @@ impl TransactionKind {
                 | TransactionKind::ReportValidator { .. }
                 | TransactionKind::UndoReportValidator { .. }
                 | TransactionKind::SetCommissionRate { .. }
+                | TransactionKind::UpdateValidatorMetadata(_)
         )
     }
 

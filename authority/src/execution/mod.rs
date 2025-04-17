@@ -246,7 +246,8 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::RemoveValidator(_)
         | TransactionKind::ReportValidator { .. }
         | TransactionKind::UndoReportValidator { .. }
-        | TransactionKind::SetCommissionRate { .. } => Box::new(ValidatorExecutor::new()),
+        | TransactionKind::SetCommissionRate { .. }
+        | TransactionKind::UpdateValidatorMetadata(_) => Box::new(ValidatorExecutor::new()),
 
         TransactionKind::ChangeEpoch(_) => Box::new(ChangeEpochExecutor::new()),
 
