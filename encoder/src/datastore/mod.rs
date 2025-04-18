@@ -2,6 +2,8 @@
 
 pub(crate) mod mem_store;
 
+use std::time::Instant;
+
 use fastcrypto::bls12381::min_sig;
 use shared::{signed::Signed, verified::Verified};
 
@@ -36,6 +38,17 @@ pub(crate) trait Store: Send + Sync + 'static {
         signed_commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
 
+    fn count_signed_commits(&self, shard: &Shard) -> ShardResult<usize>;
+
+    fn get_signed_commits(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<Signed<ShardCommit, min_sig::BLS12381Signature>>>;
+
+    fn add_first_commit_time(&self, shard: &Shard) -> ShardResult<()>;
+
+    fn get_first_commit_time(&self, shard: &Shard) -> ShardResult<Instant>;
+
     fn check_reveal_key(
         &self,
         shard: &Shard,
@@ -47,6 +60,17 @@ pub(crate) trait Store: Send + Sync + 'static {
         shard: &Shard,
         signed_reveal: &Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
+
+    fn count_signed_reveal(&self, shard: &Shard) -> ShardResult<usize>;
+
+    fn get_signed_reveals(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<Signed<ShardReveal, min_sig::BLS12381Signature>>>;
+
+    fn add_first_reveal_time(&self, shard: &Shard) -> ShardResult<()>;
+
+    fn get_first_reveal_time(&self, shard: &Shard) -> ShardResult<Instant>;
 
     fn add_commit_votes(
         &self,

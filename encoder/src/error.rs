@@ -265,6 +265,9 @@ pub(crate) enum ShardError {
     #[error("Request timeout: {0:?}")]
     NetworkRequestTimeout(String),
 
+    #[error("Concurrency error: {0:?}")]
+    ConcurrencyError(String),
+
     #[error("Consensus has shut down!")]
     Shutdown,
 }

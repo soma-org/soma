@@ -5,19 +5,20 @@ use crate::{
     core::shard_tracker::ShardTracker,
     datastore::Store,
     error::ShardResult,
+    messaging::EncoderInternalNetworkClient,
     types::{shard::Shard, shard_reveal_votes::ShardRevealVotes},
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use shared::{signed::Signed, verified::Verified};
 
-pub(crate) struct RevealVotesProcessor {
+pub(crate) struct RevealVotesProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
-    shard_tracker: ShardTracker,
+    shard_tracker: ShardTracker<E>,
 }
 
-impl RevealVotesProcessor {
-    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker) -> Self {
+impl<E: EncoderInternalNetworkClient> RevealVotesProcessor<E> {
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker<E>) -> Self {
         Self {
             store,
             shard_tracker,
@@ -26,7 +27,7 @@ impl RevealVotesProcessor {
 }
 
 #[async_trait]
-impl Processor for RevealVotesProcessor {
+impl<E: EncoderInternalNetworkClient> Processor for RevealVotesProcessor<E> {
     type Input = (
         Shard,
         Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,

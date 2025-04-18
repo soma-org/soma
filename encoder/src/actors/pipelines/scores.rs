@@ -5,19 +5,20 @@ use crate::{
     core::shard_tracker::ShardTracker,
     datastore::Store,
     error::ShardResult,
+    messaging::EncoderInternalNetworkClient,
     types::{shard::Shard, shard_scores::ShardScores},
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use shared::{signed::Signed, verified::Verified};
 
-pub(crate) struct ScoresProcessor {
+pub(crate) struct ScoresProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
-    shard_tracker: ShardTracker,
+    shard_tracker: ShardTracker<E>,
 }
 
-impl ScoresProcessor {
-    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker) -> Self {
+impl<E: EncoderInternalNetworkClient> ScoresProcessor<E> {
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker<E>) -> Self {
         Self {
             store,
             shard_tracker,
@@ -26,7 +27,7 @@ impl ScoresProcessor {
 }
 
 #[async_trait]
-impl Processor for ScoresProcessor {
+impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
     type Input = (
         Shard,
         Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,

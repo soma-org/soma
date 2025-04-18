@@ -139,7 +139,12 @@ impl EncoderCommittee {
                 .map(|index| self.encoder(EncoderIndex(index as u32)).encoder_key.clone())
                 .collect::<Vec<_>>();
 
-        Ok(Shard::new(self.quorum_threshold, encoder_pubkeys, entropy))
+        Ok(Shard::new(
+            self.quorum_threshold,
+            encoder_pubkeys,
+            entropy,
+            self.epoch,
+        ))
     }
 }
 

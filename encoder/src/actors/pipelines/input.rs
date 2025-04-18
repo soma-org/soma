@@ -3,7 +3,6 @@ use std::{collections::HashSet, sync::Arc};
 use crate::{
     actors::{
         workers::{
-            broadcaster::BroadcasterProcessor,
             compression::{CompressionProcessor, CompressorInput},
             downloader::{Downloader, DownloaderInput},
             encryption::{EncryptionInput, EncryptionProcessor},
@@ -23,17 +22,13 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use bytes::Bytes;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
-use ndarray::ArrayD;
 use objects::{
     networking::ObjectNetworkClient,
     storage::{ObjectPath, ObjectStorage},
 };
 use shared::{
-    checksum::Checksum,
     crypto::{keys::EncoderKeyPair, Aes256IV, Aes256Key, EncryptionKey},
-    digest::Digest,
     metadata::{
         CompressionAPI, CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata, MetadataAPI,
     },
@@ -42,24 +37,16 @@ use shared::{
     verified::Verified,
 };
 
-pub(crate) struct InputProcessor<
-    O: ObjectNetworkClient,
-    M: Model,
-    E: EncoderInternalNetworkClient,
-    S: ObjectStorage,
-> {
+pub(crate) struct InputProcessor<O: ObjectNetworkClient, M: Model, S: ObjectStorage> {
     downloader: ActorHandle<Downloader<O, S>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     model: ActorHandle<ModelProcessor<M>>,
     encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    broadcaster: ActorHandle<BroadcasterProcessor<E>>,
     storage: ActorHandle<StorageProcessor<S>>,
 }
 
-impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: ObjectStorage>
-    InputProcessor<O, M, E, S>
-{
+impl<O: ObjectNetworkClient, M: Model, S: ObjectStorage> InputProcessor<O, M, S> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         downloader: ActorHandle<Downloader<O, S>>,
@@ -67,7 +54,6 @@ impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: Objec
         model: ActorHandle<ModelProcessor<M>>,
         encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        broadcaster: ActorHandle<BroadcasterProcessor<E>>,
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
@@ -76,16 +62,13 @@ impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: Objec
             model,
             encryptor,
             encoder_keypair,
-            broadcaster,
             storage,
         }
     }
 }
 
 #[async_trait]
-impl<O: ObjectNetworkClient, M: Model, E: EncoderInternalNetworkClient, S: ObjectStorage> Processor
-    for InputProcessor<O, M, E, S>
-{
+impl<O: ObjectNetworkClient, M: Model, S: ObjectStorage> Processor for InputProcessor<O, M, S> {
     type Input = (
         Shard,
         Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,

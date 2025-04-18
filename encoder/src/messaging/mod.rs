@@ -1,6 +1,7 @@
 #![doc = include_str!("README.md")]
 
 pub(crate) mod external_service;
+pub(crate) mod internal_broadcasts;
 pub(crate) mod internal_service;
 pub(crate) mod tonic;
 

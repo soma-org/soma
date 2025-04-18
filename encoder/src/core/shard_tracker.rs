@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use fastcrypto::bls12381::min_sig;
-use shared::{digest::Digest, signed::Signed, verified::Verified};
+use shared::{crypto::keys::EncoderKeyPair, digest::Digest, signed::Signed, verified::Verified};
 use std::{sync::Arc, time::Duration};
 use tokio::{
     sync::{oneshot, Semaphore},
@@ -8,30 +8,53 @@ use tokio::{
 };
 
 use crate::{
+    datastore::Store,
     error::ShardResult,
+    messaging::{
+        internal_broadcasts::{broadcast_commit_vote, broadcast_reveal_vote},
+        EncoderInternalNetworkClient,
+    },
     types::{
-        shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
+        shard::Shard,
+        shard_commit::{ShardCommit, ShardCommitAPI},
+        shard_commit_votes::ShardCommitVotes,
+        shard_reveal::{ShardReveal, ShardRevealAPI},
+        shard_reveal_votes::ShardRevealVotes,
+        shard_scores::ShardScores,
     },
 };
 
+use super::internal_broadcaster::Broadcaster;
+
 #[derive(Copy, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
-enum SlotType {
+enum ShardStage {
     Commit,
     Reveal,
 }
+
 #[derive(Clone)]
-pub(crate) struct ShardTracker {
+pub(crate) struct ShardTracker<C: EncoderInternalNetworkClient> {
     #[allow(clippy::type_complexity)]
-    slots: Arc<DashMap<(Digest<Shard>, SlotType), oneshot::Sender<()>>>,
-    semaphore: Arc<Semaphore>, // Limits concurrent tasks
+    oneshots: Arc<DashMap<(Digest<Shard>, ShardStage), oneshot::Sender<()>>>,
+    max_requests: Arc<Semaphore>, // Limits concurrent tasks
+    broadcaster: Arc<Broadcaster<C>>,
+    store: Arc<dyn Store>,
+    encoder_keypair: Arc<EncoderKeyPair>,
 }
 
-impl ShardTracker {
-    pub(crate) fn new(max_concurrent_tasks: usize) -> Self {
+impl<C: EncoderInternalNetworkClient> ShardTracker<C> {
+    pub(crate) fn new(
+        max_requests: Arc<Semaphore>,
+        broadcaster: Arc<Broadcaster<C>>,
+        store: Arc<dyn Store>,
+        encoder_keypair: Arc<EncoderKeyPair>,
+    ) -> Self {
         Self {
-            slots: Arc::new(DashMap::new()),
-            semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
+            oneshots: Arc::new(DashMap::new()),
+            max_requests,
+            broadcaster,
+            store,
+            encoder_keypair,
         }
     }
 
@@ -40,37 +63,45 @@ impl ShardTracker {
         shard: Shard,
         signed_commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // if count == shard.minimum_inference_size() as usize {
-        //     let epoch = verified_signed_commit.auth_token().epoch();
-        //     let duration = self
-        //         .store
-        //         .time_since_first_certified_commit(epoch, shard_ref)
-        //         .unwrap_or(Duration::from_secs(60));
+        let quorum_threshold = shard.quorum_threshold() as usize;
+        let max_size = shard.size() as usize;
+        let count = self.store.count_signed_commits(&shard)?;
+        let shard_digest = shard.digest()?;
 
-        //     let peers = shard.shard_set();
-
-        //     let broadcaster = self.broadcaster.clone();
-        //     let shard_clone = shard.clone();
-        //     self.slot_tracker
-        //         .start_commit_vote_timer(shard_ref, duration, move || async move {
-        //             let _ = broadcaster
-        //                 .process(
-        //                     (
-        //                         verified_signed_commit.auth_token(),
-        //                         shard_clone,
-        //                         BroadcastType::CommitVote(epoch, shard_ref),
-        //                         peers,
-        //                     ),
-        //                     msg.cancellation.clone(),
-        //                 )
-        //                 .await;
-        //         })
-        //         .await;
-        // }
-        // if count == shard.inference_size() {
-        //     self.slot_tracker.trigger_commit_vote(shard_ref).await;
-        // }
-
+        match count {
+            1 => {
+                self.store.add_first_commit_time(&shard)?;
+            }
+            count if count == quorum_threshold => {
+                let duration = self
+                    .store
+                    .get_first_commit_time(&shard)
+                    .map_or(Duration::from_secs(60), |first_commit_time| {
+                        first_commit_time.elapsed()
+                    });
+                let peers = shard.encoders();
+                self.start_timer(
+                    shard_digest,
+                    ShardStage::Commit,
+                    duration,
+                    broadcast_commit_vote(
+                        peers,
+                        self.broadcaster.clone(),
+                        self.store.clone(),
+                        signed_commit.auth_token().clone(),
+                        shard,
+                        self.encoder_keypair.clone(),
+                    ),
+                );
+            }
+            count if count == max_size => {
+                let key = (shard_digest, ShardStage::Commit);
+                if let Some((_key, tx)) = self.oneshots.remove(&key) {
+                    let _ = tx.send(());
+                }
+            }
+            _ => {}
+        };
         Ok(())
     }
     pub(crate) async fn track_valid_commit_votes(
@@ -117,42 +148,45 @@ impl ShardTracker {
         shard: Shard,
         signed_reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        // if count == shard.minimum_inference_size() as usize {
-        //     let duration = self
-        //         .store
-        //         .time_since_first_reveal(epoch, shard_ref)
-        //         .unwrap_or(Duration::from_secs(60));
-        //     // TODO: make this cleaner should be built into the shard
-        //     let inference_set = shard.inference_set(); // Vec<EncoderIndex>
-        //     let evaluation_set = shard.evaluation_set(); // Vec<EncoderIndex>
+        let quorum_threshold = shard.quorum_threshold() as usize;
+        let max_size = shard.size() as usize;
+        let count = self.store.count_signed_reveal(&shard)?;
+        let shard_digest = shard.digest()?;
 
-        //     // Combine into a HashSet to deduplicate
-        //     let mut peers_set: HashSet<EncoderIndex> = inference_set.into_iter().collect();
-        //     peers_set.extend(evaluation_set);
-
-        //     // Convert back to Vec
-        //     let peers: Vec<EncoderIndex> = peers_set.into_iter().collect();
-        //     let shard_clone = shard.clone();
-        //     let broadcaster = self.broadcaster.clone();
-        //     self.slot_tracker
-        //         .start_reveal_vote_timer(shard_ref, duration, move || async move {
-        //             let _ = broadcaster
-        //                 .process(
-        //                     (
-        //                         auth_token,
-        //                         shard_clone,
-        //                         BroadcastType::RevealVote(epoch, shard_ref),
-        //                         peers,
-        //                     ),
-        //                     msg.cancellation.clone(),
-        //                 )
-        //                 .await;
-        //         })
-        //         .await;
-        // }
-        // if count == shard.inference_size() {
-        //     self.slot_tracker.trigger_reveal_vote(shard_ref).await;
-        // }
+        match count {
+            1 => {
+                self.store.add_first_reveal_time(&shard)?;
+            }
+            count if count == quorum_threshold => {
+                let duration = self
+                    .store
+                    .get_first_reveal_time(&shard)
+                    .map_or(Duration::from_secs(60), |first_reveal_time| {
+                        first_reveal_time.elapsed()
+                    });
+                let peers = shard.encoders();
+                self.start_timer(
+                    shard_digest,
+                    ShardStage::Reveal,
+                    duration,
+                    broadcast_reveal_vote(
+                        peers,
+                        self.broadcaster.clone(),
+                        self.store.clone(),
+                        signed_reveal.auth_token().clone(),
+                        shard,
+                        self.encoder_keypair.clone(),
+                    ),
+                );
+            }
+            count if count == max_size => {
+                let key = (shard_digest, ShardStage::Reveal);
+                if let Some((_key, tx)) = self.oneshots.remove(&key) {
+                    let _ = tx.send(());
+                }
+            }
+            _ => {}
+        };
         Ok(())
     }
 
@@ -222,84 +256,29 @@ impl ShardTracker {
 
         Ok(())
     }
-    pub(crate) async fn start_commit_vote_timer<F, Fut>(
+    pub async fn start_timer<F>(
         &self,
-        shard_ref: Digest<Shard>,
+        shard_digest: Digest<Shard>,
+        stage: ShardStage,
         timeout: Duration,
         on_trigger: F,
     ) where
-        F: FnOnce() -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = ()> + Send,
+        F: FnOnce() + Send + 'static,
     {
-        // Acquire a permit, blocking if the limit is reached
-        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+        let key = (shard_digest, stage);
         let (tx, rx) = oneshot::channel();
-
-        let slot_key = (shard_ref, SlotType::Commit);
-        self.slots.insert(slot_key, tx);
-
-        let slots = self.slots.clone();
-
+        self.oneshots.insert(key, tx);
+        let oneshots = self.oneshots.clone();
         tokio::spawn(async move {
             tokio::select! {
                 _ = sleep(timeout) => {
-                    on_trigger().await;
-                    // Timer hits, trigger work
+                    on_trigger();
                 }
                 _ = rx => {
-                    on_trigger().await;
-                    // Oneshot receives, trigger work
+                    on_trigger();
                 }
             }
-            slots.remove(&slot_key); // Clean up
-            drop(permit); // Release the permit when the task completes
+            oneshots.remove(&key); // Clean up
         });
-    }
-
-    pub(crate) async fn trigger_commit_vote(&self, shard_ref: Digest<Shard>) {
-        let slot_key = (shard_ref, SlotType::Commit);
-        if let Some((_, tx)) = self.slots.remove(&slot_key) {
-            let _ = tx.send(());
-        }
-    }
-    pub(crate) async fn start_reveal_vote_timer<F, Fut>(
-        &self,
-        shard_ref: Digest<Shard>,
-        timeout: Duration,
-        on_trigger: F,
-    ) where
-        F: FnOnce() -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = ()> + Send,
-    {
-        // Acquire a permit, blocking if the limit is reached
-        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
-        let (tx, rx) = oneshot::channel();
-
-        let slot_key = (shard_ref, SlotType::Reveal);
-        self.slots.insert(slot_key, tx);
-
-        let slots = self.slots.clone();
-
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = sleep(timeout) => {
-                    on_trigger().await;
-                    // Timer hits, trigger work
-                }
-                _ = rx => {
-                    on_trigger().await;
-                    // Oneshot receives, trigger work
-                }
-            }
-            slots.remove(&slot_key); // Clean up
-            drop(permit); // Release the permit when the task completes
-        });
-    }
-
-    pub(crate) async fn trigger_reveal_vote(&self, shard_ref: Digest<Shard>) {
-        let slot_key = (shard_ref, SlotType::Reveal);
-        if let Some((_, tx)) = self.slots.remove(&slot_key) {
-            let _ = tx.send(());
-        }
     }
 }

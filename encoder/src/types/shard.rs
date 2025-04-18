@@ -12,13 +12,14 @@ use shared::{
 
 use crate::error::{ShardError, ShardResult};
 
-use super::encoder_committee::CountUnit;
+use super::encoder_committee::{CountUnit, Epoch};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Shard {
     quorum_threshold: CountUnit,
     encoders: Vec<EncoderPublicKey>,
     seed: Digest<ShardEntropy>,
+    epoch: Epoch,
 }
 
 impl Shard {
@@ -26,12 +27,17 @@ impl Shard {
         quorum_threshold: CountUnit,
         encoders: Vec<EncoderPublicKey>,
         seed: Digest<ShardEntropy>,
+        epoch: Epoch,
     ) -> Self {
         Self {
             quorum_threshold,
             encoders,
             seed,
+            epoch,
         }
+    }
+    pub(crate) fn encoders(&self) -> Vec<EncoderPublicKey> {
+        self.encoders.clone()
     }
     pub(crate) fn size(&self) -> usize {
         self.encoders.len()
@@ -46,6 +52,9 @@ impl Shard {
 
     pub(crate) fn digest(&self) -> ShardResult<Digest<Self>> {
         Digest::new(self).map_err(ShardError::DigestFailure)
+    }
+    pub(crate) fn epoch(&self) -> Epoch {
+        self.epoch
     }
 }
 

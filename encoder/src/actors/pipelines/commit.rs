@@ -6,6 +6,7 @@ use crate::{
     core::shard_tracker::ShardTracker,
     datastore::Store,
     error::ShardResult,
+    messaging::EncoderInternalNetworkClient,
     types::{
         shard::Shard,
         shard_commit::{ShardCommit, ShardCommitAPI},
@@ -18,16 +19,22 @@ use shared::{crypto::keys::PeerPublicKey, signed::Signed, verified::Verified};
 use soma_network::multiaddr::Multiaddr;
 use std::sync::Arc;
 
-pub(crate) struct CommitProcessor<C: ObjectNetworkClient, S: ObjectStorage> {
+pub(crate) struct CommitProcessor<
+    E: EncoderInternalNetworkClient,
+    C: ObjectNetworkClient,
+    S: ObjectStorage,
+> {
     store: Arc<dyn Store>,
-    shard_tracker: ShardTracker,
+    shard_tracker: ShardTracker<E>,
     downloader: ActorHandle<Downloader<C, S>>,
 }
 
-impl<C: ObjectNetworkClient, S: ObjectStorage> CommitProcessor<C, S> {
+impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
+    CommitProcessor<E, C, S>
+{
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        shard_tracker: ShardTracker,
+        shard_tracker: ShardTracker<E>,
         downloader: ActorHandle<Downloader<C, S>>,
     ) -> Self {
         Self {
@@ -39,7 +46,9 @@ impl<C: ObjectNetworkClient, S: ObjectStorage> CommitProcessor<C, S> {
 }
 
 #[async_trait]
-impl<O: ObjectNetworkClient, S: ObjectStorage> Processor for CommitProcessor<O, S> {
+impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> Processor
+    for CommitProcessor<E, O, S>
+{
     type Input = (
         Shard,
         Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,

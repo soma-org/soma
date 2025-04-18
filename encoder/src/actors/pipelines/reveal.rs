@@ -3,6 +3,7 @@ use crate::{
     core::shard_tracker::ShardTracker,
     datastore::Store,
     error::ShardResult,
+    messaging::EncoderInternalNetworkClient,
     types::{shard::Shard, shard_reveal::ShardReveal},
 };
 use async_trait::async_trait;
@@ -10,13 +11,13 @@ use fastcrypto::bls12381::min_sig;
 use shared::{signed::Signed, verified::Verified};
 use std::sync::Arc;
 
-pub(crate) struct RevealProcessor {
+pub(crate) struct RevealProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
-    shard_tracker: ShardTracker,
+    shard_tracker: ShardTracker<E>,
 }
 
-impl RevealProcessor {
-    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker) -> Self {
+impl<E: EncoderInternalNetworkClient> RevealProcessor<E> {
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker<E>) -> Self {
         Self {
             store,
             shard_tracker,
@@ -25,7 +26,7 @@ impl RevealProcessor {
 }
 
 #[async_trait]
-impl Processor for RevealProcessor {
+impl<E: EncoderInternalNetworkClient> Processor for RevealProcessor<E> {
     type Input = (
         Shard,
         Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,

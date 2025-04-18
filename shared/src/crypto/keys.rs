@@ -1,5 +1,9 @@
 use fastcrypto::{
-    bls12381, ed25519,
+    bls12381::{
+        self,
+        min_sig::{self, BLS12381PublicKey},
+    },
+    ed25519,
     error::FastCryptoError,
     traits::{AggregateAuthenticator, KeyPair as _, Signer as _, ToFromBytes, VerifyingKey as _},
 };
@@ -271,6 +275,13 @@ impl EncoderPublicKey {
     /// Verifies a signature against a message
     pub fn verify(&self, msg: &[u8], signature: &EncoderSignature) -> Result<(), FastCryptoError> {
         self.0.verify(msg, &signature.0)
+    }
+
+    pub fn MIN() -> Self {
+        Self(BLS12381PublicKey::from_bytes(&[u8::MIN; BLS12381PublicKey::LENGTH]).unwrap())
+    }
+    pub fn MAX() -> Self {
+        Self(BLS12381PublicKey::from_bytes(&[u8::MAX; BLS12381PublicKey::LENGTH]).unwrap())
     }
 }
 

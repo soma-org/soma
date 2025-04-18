@@ -1,40 +1,38 @@
 use std::sync::Arc;
 
 use crate::{
-    actors::{
-        workers::{broadcaster::BroadcasterProcessor, storage::StorageProcessor},
-        ActorHandle, ActorMessage, Processor,
-    },
+    actors::{workers::storage::StorageProcessor, ActorHandle, ActorMessage, Processor},
+    core::shard_tracker::ShardTracker,
     datastore::Store,
-    error::{ShardError, ShardResult},
+    error::ShardResult,
     messaging::EncoderInternalNetworkClient,
-    types::{shard::Shard, shard_commit::ShardCommitAPI, shard_verifier::ShardAuthToken},
+    types::{shard::Shard, shard_verifier::ShardAuthToken},
 };
 use async_trait::async_trait;
 use objects::storage::ObjectStorage;
 
-pub(crate) struct EvaluationProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
+pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,
-    broadcaster: ActorHandle<BroadcasterProcessor<E>>,
+    shard_tracker: ShardTracker<C>,
     storage: ActorHandle<StorageProcessor<S>>,
 }
 
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<E, S> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<C, S> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        broadcaster: ActorHandle<BroadcasterProcessor<E>>,
+        shard_tracker: ShardTracker<C>,
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
             store,
-            broadcaster,
+            shard_tracker,
             storage,
         }
     }
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage> Processor for EvaluationProcessor<E, S> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage> Processor for EvaluationProcessor<C, S> {
     type Input = (ShardAuthToken, Shard);
     type Output = ();
 

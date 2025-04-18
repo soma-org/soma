@@ -1,5 +1,4 @@
 #![doc = include_str!("README.md")]
-pub(crate) mod broadcaster;
 pub(crate) mod compression;
 pub(crate) mod downloader;
 pub(crate) mod encryption;
