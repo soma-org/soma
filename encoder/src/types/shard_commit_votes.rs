@@ -92,7 +92,7 @@ pub(crate) fn verify_shard_commit_votes(
     }
     // the signature of the vote message must match the voter. The inclusion of the voter in the
     // evaluation set is checked above
-    let _ = votes.verify(Scope::ShardCommitVotes, votes.voter().inner())?;
+    votes.verify(Scope::ShardCommitVotes, votes.voter().inner())?;
 
     Ok(())
 }

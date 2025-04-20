@@ -5,7 +5,7 @@ pub(crate) mod mem_store;
 use std::time::Instant;
 
 use fastcrypto::bls12381::min_sig;
-use shared::{signed::Signed, verified::Verified};
+use shared::{crypto::keys::EncoderPublicKey, signed::Signed, verified::Verified};
 
 use crate::{
     error::ShardResult,
@@ -14,6 +14,24 @@ use crate::{
         shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
     },
 };
+
+pub(crate) struct VoteCounts {
+    accepts: usize,
+    rejects: usize,
+}
+
+impl VoteCounts {
+    pub(crate) fn new(accepts: usize, rejects: usize) -> Self {
+        Self { accepts, rejects }
+    }
+
+    pub(crate) fn accept_count(&self) -> usize {
+        self.accepts
+    }
+    pub(crate) fn reject_count(&self) -> usize {
+        self.rejects
+    }
+}
 
 /// The store is a common interface for accessing encoder data
 pub(crate) trait Store: Send + Sync + 'static {
@@ -78,17 +96,36 @@ pub(crate) trait Store: Send + Sync + 'static {
         votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
 
+    fn get_commit_votes(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>>;
+
     fn add_reveal_votes(
         &self,
         shard: &Shard,
         votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
 
+    fn get_reveal_votes_for_encoder(
+        &self,
+        shard: &Shard,
+        encoder: &EncoderPublicKey,
+    ) -> ShardResult<VoteCounts>;
+
+    fn get_reveal_votes(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>>;
     fn add_signed_scores(
         &self,
         shard: &Shard,
         votes: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
+    fn get_signed_scores(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<Signed<ShardScores, min_sig::BLS12381Signature>>>;
     // ///////////////////////////////
     // fn get_filled_certified_commit_slots(
     //     &self,

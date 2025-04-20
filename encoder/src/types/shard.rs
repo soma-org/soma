@@ -50,6 +50,10 @@ impl Shard {
         self.quorum_threshold
     }
 
+    pub(crate) fn rejection_threshold(&self) -> CountUnit {
+        self.size() as u32 - self.quorum_threshold + 1
+    }
+
     pub(crate) fn digest(&self) -> ShardResult<Digest<Self>> {
         Digest::new(self).map_err(ShardError::DigestFailure)
     }

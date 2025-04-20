@@ -1,7 +1,11 @@
 use fastcrypto::bls12381::min_sig;
 use parking_lot::RwLock;
 use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
-use std::{collections::BTreeMap, ops::Deref, time::Instant};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::Deref,
+    time::Instant,
+};
 
 use crate::{
     error::{ShardError, ShardResult},
@@ -16,7 +20,7 @@ use crate::{
     },
 };
 
-use super::Store;
+use super::{Store, VoteCounts};
 
 /// In-memory storage for testing.
 #[allow(unused)]
@@ -57,7 +61,15 @@ struct Inner {
         (Epoch, Digest<Shard>, Encoder),
         Signed<ShardRevealVotes, min_sig::BLS12381Signature>,
     >,
+
+    reveal_accept_voters:
+        BTreeMap<(Epoch, Digest<Shard>, EncoderPublicKey), BTreeSet<EncoderPublicKey>>,
+
+    reveal_reject_voters:
+        BTreeMap<(Epoch, Digest<Shard>, EncoderPublicKey), BTreeSet<EncoderPublicKey>>,
+
     first_reveal_time: BTreeMap<(Epoch, Digest<Shard>), Instant>,
+
     signed_scores:
         BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardScores, min_sig::BLS12381Signature>>,
 }
@@ -77,6 +89,8 @@ impl MemStore {
                 first_commit_time: BTreeMap::new(),
                 signed_commit_votes: BTreeMap::new(),
                 signed_reveal_votes: BTreeMap::new(),
+                reveal_accept_voters: BTreeMap::new(),
+                reveal_reject_voters: BTreeMap::new(),
                 signed_scores: BTreeMap::new(),
                 first_reveal_time: BTreeMap::new(),
             }),
@@ -318,7 +332,7 @@ impl Store for MemStore {
 
         let inner = self.inner.read();
         if let Some(instant) = inner.first_reveal_time.get(&shard_key) {
-            Ok(instant.clone())
+            Ok(instant.to_owned())
         } else {
             Err(ShardError::NotFound("first reveal time".to_string()))
         }
@@ -349,6 +363,26 @@ impl Store for MemStore {
         };
         Ok(())
     }
+    fn get_commit_votes(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+
+        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
+        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
+
+        let commit_votes = self
+            .inner
+            .read()
+            .signed_commit_votes
+            .range(start_key..=end_key)
+            .map(|(_, value)| value.clone())
+            .collect();
+
+        Ok(commit_votes)
+    }
 
     fn add_reveal_votes(
         &self,
@@ -357,11 +391,9 @@ impl Store for MemStore {
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
-        let encoder = votes.voter();
-        let encoder_key = (epoch, shard_digest, encoder.clone());
-        let votes = votes.deref();
-        let mut inner = self.inner.write();
-        match inner.signed_reveal_votes.get(&encoder_key) {
+        let voter_key = (epoch, shard_digest, votes.voter().clone());
+        let votes = &**votes;
+        match self.inner.read().signed_reveal_votes.get(&voter_key) {
             Some(existing) => {
                 if existing != votes {
                     return Err(ShardError::Conflict(
@@ -370,11 +402,84 @@ impl Store for MemStore {
                 }
             }
             None => {
-                inner.signed_reveal_votes.insert(encoder_key, votes.clone());
+                self.inner
+                    .write()
+                    .signed_reveal_votes
+                    .insert(voter_key, votes.clone());
             }
         };
+
+        for receiving_encoder in shard.encoders() {
+            let receiving_encoder_key = (epoch, shard_digest, receiving_encoder.clone());
+            if votes.accepts().contains(&receiving_encoder) {
+                // explicit accept vote
+                self.inner
+                    .write()
+                    .reveal_accept_voters
+                    .entry(receiving_encoder_key)
+                    .or_default()
+                    .insert(votes.voter().clone());
+            } else {
+                // implicit reject vote
+                self.inner
+                    .write()
+                    .reveal_reject_voters
+                    .entry(receiving_encoder_key)
+                    .or_default()
+                    .insert(votes.voter().clone());
+            }
+        }
         Ok(())
     }
+    fn get_reveal_votes(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+
+        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
+        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
+
+        let reveal_votes = self
+            .inner
+            .read()
+            .signed_reveal_votes
+            .range(start_key..=end_key)
+            .map(|(_, value)| value.clone())
+            .collect();
+
+        Ok(reveal_votes)
+    }
+
+    fn get_reveal_votes_for_encoder(
+        &self,
+        shard: &Shard,
+        encoder: &EncoderPublicKey,
+    ) -> ShardResult<VoteCounts> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let encoder_key = (epoch, shard_digest, encoder.clone());
+
+        let accepts = self
+            .inner
+            .read()
+            .reveal_accept_voters
+            .get(&encoder_key)
+            .map(|voters| voters.len())
+            .unwrap_or(0);
+
+        let rejects = self
+            .inner
+            .read()
+            .reveal_reject_voters
+            .get(&encoder_key)
+            .map(|voters| voters.len())
+            .unwrap_or(0);
+
+        Ok(VoteCounts::new(accepts, rejects))
+    }
+
     fn add_signed_scores(
         &self,
         shard: &Shard,
@@ -400,376 +505,4 @@ impl Store for MemStore {
         };
         Ok(())
     }
-
-    // fn get_filled_certified_commit_slots(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    // ) -> Vec<EncoderIndex> {
-    //     let start_key = (epoch, shard_ref, EncoderIndex::MIN);
-    //     let end_key = (epoch, shard_ref, EncoderIndex::MAX);
-    //     let inner = self.inner.read();
-
-    //     // Use range query to get all keys in the range and extract the EncoderIndex (slot)
-    //     inner
-    //         .certified_commits
-    //         .range(start_key..=end_key)
-    //         .map(|((_, _, slot), _)| *slot) // Extract the slot from the key tuple
-    //         .collect::<Vec<EncoderIndex>>()
-    // }
-    // fn get_certified_commit(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    //     slot: EncoderIndex,
-    // ) -> ShardResult<Certified<Signed<ShardCommit, min_sig::BLS12381Signature>>> {
-    //     let slot_key = (epoch, shard_ref, slot);
-    //     let inner = self.inner.read();
-    //     match inner.certified_commits.get(&slot_key) {
-    //         Some(signed_commit) => Ok(signed_commit.clone()),
-    //         None => Err(ShardError::NotFound("key does not exist".to_string())),
-    //     }
-    // }
-    // fn time_since_first_certified_commit(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    // ) -> Option<Duration> {
-    //     let shard_key = (epoch, shard_ref);
-    //     let inner = self.inner.read();
-    //     let timestamp_ms = *inner.first_commit_timestamp_ms.get(&shard_key)?;
-
-    //     let current_ms = SystemTime::now()
-    //         .duration_since(UNIX_EPOCH)
-    //         .ok()?
-    //         .as_millis() as u64;
-
-    //     Some(Duration::from_millis(current_ms - timestamp_ms))
-    // }
-    // fn atomic_reveal(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    //     slot: EncoderIndex,
-    //     key: EncryptionKey,
-    //     checksum: Checksum,
-    // ) -> ShardResult<usize> {
-    //     let slot_key = (epoch, shard_ref, slot);
-    //     let shard_key = (epoch, shard_ref);
-    //     let mut inner = self.inner.write();
-
-    //     // Now insert the reveal if it doesn't exist or matches
-    //     let was_inserted = match inner.reveals.get(&slot_key) {
-    //         Some((existing_key, _)) => {
-    //             if existing_key == &key {
-    //                 false // No insertion needed, already exists
-    //             } else {
-    //                 return Err(ShardError::InvalidReveal(
-    //                     "slot already has different reveal key".to_string(),
-    //                 ));
-    //             }
-    //         }
-    //         None => {
-    //             inner.reveals.insert(slot_key, (key, checksum));
-    //             true // New insertion happened
-    //         }
-    //     };
-
-    //     // Count all reveals for this shard using range query
-    //     let start_key = (epoch, shard_ref, EncoderIndex::MIN);
-    //     let end_key = (epoch, shard_ref, EncoderIndex::MAX);
-    //     let count = inner.reveals.range(start_key..=end_key).count();
-
-    //     // If we inserted a reveal and the count is 1, this is the first reveal
-    //     if was_inserted && count == 1 {
-    //         let current_ms = SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .expect("Time went backwards")
-    //             .as_millis() as u64;
-
-    //         inner
-    //             .first_reveal_timestamp_ms
-    //             .insert(shard_key, current_ms);
-    //     }
-
-    //     Ok(count)
-    // }
-    // fn get_reveal(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    //     slot: EncoderIndex,
-    // ) -> ShardResult<(EncryptionKey, Checksum)> {
-    //     let slot_key = (epoch, shard_ref, slot);
-    //     let inner = self.inner.read();
-    //     match inner.reveals.get(&slot_key) {
-    //         Some(reveal) => Ok(reveal.clone()),
-    //         None => Err(ShardError::InvalidReveal("key does not exist".to_string())),
-    //     }
-    // }
-    // fn get_filled_reveal_slots(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Vec<EncoderIndex> {
-    //     let start_key = (epoch, shard_ref, EncoderIndex::MIN);
-    //     let end_key = (epoch, shard_ref, EncoderIndex::MAX);
-    //     let inner = self.inner.read();
-
-    //     inner
-    //         .reveals
-    //         .range(start_key..=end_key)
-    //         .map(|((_, _, slot), _)| *slot) // Extract the slot from the key tuple
-    //         .collect::<Vec<EncoderIndex>>()
-    // }
-
-    // fn time_since_first_reveal(&self, epoch: Epoch, shard_ref: Digest<Shard>) -> Option<Duration> {
-    //     let shard_key = (epoch, shard_ref);
-    //     let inner = self.inner.read();
-    //     let timestamp_ms = *inner.first_reveal_timestamp_ms.get(&shard_key)?;
-
-    //     let current_ms = SystemTime::now()
-    //         .duration_since(UNIX_EPOCH)
-    //         .ok()?
-    //         .as_millis() as u64;
-
-    //     Some(Duration::from_millis(current_ms - timestamp_ms))
-    // }
-    // fn add_commit_vote(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    //     shard: Shard,
-    //     vote: ShardVotes<CommitRound>,
-    // ) -> ShardResult<(usize, usize)> {
-    //     let mut inner = self.inner.write();
-    //     let voter = vote.voter();
-    //     let rejects = vote.rejects();
-
-    //     // Get the evaluation set and quorum threshold from the shard
-    //     let evaluation_set = shard.evaluation_set();
-    //     let evaluation_set_size = shard.evaluation_size();
-
-    //     let quorum = shard.evaluation_quorum_threshold() as usize;
-    //     let accept_threshold = quorum; // 2f + 1
-    //     let reject_threshold = (evaluation_set_size - quorum) + 1; // (N - quorum) + 1
-
-    //     let start_key = (epoch, shard_ref, EncoderIndex::MIN);
-    //     let end_key = (epoch, shard_ref, EncoderIndex::MAX);
-
-    //     // Process votes for each slot in the evaluation set
-    //     for &slot in &evaluation_set {
-    //         let slot_key = (epoch, shard_ref, slot);
-
-    //         // Skip if the slot is already finalized, we'll count it later via range query
-    //         if inner.commit_slot_finality.contains_key(&slot_key) {
-    //             continue;
-    //         }
-
-    //         // Determine if the voter accepts or rejects this slot
-    //         let is_reject = rejects.contains(&slot);
-    //         if is_reject {
-    //             inner
-    //                 .commit_slot_reject_voters
-    //                 .entry(slot_key)
-    //                 .or_default()
-    //                 .insert(voter);
-    //         } else {
-    //             inner
-    //                 .commit_slot_accept_voters
-    //                 .entry(slot_key)
-    //                 .or_default()
-    //                 .insert(voter);
-    //         }
-
-    //         // Count current votes for this slot
-    //         let accept_count = inner
-    //             .commit_slot_accept_voters
-    //             .get(&slot_key)
-    //             .map(|voters| voters.len())
-    //             .unwrap_or(0);
-    //         let reject_count = inner
-    //             .commit_slot_reject_voters
-    //             .get(&slot_key)
-    //             .map(|voters| voters.len())
-    //             .unwrap_or(0);
-
-    //         // Check for finality
-    //         if accept_count >= accept_threshold {
-    //             inner
-    //                 .commit_slot_finality
-    //                 .insert(slot_key, SlotFinality::Accepted);
-    //         } else if reject_count >= reject_threshold {
-    //             inner
-    //                 .commit_slot_finality
-    //                 .insert(slot_key, SlotFinality::Rejected);
-    //         }
-    //     }
-
-    //     // Use a single range query to count both finalized and accepted slots
-    //     let (total_finalized_slots, total_accepted_slots) = inner
-    //         .commit_slot_finality
-    //         .range(start_key..=end_key)
-    //         .fold((0, 0), |(finalized, accepted), (_, finality)| {
-    //             let finalized = finalized + 1;
-    //             let accepted = if matches!(finality, SlotFinality::Accepted) {
-    //                 accepted + 1
-    //             } else {
-    //                 accepted
-    //             };
-    //             (finalized, accepted)
-    //         });
-
-    //     Ok((total_finalized_slots, total_accepted_slots))
-    // }
-    // fn add_reveal_vote(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    //     shard: Shard,
-    //     vote: ShardVotes<RevealRound>,
-    // ) -> ShardResult<(usize, usize)> {
-    //     let mut inner = self.inner.write();
-    //     let voter = vote.voter();
-    //     let rejects = vote.rejects();
-
-    //     // Get the evaluation set and quorum threshold from the shard
-    //     let evaluation_set = shard.evaluation_set();
-    //     let evaluation_set_size = shard.evaluation_size();
-
-    //     let quorum = shard.evaluation_quorum_threshold() as usize;
-    //     let accept_threshold = quorum; // 2f + 1
-    //     let reject_threshold = (evaluation_set_size - quorum) + 1; // (N - quorum) + 1
-
-    //     let start_key = (epoch, shard_ref, EncoderIndex::MIN);
-    //     let end_key = (epoch, shard_ref, EncoderIndex::MAX);
-
-    //     // Process votes for each slot in the evaluation set
-    //     for &slot in &evaluation_set {
-    //         let slot_key = (epoch, shard_ref, slot);
-
-    //         // Skip if the slot is already finalized, we'll count it later via range query
-    //         if inner.reveal_slot_finality.contains_key(&slot_key) {
-    //             continue;
-    //         }
-
-    //         // Determine if the voter accepts or rejects this slot
-    //         let is_reject = rejects.contains(&slot);
-    //         if is_reject {
-    //             inner
-    //                 .reveal_slot_reject_voters
-    //                 .entry(slot_key)
-    //                 .or_default()
-    //                 .insert(voter);
-    //         } else {
-    //             inner
-    //                 .reveal_slot_accept_voters
-    //                 .entry(slot_key)
-    //                 .or_default()
-    //                 .insert(voter);
-    //         }
-
-    //         // Count current votes for this slot
-    //         let accept_count = inner
-    //             .reveal_slot_accept_voters
-    //             .get(&slot_key)
-    //             .map(|voters| voters.len())
-    //             .unwrap_or(0);
-    //         let reject_count = inner
-    //             .reveal_slot_reject_voters
-    //             .get(&slot_key)
-    //             .map(|voters| voters.len())
-    //             .unwrap_or(0);
-
-    //         // Check for finality
-    //         if accept_count >= accept_threshold {
-    //             inner
-    //                 .reveal_slot_finality
-    //                 .insert(slot_key, SlotFinality::Accepted);
-    //         } else if reject_count >= reject_threshold {
-    //             inner
-    //                 .reveal_slot_finality
-    //                 .insert(slot_key, SlotFinality::Rejected);
-    //         }
-    //     }
-
-    //     // Use a single range query to count both finalized and accepted slots
-    //     let (total_finalized_slots, total_accepted_slots) = inner
-    //         .reveal_slot_finality
-    //         .range(start_key..=end_key)
-    //         .fold((0, 0), |(finalized, accepted), (_, finality)| {
-    //             let finalized = finalized + 1;
-    //             let accepted = if matches!(finality, SlotFinality::Accepted) {
-    //                 accepted + 1
-    //             } else {
-    //                 accepted
-    //             };
-    //             (finalized, accepted)
-    //         });
-
-    //     Ok((total_finalized_slots, total_accepted_slots))
-    // }
-
-    // fn get_accepted_finalized_reveal_slots(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    // ) -> ShardResult<Vec<EncoderIndex>> {
-    //     let start_key = (epoch, shard_ref, EncoderIndex::MIN);
-    //     let end_key = (epoch, shard_ref, EncoderIndex::MAX);
-    //     let inner = self.inner.read();
-
-    //     // Collect slots where reveal votes are finalized as Accepted
-    //     let accepted_slots = inner
-    //         .reveal_slot_finality
-    //         .range(start_key..=end_key)
-    //         .filter_map(|((_, _, slot), finality)| {
-    //             if matches!(finality, SlotFinality::Accepted) {
-    //                 Some(*slot)
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect::<Vec<EncoderIndex>>();
-
-    //     Ok(accepted_slots)
-    // }
-
-    // fn add_scores(
-    //     &self,
-    //     epoch: Epoch,
-    //     shard_ref: Digest<Shard>,
-    //     evaluator: EncoderIndex,
-    //     signed_scores: Signed<ScoreSet, min_sig::BLS12381Signature>,
-    // ) -> ShardResult<Vec<(EncoderIndex, Signed<ScoreSet, min_sig::BLS12381Signature>)>> {
-    //     let scores_digest =
-    //         Digest::new(&signed_scores.clone().into_inner()).map_err(ShardError::DigestFailure)?;
-    //     let scores_vote_key = (epoch, shard_ref, evaluator);
-    //     let mut inner = self.inner.write();
-    //     match inner.scores.get(&scores_vote_key) {
-    //         Some((existing_digest, _)) => {
-    //             if existing_digest != &scores_digest {
-    //                 return Err(ShardError::ConflictingCommit(
-    //                     "evaluator already has different scores".to_string(),
-    //                 ));
-    //             }
-    //         }
-    //         None => {
-    //             inner
-    //                 .scores
-    //                 .insert(scores_vote_key, (scores_digest, signed_scores));
-    //         }
-    //     }
-
-    //     let start_key = (epoch, shard_ref, EncoderIndex::MIN);
-    //     let end_key = (epoch, shard_ref, EncoderIndex::MAX);
-
-    //     Ok(inner
-    //         .scores
-    //         .range(start_key..=end_key)
-    //         .filter_map(|((_, _, eval_idx), (digest, signed))| {
-    //             if digest == &scores_digest {
-    //                 Some((*eval_idx, signed.clone()))
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect())
-    // }
 }
