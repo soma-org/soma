@@ -2,17 +2,24 @@ use std::sync::Arc;
 
 use crate::{
     actors::{workers::storage::StorageProcessor, ActorHandle, ActorMessage, Processor},
-    core::shard_tracker::ShardTracker,
+    core::{internal_broadcaster::Broadcaster, shard_tracker::ShardTracker},
     datastore::Store,
     error::ShardResult,
-    messaging::EncoderInternalNetworkClient,
-    types::{shard::Shard, shard_verifier::ShardAuthToken},
+    messaging::{internal_broadcasts::broadcast_scores, EncoderInternalNetworkClient},
+    types::{
+        shard::Shard,
+        shard_scores::{ScoreSet, ScoreSetV1, ScoreV1, ShardScores},
+        shard_verifier::ShardAuthToken,
+    },
 };
 use async_trait::async_trait;
 use objects::storage::ObjectStorage;
+use shared::crypto::keys::EncoderKeyPair;
 
 pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,
+    broadcaster: Arc<Broadcaster<C>>,
+    encoder_keypair: Arc<EncoderKeyPair>,
     shard_tracker: ShardTracker<C, S>,
     storage: ActorHandle<StorageProcessor<S>>,
 }
@@ -20,11 +27,15 @@ pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: Object
 impl<C: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<C, S> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
+        broadcaster: Arc<Broadcaster<C>>,
+        encoder_keypair: Arc<EncoderKeyPair>,
         shard_tracker: ShardTracker<C, S>,
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
             store,
+            broadcaster,
+            encoder_keypair,
             shard_tracker,
             storage,
         }
@@ -38,7 +49,27 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> Processor for Evaluation
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            // let (auth_token, shard) = msg.input;
+            let (auth_token, shard) = msg.input;
+
+            let mut encoders = shard.encoders();
+            encoders.sort();
+
+            let scores = encoders
+                .iter()
+                .enumerate()
+                .map(|(i, e)| ScoreV1::new(e.to_owned(), i as u8))
+                .collect();
+
+            let score_set = ScoreSet::V1(ScoreSetV1::new(shard.epoch(), shard.digest()?, scores));
+
+            // create score set
+            broadcast_scores(
+                shard,
+                self.broadcaster.clone(),
+                auth_token,
+                score_set,
+                self.encoder_keypair.clone(),
+            )();
             // let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
             // let epoch = auth_token.epoch();
 

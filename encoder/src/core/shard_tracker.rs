@@ -15,10 +15,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    actors::{
-        pipelines::{commit_votes, evaluation::EvaluationProcessor},
-        ActorHandle,
-    },
+    actors::{pipelines::evaluation::EvaluationProcessor, ActorHandle},
     datastore::Store,
     error::{ShardError, ShardResult},
     messaging::{
@@ -150,9 +147,9 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> ShardTracker<C, S> {
 
             if vote_counts.accept_count().unwrap_or(0_usize) >= shard.quorum_threshold() as usize {
                 finalized.insert(Finality::Accepted);
-            } else if vote_counts.reject_count() >= shard.quorum_threshold() as usize {
-                finalized.insert(Finality::Rejected);
-            } else if vote_counts.highest() + remaining_votes < shard.quorum_threshold() as usize {
+            } else if vote_counts.reject_count() >= shard.quorum_threshold() as usize
+                || vote_counts.highest() + remaining_votes < shard.quorum_threshold() as usize
+            {
                 finalized.insert(Finality::Rejected);
             }
         }
@@ -161,9 +158,9 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> ShardTracker<C, S> {
             let vote_counts = self
                 .store
                 .get_commit_votes_for_encoder(&shard, &encoder, None)?;
-            if vote_counts.reject_count() >= shard.quorum_threshold() as usize {
-                finalized.insert(Finality::Rejected);
-            } else if vote_counts.highest() + remaining_votes < shard.quorum_threshold() as usize {
+            if vote_counts.reject_count() >= shard.quorum_threshold() as usize
+                || vote_counts.highest() + remaining_votes < shard.quorum_threshold() as usize
+            {
                 finalized.insert(Finality::Rejected);
             }
         }

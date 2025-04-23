@@ -71,6 +71,8 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
                 .process(input, msg.cancellation.clone())
                 .await?;
 
+            // TODO: DOWNLOAD THE PROBE
+
             let _ = self
                 .store
                 .add_signed_commit(&shard, &verified_signed_commit)?;

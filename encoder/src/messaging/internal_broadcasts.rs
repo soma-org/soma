@@ -22,6 +22,7 @@ use crate::{
         shard_commit_votes::{ShardCommitVotes, ShardCommitVotesV1},
         shard_reveal::{ShardReveal, ShardRevealAPI, ShardRevealV1},
         shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesV1},
+        shard_scores::{ScoreSet, ShardScores, ShardScoresV1},
         shard_verifier::ShardAuthToken,
     },
 };
@@ -70,6 +71,7 @@ pub(crate) fn broadcast_commit_vote<C: EncoderInternalNetworkClient + 'static>(
         });
     }
 }
+
 pub(crate) fn broadcast_reveal_vote<C: EncoderInternalNetworkClient + 'static>(
     peers: Vec<EncoderPublicKey>,
     broadcaster: Arc<Broadcaster<C>>,
@@ -156,6 +158,49 @@ pub(crate) fn broadcast_reveal<C: EncoderInternalNetworkClient + 'static>(
                         .await;
                     Ok(())
                 })
+                .await;
+        });
+    }
+}
+pub(crate) fn broadcast_scores<C: EncoderInternalNetworkClient + 'static>(
+    shard: Shard,
+    broadcaster: Arc<Broadcaster<C>>,
+    auth_token: ShardAuthToken,
+    score_set: ScoreSet,
+    keypair: Arc<EncoderKeyPair>,
+) -> impl FnOnce() + Send + 'static {
+    move || {
+        tokio::spawn(async move {
+            let inner_keypair = keypair.inner().copy();
+
+            let signed_score_set = Signed::new(
+                score_set,
+                Scope::ShardScores,
+                &inner_keypair.copy().private(),
+            )
+            .unwrap();
+            let scores = ShardScores::V1(ShardScoresV1::new(
+                auth_token,
+                keypair.public(),
+                signed_score_set,
+            ));
+
+            let signed_scores =
+                Signed::new(scores, Scope::ShardScores, &inner_keypair.private()).unwrap();
+
+            let verified = Verified::from_trusted(signed_scores).unwrap();
+
+            let _ = broadcaster
+                .broadcast(
+                    verified,
+                    shard.encoders(),
+                    |client, peer, verified_type| async move {
+                        client
+                            .send_scores(&peer, &verified_type, MESSAGE_TIMEOUT)
+                            .await;
+                        Ok(())
+                    },
+                )
                 .await;
         });
     }
