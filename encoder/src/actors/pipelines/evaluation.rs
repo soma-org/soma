@@ -13,14 +13,14 @@ use objects::storage::ObjectStorage;
 
 pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,
-    shard_tracker: ShardTracker<C>,
+    shard_tracker: ShardTracker<C, S>,
     storage: ActorHandle<StorageProcessor<S>>,
 }
 
 impl<C: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<C, S> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        shard_tracker: ShardTracker<C>,
+        shard_tracker: ShardTracker<C, S>,
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {

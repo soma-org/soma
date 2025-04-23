@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use fastcrypto::bls12381::min_sig;
+use objects::storage::ObjectStorage;
 use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
     digest::Digest,
@@ -11,8 +12,13 @@ use tokio::{
     sync::{oneshot, Semaphore},
     time::sleep,
 };
+use tokio_util::sync::CancellationToken;
 
 use crate::{
+    actors::{
+        pipelines::{commit_votes, evaluation::EvaluationProcessor},
+        ActorHandle,
+    },
     datastore::Store,
     error::{ShardError, ShardResult},
     messaging::{
@@ -22,7 +28,7 @@ use crate::{
     types::{
         shard::Shard,
         shard_commit::{ShardCommit, ShardCommitAPI},
-        shard_commit_votes::ShardCommitVotes,
+        shard_commit_votes::{ShardCommitVotes, ShardCommitVotesAPI},
         shard_reveal::{ShardReveal, ShardRevealAPI},
         shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
         shard_scores::{ShardScores, ShardScoresAPI},
@@ -37,22 +43,30 @@ enum ShardStage {
     Reveal,
 }
 
+#[derive(Eq, PartialEq, PartialOrd, Ord, Hash, Clone, Copy)]
+enum Finality {
+    Accepted,
+    Rejected,
+}
+
 #[derive(Clone)]
-pub(crate) struct ShardTracker<C: EncoderInternalNetworkClient> {
+pub(crate) struct ShardTracker<C: EncoderInternalNetworkClient, S: ObjectStorage> {
     #[allow(clippy::type_complexity)]
     oneshots: Arc<DashMap<(Digest<Shard>, ShardStage), oneshot::Sender<()>>>,
     max_requests: Arc<Semaphore>, // Limits concurrent tasks
     broadcaster: Arc<Broadcaster<C>>,
     store: Arc<dyn Store>,
     encoder_keypair: Arc<EncoderKeyPair>,
+    evaluation: ActorHandle<EvaluationProcessor<C, S>>,
 }
 
-impl<C: EncoderInternalNetworkClient> ShardTracker<C> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage> ShardTracker<C, S> {
     pub(crate) fn new(
         max_requests: Arc<Semaphore>,
         broadcaster: Arc<Broadcaster<C>>,
         store: Arc<dyn Store>,
         encoder_keypair: Arc<EncoderKeyPair>,
+        evaluation: ActorHandle<EvaluationProcessor<C, S>>,
     ) -> Self {
         Self {
             oneshots: Arc::new(DashMap::new()),
@@ -60,6 +74,7 @@ impl<C: EncoderInternalNetworkClient> ShardTracker<C> {
             broadcaster,
             store,
             encoder_keypair,
+            evaluation,
         }
     }
 
@@ -114,12 +129,63 @@ impl<C: EncoderInternalNetworkClient> ShardTracker<C> {
         shard: Shard,
         commit_votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        for encoder in shard.encoders() {
-            let vote_counts = self.store.get_reveal_votes_for_encoder(&shard, &encoder)?;
-            if vote_counts.accept_count() >= shard.quorum_threshold() as usize {
-                // finalized as an accept
-            } else if vote_counts.reject_count() >= shard.rejection_threshold() as usize {
-                // finalized as a reject
+        let mut finalized: HashSet<Finality> = HashSet::new();
+        let num_votes = self.store.count_commit_votes(&shard)?;
+
+        let accepts_keys: HashSet<_> = commit_votes
+            .accepts()
+            .into_iter()
+            .map(|(key, _)| key.clone())
+            .collect();
+        let encoders_set: HashSet<_> = shard.encoders().into_iter().collect();
+        let rejects: Vec<EncoderPublicKey> =
+            encoders_set.difference(&accepts_keys).cloned().collect();
+
+        let remaining_votes = shard.size() - num_votes;
+
+        for (encoder, digest) in commit_votes.accepts() {
+            let vote_counts =
+                self.store
+                    .get_commit_votes_for_encoder(&shard, encoder, Some(digest))?;
+
+            if vote_counts.accept_count().unwrap_or(0_usize) >= shard.quorum_threshold() as usize {
+                finalized.insert(Finality::Accepted);
+            } else if vote_counts.reject_count() >= shard.quorum_threshold() as usize {
+                finalized.insert(Finality::Rejected);
+            } else if vote_counts.highest() + remaining_votes < shard.quorum_threshold() as usize {
+                finalized.insert(Finality::Rejected);
+            }
+        }
+
+        for encoder in rejects {
+            let vote_counts = self
+                .store
+                .get_commit_votes_for_encoder(&shard, &encoder, None)?;
+            if vote_counts.reject_count() >= shard.quorum_threshold() as usize {
+                finalized.insert(Finality::Rejected);
+            } else if vote_counts.highest() + remaining_votes < shard.quorum_threshold() as usize {
+                finalized.insert(Finality::Rejected);
+            }
+        }
+
+        let total_finalized = finalized.len();
+        let total_accepted = finalized
+            .iter()
+            .filter(|&&f| f == Finality::Accepted)
+            .count();
+
+        if total_finalized == shard.size() {
+            if total_accepted >= shard.quorum_threshold() as usize {
+                let peers = shard.encoders();
+                broadcast_reveal(
+                    peers,
+                    self.broadcaster.clone(),
+                    commit_votes.auth_token().clone(),
+                    shard,
+                    self.encoder_keypair.clone(),
+                )();
+            } else {
+                // should clean up and shutdown the shard since it will not be able to complete
             }
         }
 
@@ -178,16 +244,12 @@ impl<C: EncoderInternalNetworkClient> ShardTracker<C> {
         shard: Shard,
         reveal_votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
-        #[derive(Eq, PartialEq, PartialOrd, Ord, Hash, Clone, Copy)]
-        enum Finality {
-            Accepted,
-            Rejected,
-        }
         let mut finalized: HashSet<Finality> = HashSet::new();
         for encoder in shard.encoders() {
-            if reveal_votes.accepts().contains(&encoder) {
+            let agg_votes = self.store.get_reveal_votes_for_encoder(&shard, &encoder)?;
+            if agg_votes.accept_count() >= shard.quorum_threshold() as usize {
                 finalized.insert(Finality::Accepted);
-            } else {
+            } else if agg_votes.reject_count() >= shard.rejection_threshold() as usize {
                 finalized.insert(Finality::Rejected);
             }
         }
@@ -199,15 +261,12 @@ impl<C: EncoderInternalNetworkClient> ShardTracker<C> {
 
         if total_finalized == shard.size() {
             if total_accepted >= shard.quorum_threshold() as usize {
-                let peers = shard.encoders();
-                broadcast_reveal(
-                    peers,
-                    self.broadcaster.clone(),
-                    reveal_votes.auth_token().clone(),
-                    shard,
-                    self.encoder_keypair.clone(),
-                )()
                 // yay safely finalized all reveals
+                // TODO: fix the cancellation token
+                let input = (reveal_votes.auth_token().to_owned(), shard);
+                self.evaluation
+                    .process(input, CancellationToken::new())
+                    .await?;
             } else {
                 // should clean up and shutdown the shard since it will not be able to complete
             }

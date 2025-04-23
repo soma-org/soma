@@ -61,10 +61,10 @@ pub(crate) struct InternalPipelineDispatcher<
     S: ObjectStorage,
 > {
     certified_commit_handle: ActorHandle<CommitProcessor<E, C, S>>,
-    commit_votes_handle: ActorHandle<CommitVotesProcessor<E>>,
-    reveal_handle: ActorHandle<RevealProcessor<E>>,
-    reveal_votes_handle: ActorHandle<RevealVotesProcessor<E>>,
-    scores_handle: ActorHandle<ScoresProcessor<E>>,
+    commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S>>,
+    reveal_handle: ActorHandle<RevealProcessor<E, S>>,
+    reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,
+    scores_handle: ActorHandle<ScoresProcessor<E, S>>,
 }
 
 impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
@@ -72,10 +72,10 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
 {
     pub(crate) fn new(
         certified_commit_handle: ActorHandle<CommitProcessor<E, C, S>>,
-        commit_votes_handle: ActorHandle<CommitVotesProcessor<E>>,
-        reveal_handle: ActorHandle<RevealProcessor<E>>,
-        reveal_votes_handle: ActorHandle<RevealVotesProcessor<E>>,
-        scores_handle: ActorHandle<ScoresProcessor<E>>,
+        commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S>>,
+        reveal_handle: ActorHandle<RevealProcessor<E, S>>,
+        reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,
+        scores_handle: ActorHandle<ScoresProcessor<E, S>>,
     ) -> Self {
         Self {
             certified_commit_handle,

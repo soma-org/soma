@@ -5,7 +5,7 @@ pub(crate) mod mem_store;
 use std::time::Instant;
 
 use fastcrypto::bls12381::min_sig;
-use shared::{crypto::keys::EncoderPublicKey, signed::Signed, verified::Verified};
+use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
 
 use crate::{
     error::ShardResult,
@@ -15,12 +15,36 @@ use crate::{
     },
 };
 
-pub(crate) struct VoteCounts {
+pub(crate) struct CommitVoteCounts {
+    accepts: Option<usize>,
+    rejects: usize,
+    highest: usize,
+}
+impl CommitVoteCounts {
+    pub(crate) fn new(accepts: Option<usize>, rejects: usize, highest: usize) -> Self {
+        Self {
+            accepts,
+            rejects,
+            highest,
+        }
+    }
+
+    pub(crate) fn accept_count(&self) -> Option<usize> {
+        self.accepts
+    }
+    pub(crate) fn reject_count(&self) -> usize {
+        self.rejects
+    }
+    pub(crate) fn highest(&self) -> usize {
+        self.highest
+    }
+}
+
+pub(crate) struct RevealVoteCounts {
     accepts: usize,
     rejects: usize,
 }
-
-impl VoteCounts {
+impl RevealVoteCounts {
     pub(crate) fn new(accepts: usize, rejects: usize) -> Self {
         Self { accepts, rejects }
     }
@@ -101,6 +125,12 @@ pub(crate) trait Store: Send + Sync + 'static {
         shard: &Shard,
     ) -> ShardResult<Vec<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>>;
 
+    fn get_commit_votes_for_encoder(
+        &self,
+        shard: &Shard,
+        encoder: &EncoderPublicKey,
+        digest: Option<&Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+    ) -> ShardResult<CommitVoteCounts>;
     fn add_reveal_votes(
         &self,
         shard: &Shard,
@@ -111,7 +141,7 @@ pub(crate) trait Store: Send + Sync + 'static {
         &self,
         shard: &Shard,
         encoder: &EncoderPublicKey,
-    ) -> ShardResult<VoteCounts>;
+    ) -> ShardResult<RevealVoteCounts>;
 
     fn get_reveal_votes(
         &self,
@@ -122,6 +152,7 @@ pub(crate) trait Store: Send + Sync + 'static {
         shard: &Shard,
         votes: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
+    fn count_commit_votes(&self, shard: &Shard) -> ShardResult<usize>;
     fn get_signed_scores(
         &self,
         shard: &Shard,
