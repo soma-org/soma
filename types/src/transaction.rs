@@ -102,6 +102,23 @@ pub enum TransactionKind {
     SetCommissionRate {
         new_rate: u64,
     },
+    // Encoder management transactions
+    AddEncoder(AddEncoderArgs),
+    RemoveEncoder,
+
+    // Encoder reporting
+    ReportEncoder {
+        reportee: SomaAddress,
+    },
+    UndoReportEncoder {
+        reportee: SomaAddress,
+    },
+
+    // Encoder metadata
+    UpdateEncoderMetadata(UpdateEncoderMetadataArgs),
+    SetEncoderCommissionRate {
+        new_rate: u64,
+    },
     // Coin and object transactions
     TransferCoin {
         coin: ObjectRef,
@@ -122,6 +139,11 @@ pub enum TransactionKind {
         address: SomaAddress,
         coin_ref: ObjectRef,
         amount: Option<u64>, // Optional to allow staking entire coin
+    },
+    AddStakeToEncoder {
+        encoder_address: SomaAddress,
+        coin_ref: ObjectRef,
+        amount: Option<u64>,
     },
     WithdrawStake {
         staked_soma: ObjectRef,
@@ -195,6 +217,18 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct AddEncoderArgs {
+    pub network_pubkey_bytes: Vec<u8>,
+    pub net_address: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct UpdateEncoderMetadataArgs {
+    pub next_epoch_network_address: Option<Vec<u8>>,
+    pub next_epoch_network_pubkey: Option<Vec<u8>>,
+}
+
 impl TransactionKind {
     pub fn is_system_tx(&self) -> bool {
         matches!(
@@ -217,15 +251,32 @@ impl TransactionKind {
         )
     }
 
+    pub fn is_encoder_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::AddEncoder(_)
+                | TransactionKind::RemoveEncoder { .. }
+                | TransactionKind::ReportEncoder { .. }
+                | TransactionKind::UndoReportEncoder { .. }
+                | TransactionKind::SetEncoderCommissionRate { .. }
+                | TransactionKind::UpdateEncoderMetadata(_)
+        )
+    }
+
     pub fn is_staking_tx(&self) -> bool {
         matches!(
             self,
-            TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. }
+            TransactionKind::AddStake { .. }
+                | TransactionKind::AddStakeToEncoder { .. }
+                | TransactionKind::WithdrawStake { .. }
         )
     }
 
     pub fn requires_system_state(&self) -> bool {
-        self.is_validator_tx() || self.is_epoch_change() || self.is_staking_tx()
+        self.is_validator_tx()
+            || self.is_epoch_change()
+            || self.is_staking_tx()
+            || self.is_encoder_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {
@@ -287,7 +338,9 @@ impl TransactionKind {
             TransactionKind::AddStake { coin_ref, .. } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
             }
-
+            TransactionKind::AddStakeToEncoder { coin_ref, .. } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
+            }
             TransactionKind::WithdrawStake { staked_soma } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
             }

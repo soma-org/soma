@@ -33,6 +33,7 @@ use std::{
     str::FromStr,
 };
 
+use encoder::{Encoder, EncoderSet};
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
 use fastcrypto::{bls12381, ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use serde::{Deserialize, Serialize};
@@ -44,7 +45,9 @@ use validator::{Validator, ValidatorSet};
 use crate::{
     base::{AuthorityName, SomaAddress},
     committee::{
-        Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
+        Authority, Committee, CommitteeWithNetworkMetadata, EncoderCommittee,
+        EncoderNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
+        ENCODER_LOW_STAKE_GRACE_PERIOD, VALIDATOR_LOW_STAKE_GRACE_PERIOD,
     },
     config::genesis_config::{TokenDistributionSchedule, SHANNONS_PER_SOMA},
     crypto::{self, NetworkPublicKey, ProtocolPublicKey},
@@ -54,7 +57,7 @@ use crate::{
     object::ObjectID,
     parameters,
     peer_id::PeerId,
-    transaction::UpdateValidatorMetadataArgs,
+    transaction::{UpdateEncoderMetadataArgs, UpdateValidatorMetadataArgs},
     SYSTEM_STATE_OBJECT_ID,
 };
 use crate::{
@@ -62,6 +65,7 @@ use crate::{
     storage::object_store::ObjectStore,
 };
 
+pub mod encoder;
 pub mod epoch_start;
 pub mod staking;
 pub mod subsidy;
@@ -70,6 +74,9 @@ pub mod validator;
 #[cfg(test)]
 #[path = "unit_tests/delegation_tests.rs"]
 mod delegation_tests;
+#[cfg(test)]
+#[path = "unit_tests/encoder_staking.rs"]
+mod encoder_staking_tests;
 #[cfg(test)]
 #[path = "unit_tests/rewards_distribution_tests.rs"]
 mod rewards_distribution_tests;
@@ -98,10 +105,6 @@ pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
 pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
-
-    /// A validator can have stake below `validator_low_stake_threshold`
-    /// for this many epochs before being kicked out.
-    pub validator_low_stake_grace_period: u64,
 }
 
 impl Default for SystemParameters {
@@ -113,7 +116,6 @@ impl Default for SystemParameters {
     fn default() -> Self {
         Self {
             epoch_duration_ms: 1000 * 60, // TODO: 1000 * 60 * 60 * 24, // 1 day
-            validator_low_stake_grace_period: 7,
         }
     }
 }
@@ -143,6 +145,9 @@ pub trait SystemStateTrait {
 
     /// Get the committee for the current epoch, including network metadata
     fn get_current_epoch_committee(&self) -> CommitteeWithNetworkMetadata;
+
+    /// Get the encoder committee for the current epoch
+    // fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee;
 
     /// Convert this system state to an epoch start system state
     fn into_epoch_start_state(self) -> EpochStartSystemState;
@@ -183,6 +188,10 @@ pub struct SystemState {
     pub validator_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
 
     stake_subsidy: StakeSubsidy,
+
+    // New fields for encoders
+    pub encoders: EncoderSet,
+    pub encoder_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
 }
 
 impl SystemState {
@@ -199,6 +208,7 @@ impl SystemState {
     /// A new SystemState instance with epoch 0 and the specified validators, parameters, and timestamp
     pub fn create(
         validators: Vec<Validator>,
+        encoders: Vec<Encoder>,
         epoch_start_timestamp_ms: u64,
         parameters: SystemParameters,
         stake_subsidy_fund: u64,
@@ -215,17 +225,24 @@ impl SystemState {
         );
 
         let mut validators = ValidatorSet::new(validators);
+        let mut encoders = EncoderSet::new(encoders);
 
         for validator in &mut validators.active_validators {
             validator.activate(0);
         }
 
+        for encoder in &mut encoders.active_encoders {
+            encoder.activate(0);
+        }
+
         Self {
             epoch: 0,
             validators,
+            encoders,
             parameters,
             epoch_start_timestamp_ms,
             validator_report_records: BTreeMap::new(),
+            encoder_report_records: BTreeMap::new(),
             stake_subsidy,
         }
     }
@@ -392,32 +409,41 @@ impl SystemState {
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma) -> ExecutionResult<u64> {
         let pool_id = staked_soma.pool_id;
 
-        // TODO: make this work for validators and encoders
-        // First check inactive validators since that's the most common case for withdrawal
-        // from pools that don't match active validators
-        if let Some(inactive_validator) = self.validators.inactive_validators.get_mut(&pool_id) {
-            // Process withdrawal from inactive validator
-
-            let withdrawn_amount =
-                inactive_validator.request_withdraw_stake(staked_soma, self.epoch);
-
-            return Ok(withdrawn_amount);
-        }
-
-        // Check active and pending validators via staking pool mappings
-        if let Some(&validator_address) = self.validators.staking_pool_mappings.get(&pool_id) {
-            // Find in active or pending validators
+        // First check validator pools (active, pending, inactive)
+        if let Some(validator_address) =
+            self.validators.staking_pool_mappings.get(&pool_id).cloned()
+        {
             if let Some(validator) = self
                 .validators
                 .find_validator_with_pending_mut(validator_address)
             {
-                // Process withdrawal
                 let withdrawn_amount = validator.request_withdraw_stake(staked_soma, self.epoch);
+                return Ok(withdrawn_amount);
+            }
+
+            if let Some(inactive_validator) = self.validators.inactive_validators.get_mut(&pool_id)
+            {
+                let withdrawn_amount =
+                    inactive_validator.request_withdraw_stake(staked_soma, self.epoch);
                 return Ok(withdrawn_amount);
             }
         }
 
-        // No validator found with this pool ID
+        // Then check encoder pools (active, pending, inactive)
+        if let Some(encoder_address) = self.encoders.staking_pool_mappings.get(&pool_id).cloned() {
+            if let Some(encoder) = self.encoders.find_encoder_with_pending_mut(encoder_address) {
+                let withdrawn_amount = encoder.request_withdraw_stake(staked_soma, self.epoch);
+                return Ok(withdrawn_amount);
+            }
+
+            if let Some(inactive_encoder) = self.encoders.inactive_encoders.get_mut(&pool_id) {
+                let withdrawn_amount =
+                    inactive_encoder.request_withdraw_stake(staked_soma, self.epoch);
+                return Ok(withdrawn_amount);
+            }
+        }
+
+        // No pool found with this ID
         Err(ExecutionFailureStatus::StakingPoolNotFound)
     }
 
@@ -501,6 +527,191 @@ impl SystemState {
         Ok(())
     }
 
+    /// Request to add an encoder to the active set in the next epoch
+    pub fn request_add_encoder(
+        &mut self,
+        signer: SomaAddress,
+        network_pubkey_bytes: Vec<u8>,
+        net_address: Vec<u8>,
+        staking_pool_id: ObjectID,
+    ) -> ExecutionResult {
+        let encoder = Encoder::new(
+            signer,
+            crypto::NetworkPublicKey::new(
+                Ed25519PublicKey::from_bytes(&network_pubkey_bytes).unwrap(),
+            ),
+            Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
+            0,  // Initial voting power
+            10, // Default commission rate (0.1%)
+            staking_pool_id,
+        );
+
+        // Request to add encoder to the encoder set
+        self.encoders.request_add_encoder(encoder).map_err(|e| e) // Pass through error
+    }
+
+    /// Request to remove an encoder
+    pub fn request_remove_encoder(&mut self, signer: SomaAddress) -> ExecutionResult {
+        self.encoders.request_remove_encoder(signer)
+    }
+
+    /// Request to update encoder metadata
+    pub fn request_update_encoder_metadata(
+        &mut self,
+        signer: SomaAddress,
+        args: &UpdateEncoderMetadataArgs,
+    ) -> ExecutionResult<()> {
+        let encoder = self
+            .encoders
+            .find_encoder_mut(signer)
+            .ok_or(ExecutionFailureStatus::NotAnEncoder)?;
+
+        // Delegate the processing of optional fields to the encoder
+        encoder.stage_next_epoch_metadata(args)
+    }
+
+    /// Request to add stake to an encoder
+    pub fn request_add_stake_to_encoder(
+        &mut self,
+        signer: SomaAddress,
+        address: SomaAddress,
+        amount: u64,
+    ) -> ExecutionResult<StakedSoma> {
+        // Try to find the encoder in active or pending encoders
+        let encoder = self.encoders.find_encoder_with_pending_mut(address);
+
+        if let Some(encoder) = encoder {
+            if amount == 0 {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: "Stake amount cannot be 0!".to_string(),
+                });
+            }
+            // Found in active or pending encoders
+            let staked_soma = encoder.request_add_stake(amount, signer, self.epoch);
+
+            // Update staking pool mappings
+            self.encoders
+                .staking_pool_mappings
+                .insert(staked_soma.pool_id, address);
+
+            Ok(staked_soma)
+        } else {
+            Err(ExecutionFailureStatus::EncoderNotFound)
+        }
+    }
+
+    /// Request to add stake to an encoder at genesis
+    pub fn request_add_stake_to_encoder_at_genesis(
+        &mut self,
+        signer: SomaAddress,
+        address: SomaAddress,
+        amount: u64,
+    ) -> ExecutionResult<StakedSoma> {
+        let encoder = self.encoders.find_encoder_with_pending_mut(address);
+
+        if let Some(encoder) = encoder {
+            if amount == 0 {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: "Stake amount cannot be 0!".to_string(),
+                });
+            }
+            // Found in active or pending encoders
+            let staked_soma = encoder.request_add_stake_at_genesis(amount, signer, self.epoch);
+
+            // Update staking pool mappings
+            self.encoders
+                .staking_pool_mappings
+                .insert(staked_soma.pool_id, address);
+
+            Ok(staked_soma)
+        } else {
+            Err(ExecutionFailureStatus::EncoderNotFound)
+        }
+    }
+
+    /// Report an encoder for misbehavior
+    pub fn report_encoder(
+        &mut self,
+        reporter: SomaAddress,
+        reportee: SomaAddress,
+    ) -> ExecutionResult {
+        let is_encoder = self.encoders.is_active_encoder(reporter);
+
+        if !is_encoder {
+            return Err(ExecutionFailureStatus::NotAnEncoder);
+        }
+
+        // Verify reportee is an encoder
+        if !self.encoders.is_active_encoder(reportee) {
+            return Err(ExecutionFailureStatus::NotAnEncoder);
+        }
+
+        // Cannot report yourself
+        if reporter == reportee {
+            return Err(ExecutionFailureStatus::CannotReportOneself);
+        }
+
+        // Add report to records
+        self.encoder_report_records
+            .entry(reportee)
+            .or_insert_with(BTreeSet::new)
+            .insert(reporter);
+
+        Ok(())
+    }
+
+    /// Undo an encoder report
+    pub fn undo_report_encoder(
+        &mut self,
+        reporter: SomaAddress,
+        reportee: SomaAddress,
+    ) -> ExecutionResult {
+        // Verify reporter is a encoder
+        let is_encoder = self.encoders.is_active_encoder(reporter);
+
+        if !is_encoder {
+            return Err(ExecutionFailureStatus::NotAnEncoder);
+        }
+
+        // Check if report exists
+        let reports = self
+            .encoder_report_records
+            .get_mut(&reportee)
+            .ok_or(ExecutionFailureStatus::ReportRecordNotFound)?;
+
+        // Remove the report
+        if !reports.remove(&reporter) {
+            return Err(ExecutionFailureStatus::ReportRecordNotFound);
+        }
+
+        // Clean up empty report sets
+        if reports.is_empty() {
+            self.encoder_report_records.remove(&reportee);
+        }
+
+        Ok(())
+    }
+
+    /// Set encoder commission rate
+    pub fn request_set_encoder_commission_rate(
+        &mut self,
+        signer: SomaAddress,
+        new_rate: u64,
+    ) -> Result<(), ExecutionFailureStatus> {
+        // Find encoder by address
+        let encoder = self
+            .encoders
+            .find_encoder_mut(signer)
+            .ok_or(ExecutionFailureStatus::NotAnEncoder)?;
+
+        // Set commission rate
+        encoder
+            .request_set_commission_rate(new_rate)
+            .map_err(|e| ExecutionFailureStatus::SomaError(SomaError::from(e)))?;
+
+        Ok(())
+    }
+
     /// # Advance to the next epoch
     ///
     /// Processes pending validator changes and advances the system state to the next epoch.
@@ -553,16 +764,36 @@ impl SystemState {
         // Actually increment the epoch number
         self.epoch = new_epoch;
 
+        // TODO: Split rewards between validators and encoders
+        // For example, allocate 70% to validators, 30% to encoders
+        // This can be adjusted based on desired incentive structure
+        let validator_subsidy = (total_rewards * 100) / 100;
+        let encoder_subsidy = total_rewards - validator_subsidy;
+
+        let mut total_validator_rewards = validator_subsidy;
+        let mut total_encoder_rewards = encoder_subsidy;
+
         // Process validator set epoch advancement
-        let rewards = self.validators.advance_epoch(
+        let validator_rewards = self.validators.advance_epoch(
             new_epoch,
-            &mut total_rewards,
+            &mut total_validator_rewards,
             reward_slashing_rate,
             &mut self.validator_report_records,
-            self.parameters.validator_low_stake_grace_period,
+            VALIDATOR_LOW_STAKE_GRACE_PERIOD,
         );
 
-        Ok(rewards)
+        // Process encoder set epoch advancement
+        let _encoder_rewards = self.encoders.advance_epoch(
+            new_epoch,
+            &mut total_encoder_rewards,
+            reward_slashing_rate,
+            &mut self.encoder_report_records,
+            ENCODER_LOW_STAKE_GRACE_PERIOD,
+        );
+
+        // For simplicity in this implementation, we're just returning validator rewards
+        // In a full implementation, you'd want to return both and handle them appropriately
+        Ok(validator_rewards)
     }
 }
 
@@ -610,18 +841,46 @@ impl SystemStateTrait for SystemState {
         CommitteeWithNetworkMetadata::new(self.epoch, validators)
     }
 
-    // fn get_pending_active_validators<S: ObjectStore + ?Sized>(
-    //     &self,
-    //     object_store: &S,
-    // ) -> Result<Vec<SuiValidatorSummary>, SuiError> {
-    //     let table_id = self.validators.pending_active_validators.contents.id;
-    //     let table_size = self.validators.pending_active_validators.contents.size;
-    //     let validators: Vec<Validator> =
-    //         get_validators_from_table_vec(&object_store, table_id, table_size)?;
-    //     Ok(validators
-    //         .into_iter()
-    //         .map(|v| v.into_sui_validator_summary())
-    //         .collect())
+    /// TODO: Get the encoder committee for the current epoch
+    // fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee {
+    //     let encoders = self
+    //         .encoders
+    //         .active_encoders
+    //         .iter()
+    //         .map(|encoder| {
+    //             let metadata = &encoder.metadata;
+    //             let name =
+    //                 (&crypto::EncoderPublicKey::from_network_pubkey(&metadata.network_pubkey))
+    //                     .into();
+    //             (name, encoder.voting_power)
+    //         })
+    //         .collect();
+
+    //     let network_metadata = self
+    //         .encoders
+    //         .active_encoders
+    //         .iter()
+    //         .map(|encoder| {
+    //             let metadata = &encoder.metadata;
+    //             let name =
+    //                 (&crypto::EncoderPublicKey::from_network_pubkey(&metadata.network_pubkey))
+    //                     .into();
+    //             (
+    //                 name,
+    //                 EncoderNetworkMetadata {
+    //                     network_address: metadata.net_address.clone(),
+    //                     network_key: metadata.network_pubkey.clone(),
+    //                     hostname: metadata.net_address.to_string(),
+    //                 },
+    //             )
+    //         })
+    //         .collect();
+
+    //     EncoderCommittee {
+    //         epoch: self.epoch,
+    //         members: encoders,
+    //         network_metadata,
+    //     }
     // }
 
     fn into_epoch_start_state(self) -> EpochStartSystemState {

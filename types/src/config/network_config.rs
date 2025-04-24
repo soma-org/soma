@@ -248,6 +248,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     )
                 })
                 .collect(),
+            vec![], // TODO: add initial encoders at genesis if any
             duration_since_unix_epoch.as_millis() as u64,
             SystemParameters {
                 epoch_duration_ms: genesis_config.parameters.epoch_duration_ms,

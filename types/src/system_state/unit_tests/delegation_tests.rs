@@ -48,7 +48,7 @@ mod delegation_tests {
             create_validator_for_testing(validator_addr_2(), 100 * SHANNONS_PER_SOMA),
         ];
 
-        create_test_system_state(validators, 1000, 0, 10, 500)
+        create_test_system_state(validators, vec![], 1000, 0, 10, 500)
     }
 
     // Helper to set up a test system state with subsidy
@@ -58,7 +58,7 @@ mod delegation_tests {
             create_validator_for_testing(validator_addr_2(), 100 * SHANNONS_PER_SOMA),
         ];
 
-        create_test_system_state(validators, 400, 0, 10, 0)
+        create_test_system_state(validators, vec![], 400, 0, 10, 0)
     }
 
     // Helper to remove a validator candidate

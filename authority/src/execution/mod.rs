@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
+use encoder::EncoderExecutor;
 use object::ObjectExecutor;
 use prepare_gas::{calculate_and_deduct_remaining_fees, prepare_gas, GasPreparationResult};
 use staking::StakingExecutor;
@@ -26,6 +27,7 @@ use validator::ValidatorExecutor;
 
 mod change_epoch;
 mod coin;
+mod encoder;
 mod object;
 mod prepare_gas;
 mod staking;
@@ -242,6 +244,7 @@ pub fn execute_transaction(
 
 fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
     match kind {
+        // Validator management transactions
         TransactionKind::AddValidator(_)
         | TransactionKind::RemoveValidator(_)
         | TransactionKind::ReportValidator { .. }
@@ -249,21 +252,29 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::SetCommissionRate { .. }
         | TransactionKind::UpdateValidatorMetadata(_) => Box::new(ValidatorExecutor::new()),
 
+        // Encoder management transactions
+        TransactionKind::AddEncoder(_)
+        | TransactionKind::RemoveEncoder
+        | TransactionKind::ReportEncoder { .. }
+        | TransactionKind::UndoReportEncoder { .. }
+        | TransactionKind::SetEncoderCommissionRate { .. }
+        | TransactionKind::UpdateEncoderMetadata(_) => Box::new(EncoderExecutor::new()),
+
+        // System transactions
         TransactionKind::ChangeEpoch(_) => Box::new(ChangeEpochExecutor::new()),
-
         TransactionKind::Genesis(_) => Box::new(GenesisExecutor::new()),
-
         TransactionKind::ConsensusCommitPrologue(_) => Box::new(ConsensusCommitExecutor::new()),
 
+        // Coin and object transactions
         TransactionKind::TransferCoin { .. } | TransactionKind::PayCoins { .. } => {
             Box::new(CoinExecutor::new())
         }
-
         TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
 
-        TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => {
-            Box::new(StakingExecutor::new())
-        }
+        // Staking transactions - both validator and encoder staking
+        TransactionKind::AddStake { .. }
+        | TransactionKind::WithdrawStake { .. }
+        | TransactionKind::AddStakeToEncoder { .. } => Box::new(StakingExecutor::new()),
     }
 }
 

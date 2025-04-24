@@ -27,6 +27,8 @@ use std::{
 };
 use tracing_subscriber::fmt::init;
 
+use super::encoder::Encoder;
+
 #[cfg(test)]
 #[derive(Clone)]
 pub struct ValidatorRewards {
@@ -348,9 +350,106 @@ pub fn create_validators_with_stakes(stakes: Vec<u64>) -> Vec<Validator> {
     validators
 }
 
+pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> Encoder {
+    let mut rng = StdRng::from_seed([0; 32]);
+
+    // Create network public key (ED25519)
+    let network_keypair = NetworkKeyPair::generate(&mut rng);
+
+    // Create multiaddress
+    let net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
+
+    // Create encoder
+    let mut encoder = Encoder::new(
+        addr,
+        network_keypair.public(),
+        net_address,
+        0, // Initial voting power is 0, will be set later
+        0,
+        ObjectID::random(),
+    );
+
+    // Initialize staking pool with stake
+    encoder.next_epoch_stake = init_stake_amount;
+    encoder.staking_pool.soma_balance = init_stake_amount;
+    encoder.staking_pool.pool_token_balance = init_stake_amount;
+
+    encoder
+}
+
+/// Helper function to add an encoder candidate
+pub fn add_encoder(system_state: &mut SystemState, address: SomaAddress) -> Encoder {
+    let encoder = create_encoder_for_testing(address, 0);
+
+    // Add the encoder to pending active encoders
+    system_state
+        .encoders
+        .request_add_encoder(encoder.clone())
+        .expect("Failed to add encoder candidate");
+
+    encoder
+}
+
+/// Helper function to request to add stake to an encoder
+pub fn stake_with_encoder(
+    system_state: &mut SystemState,
+    staker: SomaAddress,
+    encoder: SomaAddress,
+    amount: u64,
+) -> StakedSoma {
+    system_state
+        .request_add_stake_to_encoder(staker, encoder, amount * SHANNONS_PER_SOMA)
+        .expect("Failed to add stake to encoder")
+}
+
+/// Calculate the total stake of an encoder including rewards
+pub fn encoder_stake_amount(
+    system_state: &SystemState,
+    encoder_address: SomaAddress,
+) -> Option<u64> {
+    for encoder in &system_state.encoders.active_encoders {
+        if encoder.metadata.soma_address == encoder_address {
+            return Some(encoder.staking_pool.soma_balance);
+        }
+    }
+    None
+}
+
+/// Helper to assert encoder total stake amounts
+pub fn assert_encoder_total_stake_amounts(
+    system_state: &SystemState,
+    encoder_addrs: Vec<SomaAddress>,
+    expected_amounts: Vec<u64>,
+) {
+    assert_eq!(
+        encoder_addrs.len(),
+        expected_amounts.len(),
+        "Address and amount arrays must be the same length"
+    );
+
+    for (i, addr) in encoder_addrs.iter().enumerate() {
+        let encoder = system_state
+            .encoders
+            .active_encoders
+            .iter()
+            .find(|v| v.metadata.soma_address == *addr)
+            .expect("Encoder not found");
+
+        let actual_amount = encoder.staking_pool.soma_balance;
+        let expected_amount = expected_amounts[i];
+
+        assert_eq!(
+            actual_amount, expected_amount,
+            "Encoder {} expected stake {}, but got {}",
+            addr, expected_amount, actual_amount
+        );
+    }
+}
+
 /// Create a test system state with specified validators and subsidy parameters
 pub fn create_test_system_state(
     validators: Vec<Validator>,
+    encoders: Vec<Encoder>,
     supply_amount: u64,
     stake_subsidy_initial_amount: u64,
     stake_subsidy_period_length: u64,
@@ -359,7 +458,6 @@ pub fn create_test_system_state(
     // System parameters
     let parameters = SystemParameters {
         epoch_duration_ms: 42, // Doesn't matter what number we put here for tests
-        validator_low_stake_grace_period: 7,
     };
 
     // Create system state
@@ -368,6 +466,7 @@ pub fn create_test_system_state(
 
     SystemState::create(
         validators,
+        encoders,
         epoch_start_timestamp_ms,
         parameters,
         stake_subsidy_fund,
@@ -385,7 +484,7 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
         validators.push(create_validator_for_testing(addr, 100 * SHANNONS_PER_SOMA));
     }
 
-    create_test_system_state(validators, 1000, 0, 10, 500)
+    create_test_system_state(validators, vec![], 1000, 0, 10, 500)
 }
 
 /// Advance epoch with rewards

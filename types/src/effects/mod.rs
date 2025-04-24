@@ -675,6 +675,21 @@ pub enum ExecutionFailureStatus {
     AdvancedToWrongEpoch,
 
     //
+    // Encoder errors
+    //
+    /// Error when attempting to add a encoder that already exists
+    #[error("Cannot add encoder that is already active or pending")]
+    DuplicateEncoder,
+
+    /// Error when trying to remove a encoder that doesn't exist
+    #[error("Cannot remove encoder that is not active")]
+    NotAnEncoder,
+
+    /// Error when trying to remove a encoder that was already removed
+    #[error("Cannot remove encoder that is already removed")]
+    EncoderAlreadyRemoved,
+
+    //
     // Coin errors
     //
     /// Account doesn't have enough coins to complete the operation
@@ -690,6 +705,9 @@ pub enum ExecutionFailureStatus {
     //
     #[error("Validator not found.")]
     ValidatorNotFound,
+
+    #[error("Encoder not found.")]
+    EncoderNotFound,
 
     #[error("Staking Pool not found.")]
     StakingPoolNotFound,

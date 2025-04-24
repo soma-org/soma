@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use types::{
     base::SomaAddress,
     digests::TransactionDigest,
@@ -50,17 +52,21 @@ impl TransactionExecutor for ChangeEpochExecutor {
             })?;
 
         // Process the transaction
-        let validator_rewards = match kind {
+        let (validator_rewards, encoder_rewards) = match kind {
             TransactionKind::ChangeEpoch(change_epoch) => {
                 // TODO: Pass in cumulative epoch transaction fees to split rewards
                 // TODO: Fixed reward slashing rate at 50%
                 let reward_slashing_rate: u64 = 5000; // 50% in basis points
-                state.advance_epoch(
+                let validator_rewards = state.advance_epoch(
                     change_epoch.epoch,
                     0,
                     change_epoch.epoch_start_timestamp_ms,
                     reward_slashing_rate,
-                )
+                )?;
+
+                //  TODO: In a real implementation, we should modify advance_epoch to also
+                // return encoder rewards separately
+                Ok((validator_rewards, HashMap::new()))
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }?;
@@ -71,6 +77,18 @@ impl TransactionExecutor for ChangeEpochExecutor {
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
                 reward,
                 Owner::AddressOwner(validator),
+                tx_digest,
+            );
+            store.create_object(staked_soma_object);
+        }
+
+        // Create StakedSoma objects for encoder rewards
+        for (encoder, reward) in encoder_rewards {
+            // Create StakedSoma object
+            let staked_soma_object = Object::new_staked_soma_object(
+                ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                reward,
+                Owner::AddressOwner(encoder),
                 tx_digest,
             );
             store.create_object(staked_soma_object);

@@ -634,7 +634,8 @@ mod rewards_distribution_tests {
         }
 
         // Create system state with these validators
-        let mut system_state = test_utils::create_test_system_state(validators, 0, 0, 10, 0);
+        let mut system_state =
+            test_utils::create_test_system_state(validators, vec![], 0, 0, 10, 0);
 
         // Record initial validator states
         let mut validator_stakes =
@@ -682,7 +683,9 @@ mod rewards_distribution_tests {
         ];
 
         test_utils::create_test_system_state(
-            validators, 1000, // 1000 SOMA subsidy fund
+            validators,
+            vec![],
+            1000, // 1000 SOMA subsidy fund
             0,    // 0 SOMA initial distribution (we'll set this per test)
             10,   // period length of 10 epochs
             500,  // 5% decrease rate
@@ -700,6 +703,7 @@ mod rewards_distribution_tests {
 
         test_utils::create_test_system_state(
             validators,
+            vec![],
             1_000_000_000, // 1B SOMA subsidy fund
             0,             // 0 SOMA initial distribution (we'll set this per test)
             10,            // period length of 10 epochs

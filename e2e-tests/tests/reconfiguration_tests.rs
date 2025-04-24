@@ -8,7 +8,10 @@ use tokio::time::sleep;
 use tracing::info;
 use types::{
     base::SomaAddress,
-    committee::{VALIDATOR_LOW_POWER, VALIDATOR_MIN_POWER, VALIDATOR_VERY_LOW_POWER},
+    committee::{
+        VALIDATOR_LOW_POWER, VALIDATOR_LOW_STAKE_GRACE_PERIOD, VALIDATOR_MIN_POWER,
+        VALIDATOR_VERY_LOW_POWER,
+    },
     config::genesis_config::{
         AccountConfig, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder, DEFAULT_GAS_AMOUNT,
     },
@@ -286,7 +289,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
                     .iter()
                     .map(|v| v.metadata.soma_address)
                     .collect::<Vec<_>>(),
-                system_state.parameters.validator_low_stake_grace_period,
+                VALIDATOR_LOW_STAKE_GRACE_PERIOD,
             )
         });
 

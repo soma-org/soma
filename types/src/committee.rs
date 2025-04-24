@@ -117,6 +117,27 @@ pub const VALIDATOR_VERY_LOW_POWER: u64 = 4;
 /// for this many epochs before being kicked out.
 pub const VALIDATOR_LOW_STAKE_GRACE_PERIOD: u64 = 7;
 
+/// Minimum amount of voting power required to become a encoder
+/// .12% of voting power
+// TODO: consider making this .06 or .03
+pub const ENCODER_MIN_POWER: u64 = 12;
+
+/// Low voting power threshold for encoders
+/// Encoders below this threshold fall into the "at risk" group.
+/// .08% of voting power
+// TODO: consider making this .04 or .02
+pub const ENCODER_LOW_POWER: u64 = 8;
+
+/// Very low voting power threshold for encoders
+/// Encoders below this threshold will be removed immediately at epoch change.
+/// .04% of voting power
+// TODO: consider making this .02 or .01
+pub const ENCODER_VERY_LOW_POWER: u64 = 4;
+
+/// A encoder can have stake below `eoder_low_stake_threshold`
+/// for this many epochs before being kicked out.
+pub const ENCODER_LOW_STAKE_GRACE_PERIOD: u64 = 7;
+
 /// Represents a committee of validators for a specific epoch.
 ///
 /// The Committee structure tracks validator membership, voting power distribution,
@@ -745,4 +766,23 @@ impl<T> IndexMut<AuthorityIndex> for Vec<T> {
     fn index_mut(&mut self, index: AuthorityIndex) -> &mut Self::Output {
         self.get_mut(index.value()).unwrap()
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+pub struct EncoderCommittee {
+    /// The epoch number
+    pub epoch: EpochId,
+
+    /// The active encoders with their voting power
+    pub members: BTreeMap<AuthorityName, u64>,
+
+    /// Network metadata for encoders
+    pub network_metadata: BTreeMap<AuthorityName, EncoderNetworkMetadata>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+pub struct EncoderNetworkMetadata {
+    pub network_address: Multiaddr,
+    pub network_key: NetworkPublicKey,
+    pub hostname: String,
 }
