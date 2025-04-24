@@ -66,7 +66,7 @@ impl ShardCommit {
 //Digest<Signed<ShardCommit>>
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct ShardCommitV1 {
+pub(crate) struct ShardCommitV1 {
     // the auth token protects against replay attacks since this entire thing is signed with
     // a unique shard auth token that is specific to the shard
     auth_token: ShardAuthToken,

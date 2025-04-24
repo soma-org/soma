@@ -8,6 +8,7 @@ use shared::{
         Aes256IV, Aes256Key, EncryptionKey,
     },
     digest::Digest,
+    metadata::Metadata,
     scope::Scope,
     signed::Signed,
     verified::Verified,
@@ -18,7 +19,7 @@ use crate::{
     datastore::Store,
     types::{
         shard::Shard,
-        shard_commit::ShardCommitAPI,
+        shard_commit::{Route, ShardCommit, ShardCommitAPI},
         shard_commit_votes::{ShardCommitVotes, ShardCommitVotesV1},
         shard_reveal::{ShardReveal, ShardRevealAPI, ShardRevealV1},
         shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesV1},
@@ -28,6 +29,55 @@ use crate::{
 };
 
 use super::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT};
+pub(crate) fn broadcast_commit<C: EncoderInternalNetworkClient + 'static>(
+    shard: Shard,
+    auth_token: ShardAuthToken,
+    broadcaster: Arc<Broadcaster<C>>,
+    keypair: Arc<EncoderKeyPair>,
+    route: Option<Route>,
+    metadata: Metadata,
+) -> impl FnOnce() + Send + 'static {
+    move || {
+        tokio::spawn(async move {
+            let inner_keypair = keypair.inner().copy();
+            let signed_route: Option<
+                Signed<Route, fastcrypto::bls12381::min_sig::BLS12381Signature>,
+            >;
+
+            if let Some(route) = route {
+                signed_route = Option::Some(
+                    Signed::new(
+                        route,
+                        Scope::ShardCommitRoute,
+                        &inner_keypair.copy().private(),
+                    )
+                    .unwrap(),
+                );
+            } else {
+                signed_route = None;
+            }
+            let commit: ShardCommit =
+                ShardCommit::new_v1(auth_token, keypair.public(), signed_route, metadata);
+
+            let signed_commit =
+                Signed::new(commit, Scope::ShardCommit, &inner_keypair.private()).unwrap();
+            let verified = Verified::from_trusted(signed_commit).unwrap();
+
+            let _ = broadcaster
+                .broadcast(
+                    verified,
+                    shard.encoders(),
+                    |client, peer, verified_type| async move {
+                        client
+                            .send_commit(&peer, &verified_type, MESSAGE_TIMEOUT)
+                            .await;
+                        Ok(())
+                    },
+                )
+                .await;
+        });
+    }
+}
 
 pub(crate) fn broadcast_commit_vote<C: EncoderInternalNetworkClient + 'static>(
     peers: Vec<EncoderPublicKey>,

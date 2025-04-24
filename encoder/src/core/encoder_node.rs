@@ -1,50 +1,58 @@
 use std::{path::Path, sync::Arc};
 
+use objects::{
+    networking::{
+        http_network::{ObjectHttpClient, ObjectHttpManager},
+        ObjectNetworkManager, ObjectNetworkService,
+    },
+    storage::filesystem::FilesystemObjectStorage,
+};
 use quick_cache::sync::Cache;
 use shared::{
     crypto::keys::{EncoderKeyPair, PeerKeyPair},
     digest::Digest,
     entropy::EntropyVDF,
 };
+use soma_network::multiaddr::Multiaddr;
+use soma_tls::AllowPublicKeys;
+use tokio::sync::Semaphore;
 
 use crate::{
     actors::{
         pipelines::{
-            certified_commit::CertifiedCommitProcessor, commit_votes::CommitVotesProcessor,
+            commit::CommitProcessor, commit_votes::CommitVotesProcessor,
             evaluation::EvaluationProcessor, reveal::RevealProcessor,
             reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         workers::{
-            broadcaster::BroadcasterProcessor, compression::CompressionProcessor, downloader,
-            encryption::EncryptionProcessor, model::ModelProcessor, storage::StorageProcessor,
-            vdf::VDFProcessor,
+            compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
+            model::ModelProcessor, storage::StorageProcessor, vdf::VDFProcessor,
         },
         ActorManager,
     },
     compression::zstd_compressor::ZstdCompressor,
+    datastore::mem_store::MemStore,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     intelligence::model::python::PythonInterpreter,
     messaging::{
-        tonic::internal::{EncoderInternalTonicClient, EncoderInternalTonicManager},
+        internal_service::EncoderInternalService,
+        tonic::{
+            internal::{ConnectionsInfo, EncoderInternalTonicClient, EncoderInternalTonicManager},
+            NetworkingInfo,
+        },
         EncoderInternalNetworkManager,
     },
-    networking::object::{
-        http_network::{ObjectHttpClient, ObjectHttpManager},
-        ObjectNetworkManager, ObjectNetworkService,
-    },
-    storage::{datastore::mem_store::MemStore, object::filesystem::FilesystemObjectStorage},
-    types::{context::Context, shard_verifier},
+    types::{context::Context, parameters::Parameters, shard_verifier},
 };
 
 use self::{
     downloader::Downloader,
     shard_verifier::{ShardAuthToken, ShardVerifier, VerificationStatus},
-    slot_tracker::SlotTracker,
 };
 
 use super::{
-    broadcaster::Broadcaster, encoder_service::EncoderInternalService,
-    pipeline_dispatcher::InternalPipelineDispatcher, slot_tracker,
+    internal_broadcaster::Broadcaster, pipeline_dispatcher::InternalPipelineDispatcher,
+    shard_tracker::ShardTracker,
 };
 
 // pub struct Encoder(EncoderNode<ActorInternalPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
@@ -80,13 +88,26 @@ pub struct EncoderNode {
 impl EncoderNode {
     pub(crate) async fn start(
         context: Context,
-        peer_keypair: Arc<PeerKeyPair>,
         encoder_keypair: EncoderKeyPair,
+        networking_info: NetworkingInfo,
+        parameters: Arc<Parameters>,
+        object_parameters: Arc<objects::parameters::Parameters>,
+        peer_keypair: PeerKeyPair,
+        address: Multiaddr,
+        object_address: Multiaddr,
+        allower: AllowPublicKeys,
+        connections_info: ConnectionsInfo,
         project_root: &Path,
         entry_point: &Path,
     ) -> Self {
-        let mut network_manager =
-            EncoderInternalTonicManager::new(context.clone(), peer_keypair.clone());
+        let mut network_manager = EncoderInternalTonicManager::new(
+            networking_info,
+            parameters,
+            peer_keypair.clone(),
+            address,
+            allower.clone(),
+            connections_info,
+        );
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
             EncoderInternalService<
@@ -98,26 +119,34 @@ impl EncoderNode {
             >,
         >>::client(&network_manager);
 
-        // let messaging_client = network_manager.client();
-
-        let blob_storage = Arc::new(FilesystemObjectStorage::new("base_path"));
+        let object_storage = Arc::new(FilesystemObjectStorage::new("base_path"));
         let object_network_service: ObjectNetworkService<FilesystemObjectStorage> =
-            ObjectNetworkService::new(blob_storage.clone());
-        let mut blob_network_manager: ObjectHttpManager<FilesystemObjectStorage> =
-            ObjectHttpManager::new(peer_keypair).unwrap();
-        // tokio::spawn(async move {
-        //     blob_network_manager.start(Arc::new(blob_network_service)).await
-        // });
+            ObjectNetworkService::new(object_storage.clone());
 
-        let blob_client = blob_network_manager.client();
+        let mut object_network_manager = <ObjectHttpManager as ObjectNetworkManager<
+            FilesystemObjectStorage,
+        >>::new(peer_keypair, object_parameters, allower)
+        .unwrap();
+
+        object_network_manager
+            .start(&object_address, object_network_service)
+            .await;
+
+        let object_client =
+            <ObjectHttpManager as ObjectNetworkManager<FilesystemObjectStorage>>::client(
+                &object_network_manager,
+            );
+
         let encoder_keypair = Arc::new(encoder_keypair);
 
         let default_buffer = 100_usize;
         let default_concurrency = 100_usize;
 
-        let broadcaster = Arc::new(Broadcaster::new(context.clone(), messaging_client.clone()));
-
-        let download_processor = Downloader::new(default_concurrency, blob_client.clone());
+        let download_processor = Downloader::new(
+            default_concurrency,
+            object_client.clone(),
+            object_storage.clone(),
+        );
         let downloader_manager = ActorManager::new(default_buffer, download_processor);
         let downloader_handle = downloader_manager.handle();
 
@@ -137,7 +166,7 @@ impl EncoderNode {
         let model_manager = ActorManager::new(default_buffer, model_processor);
         let model_handle = model_manager.handle();
 
-        let storage_processor = StorageProcessor::new(blob_storage, None);
+        let storage_processor = StorageProcessor::new(object_storage, None);
         let storage_manager = ActorManager::new(default_buffer, storage_processor);
         let storage_handle = storage_manager.handle();
 
@@ -146,79 +175,69 @@ impl EncoderNode {
         let vdf_handle = ActorManager::new(1, vdf_processor).handle();
         let store = Arc::new(MemStore::new());
 
-        let broadcaster = Broadcaster::new(context.clone(), messaging_client);
-        let broadcast_processor = BroadcasterProcessor::new(
-            context.clone(),
-            default_concurrency,
-            broadcaster,
-            store.clone(),
-            encoder_keypair.clone(),
-        );
-        let broadcaster_handle = ActorManager::new(default_buffer, broadcast_processor).handle();
+        let broadcaster = Arc::new(Broadcaster::new(
+            messaging_client.clone(),
+            Arc::new(Semaphore::new(default_concurrency)),
+        ));
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
-            broadcaster_handle.clone(),
+            broadcaster.clone(),
+            encoder_keypair.clone(),
             storage_handle.clone(),
-            context.clone(),
         );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
 
-        let slot_tracker = SlotTracker::new(100);
-        let certified_commit_processor = CertifiedCommitProcessor::new(
-            100,
+        let shard_tracker = Arc::new(ShardTracker::new(
+            Arc::new(Semaphore::new(default_concurrency)),
+            broadcaster.clone(),
             store.clone(),
-            slot_tracker.clone(),
-            broadcaster_handle.clone(),
+            encoder_keypair.clone(),
+            evaluation_handle,
+        ));
+
+        let commit_processor = CommitProcessor::new(
+            store.clone(),
+            shard_tracker.clone(),
             downloader_handle.clone(),
-            compressor_handle.clone(),
-            storage_handle.clone(),
         );
+
         let commit_votes_processor =
-            CommitVotesProcessor::new(store.clone(), broadcaster_handle.clone());
-        let reveal_processor = RevealProcessor::new(
-            100,
-            store.clone(),
-            slot_tracker,
-            broadcaster_handle.clone(),
-            storage_handle.clone(),
-            compressor_handle.clone(),
-            encryptor_handle.clone(),
-        );
-        let reveal_votes_processor = RevealVotesProcessor::new(store.clone(), evaluation_handle);
+            CommitVotesProcessor::new(store.clone(), shard_tracker.clone());
 
-        let scores_processor = ScoresProcessor::new(store.clone());
+        let reveal_processor = RevealProcessor::new(store.clone(), shard_tracker.clone());
+        let reveal_votes_processor =
+            RevealVotesProcessor::new(store.clone(), shard_tracker.clone());
 
-        let certified_commit_manager =
-            ActorManager::new(default_buffer, certified_commit_processor);
+        let scores_processor = ScoresProcessor::new(store.clone(), shard_tracker.clone());
+
+        let commit_manager = ActorManager::new(default_buffer, commit_processor);
         let commit_votes_manager = ActorManager::new(default_buffer, commit_votes_processor);
         let reveal_manager = ActorManager::new(default_buffer, reveal_processor);
         let reveal_votes_manager = ActorManager::new(default_buffer, reveal_votes_processor);
         let scores_manager = ActorManager::new(default_buffer, scores_processor);
 
-        let certified_commit_handle = certified_commit_manager.handle();
+        let commit_handle = commit_manager.handle();
         let commit_votes_handle = commit_votes_manager.handle();
         let reveal_handle = reveal_manager.handle();
         let reveal_votes_handle = reveal_votes_manager.handle();
         let scores_handle = scores_manager.handle();
 
         let pipeline_dispatcher = InternalPipelineDispatcher::new(
-            certified_commit_handle,
+            commit_handle,
             commit_votes_handle,
             reveal_handle,
             reveal_votes_handle,
             scores_handle,
         );
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(64);
-        let verifier = ShardVerifier::new(cache);
+        let verifier = ShardVerifier::new(cache, vdf_handle);
 
         let network_service = Arc::new(EncoderInternalService::new(
             context,
-            pipeline_dispatcher,
-            vdf_handle,
-            verifier,
             store,
-            encoder_keypair,
+            pipeline_dispatcher,
+            verifier,
         ));
         network_manager.start(network_service).await;
         Self { network_manager }

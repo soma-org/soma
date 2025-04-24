@@ -1,5 +1,5 @@
-pub(crate) mod filesystem;
-pub(crate) mod memory;
+pub mod filesystem;
+pub mod memory;
 
 use async_trait::async_trait;
 use bytes::Bytes;

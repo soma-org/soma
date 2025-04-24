@@ -110,3 +110,12 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
         Ok(())
     }
 }
+
+// impl<C: EncoderInternalNetworkClient> Clone for Broadcaster<C> {
+//     fn clone(&self) -> Self {
+//         Self {
+//             client: self.client.clone(),
+//             semaphore: self.semaphore.clone(),
+//         }
+//     }
+// }

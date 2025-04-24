@@ -20,7 +20,6 @@ pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: Object
     store: Arc<dyn Store>,
     broadcaster: Arc<Broadcaster<C>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    shard_tracker: ShardTracker<C, S>,
     storage: ActorHandle<StorageProcessor<S>>,
 }
 
@@ -29,14 +28,12 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<C, S
         store: Arc<dyn Store>,
         broadcaster: Arc<Broadcaster<C>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        shard_tracker: ShardTracker<C, S>,
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
             store,
             broadcaster,
             encoder_keypair,
-            shard_tracker,
             storage,
         }
     }

@@ -1,4 +1,4 @@
-pub(crate) mod http_network;
+pub mod http_network;
 
 use async_trait::async_trait;
 use soma_tls::AllowPublicKeys;
@@ -36,7 +36,7 @@ pub struct ObjectNetworkService<S: ObjectStorage> {
 }
 
 impl<S: ObjectStorage> ObjectNetworkService<S> {
-    fn new(storage: Arc<S>) -> Self {
+    pub fn new(storage: Arc<S>) -> Self {
         Self { storage }
     }
     pub(crate) async fn handle_download_object(

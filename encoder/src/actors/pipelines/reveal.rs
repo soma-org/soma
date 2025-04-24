@@ -14,11 +14,11 @@ use std::sync::Arc;
 
 pub(crate) struct RevealProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,
-    shard_tracker: ShardTracker<E, S>,
+    shard_tracker: Arc<ShardTracker<E, S>>,
 }
 
 impl<E: EncoderInternalNetworkClient, S: ObjectStorage> RevealProcessor<E, S> {
-    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: ShardTracker<E, S>) -> Self {
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: Arc<ShardTracker<E, S>>) -> Self {
         Self {
             store,
             shard_tracker,

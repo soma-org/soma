@@ -25,7 +25,7 @@ pub(crate) struct CommitProcessor<
     S: ObjectStorage,
 > {
     store: Arc<dyn Store>,
-    shard_tracker: ShardTracker<E, S>,
+    shard_tracker: Arc<ShardTracker<E, S>>,
     downloader: ActorHandle<Downloader<C, S>>,
 }
 
@@ -34,7 +34,7 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
 {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        shard_tracker: ShardTracker<E, S>,
+        shard_tracker: Arc<ShardTracker<E, S>>,
         downloader: ActorHandle<Downloader<C, S>>,
     ) -> Self {
         Self {
