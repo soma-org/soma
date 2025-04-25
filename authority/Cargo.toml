@@ -1,0 +1,44 @@
+[package]
+name = "authority"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+p2p.workspace = true
+consensus.workspace = true
+types.workspace = true
+utils.workspace = true
+# test-cluster.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+tokio.workspace = true
+serde.workspace = true
+fastcrypto.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+bcs.workspace = true
+eyre.workspace = true
+tonic.workspace = true
+prost.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tap.workspace = true
+itertools.workspace = true
+nonempty.workspace = true
+arc-swap.workspace = true
+tower.workspace = true
+tracing-subscriber.workspace = true
+tokio-stream.workspace = true
+msim.workspace = true
+dashmap = "6.0.1"
+lru = "0.12.4"
+num_cpus = "1.16.0"
+tonic-health = "0.12"
+moka = { version = "0.12", default-features = false, features = [
+    "sync",
+    "atomic64",
+] }
+once_cell = { version = "1.20.3" }
+
+[build-dependencies]
+tonic-build.workspace = true

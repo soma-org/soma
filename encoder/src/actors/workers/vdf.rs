@@ -62,7 +62,7 @@ mod tests {
     use crate::actors::ActorMessage;
     use crate::error::{ShardError, ShardResult};
     use bytes::Bytes;
-    use shared::error::SharedResult;
+    use shared::error::{SharedError, SharedResult};
     use std::time::Duration;
     use tokio::sync::oneshot::Sender;
     use tokio::time::sleep;

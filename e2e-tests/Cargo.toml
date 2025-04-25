@@ -1,0 +1,21 @@
+[package]
+name = "e2e-tests"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+types.workspace = true
+test-cluster.workspace = true
+rand.workspace = true
+node.workspace = true
+utils.workspace = true
+futures.workspace = true
+tracing-subscriber.workspace = true
+bcs.workspace = true
+msim.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+regex.workspace = true
+async-trait.workspace = true
+anyhow.workspace = true
