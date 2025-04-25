@@ -93,7 +93,6 @@ p2p = { path = "p2p" }
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim-macros" }
 tokio-stream = { version = "0.1.14", features = ["sync", "net"] }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 futures = "0.3.30"
 itertools = "0.13.0"
 tap = "1.0.1"
@@ -122,6 +121,7 @@ tonic = { version = "0.12.1", features = ["zstd"] }
 # ] }
 tonic-build = "0.12.2"
 tracing = "0.1.41" # tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 fastcrypto = { version = "0.1.9", features = [
   "copy_key",
 ] } #{ git = "https://github.com/MystenLabs/fastcrypto", rev = "5f2c63266a065996d53f98156f0412782b468597", features = [
@@ -248,7 +248,6 @@ num-prime = { version = "0.4", features = ["big-int"] }
 rand_chacha = "0.3"
 criterion = "0.5"
 num-bigint-dig = "0.8"
-
 
 [patch.crates-io]
 tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9" }

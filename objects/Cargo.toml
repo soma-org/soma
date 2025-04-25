@@ -26,6 +26,7 @@ quick_cache.workspace = true
 parking_lot.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 arc-swap.workspace = true
 
 [dev-dependencies]

@@ -15,12 +15,13 @@ use crate::error::{ObjectError, ObjectResult};
 
 use super::{ObjectPath, ObjectStorage};
 
+#[derive(Clone)]
 pub struct MemoryObjectStore {
     store: Arc<RwLock<HashMap<ObjectPath, Bytes>>>,
 }
 
 impl MemoryObjectStore {
-    fn new_for_test() -> Self {
+    pub(crate) fn new_for_test() -> Self {
         Self {
             store: Arc::new(RwLock::new(HashMap::new())),
         }
