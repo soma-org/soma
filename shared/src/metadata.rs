@@ -32,6 +32,12 @@ pub enum Metadata {
     V1(MetadataV1),
 }
 
+impl Default for Metadata {
+    fn default() -> Self {
+        Self::V1(MetadataV1::default())
+    }
+}
+
 impl Metadata {
     pub fn new_for_test(bytes: &[u8]) -> Self {
         Metadata::V1(MetadataV1 {
@@ -73,7 +79,7 @@ impl Ord for Metadata {
 }
 /// Version 1 of the Metadata. Adding versioning here because while not currently sent over the wire,
 /// it is reasonable to assume that it may be.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 struct MetadataV1 {
     // notice that we also version our compression and encryption fields
     compression: Option<CompressionV1>,
@@ -177,7 +183,7 @@ impl EncryptionAPI for EncryptionV1 {
 /// The nonce makes it so that the same identical metadata cannot be detected based on hash.
 /// Prior to landing on this solution, a double hash was going to be used except it is deterministic meaning
 /// that if a piece of metadata had been submitted earlier, the hash and values would be known to network participants.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct MetadataCommitment {
     metadata: Metadata,
     nonce: [u8; 32],

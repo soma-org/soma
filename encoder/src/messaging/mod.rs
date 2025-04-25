@@ -3,6 +3,7 @@
 pub(crate) mod external_service;
 pub(crate) mod internal_broadcasts;
 pub(crate) mod internal_service;
+mod network_tests;
 pub mod tonic;
 
 use crate::error::ShardResult;

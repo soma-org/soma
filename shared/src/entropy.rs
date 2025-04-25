@@ -13,7 +13,7 @@ use crate::{
     error::{SharedError, SharedResult},
 };
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct BlockEntropy(Bytes);
 
 impl BlockEntropy {
@@ -22,7 +22,7 @@ impl BlockEntropy {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct BlockEntropyProof(Bytes);
 impl BlockEntropyProof {
     pub fn new(bytes: Bytes) -> Self {
@@ -136,7 +136,6 @@ mod tests {
     //     let cache_capacity = 2_usize;
     //     let iterations: Iterations = 1;
     //     let vdf = EntropyVDF::new(cache_capacity);
-
     //     // Create test epoch and block reference
     //     let epoch: Epoch = 1;
     //     let block_ref = BlockRef::new(

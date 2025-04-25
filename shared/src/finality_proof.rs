@@ -198,7 +198,6 @@ mod tests {
     //         authorities,
     //         signature: AuthorityAggregateSignature::new(&signatures).unwrap(),
     //     };
-
     //     assert!(proof.verify(&committee).is_err());
     // }
     // #[test]
@@ -251,7 +250,6 @@ mod tests {
     //         .iter()
     //         .map(|(_, _, authority_kp)| authority_kp.sign(&message))
     //         .collect();
-
     //     let authorities =
     //         AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
 

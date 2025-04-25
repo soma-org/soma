@@ -1,10 +1,24 @@
 use quick_cache::sync::Cache;
 use serde::{Deserialize, Serialize};
 use shared::{
+    authority_committee::{AuthorityBitSet, AuthorityCommittee, AuthorityIndex},
+    block::BlockRef,
+    crypto::{
+        address::Address,
+        keys::{
+            AuthorityAggregateSignature, AuthorityKeyPair, AuthoritySignature,
+            EncoderAggregateSignature, ProtocolKeySignature,
+        },
+    },
     digest::Digest,
     entropy::{BlockEntropy, BlockEntropyProof, EntropyVDF},
-    finality_proof::FinalityProof,
-    metadata::MetadataCommitment,
+    finality_proof::{BlockClaim, FinalityProof},
+    metadata::{Metadata, MetadataCommitment},
+    scope::{Scope, ScopedMessage},
+    transaction::{
+        ShardTransaction, SignedTransaction, TransactionData, TransactionExpiration,
+        TransactionKind,
+    },
 };
 use tokio_util::sync::CancellationToken;
 
@@ -19,21 +33,25 @@ use super::{
     shard::{Shard, ShardEntropy},
 };
 
+/// Tracks the cached verification status for a given auth token
 #[derive(Clone)]
-pub(crate) enum VerificationStatus {
+enum VerificationStatus {
+    /// valid, containing shard
     Valid(Shard),
+    /// invalid
     Invalid,
 }
+/// Verifies shard auth tokens and returns a shard
 pub(crate) struct ShardVerifier {
+    /// caches verification status for a given auth token digest
     cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
+    /// holds the actor wrapped VDF
     vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
 }
 
 impl ShardVerifier {
-    pub(crate) fn new(
-        cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
-        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
-    ) -> Self {
+    pub(crate) fn new(capacity: usize, vdf: ActorHandle<VDFProcessor<EntropyVDF>>) -> Self {
+        let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(capacity);
         Self { cache, vdf }
     }
 }
@@ -52,6 +70,64 @@ impl ShardAuthToken {
     }
     pub fn epoch(&self) -> Epoch {
         self.proof.epoch()
+    }
+
+    pub(crate) fn new_for_test() -> Self {
+        fn mock_tx() -> SignedTransaction {
+            let sig = ProtocolKeySignature::from_bytes(&[1u8; 64]).unwrap();
+            let tx = ShardTransaction::new(Digest::new_from_bytes(b"test"), 100);
+            let tx_kind = TransactionKind::ShardTransaction(tx);
+            SignedTransaction {
+                scoped_message: ScopedMessage::new(
+                    Scope::TransactionData,
+                    TransactionData::new_v1(
+                        tx_kind,
+                        Address::default(),
+                        TransactionExpiration::None,
+                    ),
+                ),
+                tx_signatures: vec![sig],
+            }
+        }
+        let epoch = 0_u64;
+        let stakes = vec![1u64; 4];
+        let (authority_committee, authority_keypairs) =
+            AuthorityCommittee::local_test_committee(0, stakes);
+        let metadata = Metadata::new_v1(
+            None,               // no compression
+            None,               // no encryption
+            Default::default(), // default checksum
+            1024,               // size in bytes
+        );
+        let metadata_commitment = MetadataCommitment::new(metadata, [0u8; 32]);
+
+        // Create a test claim
+        let claim = BlockClaim::new(epoch, BlockRef::default(), mock_tx());
+
+        // Sign with 3 out of 4 authorities (meeting 2f+1 threshold)
+        let message = bcs::to_bytes(&claim).unwrap();
+        let signatures: Vec<AuthoritySignature> = authority_keypairs[..3]
+            .iter()
+            .map(|(_, authority_kp)| authority_kp.sign(&message))
+            .collect();
+
+        // Create authority bitset for the signing authorities
+        let authorities =
+            AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
+
+        // Create and verify the proof
+        let proof = FinalityProof::new(
+            claim,
+            authorities,
+            AuthorityAggregateSignature::new(&signatures).unwrap(),
+        );
+
+        Self {
+            proof,
+            metadata_commitment,
+            block_entropy: BlockEntropy::default(),
+            entropy_proof: BlockEntropyProof::default(),
+        }
     }
 }
 

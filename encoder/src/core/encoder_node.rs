@@ -47,7 +47,7 @@ use crate::{
 
 use self::{
     downloader::Downloader,
-    shard_verifier::{ShardAuthToken, ShardVerifier, VerificationStatus},
+    shard_verifier::{ShardAuthToken, ShardVerifier},
 };
 
 use super::{
@@ -238,8 +238,7 @@ impl EncoderNode {
             reveal_votes_handle,
             scores_handle,
         );
-        let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(64);
-        let verifier = ShardVerifier::new(cache, vdf_handle);
+        let verifier = ShardVerifier::new(100, vdf_handle);
 
         let network_service = Arc::new(EncoderInternalService::new(
             context,
