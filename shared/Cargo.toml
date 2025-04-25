@@ -1,0 +1,28 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vdf.workspace = true
+serde.workspace = true
+fastcrypto.workspace = true
+multiaddr.workspace = true
+tracing.workspace = true
+eyre.workspace = true
+rand.workspace = true
+crypto-common.workspace = true
+aes.workspace = true
+bytes.workspace = true
+enum_dispatch.workspace = true
+base64.workspace = true
+serde_repr.workspace = true
+bcs.workspace = true
+strum_macros.workspace = true
+thiserror.workspace = true
+hex.workspace = true
+quick_cache.workspace = true
+
+
+[lints]
+workspace = true

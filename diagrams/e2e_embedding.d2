@@ -1,0 +1,22 @@
+shape: sequence_diagram
+
+client: Client
+full_node: Full Node
+authority: Authority Set
+encoders: Encoders
+
+client -> full_node: submits transaction containing a double hash of the data, and data to trusted Full Node
+full_node -> authority: submits the transaction to a single authority for inclusion
+authority -> authority: submits a block to the rest of the authority set
+authority -> authority: after two rounds of 2f+1, transaction is finalized
+authority -> full_node: the contacted authority returns a finality proof
+full_node -> encoders: contacts shard members using a seed from the finality proof threshold signature, transaction digest, and data hash
+encoders -> encoders: after processing the data into embeddings, encoders commit an encrypted embedding to the rest of the shard members
+encoders -> encoders: download encrypted embedding of other shard members, and when safe, reveal the encryption key (commit reveal)
+encoders -> encoders: after evaluating the decrypted embeddings, against their respective probe models, final scores are broadcast to the rest of the shard
+encoders -> full_node: the final embeddings and corresponding scores are returned
+full_node -> encoders: full node notifies encoders that they have received the endorsement to stop timeouts
+full_node -> client: returns final embedding
+encoders -> authority: the endorsement, or quorum of scores, is returned to the authority set for claiming the winnings
+authority -> encoders: finality proof is submitted back to the encoder who submitted
+encoders -> encoders: notify all shard members of finality to stop any timeouts

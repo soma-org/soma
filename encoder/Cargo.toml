@@ -1,0 +1,64 @@
+[package]
+name = "encoder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+objects.workspace = true
+shared.workspace = true
+probe.workspace = true
+soma-http.workspace = true
+soma-tls.workspace = true
+soma-network.workspace = true
+tokio.workspace = true
+serde.workspace = true
+fastcrypto.workspace = true
+bcs.workspace = true
+enum_dispatch.workspace = true
+bytes.workspace = true
+strum_macros.workspace = true
+thiserror.workspace = true
+base64.workspace = true
+multiaddr.workspace = true
+tracing.workspace = true
+rand.workspace = true
+serde_repr.workspace = true
+url.workspace = true
+prost.workspace = true
+async-trait.workspace = true
+tonic.workspace = true
+tower-http.workspace = true
+parking_lot.workspace = true
+tower.workspace = true
+aes.workspace = true
+ctr.workspace = true
+crypto-common.workspace = true
+# pyo3.workspace = true
+numpy.workspace = true
+ndarray.workspace = true
+reqwest.workspace = true
+axum.workspace = true
+zstd.workspace = true
+tokio-util.workspace = true
+mockall.workspace = true
+quick_cache.workspace = true
+dashmap.workspace = true
+burn.workspace = true
+arc-swap.workspace = true
+http.workspace = true
+tonic-rustls.workspace = true
+
+[dependencies.pyo3]
+workspace = true
+features = ["extension-module","abi3-py38"]
+
+[dev-dependencies]
+tempdir.workspace = true
+arbtest.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+pyo3-build-config.workspace = true
+
+[lints]
+workspace = true

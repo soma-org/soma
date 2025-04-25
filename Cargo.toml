@@ -1,14 +1,46 @@
 [workspace]
 members = [
-    "consensus",
-    "authority",
-    "types",
-    "utils",
-    "node",
-    "test-cluster",
-    "e2e-tests",
-    "p2p",
+  "consensus",
+  "authority",
+  "types",
+  "utils",
+  "node",
+  "test-cluster",
+  "e2e-tests",
+  "p2p",
+  "shared",
+  "cli",
+  "encoder",
+  "soma-python",
+  "probe",
+  "soma-http",
+  "soma-tls",
+  "soma-network",
+  "vdf",
+  "objects",
 ]
+
+
+resolver = "2"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "warn"
+unused = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "warn"
+# cargo = "warn"
+nursery = "warn"
+missing_docs_in_private_items = { level = "warn", priority = -1 }
+# pub(crate) is useful for checking dead code
+redundant_pub_crate = { level = "allow", priority = 1 }
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+
 
 [workspace.package]
 # This version string will be inherited by sub crates.
@@ -49,6 +81,7 @@ opt-level = 1
 
 # Dependencies that should be kept in sync through the whole workspace
 [workspace.dependencies]
+# CONSENSUS DEPENDENCIES
 consensus = { path = "consensus" }
 types = { path = "types" }
 authority = { path = "authority" }
@@ -57,69 +90,165 @@ node = { path = "node" }
 test-cluster = { path = "test-cluster" }
 p2p = { path = "p2p" }
 
-msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99", package = "msim" }
-msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99", package = "msim-macros" }
-tokio = { version = "1.36", features = ["full", "test-util"] }
-tonic = "0.12.1"
-tonic-build = "0.12.1"
+msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim" }
+msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim-macros" }
 tokio-stream = { version = "0.1.14", features = ["sync", "net"] }
-
-tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "5f2c63266a065996d53f98156f0412782b468597", features = [
-    "copy_key",
-] }
-bytes = { version = "1.10.1", features = ["serde"] }
-async-trait = "0.1.81"
-bcs = "0.1.6"
-eyre = "0.6.12"
 futures = "0.3.30"
-parking_lot = "0.12.3"
-rand = "0.8.5"
-serde = { version = "1.0.204", features = ["derive", "rc"] }
-thiserror = "1.0.63"
-
-tokio-util = "0.7.10"
-ed25519 = { version = "2.2.3", features = ["pkcs8", "alloc", "zeroize"] }
 itertools = "0.13.0"
-anyhow = "1.0.86"
-serde_repr = "0.1.19"
-multiaddr = "0.18.1"
-prost = "0.13.1"
 tap = "1.0.1"
 nonempty = "0.10.0"
-arc-swap = "1.7.1"
-tower = { version = "0.4.12", features = [
-    "full",
-    "util",
-    "timeout",
-    "load-shed",
-    "limit",
-] }
-hyper = "1.4.1"
-hyper-util = "0.1.6"
-tokio-rustls = { version = "0.26", default-features = false, features = [
-    "tls12",
-    "ring",
-] }
-tower-http = { version = "0.5", features = [
-    "cors",
-    "full",
-    "trace",
-    "set-header",
-    "propagate-header",
-] }
 hyper-rustls = { version = "0.27", default-features = false, features = [
-    "webpki-roots",
-    "http2",
-    "ring",
-    "tls12",
+  "webpki-roots",
+  "http2",
+  "ring",
+  "tls12",
 ] }
 cfg-if = "1.0.0"
-base64 = "0.22.1"
 tempfile = "3.12.0"
 regex = "1.11"
 chrono = "0.4"
 
+# SHARED DEPENDENCIES
+tokio = { version = "1.44.2", features = [
+  "full",
+  "test-util",
+] } # tokio = { version = "1.0", features = ["full"] }
+tonic = { version = "0.12.1", features = ["zstd"] }
+# tonic = { version = "0.12.1", features = [
+#   "zstd",
+#   "transport",
+#   "tls-webpki-roots",
+# ] }
+tonic-build = "0.12.2"
+tracing = "0.1.41" # tracing = "0.1.40"
+fastcrypto = { version = "0.1.9", features = [
+  "copy_key",
+] } #{ git = "https://github.com/MystenLabs/fastcrypto", rev = "5f2c63266a065996d53f98156f0412782b468597", features = [
+#  "copy_key",
+#] }
+bytes = { version = "1.10.1", features = [
+  "serde",
+] } # bytes = { version = "1.7.1", features = ["serde"] }
+async-trait = "0.1.82" # async-trait = "0.1.81"
+bcs = "0.1.6"
+eyre = "0.6.12"
+parking_lot = "0.12.3"
+rand = "0.8.5" # rand = "0.8"
+serde = { version = "1.0.204", features = [
+  "derive",
+  "rc",
+] } # serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0.63"
+tokio-util = "0.7.12"
+ed25519 = { version = "2.2.3", features = ["pkcs8", "alloc", "zeroize"] } # 2
+base64 = "0.22.1"
+arc-swap = "1.7.1"
+tower = { version = "0.4.12", features = [
+  "full",
+  "util",
+  "timeout",
+  "load-shed",
+  "limit",
+] } # 0.4.12
+hyper = { version = "1.4.1", features = ["http1", "http2"] } # 1
+hyper-util = { version = "0.1.1", features = [
+  "tokio",
+  "server-auto",
+  "service",
+] }
+tokio-rustls = { version = "0.26", default-features = false, features = [
+  "tls12",
+  "ring",
+] }
+tower-http = { version = "0.5.1", features = [
+  "cors",
+  "full",
+  "trace",
+  "set-header",
+  "propagate-header",
+] }
+anyhow = "1.0.86" # 1
+serde_repr = "0.1.19"
+multiaddr = "0.18.1"
+prost = "0.13.2" # prost = "0.13.1"
+
+
+# ENCODER-ONLY DEPENDENCIES
+encoder = { path = "encoder" }
+shared = { path = "shared" }
+probe = { path = "probe" }
+vdf = { path = "vdf" }
+soma-http = { path = "soma-http" }
+soma-tls = { path = "soma-tls" }
+soma-network = { path = "soma-network" }
+objects = { path = "objects" }
+
+
+# external deps
+bs58 = "0.5.1"
+enum_dispatch = "0.3.13"
+strum_macros = "0.26"
+url = { version = "2.5.2", features = ["serde"] }
+tonic-rustls = "0.1.0"
+aes = "0.8.4"
+ctr = "0.9.2"
+crypto-common = "0.1.6"
+pyo3 = "0.23"
+pyo3-build-config = "0.23"
+numpy = "0.23"
+ndarray = { version = "0.16", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "stream",
+  "http2",
+  "json",
+  "rustls-tls",
+  "zstd",
+] }
+axum = "0.7.9"
+zstd = "0.13.2"
+
+clap = { version = "4.5", features = ["derive"] }
+tempdir = "0.3.7"
+arbtest = "0.3.2"
+mockall = "0.13.1"
+quick_cache = "0.6.10"
+hex = "0.4.3"
+dashmap = "6.1.0"
+burn = "0.16.0"
+
+http = "1"
+http-body = "1"
+http-body-util = "0.1"
+
+pin-project-lite = "0.2.15"
+socket2 = { version = "0.5", features = ["all"] }
+
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+
+pkcs8 = { version = "0.10.0", features = ["std"] }
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "tls12",
+  "ring",
+] }
+tower-layer = "0.3.2"
+webpki = { version = "0.103", package = "rustls-webpki", features = [
+  "alloc",
+  "std",
+  "ring",
+] }
+x509-parser = { version = "0.17.0", features = ["verify"] }
+lazy_static = "1.5.0"
+num-bigint = { version = "0.4", features = ["serde", "rand"] }
+num-traits = "0.2"
+num-integer = "0.1"
+num-prime = { version = "0.4", features = ["big-int"] }
+rand_chacha = "0.3"
+criterion = "0.5"
+num-bigint-dig = "0.8"
+
+
 [patch.crates-io]
-tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "b320996d8dfb99b273fe31c0222c659332283c99" }
+tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9" }

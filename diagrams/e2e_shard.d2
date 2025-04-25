@@ -1,0 +1,67 @@
+shape: sequence_diagram
+
+full_node: Client's Full Node
+encoder: Individual Encoder
+shard: Rest of the Shard
+
+Lock in probe weights at beginning of epoch: {
+  encoder <-> shard
+}
+
+Input: {
+  full_node -> encoder: Receive data and transaction finality proofs
+  encoder."Check validity of data and transaction"
+  encoder."Compute embedding, compress, encrypt"
+}
+
+Commit: {
+  encoder -> shard: Send digest of commit with the transaction proof
+  shard."Verify proof + shard membership, track digest, reject conflicting versions of commits"
+  shard."If transaction proof was unknown, download input from peers"
+  shard -> encoder: Receive a BLS signature acknowledging the commit digest
+  encoder."Combine commit digest signatures into a BLS aggregate signature"
+  encoder -> shard: Broadcast commit containing encrypted embedding, probe, BLS agg sig from shard, transaction proof, and hash of the encryption key used.
+  shard -> shard: Send commits to all shard members
+  shard -> encoder: Send commits to all shard members
+  encoder."Downloads encrypted data and probe, then marks completed"
+  encoder."Once quorum commits have been completed, start a timeout for the removal process"
+  encoder."If removal timeout triggers, contact all shard members for the missing value"
+  encoder <-> shard: Batch get commits from peers for missing values
+  encoder."If no one has the commit after attempting to download from peers, send removal signature"
+  encoder."Process must wait until all commits have been completed or removal certificates have been collected for missing members"
+}
+
+Reveal: {
+  encoder -> shard: Reveal the encryption key that was used on embeddings + transaction proof
+  shard."Verify that encryption key matches the hash of the commit"
+  shard."If still waiting at the previous step, attempt to download the missing data from this peer"
+  shard."If a member does not have the commit, it stores the reveal anyway and attempts to get the commit from peers"
+  shard -> shard: Reveals to all shard members
+  shard -> encoder: Reveals to all shard members
+  encoder."Marks complete after probing the revealed data with all probes\nStores intermediate values"
+  encoder."Once quorum reveals have been completed, start a timeout for the removal process"
+  encoder."If removal triggers, contact all shard members for the missing reveal certificates"
+  encoder <-> shard: Batch get missing reveal keys for missing values
+  encoder."If no one has the reveal after attempting to download, send removal signature"
+  encoder."Wait until all members have revealed or agree to remove members"
+}
+
+Endorsement: {
+  encoder."Wait until all probes have finished, and the removal system has an up to date status"
+  encoder -> shard: Broadcast a signature of the final scores and embeddings
+  shard."If still waiting at for the reveal, attempt to download the missing data from this peer"
+  shard -> shard: Broadcast a signature of the final scores and embeddings
+  encoder."Aggregate endorsement signatures until a quorum is reached"
+}
+
+Finalization: {
+  encoder."Winner immediately delivers the embedding scores on-chain"
+  shard."Starts a staggered timeout to submit on-chain and to the full node"
+  encoder -> full_node: Send the final embeddings to the full node
+  full_node -> shard: Broadcasts receipt of delivery to stop staggered timeouts for sending embeddings to full node
+  encoder -> shard: Broadcast on-chain finality proof to stop staggered timeouts for submitting on-chain
+}
+
+Clean up after shard: {
+  encoder <-> shard
+}
