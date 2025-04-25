@@ -1,8 +1,5 @@
 use fastcrypto::{
-    bls12381::{
-        self,
-        min_sig::{self, BLS12381PublicKey},
-    },
+    bls12381::{self, min_sig::BLS12381PublicKey},
     ed25519,
     error::FastCryptoError,
     traits::{AggregateAuthenticator, KeyPair as _, Signer as _, ToFromBytes, VerifyingKey as _},

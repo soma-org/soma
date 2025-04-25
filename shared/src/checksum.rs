@@ -47,9 +47,7 @@ impl fmt::Display for Checksum {
         write!(
             f,
             "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-                .get(0..4)
-                .ok_or(fmt::Error)?
+            base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE, self.0)
         )
     }
 }

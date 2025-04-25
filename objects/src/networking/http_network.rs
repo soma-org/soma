@@ -1,11 +1,9 @@
 use std::{
-    collections::BTreeMap,
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use axum::{
     body::Body,
@@ -24,10 +22,12 @@ use shared::{
         keys::{PeerKeyPair, PeerPublicKey},
         DefaultHashFunction,
     },
-    metadata::{self, Metadata, MetadataAPI},
+    metadata::{Metadata, MetadataAPI},
 };
-use soma_http::ServerHandle;
-use soma_tls::{create_rustls_client_config, AllowPublicKeys, TlsConnectionInfo};
+use soma_http::{PeerCertificates, ServerHandle};
+use soma_tls::{
+    create_rustls_client_config, public_key_from_certificate, AllowPublicKeys, TlsConnectionInfo,
+};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 use tracing::{info, warn};
@@ -129,12 +129,13 @@ impl ObjectNetworkClient for ObjectHttpClient {
         let address = to_host_port_str(address).map_err(|e| {
             ObjectError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
+        warn!("checksum: {}", metadata.checksum());
         let address = format!("https://{address}/{}", metadata.checksum());
+        warn!("address: {}", address);
         let url = Url::from_str(&address).map_err(|e| ObjectError::UrlParseError(e.to_string()))?;
 
         let timeout = calculate_timeout(metadata.size());
-
-        // TODO: NEED TO ADD METADATA CHECKSUM AND SIZE VERIFICATION
+        warn!("timeout: {:?}", timeout);
 
         let mut response = self
             .get_client(peer)
@@ -144,6 +145,8 @@ impl ObjectNetworkClient for ObjectHttpClient {
             .send()
             .await
             .map_err(|e| ObjectError::NetworkRequest(e.to_string()))?;
+
+        warn!("response: {:?}", response);
 
         if !response.status().is_success() {
             return Err(ObjectError::NetworkRequest(format!(
@@ -168,6 +171,11 @@ impl ObjectNetworkClient for ObjectHttpClient {
 
         writer
             .flush()
+            .await
+            .map_err(|e| ObjectError::WriteError(e.to_string()))?;
+
+        writer
+            .shutdown()
             .await
             .map_err(|e| ObjectError::WriteError(e.to_string()))?;
 
@@ -210,18 +218,22 @@ impl<S: ObjectStorage + Clone> ObjectHttpServiceProxy<S> {
 
     pub async fn download_object(
         Path(path): Path<String>,
-        tls_info: axum::Extension<TlsConnectionInfo>,
+        peer_certificates: axum::Extension<PeerCertificates>,
         State(Self { service }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
+        let pk = public_key_from_certificate(peer_certificates.peer_certs().first().unwrap())
+            .ok()
+            .unwrap();
         let path = ObjectPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
-        let pk = tls_info.public_key().unwrap();
+        warn!("path: {:?}", path);
         // instead handle this as unauthorized!
         let peer = PeerPublicKey::new(pk.clone());
+        warn!("peer public key: {:?}", peer);
+
         let reader = service
             .handle_download_object(&peer, &path)
             .await
             .map_err(|_| StatusCode::NOT_FOUND)?;
-
         // Convert BufReader<fs::File> to a Stream of Bytes
         let stream = ReaderStream::new(reader);
 
@@ -332,102 +344,122 @@ impl Drop for ObjectHttpManager {
 
 #[cfg(test)]
 mod tests {
-    use fastcrypto::{
-        ed25519::{Ed25519KeyPair, Ed25519PublicKey},
-        traits::KeyPair,
+    use std::{
+        collections::BTreeSet,
+        net::{TcpListener, TcpStream},
+        sync::Arc,
+        thread::sleep,
+        time::Duration,
     };
-    use soma_tls::{
-        create_rustls_client_config, AllowPublicKeys, ClientCertVerifier, SelfSignedCertificate,
-        TlsAcceptor, TlsConnectionInfo,
-    };
-    use std::{collections::BTreeSet, time::Duration};
-    use tower_http::compression::CompressionLayer;
 
-    fn create_reqwest_client(
-        target_public_key: Ed25519PublicKey,
-        client_keypair: Ed25519KeyPair,
-        server_name: &str,
-    ) -> reqwest::Result<reqwest::Client> {
-        // Use your existing create_rustls_client_config
-        let tls_config = create_rustls_client_config(
-            target_public_key,
-            server_name.to_string(),
-            Some(client_keypair.private()),
-        );
-        reqwest::Client::builder()
-            .use_preconfigured_tls(tls_config) // Use the rustls ClientConfig directly
-            .http2_prior_knowledge() // Equivalent to https_only + enable_http2
-            .timeout(Duration::from_secs(60)) // General timeout (adjust as needed)
-            .http2_keep_alive_interval(Duration::from_secs(60)) // Match hyper settings
-            .http2_keep_alive_timeout(Duration::from_secs(60)) // Match hyper settings
-            .build()
+    use bytes::Bytes;
+    use rand::{rngs::OsRng, RngCore};
+    use shared::{checksum::Checksum, crypto::keys::PeerKeyPair, metadata::Metadata};
+    use soma_network::multiaddr::Multiaddr;
+    use soma_tls::AllowPublicKeys;
+    use tracing::warn;
+
+    use crate::{
+        networking::{ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService},
+        parameters::Parameters,
+        storage::{memory::MemoryObjectStore, ObjectPath, ObjectStorage},
+    };
+
+    use super::{ObjectHttpClient, ObjectHttpManager};
+    fn get_available_local_address() -> Multiaddr {
+        let host = "127.0.0.1";
+        let port = get_available_port(host);
+        format!("/ip4/{}/udp/{}", host, port).parse().unwrap()
+    }
+    fn get_available_port(host: &str) -> u16 {
+        const MAX_PORT_RETRIES: u32 = 1000;
+
+        for _ in 0..MAX_PORT_RETRIES {
+            if let Ok(port) = get_ephemeral_port(host) {
+                return port;
+            }
+        }
+
+        panic!("Error: could not find an available port");
+    }
+
+    fn get_ephemeral_port(host: &str) -> std::io::Result<u16> {
+        // Request a random available port from the OS
+        let listener = TcpListener::bind((host, 0))?;
+        let addr = listener.local_addr()?;
+
+        // Create and accept a connection (which we'll promptly drop) in order to force the port
+        // into the TIME_WAIT state, ensuring that the port will be reserved from some limited
+        // amount of time (roughly 60s on some Linux systems)
+        let _sender = TcpStream::connect(addr)?;
+        let _incoming = listener.accept()?;
+
+        Ok(addr.port())
     }
 
     #[tokio::test]
-    async fn axum_mtls() {
-        const SERVER_NAME: &str = "test_server";
-        use fastcrypto::ed25519::Ed25519KeyPair;
-        use fastcrypto::traits::KeyPair;
+    async fn object_http_success() {
+        tracing_subscriber::fmt::init();
+        let parameters = Arc::new(Parameters::default());
         let mut rng = rand::thread_rng();
-        let client_keypair = Ed25519KeyPair::generate(&mut rng);
-        let client_public_key = client_keypair.copy().public().to_owned();
-        let server_keypair = Ed25519KeyPair::generate(&mut rng);
-        let server_public_key = server_keypair.copy().public().to_owned();
-        let server_certificate = SelfSignedCertificate::new(server_keypair.private(), SERVER_NAME);
+        let mut buffer = vec![0u8; 1024 * 1024];
+        OsRng.fill_bytes(&mut buffer);
+        let random_bytes = Bytes::from(buffer);
 
-        let allowlist = AllowPublicKeys::new(BTreeSet::new());
-        let tls_config = ClientCertVerifier::new(allowlist.clone(), SERVER_NAME.to_string())
-            .rustls_server_config(
-                vec![server_certificate.rustls_certificate()],
-                server_certificate.rustls_private_key(),
+        let checksum = Checksum::new_from_bytes(&random_bytes);
+        let download_size = random_bytes.len();
+        let object_path = ObjectPath::new(checksum.to_string()).unwrap();
+        let metadata = Metadata::new_v1(None, None, checksum, download_size);
+
+        let client_keypair = PeerKeyPair::generate(&mut rng);
+        let server_keypair = PeerKeyPair::generate(&mut rng);
+
+        let client_object_storage = Arc::new(MemoryObjectStore::new_for_test());
+        let server_object_storage = Arc::new(MemoryObjectStore::new_for_test());
+
+        server_object_storage
+            .put_object(&object_path, random_bytes.clone())
+            .await
+            .unwrap();
+
+        let server_object_network_service: ObjectNetworkService<MemoryObjectStore> =
+            ObjectNetworkService::new(server_object_storage.clone());
+
+        let allower = AllowPublicKeys::new(BTreeSet::from([client_keypair
+            .public()
+            .into_inner()
+            .clone()]));
+        // allower.update(BTreeSet::from([client_public_key.clone()]));
+        let mut server_object_network_manager =
+            <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::new(
+                server_keypair.clone(),
+                parameters.clone(),
+                allower,
             )
             .unwrap();
 
-        async fn handler(tls_info: axum::Extension<TlsConnectionInfo>) -> String {
-            let pk = tls_info.public_key().unwrap().to_string();
-            println!("received message from: {pk}");
-            pk
-        }
+        let address = get_available_local_address();
+        server_object_network_manager
+            .start(&address, server_object_network_service)
+            .await;
 
-        let app = axum::Router::new()
-            .route("/", axum::routing::get(handler))
-            .layer(CompressionLayer::new().zstd(true));
-        let listener = std::net::TcpListener::bind("localhost:0").unwrap();
-        let server_address = listener.local_addr().unwrap();
-        let acceptor = TlsAcceptor::new(tls_config);
-        let _server = tokio::spawn(async move {
-            axum_server::Server::from_tcp(listener)
-                .acceptor(acceptor)
-                .serve(app.into_make_service())
-                .await
-                .unwrap()
-        });
+        let object_client = ObjectHttpClient::new(client_keypair, parameters).unwrap();
 
-        let server_url = format!("https://localhost:{}", server_address.port());
-
-        let client =
-            create_reqwest_client(server_public_key.to_owned(), client_keypair, SERVER_NAME)
-                .unwrap();
-
-        let res = client
-            .get(&server_url)
-            .header("Accept-Encoding", "zstd") // Request zstd compression
-            .send()
-            .await
-            .unwrap_err();
-        println!("{:?}", res);
-
-        allowlist.update(BTreeSet::from([client_public_key.clone()]));
-
-        let res = client
-            .get(&server_url)
-            .header("Accept-Encoding", "zstd") // Request zstd compression
-            .send()
+        let mut writer = client_object_storage
+            .get_object_writer(&object_path)
             .await
             .unwrap();
-        println!("{:?}", res);
-        let body_str = res.text().await.unwrap(); // Automatically decompresses zstd
-        println!("Public key from response: {}", body_str);
-        assert_eq!(body_str, client_public_key.to_string());
+
+        object_client
+            .download_object(&mut writer, &server_keypair.public(), &address, &metadata)
+            .await
+            .unwrap();
+
+        let x = client_object_storage
+            .get_object(&object_path)
+            .await
+            .unwrap();
+
+        assert_eq!(random_bytes, x)
     }
 }

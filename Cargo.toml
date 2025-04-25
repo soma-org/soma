@@ -118,3 +118,4 @@ num-prime = { version = "0.4", features = ["big-int"] }
 rand_chacha = "0.3"
 criterion = "0.5"
 num-bigint-dig = "0.8"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
