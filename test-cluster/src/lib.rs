@@ -29,7 +29,14 @@ use types::{
     transaction::Transaction,
 };
 
+#[cfg(msim)]
+#[path = "./container-sim.rs"]
 mod container;
+
+#[cfg(not(msim))]
+#[path = "./container.rs"]
+mod container;
+
 mod swarm;
 mod swarm_node;
 

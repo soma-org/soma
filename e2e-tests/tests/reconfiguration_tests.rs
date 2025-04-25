@@ -25,6 +25,7 @@ use utils::logging::init_tracing;
 
 const VALIDATOR_STARTING_STAKE: u64 = 1_000_000_000_000_000; // 1M SOMA
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn advance_epoch_tx_test() {
     let _ = tracing_subscriber::fmt::try_init();
@@ -54,6 +55,7 @@ async fn advance_epoch_tx_test() {
     assert_eq!(results.len(), 1);
 }
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn basic_reconfig_end_to_end_test() {
     let _ = tracing_subscriber::fmt::try_init();
@@ -63,6 +65,7 @@ async fn basic_reconfig_end_to_end_test() {
     test_cluster.trigger_reconfiguration().await;
 }
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn test_state_sync() {
     init_tracing();
@@ -78,6 +81,7 @@ async fn test_state_sync() {
     sleep(Duration::from_millis(30000)).await;
 }
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn test_reconfig_with_committee_change_basic() {
     init_tracing();
@@ -145,11 +149,13 @@ async fn test_reconfig_with_committee_change_basic() {
 }
 
 // This test just starts up a cluster that reconfigures itself under 0 load.
+#[cfg(msim)]
 #[msim::sim_test]
 async fn test_passive_reconfig_normal() {
     do_test_passive_reconfig().await;
 }
 
+#[cfg(msim)]
 #[msim::sim_test(check_determinism)]
 async fn test_passive_reconfig_determinism() {
     do_test_passive_reconfig().await;
@@ -171,11 +177,13 @@ async fn do_test_passive_reconfig() {
     test_cluster.wait_for_epoch(Some(target_epoch)).await;
 }
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn test_reconfig_with_committee_change_stress_normal() {
     do_test_reconfig_with_committee_change_stress().await;
 }
 
+#[cfg(msim)]
 #[msim::sim_test(check_determinism)]
 async fn test_reconfig_with_committee_change_stress_determinism() {
     do_test_reconfig_with_committee_change_stress().await;
@@ -245,6 +253,7 @@ async fn do_test_reconfig_with_committee_change_stress() {
     }
 }
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn test_reconfig_with_voting_power_decrease_normal() {
     init_tracing();
@@ -417,6 +426,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
     });
 }
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
     init_tracing();
