@@ -1,98 +1,96 @@
-use msim::runtime::Handle;
-use node::{handle::SomaNodeHandle, SomaNode};
-use std::{
-    net::{IpAddr, SocketAddr},
-    sync::{Arc, Weak},
-};
-use tokio::sync::watch;
+use fastcrypto::traits::KeyPair;
+use futures::FutureExt;
+use node::handle::SomaNodeHandle;
+use node::SomaNode;
+use std::sync::{Arc, Weak};
+use std::thread;
 use tracing::{info, trace};
-use types::{base::ConciseableName, config::node_config::NodeConfig};
+use types::base::ConciseableName;
+use types::config::node_config::NodeConfig;
+use types::crypto::AuthorityPublicKeyBytes;
 
 #[derive(Debug)]
 pub(crate) struct Container {
-    handle: Option<ContainerHandle>,
-    cancel_sender: Option<tokio::sync::watch::Sender<bool>>,
-    node_watch: watch::Receiver<Weak<SomaNode>>,
-}
-
-#[derive(Debug)]
-struct ContainerHandle {
-    node_id: msim::task::NodeId,
+    join_handle: Option<thread::JoinHandle<()>>,
+    cancel_sender: Option<tokio::sync::oneshot::Sender<()>>,
+    node: Weak<SomaNode>,
 }
 
 /// When dropped, stop and wait for the node running in this Container to completely shutdown.
 impl Drop for Container {
     fn drop(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            tracing::info!("shutting down {}", handle.node_id);
-            Handle::try_current().map(|h| h.delete_node(handle.node_id));
-        }
+        trace!("dropping Container");
+
+        let thread = self.join_handle.take().unwrap();
+
+        let cancel_handle = self.cancel_sender.take().unwrap();
+
+        // Notify the thread to shutdown
+        let _ = cancel_handle.send(());
+
+        // Wait for the thread to join
+        thread.join().unwrap();
+
+        trace!("finished dropping Container");
     }
 }
 
 impl Container {
     /// Spawn a new Node.
     pub async fn spawn(config: NodeConfig) -> Self {
-        let (startup_sender, mut startup_receiver) = tokio::sync::watch::channel(Weak::new());
-        let (cancel_sender, cancel_receiver) = tokio::sync::watch::channel(false);
+        let (startup_sender, startup_receiver) = tokio::sync::oneshot::channel();
+        let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
+        let name = AuthorityPublicKeyBytes::from(config.protocol_key_pair().public())
+            .concise()
+            .to_string();
 
-        let handle = Handle::current();
-        let builder = handle.create_node();
+        let thread = thread::Builder::new().name(name).spawn(move || {
+            let span =  Some(tracing::span!(
+                tracing::Level::INFO,
+                "node",
+                name =% AuthorityPublicKeyBytes::from(config.protocol_key_pair().public()).concise(),
+            ));
 
-        let socket_addr = config.network_address.to_socket_addr().unwrap();
-        let ip = match socket_addr {
-            SocketAddr::V4(v4) => IpAddr::V4(*v4.ip()),
-            _ => panic!("unsupported protocol"),
-        };
+            let _guard = span.as_ref().map(|span| span.enter());
 
-        let startup_sender = Arc::new(startup_sender);
-        let node = builder
-            .ip(ip)
-            .name(&format!("{:?}", config.protocol_public_key().concise()))
-            .init(move || {
-                info!("Node restarted");
-                let config = config.clone();
-                let mut cancel_receiver = cancel_receiver.clone();
-                let startup_sender = startup_sender.clone();
-                async move {
-                    let server = SomaNode::start(config).await.unwrap();
+            let mut builder = tokio::runtime::Builder::new_current_thread(); // TODO: multi threaded runtime
+            let runtime = builder.enable_all().build().unwrap();
 
-                    startup_sender.send(Arc::downgrade(&server)).ok();
+            runtime.block_on(async move {
+               
+                let server = SomaNode::start(config).await.unwrap();
+                // Notify that we've successfully started the node
+                let _ = startup_sender.send(Arc::downgrade(&server));
+                // run until canceled
+                cancel_receiver.map(|_| ()).await;
 
-                    // run until canceled
-                    loop {
-                        if cancel_receiver.changed().await.is_err() || *cancel_receiver.borrow() {
-                            break;
-                        }
-                    }
-                    trace!("cancellation received; shutting down thread");
-                }
-            })
-            .build();
+                trace!("cancellation received; shutting down thread");
+            });
+        }).unwrap();
 
-        startup_receiver.changed().await.unwrap();
+        let node = startup_receiver.await.unwrap();
 
         Self {
-            handle: Some(ContainerHandle { node_id: node.id() }),
+            join_handle: Some(thread),
             cancel_sender: Some(cancel_sender),
-            node_watch: startup_receiver,
+            node,
         }
     }
 
-    /// Get a SuiNodeHandle to the node owned by the container.
+    /// Get a SomaNodeHandle to the node owned by the container.
     pub fn get_node_handle(&self) -> Option<SomaNodeHandle> {
-        Some(SomaNodeHandle::new(self.node_watch.borrow().upgrade()?))
+        Some(SomaNodeHandle::new(self.node.upgrade()?))
     }
 
     /// Check to see that the Node is still alive by checking if the receiving side of the
     /// `cancel_sender` has been dropped.
     ///
+    //TODO When we move to rust 1.61 we should also use
+    // https://doc.rust-lang.org/stable/std/thread/struct.JoinHandle.html#method.is_finished
+    // in order to check if the thread has finished.
     pub fn is_alive(&self) -> bool {
         if let Some(cancel_sender) = &self.cancel_sender {
-            // unless the node is deleted, it keeps a reference to its start up function, which
-            // keeps 1 receiver alive. If the node is actually running, the cloned receiver will
-            // also be alive, and receiver count will be 2.
-            cancel_sender.receiver_count() > 1
+            !cancel_sender.is_closed()
         } else {
             false
         }

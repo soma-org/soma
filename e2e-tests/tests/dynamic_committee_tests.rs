@@ -406,6 +406,7 @@ mod remove_stake {
     }
 }
 
+#[cfg(msim)]
 #[msim::sim_test]
 async fn fuzz_dynamic_committee() {
     init_tracing();

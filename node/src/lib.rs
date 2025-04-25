@@ -27,13 +27,12 @@ use authority::{
 };
 use core::time;
 use futures::TryFutureExt;
-use msim::task::NodeId;
 use p2p::{
     builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle},
     tonic_gen::p2p_server::P2pServer,
 };
 use parking_lot::RwLock;
-use simulator::SimState;
+
 use std::{
     collections::HashMap,
     sync::{Arc, Weak},
@@ -76,6 +75,11 @@ use types::{
         CertificateProof, ExecutableTransaction, Transaction, VerifiedExecutableTransaction,
     },
 };
+
+#[cfg(msim)]
+use msim::task::NodeId;
+#[cfg(msim)]
+use simulator::SimState;
 
 pub mod handle;
 
