@@ -18,6 +18,7 @@ members = [
   "soma-network",
   "vdf",
   "objects",
+  "test-encoder-cluster",
 ]
 
 
@@ -183,7 +184,7 @@ soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
 objects = { path = "objects" }
-
+test-encoder-cluster = { path = "test-encoder-cluster" }
 
 # external deps
 bs58 = "0.5.1"

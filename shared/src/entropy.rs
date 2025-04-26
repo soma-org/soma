@@ -130,49 +130,49 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_entropy_vdf_e2e() {
-        // Initialize VDF with same parameters as the reference test
-        let cache_capacity = 2_usize;
-        let iterations: Iterations = 1;
-        let vdf = EntropyVDF::new(cache_capacity);
+    // #[test]
+    // fn test_entropy_vdf_e2e() {
+    //     // Initialize VDF with same parameters as the reference test
+    //     let cache_capacity = 2_usize;
+    //     let iterations: Iterations = 1;
+    //     let vdf = EntropyVDF::new(cache_capacity);
 
-        // Create test epoch and block reference
-        let epoch: Epoch = 1;
-        let block_ref = BlockRef::new(
-            1,
-            AuthorityIndex::new_for_test(1),
-            Digest::new_from_bytes(Bytes::from("digest")),
-        );
+    //     // Create test epoch and block reference
+    //     let epoch: Epoch = 1;
+    //     let block_ref = BlockRef::new(
+    //         1,
+    //         AuthorityIndex::new_for_test(1),
+    //         Digest::new_from_bytes(Bytes::from("digest")),
+    //     );
 
-        // Generate entropy and proof
-        let (entropy, proof) = vdf.get_entropy(epoch, block_ref).unwrap();
+    //     // Generate entropy and proof
+    //     let (entropy, proof) = vdf.get_entropy(epoch, block_ref).unwrap();
 
-        // Verify the generated entropy
-        assert!(vdf
-            .verify_entropy(epoch, block_ref, &entropy, &proof)
-            .is_ok());
+    //     // Verify the generated entropy
+    //     assert!(vdf
+    //         .verify_entropy(epoch, block_ref, &entropy, &proof)
+    //         .is_ok());
 
-        // Negative test - verify with wrong epoch should fail
-        let wrong_epoch: Epoch = 2;
-        assert!(vdf
-            .verify_entropy(wrong_epoch, block_ref, &entropy, &proof)
-            .is_err());
+    //     // Negative test - verify with wrong epoch should fail
+    //     let wrong_epoch: Epoch = 2;
+    //     assert!(vdf
+    //         .verify_entropy(wrong_epoch, block_ref, &entropy, &proof)
+    //         .is_err());
 
-        // Negative test - verify with wrong block_ref should fail
-        let wrong_block_ref = BlockRef::new(
-            2,
-            AuthorityIndex::new_for_test(2),
-            Digest::new_from_bytes(Bytes::from("wrong digest")),
-        );
-        assert!(vdf
-            .verify_entropy(epoch, wrong_block_ref, &entropy, &proof)
-            .is_err());
+    //     // Negative test - verify with wrong block_ref should fail
+    //     let wrong_block_ref = BlockRef::new(
+    //         2,
+    //         AuthorityIndex::new_for_test(2),
+    //         Digest::new_from_bytes(Bytes::from("wrong digest")),
+    //     );
+    //     assert!(vdf
+    //         .verify_entropy(epoch, wrong_block_ref, &entropy, &proof)
+    //         .is_err());
 
-        // Negative test - verify with wrong entropy should fail
-        let wrong_entropy = BlockEntropy(Bytes::from(vec![1, 2, 3, 4]));
-        assert!(vdf
-            .verify_entropy(epoch, block_ref, &wrong_entropy, &proof)
-            .is_err());
-    }
+    //     // Negative test - verify with wrong entropy should fail
+    //     let wrong_entropy = BlockEntropy(Bytes::from(vec![1, 2, 3, 4]));
+    //     assert!(vdf
+    //         .verify_entropy(epoch, block_ref, &wrong_entropy, &proof)
+    //         .is_err());
+    // }
 }

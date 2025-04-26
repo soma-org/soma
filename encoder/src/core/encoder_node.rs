@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{future::Future, path::Path, sync::Arc};
 
 use objects::{
     networking::{
@@ -55,6 +55,11 @@ use super::{
     shard_tracker::ShardTracker,
 };
 
+#[cfg(msim)]
+use msim::task::NodeId;
+#[cfg(msim)]
+use simulator::SimState;
+
 // pub struct Encoder(EncoderNode<ActorInternalPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
 
 // impl Encoder {
@@ -83,10 +88,13 @@ use super::{
 
 pub struct EncoderNode {
     network_manager: EncoderInternalTonicManager,
+
+    #[cfg(msim)]
+    sim_state: SimState,
 }
 
 impl EncoderNode {
-    pub(crate) async fn start(
+    pub async fn start(
         context: Context,
         encoder_keypair: EncoderKeyPair,
         networking_info: NetworkingInfo,
@@ -240,7 +248,11 @@ impl EncoderNode {
             verifier,
         ));
         network_manager.start(network_service).await;
-        Self { network_manager }
+        Self {
+            network_manager,
+            #[cfg(msim)]
+            sim_state: Default::default(),
+        }
     }
 
     pub(crate) async fn stop(mut self) {
@@ -254,5 +266,116 @@ impl EncoderNode {
             >,
         >>::stop(&mut self.network_manager)
         .await;
+    }
+}
+
+/// Wrap EncoderNode to allow correct access to EncoderNode in simulator tests.
+pub struct EncoderNodeHandle {
+    node: Option<Arc<EncoderNode>>,
+    shutdown_on_drop: bool,
+}
+
+impl EncoderNodeHandle {
+    pub fn new(node: Arc<EncoderNode>) -> Self {
+        Self {
+            node: Some(node),
+            shutdown_on_drop: false,
+        }
+    }
+
+    pub fn inner(&self) -> &Arc<EncoderNode> {
+        self.node.as_ref().unwrap()
+    }
+
+    pub fn with<T>(&self, cb: impl FnOnce(&EncoderNode) -> T) -> T {
+        let _guard = self.guard();
+        cb(self.inner())
+    }
+
+    // TODO: have some way for simulator tests to inspect the state of the encoder
+    // pub fn state(&self) -> Arc<AuthorityState> {
+    //     self.with(|soma_node| soma_node.state())
+    // }
+
+    pub fn shutdown_on_drop(&mut self) {
+        self.shutdown_on_drop = true;
+    }
+}
+
+impl Clone for EncoderNodeHandle {
+    fn clone(&self) -> Self {
+        Self {
+            node: self.node.clone(),
+            shutdown_on_drop: false,
+        }
+    }
+}
+
+#[cfg(not(msim))]
+impl EncoderNodeHandle {
+    // Must return something to silence lints above at `let _guard = ...`
+    fn guard(&self) -> u32 {
+        0
+    }
+
+    pub async fn with_async<'a, F, R, T>(&'a self, cb: F) -> T
+    where
+        F: FnOnce(&'a EncoderNode) -> R,
+        R: Future<Output = T>,
+    {
+        cb(self.inner()).await
+    }
+}
+
+#[cfg(msim)]
+impl EncoderNodeHandle {
+    fn guard(&self) -> msim::runtime::NodeEnterGuard {
+        self.inner().sim_state.sim_node.enter_node()
+    }
+
+    pub async fn with_async<'a, F, R, T>(&'a self, cb: F) -> T
+    where
+        F: FnOnce(&'a EncoderNode) -> R,
+        R: Future<Output = T>,
+    {
+        let fut = cb(self.node.as_ref().unwrap());
+        self.inner()
+            .sim_state
+            .sim_node
+            .await_future_in_node(fut)
+            .await
+    }
+}
+
+#[cfg(msim)]
+impl Drop for EncoderNodeHandle {
+    fn drop(&mut self) {
+        if self.shutdown_on_drop {
+            let node_id = self.inner().sim_state.sim_node.id();
+            msim::runtime::Handle::try_current().map(|h| h.delete_node(node_id));
+        }
+    }
+}
+
+impl From<Arc<EncoderNode>> for EncoderNodeHandle {
+    fn from(node: Arc<EncoderNode>) -> Self {
+        EncoderNodeHandle::new(node)
+    }
+}
+
+#[cfg(msim)]
+mod simulator {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+    pub(super) struct SimState {
+        pub sim_node: msim::runtime::NodeHandle,
+    }
+
+    impl Default for SimState {
+        fn default() -> Self {
+            Self {
+                sim_node: msim::runtime::NodeHandle::current(),
+            }
+        }
     }
 }

@@ -26,7 +26,7 @@ pub(crate) type Epoch = u64;
 /// register to all encoders. Additionally, stake is normalized to 10_000, making it extremely
 /// important to ensure that encoders from one modality cannot mix with others.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct EncoderCommittee {
+pub struct EncoderCommittee {
     /// committee changes with epoch
     epoch: Epoch,
     shard_size: CountUnit,
@@ -148,6 +148,59 @@ impl EncoderCommittee {
     }
 }
 
+impl EncoderCommittee {
+    /// Creates a new EncoderCommittee suitable for testing
+    pub fn new_for_testing(encoder_public_keys: Vec<EncoderPublicKey>) -> Self {
+        assert!(
+            !encoder_public_keys.is_empty(),
+            "Must provide at least one encoder key"
+        );
+
+        let num_encoders = encoder_public_keys.len();
+
+        // Calculate shard size as minimum of 3 or num_encoders / 2
+        let shard_size = std::cmp::min(3, (num_encoders / 2).max(1)) as u32;
+
+        // Calculate quorum threshold as 2/3 of shard size, rounded up
+        // This formula (2*n + 2) / 3 gives us ceiling(2n/3)
+        let quorum_threshold = (shard_size * 2 + 2) / 3;
+
+        // Equal voting power for testing
+        let voting_power_per_encoder = 10000 / num_encoders as u16;
+        let remainder = 10000 % num_encoders as u16;
+
+        // Create encoder objects with equal voting power
+        let encoders = encoder_public_keys
+            .into_iter()
+            .enumerate()
+            .map(|(i, key)| {
+                // Distribute the remainder to first few encoders to ensure total is 10000
+                let power = if i < remainder as usize {
+                    voting_power_per_encoder + 1
+                } else {
+                    voting_power_per_encoder
+                };
+
+                // Create a dummy probe for testing
+                let probe = ProbeMetadata::new_for_test(&[i as u8; 32]);
+
+                Encoder {
+                    voting_power: power,
+                    encoder_key: key,
+                    probe,
+                }
+            })
+            .collect();
+
+        Self::new(
+            0, // epoch
+            shard_size,
+            quorum_threshold,
+            encoders,
+        )
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Encoder {
     pub voting_power: VotingPowerUnit,
@@ -159,7 +212,7 @@ pub(crate) struct Encoder {
 #[derive(
     Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize,
 )]
-pub(crate) struct EncoderIndex(u32);
+pub struct EncoderIndex(u32);
 
 impl EncoderIndex {
     /// Minimum committee size is 1, so 0 index is always valid.
@@ -175,9 +228,9 @@ impl EncoderIndex {
         self.0 as usize
     }
 
-    // const fn new(index: u32) -> Self {
-    //     Self(index)
-    // }
+    pub fn new(index: u32) -> Self {
+        Self(index)
+    }
 }
 
 #[cfg(test)]

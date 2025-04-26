@@ -6,6 +6,7 @@ version.workspace = true
 [dependencies]
 types.workspace = true
 test-cluster.workspace = true
+test-encoder-cluster.workspace = true
 rand.workspace = true
 node.workspace = true
 utils.workspace = true

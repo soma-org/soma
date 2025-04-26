@@ -10,7 +10,7 @@ use std::{
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() -> Result<()> {
-    pyo3_build_config::add_extension_module_link_args();
+    // pyo3_build_config::add_extension_module_link_args();
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     build_tonic_services(&out_dir);
     println!("cargo:rerun-if-changed=build.rs");

@@ -11,8 +11,8 @@ use crate::error::{ShardError, ShardResult};
 
 use super::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex, Epoch};
 
-#[derive(Clone)]
-pub(crate) struct Context {
+#[derive(Clone, Debug)]
+pub struct Context {
     inner: Arc<ArcSwap<InnerContext>>,
 }
 
@@ -48,8 +48,8 @@ impl Context {
 
 /// EncoderContext is updated each epoch and provides the various services running
 /// information on committeees, configurations, and access to common metric reporting
-#[derive(Clone)]
-pub(crate) struct InnerContext {
+#[derive(Clone, Debug)]
+pub struct InnerContext {
     committees: [Committees; 2],
     current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
@@ -57,6 +57,20 @@ pub(crate) struct InnerContext {
 }
 
 impl InnerContext {
+    pub fn new(
+        committees: [Committees; 2],
+        current_epoch: Epoch,
+        own_encoder_public_key: EncoderPublicKey,
+        encoder_object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
+    ) -> Self {
+        Self {
+            current_epoch,
+            own_encoder_public_key,
+            encoder_object_servers,
+            committees,
+        }
+    }
+
     fn current_committees(&self) -> &Committees {
         &self.committees[1]
     }
@@ -84,8 +98,8 @@ impl InnerContext {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct Committees {
+#[derive(Clone, Debug)]
+pub struct Committees {
     pub epoch: Epoch,
     pub authority_committee: AuthorityCommittee,
     /// the committee of allowed network keys
@@ -97,7 +111,7 @@ pub(crate) struct Committees {
 }
 
 impl Committees {
-    pub(crate) fn new(
+    pub fn new(
         epoch: Epoch,
         authority_committee: AuthorityCommittee,
         encoder_committee: EncoderCommittee,

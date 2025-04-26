@@ -47,10 +47,11 @@ burn.workspace = true
 arc-swap.workspace = true
 http.workspace = true
 tonic-rustls.workspace = true
+msim.workspace = true
 
 [dependencies.pyo3]
 workspace = true
-features = ["extension-module","abi3-py38"]
+# features = ["extension-module", "abi3-py38"]
 
 [dev-dependencies]
 tempdir.workspace = true
@@ -58,7 +59,7 @@ arbtest.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
-pyo3-build-config.workspace = true
+# pyo3-build-config.workspace = true
 
 [lints]
 workspace = true

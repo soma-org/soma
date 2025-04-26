@@ -1,8 +1,5 @@
 use crate::actors::{ActorMessage, Processor};
-use crate::{
-    error::ShardResult,
-    intelligence::model::{python::PythonModule, Model},
-};
+use crate::{error::ShardResult, intelligence::model::Model};
 use async_trait::async_trait;
 use numpy::ndarray::ArrayD;
 use std::sync::Arc;

@@ -6,7 +6,7 @@ use soma_network::multiaddr::Multiaddr;
 
 pub(crate) mod channel_pool;
 pub(crate) mod external;
-pub(crate) mod internal;
+pub mod internal;
 
 mod generated {
     include!(concat!(
