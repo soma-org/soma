@@ -17,7 +17,9 @@ use std::{
     path::PathBuf,
 };
 use tracing::info;
+use types::config::local_ip_utils;
 
+use self::multiaddr_compat::to_network_multiaddr;
 use crate::{
     config::{EncoderCommitteeConfig, EncoderConfig},
     swarm_node::Node,
@@ -133,9 +135,12 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     let encoder_keypair = EncoderKeyPair::generate(&mut self.rng);
                     let peer_keypair = PeerKeyPair::generate(&mut self.rng);
 
-                    // Generate unique ports for each node
-                    let encoder_port = 9000 + (i as u16 * 2);
-                    let object_port = 9001 + (i as u16 * 2);
+                    // Get a unique IP for this encoder
+                    let ip = local_ip_utils::get_new_ip();
+
+                    // Generate network and object addresses
+                    let network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
 
                     let project_root = PathBuf::from("/tmp"); // Default test paths
                     let entry_point = PathBuf::from("test_module.py");
@@ -143,9 +148,9 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     configs.push(EncoderConfig::new(
                         encoder_keypair,
                         peer_keypair,
-                        IpAddr::V4(Ipv4Addr::LOCALHOST),
-                        encoder_port,
-                        object_port,
+                        ip.parse().unwrap(), // Parse string IP into IpAddr
+                        network_address,
+                        object_address,
                         project_root,
                         entry_point,
                     ));
@@ -163,9 +168,12 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     // Generate peer keypair
                     let peer_keypair = PeerKeyPair::generate(&mut self.rng);
 
-                    // Generate unique ports for each node
-                    let encoder_port = 9000 + (i as u16 * 2);
-                    let object_port = 9001 + (i as u16 * 2);
+                    // Get a unique IP for this encoder
+                    let ip = local_ip_utils::get_new_ip();
+
+                    // Generate network and object addresses
+                    let network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
 
                     let project_root = PathBuf::from("/tmp");
                     let entry_point = PathBuf::from("test_module.py");
@@ -173,9 +181,9 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     configs.push(EncoderConfig::new(
                         key,
                         peer_keypair,
-                        IpAddr::V4(Ipv4Addr::LOCALHOST),
-                        encoder_port,
-                        object_port,
+                        ip.parse().unwrap(),
+                        network_address,
+                        object_address,
                         project_root,
                         entry_point,
                     ));
@@ -195,9 +203,19 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     // Generate peer keypair
                     let peer_keypair = PeerKeyPair::generate(&mut self.rng);
 
+                    // For deterministic mode, use consistent port offsets based on index
                     let port_offset = 8000 + i * 10;
-                    let encoder_port = port_offset as u16;
-                    let object_port = (port_offset + 1) as u16;
+                    let ip = local_ip_utils::get_new_ip();
+
+                    // Generate deterministic addresses with specific ports
+                    let network_address = local_ip_utils::new_deterministic_tcp_address_for_testing(
+                        &ip,
+                        port_offset as u16,
+                    );
+                    let object_address = local_ip_utils::new_deterministic_tcp_address_for_testing(
+                        &ip,
+                        (port_offset + 1) as u16,
+                    );
 
                     let project_root = PathBuf::from("/tmp");
                     let entry_point = PathBuf::from("test_module.py");
@@ -205,9 +223,9 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     configs.push(EncoderConfig::new(
                         key,
                         peer_keypair,
-                        IpAddr::V4(Ipv4Addr::LOCALHOST),
-                        encoder_port,
-                        object_port,
+                        ip.parse().unwrap(),
+                        network_address,
+                        object_address,
                         project_root,
                         entry_point,
                     ));
@@ -235,7 +253,10 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
         for config in &encoder_configs {
             encoder_to_addr_peer.insert(
                 config.protocol_public_key(),
-                (config.network_address.clone(), config.peer_public_key()),
+                (
+                    to_network_multiaddr(&config.network_address), // TODO: remove this Convert to network_multiaddr
+                    config.peer_public_key(),
+                ),
             );
         }
 
@@ -277,5 +298,23 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             .collect();
 
         EncoderSwarm { nodes }
+    }
+}
+
+// TODO: Remove this after merging Multiaddr implementations
+pub mod multiaddr_compat {
+    use soma_network::multiaddr as network_multiaddr;
+    use types::multiaddr as local_multiaddr;
+
+    /// Convert from types::Multiaddr to soma_network::multiaddr::Multiaddr
+    pub fn to_network_multiaddr(addr: &local_multiaddr::Multiaddr) -> network_multiaddr::Multiaddr {
+        // Convert through string representation
+        addr.to_string().parse().expect("Valid multiaddr")
+    }
+
+    /// Convert from soma_network::multiaddr::Multiaddr to types::Multiaddr
+    pub fn to_local_multiaddr(addr: &network_multiaddr::Multiaddr) -> local_multiaddr::Multiaddr {
+        // Convert through string representation
+        addr.to_string().parse().expect("Valid multiaddr")
     }
 }

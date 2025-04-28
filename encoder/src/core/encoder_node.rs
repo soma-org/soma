@@ -88,7 +88,6 @@ use simulator::SimState;
 
 pub struct EncoderNode {
     network_manager: EncoderInternalTonicManager,
-
     #[cfg(msim)]
     sim_state: SimState,
 }
@@ -167,12 +166,12 @@ impl EncoderNode {
         let compressor_manager = ActorManager::new(default_buffer, compressor_processor);
         let compressor_handle = compressor_manager.handle();
 
-        let python_interpreter = PythonInterpreter::new(project_root).unwrap();
-        let model = python_interpreter.new_module(entry_point).unwrap();
+        // let python_interpreter = PythonInterpreter::new(project_root).unwrap();
+        // let model = python_interpreter.new_module(entry_point).unwrap();
 
-        let model_processor = ModelProcessor::new(model, None);
-        let model_manager = ActorManager::new(default_buffer, model_processor);
-        let model_handle = model_manager.handle();
+        // let model_processor = ModelProcessor::new(model, None);
+        // let model_manager = ActorManager::new(default_buffer, model_processor);
+        // let model_handle = model_manager.handle();
 
         let storage_processor = StorageProcessor::new(object_storage, None);
         let storage_manager = ActorManager::new(default_buffer, storage_processor);

@@ -11,7 +11,6 @@ use shared::{
     authority_committee::AuthorityCommittee,
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
 };
-use soma_network::multiaddr::{Multiaddr, Protocol};
 use soma_tls::AllowPublicKeys;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -20,6 +19,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use types::multiaddr::Multiaddr;
 
 /// Represents configuration options for creating encoder committees
 pub enum EncoderCommitteeConfig {
@@ -67,27 +67,12 @@ impl EncoderConfig {
     pub fn new(
         encoder_keypair: EncoderKeyPair,
         peer_keypair: PeerKeyPair,
-        host_ip: IpAddr,
-        encoder_port: u16,
-        object_port: u16,
+        ip: IpAddr,
+        network_address: Multiaddr,
+        object_address: Multiaddr,
         project_root: PathBuf,
         entry_point: PathBuf,
     ) -> Self {
-        // Create addresses
-        let mut network_address = Multiaddr::empty();
-        match host_ip {
-            IpAddr::V4(ip) => network_address.push(Protocol::Ip4(ip)),
-            IpAddr::V6(ip) => network_address.push(Protocol::Ip6(ip)),
-        }
-        network_address.push(Protocol::Tcp(encoder_port));
-
-        let mut object_address = Multiaddr::empty();
-        match host_ip {
-            IpAddr::V4(ip) => object_address.push(Protocol::Ip4(ip)),
-            IpAddr::V6(ip) => object_address.push(Protocol::Ip6(ip)),
-        }
-        object_address.push(Protocol::Tcp(object_port));
-
         // Create default parameters
         let parameters = Arc::new(Parameters::default());
         let object_parameters = Arc::new(objects::parameters::Parameters::default());
@@ -100,7 +85,7 @@ impl EncoderConfig {
         let context =
             Self::create_test_context(&encoder_keypair, vec![encoder_keypair.public()], 0);
 
-        // Create initial AllowPublicKeys with just this node's key (will be updated later)
+        // Create initial AllowPublicKeys with just this node's key
         let mut allowed_keys = BTreeSet::new();
         allowed_keys.insert(peer_keypair.public().into_inner());
         let allowed_public_keys = AllowPublicKeys::new(allowed_keys);

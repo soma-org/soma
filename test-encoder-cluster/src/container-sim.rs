@@ -1,4 +1,5 @@
 use crate::config::EncoderConfig;
+use crate::swarm::multiaddr_compat::to_network_multiaddr;
 use encoder::core::encoder_node::{EncoderNode, EncoderNodeHandle};
 use fastcrypto::encoding::{Encoding, Hex};
 use msim::runtime::Handle;
@@ -74,8 +75,8 @@ impl Container {
                             config.parameters,
                             config.object_parameters,
                             config.peer_keypair,
-                            config.network_address,
-                            config.object_address,
+                            to_network_multiaddr(&config.network_address),
+                            to_network_multiaddr(&config.object_address),
                             config.allowed_public_keys,
                             config.connections_info,
                             &config.project_root,
