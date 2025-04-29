@@ -59,7 +59,7 @@ arbtest.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
-# pyo3-build-config.workspace = true
+pyo3-build-config.workspace = true
 
 [lints]
 workspace = true
