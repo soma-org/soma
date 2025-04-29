@@ -98,20 +98,20 @@ impl ShardCommitAPI for ShardCommitV1 {
     }
     fn reveal_key_digest(&self) -> ShardResult<Digest<EncryptionKey>> {
         // TODO: remove encryption from metadata and add to the commit
-        match self.commit.encryption() {
-            Some(encryption) => Ok(encryption.key_digest()),
-            None => Err(ShardError::EncryptionFailed),
-        }
+        self.commit
+            .encryption()
+            .map_or(Err(ShardError::EncryptionFailed), |e| Ok(e.key_digest()))
     }
 }
 
+/// verifies a signed shard commit
 pub(crate) fn verify_signed_shard_commit(
     signed_shard_commit: &Signed<ShardCommit, min_sig::BLS12381Signature>,
     shard: &Shard,
 ) -> SharedResult<()> {
     let auth_token_digest = Digest::new(signed_shard_commit.auth_token())?;
     // check that inference_encoder of the commit is inside the shards inference set
-    if !shard.contains(&signed_shard_commit.encoder()) {
+    if !shard.contains(signed_shard_commit.encoder()) {
         return Err(shared::error::SharedError::ValidationError(
             "shard commit inference encoder is not in shard".to_string(),
         ));
@@ -139,19 +139,72 @@ pub(crate) fn verify_signed_shard_commit(
         // the digest of the auth token supplied with the commit must match the digest included in the signed
         // route message. By forcing a signature of this digest, signed route messages cannot be replayed for different shards
         if signed_route.auth_token_digest() != auth_token_digest {
-            return Err(shared::error::SharedError::ValidationError("s".to_string()));
+            return Err(shared::error::SharedError::ValidationError(
+                "mismatched auth token digests".to_string(),
+            ));
         }
 
         // check signature of route is by the slot
         // the original slot must sign off on the route in order to be eligible
-        let _ = signed_route.verify(
+        signed_route.verify(
             Scope::ShardCommitRoute,
             signed_shard_commit.encoder().inner(),
         )?;
     }
 
-    let _ =
-        signed_shard_commit.verify(Scope::ShardCommit, signed_shard_commit.committer().inner())?;
+    signed_shard_commit.verify(Scope::ShardCommit, signed_shard_commit.committer().inner())?;
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use fastcrypto::traits::KeyPair;
+    use shared::{
+        crypto::keys::EncoderKeyPair,
+        digest::Digest,
+        entropy::BlockEntropy,
+        metadata::{Metadata, MetadataCommitment},
+        scope::Scope,
+        signed::Signed,
+    };
+
+    use crate::types::{
+        shard::{Shard, ShardEntropy},
+        shard_verifier::ShardAuthToken,
+    };
+
+    use super::{verify_signed_shard_commit, ShardCommit};
+
+    fn test_verify_signed_shard_commit() {
+        let mut rng = rand::thread_rng();
+        let encoder_key = EncoderKeyPair::generate(&mut rng);
+        let inner_keypair = encoder_key.inner();
+
+        let epoch: u64 = 1;
+        let quorum_threshold: u32 = 1;
+        let encoders = vec![encoder_key.public()];
+        let seed = Digest::new(&ShardEntropy::new(
+            MetadataCommitment::default(),
+            BlockEntropy::default(),
+        ))
+        .unwrap();
+
+        let shard = Shard::new(quorum_threshold, encoders, seed, epoch);
+        let commit = ShardCommit::new_v1(
+            ShardAuthToken::new_for_test(),
+            encoder_key.public(),
+            None,
+            Metadata::default(),
+        );
+
+        let signed_commit =
+            Signed::new(commit, Scope::ShardCommit, &inner_keypair.copy().private()).unwrap();
+
+        verify_signed_shard_commit(&signed_commit, &shard).unwrap();
+    }
+}
+
+// mismatched auth token digests in route
+// shard that doesn't contain
+// route that contains a shard member
