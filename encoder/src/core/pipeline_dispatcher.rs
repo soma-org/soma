@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
-use shared::{crypto::keys::PeerPublicKey, signed::Signed, verified::Verified};
+use shared::{
+    crypto::keys::PeerPublicKey, probe::ProbeMetadata, signed::Signed, verified::Verified,
+};
 use soma_network::multiaddr::Multiaddr;
 use tokio_util::sync::CancellationToken;
 
@@ -29,6 +31,7 @@ pub trait InternalDispatcher: Sync + Send + 'static {
         &self,
         shard: Shard,
         commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        probe_metadata: ProbeMetadata,
         peer: PeerPublicKey,
         address: Multiaddr,
     ) -> ShardResult<()>;
@@ -95,12 +98,13 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage> 
         &self,
         shard: Shard,
         commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        probe_metadata: ProbeMetadata,
         peer: PeerPublicKey,
         address: Multiaddr,
     ) -> ShardResult<()> {
         let cancellation = CancellationToken::new();
         self.certified_commit_handle
-            .background_process((shard, commit, peer, address), cancellation)
+            .background_process((shard, commit, probe_metadata, peer, address), cancellation)
             .await?;
         Ok(())
     }

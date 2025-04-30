@@ -13,6 +13,9 @@ impl ProbeMetadata {
             metadata: Metadata::new_for_test(bytes),
         }
     }
+    pub fn metadata(&self) -> Metadata {
+        self.metadata.to_owned()
+    }
 }
 
 impl std::ops::Deref for ProbeMetadata {

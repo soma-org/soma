@@ -70,8 +70,11 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         self.store.lock_signed_commit(&shard, &signed_commit)?;
 
         if let Some((peer, address)) = self.context.inner().object_server(peer) {
+            let probe_metadata = self
+                .context
+                .probe_metadata(shard.epoch(), signed_commit.committer())?;
             self.dispatcher
-                .dispatch_commit(shard, verified_commit, peer, address)
+                .dispatch_commit(shard, verified_commit, probe_metadata, peer, address)
                 .await?;
         } else {
             return Err(ShardError::NotFound("object server not found".to_string()));

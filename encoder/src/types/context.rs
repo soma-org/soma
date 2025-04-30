@@ -4,6 +4,7 @@ use arc_swap::ArcSwap;
 use shared::{
     authority_committee::AuthorityCommittee,
     crypto::keys::{EncoderPublicKey, PeerPublicKey},
+    probe::ProbeMetadata,
 };
 use soma_network::multiaddr::Multiaddr;
 
@@ -43,6 +44,26 @@ impl Context {
     pub fn inner(&self) -> Arc<InnerContext> {
         self.inner.load_full()
     }
+
+    pub fn probe_metadata(
+        &self,
+        epoch: Epoch,
+        encoder: &EncoderPublicKey,
+    ) -> ShardResult<ProbeMetadata> {
+        match self
+            .inner
+            .load()
+            .committees(epoch)?
+            .encoder_committee
+            .encoder_by_key(&encoder)
+        {
+            Some(e) => Ok(e.probe.clone()),
+            None => Err(ShardError::NotFound(
+                "probe metadata not found for encoder".to_string(),
+            )),
+        }
+    }
+
     // TODO add the top level handlers here
 }
 

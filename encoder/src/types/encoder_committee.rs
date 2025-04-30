@@ -90,6 +90,9 @@ impl EncoderCommittee {
         &self.encoders[encoder_index]
     }
 
+    pub(crate) fn encoder_by_key(&self, encoder: &EncoderPublicKey) -> Option<&Encoder> {
+        self.encoders.iter().find(|e| &e.encoder_key == encoder)
+    }
     /// returns all the encoders
     pub(crate) fn encoders(&self) -> impl Iterator<Item = (EncoderIndex, &Encoder)> {
         self.encoders

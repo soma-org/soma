@@ -129,13 +129,13 @@ impl ObjectNetworkClient for ObjectHttpClient {
         let address = to_host_port_str(address).map_err(|e| {
             ObjectError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
-        warn!("checksum: {}", metadata.checksum());
+        // warn!("checksum: {}", metadata.checksum());
         let address = format!("https://{address}/{}", metadata.checksum());
-        warn!("address: {}", address);
+        // warn!("address: {}", address);
         let url = Url::from_str(&address).map_err(|e| ObjectError::UrlParseError(e.to_string()))?;
 
         let timeout = calculate_timeout(metadata.size());
-        warn!("timeout: {:?}", timeout);
+        // warn!("timeout: {:?}", timeout);
 
         let mut response = self
             .get_client(peer)
@@ -146,7 +146,7 @@ impl ObjectNetworkClient for ObjectHttpClient {
             .await
             .map_err(|e| ObjectError::NetworkRequest(e.to_string()))?;
 
-        warn!("response: {:?}", response);
+        // warn!("response: {:?}", response);
 
         if !response.status().is_success() {
             return Err(ObjectError::NetworkRequest(format!(

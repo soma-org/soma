@@ -15,7 +15,9 @@ use crate::{
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
-use shared::{crypto::keys::PeerPublicKey, signed::Signed, verified::Verified};
+use shared::{
+    crypto::keys::PeerPublicKey, probe::ProbeMetadata, signed::Signed, verified::Verified,
+};
 use soma_network::multiaddr::Multiaddr;
 use std::sync::Arc;
 
@@ -52,6 +54,7 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
     type Input = (
         Shard,
         Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        ProbeMetadata,
         PeerPublicKey,
         Multiaddr,
     );
@@ -59,19 +62,23 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, verified_signed_commit, peer, address) = msg.input;
+            let (shard, verified_signed_commit, probe_metadata, peer, address) = msg.input;
 
-            let input = DownloaderInput::new(
-                peer,
-                address,
+            let commit_input = DownloaderInput::new(
+                peer.clone(),
+                address.clone(),
                 verified_signed_commit.commit_metadata().clone(),
             );
 
             self.downloader
-                .process(input, msg.cancellation.clone())
+                .process(commit_input, msg.cancellation.clone())
                 .await?;
 
-            // TODO: DOWNLOAD THE PROBE
+            let probe_input = DownloaderInput::new(peer, address, probe_metadata.metadata());
+
+            self.downloader
+                .process(probe_input, msg.cancellation.clone())
+                .await?;
 
             let _ = self
                 .store
