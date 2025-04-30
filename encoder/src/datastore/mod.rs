@@ -5,7 +5,12 @@ pub(crate) mod mem_store;
 use std::time::Instant;
 
 use fastcrypto::bls12381::min_sig;
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
+use shared::{
+    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
+    digest::Digest,
+    signed::Signed,
+    verified::Verified,
+};
 
 use crate::{
     error::ShardResult,
@@ -157,6 +162,16 @@ pub(crate) trait Store: Send + Sync + 'static {
         &self,
         shard: &Shard,
     ) -> ShardResult<Vec<Signed<ShardScores, min_sig::BLS12381Signature>>>;
+
+    fn add_aggregate_score(
+        &self,
+        shard: &Shard,
+        agg_details: (EncoderAggregateSignature, Vec<EncoderPublicKey>),
+    ) -> ShardResult<()>;
+    fn get_agg_scores(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<(EncoderAggregateSignature, Vec<EncoderPublicKey>)>;
     // ///////////////////////////////
     // fn get_filled_certified_commit_slots(
     //     &self,

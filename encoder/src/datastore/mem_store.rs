@@ -1,6 +1,11 @@
 use fastcrypto::bls12381::min_sig;
 use parking_lot::RwLock;
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
+use shared::{
+    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
+    digest::Digest,
+    signed::Signed,
+    verified::Verified,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Deref,
@@ -88,6 +93,9 @@ struct Inner {
 
     signed_scores:
         BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardScores, min_sig::BLS12381Signature>>,
+
+    agg_scores:
+        BTreeMap<(Epoch, Digest<Shard>), (EncoderAggregateSignature, Vec<EncoderPublicKey>)>,
 }
 
 impl MemStore {
@@ -108,6 +116,7 @@ impl MemStore {
                 reveal_reject_voters: BTreeMap::new(),
                 signed_scores: BTreeMap::new(),
                 first_reveal_time: BTreeMap::new(),
+                agg_scores: BTreeMap::new(),
             }),
         }
     }
@@ -668,5 +677,44 @@ impl Store for MemStore {
             .collect();
 
         Ok(scores)
+    }
+    fn add_aggregate_score(
+        &self,
+        shard: &Shard,
+        agg_details: (EncoderAggregateSignature, Vec<EncoderPublicKey>),
+    ) -> ShardResult<()> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let shard_key = (epoch, shard_digest);
+        match self.inner.read().agg_scores.get(&shard_key) {
+            Some(existing) => {
+                if existing != &agg_details {
+                    return Err(ShardError::Conflict(
+                        "encoder has a different reveal vote".to_string(),
+                    ));
+                }
+            }
+            None => {
+                self.inner.write().agg_scores.insert(shard_key, agg_details);
+            }
+        };
+        Ok(())
+    }
+    fn get_agg_scores(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<(EncoderAggregateSignature, Vec<EncoderPublicKey>)> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let shard_key = (epoch, shard_digest);
+
+        let inner = self.inner.read();
+        if let Some(agg_details) = inner.agg_scores.get(&shard_key) {
+            Ok(agg_details.to_owned())
+        } else {
+            Err(ShardError::NotFound(
+                "agg details (scores and evaluators)".to_string(),
+            ))
+        }
     }
 }

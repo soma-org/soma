@@ -302,6 +302,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> ShardTracker<C, S> {
                 .map_err(ShardError::SignatureAggregationFailure)?;
 
             println!("{:?} {:?}", agg, evaluators);
+            self.store.add_aggregate_score(&shard, (agg, evaluators))?;
         }
 
         Ok(())
