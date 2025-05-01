@@ -63,18 +63,23 @@ pub(crate) fn broadcast_commit<C: EncoderInternalNetworkClient + 'static>(
                 Signed::new(commit, Scope::ShardCommit, &inner_keypair.private()).unwrap();
             let verified = Verified::from_trusted(signed_commit).unwrap();
 
-            let _ = broadcaster
+            let res = broadcaster
                 .broadcast(
                     verified,
                     shard.encoders(),
                     |client, peer, verified_type| async move {
                         client
                             .send_commit(&peer, &verified_type, MESSAGE_TIMEOUT)
-                            .await;
+                            .await?;
                         Ok(())
                     },
                 )
                 .await;
+
+            match res {
+                Ok(_) => {}
+                Err(e) => tracing::error!("Error broadcasting commits: {:?}", e),
+            }
         });
     }
 }
@@ -110,14 +115,19 @@ pub(crate) fn broadcast_commit_vote<C: EncoderInternalNetworkClient + 'static>(
                 Signed::new(votes, Scope::ShardCommitVotes, &inner_keypair.private()).unwrap();
             let verified = Verified::from_trusted(signed_votes).unwrap();
 
-            let _ = broadcaster
+            let res = broadcaster
                 .broadcast(verified, peers, |client, peer, verified_type| async move {
                     client
                         .send_commit_votes(&peer, &verified_type, MESSAGE_TIMEOUT)
-                        .await;
+                        .await?;
                     Ok(())
                 })
                 .await;
+
+            match res {
+                Ok(_) => {}
+                Err(e) => tracing::error!("Error broadcasting commit votes: {:?}", e),
+            }
         });
     }
 }
@@ -153,14 +163,19 @@ pub(crate) fn broadcast_reveal_vote<C: EncoderInternalNetworkClient + 'static>(
                 Signed::new(votes, Scope::ShardRevealVotes, &inner_keypair.private()).unwrap();
             let verified = Verified::from_trusted(signed_votes).unwrap();
 
-            let _ = broadcaster
+            let res = broadcaster
                 .broadcast(verified, peers, |client, peer, verified_type| async move {
                     client
                         .send_reveal_votes(&peer, &verified_type, MESSAGE_TIMEOUT)
-                        .await;
+                        .await?;
                     Ok(())
                 })
                 .await;
+
+            match res {
+                Ok(_) => {}
+                Err(e) => tracing::error!("Error broadcasting reveal votes: {:?}", e),
+            }
         });
     }
 }
@@ -201,14 +216,19 @@ pub(crate) fn broadcast_reveal<C: EncoderInternalNetworkClient + 'static>(
                 Signed::new(reveal, Scope::ShardRevealVotes, &inner_keypair.private()).unwrap();
             let verified = Verified::from_trusted(signed_reveal).unwrap();
 
-            let _ = broadcaster
+            let res = broadcaster
                 .broadcast(verified, peers, |client, peer, verified_type| async move {
                     client
                         .send_reveal(&peer, &verified_type, MESSAGE_TIMEOUT)
-                        .await;
+                        .await?;
                     Ok(())
                 })
                 .await;
+
+            match res {
+                Ok(_) => {}
+                Err(e) => tracing::error!("Error broadcasting reveal: {:?}", e),
+            }
         });
     }
 }
@@ -240,18 +260,23 @@ pub(crate) fn broadcast_scores<C: EncoderInternalNetworkClient + 'static>(
 
             let verified = Verified::from_trusted(signed_scores).unwrap();
 
-            let _ = broadcaster
+            let res = broadcaster
                 .broadcast(
                     verified,
                     shard.encoders(),
                     |client, peer, verified_type| async move {
                         client
                             .send_scores(&peer, &verified_type, MESSAGE_TIMEOUT)
-                            .await;
+                            .await?;
                         Ok(())
                     },
                 )
                 .await;
+
+            match res {
+                Ok(_) => {}
+                Err(e) => tracing::error!("Error broadcasting scores: {:?}", e),
+            }
         });
     }
 }

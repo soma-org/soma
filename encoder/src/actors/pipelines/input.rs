@@ -44,31 +44,35 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
+use tracing::debug;
 
 pub(crate) struct InputProcessor<
     C: EncoderInternalNetworkClient,
     O: ObjectNetworkClient,
-    M: Model,
+    // M: Model,
     S: ObjectStorage,
 > {
     downloader: ActorHandle<Downloader<O, S>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
     broadcaster: Arc<Broadcaster<C>>,
-    model: ActorHandle<ModelProcessor<M>>,
+    // model: ActorHandle<ModelProcessor<M>>,
     encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: ActorHandle<StorageProcessor<S>>,
 }
 
-impl<C: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: ObjectStorage>
-    InputProcessor<C, O, M, S>
+impl<
+        C: EncoderInternalNetworkClient,
+        O: ObjectNetworkClient,
+        /*M: Model,*/ S: ObjectStorage,
+    > InputProcessor<C, O, /*M,*/ S>
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         downloader: ActorHandle<Downloader<O, S>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
         broadcaster: Arc<Broadcaster<C>>,
-        model: ActorHandle<ModelProcessor<M>>,
+        // model: ActorHandle<ModelProcessor<M>>,
         encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: ActorHandle<StorageProcessor<S>>,
@@ -77,7 +81,7 @@ impl<C: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: Objec
             downloader,
             compressor,
             broadcaster,
-            model,
+            // model,
             encryptor,
             encoder_keypair,
             storage,
@@ -86,8 +90,11 @@ impl<C: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: Objec
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: ObjectStorage> Processor
-    for InputProcessor<C, O, M, S>
+impl<
+        C: EncoderInternalNetworkClient,
+        O: ObjectNetworkClient,
+        /*M: Model,*/ S: ObjectStorage,
+    > Processor for InputProcessor<C, O, /*M,*/ S>
 {
     type Input = (
         Shard,
@@ -129,9 +136,11 @@ impl<C: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: Objec
 
             // let shape = model_output.shape();
 
+            // Create compressible data (repeated pattern)
             let mut buffer = vec![0u8; 1024 * 1024];
-            // Fill the buffer with random bytes using OsRng
-            OsRng.fill_bytes(&mut buffer);
+            for i in 0..buffer.len() {
+                buffer[i] = (i % 256) as u8; // Creates a pattern that compresses well
+            }
             // Convert to Bytes
             let model_bytes = Bytes::from(buffer);
 
@@ -144,15 +153,23 @@ impl<C: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: Objec
                 )
                 .await?;
 
+            let encoder_public_key = self.encoder_keypair.public().clone();
+            debug!("Encoder public key: {:?}", encoder_public_key);
+            debug!("Shard encoders: {:?}", shard.encoders());
+            debug!(
+                "Is encoder in shard: {}",
+                shard.contains(&encoder_public_key)
+            );
+
             let signed_shard =
                 Signed::new(shard.clone(), Scope::EncryptionKey, &keypair.private()).unwrap();
             let signature_bytes = signed_shard.raw_signature();
 
             let mut key_bytes = [0u8; 32];
-            key_bytes.copy_from_slice(&signature_bytes);
+            key_bytes.copy_from_slice(&signature_bytes[..32]); // Use only the first 32 bytes
 
             let mut iv_bytes = [0u8; 16];
-            iv_bytes.copy_from_slice(&signature_bytes);
+            iv_bytes.copy_from_slice(&signature_bytes[..16]); // Use only the first 16 bytes
 
             let key = EncryptionKey::Aes256(Aes256IV {
                 iv: iv_bytes,

@@ -28,6 +28,7 @@ use crate::{
 #[derive(Debug)]
 pub struct EncoderSwarm {
     nodes: HashMap<EncoderPublicKey, Node>,
+    pub external_addresses: NetworkingInfo,
 }
 
 impl Drop for EncoderSwarm {
@@ -93,6 +94,7 @@ impl EncoderSwarm {
 pub struct EncoderSwarmBuilder<R = StdRng> {
     rng: R,
     committee: EncoderCommitteeConfig,
+    client_keypair: Option<PeerKeyPair>,
 }
 
 impl EncoderSwarmBuilder {
@@ -100,6 +102,7 @@ impl EncoderSwarmBuilder {
         Self {
             rng: StdRng::from_seed([0; 32]), // TODO: change this
             committee: EncoderCommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
+            client_keypair: None,
         }
     }
 }
@@ -118,6 +121,11 @@ impl<R> EncoderSwarmBuilder<R> {
 
     pub fn with_encoders(mut self, encoders: Vec<EncoderConfig>) -> Self {
         self.committee = EncoderCommitteeConfig::Encoders(encoders);
+        self
+    }
+
+    pub fn with_client_keypair(mut self, keypair: PeerKeyPair) -> Self {
+        self.client_keypair = Some(keypair);
         self
     }
 }
@@ -139,8 +147,23 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     let ip = local_ip_utils::get_new_ip();
 
                     // Generate network and object addresses
-                    let network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
-                    let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let internal_port = 8000 + (i * 3) as u16;
+                    let external_port = 8001 + (i * 3) as u16;
+                    let object_port = 8002 + (i * 3) as u16;
+
+                    // Generate unique addresses with specific ports
+                    let internal_network_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(
+                            &ip,
+                            internal_port,
+                        );
+                    let external_network_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(
+                            &ip,
+                            external_port,
+                        );
+                    let object_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
 
                     let project_root = PathBuf::from("/tmp"); // Default test paths
                     let entry_point = PathBuf::from("test_module.py");
@@ -149,7 +172,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         encoder_keypair,
                         peer_keypair,
                         ip.parse().unwrap(), // Parse string IP into IpAddr
-                        network_address,
+                        internal_network_address,
+                        external_network_address,
                         object_address,
                         project_root,
                         entry_point,
@@ -171,9 +195,23 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     // Get a unique IP for this encoder
                     let ip = local_ip_utils::get_new_ip();
 
-                    // Generate network and object addresses
-                    let network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
-                    let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let internal_port = 8000 + (i * 3) as u16;
+                    let external_port = 8001 + (i * 3) as u16;
+                    let object_port = 8002 + (i * 3) as u16;
+
+                    // Generate unique addresses with specific ports
+                    let internal_network_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(
+                            &ip,
+                            internal_port,
+                        );
+                    let external_network_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(
+                            &ip,
+                            external_port,
+                        );
+                    let object_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
 
                     let project_root = PathBuf::from("/tmp");
                     let entry_point = PathBuf::from("test_module.py");
@@ -182,7 +220,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         key,
                         peer_keypair,
                         ip.parse().unwrap(),
-                        network_address,
+                        internal_network_address,
+                        external_network_address,
                         object_address,
                         project_root,
                         entry_point,
@@ -208,14 +247,23 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     let ip = local_ip_utils::get_new_ip();
 
                     // Generate deterministic addresses with specific ports
-                    let network_address = local_ip_utils::new_deterministic_tcp_address_for_testing(
-                        &ip,
-                        port_offset as u16,
-                    );
-                    let object_address = local_ip_utils::new_deterministic_tcp_address_for_testing(
-                        &ip,
-                        (port_offset + 1) as u16,
-                    );
+                    let internal_port = 8000 + (i * 3) as u16;
+                    let external_port = 8001 + (i * 3) as u16;
+                    let object_port = 8002 + (i * 3) as u16;
+
+                    // Generate unique addresses with specific ports
+                    let internal_network_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(
+                            &ip,
+                            internal_port,
+                        );
+                    let external_network_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(
+                            &ip,
+                            external_port,
+                        );
+                    let object_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
 
                     let project_root = PathBuf::from("/tmp");
                     let entry_point = PathBuf::from("test_module.py");
@@ -224,7 +272,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         key,
                         peer_keypair,
                         ip.parse().unwrap(),
-                        network_address,
+                        internal_network_address,
+                        external_network_address,
                         object_address,
                         project_root,
                         entry_point,
@@ -249,22 +298,39 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
         }
 
         // 3. Create a mapping of encoder keys to (address, peer key)
-        let mut encoder_to_addr_peer = BTreeMap::new();
+        let mut encoder_to_internal_addr_peer = BTreeMap::new();
+        let mut encoder_to_external_addr_peer = BTreeMap::new();
+
         for config in &encoder_configs {
-            encoder_to_addr_peer.insert(
+            // Map for internal communication (encoder-to-encoder)
+            encoder_to_internal_addr_peer.insert(
                 config.protocol_public_key(),
                 (
-                    to_network_multiaddr(&config.network_address), // TODO: remove this Convert to network_multiaddr
+                    to_network_multiaddr(&config.internal_network_address),
+                    config.peer_public_key(),
+                ),
+            );
+
+            // Map for external communication (client-to-encoder)
+            encoder_to_external_addr_peer.insert(
+                config.protocol_public_key(),
+                (
+                    to_network_multiaddr(&config.external_network_address),
                     config.peer_public_key(),
                 ),
             );
         }
 
         // 4. Create a set of allowed public keys
-        let allowed_keys = encoder_configs
+        let mut allowed_keys = encoder_configs
             .iter()
             .map(|config| config.peer_public_key().into_inner())
             .collect::<BTreeSet<_>>();
+
+        // Add client public key to allowed keys if available
+        if let Some(client_keypair) = &self.client_keypair {
+            allowed_keys.insert(client_keypair.public().into_inner());
+        }
 
         // 5. Update each encoder config with the collective information
         for (idx, config) in encoder_configs.iter_mut().enumerate() {
@@ -276,7 +342,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             );
 
             // Update networking info
-            config.networking_info = NetworkingInfo::new(encoder_to_addr_peer.clone());
+            config.networking_info = NetworkingInfo::new(encoder_to_internal_addr_peer.clone());
 
             // Update connections info
             config.connections_info = ConnectionsInfo::new(peer_to_encoder.clone());
@@ -297,7 +363,10 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             })
             .collect();
 
-        EncoderSwarm { nodes }
+        EncoderSwarm {
+            nodes,
+            external_addresses: NetworkingInfo::new(encoder_to_external_addr_peer),
+        }
     }
 }
 

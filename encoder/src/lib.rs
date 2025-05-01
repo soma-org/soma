@@ -4,7 +4,7 @@ mod compression;
 pub mod core;
 mod datastore;
 mod encryption;
-mod error;
+pub mod error;
 mod intelligence;
 pub mod messaging;
 pub mod types;

@@ -66,7 +66,7 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
 }
 
 #[async_trait]
-pub(crate) trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
+pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_input(
         &self,
         encoder: &EncoderPublicKey,

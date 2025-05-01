@@ -39,7 +39,7 @@ use super::{
 };
 
 // Implements Tonic RPC client for Encoders.
-pub(crate) struct EncoderExternalTonicClient {
+pub struct EncoderExternalTonicClient {
     networking_info: NetworkingInfo,
     own_peer_keypair: PeerKeyPair,
     parameters: Arc<Parameters>,
@@ -47,7 +47,7 @@ pub(crate) struct EncoderExternalTonicClient {
 }
 impl EncoderExternalTonicClient {
     /// Creates a new encoder tonic client and establishes an arc'd channel pool
-    pub(crate) fn new(
+    pub fn new(
         networking_info: NetworkingInfo,
         own_peer_keypair: PeerKeyPair,
         parameters: Arc<Parameters>,
@@ -63,7 +63,7 @@ impl EncoderExternalTonicClient {
 
     /// returns an encoder client
     // TODO: re-introduce configuring limits to the client for safety
-    async fn get_client(
+    pub async fn get_client(
         &self,
         encoder: &EncoderPublicKey,
         timeout: Duration,
@@ -321,10 +321,10 @@ fn peer_info_from_certs(peer_certificates: &soma_http::PeerCertificates) -> Opti
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendInputRequest {
+pub struct SendInputRequest {
     #[prost(bytes = "bytes", tag = "1")]
-    input: Bytes,
+    pub input: Bytes,
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendInputResponse {}
+pub struct SendInputResponse {}

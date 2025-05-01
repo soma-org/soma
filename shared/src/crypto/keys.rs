@@ -1,6 +1,6 @@
 use fastcrypto::{
     bls12381::{self, min_sig::BLS12381PublicKey},
-    ed25519,
+    ed25519::{self, Ed25519KeyPair},
     error::FastCryptoError,
     traits::{AggregateAuthenticator, KeyPair as _, Signer as _, ToFromBytes, VerifyingKey as _},
 };
@@ -53,6 +53,10 @@ impl PeerKeyPair {
 
     pub fn private_key_bytes(self) -> [u8; 32] {
         self.0.private().0.to_bytes()
+    }
+
+    pub fn inner(&self) -> &Ed25519KeyPair {
+        &self.0
     }
 }
 

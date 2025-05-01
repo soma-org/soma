@@ -58,10 +58,10 @@ impl ShardVerifier {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ShardAuthToken {
-    proof: FinalityProof,
-    metadata_commitment: MetadataCommitment,
-    block_entropy: BlockEntropy,
-    entropy_proof: BlockEntropyProof,
+    pub proof: FinalityProof,
+    pub metadata_commitment: MetadataCommitment,
+    pub block_entropy: BlockEntropy,
+    pub entropy_proof: BlockEntropyProof,
 }
 
 impl ShardAuthToken {
@@ -72,7 +72,7 @@ impl ShardAuthToken {
         self.proof.epoch()
     }
 
-    pub(crate) fn new_for_test() -> Self {
+    pub fn new_for_test() -> Self {
         fn mock_tx() -> SignedTransaction {
             let sig = ProtocolKeySignature::from_bytes(&[1u8; 64]).unwrap();
             let tx = ShardTransaction::new(Digest::new_from_bytes(b"test"), 100);
@@ -137,69 +137,128 @@ impl ShardVerifier {
         context: &Context,
         token: &ShardAuthToken,
     ) -> ShardResult<Shard> {
-        let digest =
-            Digest::new(token).map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
-        // check cache
+        tracing::info!(
+            "Starting ShardVerifier::verify with token epoch: {}",
+            token.epoch()
+        );
+
+        let digest = match Digest::new(token) {
+            Ok(d) => {
+                tracing::debug!("Successfully created digest for token");
+                d
+            }
+            Err(e) => {
+                tracing::error!("Failed to create digest for token: {:?}", e);
+                return Err(ShardError::InvalidShardToken(e.to_string()));
+            }
+        };
+
+        // Check cache
         if let Some(status) = self.cache.get(&digest) {
+            tracing::debug!("Found cached verification status");
             return match status {
-                VerificationStatus::Valid(shard) => Ok(shard),
-                VerificationStatus::Invalid => Err(ShardError::InvalidShardToken(
-                    "invalid shard auth token".to_string(),
-                )),
+                VerificationStatus::Valid(shard) => {
+                    tracing::debug!("Cache hit: valid shard");
+                    Ok(shard)
+                }
+                VerificationStatus::Invalid => {
+                    tracing::debug!("Cache hit: invalid shard token");
+                    Err(ShardError::InvalidShardToken(
+                        "invalid shard auth token".to_string(),
+                    ))
+                }
             };
         }
+
+        tracing::debug!("Accessing inner context from Context");
         let inner_context = context.inner();
-        let committees = inner_context.committees(token.epoch())?;
-        let valid_shard_result: ShardResult<Shard> = {
-            // check that the finality proof is valid against the epoch's authorities
-            token
-                .proof
-                .verify(&committees.authority_committee)
-                .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
-            // check that the vdf entropy (block entropy) passes verification with the provided proof
-            self.vdf
-                .process(
-                    (
-                        token.proof.epoch(),
-                        token.proof.block_ref(),
-                        token.block_entropy.clone(),
-                        token.entropy_proof.clone(),
-                        committees.vdf_iterations,
-                    ),
-                    CancellationToken::new(),
-                )
-                .await?;
-
-            // TODO: need to actually check the transaction itself
-            // specifically the metadata_commitment digest matches what is provided
-            let _tx = token.proof.transaction();
-            // TODO: check metadata_commitment digest matches
-            // TODO: check that tx value matches metadata provided size
-
-            // create the shard entropy seed using the VDF (good source of randomness) + the metadata/nonce
-            let shard_entropy = Digest::new(&ShardEntropy::new(
-                token.metadata_commitment.clone(),
-                token.block_entropy.clone(),
-            ))
-            .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
-
-            let shard = committees.encoder_committee.sample_shard(shard_entropy)?;
-
-            Ok(shard)
-        };
-        match &valid_shard_result {
-            Ok(shard) => {
-                self.cache
-                    .insert(digest, VerificationStatus::Valid(shard.clone()));
-                return Ok(shard.to_owned());
+        tracing::debug!("Getting committees for epoch: {}", token.epoch());
+        let committees = match inner_context.committees(token.epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
             }
-            // unwrapping manually here so we can cache the invalid verification
-            Err(_) => self.cache.insert(digest, VerificationStatus::Invalid),
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        // Debug finality proof
+        tracing::debug!("Verifying finality proof against authority committee");
+        if let Err(e) = token.proof.verify(&committees.authority_committee) {
+            tracing::error!("Finality proof verification failed: {:?}", e);
+            self.cache.insert(digest, VerificationStatus::Invalid);
+            return Err(ShardError::InvalidShardToken(e.to_string()));
         }
-        Err(ShardError::InvalidShardToken(
-            "invalid shard token".to_string(),
-        ))
+
+        // Debug VDF
+        tracing::debug!(
+            "Starting VDF verification with epoch: {}, iterations: {}",
+            token.proof.epoch(),
+            committees.vdf_iterations
+        );
+        let vdf_params = (
+            token.proof.epoch(),
+            token.proof.block_ref(),
+            token.block_entropy.clone(),
+            token.entropy_proof.clone(),
+            committees.vdf_iterations,
+        );
+        tracing::debug!("VDF params created");
+
+        let vdf_result = self.vdf.process(vdf_params, CancellationToken::new()).await;
+
+        if let Err(e) = vdf_result {
+            tracing::error!("VDF verification failed: {:?}", e);
+            self.cache.insert(digest, VerificationStatus::Invalid);
+            return Err(e);
+        }
+
+        tracing::debug!("VDF verification succeeded");
+
+        // Debug shard entropy
+        tracing::debug!("Creating ShardEntropy with metadata commitment and block entropy");
+        let shard_entropy_input = ShardEntropy::new(
+            token.metadata_commitment.clone(),
+            token.block_entropy.clone(),
+        );
+
+        tracing::debug!("Creating digest from ShardEntropy");
+        let shard_entropy = match Digest::new(&shard_entropy_input) {
+            Ok(entropy) => {
+                tracing::debug!("Successfully created shard entropy digest");
+                entropy
+            }
+            Err(e) => {
+                tracing::error!("Failed to create shard entropy digest: {:?}", e);
+                self.cache.insert(digest, VerificationStatus::Invalid);
+                return Err(ShardError::InvalidShardToken(e.to_string()));
+            }
+        };
+
+        tracing::debug!("Sampling shard from encoder committee");
+        let shard = match committees.encoder_committee.sample_shard(shard_entropy) {
+            Ok(s) => {
+                tracing::debug!(
+                    "Successfully sampled shard with {} encoders",
+                    s.encoders().len()
+                );
+                s
+            }
+            Err(e) => {
+                tracing::error!("Failed to sample shard: {:?}", e);
+                self.cache.insert(digest, VerificationStatus::Invalid);
+                return Err(e);
+            }
+        };
+
+        tracing::debug!("Caching successful verification result");
+        self.cache
+            .insert(digest, VerificationStatus::Valid(shard.clone()));
+        tracing::info!("ShardVerifier::verify completed successfully");
+        Ok(shard)
     }
 }
 

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
+use tokio::runtime::Handle;
 
 use crate::error::ShardError;
 
@@ -32,21 +33,22 @@ impl<E: Encryptor> Processor for EncryptionProcessor<E> {
     async fn process(&self, msg: ActorMessage<Self>) {
         let encryptor: Arc<E> = self.encryptor.clone();
 
-        let _ = tokio::task::spawn_blocking(move || match msg.input {
-            EncryptionInput::Encrypt(key, contents) => {
-                let encrypted = encryptor.encrypt(key, contents);
-                let _ = msg
-                    .sender
-                    .send(encrypted.map_err(|_| ShardError::EncryptionFailed));
-            }
-            EncryptionInput::Decrypt(key, contents) => {
-                let decrypted = encryptor.decrypt(key, contents);
-                let _ = msg
-                    .sender
-                    .send(decrypted.map_err(|_| ShardError::EncryptionFailed));
-            }
-        })
-        .await;
+        let _ = Handle::current()
+            .spawn_blocking(move || match msg.input {
+                EncryptionInput::Encrypt(key, contents) => {
+                    let encrypted = encryptor.encrypt(key, contents);
+                    let _ = msg
+                        .sender
+                        .send(encrypted.map_err(|_| ShardError::EncryptionFailed));
+                }
+                EncryptionInput::Decrypt(key, contents) => {
+                    let decrypted = encryptor.decrypt(key, contents);
+                    let _ = msg
+                        .sender
+                        .send(decrypted.map_err(|_| ShardError::EncryptionFailed));
+                }
+            })
+            .await;
         // NOTE: await here causes the program to only operate sequentially because the actor run loop
         // also awaits when calling a processors process fn
     }

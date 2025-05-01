@@ -17,11 +17,15 @@ use std::sync::Arc;
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
     context: Arc<Context>,
     dispatcher: D,
-    shard_verifier: ShardVerifier,
+    shard_verifier: Arc<ShardVerifier>,
 }
 
 impl<D: ExternalDispatcher> EncoderExternalService<D> {
-    pub(crate) fn new(context: Arc<Context>, dispatcher: D, shard_verifier: ShardVerifier) -> Self {
+    pub(crate) fn new(
+        context: Arc<Context>,
+        dispatcher: D,
+        shard_verifier: Arc<ShardVerifier>,
+    ) -> Self {
         Self {
             context,
             dispatcher,
@@ -31,13 +35,15 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
 }
 #[async_trait]
 impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
-    async fn handle_send_input(
-        &self,
-        _peer: &PeerPublicKey,
-        input_bytes: Bytes,
-    ) -> ShardResult<()> {
+    async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()> {
         let input: Signed<ShardInput, min_sig::BLS12381Signature> =
-            bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
+            match bcs::from_bytes(&input_bytes) {
+                Ok(i) => i,
+                Err(e) => {
+                    return Err(ShardError::MalformedType(e));
+                }
+            };
+
         let shard = self
             .shard_verifier
             .verify(&self.context, input.auth_token())

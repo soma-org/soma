@@ -167,23 +167,29 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
 pub(crate) struct ExternalPipelineDispatcher<
     E: EncoderInternalNetworkClient,
     O: ObjectNetworkClient,
-    M: Model,
+    // M: Model,
     S: ObjectStorage,
 > {
-    input_handle: ActorHandle<InputProcessor<E, O, M, S>>,
+    input_handle: ActorHandle<InputProcessor<E, O, /*M,*/ S>>,
 }
 
-impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: ObjectStorage>
-    ExternalPipelineDispatcher<E, O, M, S>
+impl<
+        E: EncoderInternalNetworkClient,
+        O: ObjectNetworkClient,
+        /*M: Model,*/ S: ObjectStorage,
+    > ExternalPipelineDispatcher<E, O, /*M,*/ S>
 {
-    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<E, O, M, S>>) -> Self {
+    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<E, O, /*M,*/ S>>) -> Self {
         Self { input_handle }
     }
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, M: Model, S: ObjectStorage>
-    ExternalDispatcher for ExternalPipelineDispatcher<E, O, M, S>
+impl<
+        E: EncoderInternalNetworkClient,
+        O: ObjectNetworkClient,
+        /*M: Model,*/ S: ObjectStorage,
+    > ExternalDispatcher for ExternalPipelineDispatcher<E, O, /*M,*/ S>
 {
     async fn dispatch_input(
         &self,

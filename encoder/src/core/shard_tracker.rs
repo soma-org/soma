@@ -13,6 +13,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 
 use crate::{
     actors::{pipelines::evaluation::EvaluationProcessor, ActorHandle},
@@ -301,7 +302,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> ShardTracker<C, S> {
             let agg = EncoderAggregateSignature::new(&signatures)
                 .map_err(ShardError::SignatureAggregationFailure)?;
 
-            println!("{:?} {:?}", agg, evaluators);
+            info!("{:?} {:?}", agg, evaluators);
             self.store.add_aggregate_score(&shard, (agg, evaluators))?;
         }
 

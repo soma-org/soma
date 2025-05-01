@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, sync::Arc};
 
 use bytes::Bytes;
 use quick_cache::unsync::Cache;
@@ -50,13 +50,33 @@ pub trait EntropyAPI: Send + Sync + Sized + 'static {
 }
 
 pub struct EntropyVDF {
-    vdfs: Cache<Iterations, DefaultVDF>,
+    vdfs: Cache<Iterations, Arc<DefaultVDF>>,
 }
 
 impl EntropyVDF {
     pub fn new(cache_capacity: usize) -> Self {
         Self {
             vdfs: Cache::new(cache_capacity),
+        }
+    }
+
+    // Return an owned VDF instead of a reference
+    fn get_or_create_vdf(&mut self, iterations: Iterations) -> Arc<DefaultVDF> {
+        // Check if it exists in the cache
+        if let Some(vdf) = self.vdfs.get(&iterations) {
+            // Return a clone of the cached value
+            vdf.clone()
+        } else {
+            // Create a new VDF
+            let vdf = Arc::new(DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations));
+
+            // Clone it before inserting into cache
+            let vdf_clone = vdf.clone();
+
+            // Insert into cache (if this fails, we still have our VDF)
+            self.vdfs.insert(iterations, vdf);
+
+            vdf_clone
         }
     }
 }
@@ -72,13 +92,7 @@ impl EntropyAPI for EntropyVDF {
         let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
             .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
 
-        let vdf = self
-            .vdfs
-            .get_or_insert_with(&iterations, || -> Result<DefaultVDF, Infallible> {
-                Ok(DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations))
-            })
-            .unwrap()
-            .unwrap();
+        let vdf = self.get_or_create_vdf(iterations);
 
         let (output, proof) = vdf
             .evaluate(&input)
@@ -111,13 +125,7 @@ impl EntropyAPI for EntropyVDF {
         let proof: QuadraticForm =
             bcs::from_bytes(&tx_entropy_proof.0).map_err(SharedError::MalformedType)?;
 
-        let vdf = self
-            .vdfs
-            .get_or_insert_with(&iterations, || -> Result<DefaultVDF, Infallible> {
-                Ok(DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations))
-            })
-            .unwrap()
-            .unwrap();
+        let vdf = self.get_or_create_vdf(iterations);
 
         vdf.verify(&input, &entropy, &proof)
             .map_err(|e| SharedError::FailedVDF(e.to_string()))

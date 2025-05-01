@@ -20,7 +20,7 @@ pub struct ShardInputV1 {
 }
 
 impl ShardInputV1 {
-    pub(crate) fn new(auth_token: ShardAuthToken) -> Self {
+    pub fn new(auth_token: ShardAuthToken) -> Self {
         Self { auth_token }
     }
 }

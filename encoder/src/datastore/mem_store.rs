@@ -11,6 +11,7 @@ use std::{
     ops::Deref,
     time::Instant,
 };
+use tracing::{info, warn};
 
 use crate::{
     error::{ShardError, ShardResult},
@@ -138,21 +139,22 @@ impl Store for MemStore {
         let signed_commit_digests_key = (epoch, shard_digest, encoder.clone());
         let shard_committer_key = (epoch, shard_digest, committer.clone());
 
+        let mut inner = self.inner.write();
+
         match (
-            self.inner
-                .read()
-                .signed_commit_digests
-                .get(&signed_commit_digests_key),
-            self.inner.read().shard_committers.get(&shard_committer_key),
+            inner.signed_commit_digests.get(&signed_commit_digests_key),
+            inner.shard_committers.get(&shard_committer_key),
         ) {
             // Committer has committed before
             (Some(existing_digest), _) if existing_digest != &signed_commit_digest => {
+                warn!("Committer has committed before");
                 return Err(ShardError::Conflict(
                     "existing commit from committer".to_string(),
                 ));
             }
             // Slot is taken with different commit
             (_, Some(existing)) if existing != &signed_commit_digest => {
+                warn!("Slot is taken with different commit");
                 return Err(ShardError::Conflict(
                     "encoder already has commit".to_string(),
                 ));
@@ -160,15 +162,16 @@ impl Store for MemStore {
             // If we made it here, either there are no existing commits
             // or the existing commits match exactly
             (None, None) => {
+                info!("No existing commits, insert into database");
                 // Insert new commit
-                self.inner
-                    .write()
+                inner
                     .signed_commit_digests
                     .insert(signed_commit_digests_key, signed_commit_digest);
-                self.inner
-                    .write()
+                info!("Inserted into signed commit digests");
+                inner
                     .shard_committers
                     .insert(shard_committer_key, signed_commit_digest);
+                info!("Inserted into shard committers");
             }
             // Everything matches, idempotent case
             _ => (),

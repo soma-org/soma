@@ -117,11 +117,13 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
             commit: commit.bytes(),
         });
         request.set_timeout(timeout);
+        info!("Sending commit");
         self.get_client(encoder, timeout)
             .await?
             .send_commit(request)
             .await
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
+        info!("Sent commit");
         Ok(())
     }
 

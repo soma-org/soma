@@ -17,6 +17,10 @@ soma-tls.workspace = true
 objects.workspace = true
 fastcrypto.workspace = true
 types.workspace = true
+bcs.workspace = true
+tonic.workspace = true
+bytes.workspace = true
+vdf.workspace = true
 
 [lints]
 workspace = true

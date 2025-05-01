@@ -21,7 +21,7 @@ pub struct MemoryObjectStore {
 }
 
 impl MemoryObjectStore {
-    pub(crate) fn new_for_test() -> Self {
+    pub fn new_for_test() -> Self {
         Self {
             store: Arc::new(RwLock::new(HashMap::new())),
         }

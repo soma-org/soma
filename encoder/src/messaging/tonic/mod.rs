@@ -5,7 +5,7 @@ use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use soma_network::multiaddr::Multiaddr;
 
 pub(crate) mod channel_pool;
-pub(crate) mod external;
+pub mod external;
 pub mod internal;
 
 mod generated {

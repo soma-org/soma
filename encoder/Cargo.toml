@@ -10,7 +10,7 @@ probe.workspace = true
 soma-http.workspace = true
 soma-tls.workspace = true
 soma-network.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 serde.workspace = true
 fastcrypto.workspace = true
 bcs.workspace = true

@@ -4,6 +4,7 @@ use shared::{
 };
 use std::sync::{Arc, Mutex};
 use tokio::{
+    runtime::Handle,
     sync::mpsc::{self, Sender},
     task::JoinHandle,
 };
@@ -35,7 +36,7 @@ impl<E: EntropyAPI> Processor for VDFProcessor<E> {
         let (epoch, block_ref, entropy, proof, iterations) = msg.input;
 
         // Spawn a task without awaiting it, similar to your other processors
-        let _ = tokio::task::spawn_blocking(move || {
+        let _ = Handle::current().spawn_blocking(move || {
             // Lock the VDF instance only within the task
             match vdf.lock() {
                 Ok(mut vdf_instance) => {

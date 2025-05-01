@@ -41,7 +41,7 @@ impl Container {
         let handle = Handle::current();
         let builder = handle.create_node();
 
-        let socket_addr = config.network_address.to_socket_addr().unwrap();
+        let socket_addr = config.external_network_address.to_socket_addr().unwrap();
         let ip = match socket_addr {
             SocketAddr::V4(v4) => IpAddr::V4(*v4.ip()),
             _ => panic!("unsupported protocol"),
@@ -75,7 +75,8 @@ impl Container {
                             config.parameters,
                             config.object_parameters,
                             config.peer_keypair,
-                            to_network_multiaddr(&config.network_address),
+                            to_network_multiaddr(&config.internal_network_address),
+                            to_network_multiaddr(&config.external_network_address),
                             to_network_multiaddr(&config.object_address),
                             config.allowed_public_keys,
                             config.connections_info,

@@ -40,8 +40,8 @@ pub struct EncoderConfig {
     pub encoder_keypair: EncoderKeyPair,
     /// Keys for network peer identification
     pub peer_keypair: PeerKeyPair,
-    /// The network address for internal encoder communication
-    pub network_address: Multiaddr,
+    pub internal_network_address: Multiaddr,
+    pub external_network_address: Multiaddr,
     /// The network address for object storage
     pub object_address: Multiaddr,
     /// Parameters for the encoder system
@@ -68,7 +68,8 @@ impl EncoderConfig {
         encoder_keypair: EncoderKeyPair,
         peer_keypair: PeerKeyPair,
         ip: IpAddr,
-        network_address: Multiaddr,
+        internal_network_address: Multiaddr,
+        external_network_address: Multiaddr,
         object_address: Multiaddr,
         project_root: PathBuf,
         entry_point: PathBuf,
@@ -93,7 +94,8 @@ impl EncoderConfig {
         Self {
             encoder_keypair,
             peer_keypair,
-            network_address,
+            internal_network_address,
+            external_network_address,
             object_address,
             parameters,
             object_parameters,

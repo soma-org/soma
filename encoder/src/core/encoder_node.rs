@@ -5,7 +5,7 @@ use objects::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
         ObjectNetworkManager, ObjectNetworkService,
     },
-    storage::filesystem::FilesystemObjectStorage,
+    storage::{filesystem::FilesystemObjectStorage, memory::MemoryObjectStore},
 };
 use quick_cache::sync::Cache;
 use shared::{
@@ -21,7 +21,7 @@ use crate::{
     actors::{
         pipelines::{
             commit::CommitProcessor, commit_votes::CommitVotesProcessor,
-            evaluation::EvaluationProcessor, reveal::RevealProcessor,
+            evaluation::EvaluationProcessor, input::InputProcessor, reveal::RevealProcessor,
             reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         workers::{
@@ -31,16 +31,18 @@ use crate::{
         ActorManager,
     },
     compression::zstd_compressor::ZstdCompressor,
-    datastore::mem_store::MemStore,
+    datastore::{mem_store::MemStore, Store},
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
-    intelligence::model::python::PythonInterpreter,
+    intelligence::model::python::{PythonInterpreter, PythonModule},
     messaging::{
+        external_service::EncoderExternalService,
         internal_service::EncoderInternalService,
         tonic::{
+            external::EncoderExternalTonicManager,
             internal::{ConnectionsInfo, EncoderInternalTonicClient, EncoderInternalTonicManager},
             NetworkingInfo,
         },
-        EncoderInternalNetworkManager,
+        EncoderExternalNetworkManager, EncoderInternalNetworkManager,
     },
     types::{context::Context, parameters::Parameters, shard_verifier},
 };
@@ -51,7 +53,8 @@ use self::{
 };
 
 use super::{
-    internal_broadcaster::Broadcaster, pipeline_dispatcher::InternalPipelineDispatcher,
+    internal_broadcaster::Broadcaster,
+    pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
     shard_tracker::ShardTracker,
 };
 
@@ -87,7 +90,10 @@ use simulator::SimState;
 // }
 
 pub struct EncoderNode {
-    network_manager: EncoderInternalTonicManager,
+    internal_network_manager: EncoderInternalTonicManager,
+    external_network_manager: EncoderExternalTonicManager,
+    store: Arc<dyn Store>,
+    object_storage: Arc<MemoryObjectStore>,
     #[cfg(msim)]
     sim_state: SimState,
 }
@@ -100,18 +106,19 @@ impl EncoderNode {
         parameters: Arc<Parameters>,
         object_parameters: Arc<objects::parameters::Parameters>,
         peer_keypair: PeerKeyPair,
-        address: Multiaddr,
+        internal_address: Multiaddr,
+        external_address: Multiaddr,
         object_address: Multiaddr,
         allower: AllowPublicKeys,
         connections_info: ConnectionsInfo,
         project_root: &Path,
         entry_point: &Path,
     ) -> Self {
-        let mut network_manager = EncoderInternalTonicManager::new(
-            networking_info,
-            parameters,
+        let mut internal_network_manager = EncoderInternalTonicManager::new(
+            networking_info.clone(),
+            parameters.clone(),
             peer_keypair.clone(),
-            address,
+            internal_address.clone(),
             allower.clone(),
             connections_info,
         );
@@ -124,25 +131,26 @@ impl EncoderNode {
                     FilesystemObjectStorage,
                 >,
             >,
-        >>::client(&network_manager);
+        >>::client(&internal_network_manager);
 
-        let object_storage = Arc::new(FilesystemObjectStorage::new("base_path"));
-        let object_network_service: ObjectNetworkService<FilesystemObjectStorage> =
+        let object_storage = Arc::new(MemoryObjectStore::new_for_test());
+        let object_network_service: ObjectNetworkService<MemoryObjectStore> =
             ObjectNetworkService::new(object_storage.clone());
 
         let mut object_network_manager = <ObjectHttpManager as ObjectNetworkManager<
-            FilesystemObjectStorage,
-        >>::new(peer_keypair, object_parameters, allower)
+            MemoryObjectStore,
+        >>::new(
+            peer_keypair.clone(), object_parameters, allower.clone()
+        )
         .unwrap();
 
         object_network_manager
             .start(&object_address, object_network_service)
             .await;
 
-        let object_client =
-            <ObjectHttpManager as ObjectNetworkManager<FilesystemObjectStorage>>::client(
-                &object_network_manager,
-            );
+        let object_client = <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::client(
+            &object_network_manager,
+        );
 
         let encoder_keypair = Arc::new(encoder_keypair);
 
@@ -173,7 +181,7 @@ impl EncoderNode {
         // let model_manager = ActorManager::new(default_buffer, model_processor);
         // let model_handle = model_manager.handle();
 
-        let storage_processor = StorageProcessor::new(object_storage, None);
+        let storage_processor = StorageProcessor::new(object_storage.clone(), None);
         let storage_manager = ActorManager::new(default_buffer, storage_processor);
         let storage_handle = storage_manager.handle();
 
@@ -186,6 +194,17 @@ impl EncoderNode {
             messaging_client.clone(),
             Arc::new(Semaphore::new(default_concurrency)),
         ));
+
+        let input_processor = InputProcessor::new(
+            downloader_handle.clone(),
+            compressor_handle,
+            broadcaster.clone(),
+            // model_handle,
+            encryptor_handle,
+            encoder_keypair.clone(),
+            storage_handle.clone(),
+        );
+        let input_handle = ActorManager::new(default_buffer, input_processor).handle();
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
@@ -237,17 +256,43 @@ impl EncoderNode {
             reveal_votes_handle,
             scores_handle,
         );
-        let verifier = ShardVerifier::new(100, vdf_handle);
+        let verifier = Arc::new(ShardVerifier::new(100, vdf_handle));
 
-        let network_service = Arc::new(EncoderInternalService::new(
-            context,
-            store,
+        let internal_network_service = Arc::new(EncoderInternalService::new(
+            context.clone(),
+            store.clone(),
             pipeline_dispatcher,
+            verifier.clone(),
+        ));
+        internal_network_manager
+            .start(internal_network_service)
+            .await;
+
+        // Now create the external manager and service
+        let mut external_network_manager = EncoderExternalTonicManager::new(
+            parameters.clone(),
+            peer_keypair.clone(),
+            external_address.clone(),
+            allower.clone(),
+        );
+
+        // Create the external service using the same context and verifier
+        let external_network_service = Arc::new(EncoderExternalService::new(
+            Arc::new(context.clone()),
+            ExternalPipelineDispatcher::new(input_handle),
             verifier,
         ));
-        network_manager.start(network_service).await;
+
+        // Start the external manager with the service
+        external_network_manager
+            .start(external_network_service)
+            .await;
+
         Self {
-            network_manager,
+            internal_network_manager,
+            external_network_manager,
+            store,
+            object_storage,
             #[cfg(msim)]
             sim_state: Default::default(),
         }
@@ -259,10 +304,22 @@ impl EncoderNode {
                 InternalPipelineDispatcher<
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
-                    FilesystemObjectStorage,
+                    MemoryObjectStore,
                 >,
             >,
-        >>::stop(&mut self.network_manager)
+        >>::stop(&mut self.internal_network_manager)
+        .await;
+
+        <EncoderExternalTonicManager as EncoderExternalNetworkManager<
+            EncoderExternalService<
+                ExternalPipelineDispatcher<
+                    EncoderInternalTonicClient,
+                    ObjectHttpClient,
+                    // PythonModule,
+                    MemoryObjectStore,
+                >,
+            >,
+        >>::stop(&mut self.external_network_manager)
         .await;
     }
 }
@@ -290,10 +347,13 @@ impl EncoderNodeHandle {
         cb(self.inner())
     }
 
-    // TODO: have some way for simulator tests to inspect the state of the encoder
-    // pub fn state(&self) -> Arc<AuthorityState> {
-    //     self.with(|soma_node| soma_node.state())
-    // }
+    pub fn store(&self) -> Arc<dyn Store> {
+        self.with(|soma_node| soma_node.store.clone())
+    }
+
+    pub fn object_storage(&self) -> Arc<MemoryObjectStore> {
+        self.with(|soma_node| soma_node.object_storage.clone())
+    }
 
     pub fn shutdown_on_drop(&mut self) {
         self.shutdown_on_drop = true;
