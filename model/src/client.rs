@@ -1,0 +1,82 @@
+use async_trait::async_trait;
+use ndarray::array;
+use reqwest::Client;
+use soma_network::multiaddr::{to_host_port_str, Multiaddr};
+use std::{str::FromStr, time::Duration};
+use url::Url;
+
+use crate::{
+    error::{ModelError, ModelResult},
+    ByteRange, ModelInput, ModelOutput, ModelOutputV1,
+};
+
+#[async_trait]
+pub(crate) trait ModelNetworkClient: Send + Sync + Sized + 'static {
+    async fn call(&self, model_input: ModelInput, timeout: Duration) -> ModelResult<ModelOutput>;
+}
+
+pub(crate) struct MockModelClient {}
+
+#[async_trait]
+impl ModelNetworkClient for MockModelClient {
+    async fn call(&self, model_input: ModelInput, timeout: Duration) -> ModelResult<ModelOutput> {
+        Ok(ModelOutput::V1(ModelOutputV1 {
+            embeddings: array![
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+            ],
+            byte_ranges: vec![
+                ByteRange { start: 0, end: 0 },
+                ByteRange { start: 0, end: 0 },
+                ByteRange { start: 0, end: 0 },
+                ByteRange { start: 0, end: 0 },
+                ByteRange { start: 0, end: 0 },
+                ByteRange { start: 0, end: 0 },
+                ByteRange { start: 0, end: 0 },
+            ],
+        }))
+    }
+}
+
+pub(crate) struct HttpModelClient {
+    url: Url,
+    client: Client,
+}
+
+impl HttpModelClient {
+    pub(crate) fn new(address: Multiaddr) -> ModelResult<Self> {
+        let address = to_host_port_str(&address).map_err(|e| {
+            ModelError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
+        })?;
+        let address = format!("http://{address}");
+        let url = Url::from_str(&address).map_err(|e| ModelError::UrlParseError(e.to_string()))?;
+        let client = Client::new();
+        Ok(Self { url, client })
+    }
+}
+
+#[async_trait]
+impl ModelNetworkClient for HttpModelClient {
+    async fn call(&self, model_input: ModelInput, timeout: Duration) -> ModelResult<ModelOutput> {
+        let response = self
+            .client
+            .post(self.url.clone())
+            .timeout(timeout)
+            .json(&model_input)
+            .send()
+            .await
+            .map_err(|e| ModelError::NetworkRequestError(e.to_string()))?;
+
+        let model_output = response
+            .json::<ModelOutput>()
+            .await
+            .map_err(|e| ModelError::DeserializeError(e.to_string()))?;
+
+        Ok(model_output)
+    }
+}
