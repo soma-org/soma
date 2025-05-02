@@ -2,7 +2,7 @@ pub(crate) mod certified;
 pub mod context;
 pub mod encoder_committee;
 pub mod parameters;
-pub(crate) mod shard;
+pub mod shard;
 pub(crate) mod shard_commit;
 pub(crate) mod shard_commit_votes;
 pub mod shard_input;

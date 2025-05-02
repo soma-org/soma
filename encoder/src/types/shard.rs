@@ -36,7 +36,7 @@ impl Shard {
             epoch,
         }
     }
-    pub(crate) fn encoders(&self) -> Vec<EncoderPublicKey> {
+    pub fn encoders(&self) -> Vec<EncoderPublicKey> {
         self.encoders.clone()
     }
     pub(crate) fn size(&self) -> usize {
@@ -68,7 +68,7 @@ impl Shard {
 ///
 /// BlockEntropy is derived from VDF(Epoch, BlockRef, iterations)
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct ShardEntropy {
+pub struct ShardEntropy {
     metadata_commitment: MetadataCommitment,
     entropy: BlockEntropy,
 }

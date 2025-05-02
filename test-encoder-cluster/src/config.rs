@@ -83,8 +83,12 @@ impl EncoderConfig {
         let connections_info = ConnectionsInfo::new(BTreeMap::new());
 
         // Create a minimal context for testing with only this encoder
-        let context =
-            Self::create_test_context(&encoder_keypair, vec![encoder_keypair.public()], 0);
+        let context = Self::create_test_context(
+            &encoder_keypair,
+            vec![encoder_keypair.public()],
+            0,
+            HashMap::new(),
+        );
 
         // Create initial AllowPublicKeys with just this node's key
         let mut allowed_keys = BTreeSet::new();
@@ -118,11 +122,20 @@ impl EncoderConfig {
         self.peer_keypair.public()
     }
 
+    /// Returns the object server information for this encoder
+    pub fn get_object_server_info(&self) -> (EncoderPublicKey, Multiaddr) {
+        (self.protocol_public_key(), self.object_address.clone())
+    }
+
     /// Creates a test context for a group of encoders
     pub fn create_test_context(
         own_encoder_keypair: &EncoderKeyPair,
         all_encoder_keys: Vec<EncoderPublicKey>,
         own_index: usize,
+        encoder_object_servers: HashMap<
+            EncoderPublicKey,
+            (PeerPublicKey, soma_network::multiaddr::Multiaddr),
+        >,
     ) -> Context {
         // Create encoder committee with all encoders
         let encoder_committee = EncoderCommittee::new_for_testing(all_encoder_keys);
@@ -138,12 +151,12 @@ impl EncoderConfig {
             1, // vdf_iterations
         );
 
-        // Create inner context
+        // Create inner context with the provided object servers
         let inner_context = InnerContext::new(
             [committees.clone(), committees],
             0,
             own_encoder_keypair.public(),
-            HashMap::new(),
+            encoder_object_servers,
         );
 
         Context::new(inner_context)

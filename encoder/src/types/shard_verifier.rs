@@ -7,7 +7,7 @@ use shared::{
         address::Address,
         keys::{
             AuthorityAggregateSignature, AuthorityKeyPair, AuthoritySignature,
-            EncoderAggregateSignature, ProtocolKeySignature,
+            EncoderAggregateSignature, EncoderPublicKey, ProtocolKeySignature,
         },
     },
     digest::Digest,
@@ -47,12 +47,22 @@ pub(crate) struct ShardVerifier {
     cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
     /// holds the actor wrapped VDF
     vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
+
+    own_key: EncoderPublicKey,
 }
 
 impl ShardVerifier {
-    pub(crate) fn new(capacity: usize, vdf: ActorHandle<VDFProcessor<EntropyVDF>>) -> Self {
+    pub(crate) fn new(
+        capacity: usize,
+        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
+        own_key: EncoderPublicKey,
+    ) -> Self {
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(capacity);
-        Self { cache, vdf }
+        Self {
+            cache,
+            vdf,
+            own_key,
+        }
     }
 }
 
@@ -242,8 +252,9 @@ impl ShardVerifier {
         let shard = match committees.encoder_committee.sample_shard(shard_entropy) {
             Ok(s) => {
                 tracing::debug!(
-                    "Successfully sampled shard with {} encoders",
-                    s.encoders().len()
+                    "Successfully sampled shard with {} encoders: {:?}",
+                    s.encoders().len(),
+                    s.encoders()
                 );
                 s
             }
@@ -253,6 +264,10 @@ impl ShardVerifier {
                 return Err(e);
             }
         };
+
+        if !shard.contains(&self.own_key) {
+            return Err(ShardError::InvalidShardMember);
+        }
 
         tracing::debug!("Caching successful verification result");
         self.cache

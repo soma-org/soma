@@ -2,6 +2,7 @@ use anyhow::Result;
 use encoder::{
     core::encoder_node::EncoderNodeHandle,
     messaging::tonic::{internal::ConnectionsInfo, NetworkingInfo},
+    types::context::{Context, InnerContext},
 };
 use futures::future::try_join_all;
 use rand::{
@@ -332,13 +333,35 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             allowed_keys.insert(client_keypair.public().into_inner());
         }
 
+        // Collect object server information for all encoders
+        let mut encoder_object_servers = HashMap::new();
+        for config in &encoder_configs {
+            let (key, addr) = config.get_object_server_info();
+            encoder_object_servers.insert(
+                key,
+                (
+                    config.peer_public_key(),
+                    to_network_multiaddr(&config.object_address),
+                ),
+            );
+        }
+
         // 5. Update each encoder config with the collective information
         for (idx, config) in encoder_configs.iter_mut().enumerate() {
-            // Update context with all encoders
+            // Create a map of other encoders' object servers (excluding self)
+            let mut other_object_servers = HashMap::new();
+            for (key, (peer_key, addr)) in &encoder_object_servers {
+                if key != &config.protocol_public_key() {
+                    other_object_servers.insert(key.clone(), (peer_key.clone(), addr.clone()));
+                }
+            }
+
+            // Create context with object servers in one step
             config.context = EncoderConfig::create_test_context(
                 &config.encoder_keypair,
                 all_encoder_keys.clone(),
                 idx,
+                other_object_servers,
             );
 
             // Update networking info

@@ -14,14 +14,19 @@ use encoder::{
     },
     types::{
         parameters::Parameters,
+        shard::{Shard, ShardEntropy},
         shard_input::{ShardInput, ShardInputV1},
         shard_verifier::ShardAuthToken,
     },
 };
-use fastcrypto::{bls12381::min_sig, traits::KeyPair};
+use fastcrypto::{
+    bls12381::min_sig::{self, BLS12381PublicKey},
+    traits::KeyPair,
+};
 use rand::{rngs::StdRng, SeedableRng};
 use shared::{
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair},
+    digest::Digest,
     entropy::{BlockEntropy, BlockEntropyProof},
     scope::Scope,
     signed::Signed,
@@ -157,30 +162,61 @@ impl TestEncoderCluster {
         Verified::from_trusted(signed_input).unwrap()
     }
 
-    // Send input to a single encoder first to test
-    pub async fn send_input_to_encoder(
-        &self,
-        encoder: &EncoderPublicKey,
-        timeout: Duration,
-    ) -> ShardResult<()> {
-        let client = self.get_external_client();
-        let input = self.create_signed_input();
+    pub fn get_shard_from_token(&self, token: &ShardAuthToken) -> ShardResult<Shard> {
+        // Get the first encoder node to access its context and committee
+        let any_encoder = self
+            .swarm
+            .encoder_nodes()
+            .next()
+            .ok_or_else(|| ShardError::NotFound("No encoder nodes available".to_string()))?;
 
-        client.send_input(encoder, &input, timeout).await
+        if let Some(handle) = any_encoder.get_node_handle() {
+            // Use the encoder's context to access the committee
+            let context = handle.with(|node| node.context.clone());
+
+            // Create the shard entropy from the token
+            let shard_entropy_input = ShardEntropy::new(
+                token.metadata_commitment.clone(),
+                token.block_entropy.clone(),
+            );
+
+            // Create a digest from the shard entropy
+            let shard_entropy = Digest::new(&shard_entropy_input).unwrap();
+
+            // Get the committees from the context
+            let inner_context = context.inner();
+            let committees = inner_context.committees(token.epoch())?;
+
+            // Sample the shard using the same method as ShardVerifier
+            let shard = committees.encoder_committee.sample_shard(shard_entropy)?;
+
+            Ok(shard)
+        } else {
+            Err(ShardError::NotFound(
+                "No active encoder node handle available".to_string(),
+            ))
+        }
     }
 
-    // Method to send to all encoders with proper debugging
-    pub async fn send_to_all_encoders(
+    pub async fn send_to_shard_members(
         &self,
+        token: &ShardAuthToken,
         timeout: Duration,
     ) -> Result<(), Vec<(EncoderPublicKey, ShardError)>> {
-        let encoder_keys = self.get_encoder_pubkeys();
-        // Now try with all encoders
+        // Get the shard from the token
+        let shard = self.get_shard_from_token(token).unwrap();
+
+        // Get the encoder public keys in the shard
+        let shard_members = shard.encoders();
+
+        // Create the input with the given token
+        let input = self.create_signed_input_with_token(token.clone());
+
+        // Send input only to shard members
         let mut errors = Vec::new();
         let client = self.get_external_client();
-        let input = self.create_signed_input();
 
-        for key in encoder_keys {
+        for key in shard_members {
             match client.send_input(&key, &input, timeout).await {
                 Ok(_) => {}
                 Err(e) => errors.push((key, e)),
@@ -192,6 +228,24 @@ impl TestEncoderCluster {
         } else {
             Err(errors)
         }
+    }
+
+    fn create_signed_input_with_token(
+        &self,
+        token: ShardAuthToken,
+    ) -> Verified<Signed<ShardInput, min_sig::BLS12381Signature>> {
+        // Create ShardInput with the provided token
+        let input = ShardInput::V1(ShardInputV1::new(token));
+
+        // Get a keypair for signing
+        let encoder_keypair = self.get_client_encoder_keypair();
+        let inner_keypair = encoder_keypair.inner().copy();
+
+        // Sign the input
+        let signed_input = Signed::new(input, Scope::ShardInput, &inner_keypair.private()).unwrap();
+
+        // Create a verified object
+        Verified::from_trusted(signed_input).unwrap()
     }
 }
 

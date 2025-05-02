@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use tokio::{sync::Semaphore, task::JoinSet};
+use tracing::info;
 
 use crate::{error::ShardResult, messaging::EncoderInternalNetworkClient};
 
@@ -13,11 +14,20 @@ const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 pub(crate) struct Broadcaster<C: EncoderInternalNetworkClient> {
     client: Arc<C>,
     semaphore: Arc<Semaphore>,
+    own_key: EncoderPublicKey,
 }
 
 impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
-    pub(crate) fn new(client: Arc<C>, semaphore: Arc<Semaphore>) -> Self {
-        Self { client, semaphore }
+    pub(crate) fn new(
+        client: Arc<C>,
+        semaphore: Arc<Semaphore>,
+        own_key: EncoderPublicKey,
+    ) -> Self {
+        Self {
+            client,
+            semaphore,
+            own_key,
+        }
     }
 
     pub(crate) async fn broadcast<T, F, Fut>(
@@ -36,16 +46,23 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
             result: ShardResult<()>,
             retries: u64,
         }
+        info!("Broadcasting verified input!");
 
         let mut join_set: JoinSet<NetworkingResult> = JoinSet::new();
 
         // for each shard member
         for peer in peers {
+            if peer == self.own_key {
+                continue;
+            }
+
             let client = self.client.clone();
             let cloned_input = input.clone();
             let sema_clone = self.semaphore.clone();
             join_set.spawn(async move {
+                info!("Getting semaphore");
                 if let Ok(permit) = sema_clone.acquire_owned().await {
+                    info!("Got semaphore");
                     let result = network_fn(client, peer.clone(), cloned_input).await;
                     drop(permit);
                     NetworkingResult {
@@ -71,6 +88,7 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
                     Ok(_) => {}
 
                     Err(e) => {
+                        info!("Broadcasting error: {:?}", e);
                         // TODO: deal with the semaphore error?
                         let client = self.client.clone();
                         let peer = result.peer;

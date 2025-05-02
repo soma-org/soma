@@ -9,6 +9,7 @@ use shared::{
     metadata::{Metadata, MetadataAPI},
 };
 use soma_network::multiaddr::Multiaddr;
+use tracing::info;
 
 use crate::error::{ShardError, ShardResult};
 use async_trait::async_trait;
@@ -57,6 +58,7 @@ impl<C: ObjectNetworkClient, S: ObjectStorage> Processor for Downloader<C, S> {
             // TODO: explicitly match on the not found error only
             if self.storage.exists(&object_path).await.is_ok() {
                 // if it exists, no need to download
+
                 return Ok(());
             }
 
@@ -66,12 +68,14 @@ impl<C: ObjectNetworkClient, S: ObjectStorage> Processor for Downloader<C, S> {
                 .get_object_writer(&object_path)
                 .await
                 .map_err(ShardError::ObjectError)?;
+
             // download the object, streaming it directly into storage
             if let Err(e) = self
                 .client
                 .download_object(&mut writer, &input.peer, &input.address, &input.metadata)
                 .await
             {
+                tracing::error!("Error downloading object! Delete and abort.");
                 // if there is an error, delete the object
                 self.storage
                     .delete_object(&object_path)

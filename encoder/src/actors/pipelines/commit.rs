@@ -20,6 +20,7 @@ use shared::{
 };
 use soma_network::multiaddr::Multiaddr;
 use std::sync::Arc;
+use tracing::info;
 
 pub(crate) struct CommitProcessor<
     E: EncoderInternalNetworkClient,
@@ -74,11 +75,11 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> 
                 .process(commit_input, msg.cancellation.clone())
                 .await?;
 
-            let probe_input = DownloaderInput::new(peer, address, probe_metadata.metadata());
+            // let probe_input = DownloaderInput::new(peer, address, probe_metadata.metadata());
 
-            self.downloader
-                .process(probe_input, msg.cancellation.clone())
-                .await?;
+            // self.downloader
+            //     .process(probe_input, msg.cancellation.clone())
+            //     .await?;
 
             let _ = self
                 .store

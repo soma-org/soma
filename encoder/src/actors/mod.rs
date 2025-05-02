@@ -10,6 +10,7 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
 
 #[async_trait]
 pub(crate) trait Processor: Send + Sync + Sized + 'static {
@@ -41,6 +42,7 @@ impl<P: Processor> Actor<P> {
         loop {
             select! {
                 Ok(()) = &mut self.shutdown_rx => {
+                    info!("Processor shutting down.");
                     // TODO: potentially process whatever messages are remaining?
                     // Shutdown the processor
                     self.processor.shutdown();
@@ -51,12 +53,15 @@ impl<P: Processor> Actor<P> {
                     match msg {
                         Some(msg) => {
                             if msg.cancellation.is_cancelled() {
+                                warn!("Message cancelled!");
                                 let _ = msg.sender.send(Err(ShardError::ActorError("task cancelled".to_string())));
                                 continue;
                             }
+                            info!("Received message, sending to processing.");
                             self.processor.process(msg).await;
                         }
                         None => {
+                            info!("Processor shutting down after receiving a None message.");
                             // Channel closed, cleanup processor
                             self.processor.shutdown();
                             break;
@@ -86,6 +91,7 @@ impl<P: Processor> ActorHandle<P> {
         input: P::Input,
         cancellation: CancellationToken,
     ) -> ShardResult<P::Output> {
+        info!("Processing ActorHandle");
         // TODO: make this more explicitly the actor response
         let (sender, receiver) = oneshot::channel();
         let msg = ActorMessage {

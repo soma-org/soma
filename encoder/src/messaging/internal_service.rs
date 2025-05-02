@@ -139,6 +139,11 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             }
         } else {
             error!("Object server not found for peer: {:?}", peer);
+            debug!("Own key: {:?}", self.context.inner().own_encoder_key());
+            debug!(
+                "Num object servers: {}",
+                self.context.inner().encoder_object_servers.len()
+            );
             return Err(ShardError::NotFound("object server not found".to_string()));
         }
 

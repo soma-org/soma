@@ -59,6 +59,9 @@ impl EncoderCommittee {
             "evaluation set size must be greater or equal to quorum size"
         );
 
+        // let mut encoders = encoders;
+        // encoders.sort_by_key(|e| e.encoder_key.clone());
+
         Self {
             epoch,
             shard_size,
@@ -126,7 +129,7 @@ impl EncoderCommittee {
         self.encoders.len()
     }
 
-    pub(crate) fn sample_shard(&self, entropy: Digest<ShardEntropy>) -> ShardResult<Shard> {
+    pub fn sample_shard(&self, entropy: Digest<ShardEntropy>) -> ShardResult<Shard> {
         let mut rng = StdRng::from_seed(entropy.into());
 
         // TODO: only compute this once per committee rather than every sample
@@ -162,7 +165,10 @@ impl EncoderCommittee {
         let num_encoders = encoder_public_keys.len();
 
         // Calculate shard size as minimum of 3 or num_encoders / 2
-        let shard_size = std::cmp::min(3, (num_encoders / 2).max(1)) as u32;
+        let shard_size = std::cmp::max(
+            std::cmp::min(num_encoders as u32, 3),
+            (num_encoders / 2) as u32,
+        );
 
         // Calculate quorum threshold as 2/3 of shard size, rounded up
         // This formula (2*n + 2) / 3 gives us ceiling(2n/3)

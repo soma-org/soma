@@ -74,7 +74,7 @@ pub struct InnerContext {
     committees: [Committees; 2],
     current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
-    encoder_object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
+    pub encoder_object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
 }
 
 impl InnerContext {
@@ -98,7 +98,7 @@ impl InnerContext {
     fn previous_committees(&self) -> &Committees {
         &self.committees[0]
     }
-    pub(crate) fn committees(&self, epoch: Epoch) -> ShardResult<&Committees> {
+    pub fn committees(&self, epoch: Epoch) -> ShardResult<&Committees> {
         if epoch == self.current_epoch {
             return Ok(self.current_committees());
         } else if epoch == self.current_epoch.saturating_sub(1) {

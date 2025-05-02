@@ -52,14 +52,12 @@ impl Container {
             .ip(ip)
             .name(&format!(
                 "{:?}",
-                Hex::encode(
-                    config
-                        .protocol_public_key()
-                        .inner()
-                        .to_string()
-                        .get(0..4)
-                        .unwrap()
-                )
+                config
+                    .protocol_public_key()
+                    .inner()
+                    .to_string()
+                    .get(0..4)
+                    .unwrap()
             ))
             .init(move || {
                 info!("Node restarted");

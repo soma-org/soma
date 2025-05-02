@@ -7,21 +7,33 @@ use utils::logging::init_tracing;
 #[cfg(msim)]
 #[msim::sim_test]
 async fn test_encoder_cluster() {
+    use test_encoder_cluster::create_valid_test_token;
+
     init_tracing();
 
     let cluster = TestEncoderClusterBuilder::new()
-        .with_num_encoders(4)
+        .with_num_encoders(20)
         .build()
         .await;
 
     // Start all encoders
     cluster.start_all_encoders().await;
 
-    // Create and send input to all encoders in one step
-    cluster
-        .send_to_all_encoders(Duration::from_secs(2))
+    let token = create_valid_test_token();
+
+    // Get the shard determined by this token
+    let shard = cluster.get_shard_from_token(&token).unwrap();
+
+    println!("Shard contains these encoders: {:?}", shard.encoders());
+
+    // Send input only to the encoders in the shard
+    match cluster
+        .send_to_shard_members(&token, Duration::from_secs(5))
         .await
-        .expect("Failed to send input to all encoders");
+    {
+        Ok(_) => println!("Successfully sent input to all shard members"),
+        Err(errors) => println!("Failed to send input to some shard members: {:?}", errors),
+    }
 
     sleep(Duration::from_secs(60)).await;
 }

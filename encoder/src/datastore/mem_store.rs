@@ -189,7 +189,9 @@ impl Store for MemStore {
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let signed_commit = signed_commit.deref();
 
-        match self.inner.read().signed_commits.get(&encoder_key) {
+        let mut guard = self.inner.write();
+
+        match guard.signed_commits.get(&encoder_key) {
             Some(existing_commit) => {
                 if existing_commit != signed_commit {
                     return Err(ShardError::Conflict(
@@ -198,8 +200,7 @@ impl Store for MemStore {
                 }
             }
             None => {
-                self.inner
-                    .write()
+                guard
                     .signed_commits
                     .insert(encoder_key, signed_commit.clone());
             }
@@ -210,15 +211,14 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
         let count = self
             .inner
             .read()
             .signed_commits
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .count();
+
         Ok(count)
     }
     fn get_signed_commits(
@@ -228,14 +228,12 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
         let commits: Vec<_> = self
             .inner
             .read()
             .signed_commits
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .map(|(_, value)| value.clone())
             .collect();
 
@@ -303,7 +301,9 @@ impl Store for MemStore {
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let signed_reveal = signed_reveal.deref();
 
-        match self.inner.read().signed_reveals.get(&encoder_key) {
+        let mut guard = self.inner.write();
+
+        match guard.signed_reveals.get(&encoder_key) {
             Some(existing_reveal) => {
                 if existing_reveal != signed_reveal {
                     return Err(ShardError::Conflict(
@@ -312,8 +312,7 @@ impl Store for MemStore {
                 }
             }
             None => {
-                self.inner
-                    .write()
+                guard
                     .signed_reveals
                     .insert(encoder_key, signed_reveal.clone());
             }
@@ -324,15 +323,14 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
         let count = self
             .inner
             .read()
             .signed_reveals
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .count();
+
         Ok(count)
     }
     fn get_signed_reveals(
@@ -342,14 +340,12 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
         let reveals: Vec<_> = self
             .inner
             .read()
             .signed_reveals
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .map(|(_, value)| value.clone())
             .collect();
 
@@ -389,7 +385,9 @@ impl Store for MemStore {
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let votes = &**votes;
 
-        match self.inner.read().signed_commit_votes.get(&encoder_key) {
+        let mut guard = self.inner.write();
+
+        match guard.signed_commit_votes.get(&encoder_key) {
             Some(existing) => {
                 if existing != votes {
                     return Err(ShardError::Conflict(
@@ -398,10 +396,7 @@ impl Store for MemStore {
                 }
             }
             None => {
-                self.inner
-                    .write()
-                    .signed_commit_votes
-                    .insert(encoder_key, votes.clone());
+                guard.signed_commit_votes.insert(encoder_key, votes.clone());
             }
         };
         for receiving_encoder in shard.encoders() {
@@ -419,38 +414,31 @@ impl Store for MemStore {
                         receiving_encoder.clone(),
                         digest.to_owned(),
                     );
-                    self.inner
-                        .write()
+                    guard
                         .commit_accept_digest_voters
                         .entry(receiving_encoder_digest_key.clone())
                         .or_default()
                         .insert(votes.voter().clone());
 
-                    let this_digests_votes = self
-                        .inner
-                        .read()
+                    let this_digests_votes = guard
                         .commit_accept_digest_voters
                         .get(&receiving_encoder_digest_key)
                         .map_or(0_usize, BTreeSet::len);
 
-                    let current_highest_digest_votes = self
-                        .inner
-                        .read()
+                    let current_highest_digest_votes = guard
                         .commit_votes_highest_digest
                         .get(&receiving_encoder_key)
                         .copied()
                         .unwrap_or(0_usize);
 
                     if this_digests_votes > current_highest_digest_votes {
-                        self.inner
-                            .write()
+                        guard
                             .commit_votes_highest_digest
                             .insert(receiving_encoder_key, this_digests_votes);
                     }
                 }
                 None => {
-                    self.inner
-                        .write()
+                    guard
                         .commit_reject_voters
                         .entry(receiving_encoder_key)
                         .or_default()
@@ -464,15 +452,14 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
         let count = self
             .inner
             .read()
             .signed_commit_votes
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .count();
+
         Ok(count)
     }
     fn get_commit_votes_for_encoder(
@@ -485,11 +472,13 @@ impl Store for MemStore {
         let shard_digest = shard.digest()?;
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let accepts: Option<usize>;
+
+        let mut guard = self.inner.read();
+
         if let Some(digest) = digest {
             let encoder_digest_key = (epoch, shard_digest, encoder.clone(), digest.to_owned());
             accepts = Some(
-                self.inner
-                    .read()
+                guard
                     .commit_accept_digest_voters
                     .get(&encoder_digest_key)
                     .map(|voters| voters.len())
@@ -499,17 +488,13 @@ impl Store for MemStore {
             accepts = None;
         }
 
-        let rejects = self
-            .inner
-            .read()
+        let rejects = guard
             .commit_reject_voters
             .get(&encoder_key)
             .map(|voters| voters.len())
             .unwrap_or(0);
 
-        let highest = self
-            .inner
-            .read()
+        let highest = guard
             .commit_votes_highest_digest
             .get(&encoder_key)
             .copied()
@@ -524,14 +509,12 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
-        let commit_votes = self
+        let commit_votes: Vec<_> = self
             .inner
             .read()
             .signed_commit_votes
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .map(|(_, value)| value.clone())
             .collect();
 
@@ -543,11 +526,15 @@ impl Store for MemStore {
         shard: &Shard,
         votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
+        info!("Adding reveal votes");
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let voter_key = (epoch, shard_digest, votes.voter().clone());
         let votes = &**votes;
-        match self.inner.read().signed_reveal_votes.get(&voter_key) {
+
+        let mut guard = self.inner.write();
+
+        match guard.signed_reveal_votes.get(&voter_key) {
             Some(existing) => {
                 if existing != votes {
                     return Err(ShardError::Conflict(
@@ -556,10 +543,7 @@ impl Store for MemStore {
                 }
             }
             None => {
-                self.inner
-                    .write()
-                    .signed_reveal_votes
-                    .insert(voter_key, votes.clone());
+                guard.signed_reveal_votes.insert(voter_key, votes.clone());
             }
         };
 
@@ -567,16 +551,14 @@ impl Store for MemStore {
             let receiving_encoder_key = (epoch, shard_digest, receiving_encoder.clone());
             if votes.accepts().contains(&receiving_encoder) {
                 // explicit accept vote
-                self.inner
-                    .write()
+                guard
                     .reveal_accept_voters
                     .entry(receiving_encoder_key)
                     .or_default()
                     .insert(votes.voter().clone());
             } else {
                 // implicit reject vote
-                self.inner
-                    .write()
+                guard
                     .reveal_reject_voters
                     .entry(receiving_encoder_key)
                     .or_default()
@@ -592,14 +574,12 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
-        let reveal_votes = self
+        let reveal_votes: Vec<_> = self
             .inner
             .read()
             .signed_reveal_votes
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .map(|(_, value)| value.clone())
             .collect();
 
@@ -615,17 +595,15 @@ impl Store for MemStore {
         let shard_digest = shard.digest()?;
         let encoder_key = (epoch, shard_digest, encoder.clone());
 
-        let accepts = self
-            .inner
-            .read()
+        let guard = self.inner.read();
+
+        let accepts = guard
             .reveal_accept_voters
             .get(&encoder_key)
             .map(|voters| voters.len())
             .unwrap_or(0);
 
-        let rejects = self
-            .inner
-            .read()
+        let rejects = guard
             .reveal_reject_voters
             .get(&encoder_key)
             .map(|voters| voters.len())
@@ -644,19 +622,19 @@ impl Store for MemStore {
         let encoder = scores.evaluator();
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let scores = scores.deref();
-        match self.inner.read().signed_scores.get(&encoder_key) {
+
+        let mut guard = self.inner.write();
+
+        match guard.signed_scores.get(&encoder_key) {
             Some(existing) => {
                 if existing != scores {
                     return Err(ShardError::Conflict(
-                        "encoder has a different reveal vote".to_string(),
+                        "encoder has a different signed score".to_string(),
                     ));
                 }
             }
             None => {
-                self.inner
-                    .write()
-                    .signed_scores
-                    .insert(encoder_key, scores.clone());
+                guard.signed_scores.insert(encoder_key, scores.clone());
             }
         };
         Ok(())
@@ -668,14 +646,12 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let start_key = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let end_key = (epoch, shard_digest, EncoderPublicKey::MAX());
-
-        let scores = self
+        let scores: Vec<_> = self
             .inner
             .read()
             .signed_scores
-            .range(start_key..=end_key)
+            .iter()
+            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .map(|(_, value)| value.clone())
             .collect();
 
@@ -689,16 +665,20 @@ impl Store for MemStore {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let shard_key = (epoch, shard_digest);
-        match self.inner.read().agg_scores.get(&shard_key) {
+
+        let mut guard = self.inner.write();
+
+        match guard.agg_scores.get(&shard_key) {
             Some(existing) => {
-                if existing != &agg_details {
-                    return Err(ShardError::Conflict(
-                        "encoder has a different reveal vote".to_string(),
-                    ));
-                }
+                // TODO: handle when an agg sig already exists for the shard
+                // if existing != &agg_details {
+                //     return Err(ShardError::Conflict(
+                //         "encoder has a different aggregate score".to_string(),
+                //     ));
+                // }
             }
             None => {
-                self.inner.write().agg_scores.insert(shard_key, agg_details);
+                guard.agg_scores.insert(shard_key, agg_details);
             }
         };
         Ok(())

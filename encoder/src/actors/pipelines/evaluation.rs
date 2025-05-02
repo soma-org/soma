@@ -5,7 +5,7 @@ use crate::{
     core::{internal_broadcaster::Broadcaster, shard_tracker::ShardTracker},
     datastore::Store,
     error::ShardResult,
-    messaging::{internal_broadcasts::broadcast_scores, EncoderInternalNetworkClient},
+    messaging::EncoderInternalNetworkClient,
     types::{
         shard::Shard,
         shard_scores::{ScoreSet, ScoreSetV1, ScoreV1, ShardScores},
@@ -16,9 +16,11 @@ use async_trait::async_trait;
 use objects::storage::ObjectStorage;
 use shared::crypto::keys::EncoderKeyPair;
 
+use super::broadcast::{BroadcastAction, BroadcastProcessor};
+
 pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: ObjectStorage> {
     store: Arc<dyn Store>,
-    broadcaster: Arc<Broadcaster<C>>,
+    broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: ActorHandle<StorageProcessor<S>>,
 }
@@ -26,13 +28,13 @@ pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: Object
 impl<C: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<C, S> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        broadcaster: Arc<Broadcaster<C>>,
+        broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: ActorHandle<StorageProcessor<S>>,
     ) -> Self {
         Self {
             store,
-            broadcaster,
+            broadcast_handle,
             encoder_keypair,
             storage,
         }
@@ -60,13 +62,12 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> Processor for Evaluation
             let score_set = ScoreSet::V1(ScoreSetV1::new(shard.epoch(), shard.digest()?, scores));
 
             // create score set
-            broadcast_scores(
-                shard,
-                self.broadcaster.clone(),
-                auth_token,
-                score_set,
-                self.encoder_keypair.clone(),
-            )();
+            self.broadcast_handle
+                .process(
+                    BroadcastAction::Scores(shard, auth_token, score_set),
+                    msg.cancellation.clone(),
+                )
+                .await?;
             // let shard_ref = Digest::new(&shard).map_err(ShardError::DigestFailure)?;
             // let epoch = auth_token.epoch();
 

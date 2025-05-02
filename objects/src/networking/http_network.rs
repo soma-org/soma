@@ -225,10 +225,10 @@ impl<S: ObjectStorage + Clone> ObjectHttpServiceProxy<S> {
             .ok()
             .unwrap();
         let path = ObjectPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
-        warn!("path: {:?}", path);
+        // warn!("path: {:?}", path);
         // instead handle this as unauthorized!
         let peer = PeerPublicKey::new(pk.clone());
-        warn!("peer public key: {:?}", peer);
+        // warn!("peer public key: {:?}", peer);
 
         let reader = service
             .handle_download_object(&peer, &path)

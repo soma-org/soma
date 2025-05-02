@@ -2,6 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     actors::{
+        pipelines::broadcast::BroadcastAction,
         workers::{
             compression::{CompressionProcessor, CompressorInput},
             downloader::{Downloader, DownloaderInput},
@@ -12,11 +13,11 @@ use crate::{
         ActorHandle, ActorMessage, Processor,
     },
     compression::zstd_compressor::ZstdCompressor,
-    core::internal_broadcaster::Broadcaster,
+    core::{internal_broadcaster::Broadcaster, shard_tracker::ShardTracker},
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
     intelligence::model::Model,
-    messaging::{internal_broadcasts::broadcast_commit, EncoderInternalNetworkClient},
+    messaging::EncoderInternalNetworkClient,
     types::{
         encoder_committee::EncoderIndex,
         shard::Shard,
@@ -46,6 +47,8 @@ use shared::{
 };
 use tracing::debug;
 
+use super::broadcast::BroadcastProcessor;
+
 pub(crate) struct InputProcessor<
     C: EncoderInternalNetworkClient,
     O: ObjectNetworkClient,
@@ -54,7 +57,7 @@ pub(crate) struct InputProcessor<
 > {
     downloader: ActorHandle<Downloader<O, S>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-    broadcaster: Arc<Broadcaster<C>>,
+    broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
     // model: ActorHandle<ModelProcessor<M>>,
     encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
     encoder_keypair: Arc<EncoderKeyPair>,
@@ -71,7 +74,7 @@ impl<
     pub(crate) fn new(
         downloader: ActorHandle<Downloader<O, S>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-        broadcaster: Arc<Broadcaster<C>>,
+        broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
         // model: ActorHandle<ModelProcessor<M>>,
         encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
         encoder_keypair: Arc<EncoderKeyPair>,
@@ -80,7 +83,7 @@ impl<
         Self {
             downloader,
             compressor,
-            broadcaster,
+            broadcast_handle,
             // model,
             encryptor,
             encoder_keypair,
@@ -207,14 +210,17 @@ impl<
                 download_size,
             );
 
-            broadcast_commit(
-                shard,
-                verified_signed_input.auth_token().clone(),
-                self.broadcaster.clone(),
-                self.encoder_keypair.clone(),
-                None,
-                commit_data,
-            )();
+            self.broadcast_handle
+                .process(
+                    BroadcastAction::Commit(
+                        shard,
+                        verified_signed_input.auth_token().clone(),
+                        None,
+                        commit_data,
+                    ),
+                    msg.cancellation.clone(),
+                )
+                .await?;
 
             Ok(())
         }

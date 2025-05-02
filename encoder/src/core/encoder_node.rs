@@ -20,9 +20,10 @@ use tokio::sync::Semaphore;
 use crate::{
     actors::{
         pipelines::{
-            commit::CommitProcessor, commit_votes::CommitVotesProcessor,
-            evaluation::EvaluationProcessor, input::InputProcessor, reveal::RevealProcessor,
-            reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
+            broadcast::BroadcastProcessor, commit::CommitProcessor,
+            commit_votes::CommitVotesProcessor, evaluation::EvaluationProcessor,
+            input::InputProcessor, reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
+            scores::ScoresProcessor,
         },
         workers::{
             compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
@@ -92,7 +93,9 @@ use simulator::SimState;
 pub struct EncoderNode {
     internal_network_manager: EncoderInternalTonicManager,
     external_network_manager: EncoderExternalTonicManager,
+    object_network_manager: ObjectHttpManager,
     store: Arc<dyn Store>,
+    pub context: Context,
     object_storage: Arc<MemoryObjectStore>,
     #[cfg(msim)]
     sim_state: SimState,
@@ -193,34 +196,47 @@ impl EncoderNode {
         let broadcaster = Arc::new(Broadcaster::new(
             messaging_client.clone(),
             Arc::new(Semaphore::new(default_concurrency)),
+            encoder_keypair.public(),
         ));
 
-        let input_processor = InputProcessor::new(
-            downloader_handle.clone(),
-            compressor_handle,
-            broadcaster.clone(),
-            // model_handle,
-            encryptor_handle,
+        let shard_tracker = Arc::new(ShardTracker::new(
+            Arc::new(Semaphore::new(default_concurrency)),
+            store.clone(),
             encoder_keypair.clone(),
-            storage_handle.clone(),
+        ));
+
+        let broadcast_processor = BroadcastProcessor::new(
+            broadcaster.clone(),
+            store.clone(),
+            encoder_keypair.clone(),
+            shard_tracker.clone(),
         );
-        let input_handle = ActorManager::new(default_buffer, input_processor).handle();
+        let broadcast_manager = ActorManager::new(default_buffer, broadcast_processor);
+        let broadcast_handle = broadcast_manager.handle();
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
-            broadcaster.clone(),
+            broadcast_handle.clone(),
             encoder_keypair.clone(),
             storage_handle.clone(),
         );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
 
-        let shard_tracker = Arc::new(ShardTracker::new(
-            Arc::new(Semaphore::new(default_concurrency)),
-            broadcaster.clone(),
-            store.clone(),
+        // Now update ShardTracker with evaluation_handle and broadcast handle
+        shard_tracker.set_broadcast_handle(broadcast_handle.clone());
+        shard_tracker.set_evaluation_handle(evaluation_handle);
+
+        let input_processor = InputProcessor::new(
+            downloader_handle.clone(),
+            compressor_handle,
+            broadcast_handle,
+            // model_handle,
+            encryptor_handle,
             encoder_keypair.clone(),
-            evaluation_handle,
-        ));
+            storage_handle.clone(),
+        );
+
+        let input_handle = ActorManager::new(default_buffer, input_processor).handle();
 
         let commit_processor = CommitProcessor::new(
             store.clone(),
@@ -256,7 +272,11 @@ impl EncoderNode {
             reveal_votes_handle,
             scores_handle,
         );
-        let verifier = Arc::new(ShardVerifier::new(100, vdf_handle));
+        let verifier = Arc::new(ShardVerifier::new(
+            100,
+            vdf_handle,
+            encoder_keypair.public(),
+        ));
 
         let internal_network_service = Arc::new(EncoderInternalService::new(
             context.clone(),
@@ -291,8 +311,10 @@ impl EncoderNode {
         Self {
             internal_network_manager,
             external_network_manager,
+            object_network_manager,
             store,
             object_storage,
+            context,
             #[cfg(msim)]
             sim_state: Default::default(),
         }
@@ -321,6 +343,8 @@ impl EncoderNode {
             >,
         >>::stop(&mut self.external_network_manager)
         .await;
+
+        // TODO: self.object_network_manager.stop().await;
     }
 }
 
