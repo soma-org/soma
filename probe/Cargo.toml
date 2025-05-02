@@ -11,10 +11,25 @@ enum_dispatch.workspace = true
 numpy.workspace = true
 ndarray.workspace = true
 bytes.workspace = true
+tonic.workspace = true
+prost.workspace = true
+async-trait.workspace = true
+strum_macros.workspace = true
+thiserror.workspace = true
+soma-network.workspace = true
+tower-http.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+soma-http.workspace = true
+shared.workspace = true
 
 [dependencies.burn]
 workspace = true
 features = ["ndarray", "autodiff"]
+
+[build-dependencies]
+tonic-build.workspace = true
 
 [lints]
 workspace = true
