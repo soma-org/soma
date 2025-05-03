@@ -3,6 +3,7 @@ use dashmap::DashMap;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::storage::ObjectStorage;
 use parking_lot::RwLock;
+use probe::messaging::ProbeClient;
 use shared::{
     crypto::{
         keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
@@ -58,17 +59,17 @@ enum Finality {
     Rejected,
 }
 
-pub(crate) struct ShardTracker<C: EncoderInternalNetworkClient, S: ObjectStorage> {
+pub(crate) struct ShardTracker<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> {
     #[allow(clippy::type_complexity)]
     oneshots: Arc<DashMap<(Digest<Shard>, ShardStage), oneshot::Sender<()>>>,
     max_requests: Arc<Semaphore>, // Limits concurrent tasks
-    broadcast_handle: RwLock<Option<ActorHandle<BroadcastProcessor<C, S>>>>,
+    broadcast_handle: RwLock<Option<ActorHandle<BroadcastProcessor<C, S, P>>>>,
     store: Arc<dyn Store>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    evaluation_handle: RwLock<Option<ActorHandle<EvaluationProcessor<C, S>>>>,
+    evaluation_handle: RwLock<Option<ActorHandle<EvaluationProcessor<C, S, P>>>>,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage> ShardTracker<C, S> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> ShardTracker<C, S, P> {
     pub(crate) fn new(
         max_requests: Arc<Semaphore>,
         store: Arc<dyn Store>,
@@ -84,11 +85,11 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> ShardTracker<C, S> {
         }
     }
 
-    pub(crate) fn set_broadcast_handle(&self, handle: ActorHandle<BroadcastProcessor<C, S>>) {
+    pub(crate) fn set_broadcast_handle(&self, handle: ActorHandle<BroadcastProcessor<C, S, P>>) {
         *self.broadcast_handle.write() = Some(handle);
     }
 
-    pub(crate) fn set_evaluation_handle(&self, handle: ActorHandle<EvaluationProcessor<C, S>>) {
+    pub(crate) fn set_evaluation_handle(&self, handle: ActorHandle<EvaluationProcessor<C, S, P>>) {
         *self.evaluation_handle.write() = Some(handle);
     }
 

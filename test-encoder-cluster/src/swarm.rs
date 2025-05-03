@@ -147,10 +147,12 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     // Get a unique IP for this encoder
                     let ip = local_ip_utils::get_new_ip();
 
+                    // TODO: switch to using the find_next_available_port util!
                     // Generate network and object addresses
                     let internal_port = 8000 + (i * 3) as u16;
                     let external_port = 8001 + (i * 3) as u16;
                     let object_port = 8002 + (i * 3) as u16;
+                    let probe_port = 8003 + (i * 3) as u16;
 
                     // Generate unique addresses with specific ports
                     let internal_network_address =
@@ -165,6 +167,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         );
                     let object_address =
                         local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
+                    let probe_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, probe_port);
 
                     let project_root = PathBuf::from("/tmp"); // Default test paths
                     let entry_point = PathBuf::from("test_module.py");
@@ -176,6 +180,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         internal_network_address,
                         external_network_address,
                         object_address,
+                        probe_address,
                         project_root,
                         entry_point,
                     ));
@@ -199,6 +204,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     let internal_port = 8000 + (i * 3) as u16;
                     let external_port = 8001 + (i * 3) as u16;
                     let object_port = 8002 + (i * 3) as u16;
+                    let probe_port = 8003 + (i * 3) as u16;
 
                     // Generate unique addresses with specific ports
                     let internal_network_address =
@@ -213,6 +219,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         );
                     let object_address =
                         local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
+                    let probe_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, probe_port);
 
                     let project_root = PathBuf::from("/tmp");
                     let entry_point = PathBuf::from("test_module.py");
@@ -224,6 +232,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         internal_network_address,
                         external_network_address,
                         object_address,
+                        probe_address,
                         project_root,
                         entry_point,
                     ));
@@ -251,6 +260,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     let internal_port = 8000 + (i * 3) as u16;
                     let external_port = 8001 + (i * 3) as u16;
                     let object_port = 8002 + (i * 3) as u16;
+                    let probe_port = 8003 + (i * 3) as u16;
 
                     // Generate unique addresses with specific ports
                     let internal_network_address =
@@ -265,6 +275,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         );
                     let object_address =
                         local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
+                    let probe_address =
+                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, probe_port);
 
                     let project_root = PathBuf::from("/tmp");
                     let entry_point = PathBuf::from("test_module.py");
@@ -276,6 +288,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                         internal_network_address,
                         external_network_address,
                         object_address,
+                        probe_address,
                         project_root,
                         entry_point,
                     ));

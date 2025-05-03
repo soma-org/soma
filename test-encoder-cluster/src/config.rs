@@ -44,10 +44,14 @@ pub struct EncoderConfig {
     pub external_network_address: Multiaddr,
     /// The network address for object storage
     pub object_address: Multiaddr,
+    /// The network address for probe service
+    pub probe_address: Multiaddr,
     /// Parameters for the encoder system
     pub parameters: Arc<Parameters>,
     /// Parameters for the object system
     pub object_parameters: Arc<objects::parameters::Parameters>,
+    /// Parameters for the probe system
+    pub probe_parameters: Arc<probe::parameters::Parameters>,
     /// Path to the project root for Python interpreter
     pub project_root: PathBuf,
     /// Path to the entry point for Python module
@@ -71,12 +75,14 @@ impl EncoderConfig {
         internal_network_address: Multiaddr,
         external_network_address: Multiaddr,
         object_address: Multiaddr,
+        probe_address: Multiaddr,
         project_root: PathBuf,
         entry_point: PathBuf,
     ) -> Self {
         // Create default parameters
         let parameters = Arc::new(Parameters::default());
         let object_parameters = Arc::new(objects::parameters::Parameters::default());
+        let probe_parameters = Arc::new(probe::parameters::Parameters::default());
 
         // Create empty network info
         let networking_info = NetworkingInfo::default();
@@ -101,8 +107,10 @@ impl EncoderConfig {
             internal_network_address,
             external_network_address,
             object_address,
+            probe_address,
             parameters,
             object_parameters,
+            probe_parameters,
             project_root,
             entry_point,
             networking_info,

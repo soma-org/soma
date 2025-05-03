@@ -3,15 +3,21 @@ use crate::{
     EmbeddingAPI, ProbeInput, ProbeInputAPI, ProbeOutput, ProbeOutputV1, ScoreV1,
 };
 
-use super::ProbeNetworkService;
+use super::ProbeService;
 use async_trait::async_trait;
 use bytes::Bytes;
 use shared::crypto::keys::EncoderPublicKey;
 
-pub(crate) struct MockProbeService {}
+pub struct MockProbeService {}
+
+impl MockProbeService {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 #[async_trait]
-impl ProbeNetworkService for MockProbeService {
+impl ProbeService for MockProbeService {
     async fn handle_probe(&self, probe_input_bytes: Bytes) -> ProbeResult<Bytes> {
         let probe_input: ProbeInput =
             bcs::from_bytes(&probe_input_bytes).map_err(ProbeError::MalformedType)?;

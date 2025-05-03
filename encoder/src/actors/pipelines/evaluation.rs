@@ -1,10 +1,9 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     actors::{workers::storage::StorageProcessor, ActorHandle, ActorMessage, Processor},
-    core::{internal_broadcaster::Broadcaster, shard_tracker::ShardTracker},
     datastore::Store,
-    error::ShardResult,
+    error::{ShardError, ShardResult},
     messaging::EncoderInternalNetworkClient,
     types::{
         shard::Shard,
@@ -14,35 +13,50 @@ use crate::{
 };
 use async_trait::async_trait;
 use objects::storage::ObjectStorage;
-use shared::crypto::keys::EncoderKeyPair;
+use probe::{messaging::ProbeClient, EmbeddingV1, ProbeInputV1, ProbeOutputAPI, ScoreAPI};
+use shared::{
+    crypto::{keys::EncoderKeyPair, EncryptionKey},
+    metadata::Metadata,
+};
 
 use super::broadcast::{BroadcastAction, BroadcastProcessor};
 
-pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, S: ObjectStorage> {
+pub(crate) struct EvaluationProcessor<
+    C: EncoderInternalNetworkClient,
+    S: ObjectStorage,
+    P: ProbeClient,
+> {
     store: Arc<dyn Store>,
-    broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
+    broadcast_handle: ActorHandle<BroadcastProcessor<C, S, P>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: ActorHandle<StorageProcessor<S>>,
+    probe_client: Arc<P>,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage> EvaluationProcessor<C, S> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
+    EvaluationProcessor<C, S, P>
+{
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
+        broadcast_handle: ActorHandle<BroadcastProcessor<C, S, P>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: ActorHandle<StorageProcessor<S>>,
+        probe_client: Arc<P>,
     ) -> Self {
         Self {
             store,
             broadcast_handle,
             encoder_keypair,
             storage,
+            probe_client,
         }
     }
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage> Processor for EvaluationProcessor<C, S> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processor
+    for EvaluationProcessor<C, S, P>
+{
     type Input = (ShardAuthToken, Shard);
     type Output = ();
 
@@ -50,18 +64,36 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> Processor for Evaluation
         let result: ShardResult<()> = async {
             let (auth_token, shard) = msg.input;
 
-            let mut encoders = shard.encoders();
-            encoders.sort();
-
-            let scores = encoders
+            let embeddings: Vec<EmbeddingV1> = shard
+                .encoders()
                 .iter()
-                .enumerate()
-                .map(|(i, e)| ScoreV1::new(e.to_owned(), i as u8))
+                .map(|e| {
+                    EmbeddingV1::new(
+                        e.clone(),
+                        e.clone(),
+                        Metadata::default(),
+                        Metadata::default(),
+                        EncryptionKey::default(),
+                    )
+                })
                 .collect();
 
+            let timeout = Duration::from_secs(1);
+            let probe_input = probe::ProbeInput::V1(ProbeInputV1::new(embeddings));
+            let probe_output = self
+                .probe_client
+                .probe(probe_input, timeout)
+                .await
+                .map_err(ShardError::ProbeError)?;
+
+            let scores = probe_output.scores();
+
+            let scores: Vec<ScoreV1> = scores
+                .iter()
+                .map(|s| ScoreV1::new(s.encoder().clone(), s.rank()))
+                .collect();
             let score_set = ScoreSet::V1(ScoreSetV1::new(shard.epoch(), shard.digest()?, scores));
 
-            // create score set
             self.broadcast_handle
                 .process(
                     BroadcastAction::Scores(shard, auth_token, score_set),

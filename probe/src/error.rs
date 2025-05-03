@@ -4,7 +4,7 @@ use thiserror::Error;
 pub type ProbeResult<T> = Result<T, ProbeError>;
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]
-pub(crate) enum ProbeError {
+pub enum ProbeError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
     #[error("Failed to connect as client: {0:?}")]

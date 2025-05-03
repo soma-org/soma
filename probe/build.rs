@@ -25,8 +25,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("probe")
                 .route_name("Probe")
-                .input_type("crate::messaging::tonic::SendProbeRequest")
-                .output_type("crate::messaging::tonic::SendProbeResponse")
+                .input_type("crate::messaging::tonic::ProbeRequest")
+                .output_type("crate::messaging::tonic::ProbeResponse")
                 .codec_path(codec_path)
                 .build(),
         )

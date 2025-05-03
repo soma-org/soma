@@ -15,6 +15,7 @@ use crate::{
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
+use probe::messaging::ProbeClient;
 use shared::{
     crypto::keys::PeerPublicKey, probe::ProbeMetadata, signed::Signed, verified::Verified,
 };
@@ -26,18 +27,19 @@ pub(crate) struct CommitProcessor<
     E: EncoderInternalNetworkClient,
     C: ObjectNetworkClient,
     S: ObjectStorage,
+    P: ProbeClient,
 > {
     store: Arc<dyn Store>,
-    shard_tracker: Arc<ShardTracker<E, S>>,
+    shard_tracker: Arc<ShardTracker<E, S, P>>,
     downloader: ActorHandle<Downloader<C, S>>,
 }
 
-impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
-    CommitProcessor<E, C, S>
+impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
+    CommitProcessor<E, C, S, P>
 {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        shard_tracker: Arc<ShardTracker<E, S>>,
+        shard_tracker: Arc<ShardTracker<E, S, P>>,
         downloader: ActorHandle<Downloader<C, S>>,
     ) -> Self {
         Self {
@@ -49,8 +51,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage> Processor
-    for CommitProcessor<E, O, S>
+impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
+    Processor for CommitProcessor<E, O, S, P>
 {
     type Input = (
         Shard,

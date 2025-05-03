@@ -3,16 +3,22 @@ use enum_dispatch::enum_dispatch;
 use error::{ModelError, ModelResult};
 use ndarray::Array2;
 use serde::{Deserialize, Serialize};
-pub(crate) mod client;
-pub(crate) mod error;
+pub mod client;
+pub mod error;
 
 #[enum_dispatch]
 pub(crate) trait ModelInputAPI {
     fn input(&self) -> Bytes;
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct ModelInputV1 {
+pub struct ModelInputV1 {
     input: Bytes,
+}
+
+impl ModelInputV1 {
+    pub fn new(input: Bytes) -> Self {
+        Self { input }
+    }
 }
 
 impl ModelInputAPI for ModelInputV1 {
@@ -23,7 +29,7 @@ impl ModelInputAPI for ModelInputV1 {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ModelInputAPI)]
-pub(crate) enum ModelInput {
+pub enum ModelInput {
     V1(ModelInputV1),
 }
 
@@ -34,14 +40,14 @@ pub struct ByteRange {
 }
 
 #[enum_dispatch]
-pub(crate) trait ModelOutputAPI {
+pub trait ModelOutputAPI {
     fn embeddings(&self) -> Array2<f32>;
     fn byte_range(&self, index: usize) -> Option<ByteRange>;
     fn byte_ranges(&self) -> Vec<ByteRange>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub(crate) struct ModelOutputV1 {
+pub struct ModelOutputV1 {
     embeddings: Array2<f32>,
     byte_ranges: Vec<ByteRange>,
 }
@@ -60,7 +66,7 @@ impl ModelOutputAPI for ModelOutputV1 {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[enum_dispatch(ModelOutputAPI)]
-pub(crate) enum ModelOutput {
+pub enum ModelOutput {
     V1(ModelOutputV1),
 }
 

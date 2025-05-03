@@ -9,16 +9,18 @@ use crate::{
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use objects::storage::ObjectStorage;
+use probe::messaging::ProbeClient;
 use shared::{signed::Signed, verified::Verified};
 use std::sync::Arc;
 
-pub(crate) struct RevealProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
+pub(crate) struct RevealProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
+{
     store: Arc<dyn Store>,
-    shard_tracker: Arc<ShardTracker<E, S>>,
+    shard_tracker: Arc<ShardTracker<E, S, P>>,
 }
 
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage> RevealProcessor<E, S> {
-    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: Arc<ShardTracker<E, S>>) -> Self {
+impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> RevealProcessor<E, S, P> {
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: Arc<ShardTracker<E, S, P>>) -> Self {
         Self {
             store,
             shard_tracker,
@@ -27,7 +29,9 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage> RevealProcessor<E, S> {
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage> Processor for RevealProcessor<E, S> {
+impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processor
+    for RevealProcessor<E, S, P>
+{
     type Input = (
         Shard,
         Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,

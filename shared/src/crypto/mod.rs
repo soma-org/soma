@@ -13,7 +13,7 @@ pub const DIGEST_LENGTH: usize = DefaultHashFunction::OUTPUT_SIZE;
 
 pub type Aes256Key = GenericArray<u8, <aes::Aes256 as crypto_common::KeySizeUser>::KeySize>;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Aes256IV {
     pub iv: [u8; 16],
     pub key: Aes256Key,
@@ -22,6 +22,12 @@ pub struct Aes256IV {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EncryptionKey {
     Aes256(Aes256IV),
+}
+
+impl Default for EncryptionKey {
+    fn default() -> Self {
+        EncryptionKey::Aes256(Aes256IV::default())
+    }
 }
 pub trait Encryptor: Send + Sync + Sized + 'static {
     fn encrypt(&self, key: EncryptionKey, contents: Bytes) -> SharedResult<Bytes>;

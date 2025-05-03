@@ -1,11 +1,11 @@
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/soma.ProbeTonicService.rs"));
 }
-use super::{ProbeNetworkClient, ProbeNetworkManager, ProbeNetworkService};
+use super::{ProbeClient, ProbeManager, ProbeService};
 use crate::error::{ProbeError, ProbeResult};
 use crate::messaging::tonic::generated::probe_tonic_service_client::ProbeTonicServiceClient;
 use crate::parameters::Parameters;
-use crate::ProbeInput;
+use crate::{ProbeInput, ProbeOutput};
 use async_trait::async_trait;
 use bytes::Bytes;
 use generated::probe_tonic_service_server::{ProbeTonicService, ProbeTonicServiceServer};
@@ -23,13 +23,13 @@ pub(crate) type Channel = tower_http::trace::Trace<
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
 >;
 
-pub(crate) struct ProbeTonicClient {
+pub struct ProbeTonicClient {
     address: Multiaddr,
     parameters: Arc<Parameters>,
     channel: Channel,
 }
 impl ProbeTonicClient {
-    pub(crate) async fn new(address: Multiaddr, parameters: Arc<Parameters>) -> ProbeResult<Self> {
+    pub async fn new(address: Multiaddr, parameters: Arc<Parameters>) -> ProbeResult<Self> {
         let config = parameters.tonic.clone();
         let address_string = to_host_port_str(&address).map_err(|e| {
             ProbeError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
@@ -89,46 +89,52 @@ impl ProbeTonicClient {
 }
 
 #[async_trait]
-impl ProbeNetworkClient for ProbeTonicClient {
-    async fn probe(&self, probe_input: ProbeInput, timeout: Duration) -> ProbeResult<()> {
+impl ProbeClient for ProbeTonicClient {
+    async fn probe(&self, probe_input: ProbeInput, timeout: Duration) -> ProbeResult<ProbeOutput> {
         let probe_input_bytes = Bytes::copy_from_slice(&bcs::to_bytes(&probe_input).unwrap());
-        let mut request = Request::new(SendProbeRequest {
-            probe_input: probe_input_bytes,
+        let mut request = Request::new(ProbeRequest {
+            input: probe_input_bytes,
         });
         request.set_timeout(timeout);
-        self.get_client()
+        let probe_output_response = self
+            .get_client()
             .await?
             .probe(request)
             .await
             .map_err(|e| ProbeError::NetworkRequest(format!("request failed: {e:?}")))?;
-        Ok(())
+
+        let probe_output_bytes = probe_output_response.into_inner().output;
+
+        let probe_output: ProbeOutput =
+            bcs::from_bytes(&probe_output_bytes).map_err(ProbeError::MalformedType)?;
+        Ok(probe_output)
     }
 }
 
-struct ProbeTonicServiceProxy<S: ProbeNetworkService> {
+struct ProbeTonicServiceProxy<S: ProbeService> {
     service: Arc<S>,
 }
 
-impl<S: ProbeNetworkService> ProbeTonicServiceProxy<S> {
+impl<S: ProbeService> ProbeTonicServiceProxy<S> {
     const fn new(service: Arc<S>) -> Self {
         Self { service }
     }
 }
 
 #[async_trait]
-impl<S: ProbeNetworkService> ProbeTonicService for ProbeTonicServiceProxy<S> {
+impl<S: ProbeService> ProbeTonicService for ProbeTonicServiceProxy<S> {
     async fn probe(
         &self,
-        request: Request<SendProbeRequest>,
-    ) -> Result<Response<SendProbeResponse>, tonic::Status> {
-        let probe_input = request.into_inner().probe_input;
-        let probe_output = self
+        request: Request<ProbeRequest>,
+    ) -> Result<Response<ProbeResponse>, tonic::Status> {
+        let input = request.into_inner().input;
+        let output = self
             .service
-            .handle_probe(probe_input)
+            .handle_probe(input)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
-        Ok(Response::new(SendProbeResponse { probe_output }))
+        Ok(Response::new(ProbeResponse { output }))
     }
 }
 
@@ -149,7 +155,7 @@ impl ProbeTonicManager {
     }
 }
 
-impl<S: ProbeNetworkService> ProbeNetworkManager<S> for ProbeTonicManager {
+impl<S: ProbeService> ProbeManager<S> for ProbeTonicManager {
     fn new(parameters: Arc<Parameters>, address: Multiaddr) -> Self {
         Self::new(parameters, address)
     }
@@ -230,13 +236,13 @@ impl Drop for ProbeTonicManager {
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendProbeRequest {
+pub(crate) struct ProbeRequest {
     #[prost(bytes = "bytes", tag = "1")]
-    probe_input: Bytes,
+    input: Bytes,
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendProbeResponse {
+pub(crate) struct ProbeResponse {
     #[prost(bytes = "bytes", tag = "1")]
-    probe_output: Bytes,
+    output: Bytes,
 }

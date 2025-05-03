@@ -4,7 +4,7 @@ use thiserror::Error;
 pub type ModelResult<T> = Result<T, ModelError>;
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]
-pub(crate) enum ModelError {
+pub enum ModelError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
     #[error("Failed to parse URL: {0}")]

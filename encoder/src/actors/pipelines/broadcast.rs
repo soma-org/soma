@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
+use probe::messaging::ProbeClient;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -44,19 +45,25 @@ pub(crate) enum BroadcastAction {
 }
 
 /// Processor for handling all broadcast operations
-pub(crate) struct BroadcastProcessor<C: EncoderInternalNetworkClient, S: ObjectStorage> {
+pub(crate) struct BroadcastProcessor<
+    C: EncoderInternalNetworkClient,
+    S: ObjectStorage,
+    P: ProbeClient,
+> {
     broadcaster: Arc<Broadcaster<C>>,
     store: Arc<dyn Store>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    shard_tracker: Arc<ShardTracker<C, S>>,
+    shard_tracker: Arc<ShardTracker<C, S, P>>,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage> BroadcastProcessor<C, S> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
+    BroadcastProcessor<C, S, P>
+{
     pub(crate) fn new(
         broadcaster: Arc<Broadcaster<C>>,
         store: Arc<dyn Store>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        shard_tracker: Arc<ShardTracker<C, S>>,
+        shard_tracker: Arc<ShardTracker<C, S, P>>,
     ) -> Self {
         Self {
             broadcaster,
@@ -436,7 +443,9 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage> BroadcastProcessor<C, S>
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage> Processor for BroadcastProcessor<C, S> {
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processor
+    for BroadcastProcessor<C, S, P>
+{
     type Input = BroadcastAction;
     type Output = ();
 

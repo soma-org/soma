@@ -1,25 +1,25 @@
-pub(crate) mod service;
-pub(crate) mod tonic;
+pub mod service;
+pub mod tonic;
 use async_trait::async_trait;
 use bytes::Bytes;
 use soma_network::multiaddr::Multiaddr;
 use std::{sync::Arc, time::Duration};
 
-use crate::{error::ProbeResult, parameters::Parameters, ProbeInput};
+use crate::{error::ProbeResult, parameters::Parameters, ProbeInput, ProbeOutput};
 
 #[async_trait]
-pub(crate) trait ProbeNetworkClient: Send + Sync + Sized + 'static {
-    async fn probe(&self, probe_input: ProbeInput, timeout: Duration) -> ProbeResult<()>;
+pub trait ProbeClient: Send + Sync + Sized + 'static {
+    async fn probe(&self, probe_input: ProbeInput, timeout: Duration) -> ProbeResult<ProbeOutput>;
 }
 
 #[async_trait]
-pub(crate) trait ProbeNetworkService: Send + Sync + Sized + 'static {
+pub trait ProbeService: Send + Sync + Sized + 'static {
     async fn handle_probe(&self, probe_input_bytes: Bytes) -> ProbeResult<Bytes>;
 }
 
-pub(crate) trait ProbeNetworkManager<P>: Send + Sync
+pub trait ProbeManager<P>: Send + Sync
 where
-    P: ProbeNetworkService,
+    P: ProbeService,
 {
     /// Creates a new network manager
     fn new(parameters: Arc<Parameters>, address: Multiaddr) -> Self;

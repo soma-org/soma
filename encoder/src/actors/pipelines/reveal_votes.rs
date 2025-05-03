@@ -11,15 +11,22 @@ use crate::{
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use objects::storage::ObjectStorage;
+use probe::messaging::ProbeClient;
 use shared::{signed::Signed, verified::Verified};
 
-pub(crate) struct RevealVotesProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage> {
+pub(crate) struct RevealVotesProcessor<
+    E: EncoderInternalNetworkClient,
+    S: ObjectStorage,
+    P: ProbeClient,
+> {
     store: Arc<dyn Store>,
-    shard_tracker: Arc<ShardTracker<E, S>>,
+    shard_tracker: Arc<ShardTracker<E, S, P>>,
 }
 
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage> RevealVotesProcessor<E, S> {
-    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: Arc<ShardTracker<E, S>>) -> Self {
+impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
+    RevealVotesProcessor<E, S, P>
+{
+    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: Arc<ShardTracker<E, S, P>>) -> Self {
         Self {
             store,
             shard_tracker,
@@ -28,7 +35,9 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage> RevealVotesProcessor<E, 
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage> Processor for RevealVotesProcessor<E, S> {
+impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processor
+    for RevealVotesProcessor<E, S, P>
+{
     type Input = (
         Shard,
         Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,

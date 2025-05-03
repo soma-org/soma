@@ -11,17 +11,59 @@ use crate::{
 };
 
 #[async_trait]
-pub(crate) trait ModelNetworkClient: Send + Sync + Sized + 'static {
+pub trait ModelClient: Send + Sync + Sized + 'static {
     async fn call(&self, model_input: ModelInput, timeout: Duration) -> ModelResult<ModelOutput>;
 }
 
-pub(crate) struct MockModelClient {}
+pub struct MockModelClient {}
 
 #[async_trait]
-impl ModelNetworkClient for MockModelClient {
+impl ModelClient for MockModelClient {
     async fn call(&self, model_input: ModelInput, timeout: Duration) -> ModelResult<ModelOutput> {
         Ok(ModelOutput::V1(ModelOutputV1 {
             embeddings: array![
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
                 [1.0, 1.0, 1.0],
                 [1.0, 1.0, 1.0],
                 [1.0, 1.0, 1.0],
@@ -61,7 +103,7 @@ impl HttpModelClient {
 }
 
 #[async_trait]
-impl ModelNetworkClient for HttpModelClient {
+impl ModelClient for HttpModelClient {
     async fn call(&self, model_input: ModelInput, timeout: Duration) -> ModelResult<ModelOutput> {
         let response = self
             .client

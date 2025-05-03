@@ -1,5 +1,6 @@
 use std::{future::Future, path::Path, sync::Arc};
 
+use model::client::{MockModelClient, ModelClient};
 use objects::{
     networking::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -7,6 +8,9 @@ use objects::{
     },
     storage::{filesystem::FilesystemObjectStorage, memory::MemoryObjectStore},
 };
+use probe::messaging::service::MockProbeService;
+use probe::messaging::tonic::{ProbeTonicClient, ProbeTonicManager};
+use probe::messaging::ProbeManager;
 use quick_cache::sync::Cache;
 use shared::{
     crypto::keys::{EncoderKeyPair, PeerKeyPair},
@@ -94,6 +98,7 @@ pub struct EncoderNode {
     internal_network_manager: EncoderInternalTonicManager,
     external_network_manager: EncoderExternalTonicManager,
     object_network_manager: ObjectHttpManager,
+    probe_network_manager: ProbeTonicManager,
     store: Arc<dyn Store>,
     pub context: Context,
     object_storage: Arc<MemoryObjectStore>,
@@ -108,10 +113,12 @@ impl EncoderNode {
         networking_info: NetworkingInfo,
         parameters: Arc<Parameters>,
         object_parameters: Arc<objects::parameters::Parameters>,
+        probe_parameters: Arc<probe::parameters::Parameters>,
         peer_keypair: PeerKeyPair,
         internal_address: Multiaddr,
         external_address: Multiaddr,
         object_address: Multiaddr,
+        probe_address: Multiaddr,
         allower: AllowPublicKeys,
         connections_info: ConnectionsInfo,
         project_root: &Path,
@@ -132,6 +139,7 @@ impl EncoderNode {
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
                     FilesystemObjectStorage,
+                    ProbeTonicClient,
                 >,
             >,
         >>::client(&internal_network_manager);
@@ -154,6 +162,20 @@ impl EncoderNode {
         let object_client = <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::client(
             &object_network_manager,
         );
+
+        ///////////////////////////
+        let mut probe_network_manager =
+            ProbeTonicManager::new(probe_parameters.clone(), probe_address.clone());
+
+        let probe_service = Arc::new(MockProbeService::new());
+        probe_network_manager.start(probe_service).await;
+
+        let probe_client = Arc::new(
+            ProbeTonicClient::new(probe_address.clone(), probe_parameters.clone())
+                .await
+                .unwrap(),
+        );
+        ////////////////////////////
 
         let encoder_keypair = Arc::new(encoder_keypair);
 
@@ -219,6 +241,7 @@ impl EncoderNode {
             broadcast_handle.clone(),
             encoder_keypair.clone(),
             storage_handle.clone(),
+            probe_client,
         );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
 
@@ -226,10 +249,13 @@ impl EncoderNode {
         shard_tracker.set_broadcast_handle(broadcast_handle.clone());
         shard_tracker.set_evaluation_handle(evaluation_handle);
 
+        let model_client = Arc::new(MockModelClient {});
+
         let input_processor = InputProcessor::new(
             downloader_handle.clone(),
             compressor_handle,
             broadcast_handle,
+            model_client,
             // model_handle,
             encryptor_handle,
             encoder_keypair.clone(),
@@ -315,6 +341,7 @@ impl EncoderNode {
             store,
             object_storage,
             context,
+            probe_network_manager,
             #[cfg(msim)]
             sim_state: Default::default(),
         }
@@ -327,6 +354,7 @@ impl EncoderNode {
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
                     MemoryObjectStore,
+                    ProbeTonicClient,
                 >,
             >,
         >>::stop(&mut self.internal_network_manager)
@@ -337,8 +365,9 @@ impl EncoderNode {
                 ExternalPipelineDispatcher<
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
-                    // PythonModule,
+                    MockModelClient,
                     MemoryObjectStore,
+                    ProbeTonicClient,
                 >,
             >,
         >>::stop(&mut self.external_network_manager)

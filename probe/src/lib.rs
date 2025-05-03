@@ -1,7 +1,7 @@
-pub(crate) mod error;
-pub(crate) mod messaging;
+pub mod error;
+pub mod messaging;
 pub(crate) mod modules;
-pub(crate) mod parameters;
+pub mod parameters;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use shared::{
@@ -21,8 +21,14 @@ pub enum ProbeInput {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct ProbeInputV1 {
+pub struct ProbeInputV1 {
     embeddings: Vec<EmbeddingV1>,
+}
+
+impl ProbeInputV1 {
+    pub fn new(embeddings: Vec<EmbeddingV1>) -> Self {
+        Self { embeddings }
+    }
 }
 
 impl ProbeInputAPI for ProbeInputV1 {
@@ -50,7 +56,7 @@ pub enum Embedding {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct EmbeddingV1 {
+pub struct EmbeddingV1 {
     encoder: EncoderPublicKey,
     committer: EncoderPublicKey,
     probe: Metadata,

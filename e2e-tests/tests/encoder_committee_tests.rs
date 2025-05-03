@@ -12,7 +12,7 @@ async fn test_encoder_cluster() {
     init_tracing();
 
     let cluster = TestEncoderClusterBuilder::new()
-        .with_num_encoders(20)
+        .with_num_encoders(4)
         .build()
         .await;
 

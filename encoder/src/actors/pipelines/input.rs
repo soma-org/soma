@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use crate::{
     actors::{
@@ -28,11 +28,13 @@ use crate::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
+use model::{client::ModelClient, ModelInput, ModelInputV1};
 use objects::{
     error::ObjectError,
     networking::ObjectNetworkClient,
     storage::{ObjectPath, ObjectStorage},
 };
+use probe::messaging::ProbeClient;
 use rand::{rngs::OsRng, RngCore};
 use shared::{
     checksum::Checksum,
@@ -52,13 +54,14 @@ use super::broadcast::BroadcastProcessor;
 pub(crate) struct InputProcessor<
     C: EncoderInternalNetworkClient,
     O: ObjectNetworkClient,
-    // M: Model,
+    M: ModelClient,
     S: ObjectStorage,
+    P: ProbeClient,
 > {
     downloader: ActorHandle<Downloader<O, S>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-    broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
-    // model: ActorHandle<ModelProcessor<M>>,
+    broadcast_handle: ActorHandle<BroadcastProcessor<C, S, P>>,
+    model_client: Arc<M>,
     encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: ActorHandle<StorageProcessor<S>>,
@@ -67,15 +70,17 @@ pub(crate) struct InputProcessor<
 impl<
         C: EncoderInternalNetworkClient,
         O: ObjectNetworkClient,
-        /*M: Model,*/ S: ObjectStorage,
-    > InputProcessor<C, O, /*M,*/ S>
+        M: ModelClient,
+        S: ObjectStorage,
+        P: ProbeClient,
+    > InputProcessor<C, O, M, S, P>
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         downloader: ActorHandle<Downloader<O, S>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-        broadcast_handle: ActorHandle<BroadcastProcessor<C, S>>,
-        // model: ActorHandle<ModelProcessor<M>>,
+        broadcast_handle: ActorHandle<BroadcastProcessor<C, S, P>>,
+        model_client: Arc<M>,
         encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: ActorHandle<StorageProcessor<S>>,
@@ -84,7 +89,7 @@ impl<
             downloader,
             compressor,
             broadcast_handle,
-            // model,
+            model_client,
             encryptor,
             encoder_keypair,
             storage,
@@ -96,8 +101,10 @@ impl<
 impl<
         C: EncoderInternalNetworkClient,
         O: ObjectNetworkClient,
-        /*M: Model,*/ S: ObjectStorage,
-    > Processor for InputProcessor<C, O, /*M,*/ S>
+        M: ModelClient,
+        S: ObjectStorage,
+        P: ProbeClient,
+    > Processor for InputProcessor<C, O, M, S, P>
 {
     type Input = (
         Shard,
@@ -140,12 +147,26 @@ impl<
             // let shape = model_output.shape();
 
             // Create compressible data (repeated pattern)
-            let mut buffer = vec![0u8; 1024 * 1024];
-            for i in 0..buffer.len() {
-                buffer[i] = (i % 256) as u8; // Creates a pattern that compresses well
-            }
-            // Convert to Bytes
-            let model_bytes = Bytes::from(buffer);
+            //
+
+            // TODO: use config for model timeout
+            let model_input = ModelInput::V1(ModelInputV1::new(Bytes::from(
+                "mock input, not used at all".to_string(),
+            )));
+
+            let timeout = Duration::from_secs(1);
+            let model_output = self
+                .model_client
+                .call(model_input, timeout)
+                .await
+                .map_err(ShardError::ModelError)?;
+
+            let serialized = serde_json::to_string(&model_output).expect("Serialization failed");
+            let message = bcs::to_bytes(&serialized).map_err(ShardError::MalformedType);
+            debug!("bcs: {:?}", message);
+            let message = message?;
+            let model_bytes = Bytes::from(message);
+            debug!("model bytes: {:?}", model_bytes);
 
             let uncompressed_size = model_bytes.len();
             let compressed_embeddings = self
@@ -156,6 +177,7 @@ impl<
                 )
                 .await?;
 
+            debug!("Passed compression");
             let encoder_public_key = self.encoder_keypair.public().clone();
             debug!("Encoder public key: {:?}", encoder_public_key);
             debug!("Shard encoders: {:?}", shard.encoders());

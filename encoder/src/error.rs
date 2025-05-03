@@ -1,6 +1,8 @@
 // use consensus_config::{AuthorityIndex, Epoch, Stake};
 use fastcrypto::error::FastCryptoError;
+use model::error::ModelError;
 use objects::error::ObjectError;
+use probe::error::ProbeError;
 use shared::error::SharedError;
 use strum_macros::IntoStaticStr;
 use thiserror::Error;
@@ -14,6 +16,10 @@ use thiserror::Error;
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub enum ShardError {
+    #[error("Probe error: {0}")]
+    ProbeError(ProbeError),
+    #[error("Model error: {0}")]
+    ModelError(ModelError),
     #[error("Not a member of the shard")]
     InvalidShardMember,
     #[error("Cache error")]

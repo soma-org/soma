@@ -187,6 +187,7 @@ soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
 objects = { path = "objects" }
+model = {path = "model"}
 test-encoder-cluster = { path = "test-encoder-cluster" }
 
 # external deps

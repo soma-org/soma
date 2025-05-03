@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
+use model::client::ModelClient;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
+use probe::messaging::ProbeClient;
 use shared::{
     crypto::keys::PeerPublicKey, probe::ProbeMetadata, signed::Signed, verified::Verified,
 };
@@ -16,7 +18,6 @@ use crate::{
         ActorHandle,
     },
     error::ShardResult,
-    intelligence::model::Model,
     messaging::EncoderInternalNetworkClient,
     types::{
         shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
@@ -62,23 +63,24 @@ pub(crate) struct InternalPipelineDispatcher<
     E: EncoderInternalNetworkClient,
     C: ObjectNetworkClient,
     S: ObjectStorage,
+    P: ProbeClient,
 > {
-    certified_commit_handle: ActorHandle<CommitProcessor<E, C, S>>,
-    commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S>>,
-    reveal_handle: ActorHandle<RevealProcessor<E, S>>,
-    reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,
-    scores_handle: ActorHandle<ScoresProcessor<E, S>>,
+    certified_commit_handle: ActorHandle<CommitProcessor<E, C, S, P>>,
+    commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
+    reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
+    reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
+    scores_handle: ActorHandle<ScoresProcessor<E, S, P>>,
 }
 
-impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
-    InternalPipelineDispatcher<E, C, S>
+impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
+    InternalPipelineDispatcher<E, C, S, P>
 {
     pub(crate) fn new(
-        certified_commit_handle: ActorHandle<CommitProcessor<E, C, S>>,
-        commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S>>,
-        reveal_handle: ActorHandle<RevealProcessor<E, S>>,
-        reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S>>,
-        scores_handle: ActorHandle<ScoresProcessor<E, S>>,
+        certified_commit_handle: ActorHandle<CommitProcessor<E, C, S, P>>,
+        commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
+        reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
+        reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
+        scores_handle: ActorHandle<ScoresProcessor<E, S, P>>,
     ) -> Self {
         Self {
             certified_commit_handle,
@@ -91,8 +93,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage>
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage> InternalDispatcher
-    for InternalPipelineDispatcher<E, C, S>
+impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
+    InternalDispatcher for InternalPipelineDispatcher<E, C, S, P>
 {
     async fn dispatch_commit(
         &self,
@@ -167,19 +169,22 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
 pub(crate) struct ExternalPipelineDispatcher<
     E: EncoderInternalNetworkClient,
     O: ObjectNetworkClient,
-    // M: Model,
+    M: ModelClient,
     S: ObjectStorage,
+    P: ProbeClient,
 > {
-    input_handle: ActorHandle<InputProcessor<E, O, /*M,*/ S>>,
+    input_handle: ActorHandle<InputProcessor<E, O, M, S, P>>,
 }
 
 impl<
         E: EncoderInternalNetworkClient,
         O: ObjectNetworkClient,
-        /*M: Model,*/ S: ObjectStorage,
-    > ExternalPipelineDispatcher<E, O, /*M,*/ S>
+        M: ModelClient,
+        S: ObjectStorage,
+        P: ProbeClient,
+    > ExternalPipelineDispatcher<E, O, M, S, P>
 {
-    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<E, O, /*M,*/ S>>) -> Self {
+    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<E, O, M, S, P>>) -> Self {
         Self { input_handle }
     }
 }
@@ -188,8 +193,10 @@ impl<
 impl<
         E: EncoderInternalNetworkClient,
         O: ObjectNetworkClient,
-        /*M: Model,*/ S: ObjectStorage,
-    > ExternalDispatcher for ExternalPipelineDispatcher<E, O, /*M,*/ S>
+        M: ModelClient,
+        S: ObjectStorage,
+        P: ProbeClient,
+    > ExternalDispatcher for ExternalPipelineDispatcher<E, O, M, S, P>
 {
     async fn dispatch_input(
         &self,
