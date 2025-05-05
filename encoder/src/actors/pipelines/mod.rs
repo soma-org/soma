@@ -1,6 +1,5 @@
 #![doc = include_str!("README.md")]
 
-pub(crate) mod broadcast;
 pub(crate) mod commit;
 pub(crate) mod commit_votes;
 pub(crate) mod evaluation;

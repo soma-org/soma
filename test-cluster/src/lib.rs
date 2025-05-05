@@ -230,7 +230,11 @@ impl TestCluster {
         .unwrap_or_else(|_| {
             error!("Timed out waiting for cluster to reach epoch {target_epoch:?}");
             if let Some(state) = state {
-                panic!("Timed out waiting for cluster to reach epoch {target_epoch:?}. Current epoch: {}", state.epoch());
+                panic!(
+                    "Timed out waiting for cluster to reach epoch {target_epoch:?}. Current \
+                     epoch: {}",
+                    state.epoch()
+                );
             }
             panic!("Timed out waiting for cluster to target epoch {target_epoch:?}")
         })

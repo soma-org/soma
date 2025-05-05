@@ -533,7 +533,8 @@ impl ConsensusAdapter {
                     // and needs to back pressure, so retry a few times before logging warnings.
                     if retries > 30 || (retries > 3 && (is_soft_bundle)) {
                         warn!(
-                            "Failed to submit transactions {transaction_keys:?} to consensus: {e:?}. Retry #{retries}"
+                            "Failed to submit transactions {transaction_keys:?} to consensus: \
+                             {e:?}. Retry #{retries}"
                         );
                     }
 
@@ -636,7 +637,7 @@ impl ConsensusAdapter {
                         processed.expect("Storage error when waiting for consensus message processed");
 
                         info!("Processed by consensus");
-           
+
                         return ProcessedMethod::Consensus;
                     },
                     // processed = epoch_store.transactions_executed_in_checkpoint_notify(transaction_digests), if !transaction_digests.is_empty() => {
@@ -644,7 +645,7 @@ impl ConsensusAdapter {
 
                     // }
                     // _ = checkpoint_synced_future => {
-                        
+
                     // }
                 }
                 // ProcessedMethod::StateSync

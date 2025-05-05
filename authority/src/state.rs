@@ -526,8 +526,13 @@ impl AuthorityState {
         let observed_effects_digest = observed_effects.digest();
         if &observed_effects_digest != expected_effects_digest {
             panic!(
-                "Locally executed effects do not match canonical effects! expected_effects_digest={:?} observed_effects_digest={:?} expected_effects={:?} observed_effects={:?}",
-                expected_effects_digest, observed_effects_digest, effects.data(), observed_effects
+                "Locally executed effects do not match canonical effects! \
+                 expected_effects_digest={:?} observed_effects_digest={:?} expected_effects={:?} \
+                 observed_effects={:?}",
+                expected_effects_digest,
+                observed_effects_digest,
+                effects.data(),
+                observed_effects
             );
         }
         Ok(())

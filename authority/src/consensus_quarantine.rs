@@ -175,10 +175,14 @@ impl ConsensusOutputCache {
         &self,
         key: &TransactionKey,
     ) -> Option<Vec<(ConsensusObjectSequenceKey, Version)>> {
-        let output = self.shared_version_assignments
+        let output = self
+            .shared_version_assignments
             .get(key)
             .map(|locks| locks.clone());
-        info!("get_assigned_shared_object_versions: {:?} -> {:?}", key, output);
+        info!(
+            "get_assigned_shared_object_versions: {:?} -> {:?}",
+            key, output
+        );
         output
     }
 

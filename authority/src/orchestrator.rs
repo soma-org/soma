@@ -292,9 +292,10 @@ where
                             // This should be impossible, since we verified the transaction
                             // before sending it to quorum driver.
                             error!(
-                                    ?err,
-                                    "Transaction signature failed to verify after quorum driver execution."
-                                );
+                                ?err,
+                                "Transaction signature failed to verify after quorum driver \
+                                 execution."
+                            );
                             continue;
                         }
                     };

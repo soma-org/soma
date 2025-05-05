@@ -69,7 +69,7 @@ pub(crate) struct InternalPipelineDispatcher<
     commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
     reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
     reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
-    scores_handle: ActorHandle<ScoresProcessor<E, S, P>>,
+    scores_handle: ActorHandle<ScoresProcessor<E>>,
 }
 
 impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
@@ -80,7 +80,7 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
         reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
         reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
-        scores_handle: ActorHandle<ScoresProcessor<E, S, P>>,
+        scores_handle: ActorHandle<ScoresProcessor<E>>,
     ) -> Self {
         Self {
             certified_commit_handle,
@@ -162,6 +162,9 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
         &self,
         shard: Shard,
         input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        probe_metadata: ProbeMetadata,
+        peer: PeerPublicKey,
+        address: Multiaddr,
     ) -> ShardResult<()>;
 }
 
@@ -202,10 +205,13 @@ impl<
         &self,
         shard: Shard,
         input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        probe_metadata: ProbeMetadata,
+        peer: PeerPublicKey,
+        address: Multiaddr,
     ) -> ShardResult<()> {
         let cancellation = CancellationToken::new();
         self.input_handle
-            .background_process((shard, input), cancellation)
+            .background_process((shard, input, probe_metadata, peer, address), cancellation)
             .await?;
         Ok(())
     }

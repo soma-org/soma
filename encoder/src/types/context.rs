@@ -32,6 +32,9 @@ impl Context {
         Ok(self.inner.load().committees(epoch)?.own_encoder_index)
     }
 
+    pub fn own_encoder_key(&self) -> EncoderPublicKey {
+        self.inner.load().own_encoder_public_key.clone()
+    }
     pub fn encoder(&self, epoch: Epoch, encoder: EncoderIndex) -> ShardResult<Encoder> {
         Ok(self
             .inner

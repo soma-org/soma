@@ -186,7 +186,8 @@ pub enum SomaError {
 
     /// Error when transaction certificate verification fails
     #[error(
-        "Failed to verify Tx certificate with executed effects, error: {error:?}, validator: {validator_name:?}"
+        "Failed to verify Tx certificate with executed effects, error: {error:?}, validator: \
+         {validator_name:?}"
     )]
     FailedToVerifyTxCertWithExecutedEffects {
         validator_name: AuthorityName,
@@ -220,7 +221,12 @@ pub enum SomaError {
     },
 
     /// Error when a signature is from an unknown authority
-    #[error("Value was not signed by a known authority. signer: {:?}, index: {:?}, committee: {committee}", signer, index)]
+    #[error(
+        "Value was not signed by a known authority. signer: {:?}, index: {:?}, committee: \
+         {committee}",
+        signer,
+        index
+    )]
     UnknownSigner {
         signer: Option<String>,
         index: Option<u32>,
@@ -297,7 +303,10 @@ pub enum SomaError {
     },
 
     /// Error when an object is not available for consumption due to version mismatch
-    #[error("Object {provided_obj_ref:?} is not available for consumption, its current version: {current_version:?}")]
+    #[error(
+        "Object {provided_obj_ref:?} is not available for consumption, its current version: \
+         {current_version:?}"
+    )]
     ObjectVersionUnavailableForConsumption {
         provided_obj_ref: ObjectRef,
         current_version: Version,
@@ -640,7 +649,10 @@ pub enum ConsensusError {
     UnexpectedAuthority(AuthorityIndex, AuthorityIndex),
 
     /// Error when highest accepted rounds parameter size doesn't match committee size
-    #[error("Provided size of highest accepted rounds parameter, {0}, is different than committee size, {1}")]
+    #[error(
+        "Provided size of highest accepted rounds parameter, {0}, is different than committee \
+         size, {1}"
+    )]
     InvalidSizeOfHighestAcceptedRounds(usize, usize),
 
     /// Error when a block is rejected
@@ -712,7 +724,10 @@ pub enum ConsensusError {
     },
 
     /// Error when an ancestor is in the wrong position
-    #[error("Ancestor is in wrong position: block {block_authority}, ancestor {ancestor_authority}, position {position}")]
+    #[error(
+        "Ancestor is in wrong position: block {block_authority}, ancestor {ancestor_authority}, \
+         position {position}"
+    )]
     InvalidAncestorPosition {
         block_authority: AuthorityIndex,
         ancestor_authority: AuthorityIndex,
@@ -779,7 +794,10 @@ pub enum ConsensusError {
     SynchronizerSaturated(AuthorityIndex),
 
     /// Error when too many blocks are returned when fetching missing blocks
-    #[error("Too many blocks have been returned from authority {0} when requesting to fetch missing blocks")]
+    #[error(
+        "Too many blocks have been returned from authority {0} when requesting to fetch missing \
+         blocks"
+    )]
     TooManyFetchedBlocksReturned(AuthorityIndex),
 
     /// Error when unexpected block is returned when fetching missing blocks

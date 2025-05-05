@@ -237,7 +237,8 @@ impl BaseCommitter {
                 tracing::trace!("[{self}] {reference} is a vote for {leader_block}");
                 if votes_stake_aggregator.add(reference.author, &self.context.committee) {
                     tracing::trace!(
-                        "[{self}] {potential_certificate} is a certificate for leader {leader_block}"
+                        "[{self}] {potential_certificate} is a certificate for leader \
+                         {leader_block}"
                     );
                     return true;
                 }

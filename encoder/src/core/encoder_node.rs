@@ -1,6 +1,6 @@
 use std::{future::Future, path::Path, sync::Arc};
 
-use model::client::{MockModelClient, ModelClient};
+use model::client::MockModelClient;
 use objects::{
     networking::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -11,10 +11,8 @@ use objects::{
 use probe::messaging::service::MockProbeService;
 use probe::messaging::tonic::{ProbeTonicClient, ProbeTonicManager};
 use probe::messaging::ProbeManager;
-use quick_cache::sync::Cache;
 use shared::{
     crypto::keys::{EncoderKeyPair, PeerKeyPair},
-    digest::Digest,
     entropy::EntropyVDF,
 };
 use soma_network::multiaddr::Multiaddr;
@@ -24,14 +22,13 @@ use tokio::sync::Semaphore;
 use crate::{
     actors::{
         pipelines::{
-            broadcast::BroadcastProcessor, commit::CommitProcessor,
-            commit_votes::CommitVotesProcessor, evaluation::EvaluationProcessor,
-            input::InputProcessor, reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
-            scores::ScoresProcessor,
+            commit::CommitProcessor, commit_votes::CommitVotesProcessor,
+            evaluation::EvaluationProcessor, input::InputProcessor, reveal::RevealProcessor,
+            reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         workers::{
             compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
-            model::ModelProcessor, storage::StorageProcessor, vdf::VDFProcessor,
+            storage::StorageProcessor, vdf::VDFProcessor,
         },
         ActorManager,
     },
@@ -60,7 +57,6 @@ use self::{
 use super::{
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
-    shard_tracker::ShardTracker,
 };
 
 #[cfg(msim)]
@@ -221,75 +217,64 @@ impl EncoderNode {
             encoder_keypair.public(),
         ));
 
-        let shard_tracker = Arc::new(ShardTracker::new(
-            Arc::new(Semaphore::new(default_concurrency)),
-            store.clone(),
-            encoder_keypair.clone(),
-        ));
-
-        let broadcast_processor = BroadcastProcessor::new(
-            broadcaster.clone(),
-            store.clone(),
-            encoder_keypair.clone(),
-            shard_tracker.clone(),
-        );
-        let broadcast_manager = ActorManager::new(default_buffer, broadcast_processor);
-        let broadcast_handle = broadcast_manager.handle();
+        let scores_processor = ScoresProcessor::new(store.clone());
+        let scores_handle = ActorManager::new(default_buffer, scores_processor).handle();
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
-            broadcast_handle.clone(),
+            broadcaster.clone(),
             encoder_keypair.clone(),
             storage_handle.clone(),
+            scores_handle.clone(),
             probe_client,
         );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
 
-        // Now update ShardTracker with evaluation_handle and broadcast handle
-        shard_tracker.set_broadcast_handle(broadcast_handle.clone());
-        shard_tracker.set_evaluation_handle(evaluation_handle);
+        let reveal_votes_processor =
+            RevealVotesProcessor::new(store.clone(), evaluation_handle.clone());
+        let reveal_votes_handle =
+            ActorManager::new(default_buffer, reveal_votes_processor).handle();
+
+        let reveal_processor = RevealProcessor::new(
+            store.clone(),
+            broadcaster.clone(),
+            encoder_keypair.clone(),
+            reveal_votes_handle.clone(),
+        );
+        let reveal_handle = ActorManager::new(default_buffer, reveal_processor).handle();
+
+        let commit_votes_processor = CommitVotesProcessor::new(
+            store.clone(),
+            broadcaster.clone(),
+            encoder_keypair.clone(),
+            reveal_handle.clone(),
+        );
+        let commit_votes_handle =
+            ActorManager::new(default_buffer, commit_votes_processor).handle();
+
+        let commit_processor = CommitProcessor::new(
+            store.clone(),
+            downloader_handle.clone(),
+            broadcaster.clone(),
+            commit_votes_handle.clone(),
+            encoder_keypair.clone(),
+        );
+        let commit_handle = ActorManager::new(default_buffer, commit_processor).handle();
 
         let model_client = Arc::new(MockModelClient {});
 
         let input_processor = InputProcessor::new(
             downloader_handle.clone(),
             compressor_handle,
-            broadcast_handle,
+            broadcaster.clone(),
             model_client,
-            // model_handle,
             encryptor_handle,
             encoder_keypair.clone(),
             storage_handle.clone(),
+            commit_handle.clone(),
         );
 
         let input_handle = ActorManager::new(default_buffer, input_processor).handle();
-
-        let commit_processor = CommitProcessor::new(
-            store.clone(),
-            shard_tracker.clone(),
-            downloader_handle.clone(),
-        );
-
-        let commit_votes_processor =
-            CommitVotesProcessor::new(store.clone(), shard_tracker.clone());
-
-        let reveal_processor = RevealProcessor::new(store.clone(), shard_tracker.clone());
-        let reveal_votes_processor =
-            RevealVotesProcessor::new(store.clone(), shard_tracker.clone());
-
-        let scores_processor = ScoresProcessor::new(store.clone(), shard_tracker.clone());
-
-        let commit_manager = ActorManager::new(default_buffer, commit_processor);
-        let commit_votes_manager = ActorManager::new(default_buffer, commit_votes_processor);
-        let reveal_manager = ActorManager::new(default_buffer, reveal_processor);
-        let reveal_votes_manager = ActorManager::new(default_buffer, reveal_votes_processor);
-        let scores_manager = ActorManager::new(default_buffer, scores_processor);
-
-        let commit_handle = commit_manager.handle();
-        let commit_votes_handle = commit_votes_manager.handle();
-        let reveal_handle = reveal_manager.handle();
-        let reveal_votes_handle = reveal_votes_manager.handle();
-        let scores_handle = scores_manager.handle();
 
         let pipeline_dispatcher = InternalPipelineDispatcher::new(
             commit_handle,

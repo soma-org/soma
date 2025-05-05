@@ -147,7 +147,8 @@ impl ConsensusHandler {
             // It is critical that the writes done by this function are atomic - otherwise we can
             // lose the later parts of a commit if we restart midway through processing it.
             warn!(
-                "Ignoring consensus output for round {} as it is already committed. NOTE: This is only expected if consensus is running.",
+                "Ignoring consensus output for round {} as it is already committed. NOTE: This is \
+                 only expected if consensus is running.",
                 round
             );
             return;
@@ -165,7 +166,8 @@ impl ConsensusHandler {
             .epoch_start_timestamp_ms();
         let timestamp = if timestamp < epoch_start {
             error!(
-                "Unexpected commit timestamp {timestamp} less then epoch start time {epoch_start}, author {leader_author}, round {round}",
+                "Unexpected commit timestamp {timestamp} less then epoch start time \
+                 {epoch_start}, author {leader_author}, round {round}",
             );
             epoch_start
         } else {

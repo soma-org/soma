@@ -1,38 +1,40 @@
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
     actors::{ActorMessage, Processor},
-    core::shard_tracker::ShardTracker,
     datastore::Store,
-    error::ShardResult,
+    error::{ShardError, ShardResult},
     messaging::EncoderInternalNetworkClient,
-    types::{shard::Shard, shard_scores::ShardScores},
+    types::{
+        shard::Shard,
+        shard_scores::{Score, ScoreSetAPI, ShardScores, ShardScoresAPI},
+    },
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
-use objects::storage::ObjectStorage;
-use probe::messaging::ProbeClient;
-use shared::{signed::Signed, verified::Verified};
+use shared::{
+    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey, EncoderSignature},
+    signed::Signed,
+    verified::Verified,
+};
+use tracing::{debug, info};
 
-pub(crate) struct ScoresProcessor<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
-{
+pub(crate) struct ScoresProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
-    shard_tracker: Arc<ShardTracker<E, S, P>>,
+    marker: PhantomData<E>,
 }
 
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> ScoresProcessor<E, S, P> {
-    pub(crate) fn new(store: Arc<dyn Store>, shard_tracker: Arc<ShardTracker<E, S, P>>) -> Self {
+impl<E: EncoderInternalNetworkClient> ScoresProcessor<E> {
+    pub(crate) fn new(store: Arc<dyn Store>) -> Self {
         Self {
             store,
-            shard_tracker,
+            marker: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processor
-    for ScoresProcessor<E, S, P>
-{
+impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
     type Input = (
         Shard,
         Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
@@ -43,7 +45,91 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
         let result: ShardResult<()> = async {
             let (shard, scores) = msg.input;
             self.store.add_signed_scores(&shard, &scores)?;
-            self.shard_tracker.track_valid_scores(shard, scores).await?;
+            info!(
+                "Starting track_valid_scores for scorer: {:?}",
+                scores.evaluator()
+            );
+
+            let all_scores = self.store.get_signed_scores(&shard)?;
+            debug!(
+                "Current score count: {}, quorum_threshold: {}",
+                all_scores.len(),
+                shard.quorum_threshold()
+            );
+
+            let matching_scores: Vec<Signed<ShardScores, min_sig::BLS12381Signature>> = all_scores
+                .iter()
+                .filter(|score| {
+                    score.signed_score_set().into_inner() == scores.signed_score_set().into_inner()
+                })
+                .cloned()
+                .collect();
+
+            info!(
+                "Found matching scores: {}, quorum_threshold: {}",
+                matching_scores.len(),
+                shard.quorum_threshold()
+            );
+
+            info!(
+                "Matching scores: {:?}",
+                matching_scores
+                    .iter()
+                    .map(|s| s
+                        .clone()
+                        .into_inner()
+                        .signed_score_set()
+                        .into_inner()
+                        .scores())
+                    .collect::<Vec<Vec<Score>>>()
+            );
+
+            if matching_scores.len() >= shard.quorum_threshold() as usize {
+                info!("QUORUM OF MATCHING SCORES - Aggregating signatures");
+
+                let (signatures, evaluators): (Vec<EncoderSignature>, Vec<EncoderPublicKey>) = {
+                    let mut sigs = Vec::new();
+                    let mut evaluators = Vec::new();
+                    for signed_scores in matching_scores.iter() {
+                        let sig = EncoderSignature::from_bytes(&signed_scores.raw_signature())
+                            .map_err(ShardError::SignatureAggregationFailure)?;
+                        sigs.push(sig);
+                        evaluators.push(signed_scores.evaluator().clone());
+                    }
+                    (sigs, evaluators)
+                };
+
+                debug!(
+                    "Creating aggregate signature with {} signatures from {} evaluators",
+                    signatures.len(),
+                    evaluators.len()
+                );
+
+                let agg = EncoderAggregateSignature::new(&signatures)
+                    .map_err(ShardError::SignatureAggregationFailure)?;
+
+                info!(
+                    "Successfully created aggregate score with {} evaluators",
+                    evaluators.len()
+                );
+
+                self.store
+                    .add_aggregate_score(&shard, (agg.clone(), evaluators))?;
+
+                info!(
+                    "SHARD CONSENSUS COMPLETE - Aggregate score stored: {:?}",
+                    agg
+                );
+            } else {
+                debug!(
+                "Not enough matching scores yet - waiting for more scores. Matching scores: {}, \
+                 quorum_threshold: {}",
+                matching_scores.len(),
+                shard.quorum_threshold()
+            );
+            }
+
+            info!("Completed track_valid_scores");
             Ok(())
         }
         .await;

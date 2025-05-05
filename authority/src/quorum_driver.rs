@@ -288,9 +288,10 @@ where
                 // If no retryable conflicting transaction was returned that means we have >= 2f+1 good stake for
                 // the original transaction + retryable stake. Will continue to retry the original transaction.
                 debug!(
-                        ?errors,
-                        "Observed Tx {tx_digest:} is still in retryable state. Conflicting Txes: {conflicting_tx_digests:?}",
-                    );
+                    ?errors,
+                    "Observed Tx {tx_digest:} is still in retryable state. Conflicting Txes: \
+                     {conflicting_tx_digests:?}",
+                );
                 Err(None)
             }
 
@@ -300,7 +301,8 @@ where
             }) => {
                 debug!(
                     ?errors,
-                    "Observed Tx {tx_digest:} double spend attempted. Conflicting Txes: {conflicting_tx_digests:?}",
+                    "Observed Tx {tx_digest:} double spend attempted. Conflicting Txes: \
+                     {conflicting_tx_digests:?}",
                 );
                 Err(Some(QuorumDriverError::ObjectsDoubleUsed {
                     conflicting_txes: conflicting_tx_digests,

@@ -196,7 +196,11 @@ impl Core {
         self.try_commit().unwrap();
         if self.try_propose(true).unwrap().is_none() {
             if self.should_propose() {
-                assert!(self.last_proposed_block.round() > GENESIS_ROUND, "At minimum a block of round higher that genesis should have been produced during recovery");
+                assert!(
+                    self.last_proposed_block.round() > GENESIS_ROUND,
+                    "At minimum a block of round higher that genesis should have been produced \
+                     during recovery"
+                );
             }
 
             // if no new block proposed then just re-broadcast the last proposed one to ensure liveness.
@@ -386,8 +390,11 @@ impl Core {
         ancestors.iter().for_each(|block| {
             assert!(
                 block.timestamp_ms() <= now,
-                "Violation: ancestor block {:?} has timestamp {}, greater than current timestamp {now}. Proposing for round {}.",
-                block, block.timestamp_ms(), clock_round
+                "Violation: ancestor block {:?} has timestamp {}, greater than current timestamp \
+                 {now}. Proposing for round {}.",
+                block,
+                block.timestamp_ms(),
+                clock_round
             );
         });
 
@@ -402,106 +409,108 @@ impl Core {
             .take_commit_votes(MAX_COMMIT_VOTES_PER_BLOCK);
 
         // Check for end of epoch phase
-        let end_of_epoch_data = if let Some((
-            next_validator_set,
-            state_digest,
-            epoch_start_timestamp_ms,
-        )) = self.epoch_store.get_next_epoch_state()
-        {
-            info!("Proposing end of epoch data here");
-            // Find first ancestor block proposing this validator set and state digest
-            let ancestor_with_validator_set = ancestors.iter().find(|block| {
-                if let Some(eoe) = block.end_of_epoch_data() {
-                    eoe.next_validator_set == Some(next_validator_set.clone())
-                        && eoe.state_hash == Some(state_digest.clone())
-                        && eoe.next_epoch_start_timestamp_ms == epoch_start_timestamp_ms
-                } else {
-                    false
-                }
-            });
-
-            Some(match ancestor_with_validator_set {
-                // Case 1: First to propose validator set and state digest
-                None => {
-                    info!("First to propose validator set and state object");
-                    EndOfEpochData {
-                        next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
-                        next_validator_set: Some(next_validator_set),
-                        state_hash: Some(state_digest),
-                        validator_set_signature: None,
-                        aggregate_signature: None,
-                    }
-                }
-
-                // Case 2: Ancestor proposed matching validator set and state digest
-                Some(_proposing_block) => {
-                    info!("Ancestor proposed matching validator set and state digest");
-                    // Create a stake aggregator for quorum threshold
-                    let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
-
-                    // Sign using ValidatorSet's implementation
-                    let sig = next_validator_set
-                        .sign(&self.committee_signer)
-                        .expect("Cannot sign validator set");
-                    aggregator.add(self.context.own_index.unwrap(), &self.context.committee);
-
-                    // Collect ancestor signatures
-                    let ancestor_sigs = self
-                        .collect_validator_set_signatures(&ancestors, next_validator_set.clone());
-                    for (ancestor, _ancestor_sig) in &ancestor_sigs {
-                        aggregator.add(*ancestor, &self.context.committee);
-                    }
-
-                    if aggregator.reached_threshold(&self.context.committee) {
-                        // We have quorum - create aggregate signature
-                        let mut all_sigs = Vec::with_capacity(aggregator.votes().len());
-
-                        // Collect signatures in order of authority indices
-                        for &auth_idx in aggregator.votes() {
-                            let sig = if auth_idx == self.context.own_index.unwrap() {
-                                sig.clone()
-                            } else {
-                                // Find matching ancestor signature
-                                ancestor_sigs
-                                    .iter()
-                                    .find(|(idx, _)| *idx == auth_idx)
-                                    .map(|(_, sig)| sig.clone())
-                                    .expect("Must have signature for aggregated authority")
-                            };
-                            all_sigs.push(sig);
-                        }
-
-                        info!(
-                            "Reached quorum with stake {}, proposing aggregate signature",
-                            aggregator.stake()
-                        );
-
-                        EndOfEpochData {
-                            next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
-                            next_validator_set: Some(next_validator_set),
-                            state_hash: Some(state_digest),
-                            validator_set_signature: Some(sig),
-                            aggregate_signature: self.aggregate_validator_set_signatures(all_sigs),
-                        }
+        let end_of_epoch_data =
+            if let Some((next_validator_set, state_digest, epoch_start_timestamp_ms)) =
+                self.epoch_store.get_next_epoch_state()
+            {
+                info!("Proposing end of epoch data here");
+                // Find first ancestor block proposing this validator set and state digest
+                let ancestor_with_validator_set = ancestors.iter().find(|block| {
+                    if let Some(eoe) = block.end_of_epoch_data() {
+                        eoe.next_validator_set == Some(next_validator_set.clone())
+                            && eoe.state_hash == Some(state_digest.clone())
+                            && eoe.next_epoch_start_timestamp_ms == epoch_start_timestamp_ms
                     } else {
-                        info!(
-                            "Not enough stake for quorum (current: {}), continuing without aggregate", 
-                            aggregator.stake()
-                        );
+                        false
+                    }
+                });
+
+                Some(match ancestor_with_validator_set {
+                    // Case 1: First to propose validator set and state digest
+                    None => {
+                        info!("First to propose validator set and state object");
                         EndOfEpochData {
                             next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                             next_validator_set: Some(next_validator_set),
                             state_hash: Some(state_digest),
-                            validator_set_signature: Some(sig),
+                            validator_set_signature: None,
                             aggregate_signature: None,
                         }
                     }
-                }
-            })
-        } else {
-            info!("No next epoch state, not proposing end of epoch data");
-            None // Not end of epoch yet
-        };
+
+                    // Case 2: Ancestor proposed matching validator set and state digest
+                    Some(_proposing_block) => {
+                        info!("Ancestor proposed matching validator set and state digest");
+                        // Create a stake aggregator for quorum threshold
+                        let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
+
+                        // Sign using ValidatorSet's implementation
+                        let sig = next_validator_set
+                            .sign(&self.committee_signer)
+                            .expect("Cannot sign validator set");
+                        aggregator.add(self.context.own_index.unwrap(), &self.context.committee);
+
+                        // Collect ancestor signatures
+                        let ancestor_sigs = self.collect_validator_set_signatures(
+                            &ancestors,
+                            next_validator_set.clone(),
+                        );
+                        for (ancestor, _ancestor_sig) in &ancestor_sigs {
+                            aggregator.add(*ancestor, &self.context.committee);
+                        }
+
+                        if aggregator.reached_threshold(&self.context.committee) {
+                            // We have quorum - create aggregate signature
+                            let mut all_sigs = Vec::with_capacity(aggregator.votes().len());
+
+                            // Collect signatures in order of authority indices
+                            for &auth_idx in aggregator.votes() {
+                                let sig = if auth_idx == self.context.own_index.unwrap() {
+                                    sig.clone()
+                                } else {
+                                    // Find matching ancestor signature
+                                    ancestor_sigs
+                                        .iter()
+                                        .find(|(idx, _)| *idx == auth_idx)
+                                        .map(|(_, sig)| sig.clone())
+                                        .expect("Must have signature for aggregated authority")
+                                };
+                                all_sigs.push(sig);
+                            }
+
+                            info!(
+                                "Reached quorum with stake {}, proposing aggregate signature",
+                                aggregator.stake()
+                            );
+
+                            EndOfEpochData {
+                                next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
+                                next_validator_set: Some(next_validator_set),
+                                state_hash: Some(state_digest),
+                                validator_set_signature: Some(sig),
+                                aggregate_signature: self
+                                    .aggregate_validator_set_signatures(all_sigs),
+                            }
+                        } else {
+                            info!(
+                                "Not enough stake for quorum (current: {}), continuing without \
+                                 aggregate",
+                                aggregator.stake()
+                            );
+                            EndOfEpochData {
+                                next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
+                                next_validator_set: Some(next_validator_set),
+                                state_hash: Some(state_digest),
+                                validator_set_signature: Some(sig),
+                                aggregate_signature: None,
+                            }
+                        }
+                    }
+                })
+            } else {
+                info!("No next epoch state, not proposing end of epoch data");
+                None // Not end of epoch yet
+            };
 
         // Create the block and insert to storage.
         let block = Block::new(
@@ -605,13 +614,19 @@ impl Core {
         let skip_proposing = if let Some(last_known_proposed_round) = self.last_known_proposed_round
         {
             if clock_round <= last_known_proposed_round {
-                debug!("Skip proposing for round {clock_round} as last known proposed round is {last_known_proposed_round}");
+                debug!(
+                    "Skip proposing for round {clock_round} as last known proposed round is \
+                     {last_known_proposed_round}"
+                );
                 true
             } else {
                 false
             }
         } else {
-            debug!("Skip proposing for round {clock_round}, last known proposed round has not been synced yet.");
+            debug!(
+                "Skip proposing for round {clock_round}, last known proposed round has not been \
+                 synced yet."
+            );
             true
         };
 
@@ -674,7 +689,12 @@ impl Core {
         {
             quorum.add(ancestor.author(), &self.context.committee);
         }
-        assert!(quorum.reached_threshold(&self.context.committee), "Fatal error, quorum not reached for parent round when proposing for round {}. Possible mismatch between DagState and Core.", clock_round);
+        assert!(
+            quorum.reached_threshold(&self.context.committee),
+            "Fatal error, quorum not reached for parent round when proposing for round {}. \
+             Possible mismatch between DagState and Core.",
+            clock_round
+        );
 
         ancestors
     }

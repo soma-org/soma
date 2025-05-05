@@ -710,8 +710,10 @@ impl InnerTemporaryStore {
                 .get(&object_id)
                 .map(|obj| obj.full_id())
                 .unwrap_or_else(|| {
-                    let start_version = self.deleted_shared_objects.get(&object_id)
-                        .expect("deleted object must be in either input_objects or deleted_consensus_objects");
+                    let start_version = self.deleted_shared_objects.get(&object_id).expect(
+                        "deleted object must be in either input_objects or \
+                         deleted_consensus_objects",
+                    );
                     FullObjectID::new(object_id, Some(*start_version))
                 });
             let key = InputKey::VersionedObject {

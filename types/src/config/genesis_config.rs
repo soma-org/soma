@@ -316,7 +316,10 @@ impl TokenDistributionSchedule {
         }
 
         if total != TOTAL_SUPPLY_SHANNONS {
-            panic!("TokenDistributionSchedule adds up to {total} and not expected {TOTAL_SUPPLY_SHANNONS}");
+            panic!(
+                "TokenDistributionSchedule adds up to {total} and not expected \
+                 {TOTAL_SUPPLY_SHANNONS}"
+            );
         }
     }
 

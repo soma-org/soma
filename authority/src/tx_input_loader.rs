@@ -131,11 +131,11 @@ impl TransactionInputLoader {
         epoch_id: EpochId,
     ) -> SomaResult<InputObjects> {
         let assigned_shared_versions_cell: OnceCell<Option<HashMap<_, _>>> = OnceCell::new();
-    
+
         let mut results = vec![None; input_object_kinds.len()];
         let mut object_keys = Vec::with_capacity(input_object_kinds.len());
         let mut fetches = Vec::with_capacity(input_object_kinds.len());
-    
+
         for (i, input) in input_object_kinds.iter().enumerate() {
             match input {
                 InputObjectKind::ImmOrOwnedObject(objref) => {
@@ -163,13 +163,18 @@ impl TransactionInputLoader {
                                 "Failed to get assigned shared versions for transaction {tx_key:?}"
                             );
                         });
-    
+
                     let initial_shared_version = *initial_shared_version;
                     // If we find a set of assigned versions but an object is missing, it indicates
                     // a serious inconsistency:
-                    let version: &Version = assigned_shared_versions.get(&(*id, initial_shared_version)).unwrap_or_else(|| {
-                        panic!("Shared object version should have been assigned. key: {tx_key:?}, obj id: {id:?}")
-                    });
+                    let version: &Version = assigned_shared_versions
+                        .get(&(*id, initial_shared_version))
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Shared object version should have been assigned. key: \
+                                 {tx_key:?}, obj id: {id:?}"
+                            )
+                        });
                     if version.is_cancelled() {
                         // Do not need to fetch shared object for cancelled transaction.
                         results[i] = Some(ObjectReadResult {
@@ -185,11 +190,11 @@ impl TransactionInputLoader {
                 }
             }
         }
-    
+
         let objects = self.cache.multi_get_objects_by_key(&object_keys)?;
-    
+
         assert!(objects.len() == object_keys.len() && objects.len() == fetches.len());
-    
+
         for (object, key, (index, input)) in izip!(
             objects.into_iter(),
             object_keys.into_iter(),
@@ -200,17 +205,26 @@ impl TransactionInputLoader {
                     input_object_kind: *input_object_kind,
                     object: obj.into(),
                 },
-                (None, InputObjectKind::SharedObject { id, initial_shared_version, .. }) => {
+                (
+                    None,
+                    InputObjectKind::SharedObject {
+                        id,
+                        initial_shared_version,
+                        ..
+                    },
+                ) => {
                     assert!(key.1.is_valid());
                     // Check if the object was deleted by a concurrently certified tx
                     let version = key.1;
-                    if let Some(dependency) = self.cache.get_deleted_shared_object_previous_tx_digest(
-                        FullObjectKey::new(
-                            FullObjectID::new(*id, Some(*initial_shared_version)),
-                            version,
-                        ),
-                        epoch_id,
-                    ) {
+                    if let Some(dependency) =
+                        self.cache.get_deleted_shared_object_previous_tx_digest(
+                            FullObjectKey::new(
+                                FullObjectID::new(*id, Some(*initial_shared_version)),
+                                version,
+                            ),
+                            epoch_id,
+                        )
+                    {
                         ObjectReadResult {
                             input_object_kind: *input,
                             object: ObjectReadResultKind::DeletedSharedObject(version, dependency),
@@ -226,38 +240,49 @@ impl TransactionInputLoader {
                             .as_ref()
                             .unwrap_or_else(|| {
                                 panic!(
-                                    "Failed to get assigned shared versions for transaction {tx_key:?}"
+                                    "Failed to get assigned shared versions for transaction \
+                                     {tx_key:?}"
                                 );
                             });
-                        
+
                         // If this specific object at this specific version is in the assigned versions,
                         // we're in the circular dependency situation where the transaction needs this
                         // object version but that version won't exist until after the transaction executes
-                        if assigned_shared_versions.get(&(*id, *initial_shared_version)) == Some(&version) {
+                        if assigned_shared_versions.get(&(*id, *initial_shared_version))
+                            == Some(&version)
+                        {
                             debug!(
-                                "Creating special placeholder for shared object with assigned version. tx={tx_key:?}, object={id:?}, version={version:?}"
+                                "Creating special placeholder for shared object with assigned \
+                                 version. tx={tx_key:?}, object={id:?}, version={version:?}"
                             );
-                            
+
                             // Use CancelledTransactionSharedObject as a placeholder that won't
                             // trigger validation errors in downstream code
                             ObjectReadResult {
                                 input_object_kind: *input,
-                                object: ObjectReadResultKind::CancelledTransactionSharedObject(version),
+                                object: ObjectReadResultKind::CancelledTransactionSharedObject(
+                                    version,
+                                ),
                             }
                         } else {
                             // Normal case - the object should exist but doesn't
                             panic!(
-                                "All dependencies of tx {tx_key:?} should have been executed now, but Shared Object id: {}, version: {} is absent in epoch {epoch_id}", 
-                                *id, 
+                                "All dependencies of tx {tx_key:?} should have been executed now, \
+                                 but Shared Object id: {}, version: {} is absent in epoch \
+                                 {epoch_id}",
+                                *id,
                                 version.value()
                             );
                         }
                     }
-                },
-                _ => panic!("All dependencies of tx {tx_key:?} should have been executed now, but obj {key:?} is absent"),
+                }
+                _ => panic!(
+                    "All dependencies of tx {tx_key:?} should have been executed now, but obj \
+                     {key:?} is absent"
+                ),
             });
         }
-    
+
         Ok(results
             .into_iter()
             .map(Option::unwrap)

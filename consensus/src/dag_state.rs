@@ -117,8 +117,8 @@ impl DagState {
         }
 
         tracing::info!(
-            "DagState was initialized with the following state: \
-                {last_commit:?}; {last_committed_rounds:?}"
+            "DagState was initialized with the following state: {last_commit:?}; \
+             {last_committed_rounds:?}"
         );
 
         let mut state = Self {
@@ -172,8 +172,11 @@ impl DagState {
         let now = self.context.clock.timestamp_utc_ms();
         if block.timestamp_ms() > now {
             panic!(
-                "Block {:?} cannot be accepted! Block timestamp {} is greater than local timestamp {}.",
-                block, block.timestamp_ms(), now,
+                "Block {:?} cannot be accepted! Block timestamp {} is greater than local \
+                 timestamp {}.",
+                block,
+                block.timestamp_ms(),
+                now,
             );
         }
 
@@ -182,8 +185,8 @@ impl DagState {
             let existing_blocks = self.get_uncommitted_blocks_at_slot(block_ref.into());
             assert!(
                 existing_blocks.is_empty(),
-                "Block Rejected! Attempted to add block {block:#?} to own slot where \
-                block(s) {existing_blocks:#?} already exists."
+                "Block Rejected! Attempted to add block {block:#?} to own slot where block(s) \
+                 {existing_blocks:#?} already exists."
             );
         }
         self.update_block_metadata(&block);
@@ -443,7 +446,10 @@ impl DagState {
 
             let last_evicted_round = self.authority_eviction_round(authority_index);
             if end_round.saturating_sub(1) <= last_evicted_round {
-                panic!("Attempted to request for blocks of rounds < {end_round}, when the last evicted round is {last_evicted_round} for authority {authority_index}", );
+                panic!(
+                    "Attempted to request for blocks of rounds < {end_round}, when the last \
+                     evicted round is {last_evicted_round} for authority {authority_index}",
+                );
             }
 
             if let Some(block_ref) = block_refs
@@ -567,7 +573,11 @@ impl DagState {
             assert_eq!(commit.index(), last_commit.index() + 1);
 
             if commit.timestamp_ms() < last_commit.timestamp_ms() {
-                panic!("Commit timestamps do not monotonically increment, prev commit {:?}, new commit {:?}", last_commit, commit);
+                panic!(
+                    "Commit timestamps do not monotonically increment, prev commit {:?}, new \
+                     commit {:?}",
+                    last_commit, commit
+                );
             }
         } else {
             assert_eq!(commit.index(), 1);
@@ -709,7 +719,8 @@ impl DagState {
             return;
         }
         debug!(
-            "Flushing {} blocks ({}), {} commits ({}) and {} commit info ({}) to storage. Last commit index: {}, epoch: {} ",
+            "Flushing {} blocks ({}), {} commits ({}) and {} commit info ({}) to storage. Last \
+             commit index: {}, epoch: {} ",
             blocks.len(),
             blocks.iter().map(|b| b.reference().to_string()).join(","),
             commits.len(),
@@ -719,8 +730,8 @@ impl DagState {
                 .iter()
                 .map(|(commit_ref, _)| commit_ref.to_string())
                 .join(","),
-                commits.last().map(|c| c.index()).unwrap_or(0),
-                commits.last().map(|c| c.epoch()).unwrap_or(0)
+            commits.last().map(|c| c.index()).unwrap_or(0),
+            commits.last().map(|c| c.epoch()).unwrap_or(0)
         );
         self.store
             .write(WriteBatch::new(blocks, commits, commit_info_to_write))
@@ -1548,7 +1559,8 @@ mod test {
 
     #[tokio::test]
     #[should_panic(
-        expected = "Attempted to request for blocks of rounds < 2, when the last evicted round is 1 for authority C"
+        expected = "Attempted to request for blocks of rounds < 2, when the last evicted round is \
+                    1 for authority C"
     )]
     async fn test_get_cached_last_block_per_authority_requesting_out_of_round_range() {
         // GIVEN

@@ -286,7 +286,10 @@ where
                             return Ok((ServerIo::new_io(io), remote_addr));
                         }
                     } else {
-                        tracing::warn!("'allow_insecure' is configured but io type is not 'tokio::net::TcpStream'");
+                        tracing::warn!(
+                            "'allow_insecure' is configured but io type is not \
+                             'tokio::net::TcpStream'"
+                        );
                     }
                 }
 
