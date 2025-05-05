@@ -26,6 +26,10 @@ use authority::{
     tx_validator::TxValidator,
 };
 use core::time;
+use encoder_validator_api::{
+    service::EncoderValidatorService,
+    tonic_gen::encoder_validator_api_server::EncoderValidatorApiServer,
+};
 use futures::TryFutureExt;
 use p2p::{
     builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle},
@@ -596,6 +600,30 @@ impl SomaNode {
 
         server_builder = server_builder.add_service(ValidatorServer::new(validator_service));
 
+        let server = server_builder
+            .bind(config.consensus_config().unwrap().address())
+            .await
+            .map_err(|err| anyhow!(err.to_string()))?;
+        let local_addr = server.local_addr();
+        info!("Listening to traffic on {local_addr}");
+        let grpc_server = tokio::spawn(server.serve().map_err(Into::into));
+
+        Ok(grpc_server)
+    }
+
+    async fn start_grpc_encoder_service(
+        config: &NodeConfig,
+        state: Arc<AuthorityState>,
+    ) -> Result<tokio::task::JoinHandle<Result<()>>> {
+        let encoder_validator_service = EncoderValidatorService::new(state.clone());
+
+        let server_conf = Config::new();
+        let mut server_builder = ServerBuilder::from_config(&server_conf);
+
+        server_builder =
+            server_builder.add_service(EncoderValidatorApiServer::new(encoder_validator_service));
+
+        // TODO: create new config var for encoder server address
         let server = server_builder
             .bind(config.consensus_config().unwrap().address())
             .await

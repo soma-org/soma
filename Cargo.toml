@@ -20,6 +20,7 @@ members = [
   "objects",
   "test-encoder-cluster",
   "model",
+  "encoder-validator-api",
 ]
 
 
@@ -91,6 +92,7 @@ utils = { path = "utils" }
 node = { path = "node" }
 test-cluster = { path = "test-cluster" }
 p2p = { path = "p2p" }
+encoder-validator-api = { path = "encoder-validator-api" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim-macros" }
@@ -187,7 +189,7 @@ soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
 objects = { path = "objects" }
-model = {path = "model"}
+model = { path = "model" }
 test-encoder-cluster = { path = "test-encoder-cluster" }
 
 # external deps
@@ -253,6 +255,8 @@ num-prime = { version = "0.4", features = ["big-int"] }
 rand_chacha = "0.3"
 criterion = "0.5"
 num-bigint-dig = "0.8"
+
+tonic-health = "0.12"
 
 [patch.crates-io]
 tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9" }

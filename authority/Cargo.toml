@@ -30,10 +30,10 @@ tower.workspace = true
 tracing-subscriber.workspace = true
 tokio-stream.workspace = true
 msim.workspace = true
+tonic-health.workspace = true
 dashmap = "6.0.1"
 lru = "0.12.4"
 num_cpus = "1.16.0"
-tonic-health = "0.12"
 moka = { version = "0.12", default-features = false, features = [
     "sync",
     "atomic64",
