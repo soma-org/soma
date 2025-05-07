@@ -1,13 +1,14 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
 
 use crate::{
     actors::{ActorHandle, ActorMessage, Processor},
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
-    error::ShardResult,
+    error::{ShardError, ShardResult},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
         shard::Shard,
@@ -19,11 +20,13 @@ use async_trait::async_trait;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::storage::ObjectStorage;
 use probe::messaging::ProbeClient;
+use quick_cache::sync::{Cache, GuardResult};
 use shared::{
     crypto::{
         keys::{EncoderKeyPair, EncoderPublicKey},
         Aes256IV, Aes256Key, EncryptionKey,
     },
+    digest::Digest,
     scope::Scope,
     signed::Signed,
     verified::Verified,
@@ -41,6 +44,8 @@ pub(crate) struct CommitVotesProcessor<
     broadcaster: Arc<Broadcaster<E>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     reveal_pipeline: ActorHandle<RevealProcessor<E, S, P>>,
+    recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
+    send_dedup: Cache<Digest<Shard>, ()>,
 }
 
 impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
@@ -51,12 +56,16 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         reveal_pipeline: ActorHandle<RevealProcessor<E, S, P>>,
+        recv_cache_capacity: usize,
+        send_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
             broadcaster,
             encoder_keypair,
             reveal_pipeline,
+            recv_dedup: Cache::new(recv_cache_capacity),
+            send_dedup: Cache::new(send_cache_capacity),
         }
     }
 }
@@ -79,6 +88,18 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             let (shard, commit_votes) = msg.input;
+            let shard_digest = shard.digest()?;
+
+            match self.recv_dedup.get_value_or_guard(
+                &(shard_digest, commit_votes.voter().clone()),
+                Some(Duration::from_secs(5)),
+            ) {
+                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
+                GuardResult::Guard(placeholder) => {
+                    placeholder.insert(());
+                }
+                GuardResult::Timeout => (),
+            }
 
             self.store.add_commit_votes(&shard, &commit_votes)?;
             info!(
@@ -177,14 +198,16 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
             );
             if total_finalized == shard.size() {
                 if total_accepted >= shard.quorum_threshold() as usize {
-                    // let already_revealing = self.store.count_signed_reveal(&shard).unwrap_or(0) > 0;
-                    // if already_revealing {
-                    //     info!(
-                    //         "Skipping trigger of BroadcastAction::Reveal as reveal phase has \
-                    //          already started"
-                    //     );
-                    //     return Ok(());
-                    // }
+                    match self
+                        .send_dedup
+                        .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
+                    {
+                        GuardResult::Value(_) => return Ok(()),
+                        GuardResult::Guard(placeholder) => {
+                            placeholder.insert(());
+                        }
+                        GuardResult::Timeout => (),
+                    };
                     info!("ALL COMMIT VOTES FINALIZED - Proceeding to REVEAL phase");
                     info!("Beginning to broadcast reveal");
                     // Generate key from signature over shard

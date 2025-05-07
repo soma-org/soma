@@ -15,8 +15,13 @@ use dashmap::DashMap;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::storage::ObjectStorage;
 use probe::messaging::ProbeClient;
+use quick_cache::sync::{Cache, GuardResult};
 use shared::{
-    crypto::keys::EncoderKeyPair, digest::Digest, scope::Scope, signed::Signed, verified::Verified,
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey},
+    digest::Digest,
+    scope::Scope,
+    signed::Signed,
+    verified::Verified,
 };
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
@@ -31,6 +36,8 @@ pub(crate) struct RevealProcessor<E: EncoderInternalNetworkClient, S: ObjectStor
     oneshots: Arc<DashMap<Digest<Shard>, oneshot::Sender<()>>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     reveal_votes_pipeline: ActorHandle<RevealVotesProcessor<E, S, P>>,
+    recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
+    send_dedup: Cache<Digest<Shard>, ()>,
 }
 
 impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> RevealProcessor<E, S, P> {
@@ -39,6 +46,8 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> RevealPr
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         reveal_votes_pipeline: ActorHandle<RevealVotesProcessor<E, S, P>>,
+        recv_cache_capacity: usize,
+        send_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
@@ -46,6 +55,8 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> RevealPr
             oneshots: Arc::new(DashMap::new()),
             encoder_keypair,
             reveal_votes_pipeline,
+            recv_dedup: Cache::new(recv_cache_capacity),
+            send_dedup: Cache::new(send_cache_capacity),
         }
     }
     pub async fn start_timer<F, Fut>(
@@ -87,6 +98,18 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             let (shard, verified_reveal) = msg.input;
+            let shard_digest = shard.digest()?;
+
+            match self.recv_dedup.get_value_or_guard(
+                &(shard_digest, verified_reveal.encoder().clone()),
+                Some(Duration::from_secs(5)),
+            ) {
+                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
+                GuardResult::Guard(placeholder) => {
+                    placeholder.insert(());
+                }
+                GuardResult::Timeout => (),
+            }
 
             self.store.add_signed_reveal(&shard, &verified_reveal)?;
 
@@ -112,6 +135,16 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
                     self.store.add_first_reveal_time(&shard)?;
                 }
                 count if count == quorum_threshold => {
+                    match self
+                        .send_dedup
+                        .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
+                    {
+                        GuardResult::Value(_) => return Ok(()),
+                        GuardResult::Guard(placeholder) => {
+                            placeholder.insert(());
+                        }
+                        GuardResult::Timeout => (),
+                    };
                     let mut duration = self
                         .store
                         .get_first_reveal_time(&shard)
@@ -124,7 +157,7 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
                     "Quorum of reveals reached - starting vote timer. Duration since first (ms): \
                      {}",
                     duration.as_millis()
-                );
+                    );
 
                     let broadcaster = self.broadcaster.clone();
                     let store = self.store.clone();

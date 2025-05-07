@@ -1,9 +1,9 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::{
     actors::{ActorHandle, ActorMessage, Processor},
     datastore::Store,
-    error::ShardResult,
+    error::{ShardError, ShardResult},
     messaging::EncoderInternalNetworkClient,
     types::{
         shard::Shard,
@@ -14,7 +14,8 @@ use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use objects::storage::ObjectStorage;
 use probe::messaging::ProbeClient;
-use shared::{crypto::keys::EncoderPublicKey, signed::Signed, verified::Verified};
+use quick_cache::sync::{Cache, GuardResult};
+use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
 use tracing::{debug, error, info, warn};
 
 use super::evaluation::EvaluationProcessor;
@@ -26,6 +27,8 @@ pub(crate) struct RevealVotesProcessor<
 > {
     store: Arc<dyn Store>,
     evaluation_pipeline: ActorHandle<EvaluationProcessor<E, S, P>>,
+    recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
+    send_dedup: Cache<Digest<Shard>, ()>,
 }
 
 impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
@@ -34,10 +37,14 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
     pub(crate) fn new(
         store: Arc<dyn Store>,
         evaluation_pipeline: ActorHandle<EvaluationProcessor<E, S, P>>,
+        recv_cache_capacity: usize,
+        send_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
             evaluation_pipeline,
+            recv_dedup: Cache::new(recv_cache_capacity),
+            send_dedup: Cache::new(send_cache_capacity),
         }
     }
 }
@@ -60,6 +67,18 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             let (shard, reveal_votes) = msg.input;
+            let shard_digest = shard.digest()?;
+
+            match self.recv_dedup.get_value_or_guard(
+                &(shard_digest, reveal_votes.voter().clone()),
+                Some(Duration::from_secs(5)),
+            ) {
+                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
+                GuardResult::Guard(placeholder) => {
+                    placeholder.insert(());
+                }
+                GuardResult::Timeout => (),
+            }
             self.store.add_reveal_votes(&shard, &reveal_votes)?;
             info!(
                 "Starting track_valid_reveal_votes for voter: {:?}",
@@ -119,6 +138,16 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
 
             if total_finalized == shard.size() {
                 if total_accepted >= shard.quorum_threshold() as usize {
+                    match self
+                        .send_dedup
+                        .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
+                    {
+                        GuardResult::Value(_) => return Ok(()),
+                        GuardResult::Guard(placeholder) => {
+                            placeholder.insert(());
+                        }
+                        GuardResult::Timeout => (),
+                    };
                     info!("ALL REVEAL VOTES FINALIZED - Proceeding to EVALUATION phase");
                     let input = (reveal_votes.auth_token().to_owned(), shard.clone());
                     info!("Triggering evaluation process");

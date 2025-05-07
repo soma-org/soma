@@ -217,7 +217,14 @@ impl EncoderNode {
             encoder_keypair.public(),
         ));
 
-        let scores_processor = ScoresProcessor::new(store.clone());
+        let recv_dedup_cache_capacity: usize = 1000;
+        let send_dedup_cache_capacity: usize = 100;
+
+        let scores_processor = ScoresProcessor::new(
+            store.clone(),
+            recv_dedup_cache_capacity,
+            send_dedup_cache_capacity,
+        );
         let scores_handle = ActorManager::new(default_buffer, scores_processor).handle();
 
         let evaluation_processor = EvaluationProcessor::new(
@@ -227,11 +234,16 @@ impl EncoderNode {
             storage_handle.clone(),
             scores_handle.clone(),
             probe_client,
+            recv_dedup_cache_capacity,
         );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
 
-        let reveal_votes_processor =
-            RevealVotesProcessor::new(store.clone(), evaluation_handle.clone());
+        let reveal_votes_processor = RevealVotesProcessor::new(
+            store.clone(),
+            evaluation_handle.clone(),
+            recv_dedup_cache_capacity,
+            send_dedup_cache_capacity,
+        );
         let reveal_votes_handle =
             ActorManager::new(default_buffer, reveal_votes_processor).handle();
 
@@ -240,6 +252,8 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             reveal_votes_handle.clone(),
+            recv_dedup_cache_capacity,
+            send_dedup_cache_capacity,
         );
         let reveal_handle = ActorManager::new(default_buffer, reveal_processor).handle();
 
@@ -248,6 +262,8 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             reveal_handle.clone(),
+            recv_dedup_cache_capacity,
+            send_dedup_cache_capacity,
         );
         let commit_votes_handle =
             ActorManager::new(default_buffer, commit_votes_processor).handle();
@@ -258,6 +274,8 @@ impl EncoderNode {
             broadcaster.clone(),
             commit_votes_handle.clone(),
             encoder_keypair.clone(),
+            recv_dedup_cache_capacity,
+            send_dedup_cache_capacity,
         );
         let commit_handle = ActorManager::new(default_buffer, commit_processor).handle();
 

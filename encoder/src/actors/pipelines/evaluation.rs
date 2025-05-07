@@ -16,8 +16,13 @@ use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
 use objects::storage::ObjectStorage;
 use probe::{messaging::ProbeClient, EmbeddingV1, ProbeInputV1, ProbeOutputAPI, ScoreAPI};
+use quick_cache::sync::{Cache, GuardResult};
 use shared::{
-    crypto::{keys::EncoderKeyPair, EncryptionKey},
+    crypto::{
+        keys::{EncoderKeyPair, EncoderPublicKey},
+        EncryptionKey,
+    },
+    digest::Digest,
     metadata::Metadata,
     scope::Scope,
     signed::Signed,
@@ -39,6 +44,7 @@ pub(crate) struct EvaluationProcessor<
     storage: ActorHandle<StorageProcessor<S>>,
     score_pipeline: ActorHandle<ScoresProcessor<E>>,
     probe_client: Arc<P>,
+    recv_dedup: Cache<Digest<Shard>, ()>,
 }
 
 impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
@@ -51,6 +57,7 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
         storage: ActorHandle<StorageProcessor<S>>,
         score_pipeline: ActorHandle<ScoresProcessor<E>>,
         probe_client: Arc<P>,
+        recv_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
@@ -59,6 +66,7 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
             storage,
             score_pipeline,
             probe_client,
+            recv_dedup: Cache::new(recv_cache_capacity),
         }
     }
 }
@@ -73,6 +81,17 @@ impl<E: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processo
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             let (auth_token, shard) = msg.input;
+            let shard_digest = shard.digest()?;
+            match self
+                .recv_dedup
+                .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
+            {
+                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
+                GuardResult::Guard(placeholder) => {
+                    placeholder.insert(());
+                }
+                GuardResult::Timeout => (),
+            }
 
             let embeddings: Vec<EmbeddingV1> = shard
                 .encoders()

@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use crate::{
     actors::{ActorMessage, Processor},
@@ -12,8 +12,10 @@ use crate::{
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
+use quick_cache::sync::{Cache, GuardResult};
 use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey, EncoderSignature},
+    digest::Digest,
     signed::Signed,
     verified::Verified,
 };
@@ -22,13 +24,21 @@ use tracing::{debug, info};
 pub(crate) struct ScoresProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
     marker: PhantomData<E>,
+    recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
+    send_dedup: Cache<Digest<Shard>, ()>,
 }
 
 impl<E: EncoderInternalNetworkClient> ScoresProcessor<E> {
-    pub(crate) fn new(store: Arc<dyn Store>) -> Self {
+    pub(crate) fn new(
+        store: Arc<dyn Store>,
+        recv_cache_capacity: usize,
+        send_cache_capacity: usize,
+    ) -> Self {
         Self {
             store,
             marker: PhantomData,
+            recv_dedup: Cache::new(recv_cache_capacity),
+            send_dedup: Cache::new(send_cache_capacity),
         }
     }
 }
@@ -44,6 +54,18 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             let (shard, scores) = msg.input;
+            let shard_digest = shard.digest()?;
+
+            match self.recv_dedup.get_value_or_guard(
+                &(shard_digest, scores.evaluator().clone()),
+                Some(Duration::from_secs(5)),
+            ) {
+                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
+                GuardResult::Guard(placeholder) => {
+                    placeholder.insert(());
+                }
+                GuardResult::Timeout => (),
+            }
             self.store.add_signed_scores(&shard, &scores)?;
             info!(
                 "Starting track_valid_scores for scorer: {:?}",

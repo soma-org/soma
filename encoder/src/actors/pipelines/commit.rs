@@ -18,8 +18,9 @@ use dashmap::DashMap;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use probe::messaging::ProbeClient;
+use quick_cache::sync::{Cache, GuardResult};
 use shared::{
-    crypto::keys::{EncoderKeyPair, PeerPublicKey},
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerPublicKey},
     digest::Digest,
     probe::ProbeMetadata,
     scope::Scope,
@@ -45,6 +46,8 @@ pub(crate) struct CommitProcessor<
     commit_vote_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
     oneshots: Arc<DashMap<Digest<Shard>, oneshot::Sender<()>>>,
     encoder_keypair: Arc<EncoderKeyPair>,
+    recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
+    send_dedup: Cache<Digest<Shard>, ()>,
 }
 
 impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
@@ -56,6 +59,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         broadcaster: Arc<Broadcaster<E>>,
         commit_vote_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
         encoder_keypair: Arc<EncoderKeyPair>,
+        recv_cache_capacity: usize,
+        send_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
@@ -64,6 +69,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
             commit_vote_handle,
             oneshots: Arc::new(DashMap::new()),
             encoder_keypair,
+            recv_dedup: Cache::new(recv_cache_capacity),
+            send_dedup: Cache::new(send_cache_capacity),
         }
     }
 
@@ -110,6 +117,19 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage, 
         let result: ShardResult<()> = async {
             let (shard, verified_signed_commit, probe_metadata, peer, address) = msg.input;
 
+            let shard_digest = shard.digest()?;
+
+            match self.recv_dedup.get_value_or_guard(
+                &(shard_digest, verified_signed_commit.encoder().clone()),
+                Some(Duration::from_secs(5)),
+            ) {
+                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
+                GuardResult::Guard(placeholder) => {
+                    placeholder.insert(());
+                }
+                GuardResult::Timeout => (),
+            }
+
             let commit_input = DownloaderInput::new(
                 peer.clone(),
                 address.clone(),
@@ -145,6 +165,16 @@ impl<E: EncoderInternalNetworkClient, O: ObjectNetworkClient, S: ObjectStorage, 
                     self.store.add_first_commit_time(&shard)?;
                 }
                 count if count == quorum_threshold => {
+                    match self
+                        .send_dedup
+                        .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
+                    {
+                        GuardResult::Value(_) => return Ok(()),
+                        GuardResult::Guard(placeholder) => {
+                            placeholder.insert(());
+                        }
+                        GuardResult::Timeout => (),
+                    };
                     let duration = self.store.get_first_commit_time(&shard).map_or(
                         Duration::from_secs(60),
                         |first_commit_time| {
