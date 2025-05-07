@@ -19,7 +19,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use types::multiaddr::Multiaddr;
+use types::{committee::Committee, multiaddr::Multiaddr};
 
 /// Represents configuration options for creating encoder committees
 pub enum EncoderCommitteeConfig {
@@ -64,6 +64,12 @@ pub struct EncoderConfig {
     pub context: Context,
     /// Set of allowed public keys for TLS verification
     pub allowed_public_keys: AllowPublicKeys,
+
+    /// Address of the validator node for fetching committees
+    pub validator_rpc_address: Option<String>,
+
+    /// Genesis committee for committee verification
+    pub genesis_committee: Option<Committee>,
 }
 
 impl EncoderConfig {
@@ -117,6 +123,8 @@ impl EncoderConfig {
             connections_info,
             context,
             allowed_public_keys,
+            genesis_committee: None,
+            validator_rpc_address: None,
         }
     }
 
@@ -133,6 +141,18 @@ impl EncoderConfig {
     /// Returns the object server information for this encoder
     pub fn get_object_server_info(&self) -> (EncoderPublicKey, Multiaddr) {
         (self.protocol_public_key(), self.object_address.clone())
+    }
+
+    /// Sets the validator node address
+    pub fn with_validator_rpc_address(mut self, address: String) -> Self {
+        self.validator_rpc_address = Some(address);
+        self
+    }
+
+    /// Sets the genesis committee
+    pub fn with_genesis_committee(mut self, committee: Committee) -> Self {
+        self.genesis_committee = Some(committee);
+        self
     }
 
     /// Creates a test context for a group of encoders

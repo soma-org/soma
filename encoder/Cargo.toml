@@ -50,6 +50,9 @@ arc-swap.workspace = true
 http.workspace = true
 tonic-rustls.workspace = true
 msim.workspace = true
+types.workspace = true
+encoder-validator-api.workspace = true
+anyhow.workspace = true
 
 [dependencies.pyo3]
 workspace = true

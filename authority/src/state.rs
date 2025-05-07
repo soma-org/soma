@@ -47,6 +47,7 @@ use types::effects::{
     self, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
     VerifiedCertifiedTransactionEffects, VerifiedSignedTransactionEffects,
 };
+use types::encoder_validator::{FetchCommitteesRequest, FetchCommitteesResponse};
 use types::envelope::Message;
 use types::error::ExecutionError;
 use types::object::{Object, ObjectID, ObjectRef};

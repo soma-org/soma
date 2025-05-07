@@ -22,6 +22,7 @@ pub struct ValidatorGenesisConfig {
     pub network_address: Multiaddr,
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
+    pub encoder_validator_address: Multiaddr,
     #[serde(default = "default_stake")]
     pub stake: u64,
     pub commission_rate: u64,
@@ -179,15 +180,17 @@ impl ValidatorGenesisConfigBuilder {
             NetworkKeyPair::new(get_key_pair_from_rng(rng).1),
         );
 
-        let (network_address, consensus_address, p2p_address) =
+        let (network_address, consensus_address, p2p_address, encoder_validator_address) =
             if let Some(offset) = self.port_offset {
                 (
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
                 )
             } else {
                 (
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -202,6 +205,7 @@ impl ValidatorGenesisConfigBuilder {
             network_address,
             consensus_address,
             p2p_address,
+            encoder_validator_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,
         }

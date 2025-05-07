@@ -20,6 +20,8 @@ use shared::{
 use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use tokio::sync::Semaphore;
+use tracing::{info, warn};
+use types::committee::Committee;
 
 use crate::{
     actors::{
@@ -58,6 +60,7 @@ use self::{
 };
 
 use super::{
+    encoder_validator_client::EncoderValidatorClient,
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
     shard_tracker::ShardTracker,
@@ -102,6 +105,9 @@ pub struct EncoderNode {
     store: Arc<dyn Store>,
     pub context: Context,
     object_storage: Arc<MemoryObjectStore>,
+    /// Client for fetching committees from validator nodes
+    validator_client: Option<Arc<tokio::sync::Mutex<EncoderValidatorClient>>>,
+
     #[cfg(msim)]
     sim_state: SimState,
 }
@@ -123,6 +129,8 @@ impl EncoderNode {
         connections_info: ConnectionsInfo,
         project_root: &Path,
         entry_point: &Path,
+        validator_rpc_address: Option<types::multiaddr::Multiaddr>,
+        genesis_committee: Option<Committee>,
     ) -> Self {
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),
@@ -334,6 +342,23 @@ impl EncoderNode {
             .start(external_network_service)
             .await;
 
+        // Initialize validator client if configuration is provided
+        let validator_client =
+            if let (Some(address), Some(committee)) = (validator_rpc_address, genesis_committee) {
+                match EncoderValidatorClient::new(&address, committee).await {
+                    Ok(client) => {
+                        info!("Successfully connected to validator node for committee updates");
+                        Some(Arc::new(tokio::sync::Mutex::new(client)))
+                    }
+                    Err(e) => {
+                        warn!("Failed to create validator client: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
         Self {
             internal_network_manager,
             external_network_manager,
@@ -342,6 +367,7 @@ impl EncoderNode {
             object_storage,
             context,
             probe_network_manager,
+            validator_client,
             #[cfg(msim)]
             sim_state: Default::default(),
         }

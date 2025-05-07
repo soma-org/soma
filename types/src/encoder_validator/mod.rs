@@ -21,10 +21,20 @@ pub struct FetchCommitteesRequest {
 
 #[derive(Clone, prost::Message, Serialize, Deserialize)]
 pub struct FetchCommitteesResponse {
-    // // Serialized consecutive Commit.
-    // #[prost(bytes = "bytes", repeated, tag = "1")]
-    // pub commits: Vec<Bytes>,
-    // // Serialized SignedBlock that certify the last commit from above.
-    // #[prost(bytes = "bytes", repeated, tag = "2")]
-    // pub certifier_blocks: Vec<Bytes>,
+    #[prost(message, repeated, tag = "1")]
+    pub epoch_committees: Vec<EpochCommittee>,
+}
+
+#[derive(Clone, prost::Message, Serialize, Deserialize)]
+pub struct EpochCommittee {
+    #[prost(uint64, tag = "1")]
+    pub epoch: EpochId,
+    #[prost(bytes, tag = "2")]
+    pub validator_set: Bytes, // Serialized ValidatorSet
+    #[prost(bytes, tag = "3")]
+    pub aggregate_signature: Bytes, // Serialized AggregateAuthoritySignature
+    #[prost(uint64, tag = "4")]
+    pub next_epoch_start_timestamp_ms: u64,
+    #[prost(uint32, repeated, tag = "5")]
+    pub signer_indices: Vec<u32>, // AuthorityIndex values of signers
 }
