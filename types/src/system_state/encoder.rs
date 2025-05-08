@@ -6,6 +6,7 @@ use std::{
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use shared::crypto::keys::EncoderPublicKey;
 use tracing::{error, info};
 
 use crate::{
@@ -40,6 +41,8 @@ use super::staking::{PoolTokenExchangeRate, StakedSoma, StakingPool};
 pub struct EncoderMetadata {
     /// The Soma blockchain address of the encoder
     pub soma_address: SomaAddress,
+
+    pub encoder_pubkey: EncoderPublicKey,
 
     /// The network public key used for network identity and authentication
     pub network_pubkey: crate::crypto::NetworkPublicKey,
@@ -101,6 +104,7 @@ impl Encoder {
     /// A new Encoder instance with the specified metadata and voting power
     pub fn new(
         soma_address: SomaAddress,
+        encoder_pubkey: EncoderPublicKey,
         network_pubkey: crypto::NetworkPublicKey,
         net_address: Multiaddr,
         voting_power: u64,
@@ -110,6 +114,7 @@ impl Encoder {
         Self {
             metadata: EncoderMetadata {
                 soma_address,
+                encoder_pubkey,
                 network_pubkey,
                 net_address,
                 next_epoch_network_pubkey: None,

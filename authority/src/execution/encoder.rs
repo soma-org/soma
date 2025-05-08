@@ -31,6 +31,7 @@ impl EncoderExecutor {
         match tx_kind {
             TransactionKind::AddEncoder(args) => state.request_add_encoder(
                 signer,
+                args.encoder_pubkey_bytes.clone(),
                 args.network_pubkey_bytes.clone(),
                 args.net_address.clone(),
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),

@@ -219,6 +219,7 @@ pub struct UpdateValidatorMetadataArgs {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct AddEncoderArgs {
+    pub encoder_pubkey_bytes: Vec<u8>,
     pub network_pubkey_bytes: Vec<u8>,
     pub net_address: Vec<u8>,
 }

@@ -32,9 +32,13 @@ pub struct EpochCommittee {
     #[prost(bytes, tag = "2")]
     pub validator_set: Bytes, // Serialized ValidatorSet
     #[prost(bytes, tag = "3")]
-    pub aggregate_signature: Bytes, // Serialized AggregateAuthoritySignature
+    pub aggregate_signature: Bytes, // Serialized AggregateAuthoritySignature for validator set
     #[prost(uint64, tag = "4")]
     pub next_epoch_start_timestamp_ms: u64,
     #[prost(uint32, repeated, tag = "5")]
     pub signer_indices: Vec<u32>, // AuthorityIndex values of signers
+    #[prost(bytes, tag = "6")]
+    pub encoder_committee: Bytes, // Serialized EncoderCommittee
+    #[prost(bytes, tag = "7")]
+    pub encoder_aggregate_signature: Bytes, // Serialized AggregateAuthoritySignature for encoder committee
 }

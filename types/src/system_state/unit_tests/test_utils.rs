@@ -21,6 +21,7 @@ use fastcrypto::{
 };
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use shared::crypto::keys::EncoderKeyPair;
 use std::{
     collections::{BTreeMap, HashMap},
     str::FromStr,
@@ -353,6 +354,8 @@ pub fn create_validators_with_stakes(stakes: Vec<u64>) -> Vec<Validator> {
 pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> Encoder {
     let mut rng = StdRng::from_seed([0; 32]);
 
+    let encoder_keypair = EncoderKeyPair::generate(&mut rng);
+
     // Create network public key (ED25519)
     let network_keypair = NetworkKeyPair::generate(&mut rng);
 
@@ -362,6 +365,7 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
     // Create encoder
     let mut encoder = Encoder::new(
         addr,
+        encoder_keypair.public(),
         network_keypair.public(),
         net_address,
         0, // Initial voting power is 0, will be set later

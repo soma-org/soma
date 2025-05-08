@@ -51,7 +51,7 @@ use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, CommitIndex},
     base::{AuthorityName, ConciseableName, ConsensusObjectSequenceKey, FullObjectID, Round, SomaAddress},
-    committee::{Authority, Committee, EpochId},
+    committee::{Authority, Committee, EncoderCommittee, EpochId},
     consensus::{
         validator_set::ValidatorSet, ConsensusCommitPrologue, ConsensusTransaction,
         ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
@@ -68,8 +68,7 @@ use types::{
     signature_verifier::SignatureVerifier,
     storage::{object_store::ObjectStore, InputKey},
     system_state::{
-        self, get_system_state, epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, SystemState,
-        SystemStateTrait,
+        self, epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, get_system_state, SystemState, SystemStateTrait
     },
     temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore},
     transaction::{
@@ -2280,7 +2279,7 @@ impl AuthorityPerEpochStore {
 }
 
 impl EndOfEpochAPI for AuthorityPerEpochStore {
-    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)> {
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64)> {
         self.next_epoch_state
             .read()
             .as_ref()
@@ -2300,6 +2299,7 @@ impl EndOfEpochAPI for AuthorityPerEpochStore {
                             })
                             .collect(),
                     ),
+                    state.get_current_epoch_encoder_committee(),
                     digest.clone(),
                     state.epoch_start_timestamp_ms,
                 )

@@ -35,6 +35,7 @@ tracing-subscriber.workspace = true
 tempfile.workspace = true
 prost.workspace = true
 bytes.workspace = true
+shared.workspace = true
 serde_with = { version = "3.8", features = ["schemars_0_8"] }
 derive_more = "0.99.17"
 schemars = { version = "0.8.21", features = ["either"] }

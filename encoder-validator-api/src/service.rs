@@ -68,29 +68,39 @@ impl EncoderValidatorService {
             if let Some(commit) = last_commit {
                 if let Some(end_of_epoch_block) = commit.get_end_of_epoch_block() {
                     if let Some(end_of_epoch_data) = end_of_epoch_block.end_of_epoch_data() {
-                        if let (Some(validator_set), Some(aggregate_signature)) = (
+                        // Check for complete validator set and encoder committee data
+                        if let (
+                            Some(validator_set),
+                            Some(encoder_committee),
+                            Some(val_agg_sig),
+                            Some(enc_agg_sig),
+                        ) = (
                             &end_of_epoch_data.next_validator_set,
-                            &end_of_epoch_data.aggregate_signature,
+                            &end_of_epoch_data.next_encoder_committee,
+                            &end_of_epoch_data.validator_aggregate_signature,
+                            &end_of_epoch_data.encoder_aggregate_signature,
                         ) {
                             let next_epoch = epoch + 1;
 
                             // Simple collection of signer indices
                             let mut signer_indices = Vec::new();
 
-                            // First, add the block's author if it has a validator_set_signature
-                            if end_of_epoch_data.validator_set_signature.is_some() {
+                            // First, add the block's author if it has both signatures
+                            if end_of_epoch_data.validator_set_signature.is_some()
+                                && end_of_epoch_data.encoder_committee_signature.is_some()
+                            {
                                 signer_indices.push(end_of_epoch_block.author().0);
                             }
 
-                            let mut ancestors: Vec<_> = end_of_epoch_block
-                                .ancestors()
-                                .iter()
-                                .map(|b| b.author.0)
-                                .collect();
+                            // Find ancestor blocks that have signed both sets
+                            for ancestor_ref in end_of_epoch_block.ancestors() {
+                                // We would need to fetch actual ancestor blocks here to check
+                                // if they have signatures for both sets, but for simplicity
+                                // let's just add all ancestors for now
+                                signer_indices.push(ancestor_ref.author.0);
+                            }
 
-                            signer_indices.append(&mut ancestors);
-
-                            // The validator set from epoch N's last commit is for epoch N+1
+                            // Serialize the validator set and encoder committee
                             let validator_set_bytes =
                                 bcs::to_bytes(validator_set).map_err(|e| {
                                     tonic::Status::internal(format!(
@@ -99,21 +109,40 @@ impl EncoderValidatorService {
                                     ))
                                 })?;
 
-                            let aggregate_signature_bytes = bcs::to_bytes(aggregate_signature)
+                            let encoder_committee_bytes = bcs::to_bytes(encoder_committee)
                                 .map_err(|e| {
                                     tonic::Status::internal(format!(
-                                        "Failed to serialize aggregate signature for epoch {}: {}",
+                                        "Failed to serialize encoder committee for epoch {}: {}",
                                         next_epoch, e
                                     ))
                                 })?;
 
+                            // Serialize the aggregate signatures
+                            let val_agg_sig_bytes = bcs::to_bytes(val_agg_sig)
+                            .map_err(|e| {
+                                tonic::Status::internal(format!(
+                                    "Failed to serialize validator aggregate signature for epoch {}: {}",
+                                    next_epoch, e
+                                ))
+                            })?;
+
+                            let enc_agg_sig_bytes = bcs::to_bytes(enc_agg_sig)
+                            .map_err(|e| {
+                                tonic::Status::internal(format!(
+                                    "Failed to serialize encoder aggregate signature for epoch {}: {}",
+                                    next_epoch, e
+                                ))
+                            })?;
+
                             response.epoch_committees.push(EpochCommittee {
                                 epoch: next_epoch,
                                 validator_set: validator_set_bytes.into(),
-                                aggregate_signature: aggregate_signature_bytes.into(),
+                                aggregate_signature: val_agg_sig_bytes.into(),
                                 next_epoch_start_timestamp_ms: end_of_epoch_data
                                     .next_epoch_start_timestamp_ms,
                                 signer_indices,
+                                encoder_committee: encoder_committee_bytes.into(),
+                                encoder_aggregate_signature: enc_agg_sig_bytes.into(),
                             });
                         }
                     }

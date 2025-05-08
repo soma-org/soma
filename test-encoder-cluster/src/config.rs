@@ -66,7 +66,7 @@ pub struct EncoderConfig {
     pub allowed_public_keys: AllowPublicKeys,
 
     /// Address of the validator node for fetching committees
-    pub validator_rpc_address: Option<String>,
+    pub validator_rpc_address: Option<Multiaddr>,
 
     /// Genesis committee for committee verification
     pub genesis_committee: Option<Committee>,
@@ -144,7 +144,7 @@ impl EncoderConfig {
     }
 
     /// Sets the validator node address
-    pub fn with_validator_rpc_address(mut self, address: String) -> Self {
+    pub fn with_validator_rpc_address(mut self, address: Multiaddr) -> Self {
         self.validator_rpc_address = Some(address);
         self
     }

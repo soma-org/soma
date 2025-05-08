@@ -82,6 +82,8 @@ impl Container {
                             config.connections_info,
                             &config.project_root,
                             &config.entry_point,
+                            config.validator_rpc_address,
+                            config.genesis_committee,
                         )
                         .await,
                     );

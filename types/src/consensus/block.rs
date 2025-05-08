@@ -12,7 +12,7 @@ use super::context::Context;
 use super::{commit::CommitVote, validator_set::ValidatorSet};
 use crate::{
     accumulator::{Accumulator, CommitIndex},
-    committee::{AuthorityIndex, Epoch},
+    committee::{AuthorityIndex, EncoderCommittee, Epoch},
 };
 use crate::{
     committee::Committee,
@@ -62,17 +62,21 @@ pub struct EndOfEpochData {
     pub next_epoch_start_timestamp_ms: u64,
     /// The proposed validator set for next epoch, with each validator's public key and voting power
     pub next_validator_set: Option<ValidatorSet>,
+    /// The proposed encoder committee for next epoch
+    pub next_encoder_committee: Option<EncoderCommittee>,
 
     /// Accumulated state hash digest of the last commit of the epoch
     pub state_hash: Option<ECMHLiveObjectSetDigest>,
 
-    /// BLS signature from this block's author on next_validator_set from blocks in ancestry
+    /// BLS signature from this block's author on next_validator_set and next_epoch_committee from blocks in ancestry
     /// Only included if a valid validator set was found in ancestry
     pub validator_set_signature: Option<AuthoritySignature>,
+    pub encoder_committee_signature: Option<AuthoritySignature>,
 
-    /// Aggregate BLS signature from ancestor blocks' signatures on next_validator_set
+    /// Aggregate BLS signature from ancestor blocks' signatures on next_validator_set and next_encoder_committee
     /// Only included if quorum of ancestor signatures found
-    pub aggregate_signature: Option<AggregateAuthoritySignature>,
+    pub validator_aggregate_signature: Option<AggregateAuthoritySignature>,
+    pub encoder_aggregate_signature: Option<AggregateAuthoritySignature>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

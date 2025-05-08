@@ -9,7 +9,10 @@ use tracing::{debug, info, warn};
 use types::{
     base::AuthorityName,
     client::connect,
-    committee::{Authority, AuthorityIndex, Committee, EpochId},
+    committee::{
+        to_encoder_committee_intent, Authority, AuthorityIndex, Committee, EncoderCommittee,
+        EpochId,
+    },
     consensus::{
         stake_aggregator::{QuorumThreshold, StakeAggregator},
         validator_set::{to_validator_set_intent, ValidatorSet},
@@ -103,22 +106,38 @@ impl EncoderValidatorClient {
     ) -> Result<Committee> {
         info!("Verifying committee for epoch {}", committee_data.epoch);
 
-        // Deserialize validator set
+        // Deserialize validator set and encoder committee
         let validator_set: ValidatorSet = bcs::from_bytes(&committee_data.validator_set)
             .map_err(|e| anyhow!("Failed to deserialize validator set: {}", e))?;
 
-        // Deserialize aggregate signature
-        let agg_sig: AggregateAuthoritySignature =
-            bcs::from_bytes(&committee_data.aggregate_signature)
-                .map_err(|e| anyhow!("Failed to deserialize aggregate signature: {}", e))?;
+        let encoder_committee: EncoderCommittee =
+            bcs::from_bytes(&committee_data.encoder_committee)
+                .map_err(|e| anyhow!("Failed to deserialize encoder committee: {}", e))?;
 
-        // Get the message that was signed (validator set intent)
-        let digest = validator_set
+        // Deserialize aggregate signatures
+        let val_agg_sig: AggregateAuthoritySignature =
+            bcs::from_bytes(&committee_data.aggregate_signature).map_err(|e| {
+                anyhow!("Failed to deserialize validator aggregate signature: {}", e)
+            })?;
+
+        let enc_agg_sig: AggregateAuthoritySignature =
+            bcs::from_bytes(&committee_data.encoder_aggregate_signature)
+                .map_err(|e| anyhow!("Failed to deserialize encoder aggregate signature: {}", e))?;
+
+        // Get the messages that were signed
+        let val_digest = validator_set
             .compute_digest()
             .map_err(|e| anyhow!("Failed to compute validator set digest: {}", e))?;
 
-        let message = bcs::to_bytes(&to_validator_set_intent(digest))
-            .map_err(|e| anyhow!("Failed to serialize intent message: {}", e))?;
+        let val_message = bcs::to_bytes(&to_validator_set_intent(val_digest))
+            .map_err(|e| anyhow!("Failed to serialize validator intent message: {}", e))?;
+
+        let enc_digest = encoder_committee
+            .compute_digest()
+            .map_err(|e| anyhow!("Failed to compute encoder committee digest: {}", e))?;
+
+        let enc_message = bcs::to_bytes(&to_encoder_committee_intent(enc_digest))
+            .map_err(|e| anyhow!("Failed to serialize encoder intent message: {}", e))?;
 
         // Create a stake aggregator to check quorum
         let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
@@ -160,13 +179,21 @@ impl EncoderValidatorClient {
             })
             .collect();
 
-        // Verify the aggregate signature using the validator set message
-        agg_sig.verify(&pubkeys, &message).map_err(|e| {
-            warn!("Aggregate signature verification failed: {}", e);
-            anyhow!("Invalid aggregate signature: {}", e)
+        // Verify both aggregate signatures
+        val_agg_sig.verify(&pubkeys, &val_message).map_err(|e| {
+            warn!("Validator aggregate signature verification failed: {}", e);
+            anyhow!("Invalid validator aggregate signature: {}", e)
         })?;
 
+        enc_agg_sig.verify(&pubkeys, &enc_message).map_err(|e| {
+            warn!(
+                "Encoder committee aggregate signature verification failed: {}",
+                e
+            );
+            anyhow!("Invalid encoder committee aggregate signature: {}", e)
+        })?;
         // If verification succeeded, convert validator set to committee
+        // TODO: convert blockchain EncoderCommittee to encoder EncoderCommittee
         self.validator_set_to_committee(&validator_set, committee_data.epoch)
     }
 
