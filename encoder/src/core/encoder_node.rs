@@ -131,6 +131,7 @@ impl EncoderNode {
         entry_point: &Path,
         validator_rpc_address: Option<types::multiaddr::Multiaddr>,
         genesis_committee: Option<Committee>,
+        epoch_duration_ms: u64,
     ) -> Self {
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),

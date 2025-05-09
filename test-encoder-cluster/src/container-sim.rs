@@ -84,6 +84,7 @@ impl Container {
                             &config.entry_point,
                             config.validator_rpc_address,
                             config.genesis_committee,
+                            config.epoch_duration_ms,
                         )
                         .await,
                     );

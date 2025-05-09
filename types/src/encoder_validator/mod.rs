@@ -26,6 +26,18 @@ pub struct FetchCommitteesResponse {
 }
 
 #[derive(Clone, prost::Message, Serialize, Deserialize)]
+pub struct GetLatestEpochRequest {
+    #[prost(uint64, tag = "1")]
+    pub start: EpochId, // unused
+}
+
+#[derive(Clone, prost::Message, Serialize, Deserialize)]
+pub struct GetLatestEpochResponse {
+    #[prost(uint64, tag = "1")]
+    pub epoch: EpochId,
+}
+
+#[derive(Clone, prost::Message, Serialize, Deserialize)]
 pub struct EpochCommittee {
     #[prost(uint64, tag = "1")]
     pub epoch: EpochId,

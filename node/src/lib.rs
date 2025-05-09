@@ -355,7 +355,10 @@ impl SomaNode {
 
         let encoder_validator_server_handle = if is_full_node {
             info!("Starting encoder validator service for fullnode");
-            Some(Self::start_grpc_encoder_service(&config, commit_store.clone()).await?)
+            Some(
+                Self::start_grpc_encoder_service(&config, state.clone(), commit_store.clone())
+                    .await?,
+            )
         } else {
             None
         };
@@ -622,9 +625,11 @@ impl SomaNode {
 
     async fn start_grpc_encoder_service(
         config: &NodeConfig,
+        state: Arc<AuthorityState>,
         commit_store: Arc<CommitStore>,
     ) -> Result<tokio::task::JoinHandle<Result<()>>> {
-        let encoder_validator_service = EncoderValidatorService::new(commit_store.clone());
+        let encoder_validator_service =
+            EncoderValidatorService::new(state.clone(), commit_store.clone());
 
         let server_conf = Config::new();
         let mut server_builder = ServerBuilder::from_config(&server_conf);

@@ -2,21 +2,29 @@ use std::sync::Arc;
 
 use crate::tonic_gen::encoder_validator_api_server::EncoderValidatorApi;
 use async_trait::async_trait;
-use authority::commit::CommitStore;
+use authority::{commit::CommitStore, state::AuthorityState};
+use tonic::Status;
 use tracing::error_span;
 use types::{
     consensus::block::BlockAPI,
-    encoder_validator::{EpochCommittee, FetchCommitteesRequest, FetchCommitteesResponse},
+    encoder_validator::{
+        EpochCommittee, FetchCommitteesRequest, FetchCommitteesResponse, GetLatestEpochRequest,
+        GetLatestEpochResponse,
+    },
 };
 
 #[derive(Clone)]
 pub struct EncoderValidatorService {
+    state: Arc<AuthorityState>,
     commit_store: Arc<CommitStore>,
 }
 
 impl EncoderValidatorService {
-    pub fn new(commit_store: Arc<CommitStore>) -> Self {
-        Self { commit_store }
+    pub fn new(state: Arc<AuthorityState>, commit_store: Arc<CommitStore>) -> Self {
+        Self {
+            state,
+            commit_store,
+        }
     }
 
     async fn fetch_committees_impl(
@@ -32,14 +40,14 @@ impl EncoderValidatorService {
 
         // Validate request parameters
         if start > end {
-            return Err(tonic::Status::invalid_argument(
+            return Err(Status::invalid_argument(
                 "Start epoch must be less than or equal to end epoch",
             ));
         }
 
         // Throw an error if epoch 0 is requested
         if start == 0 {
-            return Err(tonic::Status::invalid_argument(
+            return Err(Status::invalid_argument(
                 "Epoch 0 (genesis) committee should not be requested as it must be provided via configuration",
             ));
         }
@@ -150,22 +158,6 @@ impl EncoderValidatorService {
             }
         }
 
-        // Check if we found all requested epochs
-        let found_epochs: std::collections::HashSet<_> = response
-            .epoch_committees
-            .iter()
-            .map(|ec| ec.epoch)
-            .collect();
-
-        for epoch in start..=end {
-            if !found_epochs.contains(&epoch) {
-                return Err(tonic::Status::not_found(format!(
-                    "Could not find committee information for epoch {}",
-                    epoch
-                )));
-            }
-        }
-
         Ok(tonic::Response::new(response))
     }
 }
@@ -177,5 +169,16 @@ impl EncoderValidatorApi for EncoderValidatorService {
         request: tonic::Request<FetchCommitteesRequest>,
     ) -> Result<tonic::Response<FetchCommitteesResponse>, tonic::Status> {
         self.fetch_committees_impl(request).await
+    }
+
+    async fn get_latest_epoch(
+        &self,
+        _request: tonic::Request<GetLatestEpochRequest>,
+    ) -> Result<tonic::Response<GetLatestEpochResponse>, tonic::Status> {
+        let current_epoch = self.state.load_epoch_store_one_call_per_task().epoch();
+
+        Ok(tonic::Response::new(GetLatestEpochResponse {
+            epoch: current_epoch,
+        }))
     }
 }

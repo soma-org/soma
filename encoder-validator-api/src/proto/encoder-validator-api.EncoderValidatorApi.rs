@@ -121,6 +121,37 @@ pub mod encoder_validator_api_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn get_latest_epoch(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                types::encoder_validator::GetLatestEpochRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<types::encoder_validator::GetLatestEpochResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/encoder-validator-api.EncoderValidatorApi/GetLatestEpoch",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "encoder-validator-api.EncoderValidatorApi",
+                        "GetLatestEpoch",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -141,6 +172,13 @@ pub mod encoder_validator_api_server {
             request: tonic::Request<types::encoder_validator::FetchCommitteesRequest>,
         ) -> std::result::Result<
             tonic::Response<types::encoder_validator::FetchCommitteesResponse>,
+            tonic::Status,
+        >;
+        async fn get_latest_epoch(
+            &self,
+            request: tonic::Request<types::encoder_validator::GetLatestEpochRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::encoder_validator::GetLatestEpochResponse>,
             tonic::Status,
         >;
     }
@@ -258,6 +296,58 @@ pub mod encoder_validator_api_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = FetchCommitteesSvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/encoder-validator-api.EncoderValidatorApi/GetLatestEpoch" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetLatestEpochSvc<T: EncoderValidatorApi>(pub Arc<T>);
+                    impl<
+                        T: EncoderValidatorApi,
+                    > tonic::server::UnaryService<
+                        types::encoder_validator::GetLatestEpochRequest,
+                    > for GetLatestEpochSvc<T> {
+                        type Response = types::encoder_validator::GetLatestEpochResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::encoder_validator::GetLatestEpochRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as EncoderValidatorApi>::get_latest_epoch(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetLatestEpochSvc(inner);
                         let codec = utils::codec::BcsCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

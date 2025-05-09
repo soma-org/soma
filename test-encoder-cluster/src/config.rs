@@ -70,6 +70,8 @@ pub struct EncoderConfig {
 
     /// Genesis committee for committee verification
     pub genesis_committee: Option<Committee>,
+
+    pub epoch_duration_ms: u64,
 }
 
 impl EncoderConfig {
@@ -125,6 +127,7 @@ impl EncoderConfig {
             allowed_public_keys,
             genesis_committee: None,
             validator_rpc_address: None,
+            epoch_duration_ms: 1000, // TODO: fill this in with actual epoch_duration_ms
         }
     }
 

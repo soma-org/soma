@@ -36,7 +36,7 @@ pub struct EncoderCommittee {
 
 impl EncoderCommittee {
     /// creates a new encoder committee for a given modality marker
-    fn new(
+    pub fn new(
         epoch: Epoch,
         shard_size: CountUnit,
         quorum_threshold: CountUnit,

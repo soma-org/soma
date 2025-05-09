@@ -18,6 +18,15 @@ fn main() -> Result<()> {
                 .codec_path(codec_path)
                 .build(),
         )
+        .method(
+            Method::builder()
+                .name("get_latest_epoch")
+                .route_name("GetLatestEpoch")
+                .input_type("types::encoder_validator::GetLatestEpochRequest")
+                .output_type("types::encoder_validator::GetLatestEpochResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
         .build();
 
     tonic_build::manual::Builder::new()
