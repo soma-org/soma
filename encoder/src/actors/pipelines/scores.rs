@@ -201,7 +201,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
                     let cancellation = msg.cancellation.clone();
                     let trigger_fn = || async move {
                         // call on-chain
-
+                        info!("MOCK SUBMIT ON CHAIN");
                         let finality = ShardFinality::V1(ShardFinalityV1::new(
                             auth_token,
                             encoder_keypair.public(),
