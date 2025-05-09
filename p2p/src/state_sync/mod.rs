@@ -382,7 +382,13 @@ where
             .commit_ref
             .digest;
         if commit.previous_digest != prev_digest {
-            panic!("Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: {:?}", commit.commit_ref.index, Some(prev_digest), commit.previous_digest);
+            panic!(
+                "Commit {} from consensus has mismatched previous_digest, expected: {:?}, actual: \
+                 {:?}",
+                commit.commit_ref.index,
+                Some(prev_digest),
+                commit.previous_digest
+            );
         }
 
         let latest_commit = self
@@ -960,7 +966,13 @@ async fn fetch_blocks_batch(
                             .collect(),
                         highest_accepted_rounds: vec![],
                     })
-                    .await.map_err(|e| ConsensusError::NetworkRequest(format!("Network error while streaming blocks {}", e)))?
+                    .await
+                    .map_err(|e| {
+                        ConsensusError::NetworkRequest(format!(
+                            "Network error while streaming blocks {}",
+                            e
+                        ))
+                    })?
                     .into_inner();
 
                 let mut chunk_serialized_blocks = vec![];
@@ -974,7 +986,8 @@ async fn fetch_blocks_batch(
                             chunk_serialized_blocks.extend(response.blocks);
                             if total_fetched_bytes > MAX_TOTAL_FETCHED_BYTES {
                                 info!(
-                                    "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating stream.",
+                                    "fetch_blocks() fetched bytes exceeded limit: {} > {}, \
+                                     terminating stream.",
                                     total_fetched_bytes, MAX_TOTAL_FETCHED_BYTES,
                                 );
                                 break;
@@ -1002,27 +1015,34 @@ async fn fetch_blocks_batch(
                         peer: public_key.into_inner().to_string(),
                         requested: request_block_refs.len(),
                         received: chunk_serialized_blocks.len(),
-                    }.into());
+                    }
+                    .into());
                 }
 
                 let mut verified_blocks = Vec::new();
-                for (requested_block_ref, serialized) in
-                    request_block_refs.iter().zip(chunk_serialized_blocks.into_iter())
+                for (requested_block_ref, serialized) in request_block_refs
+                    .iter()
+                    .zip(chunk_serialized_blocks.into_iter())
                 {
                     let signed_block: SignedBlock =
                         bcs::from_bytes(&serialized).map_err(ConsensusError::MalformedBlock)?;
                     block_verifier.verify(&signed_block)?;
 
                     let signed_block_digest = VerifiedBlock::compute_digest(&serialized);
-                    let received_block_ref =
-                        BlockRef::new(signed_block.round(), signed_block.author(), signed_block_digest, signed_block.epoch());
+                    let received_block_ref = BlockRef::new(
+                        signed_block.round(),
+                        signed_block.author(),
+                        signed_block_digest,
+                        signed_block.epoch(),
+                    );
 
                     if *requested_block_ref != received_block_ref {
                         return Err(ConsensusError::UnexpectedBlockForCommit {
                             peer: public_key.into_inner().to_string(),
                             requested: *requested_block_ref,
                             received: received_block_ref,
-                        }.into());
+                        }
+                        .into());
                     }
 
                     verified_blocks.push(VerifiedBlock::new_verified(signed_block, serialized));

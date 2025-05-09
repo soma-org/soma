@@ -5,10 +5,11 @@ use objects::storage::{ObjectPath, ObjectStorage};
 use tokio::sync::Semaphore;
 
 use async_trait::async_trait;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    actors::{ActorMessage, Processor},
-    error::ShardError,
+    actors::{ActorHandle, ActorMessage, Processor},
+    error::{ShardError, ShardResult},
 };
 
 pub(crate) struct StorageProcessor<B: ObjectStorage> {
@@ -91,6 +92,19 @@ impl<B: ObjectStorage> Processor for StorageProcessor<B> {
 
     fn shutdown(&mut self) {
         // TODO: check whether to do anything for client shutdown
+    }
+}
+
+impl<B: ObjectStorage> ActorHandle<StorageProcessor<B>> {
+    pub(crate) async fn store(
+        &self,
+        object_path: ObjectPath,
+        bytes: Bytes,
+        cancellation: CancellationToken,
+    ) -> ShardResult<()> {
+        let input = StorageProcessorInput::Store(object_path, bytes);
+        let x = self.process(input, cancellation).await?;
+        Ok(())
     }
 }
 

@@ -2,7 +2,10 @@ use std::{
     sync::{Arc, Weak},
     time::Duration,
 };
-use tokio::{sync::{mpsc::UnboundedReceiver, oneshot, Semaphore}, time::sleep};
+use tokio::{
+    sync::{mpsc::UnboundedReceiver, oneshot, Semaphore},
+    time::sleep,
+};
 use tracing::{error, error_span, info, trace, Instrument};
 
 use crate::{state::AuthorityState, tx_manager::PendingCertificate};
@@ -24,7 +27,6 @@ pub async fn execution_process(
 
     // Rate limit concurrent executions to # of cpus.
     let limit = Arc::new(Semaphore::new(num_cpus::get()));
-
 
     // Loop whenever there is a signal that a new transactions is ready to process.
     loop {
@@ -72,14 +74,12 @@ pub async fn execution_process(
 
         // Certificate execution can take significant time, so run it in a separate task.
         tokio::spawn(async move {
-   
             let _guard = permit;
             // TODO: if let Ok(true) = authority.is_tx_already_executed(&digest) {
             //     return;
             // }
             let mut attempts = 0;
             loop {
-               
                 attempts += 1;
                 let res = authority
                     .try_execute_immediately(&certificate, expected_effects_digest, commit,  &epoch_store)

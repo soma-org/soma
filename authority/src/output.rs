@@ -58,14 +58,15 @@ impl ConsensusOutputAPI for CommittedSubDag {
                     .flat_map(|tx| {
                         let transaction = bcs::from_bytes::<ConsensusTransaction>(tx.data());
                         match transaction {
-                            Ok(transaction) => Some((
-                                tx.data(),
-                                transaction,
-                            )),
+                            Ok(transaction) => Some((tx.data(), transaction)),
                             Err(err) => {
-                                tracing::error!("Failed to deserialize sequenced consensus transaction(this should not happen) {} from {author} at {round}", err);
+                                tracing::error!(
+                                    "Failed to deserialize sequenced consensus transaction(this \
+                                     should not happen) {} from {author} at {round}",
+                                    err
+                                );
                                 None
-                            },
+                            }
                         }
                     })
                     .collect();

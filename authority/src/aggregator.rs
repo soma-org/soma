@@ -1,3 +1,11 @@
+use crate::{
+    client::{
+        make_network_authority_clients_with_network_config, AuthorityAPI, NetworkAuthorityClient,
+    },
+    safe_client::SafeClient,
+    stake_aggregator::{InsertResult, MultiStakeAggregator, StakeAggregator},
+};
+use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::SocketAddr,
@@ -5,20 +13,28 @@ use std::{
     time::Duration,
 };
 use thiserror::Error;
-use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use tokio::time::{sleep, timeout};
 use tracing::{debug, error, info, instrument, trace, trace_span, warn, Instrument};
+use types::committee::CommitteeTrait;
+use types::storage::committee_store::CommitteeStore;
 use types::{
-    base::{AuthorityName, ConciseableName}, client::Config, committee::{Committee, CommitteeWithNetworkMetadata, EpochId, VotingPower}, crypto::{AuthoritySignInfo, ConciseAuthorityPublicKeyBytes}, digests::{TransactionDigest, TransactionEffectsDigest}, effects::{self, CertifiedTransactionEffects, SignedTransactionEffects, TransactionEffects, VerifiedCertifiedTransactionEffects}, envelope::Message, error::{SomaError, SomaResult}, grpc::{HandleCertificateRequest, HandleCertificateResponse}, quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse}, system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, transaction::{CertifiedTransaction, SignedTransaction, Transaction}
+    base::{AuthorityName, ConciseableName},
+    client::Config,
+    committee::{Committee, CommitteeWithNetworkMetadata, EpochId, VotingPower},
+    crypto::{AuthoritySignInfo, ConciseAuthorityPublicKeyBytes},
+    digests::{TransactionDigest, TransactionEffectsDigest},
+    effects::{
+        self, CertifiedTransactionEffects, SignedTransactionEffects, TransactionEffects,
+        VerifiedCertifiedTransactionEffects,
+    },
+    envelope::Message,
+    error::{SomaError, SomaResult},
+    grpc::{HandleCertificateRequest, HandleCertificateResponse},
+    quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse},
+    system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
+    transaction::{CertifiedTransaction, SignedTransaction, Transaction},
 };
 use utils::agg::{quorum_map_then_reduce_with_timeout, AsyncResult, ReduceOutput};
-use types::committee::CommitteeTrait;
-use crate::{
-    client::{
-        make_network_authority_clients_with_network_config, AuthorityAPI, NetworkAuthorityClient,
-    }, safe_client::SafeClient, stake_aggregator::{InsertResult, MultiStakeAggregator, StakeAggregator}
-};
-use types::storage::committee_store::CommitteeStore;
 
 #[derive(Debug)]
 struct ProcessTransactionState {
@@ -131,10 +147,7 @@ impl<A: Clone> AuthorityAggregator<A> {
         Self {
             committee: Arc::new(committee),
             validator_display_names,
-            authority_clients: create_safe_clients(
-                authority_clients,
-                &committee_store,
-            ),
+            authority_clients: create_safe_clients(authority_clients, &committee_store),
             committee_store,
         }
     }
@@ -150,11 +163,7 @@ fn create_safe_clients<A: Clone>(
             .map(|(name, api)| {
                 (
                     name,
-                    Arc::new(SafeClient::new(
-                        api,
-                        committee_store.clone(),
-                        name,
-                    )),
+                    Arc::new(SafeClient::new(api, committee_store.clone(), name)),
                 )
             })
             .collect(),
@@ -224,7 +233,10 @@ where
         authority_errors: &mut HashMap<AuthorityName, SomaError>,
     ) -> Result<S, SomaError>
     where
-        FMap: Fn(AuthorityName, Arc<SafeClient<A>>) -> AsyncResult<'a, S, SomaError> + Send + Clone + 'a,
+        FMap: Fn(AuthorityName, Arc<SafeClient<A>>) -> AsyncResult<'a, S, SomaError>
+            + Send
+            + Clone
+            + 'a,
         S: Send,
     {
         let start = tokio::time::Instant::now();
@@ -286,7 +298,6 @@ where
                 match res {
                     Event::StartNext => {
                         trace!(now = ?tokio::time::Instant::now() - start, "eagerly beginning next request");
-               
                     }
                     Event::Request(name, res) => {
                         match res {
@@ -348,7 +359,10 @@ where
         description: String,
     ) -> Result<S, SomaError>
     where
-        FMap: Fn(AuthorityName, Arc<SafeClient<A>>) -> AsyncResult<'a, S, SomaError> + Send + Clone + 'a,
+        FMap: Fn(AuthorityName, Arc<SafeClient<A>>) -> AsyncResult<'a, S, SomaError>
+            + Send
+            + Clone
+            + 'a,
         S: Send,
     {
         let mut authority_errors = HashMap::new();
@@ -444,8 +458,7 @@ where
                                 //     // TODO: Should minimize possible uncategorized errors here
                                 //     // use ERROR for now to make them easier to spot.
                                 //     error!(?tx_digest, "uncategorized tx error: {err}");
-                                // }
-                               
+                                // }c
                                 state.errors.push((err, vec![name], weight));
 
                             }
@@ -496,7 +509,7 @@ where
                     "Error processing transaction from validator"
                 );
                 Err(err)
-            },
+            }
         }
     }
 
@@ -523,13 +536,9 @@ where
                 Ok(None)
             }
             InsertResult::Failed { error } => {
-                warn!(
-                    ?plain_tx,
-                    ?error,
-                    "Failed to insert transaction signature"
-                );
+                warn!(?plain_tx, ?error, "Failed to insert transaction signature");
                 Err(error)
-            },
+            }
             InsertResult::QuorumReached(cert_sig) => {
                 let certificate =
                     CertifiedTransaction::new_from_data_and_sig(plain_tx.into_data(), cert_sig);
@@ -629,7 +638,9 @@ where
                 } else {
                     // TODO: Figure out a more reliable way to detect invariance violations.
                     error!(
-                        "We have seen signed effects but unable to reach quorum threshold even including retriable stakes. This is very rare. Tx: {tx_digest:?}. Non-quorum effects: {non_quorum_effects:?}."
+                        "We have seen signed effects but unable to reach quorum threshold even \
+                         including retriable stakes. This is very rare. Tx: {tx_digest:?}. \
+                         Non-quorum effects: {non_quorum_effects:?}."
                     );
                 }
             }
@@ -653,7 +664,6 @@ where
         state
     }
 
-
     fn handle_process_transaction_error(
         &self,
         original_tx_digest: &TransactionDigest,
@@ -661,7 +671,7 @@ where
     ) -> AggregatorProcessTransactionError {
         let quorum_threshold = self.committee.quorum_threshold();
         let validity_threshold = self.committee.validity_threshold();
-    
+
         // Group errors for logging
         let grouped_errors = group_errors(state.errors.clone());
         for (error, stake, validators) in &grouped_errors {
@@ -679,13 +689,11 @@ where
         if let Some((most_staked_conflicting_tx, validators, most_staked_conflicting_tx_stake)) =
             state.conflicting_tx_digest_with_most_stake()
         {
-
-
             warn!(
                 ?state.conflicting_tx_digests,
                 ?most_staked_conflicting_tx,
                 ?original_tx_digest,
-       
+
                 most_staked_conflicting_tx_stake = most_staked_conflicting_tx_stake,
                 "Client double spend attempt detected: {:?}",
                 validators
@@ -733,8 +741,6 @@ where
             retryable_errors: vec![],
             retryable: true,
         };
-
-    
 
         let tx_digest = *request.certificate.digest();
 
@@ -794,7 +800,7 @@ where
                         Err(err) => {
                             let concise_name = name.concise();
                             debug!(?tx_digest, name=?concise_name, "Error processing certificate from validator: {:?}", err);
-                           
+
                             state.non_retryable_stake += weight;
                             state.non_retryable_errors.push((err, vec![name], weight));
                             if state.non_retryable_stake >= validity {
@@ -808,19 +814,19 @@ where
                 })
             },
             // A long timeout before we hear back from a quorum
-  
+
         )
         .await
         .map_err(|state| {
             debug!(
                 ?tx_digest,
-   
+
                 non_retryable_stake = state.non_retryable_stake,
                 "Received effects responses from validators"
             );
 
             // record errors and tx retryable state
-    
+
             if state.retryable {
                 AggregatorProcessCertificateError::RetryableExecuteCertificate {
                     retryable_errors: group_errors(state.retryable_errors),
@@ -835,7 +841,6 @@ where
         if !remaining_tasks.is_empty() {
             // Use best efforts to send the cert to remaining validators.
             tokio::spawn(async move {
-
                 loop {
                     let res = remaining_tasks.next().await;
                     if res.is_none() {
@@ -855,9 +860,7 @@ where
         name: AuthorityName,
     ) -> SomaResult<Option<QuorumDriverResponse>> {
         match response {
-            Ok(HandleCertificateResponse {
-                signed_effects,
-            }) => {
+            Ok(HandleCertificateResponse { signed_effects }) => {
                 debug!(
                     ?tx_digest,
                     name = ?name.concise(),
@@ -893,13 +896,9 @@ where
                         Ok(None)
                     }
                     InsertResult::Failed { error } => {
-                        warn!(
-                            ?tx_digest,
-                            ?effects_digest,
-                            "Failed to insert effects"
-                        );    
+                        warn!(?tx_digest, ?effects_digest, "Failed to insert effects");
                         Err(error)
-                    },
+                    }
                     InsertResult::QuorumReached(cert_sig) => {
                         let ct = CertifiedTransactionEffects::new_from_data_and_sig(
                             signed_effects.into_data(),
@@ -908,10 +907,7 @@ where
 
                         ct.verify(&committee).map(|ct| {
                             debug!(?tx_digest, "Got quorum for validators handle_certificate.");
-                            Some(QuorumDriverResponse {
-                                effects_cert: ct,
-                               
-                            })
+                            Some(QuorumDriverResponse { effects_cert: ct })
                         })
                     }
                 }
@@ -919,48 +915,50 @@ where
             Err(err) => Err(err),
         }
     }
-
 }
 
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum AggregatorProcessTransactionError {
     #[error(
-        "Failed to execute transaction on a quorum of validators due to non-retryable errors. Validator errors: {:?}",
-        errors,
+        "Failed to execute transaction on a quorum of validators due to non-retryable errors. \
+         Validator errors: {:?}",
+        errors
     )]
     FatalTransaction { errors: GroupedErrors },
 
     #[error(
-        "Failed to execute transaction on a quorum of validators but state is still retryable. Validator errors: {:?}",
+        "Failed to execute transaction on a quorum of validators but state is still retryable. \
+         Validator errors: {:?}",
         errors
     )]
     RetryableTransaction { errors: GroupedErrors },
 
     #[error(
-        "Failed to execute transaction on a quorum of validators due to conflicting transactions. Locked objects: {:?}. Validator errors: {:?}",
+        "Failed to execute transaction on a quorum of validators due to conflicting transactions. \
+         Locked objects: {:?}. Validator errors: {:?}",
         conflicting_tx_digests,
-        errors,
+        errors
     )]
     FatalConflictingTransaction {
         errors: GroupedErrors,
-        conflicting_tx_digests:
-            BTreeMap<TransactionDigest, (Vec<AuthorityName>, VotingPower)>,
+        conflicting_tx_digests: BTreeMap<TransactionDigest, (Vec<AuthorityName>, VotingPower)>,
     },
 
     #[error(
-        "Validators returned conflicting transactions but it is potentially recoverable. Locked objects: {:?}. Validator errors: {:?}",
+        "Validators returned conflicting transactions but it is potentially recoverable. Locked \
+         objects: {:?}. Validator errors: {:?}",
         conflicting_tx_digests,
-        errors,
+        errors
     )]
     RetryableConflictingTransaction {
         conflicting_tx_digest_to_retry: Option<TransactionDigest>,
         errors: GroupedErrors,
-        conflicting_tx_digests:
-            BTreeMap<TransactionDigest, (Vec<AuthorityName>, VotingPower)>,
+        conflicting_tx_digests: BTreeMap<TransactionDigest, (Vec<AuthorityName>, VotingPower)>,
     },
 
     #[error(
-        "{} of the validators by stake are overloaded with transactions pending execution. Validator errors: {:?}",
+        "{} of the validators by stake are overloaded with transactions pending execution. \
+         Validator errors: {:?}",
         overloaded_stake,
         errors
     )]
@@ -973,7 +971,8 @@ pub enum AggregatorProcessTransactionError {
     TxAlreadyFinalizedWithDifferentUserSignatures,
 
     #[error(
-        "{} of the validators by stake are overloaded and requested the client to retry after {} seconds. Validator errors: {:?}",
+        "{} of the validators by stake are overloaded and requested the client to retry after {} \
+         seconds. Validator errors: {:?}",
         overload_stake,
         retry_after_secs,
         errors
@@ -994,12 +993,12 @@ pub enum AggregatorProcessCertificateError {
     FatalExecuteCertificate { non_retryable_errors: GroupedErrors },
 
     #[error(
-        "Failed to execute certificate on a quorum of validators but state is still retryable. Retryable errors: {:?}",
+        "Failed to execute certificate on a quorum of validators but state is still retryable. \
+         Retryable errors: {:?}",
         retryable_errors
     )]
     RetryableExecuteCertificate { retryable_errors: GroupedErrors },
 }
-
 
 pub fn group_errors(errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>) -> GroupedErrors {
     let mut grouped_errors = HashMap::new();

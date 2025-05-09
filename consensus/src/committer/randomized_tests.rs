@@ -46,7 +46,8 @@ async fn test_randomized_dag_all_direct_commit() {
         dag_builder.persist_all_blocks(authority.dag_state.clone());
 
         tracing::info!(
-            "Running test with committee size {num_authorities} & {NUM_ROUNDS} rounds in the DAG..."
+            "Running test with committee size {num_authorities} & {NUM_ROUNDS} rounds in the \
+             DAG..."
         );
 
         let last_decided = Slot::new_for_test(0, 0);
@@ -101,7 +102,8 @@ async fn test_randomized_dag_and_decision_sequence() {
         );
 
         tracing::info!(
-        "Running test with committee size {num_authorities} & {NUM_ROUNDS} rounds in the DAG..."
+            "Running test with committee size {num_authorities} & {NUM_ROUNDS} rounds in the \
+             DAG..."
         );
 
         let mut all_blocks = dag_builder.blocks.values().cloned().collect::<Vec<_>>();

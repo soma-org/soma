@@ -608,7 +608,10 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
     async fn start_fetch_missing_blocks_task(&mut self) -> ConsensusResult<()> {
         let (commit_lagging, last_commit_index, quorum_commit_index) = self.is_commit_lagging();
         if commit_lagging {
-            trace!("Scheduled synchronizer temporarily disabled as local commit is falling behind from quorum {last_commit_index} << {quorum_commit_index}");
+            trace!(
+                "Scheduled synchronizer temporarily disabled as local commit is falling behind \
+                 from quorum {last_commit_index} << {quorum_commit_index}"
+            );
             return Ok(());
         }
 

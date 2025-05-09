@@ -183,7 +183,13 @@ where
             .collect();
 
         if last_commit_of_epoch < inclusive_end {
-            info!("Truncated commit range to {} due to epoch boundary. Returning {} commits, and {} certifier_blocks", last_commit_of_epoch, commits.len(), certifier_blocks.len());
+            info!(
+                "Truncated commit range to {} due to epoch boundary. Returning {} commits, and {} \
+                 certifier_blocks",
+                last_commit_of_epoch,
+                commits.len(),
+                certifier_blocks.len()
+            );
         }
 
         Ok((commits, certifier_blocks))

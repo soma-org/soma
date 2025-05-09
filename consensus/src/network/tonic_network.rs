@@ -1,8 +1,6 @@
 use bytes::Bytes;
 use hyper_util::{rt::TokioIo, service::TowerToHyperService};
 use parking_lot::RwLock;
-use tokio_rustls::TlsAcceptor;
-use tower_http::ServiceBuilderExt;
 use std::{
     collections::BTreeMap,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -10,23 +8,15 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    pin, task::JoinSet, time::{timeout, Instant}
+    pin,
+    task::JoinSet,
+    time::{timeout, Instant},
 };
+use tokio_rustls::TlsAcceptor;
 use tonic::{async_trait, transport::Server, Request, Response};
+use tower_http::ServiceBuilderExt;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::network::tonic_gen::consensus_service_server::ConsensusServiceServer;
-use types::{
-    committee::Epoch, consensus:: {
-        block::{BlockRef, Round, VerifiedBlock}, commit::{CommitIndex, CommitRange}, context::Context,
-    }, error::{ConsensusError, ConsensusResult}, state_sync::{FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse}
-};
-use types::tls::{create_rustls_client_config, create_rustls_server_config, public_key_from_certificate, AllowedPublicKeys};
-use types::committee::AuthorityIndex;
-use types::crypto::{NetworkKeyPair, NetworkPublicKey};
-use utils::notify_once::NotifyOnce;
-use types::multiaddr::{Multiaddr, Protocol};
-use types::p2p::{to_host_port_str, to_socket_addr};
 use super::{
     tonic_gen::{
         consensus_service_client::ConsensusServiceClient,
@@ -34,8 +24,30 @@ use super::{
     },
     NetworkClient, NetworkManager, NetworkService,
 };
-use tokio_stream::{iter, Iter};
+use crate::network::tonic_gen::consensus_service_server::ConsensusServiceServer;
 use cfg_if::cfg_if;
+use tokio_stream::{iter, Iter};
+use types::committee::AuthorityIndex;
+use types::crypto::{NetworkKeyPair, NetworkPublicKey};
+use types::multiaddr::{Multiaddr, Protocol};
+use types::p2p::{to_host_port_str, to_socket_addr};
+use types::tls::{
+    create_rustls_client_config, create_rustls_server_config, public_key_from_certificate,
+    AllowedPublicKeys,
+};
+use types::{
+    committee::Epoch,
+    consensus::{
+        block::{BlockRef, Round, VerifiedBlock},
+        commit::{CommitIndex, CommitRange},
+        context::Context,
+    },
+    error::{ConsensusError, ConsensusResult},
+    state_sync::{
+        FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse,
+    },
+};
+use utils::notify_once::NotifyOnce;
 
 // Maximum bytes size in a single fetch_blocks() response.
 const MAX_FETCH_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
@@ -144,7 +156,8 @@ impl NetworkClient for TonicClient {
                     blocks.extend(response.blocks);
                     if total_fetched_bytes > MAX_TOTAL_FETCHED_BYTES {
                         info!(
-                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating stream.",
+                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating \
+                             stream.",
                             total_fetched_bytes, MAX_TOTAL_FETCHED_BYTES,
                         );
                         break;
@@ -229,7 +242,8 @@ impl NetworkClient for TonicClient {
                     blocks.extend(response.blocks);
                     if total_fetched_bytes > MAX_TOTAL_FETCHED_BYTES {
                         info!(
-                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating stream.",
+                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating \
+                             stream.",
                             total_fetched_bytes, MAX_TOTAL_FETCHED_BYTES,
                         );
                         break;
@@ -292,7 +306,11 @@ impl ChannelPool {
             }
         }
 
-        let authority = self.context.committee.authority_by_authority_index(peer).unwrap();
+        let authority = self
+            .context
+            .committee
+            .authority_by_authority_index(peer)
+            .unwrap();
         let address = to_host_port_str(&authority.address).map_err(|e| {
             ConsensusError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
@@ -305,11 +323,17 @@ impl ChannelPool {
             .user_agent("soma-mysticeti")
             .unwrap();
 
-        let client_tls_config = create_rustls_client_config(self.context.committee
-                .authority_by_authority_index(peer).unwrap()
+        let client_tls_config = create_rustls_client_config(
+            self.context
+                .committee
+                .authority_by_authority_index(peer)
+                .unwrap()
                 .network_key
                 .clone()
-                .into_inner(),certificate_server_name(&self.context), network_keypair);
+                .into_inner(),
+            certificate_server_name(&self.context),
+            network_keypair,
+        );
         let https_connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(client_tls_config)
             .https_only()
@@ -319,7 +343,10 @@ impl ChannelPool {
         let deadline = tokio::time::Instant::now() + timeout;
         let channel = loop {
             trace!("Connecting to endpoint at {address}");
-            match endpoint.connect_with_connector(https_connector.clone()).await {
+            match endpoint
+                .connect_with_connector(https_connector.clone())
+                .await
+            {
                 Ok(channel) => break channel,
                 Err(e) => {
                     warn!("Failed to connect to endpoint at {address}: {e:?}");
@@ -537,7 +564,11 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
 
         let own_index = self.context.own_index.expect("Own index not found");
 
-        let authority = self.context.committee.authority_by_authority_index(own_index).unwrap();
+        let authority = self
+            .context
+            .committee
+            .authority_by_authority_index(own_index)
+            .unwrap();
         // By default, bind to the unspecified address to allow the actual address to be assigned.
         // But bind to localhost if it is requested.
         // let own_address = if authority.address.is_localhost_ip() {
@@ -563,13 +594,18 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                 .http2_only();
         let http = Arc::new(http);
 
-        let allower = AllowedPublicKeys::new(self.context
+        let allower = AllowedPublicKeys::new(
+            self.context
                 .committee
                 .authorities()
                 .map(|(_, authority)| authority.network_key.clone().into_inner())
-                .collect());
-        let tls_server_config =
-            create_rustls_server_config(allower, certificate_server_name(&self.context), self.network_keypair.clone());
+                .collect(),
+        );
+        let tls_server_config = create_rustls_server_config(
+            allower,
+            certificate_server_name(&self.context),
+            self.network_keypair.clone(),
+        );
         let tls_acceptor = TlsAcceptor::from(Arc::new(tls_server_config));
 
         // Create listener to incoming connections.
@@ -685,7 +721,6 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                         ConsensusError::NetworkServerConnection(msg)
                     })?;
                     trace!("Accepted TLS connection");
-                    
                     let certificate_public_key =
                         if let Some(certs) = tls_stream.get_ref().1.peer_certificates() {
                             if certs.len() != 1 {
@@ -758,7 +793,7 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                 });
             }
 
-   
+
         });
 
         info!("Server started at: {own_address}");
@@ -840,7 +875,6 @@ fn chunk_blocks(blocks: Vec<Bytes>, chunk_limit: usize) -> Vec<Vec<Bytes>> {
     }
     chunks
 }
-
 
 #[cfg(not(msim))]
 fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {

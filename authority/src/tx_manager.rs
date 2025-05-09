@@ -1,5 +1,5 @@
 //! # Transaction Manager
-//! 
+//!
 //! ## Overview
 //! The Transaction Manager is responsible for coordinating the flow of transactions through the system,
 //! ensuring they are executed only when all their input objects are available. It acts as a critical
@@ -82,7 +82,7 @@ const MIN_HASHMAP_CAPACITY: usize = 1000;
 pub struct TransactionManager {
     /// Channel for sending ready certificates to the execution driver
     tx_ready_certificates: UnboundedSender<PendingCertificate>,
-    
+
     /// Double-nested lock for transaction state
     /// The outer lock protects against reconfiguration, while the inner lock protects
     /// the transaction state. During reconfiguration, we acquire the outer lock for write,
@@ -113,16 +113,16 @@ pub struct TransactionManager {
 pub struct PendingCertificate {
     /// Certified transaction to be executed
     pub certificate: VerifiedExecutableTransaction,
-    
+
     /// Expected effects digest for fork detection
     /// When executing from checkpoint, this is provided to detect forks
     /// prior to committing the transaction
     pub expected_effects_digest: Option<TransactionEffectsDigest>,
-    
+
     /// Input objects this certificate is waiting for
     /// The transaction can only be executed when this set is empty
     pub waiting_input_objects: BTreeSet<InputKey>,
-    
+
     /// Commit index of the certificate
     /// Used to track the transaction's position in the consensus sequence
     pub commit: Option<CommitIndex>,
@@ -477,7 +477,6 @@ impl TransactionManager {
 
                 // ADDED: Check for transactions with shared objects that have assigned versions
                 let has_shared_objects = cert.contains_shared_object();
-                
                 if has_shared_objects {
                     if let Some(assigned_versions) = epoch_store.get_assigned_shared_object_versions(&cert.key()) {
                         debug!(
@@ -485,7 +484,6 @@ impl TransactionManager {
                             "Found assigned shared versions for tx: {:?}",
                             assigned_versions
                         );
-                        
                         // Mark assigned versions as available to break circular dependency
                         for ((id, _), assigned_version) in &assigned_versions {
                             for key in input_object_keys.iter() {
@@ -619,27 +617,31 @@ impl TransactionManager {
 
             // ADDED: Special handling for transactions with shared objects that have assigned versions
             let has_shared_objects = pending_cert.certificate.contains_shared_object();
-                    
+
             if has_shared_objects {
                 // For transactions with shared objects that have assigned versions,
                 // check which objects we can skip waiting for
-                if let Some(assigned_versions) = epoch_store.get_assigned_shared_object_versions(&pending_cert.certificate.key()) {
+                if let Some(assigned_versions) =
+                    epoch_store.get_assigned_shared_object_versions(&pending_cert.certificate.key())
+                {
                     debug!(
                         tx_digest = ?digest,
                         "Transaction has assigned versions: {:?}",
                         assigned_versions
                     );
-                    
+
                     // Create a map for quick lookups
                     let assigned_version_map: HashMap<_, _> = assigned_versions
                         .iter()
                         .map(|((id, _), version)| (*id, *version))
                         .collect();
-                    
+
                     // Filter out objects that should be considered available
                     pending_cert.waiting_input_objects.retain(|key| {
                         if let Some(version) = key.version() {
-                            if let Some(&assigned_version) = assigned_version_map.get(&key.id().id()) {
+                            if let Some(&assigned_version) =
+                                assigned_version_map.get(&key.id().id())
+                            {
                                 if version == assigned_version {
                                     // This is an assigned shared object - don't wait for it
                                     debug!(
@@ -689,7 +691,7 @@ impl TransactionManager {
             if pending_cert.waiting_input_objects.is_empty() {
                 // Send to execution driver for execution.
                 debug!(
-                    tx_digest = ?digest, 
+                    tx_digest = ?digest,
                     has_shared_objects = ?has_shared_objects,
                     "Certificate ready for immediate execution"
                 );
@@ -730,7 +732,13 @@ impl TransactionManager {
             let mut inner = reconfig_lock.write();
 
             if inner.epoch != epoch_store.epoch() {
-                warn!("Ignoring committed certificate from wrong epoch. Expected={} Actual={} CertificateDigest={:?}", inner.epoch, epoch_store.epoch(), digest);
+                warn!(
+                    "Ignoring committed certificate from wrong epoch. Expected={} Actual={} \
+                     CertificateDigest={:?}",
+                    inner.epoch,
+                    epoch_store.epoch(),
+                    digest
+                );
                 return;
             }
 
@@ -743,7 +751,11 @@ impl TransactionManager {
             );
 
             if !inner.executing_certificates.remove(digest) {
-                trace!("{:?} not found in executing certificates, likely because it is a system transaction", digest);
+                trace!(
+                    "{:?} not found in executing certificates, likely because it is a system \
+                     transaction",
+                    digest
+                );
                 return;
             }
 
@@ -762,8 +774,7 @@ impl TransactionManager {
     ) {
         if inner.epoch != epoch_store.epoch() {
             warn!(
-                "Ignoring objects committed from wrong epoch. Expected={} Actual={} \
-                 Objects={:?}",
+                "Ignoring objects committed from wrong epoch. Expected={} Actual={} Objects={:?}",
                 inner.epoch,
                 epoch_store.epoch(),
                 input_keys,

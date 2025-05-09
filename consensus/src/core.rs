@@ -197,7 +197,11 @@ impl Core {
         self.try_commit().unwrap();
         if self.try_propose(true).unwrap().is_none() {
             if self.should_propose() {
-                assert!(self.last_proposed_block.round() > GENESIS_ROUND, "At minimum a block of round higher that genesis should have been produced during recovery");
+                assert!(
+                    self.last_proposed_block.round() > GENESIS_ROUND,
+                    "At minimum a block of round higher that genesis should have been produced \
+                     during recovery"
+                );
             }
 
             // if no new block proposed then just re-broadcast the last proposed one to ensure liveness.
@@ -387,8 +391,11 @@ impl Core {
         ancestors.iter().for_each(|block| {
             assert!(
                 block.timestamp_ms() <= now,
-                "Violation: ancestor block {:?} has timestamp {}, greater than current timestamp {now}. Proposing for round {}.",
-                block, block.timestamp_ms(), clock_round
+                "Violation: ancestor block {:?} has timestamp {}, greater than current timestamp \
+                 {now}. Proposing for round {}.",
+                block,
+                block.timestamp_ms(),
+                clock_round
             );
         });
 
@@ -638,13 +645,19 @@ impl Core {
         let skip_proposing = if let Some(last_known_proposed_round) = self.last_known_proposed_round
         {
             if clock_round <= last_known_proposed_round {
-                debug!("Skip proposing for round {clock_round} as last known proposed round is {last_known_proposed_round}");
+                debug!(
+                    "Skip proposing for round {clock_round} as last known proposed round is \
+                     {last_known_proposed_round}"
+                );
                 true
             } else {
                 false
             }
         } else {
-            debug!("Skip proposing for round {clock_round}, last known proposed round has not been synced yet.");
+            debug!(
+                "Skip proposing for round {clock_round}, last known proposed round has not been \
+                 synced yet."
+            );
             true
         };
 
@@ -712,7 +725,12 @@ impl Core {
         {
             quorum.add(ancestor.author(), &self.context.committee);
         }
-        assert!(quorum.reached_threshold(&self.context.committee), "Fatal error, quorum not reached for parent round when proposing for round {}. Possible mismatch between DagState and Core.", clock_round);
+        assert!(
+            quorum.reached_threshold(&self.context.committee),
+            "Fatal error, quorum not reached for parent round when proposing for round {}. \
+             Possible mismatch between DagState and Core.",
+            clock_round
+        );
 
         ancestors
     }

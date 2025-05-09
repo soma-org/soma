@@ -1,5 +1,5 @@
 //! # Epoch Store
-//! 
+//!
 //! ## Overview
 //! The epoch store manages all epoch-specific state and storage for a validator authority.
 //! It provides a clean separation between data from different epochs, enabling safe epoch
@@ -50,7 +50,10 @@ use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, CommitIndex},
-    base::{AuthorityName, ConciseableName, ConsensusObjectSequenceKey, FullObjectID, Round, SomaAddress},
+    base::{
+        AuthorityName, ConciseableName, ConsensusObjectSequenceKey, FullObjectID, Round,
+        SomaAddress,
+    },
     committee::{Authority, Committee, EncoderCommittee, EpochId},
     consensus::{
         validator_set::ValidatorSet, ConsensusCommitPrologue, ConsensusTransaction,
@@ -58,7 +61,11 @@ use types::{
     },
     crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
     digests::{ECMHLiveObjectSetDigest, TransactionDigest, TransactionEffectsDigest},
-    effects::{self, object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut}, ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind},
+    effects::{
+        self,
+        object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut},
+        ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind,
+    },
     envelope::TrustedEnvelope,
     error::{ExecutionError, SomaError, SomaResult},
     execution_indices::ExecutionIndices,
@@ -68,11 +75,16 @@ use types::{
     signature_verifier::SignatureVerifier,
     storage::{object_store::ObjectStore, InputKey},
     system_state::{
-        self, epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, get_system_state, SystemState, SystemStateTrait
+        self,
+        epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
+        get_system_state, SystemState, SystemStateTrait,
     },
     temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore},
     transaction::{
-        self, CertifiedTransaction, InputObjectKind, InputObjects, ObjectReadResult, ObjectReadResultKind, SenderSignedData, Transaction, TransactionKey, TransactionKind, TrustedExecutableTransaction, VerifiedCertificate, VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction
+        self, CertifiedTransaction, InputObjectKind, InputObjects, ObjectReadResult,
+        ObjectReadResultKind, SenderSignedData, Transaction, TransactionKey, TransactionKind,
+        TrustedExecutableTransaction, VerifiedCertificate, VerifiedExecutableTransaction,
+        VerifiedSignedTransaction, VerifiedTransaction,
     },
     tx_outputs::WrittenObjects,
     SYSTEM_STATE_OBJECT_ID,
@@ -80,13 +92,24 @@ use types::{
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
 
 use crate::{
-    cache::ObjectCacheRead, consensus_quarantine::{ConsensusCommitOutput, ConsensusOutputCache, ConsensusOutputQuarantine, LAST_CONSENSUS_STATS_ADDR, RECONFIG_STATE_INDEX}, handler::{
+    cache::ObjectCacheRead,
+    consensus_quarantine::{
+        ConsensusCommitOutput, ConsensusOutputCache, ConsensusOutputQuarantine,
+        LAST_CONSENSUS_STATS_ADDR, RECONFIG_STATE_INDEX,
+    },
+    handler::{
         ConsensusCommitInfo, SequencedConsensusTransaction, SequencedConsensusTransactionKey,
         SequencedConsensusTransactionKind, VerifiedSequencedConsensusTransaction,
-    }, reconfiguration::ReconfigState, shared_obj_version_manager::{AssignedTxAndVersions, ConsensusSharedObjVerAssignment, SharedObjVerManager}, stake_aggregator::StakeAggregator, start_epoch::{EpochStartConfigTrait, EpochStartConfiguration}, state_accumulator::StateAccumulator, store::LockDetails
+    },
+    reconfiguration::ReconfigState,
+    shared_obj_version_manager::{
+        AssignedTxAndVersions, ConsensusSharedObjVerAssignment, SharedObjVerManager,
+    },
+    stake_aggregator::StakeAggregator,
+    start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
+    state_accumulator::StateAccumulator,
+    store::LockDetails,
 };
-
-
 
 /// # CertLockGuard and CertTxGuard
 ///
@@ -116,10 +139,10 @@ pub struct CertTxGuard(#[allow(unused)] CertLockGuard);
 impl CertTxGuard {
     /// Release the transaction lock without any additional actions.
     pub fn release(self) {}
-    
+
     /// Commit the transaction and release the lock.
     pub fn commit_tx(self) {}
-    
+
     /// Get a reference to the underlying lock guard.
     pub fn as_lock_guard(&self) -> &CertLockGuard {
         &self.0
@@ -158,25 +181,25 @@ pub enum CancelConsensusCertificateReason {
 pub enum ConsensusCertificateResult {
     /// The consensus message was ignored (e.g. because it has already been processed).
     Ignored,
-    
+
     /// An executable transaction (can be a user tx or a system tx)
     /// that should be scheduled for execution.
     SomaTransaction(VerifiedExecutableTransaction),
-    
+
     /// The transaction should be re-processed at a future commit, specified by the DeferralKey
     // Deferred(DeferralKey),
-    
+
     /// A message was processed which updates randomness state.
     // RandomnessConsensusMessage,
-    
+
     /// Everything else, e.g. AuthorityCapabilities, CheckpointSignatures, etc.
     /// These messages update consensus state but don't result in transactions.
     ConsensusMessage,
-    
+
     /// A system message in consensus was ignored (e.g. because of end of epoch).
     /// Different from Ignored in that it specifically applies to system messages.
     IgnoredSystem,
-    
+
     /// A will-be-cancelled transaction. It'll still go through execution engine (but not be executed),
     /// unlock any owned objects, and return corresponding cancellation error according to
     /// `CancelConsensusCertificateReason`.
@@ -304,7 +327,7 @@ pub struct AuthorityPerEpochStore {
 /// # AuthorityEpochTables
 ///
 /// Contains tables that store epoch-specific data that is only valid within a single epoch.
-/// 
+///
 /// ## Purpose
 /// Provides a clean separation of data between epochs, ensuring that data from previous epochs
 /// doesn't interfere with the current epoch's operation. This isolation is critical for
@@ -339,7 +362,8 @@ pub struct AuthorityEpochTables {
     /// Entries in this table can be garbage collected whenever we can prove that we won't receive
     /// another handle_consensus_transaction call for the given digest. This probably means at
     /// epoch change.
-    pub(crate) consensus_message_processed: RwLock<BTreeMap<SequencedConsensusTransactionKey, bool>>,
+    pub(crate) consensus_message_processed:
+        RwLock<BTreeMap<SequencedConsensusTransactionKey, bool>>,
 
     /// Map stores pending transactions that this authority submitted to consensus
     pending_consensus_transactions: RwLock<BTreeMap<ConsensusTransactionKey, ConsensusTransaction>>,
@@ -453,23 +477,24 @@ impl AuthorityEpochTables {
         signed_transaction: VerifiedSignedTransaction,
         locks_to_write: impl Iterator<Item = (ObjectRef, TransactionDigest)>,
     ) -> SomaResult {
-        info!("Writing transaction locks for tx: {}", signed_transaction.digest());
+        info!(
+            "Writing transaction locks for tx: {}",
+            signed_transaction.digest()
+        );
         // Insert locks
-        
+
         let mut locked_transactions = self.object_locked_transactions.write();
         for (obj_ref, lock) in locks_to_write {
             locked_transactions.insert(obj_ref, lock);
         }
-        
 
         // Insert transaction
-        
+
         let mut transactions = self.signed_transactions.write();
         transactions.insert(
             *signed_transaction.digest(),
             signed_transaction.serializable_ref().clone(),
         );
-        
 
         Ok(())
     }
@@ -520,9 +545,7 @@ impl AuthorityPerEpochStore {
 
         let signature_verifier = SignatureVerifier::new(committee.clone(), None);
 
-
-        let consensus_output_cache =
-            ConsensusOutputCache::new(&epoch_start_configuration, &tables);
+        let consensus_output_cache = ConsensusOutputCache::new(&epoch_start_configuration, &tables);
 
         let s = Arc::new(Self {
             name,
@@ -641,8 +664,7 @@ impl AuthorityPerEpochStore {
         let epoch_start_configuration = Arc::new(epoch_start_configuration);
         let protocol_config = ProtocolConfig::default();
         let signature_verifier = SignatureVerifier::new(Arc::new(new_committee.clone()), None);
-        let consensus_output_cache =
-            ConsensusOutputCache::new(&epoch_start_configuration, &tables);
+        let consensus_output_cache = ConsensusOutputCache::new(&epoch_start_configuration, &tables);
 
         Arc::new(Self {
             name,
@@ -688,7 +710,7 @@ impl AuthorityPerEpochStore {
             self.name,
             next_committee,
             epoch_start_configuration.new_at_next_epoch_for_testing(),
-            0
+            0,
         )
     }
 
@@ -1110,7 +1132,6 @@ impl AuthorityPerEpochStore {
         if make_checkpoint {
             // TODO: Generate pending checkpoint for regular user tx.
         }
-        
 
         // Only after batch is written, notify checkpoint service to start building any new
         // pending checkpoints.
@@ -1159,7 +1180,6 @@ impl AuthorityPerEpochStore {
         .await
     }
 
-
     // Adds the consensus commit prologue transaction to the beginning of input `transactions` to update
     // the system clock used in all transactions in the current consensus commit.
     // Returns the root of the consensus commit prologue transaction if it was added to the input.
@@ -1181,8 +1201,7 @@ impl AuthorityPerEpochStore {
         let mut shared_input_next_version = HashMap::new();
         for txn in transactions.iter() {
             match cancelled_txns.get(txn.digest()) {
-                Some(CancelConsensusCertificateReason::CongestionOnObjects(_))
-                => {
+                Some(CancelConsensusCertificateReason::CongestionOnObjects(_)) => {
                     let assigned_versions = SharedObjVerManager::assign_versions_for_certificate(
                         txn,
                         &mut shared_input_next_version,
@@ -1196,14 +1215,18 @@ impl AuthorityPerEpochStore {
 
         let transaction =
             consensus_commit_info.create_consensus_commit_prologue_transaction(self.epoch());
-        let consensus_commit_prologue_root = match self.process_consensus_system_transaction(&transaction) {
-            ConsensusCertificateResult::SomaTransaction(processed_tx) => {
-                transactions.push_front(processed_tx.clone());
-                Some(processed_tx.key())
-            }
-            ConsensusCertificateResult::IgnoredSystem => None,
-            _ => unreachable!("process_consensus_system_transaction returned unexpected ConsensusCertificateResult."),
-        };
+        let consensus_commit_prologue_root =
+            match self.process_consensus_system_transaction(&transaction) {
+                ConsensusCertificateResult::SomaTransaction(processed_tx) => {
+                    transactions.push_front(processed_tx.clone());
+                    Some(processed_tx.key())
+                }
+                ConsensusCertificateResult::IgnoredSystem => None,
+                _ => unreachable!(
+                    "process_consensus_system_transaction returned unexpected \
+                     ConsensusCertificateResult."
+                ),
+            };
 
         output.record_consensus_message_processed(SequencedConsensusTransactionKey::System(
             *transaction.digest(),
@@ -1333,20 +1356,30 @@ impl AuthorityPerEpochStore {
                         .should_accept_consensus_certs()
                 {
                     output.insert_end_of_publish(*authority);
-                    self.end_of_publish.try_lock()
-                        .expect("No contention on Authority::end_of_publish as it is only accessed from consensus handler")
-                        .insert_generic(*authority, ()).is_quorum_reached()
+                    self.end_of_publish
+                        .try_lock()
+                        .expect(
+                            "No contention on Authority::end_of_publish as it is only accessed \
+                             from consensus handler",
+                        )
+                        .insert_generic(*authority, ())
+                        .is_quorum_reached()
                     // end_of_publish lock is released here.
                 } else {
                     // If we past the stage where we are accepting consensus certificates we also don't record end of publish messages
-                    debug!("Ignoring end of publish message from validator {:?} as we already collected enough end of publish messages", authority.concise());
+                    debug!(
+                        "Ignoring end of publish message from validator {:?} as we already \
+                         collected enough end of publish messages",
+                        authority.concise()
+                    );
                     false
                 };
 
                 if collected_end_of_publish {
                     assert!(lock.is_none());
                     debug!(
-                        "Collected enough end_of_publish messages for epoch {} with last message from validator {:?}",
+                        "Collected enough end_of_publish messages for epoch {} with last message \
+                         from validator {:?}",
                         self.committee.epoch,
                         authority.concise(),
                     );
@@ -1364,7 +1397,8 @@ impl AuthorityPerEpochStore {
                 output.record_consensus_message_processed(transaction.key());
             } else {
                 panic!(
-                    "process_end_of_publish_transactions_and_reconfig called with non-end-of-publish transaction"
+                    "process_end_of_publish_transactions_and_reconfig called with \
+                     non-end-of-publish transaction"
                 );
             }
         }
@@ -1445,7 +1479,12 @@ impl AuthorityPerEpochStore {
                     // With some edge cases consensus might sometimes resend previously seen certificate after EndOfPublish
                     // However this certificate will be filtered out before this line by `consensus_message_processed` call in `verify_consensus_transaction`
                     // If we see some new certificate here it means authority is byzantine and sent certificate after EndOfPublish (or we have some bug in ConsensusAdapter)
-                    warn!("[Byzantine authority] Authority {:?} sent a new, previously unseen certificate {:?} after it sent EndOfPublish message to consensus", certificate_author.concise(), certificate.digest());
+                    warn!(
+                        "[Byzantine authority] Authority {:?} sent a new, previously unseen \
+                         certificate {:?} after it sent EndOfPublish message to consensus",
+                        certificate_author.concise(),
+                        certificate.digest()
+                    );
                     return Ok(ConsensusCertificateResult::Ignored);
                 }
                 // Safe because signatures are verified when consensus called into SuiTxValidator::validate_batch.
@@ -1461,8 +1500,11 @@ impl AuthorityPerEpochStore {
                     .get_reconfig_state_read_lock_guard()
                     .should_accept_consensus_certs()
                 {
-                    debug!("Ignoring consensus certificate for transaction {:?} because of end of epoch",
-                    certificate.digest());
+                    debug!(
+                        "Ignoring consensus certificate for transaction {:?} because of end of \
+                         epoch",
+                        certificate.digest()
+                    );
                     return Ok(ConsensusCertificateResult::Ignored);
                 }
 
@@ -1551,7 +1593,11 @@ impl AuthorityPerEpochStore {
 
     /// Called when transaction outputs are committed to disk
     #[instrument(level = "trace", skip_all)]
-    pub fn handle_committed_transactions(&self, commit: CommitIndex, digests: &[TransactionDigest]) -> SomaResult<()> {
+    pub fn handle_committed_transactions(
+        &self,
+        commit: CommitIndex,
+        digests: &[TransactionDigest],
+    ) -> SomaResult<()> {
         let tables = match self.tables() {
             Ok(tables) => tables,
             // After Epoch ends, it is no longer necessary to remove pending transactions
@@ -1576,8 +1622,6 @@ impl AuthorityPerEpochStore {
             .signed_effects_digests
             .write()
             .retain(|d, _| !digests.contains(d));
-
-          
 
         let mut quarantine = self.consensus_quarantine.write();
         quarantine.update_highest_executed_commit(commit, self)?;
@@ -1645,7 +1689,8 @@ impl AuthorityPerEpochStore {
     pub fn delete_signed_transaction_for_test(&self, transaction: &TransactionDigest) {
         self.tables()
             .expect("test should not cross epoch boundary")
-            .signed_transactions.write()
+            .signed_transactions
+            .write()
             .remove(transaction)
             .unwrap();
     }
@@ -1655,7 +1700,8 @@ impl AuthorityPerEpochStore {
         for object in objects {
             self.tables()
                 .expect("test should not cross epoch boundary")
-                .object_locked_transactions.write()
+                .object_locked_transactions
+                .write()
                 .remove(object)
                 .unwrap();
         }
@@ -1667,8 +1713,10 @@ impl AuthorityPerEpochStore {
     ) -> SomaResult<Option<VerifiedSignedTransaction>> {
         Ok(self
             .tables()?
-            .signed_transactions.read()
-            .get(tx_digest).cloned()
+            .signed_transactions
+            .read()
+            .get(tx_digest)
+            .cloned()
             .map(|t| t.into()))
     }
 
@@ -1679,7 +1727,7 @@ impl AuthorityPerEpochStore {
         let digest = cert.digest();
         Ok(CertTxGuard(self.acquire_tx_lock(digest).await))
     }
-    
+
     #[instrument(level = "trace", skip_all)]
     pub fn insert_tx_cert_sig(
         &self,
@@ -1782,7 +1830,6 @@ impl AuthorityPerEpochStore {
         Ok(signed_effects_digests.get(tx_digest).cloned())
     }
 
-
     #[cfg(test)]
     pub fn get_next_object_version(
         &self,
@@ -1790,10 +1837,11 @@ impl AuthorityPerEpochStore {
         start_version: Version,
     ) -> Option<Version> {
         self.tables()
-        .expect("test should not cross epoch boundary")
-        .next_shared_object_versions.read()
-        .get(&(*obj, start_version)).cloned()
-        
+            .expect("test should not cross epoch boundary")
+            .next_shared_object_versions
+            .read()
+            .get(&(*obj, start_version))
+            .cloned()
     }
 
     pub fn set_shared_object_versions_for_testing(
@@ -1840,11 +1888,14 @@ impl AuthorityPerEpochStore {
                         let modified_initial_shared_version = *initial_shared_version;
                         // If we found assigned versions, but they are missing the assignment for
                         // this object, it indicates a serious inconsistency!
-                        let Some(version) = assigned_shared_versions.get(&(*id, modified_initial_shared_version)) else {
+                        let Some(version) =
+                            assigned_shared_versions.get(&(*id, modified_initial_shared_version))
+                        else {
                             panic!(
                                 "Shared object version should have been assigned. key: {key:?}, \
-                                obj id: {id:?}, initial_shared_version: {initial_shared_version:?}, \
-                                assigned_shared_versions: {assigned_shared_versions:?}",
+                                 obj id: {id:?}, initial_shared_version: \
+                                 {initial_shared_version:?}, assigned_shared_versions: \
+                                 {assigned_shared_versions:?}",
                             )
                         };
                         InputKey::VersionedObject {
@@ -1852,7 +1903,7 @@ impl AuthorityPerEpochStore {
                             version: *version,
                         }
                     }
-      
+
                     InputObjectKind::ImmOrOwnedObject(objref) => InputKey::VersionedObject {
                         id: FullObjectID::new(objref.0, None),
                         version: objref.1,
@@ -1861,7 +1912,6 @@ impl AuthorityPerEpochStore {
             })
             .collect()
     }
-
 
     pub fn insert_finalized_transactions(
         &self,
@@ -1942,7 +1992,7 @@ impl AuthorityPerEpochStore {
         }
     }
 
-     // For each key in objects_to_init, return the next version for that key as recorded in the
+    // For each key in objects_to_init, return the next version for that key as recorded in the
     // next_shared_object_versions table.
     //
     // If any keys are missing, then we need to initialize the table. We first check if a previous
@@ -2000,7 +2050,7 @@ impl AuthorityPerEpochStore {
                 match cache_reader.get_object(id) {
                     Ok(Some(obj)) => {
                         let obj_version = obj.version();
-                        
+
                         // For any object that exists in the cache, we need to ensure the
                         // next version is strictly greater than the current version,
                         // regardless of what the initial_version is
@@ -2013,12 +2063,13 @@ impl AuthorityPerEpochStore {
                             // safe to use the initial version
                             *initial_version
                         };
-                        
+
                         debug!(
-                            "Assigning version for object {:?}: current={:?}, initial={:?}, assigned={:?}",
+                            "Assigning version for object {:?}: current={:?}, initial={:?}, \
+                             assigned={:?}",
                             id, obj_version, initial_version, next_version
                         );
-                        
+
                         ((*id, *initial_version), next_version)
                     }
                     _ => {
@@ -2042,9 +2093,12 @@ impl AuthorityPerEpochStore {
         );
 
         versions_to_write.iter().for_each(|(k, v)| {
-            tables.next_shared_object_versions.write().insert(k.clone(), v.clone());
+            tables
+                .next_shared_object_versions
+                .write()
+                .insert(k.clone(), v.clone());
         });
-        
+
         Ok(ret)
     }
 
@@ -2073,26 +2127,30 @@ impl AuthorityPerEpochStore {
         certificates: &[VerifiedExecutableTransaction],
     ) -> SomaResult {
         let mut cert_versions_to_assign = Vec::new();
-        
+
         for cert in certificates {
             let tx_key = cert.key();
-            
+
             // Check if this is an epoch change transaction
             let is_epoch_change = cert.data().transaction_data().kind.is_epoch_change();
-            
+
             // Check if this transaction requires shared object versioning
             let requires_versioning = cert.contains_shared_object();
-            
+
             // Always reassign versions for epoch change transactions to ensure freshness
             // Otherwise, only assign if not already assigned
-            if requires_versioning && (is_epoch_change || self.get_assigned_shared_object_versions(&tx_key).is_none()) {
+            if requires_versioning
+                && (is_epoch_change || self.get_assigned_shared_object_versions(&tx_key).is_none())
+            {
                 info!(
                     tx_digest = ?cert.digest(),
                     is_epoch_change = is_epoch_change,
                     "Preparing to assign shared object versions"
                 );
                 cert_versions_to_assign.push(cert.clone());
-            } else if let Some(assigned_versions) = self.get_assigned_shared_object_versions(&tx_key) {
+            } else if let Some(assigned_versions) =
+                self.get_assigned_shared_object_versions(&tx_key)
+            {
                 debug!(
                     tx_digest = ?cert.digest(),
                     ?assigned_versions,
@@ -2101,12 +2159,12 @@ impl AuthorityPerEpochStore {
                 );
             }
         }
-        
+
         // If all transactions already have assigned versions, we're done
         if cert_versions_to_assign.is_empty() {
             return Ok(());
         }
-        
+
         // Only compute and assign versions for transactions that need them
         let assigned_versions = SharedObjVerManager::assign_versions_from_consensus(
             self,
@@ -2115,21 +2173,17 @@ impl AuthorityPerEpochStore {
             &BTreeMap::new(),
         )?
         .assigned_versions;
-        
+
         info!(
             assigned_transactions = cert_versions_to_assign.len(),
             "Assigning shared object versions idempotent"
         );
-        
+
         // For detailed debugging in critical environments
         for (key, versions) in &assigned_versions {
-            debug!(
-                ?key, 
-                ?versions,
-                "Assigned versions for transaction"
-            );
+            debug!(?key, ?versions, "Assigned versions for transaction");
         }
-        
+
         self.set_assigned_shared_object_versions(assigned_versions);
         Ok(())
     }
@@ -2140,15 +2194,15 @@ impl AuthorityPerEpochStore {
         certificates: &[VerifiedExecutableTransaction],
     ) -> SomaResult {
         let mut cert_versions_to_assign = Vec::new();
-        
+
         // Step 1: Filter out certificates that already have version assignments
         for cert in certificates {
             let tx_key = cert.key();
-            
+
             if cert.contains_shared_object() {
                 // Check if this transaction already has versions assigned
                 let already_assigned = self.get_assigned_shared_object_versions(&tx_key).is_some();
-                
+
                 if !already_assigned {
                     info!(
                         tx_digest = ?cert.digest(),
@@ -2164,12 +2218,12 @@ impl AuthorityPerEpochStore {
                 }
             }
         }
-        
+
         // Step 2: If all transactions already have assigned versions, we're done
         if cert_versions_to_assign.is_empty() {
             return Ok(());
         }
-        
+
         // Step 3: Only compute and assign versions for transactions that need them
         let ConsensusSharedObjVerAssignment {
             shared_input_next_versions,
@@ -2180,36 +2234,32 @@ impl AuthorityPerEpochStore {
             &cert_versions_to_assign,
             &BTreeMap::new(),
         )?;
-        
+
         // Step 4: Update next_shared_object_versions table with new versions
         {
             let tables = self.tables()?;
             let mut next_versions = tables.next_shared_object_versions.write();
-            
+
             for (key, version) in &shared_input_next_versions {
                 // Update only if the new version is higher than what's already there
                 let should_update = match next_versions.get(key) {
                     Some(existing) => *version > *existing,
                     None => true,
                 };
-                
+
                 if should_update {
-                    debug!(
-                        ?key, 
-                        ?version, 
-                        "Updating next_shared_object_versions"
-                    );
+                    debug!(?key, ?version, "Updating next_shared_object_versions");
                     next_versions.insert(*key, *version);
                 }
             }
         }
-        
+
         // Step 5: Store the assigned versions in the cache
         self.set_assigned_shared_object_versions(assigned_versions);
-        
+
         Ok(())
     }
-     /// Assign a sequence number for the shared objects of the input transaction based on the
+    /// Assign a sequence number for the shared objects of the input transaction based on the
     /// effects of that transaction.
     /// Used by full nodes who don't listen to consensus, and validators who catch up by state sync.
     // TODO: We should be able to pass in a vector of certs/effects and acquire them all at once.
@@ -2225,11 +2275,13 @@ impl AuthorityPerEpochStore {
             self,
             cache_reader,
         );
-        info!("Assigning shared object version from effects: {:?}", versions);
+        info!(
+            "Assigning shared object version from effects: {:?}",
+            versions
+        );
         self.set_assigned_shared_object_versions(versions);
         Ok(())
     }
-
 
     // Assigns shared object versions to transactions and updates the shared object version state.
     // Shared object versions in cancelled transactions are assigned to special versions that will
@@ -2270,16 +2322,17 @@ impl AuthorityPerEpochStore {
             &BTreeMap::new(),
             &mut output,
         )?;
-      
+
         output.write_to_batch(self)?;
-    
+
         Ok(())
     }
-
 }
 
 impl EndOfEpochAPI for AuthorityPerEpochStore {
-    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64)> {
+    fn get_next_epoch_state(
+        &self,
+    ) -> Option<(ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64)> {
         self.next_epoch_state
             .read()
             .as_ref()

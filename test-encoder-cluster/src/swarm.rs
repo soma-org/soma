@@ -364,9 +364,9 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             // Create a map of other encoders' object servers (excluding self)
             let mut other_object_servers = HashMap::new();
             for (key, (peer_key, addr)) in &encoder_object_servers {
-                if key != &config.protocol_public_key() {
-                    other_object_servers.insert(key.clone(), (peer_key.clone(), addr.clone()));
-                }
+                // if key != &config.protocol_public_key() {
+                other_object_servers.insert(key.clone(), (peer_key.clone(), addr.clone()));
+                // }
             }
 
             // Create context with object servers in one step

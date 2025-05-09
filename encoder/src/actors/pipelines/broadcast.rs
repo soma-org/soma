@@ -45,31 +45,19 @@ pub(crate) enum BroadcastAction {
 }
 
 /// Processor for handling all broadcast operations
-pub(crate) struct BroadcastProcessor<
-    C: EncoderInternalNetworkClient,
-    S: ObjectStorage,
-    P: ProbeClient,
-> {
-    broadcaster: Arc<Broadcaster<C>>,
-    store: Arc<dyn Store>,
+pub(crate) struct BroadcastProcessor<E: EncoderInternalNetworkClient> {
+    broadcaster: Arc<Broadcaster<E>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    shard_tracker: Arc<ShardTracker<C, S, P>>,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
-    BroadcastProcessor<C, S, P>
-{
+impl<E: EncoderInternalNetworkClient> BroadcastProcessor<E> {
     pub(crate) fn new(
-        broadcaster: Arc<Broadcaster<C>>,
-        store: Arc<dyn Store>,
+        broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        shard_tracker: Arc<ShardTracker<C, S, P>>,
     ) -> Self {
         Self {
             broadcaster,
-            store,
             encoder_keypair,
-            shard_tracker,
         }
     }
 
@@ -443,9 +431,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient>
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, P: ProbeClient> Processor
-    for BroadcastProcessor<C, S, P>
-{
+impl<E: EncoderInternalNetworkClient> Processor for BroadcastProcessor<E> {
     type Input = BroadcastAction;
     type Output = ();
 

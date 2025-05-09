@@ -52,6 +52,7 @@ pub enum Scope {
     ShardScores = 17,
     EncryptionKey = 18,
     ShardCommitCertificate = 19,
+    ShardFinality = 20,
 }
 
 impl TryFrom<u8> for Scope {

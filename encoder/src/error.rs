@@ -16,6 +16,10 @@ use thiserror::Error;
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
 #[derive(Clone, Debug, Error, IntoStaticStr)]
 pub enum ShardError {
+    #[error("Recv duplicate error")]
+    RecvDuplicate,
+    #[error("Send duplicate error")]
+    SendDuplicate,
     #[error("Probe error: {0}")]
     ProbeError(ProbeError),
     #[error("Model error: {0}")]
@@ -146,7 +150,10 @@ pub enum ShardError {
 
     // #[error("Too many authorities have been provided from authority {0}")]
     // TooManyAuthoritiesProvided(AuthorityIndex),
-    #[error("Provided size of highest accepted rounds parameter, {0}, is different than committee size, {1}")]
+    #[error(
+        "Provided size of highest accepted rounds parameter, {0}, is different than committee \
+         size, {1}"
+    )]
     InvalidSizeOfHighestAcceptedRounds(usize, usize),
 
     #[error("Failed to deserialize signature: {0}")]

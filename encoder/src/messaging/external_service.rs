@@ -44,7 +44,7 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
                 }
             };
 
-        let shard = self
+        let (shard, cancellation) = self
             .shard_verifier
             .verify(&self.context, input.auth_token())
             .await?;
@@ -52,10 +52,27 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
         let verified_input = Verified::new(input.clone(), input_bytes, |_input| Ok(()))
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-        let _ = self
-            .dispatcher
-            .dispatch_input(shard, verified_input)
-            .await?;
+        let own_encoder_key = &self.context.own_encoder_key();
+
+        if let Some((own_object_peer, own_object_address)) =
+            self.context.inner().object_server(own_encoder_key)
+        {
+            let probe_metadata = self
+                .context
+                .probe_metadata(shard.epoch(), own_encoder_key)?;
+
+            let _ = self
+                .dispatcher
+                .dispatch_input(
+                    shard,
+                    verified_input,
+                    probe_metadata,
+                    own_object_peer,
+                    own_object_address,
+                    cancellation,
+                )
+                .await?;
+        };
         Ok(())
     }
 }

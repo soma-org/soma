@@ -33,7 +33,8 @@ use crate::{
     },
     types::{
         parameters::Parameters, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
+        shard_finality::ShardFinality, shard_reveal::ShardReveal,
+        shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
     },
 };
 use tracing::{error, info, trace, warn};
@@ -197,6 +198,23 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
     }
+    async fn send_finality(
+        &self,
+        encoder: &EncoderPublicKey,
+        finality: &Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        timeout: Duration,
+    ) -> ShardResult<()> {
+        let mut request = Request::new(SendFinalityRequest {
+            finality: finality.bytes(),
+        });
+        request.set_timeout(timeout);
+        self.get_client(encoder, timeout)
+            .await?
+            .send_finality(request)
+            .await
+            .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
+        Ok(())
+    }
 }
 
 /// Proxies Tonic requests to `NetworkService` with actual handler implementation.
@@ -345,6 +363,26 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendScoresResponse {}))
+    }
+    async fn send_finality(
+        &self,
+        request: Request<SendFinalityRequest>,
+    ) -> Result<Response<SendFinalityResponse>, tonic::Status> {
+        let Some(peer) = request
+            .extensions()
+            .get::<EncoderInfo>()
+            .map(|p| p.peer.clone())
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let finality = request.into_inner().finality;
+
+        self.service
+            .handle_send_finality(&peer, finality)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+
+        Ok(Response::new(SendFinalityResponse {}))
     }
 }
 
@@ -603,3 +641,13 @@ pub(crate) struct SendScoresRequest {
 
 #[derive(Clone, prost::Message)]
 pub(crate) struct SendScoresResponse {}
+
+// ////////////////////////////////////////////////////////////////////
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendFinalityRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    finality: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SendFinalityResponse {}

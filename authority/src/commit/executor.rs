@@ -378,9 +378,10 @@ impl CommitExecutor {
                 )
                 .unwrap_or_else(|e| {
                     panic!(
-                    "Failed to assign shared object versions for change epoch transaction: {:?}",
-                    e
-                )
+                        "Failed to assign shared object versions for change epoch transaction: \
+                         {:?}",
+                        e
+                    )
                 });
         }
 

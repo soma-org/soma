@@ -57,7 +57,7 @@ impl Container {
             let runtime = builder.enable_all().build().unwrap();
 
             runtime.block_on(async move {
-               
+
                 let server = SomaNode::start(config).await.unwrap();
                 // Notify that we've successfully started the node
                 let _ = startup_sender.send(Arc::downgrade(&server));

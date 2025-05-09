@@ -1,28 +1,24 @@
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     actors::{
-        pipelines::broadcast::BroadcastAction,
         workers::{
             compression::{CompressionProcessor, CompressorInput},
-            downloader::{Downloader, DownloaderInput},
+            downloader::Downloader,
             encryption::{EncryptionInput, EncryptionProcessor},
-            model::ModelProcessor,
-            storage::{StorageProcessor, StorageProcessorInput},
+            storage::StorageProcessor,
         },
         ActorHandle, ActorMessage, Processor,
     },
     compression::zstd_compressor::ZstdCompressor,
-    core::{internal_broadcaster::Broadcaster, shard_tracker::ShardTracker},
+    core::internal_broadcaster::Broadcaster,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     error::{ShardError, ShardResult},
-    intelligence::model::Model,
-    messaging::EncoderInternalNetworkClient,
+    messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
-        encoder_committee::EncoderIndex,
         shard::Shard,
+        shard_commit::ShardCommit,
         shard_input::{ShardInput, ShardInputAPI},
-        shard_verifier::ShardAuthToken,
     },
 };
 use async_trait::async_trait;
@@ -30,26 +26,27 @@ use bytes::Bytes;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use model::{client::ModelClient, ModelInput, ModelInputV1};
 use objects::{
-    error::ObjectError,
     networking::ObjectNetworkClient,
     storage::{ObjectPath, ObjectStorage},
 };
 use probe::messaging::ProbeClient;
-use rand::{rngs::OsRng, RngCore};
 use shared::{
     checksum::Checksum,
-    crypto::{keys::EncoderKeyPair, Aes256IV, Aes256Key, EncryptionKey},
-    digest::Digest,
-    metadata::{
-        CompressionAPI, CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata, MetadataAPI,
+    crypto::{
+        keys::{EncoderKeyPair, PeerPublicKey},
+        Aes256IV, Aes256Key, EncryptionKey,
     },
+    digest::Digest,
+    metadata::{CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata},
+    probe::ProbeMetadata,
     scope::Scope,
     signed::Signed,
     verified::Verified,
 };
-use tracing::debug;
+use soma_network::multiaddr::Multiaddr;
+use tracing::{debug, info};
 
-use super::broadcast::BroadcastProcessor;
+use super::commit::CommitProcessor;
 
 pub(crate) struct InputProcessor<
     C: EncoderInternalNetworkClient,
@@ -60,11 +57,12 @@ pub(crate) struct InputProcessor<
 > {
     downloader: ActorHandle<Downloader<O, S>>,
     compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-    broadcast_handle: ActorHandle<BroadcastProcessor<C, S, P>>,
+    broadcaster: Arc<Broadcaster<C>>,
     model_client: Arc<M>,
     encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: ActorHandle<StorageProcessor<S>>,
+    commit_pipeline: ActorHandle<CommitProcessor<C, O, S, P>>,
 }
 
 impl<
@@ -79,20 +77,22 @@ impl<
     pub(crate) fn new(
         downloader: ActorHandle<Downloader<O, S>>,
         compressor: ActorHandle<CompressionProcessor<ZstdCompressor>>,
-        broadcast_handle: ActorHandle<BroadcastProcessor<C, S, P>>,
+        broadcaster: Arc<Broadcaster<C>>,
         model_client: Arc<M>,
         encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: ActorHandle<StorageProcessor<S>>,
+        commit_pipeline: ActorHandle<CommitProcessor<C, O, S, P>>,
     ) -> Self {
         Self {
             downloader,
             compressor,
-            broadcast_handle,
+            broadcaster,
             model_client,
             encryptor,
             encoder_keypair,
             storage,
+            commit_pipeline,
         }
     }
 }
@@ -106,16 +106,20 @@ impl<
         P: ProbeClient,
     > Processor for InputProcessor<C, O, M, S, P>
 {
+    // TODO the way input is passing in the encoders own probe metadata, peer public key, and multiaddress is not clean
     type Input = (
         Shard,
         Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        ProbeMetadata,
+        PeerPublicKey,
+        Multiaddr,
     );
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let keypair = self.encoder_keypair.inner().copy();
         let result: ShardResult<()> = async {
-            let (shard, verified_signed_input) = msg.input;
+            let (shard, verified_signed_input, probe_metadata, peer, address) = msg.input;
             let epoch = shard.epoch();
             // let metadata = auth_token.metadata_commitment().metadata();
             // // TODO: need to change this to handle network index?
@@ -214,11 +218,14 @@ impl<
             let path = ObjectPath::new(checksum.to_string()).map_err(ShardError::ObjectError)?;
 
             self.storage
-                .process(
-                    StorageProcessorInput::Store(path, encrypted_embeddings),
-                    msg.cancellation.clone(),
-                )
+                .store(path, encrypted_embeddings, msg.cancellation.clone())
                 .await?;
+            // self.storage
+            //     .process(
+            //         StorageProcessorInput::Store(path, encrypted_embeddings),
+            //         msg.cancellation.clone(),
+            //     )
+            //     .await?;
 
             let key_digest = Digest::new(&key).map_err(ShardError::DigestFailure)?;
 
@@ -231,16 +238,55 @@ impl<
                 checksum,
                 download_size,
             );
+            info!("Handling commit in BroadcastProcessor");
+            let inner_keypair = self.encoder_keypair.inner().copy();
 
-            self.broadcast_handle
+            // Create signed route if provided
+            // let signed_route = route.map(|r| {
+            //     Signed::new(r, Scope::ShardCommitRoute, &inner_keypair.copy().private()).unwrap()
+            // });
+
+            // Create commit
+            let commit = ShardCommit::new_v1(
+                verified_signed_input.auth_token().clone(),
+                self.encoder_keypair.public(),
+                None,
+                commit_data,
+            );
+
+            // Sign the commit
+            let signed_commit =
+                Signed::new(commit, Scope::ShardCommit, &inner_keypair.private()).unwrap();
+            let verified = Verified::from_trusted(signed_commit).unwrap();
+
+            // SEND TO PIPELINE
+            // NOTE: ONLY DO THIS IF YOU ARE A MEMBER OF THE SHARD
+            // ROUTED NODES WILL NOT
+
+            self.commit_pipeline
                 .process(
-                    BroadcastAction::Commit(
-                        shard,
-                        verified_signed_input.auth_token().clone(),
-                        None,
-                        commit_data,
+                    (
+                        shard.clone(),
+                        verified.clone(),
+                        probe_metadata,
+                        peer,
+                        address,
                     ),
                     msg.cancellation.clone(),
+                )
+                .await?;
+            info!("Broadcasting to other nodes");
+            // Broadcast to other encoders
+            self.broadcaster
+                .broadcast(
+                    verified.clone(),
+                    shard.encoders(),
+                    |client, peer, verified_type| async move {
+                        client
+                            .send_commit(&peer, &verified_type, MESSAGE_TIMEOUT)
+                            .await?;
+                        Ok(())
+                    },
                 )
                 .await?;
 

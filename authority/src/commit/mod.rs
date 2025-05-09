@@ -284,10 +284,14 @@ impl CommitStore {
             if index >= commit.commit_ref.index {
                 return Ok(());
             }
-            assert_eq!(index + 1, commit.commit_ref.index,
-            "Cannot update highest executed commit to {} when current highest executed commit is {}",
-            commit.commit_ref.index,
-            index);
+            assert_eq!(
+                index + 1,
+                commit.commit_ref.index,
+                "Cannot update highest executed commit to {} when current highest executed commit \
+                 is {}",
+                commit.commit_ref.index,
+                index
+            );
         }
         debug!(
             index = commit.commit_ref.index,

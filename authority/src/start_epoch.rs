@@ -35,12 +35,13 @@ impl EpochStartConfiguration {
         // When a new version is introduced, this function should be updated.
 
         match self {
-            config => {
-                EpochStartConfiguration {
-                    system_state: config.system_state.clone(),
-                }
-            }
-            _ => panic!("This function is only implemented for the latest version of EpochStartConfiguration"),
+            config => EpochStartConfiguration {
+                system_state: config.system_state.clone(),
+            },
+            _ => panic!(
+                "This function is only implemented for the latest version of \
+                 EpochStartConfiguration"
+            ),
         }
     }
 

@@ -135,7 +135,8 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
             < quorum_commit_index
         {
             debug!(
-                "Block {:?} is rejected because last commit index is lagging quorum commit index too much ({} < {})",
+                "Block {:?} is rejected because last commit index is lagging quorum commit index \
+                 too much ({} < {})",
                 verified_block.reference(),
                 last_commit_index,
                 quorum_commit_index,

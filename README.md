@@ -1,6 +1,10 @@
 # Soma
 
 ```
+RUSTFLAGS="--cfg msim" RUST_BACKTRACE=full cargo test -p e2e-tests --test encoder_committee_tests
+```
+
+```
 nix develop --experimental-features 'nix-command flakes'
 ```
 

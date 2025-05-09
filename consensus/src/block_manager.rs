@@ -127,7 +127,11 @@ impl BlockManager {
                             blocks_to_reject.insert(b.reference(), b);
                             continue 'block;
                         }
-                        panic!("Unsuspended block {:?} has a missing ancestor! Ancestor not found in DagState: {:?}", b, ancestor_ref);
+                        panic!(
+                            "Unsuspended block {:?} has a missing ancestor! Ancestor not found in \
+                             DagState: {:?}",
+                            b, ancestor_ref
+                        );
                     }
                     if let Err(e) = self.block_verifier.check_ancestors(&b, &ancestor_blocks) {
                         warn!("Block {:?} failed to verify ancestors: {}", b, e);

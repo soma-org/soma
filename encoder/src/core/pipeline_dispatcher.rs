@@ -12,8 +12,9 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     actors::{
         pipelines::{
-            commit::CommitProcessor, commit_votes::CommitVotesProcessor, input::InputProcessor,
-            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
+            commit::CommitProcessor, commit_votes::CommitVotesProcessor,
+            finality::FinalityProcessor, input::InputProcessor, reveal::RevealProcessor,
+            reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         ActorHandle,
     },
@@ -21,8 +22,8 @@ use crate::{
     messaging::EncoderInternalNetworkClient,
     types::{
         shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_input::ShardInput, shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes,
-        shard_scores::ShardScores,
+        shard_finality::ShardFinality, shard_input::ShardInput, shard_reveal::ShardReveal,
+        shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
     },
 };
 
@@ -35,26 +36,37 @@ pub trait InternalDispatcher: Sync + Send + 'static {
         probe_metadata: ProbeMetadata,
         peer: PeerPublicKey,
         address: Multiaddr,
+        cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_commit_votes(
         &self,
         shard: Shard,
         votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_reveal(
         &self,
         shard: Shard,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_reveal_votes(
         &self,
         shard: Shard,
         votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_scores(
         &self,
         shard: Shard,
         scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
+    ) -> ShardResult<()>;
+    async fn dispatch_finality(
+        &self,
+        shard: Shard,
+        scores: Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()>;
 }
 
@@ -69,7 +81,8 @@ pub(crate) struct InternalPipelineDispatcher<
     commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
     reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
     reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
-    scores_handle: ActorHandle<ScoresProcessor<E, S, P>>,
+    scores_handle: ActorHandle<ScoresProcessor<E>>,
+    finality_handle: ActorHandle<FinalityProcessor>,
 }
 
 impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
@@ -80,7 +93,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
         reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
         reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
-        scores_handle: ActorHandle<ScoresProcessor<E, S, P>>,
+        scores_handle: ActorHandle<ScoresProcessor<E>>,
+        finality_handle: ActorHandle<FinalityProcessor>,
     ) -> Self {
         Self {
             certified_commit_handle,
@@ -88,6 +102,7 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
             reveal_handle,
             reveal_votes_handle,
             scores_handle,
+            finality_handle,
         }
     }
 }
@@ -103,8 +118,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         probe_metadata: ProbeMetadata,
         peer: PeerPublicKey,
         address: Multiaddr,
+        cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        let cancellation = CancellationToken::new();
         self.certified_commit_handle
             .background_process((shard, commit, probe_metadata, peer, address), cancellation)
             .await?;
@@ -114,8 +129,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         &self,
         shard: Shard,
         votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        let cancellation = CancellationToken::new();
         self.commit_votes_handle
             .background_process((shard, votes), cancellation)
             .await?;
@@ -125,8 +140,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         &self,
         shard: Shard,
         reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        let cancellation = CancellationToken::new();
         self.reveal_handle
             .background_process((shard, reveal), cancellation)
             .await?;
@@ -136,8 +151,8 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         &self,
         shard: Shard,
         votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        let cancellation = CancellationToken::new();
         self.reveal_votes_handle
             .background_process((shard, votes), cancellation)
             .await?;
@@ -147,10 +162,21 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
         &self,
         shard: Shard,
         scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        let cancellation = CancellationToken::new();
         self.scores_handle
             .background_process((shard, scores), cancellation)
+            .await?;
+        Ok(())
+    }
+    async fn dispatch_finality(
+        &self,
+        shard: Shard,
+        finality: Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        cancellation: CancellationToken,
+    ) -> ShardResult<()> {
+        self.finality_handle
+            .background_process((shard, finality), cancellation)
             .await?;
         Ok(())
     }
@@ -162,6 +188,10 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
         &self,
         shard: Shard,
         input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        probe_metadata: ProbeMetadata,
+        peer: PeerPublicKey,
+        address: Multiaddr,
+        cancellation: CancellationToken,
     ) -> ShardResult<()>;
 }
 
@@ -202,10 +232,13 @@ impl<
         &self,
         shard: Shard,
         input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        probe_metadata: ProbeMetadata,
+        peer: PeerPublicKey,
+        address: Multiaddr,
+        cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        let cancellation = CancellationToken::new();
         self.input_handle
-            .background_process((shard, input), cancellation)
+            .background_process((shard, input, probe_metadata, peer, address), cancellation)
             .await?;
         Ok(())
     }

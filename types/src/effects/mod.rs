@@ -635,7 +635,8 @@ pub enum ExecutionFailureStatus {
     #[error("Insufficient Gas.")]
     InsufficientGas,
     #[error(
-        "Invalid owner for object {object_id}. Expected: {expected_owner}, Actual: {actual_owner:?}"
+        "Invalid owner for object {object_id}. Expected: {expected_owner}, Actual: \
+         {actual_owner:?}"
     )]
     InvalidOwnership {
         object_id: ObjectID,
@@ -644,7 +645,10 @@ pub enum ExecutionFailureStatus {
     },
     #[error("Insufficient coin balance for operation.")]
     ObjectNotFound { object_id: ObjectID },
-    #[error("Invalid object type for object {object_id}. Expected: {expected_type:?}, Actual: {actual_type:?}")]
+    #[error(
+        "Invalid object type for object {object_id}. Expected: {expected_type:?}, Actual: \
+         {actual_type:?}"
+    )]
     InvalidObjectType {
         object_id: ObjectID,
         expected_type: ObjectType,
@@ -725,10 +729,7 @@ pub enum ExecutionFailureStatus {
     // Post-execution errors
     //
     /// The effects produced by the transaction exceed the maximum allowed size
-    #[error(
-        "Effects of size {current_size} bytes too large. \
-    Limit is {max_size} bytes"
-    )]
+    #[error("Effects of size {current_size} bytes too large. Limit is {max_size} bytes")]
     EffectsTooLarge { current_size: u64, max_size: u64 },
 
     /// Generic Soma error that wraps other error types

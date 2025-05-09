@@ -45,9 +45,9 @@ enum VerificationStatus {
 pub(crate) struct ShardVerifier {
     /// caches verification status for a given auth token digest
     cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
+    cancellation_cache: Cache<Digest<Shard>, CancellationToken>,
     /// holds the actor wrapped VDF
     vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
-
     own_key: EncoderPublicKey,
 }
 
@@ -60,6 +60,7 @@ impl ShardVerifier {
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(capacity);
         Self {
             cache,
+            cancellation_cache: Cache::new(capacity),
             vdf,
             own_key,
         }
@@ -146,7 +147,7 @@ impl ShardVerifier {
         &self,
         context: &Context,
         token: &ShardAuthToken,
-    ) -> ShardResult<Shard> {
+    ) -> ShardResult<(Shard, CancellationToken)> {
         tracing::info!(
             "Starting ShardVerifier::verify with token epoch: {}",
             token.epoch()
@@ -169,7 +170,18 @@ impl ShardVerifier {
             return match status {
                 VerificationStatus::Valid(shard) => {
                     tracing::debug!("Cache hit: valid shard");
-                    Ok(shard)
+                    let shard_digest = shard.digest()?;
+                    let cancellation = self
+                        .cancellation_cache
+                        .get_or_insert_with(&shard_digest, || Ok(CancellationToken::new()))
+                        .map_err(|e: ShardError| {
+                            // unreachable, cancellation token new does not fail
+                            ShardError::InvalidShardToken(
+                                "issue with cancellation token".to_string(),
+                            )
+                        })?;
+
+                    Ok((shard, cancellation))
                 }
                 VerificationStatus::Invalid => {
                     tracing::debug!("Cache hit: invalid shard token");
@@ -269,11 +281,21 @@ impl ShardVerifier {
             return Err(ShardError::InvalidShardMember);
         }
 
+        let shard_digest = shard.digest()?;
+
         tracing::debug!("Caching successful verification result");
         self.cache
             .insert(digest, VerificationStatus::Valid(shard.clone()));
         tracing::info!("ShardVerifier::verify completed successfully");
-        Ok(shard)
+        let cancellation = self
+            .cancellation_cache
+            .get_or_insert_with(&shard_digest, || Ok(CancellationToken::new()))
+            .map_err(|_: ShardError| {
+                // unreachable, cancellation token new does not fail
+                ShardError::InvalidShardToken("issue with cancellation token".to_string())
+            })?;
+
+        Ok((shard, cancellation))
     }
 }
 
