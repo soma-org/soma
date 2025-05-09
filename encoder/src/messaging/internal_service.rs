@@ -7,6 +7,7 @@ use crate::{
         context::Context,
         shard_commit::{verify_signed_shard_commit, ShardCommit, ShardCommitAPI},
         shard_commit_votes::{verify_shard_commit_votes, ShardCommitVotes, ShardCommitVotesAPI},
+        shard_finality::{verify_signed_finality, ShardFinality, ShardFinalityAPI},
         shard_reveal::{verify_signed_shard_reveal, ShardReveal, ShardRevealAPI},
         shard_reveal_votes::{verify_shard_reveal_votes, ShardRevealVotes, ShardRevealVotesAPI},
         shard_scores::{verify_signed_scores, ShardScores, ShardScoresAPI},
@@ -16,7 +17,7 @@ use crate::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use shared::{crypto::keys::EncoderPublicKey, signed::Signed, verified::Verified};
+use shared::{crypto::keys::EncoderPublicKey, finality_proof, signed::Signed, verified::Verified};
 use std::sync::Arc;
 use tracing::{debug, error, info, trace, warn};
 
@@ -79,7 +80,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let shard = match self
+        let (shard, cancellation) = match self
             .shard_verifier
             .verify(&self.context, signed_commit.auth_token())
             .await
@@ -126,7 +127,14 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             debug!("Dispatching commit to object server");
             match self
                 .dispatcher
-                .dispatch_commit(shard, verified_commit, probe_metadata, peer, address)
+                .dispatch_commit(
+                    shard,
+                    verified_commit,
+                    probe_metadata,
+                    peer,
+                    address,
+                    cancellation,
+                )
                 .await
             {
                 Ok(_) => {
@@ -185,7 +193,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let shard = match self
+        let (shard, cancellation) = match self
             .shard_verifier
             .verify(&self.context, votes.auth_token())
             .await
@@ -218,7 +226,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Dispatching commit votes");
         match self
             .dispatcher
-            .dispatch_commit_votes(shard, verified_commit_votes)
+            .dispatch_commit_votes(shard, verified_commit_votes, cancellation)
             .await
         {
             Ok(_) => {
@@ -268,7 +276,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let shard = match self
+        let (shard, cancellation) = match self
             .shard_verifier
             .verify(&self.context, reveal.auth_token())
             .await
@@ -307,7 +315,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Dispatching reveal");
         match self
             .dispatcher
-            .dispatch_reveal(shard, verified_reveal)
+            .dispatch_reveal(shard, verified_reveal, cancellation)
             .await
         {
             Ok(_) => {
@@ -357,7 +365,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let shard = match self
+        let (shard, cancellation) = match self
             .shard_verifier
             .verify(&self.context, votes.auth_token())
             .await
@@ -390,7 +398,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Dispatching reveal votes");
         match self
             .dispatcher
-            .dispatch_reveal_votes(shard, verified_reveal_votes)
+            .dispatch_reveal_votes(shard, verified_reveal_votes, cancellation)
             .await
         {
             Ok(_) => {
@@ -440,7 +448,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let shard = match self
+        let (shard, cancellation) = match self
             .shard_verifier
             .verify(&self.context, scores.auth_token())
             .await
@@ -473,7 +481,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Dispatching scores");
         match self
             .dispatcher
-            .dispatch_scores(shard, verified_scores)
+            .dispatch_scores(shard, verified_scores, cancellation)
             .await
         {
             Ok(_) => {
@@ -486,6 +494,83 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         info!("handle_send_scores completed successfully");
+        Ok(())
+    }
+    async fn handle_send_finality(
+        &self,
+        peer: &EncoderPublicKey,
+        finality_bytes: Bytes,
+    ) -> ShardResult<()> {
+        info!("Handling send finality from peer: {:?}", peer);
+        debug!("Finality bytes size: {} bytes", finality_bytes.len());
+        trace!("Deserializing finality bytes");
+        let finality: Signed<ShardFinality, min_sig::BLS12381Signature> =
+            match bcs::from_bytes(&finality_bytes) {
+                Ok(s) => {
+                    debug!("Successfully deserialized");
+                    s
+                }
+                Err(e) => {
+                    error!("Failed to deserialize: {:?}", e);
+                    return Err(ShardError::MalformedType(e));
+                }
+            };
+        debug!("Checking if peer is the encoder");
+        if peer != finality.encoder() {
+            warn!(
+                "Sender must be encoder. Got: {:?}, expected: {:?}",
+                peer,
+                finality.encoder()
+            );
+            return Err(ShardError::FailedTypeVerification(
+                "sender must be score producer".to_string(),
+            ));
+        }
+        debug!("Verifying shard with auth token");
+        let (shard, cancellation) = match self
+            .shard_verifier
+            .verify(&self.context, finality.auth_token())
+            .await
+        {
+            Ok(s) => {
+                debug!("Shard verification succeeded");
+                s
+            }
+            Err(e) => {
+                error!("Shard verification failed: {:?}", e);
+                return Err(e);
+            }
+        };
+        debug!("Creating verified finality object");
+        let verified_finality = match Verified::new(finality, finality_bytes, |finality| {
+            debug!("Verifying signed finality");
+            verify_signed_finality(finality, &shard)
+        }) {
+            Ok(v) => {
+                debug!("Verified finality created successfully");
+                v
+            }
+            Err(e) => {
+                error!("Failed to create verified finality: {:?}", e);
+                return Err(ShardError::FailedTypeVerification(e.to_string()));
+            }
+        };
+        debug!("Dispatching finality");
+        match self
+            .dispatcher
+            .dispatch_finality(shard, verified_finality, cancellation)
+            .await
+        {
+            Ok(_) => {
+                info!("Successfully dispatched finality");
+            }
+            Err(e) => {
+                error!("Failed to dispatch finality: {:?}", e);
+                return Err(e);
+            }
+        }
+
+        info!("handle_send_finality completed successfully");
         Ok(())
     }
 }

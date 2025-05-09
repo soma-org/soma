@@ -1,29 +1,38 @@
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{future::Future, marker::PhantomData, sync::Arc, time::Duration};
 
 use crate::{
-    actors::{ActorMessage, Processor},
+    actors::{ActorHandle, ActorMessage, Processor},
+    core::internal_broadcaster::Broadcaster,
     datastore::Store,
     error::{ShardError, ShardResult},
-    messaging::EncoderInternalNetworkClient,
+    messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
         shard::Shard,
-        shard_scores::{Score, ScoreSetAPI, ShardScores, ShardScoresAPI},
+        shard_finality::{ShardFinality, ShardFinalityV1},
+        shard_scores::{Score, ScoreAPI, ScoreSetAPI, ShardScores, ShardScoresAPI},
     },
 };
 use async_trait::async_trait;
-use fastcrypto::bls12381::min_sig;
+use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
-    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey, EncoderSignature},
+    crypto::keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
     digest::Digest,
+    scope::Scope,
     signed::Signed,
     verified::Verified,
 };
+use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
+
+use super::finality::FinalityProcessor;
 
 pub(crate) struct ScoresProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
-    marker: PhantomData<E>,
+    broadcaster: Arc<Broadcaster<E>>,
+    encoder_keypair: Arc<EncoderKeyPair>,
+    finality_pipeline: ActorHandle<FinalityProcessor>,
     recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
     send_dedup: Cache<Digest<Shard>, ()>,
 }
@@ -31,15 +40,40 @@ pub(crate) struct ScoresProcessor<E: EncoderInternalNetworkClient> {
 impl<E: EncoderInternalNetworkClient> ScoresProcessor<E> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
+        broadcaster: Arc<Broadcaster<E>>,
+        encoder_keypair: Arc<EncoderKeyPair>,
+        finality_pipeline: ActorHandle<FinalityProcessor>,
         recv_cache_capacity: usize,
         send_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
-            marker: PhantomData,
+            broadcaster,
+            encoder_keypair,
+            finality_pipeline,
             recv_dedup: Cache::new(recv_cache_capacity),
             send_dedup: Cache::new(send_cache_capacity),
         }
+    }
+    pub async fn start_timer<F, Fut>(
+        &self,
+        timeout: Duration,
+        cancellation: CancellationToken,
+        on_trigger: F,
+    ) where
+        F: FnOnce() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ShardResult<()>> + Send + 'static,
+    {
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = sleep(timeout) => {
+                    on_trigger().await;
+                }
+                _ = cancellation.cancelled() => {
+                    info!("skipping trigger for submitting on-chain and calling clean up pipeline");
+                }
+            }
+        });
     }
 }
 
@@ -107,6 +141,17 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
             );
 
             if matching_scores.len() >= shard.quorum_threshold() as usize {
+                match self
+                    .send_dedup
+                    .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
+                {
+                    GuardResult::Value(_) => return Ok(()),
+                    GuardResult::Guard(placeholder) => {
+                        // TODO: replace this for all inserts? the error should be propogated or unwrapped
+                        placeholder.insert(()).unwrap();
+                    }
+                    GuardResult::Timeout => (),
+                };
                 info!("QUORUM OF MATCHING SCORES - Aggregating signatures");
 
                 let (signatures, evaluators): (Vec<EncoderSignature>, Vec<EncoderPublicKey>) = {
@@ -142,6 +187,69 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
                     "SHARD CONSENSUS COMPLETE - Aggregate score stored: {:?}",
                     agg
                 );
+
+                if let Some(own_rank) = scores
+                    .signed_score_set()
+                    .scores()
+                    .iter()
+                    .position(|s| s.encoder() == &self.encoder_keypair.public())
+                {
+                    let finality_pipeline = self.finality_pipeline.clone();
+                    let auth_token = scores.auth_token().clone();
+                    let broadcaster = self.broadcaster.clone();
+                    let encoder_keypair = self.encoder_keypair.clone();
+                    let cancellation = msg.cancellation.clone();
+                    let trigger_fn = || async move {
+                        // call on-chain
+
+                        let finality = ShardFinality::V1(ShardFinalityV1::new(
+                            auth_token,
+                            encoder_keypair.public(),
+                        ));
+                        let inner_keypair = encoder_keypair.inner().copy();
+
+                        // Sign scores
+                        let signed_finality =
+                            Signed::new(finality, Scope::ShardFinality, &inner_keypair.private())
+                                .unwrap();
+                        let verified = Verified::from_trusted(signed_finality).unwrap();
+
+                        info!("dispatching finality pipeline to oneself");
+                        finality_pipeline
+                            .process((shard.clone(), verified.clone()), cancellation.clone())
+                            .await?;
+
+                        info!("broadcasting finality pipeline to peers");
+                        broadcaster
+                            .broadcast(
+                                verified.clone(),
+                                shard.encoders(),
+                                |client, peer, verified_type| async move {
+                                    client
+                                        .send_finality(&peer, &verified_type, MESSAGE_TIMEOUT)
+                                        .await?;
+                                    Ok(())
+                                },
+                            )
+                            .await?;
+
+                        // broadcast to peers
+                        Ok(()) as ShardResult<()>
+                    };
+
+                    if own_rank == 0 {
+                        //trigger immediately
+                        trigger_fn().await;
+                    } else {
+                        // TODO: change waiting period to be configured
+                        let waiting_period_in_secs = 30;
+                        let duration =
+                            Duration::from_secs(own_rank as u64 * waiting_period_in_secs);
+                        info!("staggering finality function with duration: {:?}", duration);
+                        self.start_timer(duration, msg.cancellation.clone(), trigger_fn)
+                            .await;
+                    }
+                }
             } else {
                 debug!(
                 "Not enough matching scores yet - waiting for more scores. Matching scores: {}, \

@@ -23,8 +23,8 @@ use crate::{
     actors::{
         pipelines::{
             commit::CommitProcessor, commit_votes::CommitVotesProcessor,
-            evaluation::EvaluationProcessor, input::InputProcessor, reveal::RevealProcessor,
-            reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
+            evaluation::EvaluationProcessor, finality::FinalityProcessor, input::InputProcessor,
+            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
         },
         workers::{
             compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
@@ -219,9 +219,14 @@ impl EncoderNode {
 
         let recv_dedup_cache_capacity: usize = 1000;
         let send_dedup_cache_capacity: usize = 100;
+        let finality_processor = FinalityProcessor::new(store.clone(), recv_dedup_cache_capacity);
+        let finality_handle = ActorManager::new(default_buffer, finality_processor).handle();
 
         let scores_processor = ScoresProcessor::new(
             store.clone(),
+            broadcaster.clone(),
+            encoder_keypair.clone(),
+            finality_handle.clone(),
             recv_dedup_cache_capacity,
             send_dedup_cache_capacity,
         );
@@ -300,6 +305,7 @@ impl EncoderNode {
             reveal_handle,
             reveal_votes_handle,
             scores_handle,
+            finality_handle,
         );
         let verifier = Arc::new(ShardVerifier::new(
             100,

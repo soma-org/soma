@@ -9,6 +9,7 @@ use crate::error::ShardResult;
 use crate::types::parameters::Parameters;
 use crate::types::shard_commit::ShardCommit;
 use crate::types::shard_commit_votes::ShardCommitVotes;
+use crate::types::shard_finality::ShardFinality;
 use crate::types::shard_input::ShardInput;
 use crate::types::shard_reveal::ShardReveal;
 use crate::types::shard_reveal_votes::ShardRevealVotes;
@@ -62,6 +63,12 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
         scores: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
+    async fn send_finality(
+        &self,
+        encoder: &EncoderPublicKey,
+        finality: &Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        timeout: Duration,
+    ) -> ShardResult<()>;
 }
 
 #[async_trait]
@@ -100,6 +107,11 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
         &self,
         encoder: &EncoderPublicKey,
         scores_bytes: Bytes,
+    ) -> ShardResult<()>;
+    async fn handle_send_finality(
+        &self,
+        encoder: &EncoderPublicKey,
+        finality_bytes: Bytes,
     ) -> ShardResult<()>;
 }
 

@@ -44,7 +44,7 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
                 }
             };
 
-        let shard = self
+        let (shard, cancellation) = self
             .shard_verifier
             .verify(&self.context, input.auth_token())
             .await?;
@@ -69,6 +69,7 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
                     probe_metadata,
                     own_object_peer,
                     own_object_address,
+                    cancellation,
                 )
                 .await?;
         };

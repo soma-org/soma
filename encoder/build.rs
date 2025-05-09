@@ -70,6 +70,15 @@ fn build_tonic_services(out_dir: &Path) {
                 .codec_path(codec_path)
                 .build(),
         )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("send_finality")
+                .route_name("SendFinality")
+                .input_type("crate::messaging::tonic::internal::SendFinalityRequest")
+                .output_type("crate::messaging::tonic::internal::SendFinalityResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
         .build();
     let encoder_external_tonic_service = tonic_build::manual::Service::builder()
         .name("EncoderExternalTonicService")
