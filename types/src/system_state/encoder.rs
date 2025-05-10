@@ -50,11 +50,16 @@ pub struct EncoderMetadata {
     /// The network address for general network communication
     pub net_address: Multiaddr,
 
+    pub object_server_address: Multiaddr,
+
     /// Optional new network public key for the next epoch
     pub next_epoch_network_pubkey: Option<crate::crypto::NetworkPublicKey>,
 
     /// Optional new network address for the next epoch
     pub next_epoch_net_address: Option<Multiaddr>,
+
+    /// Optional new object server address for the next epoch
+    pub next_epoch_object_server_address: Option<Multiaddr>,
 }
 
 /// # Encoder
@@ -107,6 +112,7 @@ impl Encoder {
         encoder_pubkey: EncoderPublicKey,
         network_pubkey: crypto::NetworkPublicKey,
         net_address: Multiaddr,
+        object_server_address: Multiaddr,
         voting_power: u64,
         commission_rate: u64,
         staking_pool_id: ObjectID,
@@ -117,8 +123,10 @@ impl Encoder {
                 encoder_pubkey,
                 network_pubkey,
                 net_address,
+                object_server_address,
                 next_epoch_network_pubkey: None,
                 next_epoch_net_address: None,
+                next_epoch_object_server_address: None,
             },
             voting_power,
             commission_rate,

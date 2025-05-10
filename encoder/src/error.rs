@@ -283,6 +283,9 @@ pub enum ShardError {
 
     #[error("Consensus has shut down!")]
     Shutdown,
+
+    #[error("Other: {0:?}")]
+    Other(String),
 }
 
 pub type ShardResult<T> = Result<T, ShardError>;

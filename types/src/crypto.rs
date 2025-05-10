@@ -1485,6 +1485,10 @@ impl ProtocolPublicKey {
     pub fn to_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
+
+    pub fn inner(&self) -> ed25519::Ed25519PublicKey {
+        self.0.clone()
+    }
 }
 
 impl ProtocolKeyPair {

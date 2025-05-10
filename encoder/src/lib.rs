@@ -7,6 +7,7 @@ mod encryption;
 pub mod error;
 mod intelligence;
 pub mod messaging;
+pub mod sync;
 pub mod types;
 mod utils;
 // pub use core::encoder_node::EncoderNode;

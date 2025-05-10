@@ -18,7 +18,7 @@ use std::{
     path::PathBuf,
 };
 use tracing::info;
-use types::config::local_ip_utils;
+use types::{committee::Committee, config::local_ip_utils};
 
 use self::multiaddr_compat::to_network_multiaddr;
 use crate::{
@@ -139,6 +139,16 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             EncoderCommitteeConfig::Size(size) => {
                 // Generate new encoder configs
                 let mut configs = Vec::with_capacity(size.get());
+
+                // TODO: THIS IS TEMPORARY TILL YOU CONNECT THE ENCODERS WITH ACTUAL VALIDATORS/FULLNODES
+                // Create default genesis committee that all encoders will share
+                let (genesis_committee, _) = Committee::new_simple_test_committee_of_size(4);
+
+                // Create validator rpc all encoders will share
+                let validator_ip = local_ip_utils::get_new_ip();
+                let validator_rpc_address =
+                    local_ip_utils::new_tcp_address_for_testing(&validator_ip);
+
                 for i in 0..size.get() {
                     // Generate keypairs
                     let encoder_keypair = EncoderKeyPair::generate(&mut self.rng);
@@ -147,28 +157,11 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     // Get a unique IP for this encoder
                     let ip = local_ip_utils::get_new_ip();
 
-                    // TODO: switch to using the find_next_available_port util!
-                    // Generate network and object addresses
-                    let internal_port = 8000 + (i * 3) as u16;
-                    let external_port = 8001 + (i * 3) as u16;
-                    let object_port = 8002 + (i * 3) as u16;
-                    let probe_port = 8003 + (i * 3) as u16;
-
                     // Generate unique addresses with specific ports
-                    let internal_network_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(
-                            &ip,
-                            internal_port,
-                        );
-                    let external_network_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(
-                            &ip,
-                            external_port,
-                        );
-                    let object_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
-                    let probe_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, probe_port);
+                    let internal_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let external_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let probe_address = local_ip_utils::new_tcp_address_for_testing(&ip);
 
                     let project_root = PathBuf::from("/tmp"); // Default test paths
                     let entry_point = PathBuf::from("test_module.py");
@@ -176,13 +169,14 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     configs.push(EncoderConfig::new(
                         encoder_keypair,
                         peer_keypair,
-                        ip.parse().unwrap(), // Parse string IP into IpAddr
                         internal_network_address,
                         external_network_address,
                         object_address,
                         probe_address,
                         project_root,
                         entry_point,
+                        validator_rpc_address.clone(),
+                        genesis_committee.clone(),
                     ));
                 }
                 configs
@@ -194,6 +188,16 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             EncoderCommitteeConfig::EncoderKeys(keys) => {
                 // Generate new encoder configs using provided keypairs
                 let mut configs = Vec::with_capacity(keys.len());
+
+                // TODO: THIS IS TEMPORARY TILL YOU CONNECT THE ENCODERS WITH ACTUAL VALIDATORS/FULLNODES
+                // Create default genesis committee that all encoders will share
+                let (genesis_committee, _) = Committee::new_simple_test_committee_of_size(4);
+
+                // Create validator rpc all encoders will share
+                let validator_ip = local_ip_utils::get_new_ip();
+                let validator_rpc_address =
+                    local_ip_utils::new_tcp_address_for_testing(&validator_ip);
+
                 for (i, key) in keys.into_iter().enumerate() {
                     // Generate peer keypair
                     let peer_keypair = PeerKeyPair::generate(&mut self.rng);
@@ -201,26 +205,10 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     // Get a unique IP for this encoder
                     let ip = local_ip_utils::get_new_ip();
 
-                    let internal_port = 8000 + (i * 3) as u16;
-                    let external_port = 8001 + (i * 3) as u16;
-                    let object_port = 8002 + (i * 3) as u16;
-                    let probe_port = 8003 + (i * 3) as u16;
-
-                    // Generate unique addresses with specific ports
-                    let internal_network_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(
-                            &ip,
-                            internal_port,
-                        );
-                    let external_network_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(
-                            &ip,
-                            external_port,
-                        );
-                    let object_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
-                    let probe_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, probe_port);
+                    let internal_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let external_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+                    let probe_address = local_ip_utils::new_tcp_address_for_testing(&ip);
 
                     let project_root = PathBuf::from("/tmp");
                     let entry_point = PathBuf::from("test_module.py");
@@ -228,167 +216,23 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     configs.push(EncoderConfig::new(
                         key,
                         peer_keypair,
-                        ip.parse().unwrap(),
                         internal_network_address,
                         external_network_address,
                         object_address,
                         probe_address,
                         project_root,
                         entry_point,
-                    ));
-                }
-                configs
-            }
-            EncoderCommitteeConfig::Deterministic((size, keys_opt)) => {
-                let keys = keys_opt.unwrap_or_else(|| {
-                    (0..size.get())
-                        .map(|_| EncoderKeyPair::generate(&mut self.rng))
-                        .collect()
-                });
-
-                // Generate deterministic configs
-                let mut configs = Vec::with_capacity(keys.len());
-                for (i, key) in keys.into_iter().enumerate() {
-                    // Generate peer keypair
-                    let peer_keypair = PeerKeyPair::generate(&mut self.rng);
-
-                    // For deterministic mode, use consistent port offsets based on index
-                    let port_offset = 8000 + i * 10;
-                    let ip = local_ip_utils::get_new_ip();
-
-                    // Generate deterministic addresses with specific ports
-                    let internal_port = 8000 + (i * 3) as u16;
-                    let external_port = 8001 + (i * 3) as u16;
-                    let object_port = 8002 + (i * 3) as u16;
-                    let probe_port = 8003 + (i * 3) as u16;
-
-                    // Generate unique addresses with specific ports
-                    let internal_network_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(
-                            &ip,
-                            internal_port,
-                        );
-                    let external_network_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(
-                            &ip,
-                            external_port,
-                        );
-                    let object_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, object_port);
-                    let probe_address =
-                        local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, probe_port);
-
-                    let project_root = PathBuf::from("/tmp");
-                    let entry_point = PathBuf::from("test_module.py");
-
-                    configs.push(EncoderConfig::new(
-                        key,
-                        peer_keypair,
-                        ip.parse().unwrap(),
-                        internal_network_address,
-                        external_network_address,
-                        object_address,
-                        probe_address,
-                        project_root,
-                        entry_point,
+                        validator_rpc_address.clone(),
+                        genesis_committee.clone(),
                     ));
                 }
                 configs
             }
         };
 
-        // Now that we have all encoder configs, we need to update them with the collective knowledge
-
-        // 1. Collect all encoder public keys for the committee
-        let all_encoder_keys: Vec<EncoderPublicKey> = encoder_configs
-            .iter()
-            .map(|config| config.protocol_public_key())
-            .collect();
-
-        // 2. Create a mapping of peer keys to encoder keys
-        let mut peer_to_encoder = BTreeMap::new();
-        for config in &encoder_configs {
-            peer_to_encoder.insert(config.peer_public_key(), config.protocol_public_key());
-        }
-
-        // 3. Create a mapping of encoder keys to (address, peer key)
-        let mut encoder_to_internal_addr_peer = BTreeMap::new();
-        let mut encoder_to_external_addr_peer = BTreeMap::new();
-
-        for config in &encoder_configs {
-            // Map for internal communication (encoder-to-encoder)
-            encoder_to_internal_addr_peer.insert(
-                config.protocol_public_key(),
-                (
-                    to_network_multiaddr(&config.internal_network_address),
-                    config.peer_public_key(),
-                ),
-            );
-
-            // Map for external communication (client-to-encoder)
-            encoder_to_external_addr_peer.insert(
-                config.protocol_public_key(),
-                (
-                    to_network_multiaddr(&config.external_network_address),
-                    config.peer_public_key(),
-                ),
-            );
-        }
-
-        // 4. Create a set of allowed public keys
-        let mut allowed_keys = encoder_configs
-            .iter()
-            .map(|config| config.peer_public_key().into_inner())
-            .collect::<BTreeSet<_>>();
-
-        // Add client public key to allowed keys if available
-        if let Some(client_keypair) = &self.client_keypair {
-            allowed_keys.insert(client_keypair.public().into_inner());
-        }
-
-        // Collect object server information for all encoders
-        let mut encoder_object_servers = HashMap::new();
-        for config in &encoder_configs {
-            let (key, addr) = config.get_object_server_info();
-            encoder_object_servers.insert(
-                key,
-                (
-                    config.peer_public_key(),
-                    to_network_multiaddr(&config.object_address),
-                ),
-            );
-        }
-
-        // 5. Update each encoder config with the collective information
-        for (idx, config) in encoder_configs.iter_mut().enumerate() {
-            // Create a map of other encoders' object servers (excluding self)
-            let mut other_object_servers = HashMap::new();
-            for (key, (peer_key, addr)) in &encoder_object_servers {
-                // if key != &config.protocol_public_key() {
-                other_object_servers.insert(key.clone(), (peer_key.clone(), addr.clone()));
-                // }
-            }
-
-            // Create context with object servers in one step
-            config.context = EncoderConfig::create_test_context(
-                &config.encoder_keypair,
-                all_encoder_keys.clone(),
-                idx,
-                other_object_servers,
-            );
-
-            // Update networking info
-            config.networking_info = NetworkingInfo::new(encoder_to_internal_addr_peer.clone());
-
-            // Update connections info
-            config.connections_info = ConnectionsInfo::new(peer_to_encoder.clone());
-
-            // Update allowed public keys
-            config.allowed_public_keys = AllowPublicKeys::new(allowed_keys.clone());
-        }
-
         // Create nodes from the updated configs
         let nodes = encoder_configs
+            .clone()
             .into_iter()
             .map(|config| {
                 info!(
@@ -399,9 +243,22 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
             })
             .collect();
 
+        let external_addresses = encoder_configs
+            .iter()
+            .map(|config| {
+                (
+                    config.protocol_public_key(),
+                    (
+                        to_network_multiaddr(&config.external_network_address),
+                        config.peer_public_key(),
+                    ),
+                )
+            })
+            .collect();
+
         EncoderSwarm {
             nodes,
-            external_addresses: NetworkingInfo::new(encoder_to_external_addr_peer),
+            external_addresses: NetworkingInfo::new(external_addresses),
         }
     }
 }

@@ -1,10 +1,18 @@
-// src/encoder_validator_client.rs
-
 use crate::types::encoder_committee::{Encoder, EncoderCommittee as ShardCommittee};
 use anyhow::{anyhow, Result};
 use encoder_validator_api::tonic_gen::encoder_validator_api_client::EncoderValidatorApiClient;
-use shared::{crypto::keys::EncoderPublicKey, probe::ProbeMetadata};
-use std::{collections::BTreeMap, sync::Arc};
+use shared::{
+    authority_committee::AuthorityCommittee,
+    crypto::keys::{
+        AuthorityPublicKey as SharedAuthorityPublicKey, EncoderPublicKey, PeerPublicKey,
+        ProtocolPublicKey,
+    },
+    probe::ProbeMetadata,
+};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, info, warn};
 use types::{
@@ -25,11 +33,27 @@ use types::{
     multiaddr::Multiaddr,
 };
 
-/// Result type for committee verification
 pub struct VerifiedCommittees {
     pub validator_committee: Committee,
     pub encoder_committee: ShardCommittee,
     pub previous_encoder_committee: Option<ShardCommittee>,
+}
+
+/// Enriched result type with all necessary committee information
+pub struct EnrichedVerifiedCommittees {
+    // Original verification data
+    pub validator_committee: Committee,
+    pub encoder_committee: ShardCommittee,
+    pub previous_encoder_committee: Option<ShardCommittee>,
+
+    // Additional data for CommitteeSyncManager
+    pub authority_committee: AuthorityCommittee,
+    pub networking_info:
+        BTreeMap<EncoderPublicKey, (soma_network::multiaddr::Multiaddr, PeerPublicKey)>,
+    pub connections_info: BTreeMap<PeerPublicKey, EncoderPublicKey>,
+    pub object_servers:
+        HashMap<EncoderPublicKey, (PeerPublicKey, soma_network::multiaddr::Multiaddr)>,
+    pub epoch_start_timestamp_ms: u64,
 }
 
 /// Client for communicating with the validator node to fetch committees
@@ -143,7 +167,7 @@ impl EncoderValidatorClient {
                 // Calculate voting power as u16
                 let voting_power = (*voting_power as u16).min(10_000);
 
-                // Create a test probe metadata (will be replaced with real data in production)
+                // TODO: Create a test probe metadata (will be replaced with real data in production)
                 let mut seed = [0u8; 32];
                 seed[0..8].copy_from_slice(&key.to_bytes()[0..8]); // Use part of the public key as seed
                 let probe = ProbeMetadata::new_for_test(&seed);
@@ -173,6 +197,21 @@ impl EncoderValidatorClient {
         ))
     }
 
+    fn convert_to_authority_committee(&self, committee: &Committee) -> AuthorityCommittee {
+        // Extract authorities from the Committee
+        let authorities = committee
+            .authorities()
+            .map(|(_, auth)| shared::authority_committee::Authority {
+                stake: auth.stake,
+                authority_key: SharedAuthorityPublicKey::new(auth.authority_key.clone()),
+                protocol_key: ProtocolPublicKey::new(auth.protocol_key.inner()),
+            })
+            .collect();
+
+        // Create new AuthorityCommittee with proper constructor
+        AuthorityCommittee::new(committee.epoch(), authorities)
+    }
+
     /// Convert blockchain structures to our client structures
     fn convert_committees(
         &self,
@@ -183,6 +222,84 @@ impl EncoderValidatorClient {
         let validator_committee = self.validator_set_to_committee(validator_set, epoch)?;
         let encoder_committee = self.convert_encoder_committee(blockchain_committee, epoch)?;
         Ok((validator_committee, encoder_committee))
+    }
+
+    fn extract_network_info(
+        &self,
+        encoder_committee: &types::committee::EncoderCommittee,
+        previous_encoder_committee: Option<&types::committee::EncoderCommittee>,
+    ) -> (
+        BTreeMap<EncoderPublicKey, (soma_network::multiaddr::Multiaddr, PeerPublicKey)>, // For NetworkingInfo
+        BTreeMap<PeerPublicKey, EncoderPublicKey>, // For ConnectionsInfo
+        HashMap<EncoderPublicKey, (PeerPublicKey, soma_network::multiaddr::Multiaddr)>, // For object servers
+    ) {
+        let mut networking_info = BTreeMap::new();
+        let mut connections_info = BTreeMap::new();
+        let mut object_servers = HashMap::new();
+
+        // Helper function to process a single committee
+        let process_committee = |committee: &types::committee::EncoderCommittee,
+                                 networking: &mut BTreeMap<_, _>,
+                                 connections: &mut BTreeMap<_, _>,
+                                 objects: &mut HashMap<_, _>| {
+            // Process each encoder and its network metadata
+            for (encoder_key, _) in &committee.members {
+                if let Some(metadata) = committee.network_metadata.get(encoder_key) {
+                    // Convert NetworkPublicKey to PeerPublicKey (they have the same inner type)
+                    let peer_key = PeerPublicKey::new(metadata.network_key.clone().into_inner());
+
+                    // Add to network info mapping
+                    networking.insert(
+                        encoder_key.clone(),
+                        (
+                            metadata
+                                .network_address
+                                .clone()
+                                .to_string()
+                                .parse()
+                                .expect("Valid multiaddr"),
+                            peer_key.clone(),
+                        ),
+                    );
+
+                    // Add to connections info mapping
+                    connections.insert(peer_key.clone(), encoder_key.clone());
+
+                    objects.insert(
+                        encoder_key.clone(),
+                        (
+                            peer_key,
+                            metadata
+                                .object_server_address
+                                .clone()
+                                .to_string()
+                                .parse()
+                                .expect("Valid multiaddr"),
+                        ),
+                    );
+                }
+            }
+        };
+
+        // First process previous committee (so current can override if needed)
+        if let Some(prev) = previous_encoder_committee {
+            process_committee(
+                prev,
+                &mut networking_info,
+                &mut connections_info,
+                &mut object_servers,
+            );
+        }
+
+        // Then process current committee
+        process_committee(
+            encoder_committee,
+            &mut networking_info,
+            &mut connections_info,
+            &mut object_servers,
+        );
+
+        (networking_info, connections_info, object_servers)
     }
 
     /// Verify a single committee using a committee from the previous epoch
@@ -289,21 +406,79 @@ impl EncoderValidatorClient {
         Ok((validator_committee, encoder_committee))
     }
 
+    /// Verify a single committee and enrich it with network data
+    fn enrich_committee(
+        &self,
+        validator_committee: Committee,
+        encoder_committee: ShardCommittee,
+        previous_encoder_committee: Option<ShardCommittee>,
+        committee_data: &EpochCommittee,
+        previous_committee_data: Option<&EpochCommittee>,
+    ) -> Result<EnrichedVerifiedCommittees> {
+        // Create authority committee
+        let authority_committee = self.convert_to_authority_committee(&validator_committee);
+
+        // Extract timestamp
+        let epoch_start_timestamp_ms = committee_data.next_epoch_start_timestamp_ms;
+
+        // Extract blockchain committee for network info
+        let blockchain_committee: EncoderCommittee =
+            bcs::from_bytes(&committee_data.encoder_committee)
+                .map_err(|e| anyhow!("Failed to deserialize encoder committee: {}", e))?;
+
+        // Extract previous blockchain committee if available
+        let previous_blockchain_committee = if let Some(prev_data) = previous_committee_data {
+            match bcs::from_bytes::<EncoderCommittee>(&prev_data.encoder_committee) {
+                Ok(committee) => Some(committee),
+                Err(e) => {
+                    warn!("Failed to deserialize previous encoder committee: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Extract network info
+        let (networking_info, connections_info, object_servers) = self.extract_network_info(
+            &blockchain_committee,
+            previous_blockchain_committee.as_ref(),
+        );
+
+        Ok(EnrichedVerifiedCommittees {
+            validator_committee,
+            encoder_committee,
+            previous_encoder_committee,
+            authority_committee,
+            networking_info,
+            connections_info,
+            object_servers,
+            epoch_start_timestamp_ms,
+        })
+    }
+
     /// Process committee verification in chunks up to a target epoch
     async fn verify_committee_range(
         &mut self,
         start_epoch: EpochId,
         target_epoch: EpochId,
-    ) -> Result<VerifiedCommittees> {
+    ) -> Result<EnrichedVerifiedCommittees> {
         // Skip if we're already at or beyond the target epoch
         if self.current_epoch >= target_epoch {
-            return Ok(VerifiedCommittees {
+            let enriched = EnrichedVerifiedCommittees {
                 validator_committee: self.current_validator_committee.clone(),
                 encoder_committee: self.current_encoder_committee.clone().ok_or_else(|| {
                     anyhow!("No encoder committee for epoch {}", self.current_epoch)
                 })?,
                 previous_encoder_committee: self.previous_encoder_committee.clone(),
-            });
+                authority_committee: self
+                    .convert_to_authority_committee(&self.current_validator_committee),
+                networking_info: BTreeMap::new(),
+                connections_info: BTreeMap::new(),
+                object_servers: HashMap::new(),
+                epoch_start_timestamp_ms: 0, // No new epoch data
+            };
+            return Ok(enriched);
         }
 
         // We'll process in manageable chunks to avoid huge requests
@@ -313,6 +488,10 @@ impl EncoderValidatorClient {
         let mut current_validator_committee = self.current_validator_committee.clone();
         let mut current_encoder_committee = self.current_encoder_committee.clone();
         let mut previous_encoder_committee = self.previous_encoder_committee.clone();
+
+        // Track the most recently processed committee data for enrichment
+        let mut last_committee_data: Option<EpochCommittee> = None;
+        let mut previous_committee_data: Option<EpochCommittee> = None;
 
         // Always start from where we left off
         let mut chunk_start = start_epoch;
@@ -345,112 +524,27 @@ impl EncoderValidatorClient {
                     continue;
                 }
 
-                // Deserialize validator set and encoder committee
-                let validator_set: ValidatorSet = bcs::from_bytes(&committee_data.validator_set)
-                    .map_err(|e| anyhow!("Failed to deserialize validator set: {}", e))?;
+                // Use verify_committee for each committee
+                let (validator_committee, encoder_committee) =
+                    self.verify_committee(&current_validator_committee, &committee_data)?;
 
-                let blockchain_committee: EncoderCommittee =
-                    bcs::from_bytes(&committee_data.encoder_committee)
-                        .map_err(|e| anyhow!("Failed to deserialize encoder committee: {}", e))?;
-
-                // Deserialize aggregate signatures
-                let val_agg_sig: AggregateAuthoritySignature =
-                    bcs::from_bytes(&committee_data.aggregate_signature).map_err(|e| {
-                        anyhow!("Failed to deserialize validator aggregate signature: {}", e)
-                    })?;
-
-                let enc_agg_sig: AggregateAuthoritySignature =
-                    bcs::from_bytes(&committee_data.encoder_aggregate_signature).map_err(|e| {
-                        anyhow!("Failed to deserialize encoder aggregate signature: {}", e)
-                    })?;
-
-                // Get the messages that were signed
-                let val_digest = validator_set
-                    .compute_digest()
-                    .map_err(|e| anyhow!("Failed to compute validator set digest: {}", e))?;
-
-                let val_message = bcs::to_bytes(&to_validator_set_intent(val_digest))
-                    .map_err(|e| anyhow!("Failed to serialize validator intent message: {}", e))?;
-
-                let enc_digest = blockchain_committee
-                    .compute_digest()
-                    .map_err(|e| anyhow!("Failed to compute encoder committee digest: {}", e))?;
-
-                let enc_message = bcs::to_bytes(&to_encoder_committee_intent(enc_digest))
-                    .map_err(|e| anyhow!("Failed to serialize encoder intent message: {}", e))?;
-
-                // Create a stake aggregator to check quorum
-                let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
-
-                // Add each signer to the aggregator using their index
-                for &index in &committee_data.signer_indices {
-                    let authority_index = AuthorityIndex(index);
-
-                    // Verify the signer exists in the previous committee
-                    if current_validator_committee.is_valid_index(authority_index) {
-                        aggregator.add(authority_index, &current_validator_committee);
-                    } else {
-                        return Err(anyhow!(
-                            "Invalid signer: authority index {} not found in previous committee",
-                            authority_index
-                        ));
+                // Store the committee data for previous epoch
+                if current_encoder_committee.is_some() {
+                    previous_encoder_committee = current_encoder_committee;
+                    if let Some(last_data) = last_committee_data.take() {
+                        previous_committee_data = Some(last_data);
                     }
                 }
 
-                // Verify we have enough stake for quorum
-                if !aggregator.reached_threshold(&current_validator_committee) {
-                    return Err(anyhow!(
-                        "Insufficient stake for quorum (got {}, needed {})",
-                        aggregator.stake(),
-                        current_validator_committee.quorum_threshold()
-                    ));
-                }
-
-                // Get public keys in same order for verification
-                let pubkeys: Vec<AuthorityPublicKey> = aggregator
-                    .votes()
-                    .iter()
-                    .map(|&idx| {
-                        current_validator_committee
-                            .authority_by_authority_index(idx)
-                            .expect("Authority must exist")
-                            .authority_key
-                            .clone()
-                    })
-                    .collect();
-
-                // Verify both aggregate signatures
-                val_agg_sig.verify(&pubkeys, &val_message).map_err(|e| {
-                    warn!("Validator aggregate signature verification failed: {}", e);
-                    anyhow!("Invalid validator aggregate signature: {}", e)
-                })?;
-
-                enc_agg_sig.verify(&pubkeys, &enc_message).map_err(|e| {
-                    warn!(
-                        "Encoder committee aggregate signature verification failed: {}",
-                        e
-                    );
-                    anyhow!("Invalid encoder committee aggregate signature: {}", e)
-                })?;
-
-                // Convert to our client types
-                let (verified_validator, verified_encoder) = self.convert_committees(
-                    &validator_set,
-                    &blockchain_committee,
-                    committee_data.epoch,
-                )?;
-
-                // Move current to previous before updating
-                if current_encoder_committee.is_some() {
-                    previous_encoder_committee = current_encoder_committee;
-                }
-
                 // Update current committees
-                current_validator_committee = verified_validator;
-                current_encoder_committee = Some(verified_encoder);
+                current_validator_committee = validator_committee;
+                current_encoder_committee = Some(encoder_committee);
                 current_epoch = committee_data.epoch;
 
-                info!("Verified committees for epoch {}", committee_data.epoch);
+                // Keep track of the most recent committee data
+                last_committee_data = Some(committee_data);
+
+                info!("Verified committees for epoch {}", current_epoch);
             }
 
             // Set up for next chunk
@@ -468,29 +562,34 @@ impl EncoderValidatorClient {
         self.previous_encoder_committee = previous_encoder_committee.clone();
         self.current_epoch = current_epoch;
 
-        Ok(VerifiedCommittees {
-            validator_committee: current_validator_committee,
-            encoder_committee: current_encoder_committee
-                .ok_or_else(|| anyhow!("No encoder committee for epoch {}", current_epoch))?,
-            previous_encoder_committee,
-        })
+        // Create enriched result using committee data
+        if let (Some(encoder_committee), Some(committee_data)) =
+            (current_encoder_committee, last_committee_data)
+        {
+            // Create enriched result using both current and previous committee data
+            let enriched = self.enrich_committee(
+                current_validator_committee,
+                encoder_committee,
+                previous_encoder_committee,
+                &committee_data,
+                previous_committee_data.as_ref(),
+            )?;
+
+            Ok(enriched)
+        } else {
+            // If no committees were processed or we don't have an encoder committee
+            Err(anyhow!("No valid committees found or processed"))
+        }
     }
 
     /// Initial setup - synchronize committees from epoch 1 to current epoch
-    pub async fn setup_from_genesis(&mut self) -> Result<VerifiedCommittees> {
+    pub async fn setup_from_genesis(&mut self) -> Result<EnrichedVerifiedCommittees> {
         // First get the current epoch from the validator
         let target_epoch = self.get_current_epoch().await?;
 
         if target_epoch == 0 {
-            // Genesis epoch - no verification needed
-            return Ok(VerifiedCommittees {
-                validator_committee: self.current_validator_committee.clone(),
-                encoder_committee: self
-                    .current_encoder_committee
-                    .clone()
-                    .ok_or_else(|| anyhow!("No encoder committee for epoch 0"))?,
-                previous_encoder_committee: None,
-            });
+            // Genesis epoch - create empty enriched result
+            return Err(anyhow!("Cannot enrich genesis committee"));
         }
 
         info!("Setting up committees from epoch 1 to {}", target_epoch);
@@ -498,7 +597,7 @@ impl EncoderValidatorClient {
     }
 
     /// Poll for the latest committees if needed
-    pub async fn poll_latest_committees(&mut self) -> Result<VerifiedCommittees> {
+    pub async fn poll_latest_committees(&mut self) -> Result<EnrichedVerifiedCommittees> {
         // First get the current epoch from the validator
         let validator_epoch = self.get_current_epoch().await?;
 
@@ -513,14 +612,8 @@ impl EncoderValidatorClient {
                 .await
         } else {
             info!("Already at latest epoch {}", self.current_epoch);
-            Ok(VerifiedCommittees {
-                validator_committee: self.current_validator_committee.clone(),
-                encoder_committee: self
-                    .current_encoder_committee
-                    .clone()
-                    .ok_or_else(|| anyhow!("No encoder committee available"))?,
-                previous_encoder_committee: self.previous_encoder_committee.clone(),
-            })
+
+            Err(anyhow!("Already at latest epoch"))
         }
     }
 

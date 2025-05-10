@@ -44,7 +44,7 @@ pub struct AuthorityCommittee {
 
 impl AuthorityCommittee {
     /// Creates a new [`AuthorityCommittee`] for a given Epoch and a vector of [`Authority`]
-    fn new(epoch: Epoch, authorities: Vec<Authority>) -> Self {
+    pub fn new(epoch: Epoch, authorities: Vec<Authority>) -> Self {
         assert!(!authorities.is_empty(), "Committee cannot be empty!");
         assert!(
             authorities.len() < u32::MAX as usize,
@@ -167,13 +167,13 @@ impl AuthorityCommittee {
 /// NOTE: this is intentionally un-cloneable, to encourage only copying relevant fields.
 /// [`AuthorityIndex`] should be used to reference an authority instead.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Authority {
+pub struct Authority {
     /// Voting power of the authority in the committee.
-    pub(crate) stake: Stake,
+    pub stake: Stake,
     /// The authority's public key as Sui identity.
-    pub(crate) authority_key: AuthorityPublicKey,
+    pub authority_key: AuthorityPublicKey,
     /// The authority's public key for verifying blocks.
-    pub(crate) protocol_key: ProtocolPublicKey,
+    pub protocol_key: ProtocolPublicKey,
 }
 
 /// Each authority is uniquely identified by its AuthorityIndex in the Committee.

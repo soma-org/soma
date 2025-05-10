@@ -539,6 +539,7 @@ impl SystemState {
         encoder_pubkey_bytes: Vec<u8>,
         network_pubkey_bytes: Vec<u8>,
         net_address: Vec<u8>,
+        object_server_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         let encoder = Encoder::new(
@@ -548,6 +549,7 @@ impl SystemState {
                 Ed25519PublicKey::from_bytes(&network_pubkey_bytes).unwrap(),
             ),
             Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&object_server_address).unwrap()).unwrap(),
             0,  // Initial voting power
             10, // Default commission rate (0.1%)
             staking_pool_id,
@@ -872,6 +874,7 @@ impl SystemStateTrait for SystemState {
                         network_address: metadata.net_address.clone(),
                         network_key: metadata.network_pubkey.clone(),
                         hostname: metadata.net_address.to_string(),
+                        object_server_address: metadata.object_server_address.clone(),
                     },
                 )
             })

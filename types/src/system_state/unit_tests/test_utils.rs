@@ -361,6 +361,7 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
 
     // Create multiaddress
     let net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
+    let object_server_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8081").unwrap();
 
     // Create encoder
     let mut encoder = Encoder::new(
@@ -368,6 +369,7 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
         encoder_keypair.public(),
         network_keypair.public(),
         net_address,
+        object_server_address,
         0, // Initial voting power is 0, will be set later
         0,
         ObjectID::random(),

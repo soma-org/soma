@@ -29,11 +29,10 @@ pub enum EncoderCommitteeConfig {
     Encoders(Vec<EncoderConfig>),
     /// Create a committee using existing encoder keypairs
     EncoderKeys(Vec<EncoderKeyPair>),
-    /// Create a deterministic committee with optional provided keys
-    Deterministic((NonZeroUsize, Option<Vec<EncoderKeyPair>>)),
+    // Create a deterministic committee with optional provided keys
+    // Deterministic((NonZeroUsize, Option<Vec<EncoderKeyPair>>)),
 }
 
-/// Configuration for a single encoder node in a simulation environment
 #[derive(Clone, Debug)]
 pub struct EncoderConfig {
     /// Keys for the encoder protocol
@@ -56,20 +55,12 @@ pub struct EncoderConfig {
     pub project_root: PathBuf,
     /// Path to the entry point for Python module
     pub entry_point: PathBuf,
-    /// Information about the network topology
-    pub networking_info: NetworkingInfo,
-    /// Mappings between peer keys and encoder keys
-    pub connections_info: ConnectionsInfo,
-    /// Context for the node
-    pub context: Context,
-    /// Set of allowed public keys for TLS verification
-    pub allowed_public_keys: AllowPublicKeys,
 
     /// Address of the validator node for fetching committees
-    pub validator_rpc_address: Option<Multiaddr>,
+    pub validator_rpc_address: Multiaddr,
 
     /// Genesis committee for committee verification
-    pub genesis_committee: Option<Committee>,
+    pub genesis_committee: Committee,
 
     pub epoch_duration_ms: u64,
 }
@@ -79,35 +70,19 @@ impl EncoderConfig {
     pub fn new(
         encoder_keypair: EncoderKeyPair,
         peer_keypair: PeerKeyPair,
-        ip: IpAddr,
         internal_network_address: Multiaddr,
         external_network_address: Multiaddr,
         object_address: Multiaddr,
         probe_address: Multiaddr,
         project_root: PathBuf,
         entry_point: PathBuf,
+        validator_rpc_address: Multiaddr,
+        genesis_committee: Committee,
     ) -> Self {
         // Create default parameters
         let parameters = Arc::new(Parameters::default());
         let object_parameters = Arc::new(objects::parameters::Parameters::default());
         let probe_parameters = Arc::new(probe::parameters::Parameters::default());
-
-        // Create empty network info
-        let networking_info = NetworkingInfo::default();
-        let connections_info = ConnectionsInfo::new(BTreeMap::new());
-
-        // Create a minimal context for testing with only this encoder
-        let context = Self::create_test_context(
-            &encoder_keypair,
-            vec![encoder_keypair.public()],
-            0,
-            HashMap::new(),
-        );
-
-        // Create initial AllowPublicKeys with just this node's key
-        let mut allowed_keys = BTreeSet::new();
-        allowed_keys.insert(peer_keypair.public().into_inner());
-        let allowed_public_keys = AllowPublicKeys::new(allowed_keys);
 
         Self {
             encoder_keypair,
@@ -121,13 +96,9 @@ impl EncoderConfig {
             probe_parameters,
             project_root,
             entry_point,
-            networking_info,
-            connections_info,
-            context,
-            allowed_public_keys,
-            genesis_committee: None,
-            validator_rpc_address: None,
-            epoch_duration_ms: 1000, // TODO: fill this in with actual epoch_duration_ms
+            validator_rpc_address,
+            genesis_committee,
+            epoch_duration_ms: 1000, // Default epoch duration
         }
     }
 
@@ -146,50 +117,9 @@ impl EncoderConfig {
         (self.protocol_public_key(), self.object_address.clone())
     }
 
-    /// Sets the validator node address
-    pub fn with_validator_rpc_address(mut self, address: Multiaddr) -> Self {
-        self.validator_rpc_address = Some(address);
+    /// Sets the epoch duration in milliseconds
+    pub fn with_epoch_duration(mut self, duration_ms: u64) -> Self {
+        self.epoch_duration_ms = duration_ms;
         self
-    }
-
-    /// Sets the genesis committee
-    pub fn with_genesis_committee(mut self, committee: Committee) -> Self {
-        self.genesis_committee = Some(committee);
-        self
-    }
-
-    /// Creates a test context for a group of encoders
-    pub fn create_test_context(
-        own_encoder_keypair: &EncoderKeyPair,
-        all_encoder_keys: Vec<EncoderPublicKey>,
-        own_index: usize,
-        encoder_object_servers: HashMap<
-            EncoderPublicKey,
-            (PeerPublicKey, soma_network::multiaddr::Multiaddr),
-        >,
-    ) -> Context {
-        // Create encoder committee with all encoders
-        let encoder_committee = EncoderCommittee::new_for_testing(all_encoder_keys);
-        let (authority_committee, _) =
-            AuthorityCommittee::local_test_committee(0, vec![1, 1, 1, 1]);
-
-        let encoder_index = EncoderIndex::new(own_index as u32);
-        let committees = Committees::new(
-            0, // epoch
-            authority_committee,
-            encoder_committee,
-            encoder_index,
-            1, // vdf_iterations
-        );
-
-        // Create inner context with the provided object servers
-        let inner_context = InnerContext::new(
-            [committees.clone(), committees],
-            0,
-            own_encoder_keypair.public(),
-            encoder_object_servers,
-        );
-
-        Context::new(inner_context)
     }
 }

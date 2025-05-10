@@ -65,29 +65,22 @@ impl Container {
                 let mut cancel_receiver = cancel_receiver.clone();
                 let startup_sender = startup_sender.clone();
                 async move {
-                    let server = Arc::new(
-                        EncoderNode::start(
-                            config.context,
-                            config.encoder_keypair,
-                            config.networking_info,
-                            config.parameters,
-                            config.object_parameters,
-                            config.probe_parameters,
-                            config.peer_keypair,
-                            to_network_multiaddr(&config.internal_network_address),
-                            to_network_multiaddr(&config.external_network_address),
-                            to_network_multiaddr(&config.object_address),
-                            to_network_multiaddr(&config.probe_address),
-                            config.allowed_public_keys,
-                            config.connections_info,
-                            &config.project_root,
-                            &config.entry_point,
-                            config.validator_rpc_address,
-                            config.genesis_committee,
-                            config.epoch_duration_ms,
-                        )
-                        .await,
-                    );
+                    let server = Arc::new(EncoderNode::start(
+                        config.encoder_keypair,
+                        config.parameters,
+                        config.object_parameters,
+                        config.probe_parameters,
+                        config.peer_keypair,
+                        to_network_multiaddr(&config.internal_network_address),
+                        to_network_multiaddr(&config.external_network_address),
+                        to_network_multiaddr(&config.object_address),
+                        to_network_multiaddr(&config.probe_address),
+                        &config.project_root,
+                        &config.entry_point,
+                        config.validator_rpc_address,
+                        config.genesis_committee,
+                        config.epoch_duration_ms,
+                    ));
 
                     startup_sender.send(Arc::downgrade(&server)).ok();
 
