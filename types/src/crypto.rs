@@ -1021,6 +1021,12 @@ impl SomaKeyPair {
             SomaKeyPair::Ed25519(kp) => kp.copy().into(),
         }
     }
+
+    pub fn inner(&self) -> Ed25519KeyPair {
+        match self {
+            SomaKeyPair::Ed25519(kp) => kp.copy(),
+        }
+    }
 }
 
 impl Signer<Signature> for SomaKeyPair {
@@ -1484,6 +1490,10 @@ impl ProtocolPublicKey {
 
     pub fn to_bytes(&self) -> &[u8] {
         self.0.as_bytes()
+    }
+
+    pub fn inner(&self) -> ed25519::Ed25519PublicKey {
+        self.0.clone()
     }
 }
 

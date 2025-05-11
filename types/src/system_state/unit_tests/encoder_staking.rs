@@ -268,6 +268,7 @@ mod encoder_staking_tests {
         let args = UpdateEncoderMetadataArgs {
             next_epoch_network_address: Some(encoded_address),
             next_epoch_network_pubkey: None,
+            next_epoch_object_server_address: None,
         };
 
         // Request metadata update

@@ -8,7 +8,7 @@ use super::block::{
 use super::context::Context;
 use super::transaction::TransactionVerifier;
 use crate::accumulator::{self, AccumulatorStore};
-use crate::committee::{Committee, EpochId};
+use crate::committee::{to_encoder_committee_intent, Committee, EpochId};
 use crate::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use crate::consensus::validator_set::to_validator_set_intent;
 use crate::crypto::AuthorityPublicKey;
@@ -128,37 +128,69 @@ impl BlockVerifier for SignedBlockVerifier {
 
             match (
                 &eoe.next_validator_set,
+                &eoe.next_encoder_committee,
                 &eoe.validator_set_signature,
-                &eoe.aggregate_signature,
+                &eoe.encoder_committee_signature,
+                &eoe.validator_aggregate_signature,
+                &eoe.encoder_aggregate_signature,
             ) {
-                // Invalid combinations
-                (None, Some(_), _) => {
-                    return Err(ConsensusError::InvalidEndOfEpoch(
-                        "Validator set signature without validator set".into(),
-                    ));
-                }
-                (None, _, Some(_)) => {
-                    return Err(ConsensusError::InvalidEndOfEpoch(
-                        "Aggregate signature without validator set".into(),
-                    ));
-                }
-                (_, None, Some(_)) => {
-                    return Err(ConsensusError::InvalidEndOfEpoch(
-                        "Aggregate signature without block author signature".into(),
-                    ));
+                // Valid cases - must progress through stages synchronously
+
+                // Stage 1: Valid proposal of both sets without signatures
+                (Some(_), Some(_), None, None, None, None) => {
+                    // First proposal with both sets, no signatures yet - this is valid
                 }
 
-                // Valid combinations with validation logic
-                (Some(validator_set), Some(signature), _) => {
+                // Stage 2: Both sets with individual signatures, no aggregate yet
+                (
+                    Some(validator_set),
+                    Some(encoder_committee),
+                    Some(val_sig),
+                    Some(enc_sig),
+                    None,
+                    None,
+                ) => {
+                    // Verify individual signatures
                     let authority = committee
                         .authority_by_authority_index(block.author())
                         .unwrap();
-                    validator_set.verify_signature(signature, &authority.authority_key)?;
+                    validator_set.verify_signature(val_sig, &authority.authority_key)?;
+                    encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
                 }
 
-                // Other valid combinations
-                (None, None, None) => {}    // No end of epoch data
-                (Some(_), None, None) => {} // First proposal of validator set
+                // Stage 3: Complete data with both sets, both signatures, and both aggregates
+                (
+                    Some(validator_set),
+                    Some(encoder_committee),
+                    Some(val_sig),
+                    Some(enc_sig),
+                    Some(val_agg),
+                    Some(enc_agg),
+                ) => {
+                    // Verify individual signatures first
+                    let authority = committee
+                        .authority_by_authority_index(block.author())
+                        .unwrap();
+                    validator_set.verify_signature(val_sig, &authority.authority_key)?;
+                    encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
+
+                    // Aggregate signatures would be verified in a separate detailed verification function
+                    // that handles the ancestor collection, quorum checks, etc.
+                }
+
+                // No end of epoch data case
+                (None, None, None, None, None, None) => {
+                    // No end of epoch data at all - this is valid
+                }
+
+                // All other combinations are invalid - they represent out-of-sync progression
+                _ => {
+                    return Err(ConsensusError::InvalidEndOfEpoch(
+                        "End of epoch data must include both validator set and encoder committee, \
+                         and signatures must progress through stages synchronously"
+                            .into(),
+                    ));
+                }
             }
         }
 
@@ -254,67 +286,131 @@ impl BlockVerifier for SignedBlockVerifier {
         }
 
         if let Some(eoe) = block.end_of_epoch_data() {
-            if let Some(agg_sig) = &eoe.aggregate_signature {
-                info!(
-                    "Verifying block with end of epoch aggregate signature from: {}",
-                    block.author()
-                );
+            // Verify state hash matches our local one if we have it
+            if let Ok(Some((_, our_digest))) = self
+                .accumulator_store
+                .get_root_state_accumulator_for_epoch(block.epoch())
+            {
+                if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
+                    return Err(ConsensusError::InvalidEndOfEpoch(format!(
+                        "State hash mismatch: expected {:?}, got {:?}",
+                        our_digest.digest(),
+                        eoe.state_hash
+                    )));
+                }
+            }
 
-                let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
-
-                // Get validator set message for verification
-                let validator_set = eoe.next_validator_set.as_ref().unwrap();
-                let digest = validator_set.compute_digest()?;
-                let message = bcs::to_bytes(&to_validator_set_intent(digest))
-                    .map_err(ConsensusError::SerializationFailure)?;
-
-                // Add this block's signature if present
-                if eoe.validator_set_signature.is_some() {
-                    aggregator.add(block.author(), &self.context.committee);
+            // Check if we have both validator set and encoder committee data
+            if let (Some(validator_set), Some(encoder_committee)) =
+                (&eoe.next_validator_set, &eoe.next_encoder_committee)
+            {
+                // Verify individual signatures if present
+                if let Some(val_sig) = &eoe.validator_set_signature {
+                    let authority = self
+                        .context
+                        .committee
+                        .authority_by_authority_index(block.author())
+                        .unwrap();
+                    validator_set.verify_signature(val_sig, &authority.authority_key)?;
                 }
 
-                // Add ancestor signatures that match the validator set
-                for ancestor in ancestors {
-                    if let Some(ancestor_eoe) = ancestor.end_of_epoch_data() {
-                        if ancestor_eoe.next_validator_set == eoe.next_validator_set
-                            && ancestor_eoe.validator_set_signature.is_some()
-                        {
-                            aggregator.add(ancestor.author(), &self.context.committee);
+                if let Some(enc_sig) = &eoe.encoder_committee_signature {
+                    let authority = self
+                        .context
+                        .committee
+                        .authority_by_authority_index(block.author())
+                        .unwrap();
+                    encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
+                }
+
+                // Verify aggregate signatures if both are present
+                if let (Some(val_agg), Some(enc_agg)) = (
+                    &eoe.validator_aggregate_signature,
+                    &eoe.encoder_aggregate_signature,
+                ) {
+                    info!(
+                        "Verifying block with aggregate signatures from: {}",
+                        block.author()
+                    );
+
+                    let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
+
+                    // Get messages for verification
+                    let val_digest = validator_set.compute_digest()?;
+                    let val_message = bcs::to_bytes(&to_validator_set_intent(val_digest))
+                        .map_err(ConsensusError::SerializationFailure)?;
+
+                    let enc_digest = encoder_committee.compute_digest()?;
+                    let enc_message = bcs::to_bytes(&to_encoder_committee_intent(enc_digest))
+                        .map_err(ConsensusError::SerializationFailure)?;
+
+                    // Add this block's signatures if present
+                    if eoe.validator_set_signature.is_some()
+                        && eoe.encoder_committee_signature.is_some()
+                    {
+                        aggregator.add(block.author(), &self.context.committee);
+                    }
+
+                    // Add ancestor signatures that match both validator set and encoder committee
+                    for ancestor in ancestors {
+                        if let Some(ancestor_eoe) = ancestor.end_of_epoch_data() {
+                            if ancestor_eoe.next_validator_set == eoe.next_validator_set
+                                && ancestor_eoe.next_encoder_committee == eoe.next_encoder_committee
+                                && ancestor_eoe.validator_set_signature.is_some()
+                                && ancestor_eoe.encoder_committee_signature.is_some()
+                            {
+                                aggregator.add(ancestor.author(), &self.context.committee);
+                            }
                         }
                     }
-                }
 
-                // Verify we have enough stake for quorum
-                if !aggregator.reached_threshold(&self.context.committee) {
-                    return Err(ConsensusError::InvalidEndOfEpoch(
-                        format!(
-                            "Insufficient stake for quorum (got {}, needed {})",
-                            aggregator.stake(),
-                            self.context.committee.quorum_threshold()
+                    // Verify we have enough stake for quorum
+                    if !aggregator.reached_threshold(&self.context.committee) {
+                        return Err(ConsensusError::InvalidEndOfEpoch(
+                            format!(
+                                "Insufficient stake for quorum (got {}, needed {})",
+                                aggregator.stake(),
+                                self.context.committee.quorum_threshold()
+                            )
+                            .into(),
+                        ));
+                    }
+
+                    // Get public keys in same order for verification
+                    let pubkeys: Vec<_> = aggregator
+                        .votes()
+                        .iter()
+                        .map(|&idx| {
+                            self.context
+                                .committee
+                                .authority_by_authority_index(idx)
+                                .unwrap()
+                                .authority_key
+                                .clone()
+                        })
+                        .collect();
+
+                    // Verify both aggregate signatures
+                    val_agg.verify(&pubkeys, &val_message).map_err(|e| {
+                        warn!(
+                            "Validator set aggregate signature verification failed: {}",
+                            e
+                        );
+                        ConsensusError::InvalidEndOfEpoch(
+                            "Invalid validator set aggregate signature".into(),
                         )
-                        .into(),
-                    ));
+                    })?;
+
+                    enc_agg.verify(&pubkeys, &enc_message).map_err(|e| {
+                        warn!(
+                            "Encoder committee aggregate signature verification failed: {}",
+                            e
+                        );
+                        ConsensusError::InvalidEndOfEpoch(
+                            "Invalid encoder committee aggregate signature".into(),
+                        )
+                    })?;
                 }
-
-                // Get public keys in same order for verification
-                let pubkeys: Vec<_> = aggregator
-                    .votes()
-                    .iter()
-                    .map(|&idx| {
-                        self.context
-                            .committee
-                            .authority_by_authority_index(idx)
-                            .unwrap()
-                            .authority_key
-                            .clone()
-                    })
-                    .collect();
-
-                // Verify the aggregate signature using the validator set message
-                agg_sig.verify(&pubkeys, &message).map_err(|e| {
-                    warn!("Aggregate signature verification failed: {}", e);
-                    ConsensusError::InvalidEndOfEpoch("Invalid aggregate signature".into())
-                })?;
             }
         }
 

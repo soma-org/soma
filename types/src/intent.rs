@@ -65,6 +65,7 @@ pub enum IntentScope {
     DiscoveryPeers = 4, // Used for a signature on a discovery message.
     CommitSummary = 5,  // Used for a signature on a commit summary.
     ValidatorSet = 6,   // Used for a signature on a validator set.
+    EncoderCommittee = 7,
 }
 
 impl TryFrom<u8> for IntentScope {

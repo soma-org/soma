@@ -30,28 +30,32 @@
 //! - Fixed total voting power with normalized stake distribution
 //! - Deterministic stake-weighted authority selection
 
+use crate::base::{AuthorityName, ConciseableName};
+use crate::consensus::committee::get_available_local_address;
+use crate::crypto::{
+    get_key_pair_from_rng, random_committee_key_pairs_of_size, AuthorityKeyPair,
+    AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair, ProtocolPublicKey,
+    DIGEST_LENGTH,
+};
+use crate::crypto::{AuthoritySignature, DefaultHash as DefaultHashFunction};
+use crate::digests::TransactionDigest;
+use crate::error::{ConsensusError, ConsensusResult, SomaError, SomaResult};
+use crate::intent::{Intent, IntentMessage, IntentScope};
+use crate::multiaddr::Multiaddr;
 use fastcrypto::ed25519::{Ed25519KeyPair, Ed25519PublicKey};
-use fastcrypto::traits::KeyPair;
+use fastcrypto::hash::HashFunction;
+use fastcrypto::traits::{KeyPair, Signer, VerifyingKey};
 use rand::rngs::{OsRng, StdRng, ThreadRng};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
+use shared::crypto::keys::EncoderPublicKey;
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Display, Formatter, Write};
 use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
 use tracing::info;
-
-use crate::base::{AuthorityName, ConciseableName};
-use crate::consensus::committee::get_available_local_address;
-use crate::crypto::{
-    get_key_pair_from_rng, random_committee_key_pairs_of_size, AuthorityKeyPair,
-    AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair, ProtocolPublicKey,
-};
-use crate::digests::TransactionDigest;
-use crate::error::{SomaError, SomaResult};
-use crate::multiaddr::Multiaddr;
 
 /// Identifier for a specific epoch in the blockchain's history.
 ///
@@ -774,15 +778,55 @@ pub struct EncoderCommittee {
     pub epoch: EpochId,
 
     /// The active encoders with their voting power
-    pub members: BTreeMap<AuthorityName, u64>,
+    pub members: BTreeMap<EncoderPublicKey, u64>,
 
     /// Network metadata for encoders
-    pub network_metadata: BTreeMap<AuthorityName, EncoderNetworkMetadata>,
+    pub network_metadata: BTreeMap<EncoderPublicKey, EncoderNetworkMetadata>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct EncoderNetworkMetadata {
     pub network_address: Multiaddr,
+    pub object_server_address: Multiaddr,
     pub network_key: NetworkPublicKey,
     pub hostname: String,
+}
+
+/// Digest of encoder committee, used for signing
+#[derive(Serialize, Deserialize)]
+pub struct EncoderCommitteeDigest([u8; DIGEST_LENGTH]);
+
+impl EncoderCommittee {
+    pub fn compute_digest(&self) -> ConsensusResult<EncoderCommitteeDigest> {
+        let mut hasher = DefaultHashFunction::new();
+        hasher.update(bcs::to_bytes(self).map_err(ConsensusError::SerializationFailure)?);
+        Ok(EncoderCommitteeDigest(hasher.finalize().into()))
+    }
+
+    pub fn sign(&self, keypair: &AuthorityKeyPair) -> ConsensusResult<AuthoritySignature> {
+        let digest = self.compute_digest()?;
+        let message = bcs::to_bytes(&to_encoder_committee_intent(digest))
+            .map_err(ConsensusError::SerializationFailure)?;
+        Ok(keypair.sign(&message))
+    }
+
+    pub fn verify_signature(
+        &self,
+        signature: &AuthoritySignature,
+        public_key: &AuthorityPublicKey,
+    ) -> ConsensusResult<()> {
+        let digest = self.compute_digest()?;
+        let message = bcs::to_bytes(&to_encoder_committee_intent(digest))
+            .map_err(ConsensusError::SerializationFailure)?;
+        public_key
+            .verify(&message, signature)
+            .map_err(ConsensusError::SignatureVerificationFailure)
+    }
+}
+
+/// Wrap an EncoderCommitteeDigest in the intent message
+pub fn to_encoder_committee_intent(
+    digest: EncoderCommitteeDigest,
+) -> IntentMessage<EncoderCommitteeDigest> {
+    IntentMessage::new(Intent::consensus_app(IntentScope::EncoderCommittee), digest)
 }

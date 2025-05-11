@@ -14,6 +14,7 @@ use fastcrypto::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{
+    ops::Mul,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
     time::Duration,
@@ -52,6 +53,8 @@ pub struct NodeConfig {
 
     #[serde(default)]
     pub p2p_config: P2pConfig,
+
+    pub encoder_validator_address: Multiaddr,
 }
 
 impl NodeConfig {
@@ -101,6 +104,10 @@ impl NodeConfig {
 
     pub fn soma_address(&self) -> SomaAddress {
         (&self.account_key_pair.keypair().public()).into()
+    }
+
+    pub fn encoder_validator_address(&self) -> &Multiaddr {
+        &self.encoder_validator_address
     }
 }
 
@@ -364,6 +371,7 @@ impl ValidatorConfigBuilder {
             db_path,
             network_address,
             genesis: genesis,
+            encoder_validator_address: validator.encoder_validator_address,
             consensus_config: Some(consensus_config),
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,
@@ -388,6 +396,7 @@ pub struct FullnodeConfigBuilder {
     genesis: Option<Genesis>,
     network_key_pair: Option<KeyPairWithPath>,
     p2p_external_address: Option<Multiaddr>,
+    encoder_validator_address: Option<Multiaddr>,
     // p2p_listen_address: Option<Multiaddr>,
 }
 
@@ -418,6 +427,11 @@ impl FullnodeConfigBuilder {
 
     pub fn with_p2p_external_address(mut self, p2p_external_address: Multiaddr) -> Self {
         self.p2p_external_address = Some(p2p_external_address);
+        self
+    }
+
+    pub fn with_encoder_validator_address(mut self, encoder_validator_address: Multiaddr) -> Self {
+        self.encoder_validator_address = Some(encoder_validator_address);
         self
     }
 
@@ -502,6 +516,9 @@ impl FullnodeConfigBuilder {
                 .network_address
                 .unwrap_or(validator_config.network_address),
             consensus_config: None,
+            encoder_validator_address: self
+                .encoder_validator_address
+                .unwrap_or(validator_config.encoder_validator_address),
             genesis: self.genesis.unwrap_or(network_config.genesis.clone()),
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,

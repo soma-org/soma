@@ -26,6 +26,10 @@ use authority::{
     tx_validator::TxValidator,
 };
 use core::time;
+use encoder_validator_api::{
+    service::EncoderValidatorService,
+    tonic_gen::encoder_validator_api_server::EncoderValidatorApiServer,
+};
 use futures::TryFutureExt;
 use p2p::{
     builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle},
@@ -131,6 +135,7 @@ pub struct SomaNode {
     // connection_monitor_status: Arc<ConnectionMonitorStatus>,
     // AuthorityAggregator of the network, created at start and beginning of each epoch.
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
+    encoder_validator_server_handle: Mutex<Option<JoinHandle<Result<()>>>>,
 
     #[cfg(msim)]
     sim_state: SimState,
@@ -348,6 +353,16 @@ impl SomaNode {
             None
         };
 
+        let encoder_validator_server_handle = if is_full_node {
+            info!("Starting encoder validator service for fullnode");
+            Some(
+                Self::start_grpc_encoder_service(&config, state.clone(), commit_store.clone())
+                    .await?,
+            )
+        } else {
+            None
+        };
+
         let node = Self {
             config,
             validator_components: Mutex::new(validator_components),
@@ -359,6 +374,7 @@ impl SomaNode {
             state_sync_handle,
             commit_store,
             consensus_store,
+            encoder_validator_server_handle: Mutex::new(encoder_validator_server_handle),
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -607,6 +623,31 @@ impl SomaNode {
         Ok(grpc_server)
     }
 
+    async fn start_grpc_encoder_service(
+        config: &NodeConfig,
+        state: Arc<AuthorityState>,
+        commit_store: Arc<CommitStore>,
+    ) -> Result<tokio::task::JoinHandle<Result<()>>> {
+        let encoder_validator_service =
+            EncoderValidatorService::new(state.clone(), commit_store.clone());
+
+        let server_conf = Config::new();
+        let mut server_builder = ServerBuilder::from_config(&server_conf);
+
+        server_builder =
+            server_builder.add_service(EncoderValidatorApiServer::new(encoder_validator_service));
+
+        let server = server_builder
+            .bind(&config.encoder_validator_address())
+            .await
+            .map_err(|err| anyhow!(err.to_string()))?;
+        let local_addr = server.local_addr();
+        info!("Encoder validator service listening on {local_addr}");
+        let grpc_server = tokio::spawn(server.serve().map_err(Into::into));
+
+        Ok(grpc_server)
+    }
+
     async fn run_epoch(&self, epoch_duration: Duration) -> u64 {
         loop {
             // Wait for the specified epoch duration
@@ -773,6 +814,10 @@ impl SomaNode {
     async fn shutdown(&self) {
         if let Some(validator_components) = &*self.validator_components.lock().await {
             validator_components.consensus_manager.shutdown().await;
+        }
+
+        if let Some(handle) = self.encoder_validator_server_handle.lock().await.take() {
+            handle.abort();
         }
     }
 

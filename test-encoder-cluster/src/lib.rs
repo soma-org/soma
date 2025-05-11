@@ -42,15 +42,14 @@ use vdf::{
 
 const NUM_ENCODERS: usize = 4;
 
+pub mod config;
 #[cfg(msim)]
 #[path = "./container-sim.rs"]
 mod container;
-
-mod config;
 #[cfg(not(msim))]
 #[path = "./container.rs"]
 mod container;
-mod swarm;
+pub mod swarm;
 mod swarm_node;
 
 pub struct TestEncoderCluster {

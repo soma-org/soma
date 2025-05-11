@@ -28,10 +28,6 @@ impl Context {
         self.inner.store(Arc::new(inner));
     }
 
-    pub fn own_encoder_index(&self, epoch: Epoch) -> ShardResult<EncoderIndex> {
-        Ok(self.inner.load().committees(epoch)?.own_encoder_index)
-    }
-
     pub fn own_encoder_key(&self) -> EncoderPublicKey {
         self.inner.load().own_encoder_public_key.clone()
     }
@@ -75,7 +71,7 @@ impl Context {
 #[derive(Clone, Debug)]
 pub struct InnerContext {
     committees: [Committees; 2],
-    current_epoch: Epoch,
+    pub current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
     pub encoder_object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
 }
@@ -95,7 +91,7 @@ impl InnerContext {
         }
     }
 
-    fn current_committees(&self) -> &Committees {
+    pub fn current_committees(&self) -> &Committees {
         &self.committees[1]
     }
     fn previous_committees(&self) -> &Committees {
@@ -128,8 +124,6 @@ pub struct Committees {
     pub authority_committee: AuthorityCommittee,
     /// the committee of allowed network keys
     pub encoder_committee: EncoderCommittee,
-    /// The services own index for each respective modality
-    pub own_encoder_index: EncoderIndex,
     // TODO: move this to a more robust protocol config
     pub vdf_iterations: u64,
 }
@@ -139,14 +133,12 @@ impl Committees {
         epoch: Epoch,
         authority_committee: AuthorityCommittee,
         encoder_committee: EncoderCommittee,
-        own_encoder_index: EncoderIndex,
         vdf_iterations: u64,
     ) -> Self {
         Self {
             epoch,
             authority_committee,
             encoder_committee,
-            own_encoder_index,
             vdf_iterations,
         }
     }

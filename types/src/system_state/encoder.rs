@@ -6,6 +6,7 @@ use std::{
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use shared::crypto::keys::EncoderPublicKey;
 use tracing::{error, info};
 
 use crate::{
@@ -41,17 +42,24 @@ pub struct EncoderMetadata {
     /// The Soma blockchain address of the encoder
     pub soma_address: SomaAddress,
 
+    pub encoder_pubkey: EncoderPublicKey,
+
     /// The network public key used for network identity and authentication
     pub network_pubkey: crate::crypto::NetworkPublicKey,
 
     /// The network address for general network communication
     pub net_address: Multiaddr,
 
+    pub object_server_address: Multiaddr,
+
     /// Optional new network public key for the next epoch
     pub next_epoch_network_pubkey: Option<crate::crypto::NetworkPublicKey>,
 
     /// Optional new network address for the next epoch
     pub next_epoch_net_address: Option<Multiaddr>,
+
+    /// Optional new object server address for the next epoch
+    pub next_epoch_object_server_address: Option<Multiaddr>,
 }
 
 /// # Encoder
@@ -101,8 +109,10 @@ impl Encoder {
     /// A new Encoder instance with the specified metadata and voting power
     pub fn new(
         soma_address: SomaAddress,
+        encoder_pubkey: EncoderPublicKey,
         network_pubkey: crypto::NetworkPublicKey,
         net_address: Multiaddr,
+        object_server_address: Multiaddr,
         voting_power: u64,
         commission_rate: u64,
         staking_pool_id: ObjectID,
@@ -110,10 +120,13 @@ impl Encoder {
         Self {
             metadata: EncoderMetadata {
                 soma_address,
+                encoder_pubkey,
                 network_pubkey,
                 net_address,
+                object_server_address,
                 next_epoch_network_pubkey: None,
                 next_epoch_net_address: None,
+                next_epoch_object_server_address: None,
             },
             voting_power,
             commission_rate,

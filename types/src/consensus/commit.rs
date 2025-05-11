@@ -316,14 +316,16 @@ impl CommittedSubDag {
     pub fn is_last_commit_of_epoch(&self) -> bool {
         self.blocks.iter().any(|block| {
             if let Some(eoe) = block.end_of_epoch_data().clone() {
-                matches!(
-                    (
-                        eoe.next_validator_set,
-                        eoe.validator_set_signature,
-                        eoe.aggregate_signature
-                    ),
-                    (Some(_), Some(_), Some(_)) // All fields must be present
-                )
+                // Check for required components
+                let sets_present =
+                    eoe.next_validator_set.is_some() && eoe.next_encoder_committee.is_some();
+                let signatures_present = eoe.validator_set_signature.is_some()
+                    && eoe.encoder_committee_signature.is_some();
+                let aggregates_present = eoe.validator_aggregate_signature.is_some()
+                    && eoe.encoder_aggregate_signature.is_some();
+
+                // All components must be present for a valid last commit of epoch
+                sets_present && signatures_present && aggregates_present
             } else {
                 false
             }
@@ -334,14 +336,16 @@ impl CommittedSubDag {
     pub fn get_end_of_epoch_block(&self) -> Option<&VerifiedBlock> {
         self.blocks.iter().find(|block| {
             if let Some(eoe) = block.end_of_epoch_data() {
-                matches!(
-                    (
-                        &eoe.next_validator_set,
-                        &eoe.validator_set_signature,
-                        &eoe.aggregate_signature
-                    ),
-                    (Some(_), Some(_), Some(_))
-                )
+                // Check for required components
+                let sets_present =
+                    eoe.next_validator_set.is_some() && eoe.next_encoder_committee.is_some();
+                let signatures_present = eoe.validator_set_signature.is_some()
+                    && eoe.encoder_committee_signature.is_some();
+                let aggregates_present = eoe.validator_aggregate_signature.is_some()
+                    && eoe.encoder_aggregate_signature.is_some();
+
+                // All components must be present for a valid last commit of epoch
+                sets_present && signatures_present && aggregates_present
             } else {
                 false
             }

@@ -35,8 +35,13 @@ use std::{
 
 use encoder::{Encoder, EncoderSet};
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
-use fastcrypto::{bls12381, ed25519::Ed25519PublicKey, traits::ToFromBytes};
+use fastcrypto::{
+    bls12381::{self, min_sig::BLS12381PublicKey},
+    ed25519::Ed25519PublicKey,
+    traits::ToFromBytes,
+};
 use serde::{Deserialize, Serialize};
+use shared::crypto::keys::EncoderPublicKey;
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
 use tracing::{error, info};
@@ -147,7 +152,7 @@ pub trait SystemStateTrait {
     fn get_current_epoch_committee(&self) -> CommitteeWithNetworkMetadata;
 
     /// Get the encoder committee for the current epoch
-    // fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee;
+    fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee;
 
     /// Convert this system state to an epoch start system state
     fn into_epoch_start_state(self) -> EpochStartSystemState;
@@ -531,16 +536,20 @@ impl SystemState {
     pub fn request_add_encoder(
         &mut self,
         signer: SomaAddress,
+        encoder_pubkey_bytes: Vec<u8>,
         network_pubkey_bytes: Vec<u8>,
         net_address: Vec<u8>,
+        object_server_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         let encoder = Encoder::new(
             signer,
+            EncoderPublicKey::new(BLS12381PublicKey::from_bytes(&encoder_pubkey_bytes).unwrap()),
             crypto::NetworkPublicKey::new(
                 Ed25519PublicKey::from_bytes(&network_pubkey_bytes).unwrap(),
             ),
             Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&object_server_address).unwrap()).unwrap(),
             0,  // Initial voting power
             10, // Default commission rate (0.1%)
             staking_pool_id,
@@ -841,47 +850,42 @@ impl SystemStateTrait for SystemState {
         CommitteeWithNetworkMetadata::new(self.epoch, validators)
     }
 
-    /// TODO: Get the encoder committee for the current epoch
-    // fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee {
-    //     let encoders = self
-    //         .encoders
-    //         .active_encoders
-    //         .iter()
-    //         .map(|encoder| {
-    //             let metadata = &encoder.metadata;
-    //             let name =
-    //                 (&crypto::EncoderPublicKey::from_network_pubkey(&metadata.network_pubkey))
-    //                     .into();
-    //             (name, encoder.voting_power)
-    //         })
-    //         .collect();
+    fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee {
+        let encoders = self
+            .encoders
+            .active_encoders
+            .iter()
+            .map(|encoder| {
+                let metadata = &encoder.metadata;
+                (metadata.encoder_pubkey.clone(), encoder.voting_power)
+            })
+            .collect();
 
-    //     let network_metadata = self
-    //         .encoders
-    //         .active_encoders
-    //         .iter()
-    //         .map(|encoder| {
-    //             let metadata = &encoder.metadata;
-    //             let name =
-    //                 (&crypto::EncoderPublicKey::from_network_pubkey(&metadata.network_pubkey))
-    //                     .into();
-    //             (
-    //                 name,
-    //                 EncoderNetworkMetadata {
-    //                     network_address: metadata.net_address.clone(),
-    //                     network_key: metadata.network_pubkey.clone(),
-    //                     hostname: metadata.net_address.to_string(),
-    //                 },
-    //             )
-    //         })
-    //         .collect();
+        let network_metadata = self
+            .encoders
+            .active_encoders
+            .iter()
+            .map(|encoder| {
+                let metadata = &encoder.metadata;
+                let name = metadata.encoder_pubkey.clone();
+                (
+                    name,
+                    EncoderNetworkMetadata {
+                        network_address: metadata.net_address.clone(),
+                        network_key: metadata.network_pubkey.clone(),
+                        hostname: metadata.net_address.to_string(),
+                        object_server_address: metadata.object_server_address.clone(),
+                    },
+                )
+            })
+            .collect();
 
-    //     EncoderCommittee {
-    //         epoch: self.epoch,
-    //         members: encoders,
-    //         network_metadata,
-    //     }
-    // }
+        EncoderCommittee {
+            epoch: self.epoch,
+            members: encoders,
+            network_metadata,
+        }
+    }
 
     fn into_epoch_start_state(self) -> EpochStartSystemState {
         EpochStartSystemState {

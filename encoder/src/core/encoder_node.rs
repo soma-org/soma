@@ -12,12 +12,16 @@ use probe::messaging::service::MockProbeService;
 use probe::messaging::tonic::{ProbeTonicClient, ProbeTonicManager};
 use probe::messaging::ProbeManager;
 use shared::{
-    crypto::keys::{EncoderKeyPair, PeerKeyPair},
+    authority_committee::AuthorityCommittee,
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair},
     entropy::EntropyVDF,
+    probe::ProbeMetadata,
 };
 use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
+use tracing::{error, info, warn};
+use types::committee::Committee;
 
 use crate::{
     actors::{
@@ -46,7 +50,16 @@ use crate::{
         },
         EncoderExternalNetworkManager, EncoderInternalNetworkManager,
     },
-    types::{context::Context, parameters::Parameters, shard_verifier},
+    sync::{
+        committee_sync_manager::CommitteeSyncManager,
+        encoder_validator_client::EncoderValidatorClient,
+    },
+    types::{
+        context::{Committees, Context, InnerContext},
+        encoder_committee::{Encoder, EncoderCommittee},
+        parameters::Parameters,
+        shard_verifier,
+    },
 };
 
 use self::{
@@ -98,15 +111,15 @@ pub struct EncoderNode {
     store: Arc<dyn Store>,
     pub context: Context,
     object_storage: Arc<MemoryObjectStore>,
+    committee_sync_manager: Arc<CommitteeSyncManager>,
+
     #[cfg(msim)]
     sim_state: SimState,
 }
 
 impl EncoderNode {
     pub async fn start(
-        context: Context,
         encoder_keypair: EncoderKeyPair,
-        networking_info: NetworkingInfo,
         parameters: Arc<Parameters>,
         object_parameters: Arc<objects::parameters::Parameters>,
         probe_parameters: Arc<probe::parameters::Parameters>,
@@ -115,18 +128,27 @@ impl EncoderNode {
         external_address: Multiaddr,
         object_address: Multiaddr,
         probe_address: Multiaddr,
-        allower: AllowPublicKeys,
-        connections_info: ConnectionsInfo,
         project_root: &Path,
         entry_point: &Path,
+        validator_rpc_address: types::multiaddr::Multiaddr,
+        genesis_committee: Committee,
+        epoch_duration_ms: u64,
     ) -> Self {
+        let networking_info = NetworkingInfo::default();
+        let connections_info = ConnectionsInfo::default();
+        let allower = AllowPublicKeys::default();
+
+        // Create minimal default context with empty committees
+        // This creates a Context with epoch 0 and minimal valid structures
+        let context = Self::create_default_context(encoder_keypair.public());
+
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),
             parameters.clone(),
             peer_keypair.clone(),
             internal_address.clone(),
             allower.clone(),
-            connections_info,
+            connections_info.clone(),
         );
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
@@ -343,6 +365,35 @@ impl EncoderNode {
             .start(external_network_service)
             .await;
 
+        info!(
+            "Creating validator client connecting to {}",
+            validator_rpc_address
+        );
+        let validator_client =
+            match EncoderValidatorClient::new(&validator_rpc_address, genesis_committee).await {
+                Ok(client) => {
+                    info!("Successfully connected to validator node for committee updates");
+                    Arc::new(Mutex::new(client))
+                }
+                Err(e) => {
+                    error!("Failed to create validator client: {}", e);
+                    panic!("Validator client initialization failed: {}", e);
+                }
+            };
+
+        // Initialize and start the committee sync manager
+        let committee_sync_manager = CommitteeSyncManager::new(
+            validator_client.clone(),
+            context.clone(),
+            networking_info.clone(),
+            connections_info.clone(),
+            allower.clone(),
+            epoch_duration_ms,
+            encoder_keypair.public(),
+        );
+
+        let committee_sync_manager = committee_sync_manager.start().await;
+
         Self {
             internal_network_manager,
             external_network_manager,
@@ -351,9 +402,54 @@ impl EncoderNode {
             object_storage,
             context,
             probe_network_manager,
+            committee_sync_manager,
             #[cfg(msim)]
             sim_state: Default::default(),
         }
+    }
+
+    // TODO: make this more robust
+    fn create_default_context(own_encoder_key: EncoderPublicKey) -> Context {
+        // Create minimal valid committees with just our own encoder
+        let (authority_committee, _) = AuthorityCommittee::local_test_committee(
+            0,       // Genesis epoch
+            vec![1], // Minimal valid stake
+        );
+
+        // Create minimal encoder committee with just ourselves
+        let test_probe = ProbeMetadata::new_for_test(&[0u8; 32]);
+        let encoder = Encoder {
+            voting_power: 10000, // Total voting power
+            encoder_key: own_encoder_key.clone(),
+            probe: test_probe,
+        };
+
+        // Create encoder committee with minimal valid configuration
+        let encoder_committee = EncoderCommittee::new(
+            0, // Genesis epoch
+            1, // Minimal shard size
+            1, // Minimal quorum threshold
+            vec![encoder],
+        );
+
+        // Create committees with our encoder as index 0
+        let committees = Committees::new(
+            0, // Genesis epoch
+            authority_committee,
+            encoder_committee,
+            1, // Minimal valid VDF iterations
+        );
+
+        // Create inner context with current and previous committees the same
+        let inner_context = InnerContext::new(
+            [committees.clone(), committees], // Same committee for current and previous
+            0,                                // Genesis epoch
+            own_encoder_key,
+            std::collections::HashMap::new(), // Empty object servers map
+        );
+
+        // Create and return the context
+        Context::new(inner_context)
     }
 
     pub(crate) async fn stop(mut self) {
@@ -381,6 +477,8 @@ impl EncoderNode {
             >,
         >>::stop(&mut self.external_network_manager)
         .await;
+
+        self.committee_sync_manager.stop();
 
         // TODO: self.object_network_manager.stop().await;
     }

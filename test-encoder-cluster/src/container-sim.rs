@@ -67,21 +67,20 @@ impl Container {
                 async move {
                     let server = Arc::new(
                         EncoderNode::start(
-                            config.context,
-                            config.encoder_keypair,
-                            config.networking_info,
+                            config.encoder_keypair.encoder_keypair().clone(),
                             config.parameters,
                             config.object_parameters,
                             config.probe_parameters,
-                            config.peer_keypair,
+                            PeerKeyPair::new(config.peer_keypair.keypair().inner().copy()),
                             to_network_multiaddr(&config.internal_network_address),
                             to_network_multiaddr(&config.external_network_address),
                             to_network_multiaddr(&config.object_address),
                             to_network_multiaddr(&config.probe_address),
-                            config.allowed_public_keys,
-                            config.connections_info,
                             &config.project_root,
                             &config.entry_point,
+                            config.validator_rpc_address,
+                            config.genesis_committee,
+                            config.epoch_duration_ms,
                         )
                         .await,
                     );

@@ -142,6 +142,14 @@ mod tests {
                 .push((encoder.to_owned(), scores_bytes));
             Ok(())
         }
+
+        async fn handle_send_finality(
+            &self,
+            encoder: &EncoderPublicKey,
+            finality_bytes: Bytes,
+        ) -> ShardResult<()> {
+            todo!()
+        }
     }
 
     struct MockExternalService {
