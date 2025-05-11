@@ -1021,6 +1021,12 @@ impl SomaKeyPair {
             SomaKeyPair::Ed25519(kp) => kp.copy().into(),
         }
     }
+
+    pub fn inner(&self) -> Ed25519KeyPair {
+        match self {
+            SomaKeyPair::Ed25519(kp) => kp.copy(),
+        }
+    }
 }
 
 impl Signer<Signature> for SomaKeyPair {

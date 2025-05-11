@@ -4,6 +4,7 @@ use encoder::core::encoder_node::{EncoderNode, EncoderNodeHandle};
 use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::KeyPair;
 use futures::FutureExt;
+use shared::crypto::keys::PeerKeyPair;
 use std::sync::{Arc, Weak};
 use std::thread;
 use tracing::{info, trace};
@@ -78,11 +79,11 @@ impl Container {
                 runtime.block_on(async move {
                     let server = Arc::new(
                         EncoderNode::start(
-                            config.encoder_keypair,
+                            config.encoder_keypair.encoder_keypair().clone(),
                             config.parameters,
                             config.object_parameters,
                             config.probe_parameters,
-                            config.peer_keypair,
+                            PeerKeyPair::new(config.peer_keypair.keypair().inner().copy()),
                             to_network_multiaddr(&config.internal_network_address),
                             to_network_multiaddr(&config.external_network_address),
                             to_network_multiaddr(&config.object_address),

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use encoder::{
     messaging::tonic::{internal::ConnectionsInfo, NetworkingInfo},
     types::{
@@ -6,7 +7,10 @@ use encoder::{
         parameters::Parameters,
     },
 };
+use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use rand::{CryptoRng, RngCore};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use shared::{
     authority_committee::AuthorityCommittee,
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
@@ -17,9 +21,13 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
-use types::{committee::Committee, multiaddr::Multiaddr};
+use types::{
+    committee::Committee,
+    crypto::{EncodeDecodeBase64, SomaKeyPair},
+    multiaddr::Multiaddr,
+};
 
 /// Represents configuration options for creating encoder committees
 pub enum EncoderCommitteeConfig {
@@ -33,12 +41,13 @@ pub enum EncoderCommitteeConfig {
     // Deterministic((NonZeroUsize, Option<Vec<EncoderKeyPair>>)),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct EncoderConfig {
+    pub account_keypair: KeyPairWithPath,
     /// Keys for the encoder protocol
-    pub encoder_keypair: EncoderKeyPair,
+    pub encoder_keypair: EncoderKeyPairWithPath,
     /// Keys for network peer identification
-    pub peer_keypair: PeerKeyPair,
+    pub peer_keypair: KeyPairWithPath,
     pub internal_network_address: Multiaddr,
     pub external_network_address: Multiaddr,
     /// The network address for object storage
@@ -68,6 +77,7 @@ pub struct EncoderConfig {
 impl EncoderConfig {
     /// Creates a new EncoderConfig with the provided keypairs and addresses
     pub fn new(
+        soma_keypair: SomaKeyPair,
         encoder_keypair: EncoderKeyPair,
         peer_keypair: PeerKeyPair,
         internal_network_address: Multiaddr,
@@ -85,8 +95,9 @@ impl EncoderConfig {
         let probe_parameters = Arc::new(probe::parameters::Parameters::default());
 
         Self {
-            encoder_keypair,
-            peer_keypair,
+            account_keypair: KeyPairWithPath::new(soma_keypair),
+            encoder_keypair: EncoderKeyPairWithPath::new(encoder_keypair),
+            peer_keypair: KeyPairWithPath::new(SomaKeyPair::Ed25519(peer_keypair.inner().copy())),
             internal_network_address,
             external_network_address,
             object_address,
@@ -98,23 +109,20 @@ impl EncoderConfig {
             entry_point,
             validator_rpc_address,
             genesis_committee,
-            epoch_duration_ms: 1000, // Default epoch duration
+            epoch_duration_ms: 1000, //TODO: Default epoch duration
         }
     }
 
-    /// Returns the encoder public key
     pub fn protocol_public_key(&self) -> EncoderPublicKey {
-        self.encoder_keypair.public()
+        self.protocol_key_pair().public().into()
     }
 
-    /// Returns the peer public key
+    pub fn protocol_key_pair(&self) -> &EncoderKeyPair {
+        self.encoder_keypair.encoder_keypair()
+    }
+
     pub fn peer_public_key(&self) -> PeerPublicKey {
-        self.peer_keypair.public()
-    }
-
-    /// Returns the object server information for this encoder
-    pub fn get_object_server_info(&self) -> (EncoderPublicKey, Multiaddr) {
-        (self.protocol_public_key(), self.object_address.clone())
+        PeerPublicKey::new(self.peer_keypair.keypair().inner().copy().public().clone())
     }
 
     /// Sets the epoch duration in milliseconds
@@ -122,4 +130,116 @@ impl EncoderConfig {
         self.epoch_duration_ms = duration_ms;
         self
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyPairWithPath {
+    // #[serde(flatten)]
+    location: KeyPairLocation,
+    #[serde(skip)]
+    keypair: OnceLock<Arc<SomaKeyPair>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde_as]
+enum KeyPairLocation {
+    #[serde(skip)]
+    InPlace {
+        // #[serde_as(as = "Arc<KeyPairBase64>")]
+        value: Arc<SomaKeyPair>,
+    },
+    File {
+        // #[serde(rename = "path")]
+        path: PathBuf,
+    },
+}
+// }
+
+impl KeyPairWithPath {
+    pub fn new(kp: SomaKeyPair) -> Self {
+        let cell: OnceLock<Arc<SomaKeyPair>> = OnceLock::new();
+        let arc_kp = Arc::new(kp);
+        // OK to unwrap panic because authority should not start without all keypairs loaded.
+        cell.set(arc_kp.clone()).expect("Failed to set keypair");
+        Self {
+            location: KeyPairLocation::InPlace { value: arc_kp },
+            keypair: cell,
+        }
+    }
+
+    //     pub fn new_from_path(path: PathBuf) -> Self {
+    //         let cell: OnceCell<Arc<SomaKeyPair>> = OnceCell::new();
+    //         // OK to unwrap panic because authority should not start without all keypairs loaded.
+    //         cell.set(Arc::new(read_keypair_from_file(&path).unwrap_or_else(
+    //             |e| panic!("Invalid keypair file at path {:?}: {e}", &path),
+    //         )))
+    //         .expect("Failed to set keypair");
+    //         Self {
+    //             location: KeyPairLocation::File { path },
+    //             keypair: cell,
+    //         }
+    //     }
+
+    pub fn keypair(&self) -> &SomaKeyPair {
+        self.keypair
+            .get_or_init(|| match &self.location {
+                KeyPairLocation::InPlace { value } => value.clone(),
+                KeyPairLocation::File { path } => {
+                    // OK to unwrap panic because authority should not start without all keypairs loaded.
+                    Arc::new(
+                        read_keypair_from_file(path).unwrap_or_else(|e| {
+                            panic!("Invalid keypair file at path {:?}: {e}", path)
+                        }),
+                    )
+                }
+            })
+            .as_ref()
+    }
+}
+
+/// Wrapper struct for AuthorityKeyPair that can be deserialized from a file path.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct EncoderKeyPairWithPath {
+    // #[serde(flatten)]
+    // location: AuthorityKeyPairLocation,
+    #[serde(skip)]
+    keypair: OnceLock<Arc<EncoderKeyPair>>,
+}
+
+// #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq)]
+// #[serde_as]
+// #[serde(untagged)]
+// enum EncoderKeyPairLocation {
+//     InPlace { value: Arc<EncoderKeyPair> },
+//     File { path: PathBuf },
+// }
+
+impl EncoderKeyPairWithPath {
+    pub fn new(kp: EncoderKeyPair) -> Self {
+        let cell: OnceLock<Arc<EncoderKeyPair>> = OnceLock::new();
+        let arc_kp = Arc::new(kp);
+        // OK to unwrap panic because authority should not start without all keypairs loaded.
+        cell.set(arc_kp.clone())
+            .expect("Failed to set authority keypair");
+        Self { keypair: cell }
+    }
+
+    pub fn encoder_keypair(&self) -> &EncoderKeyPair {
+        self.keypair.get().unwrap().as_ref()
+    }
+}
+
+/// Read from file as Base64 encoded `privkey` and return a AuthorityKeyPair.
+pub fn read_encoder_keypair_from_file<P: AsRef<std::path::Path>>(
+    path: P,
+) -> anyhow::Result<EncoderKeyPair> {
+    let contents = std::fs::read_to_string(path)?;
+    let kp = BLS12381KeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))?;
+    Ok(EncoderKeyPair::new(kp))
+}
+
+/// Read from file as Base64 encoded `flag || privkey` and return a SuiKeypair.
+pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Result<SomaKeyPair> {
+    let contents = std::fs::read_to_string(path)?;
+    SomaKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
 }

@@ -65,22 +65,25 @@ impl Container {
                 let mut cancel_receiver = cancel_receiver.clone();
                 let startup_sender = startup_sender.clone();
                 async move {
-                    let server = Arc::new(EncoderNode::start(
-                        config.encoder_keypair,
-                        config.parameters,
-                        config.object_parameters,
-                        config.probe_parameters,
-                        config.peer_keypair,
-                        to_network_multiaddr(&config.internal_network_address),
-                        to_network_multiaddr(&config.external_network_address),
-                        to_network_multiaddr(&config.object_address),
-                        to_network_multiaddr(&config.probe_address),
-                        &config.project_root,
-                        &config.entry_point,
-                        config.validator_rpc_address,
-                        config.genesis_committee,
-                        config.epoch_duration_ms,
-                    ));
+                    let server = Arc::new(
+                        EncoderNode::start(
+                            config.encoder_keypair.encoder_keypair().clone(),
+                            config.parameters,
+                            config.object_parameters,
+                            config.probe_parameters,
+                            PeerKeyPair::new(config.peer_keypair.keypair().inner().copy()),
+                            to_network_multiaddr(&config.internal_network_address),
+                            to_network_multiaddr(&config.external_network_address),
+                            to_network_multiaddr(&config.object_address),
+                            to_network_multiaddr(&config.probe_address),
+                            &config.project_root,
+                            &config.entry_point,
+                            config.validator_rpc_address,
+                            config.genesis_committee,
+                            config.epoch_duration_ms,
+                        )
+                        .await,
+                    );
 
                     startup_sender.send(Arc::downgrade(&server)).ok();
 

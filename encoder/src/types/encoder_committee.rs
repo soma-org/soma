@@ -125,7 +125,7 @@ impl EncoderCommittee {
     }
 
     /// Returns number of authorities in the committee.
-    pub(crate) fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.encoders.len()
     }
 

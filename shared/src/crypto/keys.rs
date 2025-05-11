@@ -1,8 +1,12 @@
 use fastcrypto::{
     bls12381::{self, min_sig::BLS12381PublicKey},
     ed25519::{self, Ed25519KeyPair},
-    error::FastCryptoError,
-    traits::{AggregateAuthenticator, KeyPair as _, Signer as _, ToFromBytes, VerifyingKey as _},
+    encoding::{Base64, Encoding},
+    error::{FastCryptoError, FastCryptoResult},
+    traits::{
+        AggregateAuthenticator, EncodeDecodeBase64, KeyPair as _, Signer as _, ToFromBytes,
+        VerifyingKey as _,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
@@ -247,7 +251,7 @@ impl AuthorityAggregateSignature {
 pub struct EncoderPublicKey(bls12381::min_sig::BLS12381PublicKey);
 
 /// A BLS keypair wrapper for encoding operations
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EncoderKeyPair(bls12381::min_sig::BLS12381KeyPair);
 
 /// A BLS signature wrapper for encoding operations

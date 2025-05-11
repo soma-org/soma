@@ -18,7 +18,11 @@ use std::{
     path::PathBuf,
 };
 use tracing::info;
-use types::{committee::Committee, config::local_ip_utils};
+use types::{
+    committee::Committee,
+    config::local_ip_utils,
+    crypto::{get_key_pair_from_rng, SomaKeyPair},
+};
 
 use self::multiaddr_compat::to_network_multiaddr;
 use crate::{
@@ -133,9 +137,10 @@ impl<R> EncoderSwarmBuilder<R> {
 
 /// Modified EncoderSwarmBuilder to work with EncoderCommitteeConfig
 impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> EncoderSwarmBuilder<R> {
-    pub fn build(mut self) -> EncoderSwarm {
-        // Determine the number of encoders to create based on the committee config
-        let mut encoder_configs = match self.committee {
+    /// Generate encoder configurations without building the swarm
+    pub fn generate_configs(mut self) -> Vec<EncoderConfig> {
+        // This extracts the config generation logic from the build() method
+        match self.committee {
             EncoderCommitteeConfig::Size(size) => {
                 // Generate new encoder configs
                 let mut configs = Vec::with_capacity(size.get());
@@ -152,6 +157,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                 for i in 0..size.get() {
                     // Generate keypairs
                     let encoder_keypair = EncoderKeyPair::generate(&mut self.rng);
+                    let (address, keypair) = get_key_pair_from_rng(&mut self.rng);
+                    let soma_keypair = SomaKeyPair::Ed25519(keypair);
                     let peer_keypair = PeerKeyPair::generate(&mut self.rng);
 
                     // Get a unique IP for this encoder
@@ -167,6 +174,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     let entry_point = PathBuf::from("test_module.py");
 
                     configs.push(EncoderConfig::new(
+                        soma_keypair,
                         encoder_keypair,
                         peer_keypair,
                         internal_network_address,
@@ -200,6 +208,8 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
 
                 for (i, key) in keys.into_iter().enumerate() {
                     // Generate peer keypair
+                    let (address, keypair) = get_key_pair_from_rng(&mut self.rng);
+                    let soma_keypair = SomaKeyPair::Ed25519(keypair);
                     let peer_keypair = PeerKeyPair::generate(&mut self.rng);
 
                     // Get a unique IP for this encoder
@@ -214,6 +224,7 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                     let entry_point = PathBuf::from("test_module.py");
 
                     configs.push(EncoderConfig::new(
+                        soma_keypair,
                         key,
                         peer_keypair,
                         internal_network_address,
@@ -228,8 +239,12 @@ impl<R: rand::RngCore + rand::CryptoRng + fastcrypto::traits::AllowedRng> Encode
                 }
                 configs
             }
-        };
+        }
+    }
 
+    pub fn build(mut self) -> EncoderSwarm {
+        // Determine the number of encoders to create based on the committee config
+        let mut encoder_configs = self.generate_configs();
         // Create nodes from the updated configs
         let nodes = encoder_configs
             .clone()
