@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     num::NonZeroUsize,
     ops::Div,
+    path::PathBuf,
     time::{Duration, Instant, SystemTime},
 };
 
@@ -9,7 +10,7 @@ use crate::{
     base::SomaAddress,
     committee::{Committee, CommitteeWithNetworkMetadata},
     config::{node_config::NodeConfig, p2p_config::SeedPeer},
-    crypto::{get_key_pair_from_rng, PublicKey, SomaKeyPair},
+    crypto::{get_key_pair_from_rng, NetworkPublicKey, PublicKey, SomaKeyPair},
     digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{self, Genesis},
@@ -17,6 +18,7 @@ use crate::{
     object::{self, Object, ObjectData, ObjectID, ObjectType, Owner, Version},
     peer_id::PeerId,
     system_state::{
+        encoder::Encoder,
         validator::{self, Validator},
         SystemParameters, SystemState,
     },
@@ -24,12 +26,14 @@ use crate::{
     transaction::{InputObjects, VerifiedTransaction},
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
-use fastcrypto::traits::KeyPair;
+use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use shared::crypto::keys::EncoderKeyPair;
 use tracing::info;
 
 use super::{
+    encoder_config::{EncoderCommitteeConfig, EncoderConfig, EncoderGenesisConfigBuilder},
     genesis_config::{
         AccountConfig, GenesisConfig, TokenAllocation, TokenDistributionScheduleBuilder,
         ValidatorGenesisConfig, ValidatorGenesisConfigBuilder, DEFAULT_GAS_AMOUNT,
@@ -49,6 +53,7 @@ pub enum CommitteeConfig {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NetworkConfig {
     pub validator_configs: Vec<NodeConfig>,
+    pub encoder_configs: Vec<EncoderConfig>,
     pub account_keys: Vec<SomaKeyPair>,
     pub genesis: genesis::Genesis,
 }
@@ -79,6 +84,7 @@ impl NetworkConfig {
 pub struct ConfigBuilder<R = OsRng> {
     rng: Option<R>,
     committee: CommitteeConfig,
+    encoder_committee: EncoderCommitteeConfig,
     genesis_config: Option<GenesisConfig>,
 }
 
@@ -87,6 +93,7 @@ impl ConfigBuilder {
         Self {
             rng: Some(OsRng),
             committee: CommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
+            encoder_committee: EncoderCommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             genesis_config: None,
         }
     }
@@ -109,10 +116,21 @@ impl<R> ConfigBuilder<R> {
         self
     }
 
+    pub fn encoder_committee(mut self, committee: EncoderCommitteeConfig) -> Self {
+        self.encoder_committee = committee;
+        self
+    }
+
+    pub fn encoder_committee_size(mut self, committee_size: NonZeroUsize) -> Self {
+        self.encoder_committee = EncoderCommitteeConfig::Size(committee_size);
+        self
+    }
+
     pub fn rng<N: rand::RngCore + rand::CryptoRng>(self, rng: N) -> ConfigBuilder<N> {
         ConfigBuilder {
             rng: Some(rng),
             committee: self.committee,
+            encoder_committee: self.encoder_committee,
             genesis_config: self.genesis_config,
         }
     }
@@ -134,6 +152,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
     //TODO right now we always randomize ports, we may want to have a default port configuration
     pub fn build(self) -> NetworkConfig {
         let committee = self.committee;
+        let encoder_committee = self.encoder_committee;
 
         let mut rng = self.rng.unwrap();
         let validators = match committee {
@@ -189,6 +208,44 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             }
         };
 
+        // Generate encoders
+        let encoders = match encoder_committee {
+            EncoderCommitteeConfig::Size(size) => (0..size.get())
+                .map(|_| {
+                    let mut builder = EncoderGenesisConfigBuilder::new();
+                    builder.build(&mut rng)
+                })
+                .collect::<Vec<_>>(),
+            EncoderCommitteeConfig::Encoders(e) => e,
+            EncoderCommitteeConfig::EncoderKeys(keys) => keys
+                .into_iter()
+                .map(|encoder_key| {
+                    let mut builder =
+                        EncoderGenesisConfigBuilder::new().with_encoder_key_pair(encoder_key);
+                    builder.build(&mut rng)
+                })
+                .collect::<Vec<_>>(),
+            EncoderCommitteeConfig::Deterministic((size, keys)) => {
+                // If no keys are provided, generate them
+                let keys = keys.unwrap_or(
+                    (0..size.get())
+                        .map(|_| EncoderKeyPair::new(get_key_pair_from_rng(&mut rng).1))
+                        .collect(),
+                );
+
+                let mut configs = vec![];
+                for (i, key) in keys.into_iter().enumerate() {
+                    let port_offset = 9000 + i * 10; // Different port range than validators
+                    let mut builder = EncoderGenesisConfigBuilder::new()
+                        .with_ip("127.0.0.1".to_owned())
+                        .with_encoder_key_pair(key)
+                        .with_deterministic_ports(port_offset as u16);
+                    configs.push(builder.build(&mut rng));
+                }
+                configs
+            }
+        };
+
         let genesis_config = self
             .genesis_config
             .unwrap_or_else(GenesisConfig::for_local_testing);
@@ -209,15 +266,40 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     recipient_address: address,
                     amount_shannons: DEFAULT_GAS_AMOUNT * 10,
                     staked_with_validator: None,
+                    staked_with_encoder: None,
                 };
                 let stake = TokenAllocation {
                     recipient_address: address,
                     amount_shannons: validator.stake,
                     staked_with_validator: Some(address),
+                    staked_with_encoder: None,
                 };
                 builder.add_allocation(gas_coin);
                 builder.add_allocation(stake);
             }
+
+            // Add allocations for each encoder
+            for encoder in &encoders {
+                let account_key: PublicKey = encoder.account_key_pair.public();
+                let address = SomaAddress::from(&account_key);
+                // Give each encoder some gas
+                let gas_coin = TokenAllocation {
+                    recipient_address: address,
+                    amount_shannons: DEFAULT_GAS_AMOUNT * 10,
+                    staked_with_validator: None,
+                    staked_with_encoder: None,
+                };
+                // Initial encoder stake
+                let stake = TokenAllocation {
+                    recipient_address: address,
+                    amount_shannons: encoder.stake,
+                    staked_with_validator: None,
+                    staked_with_encoder: Some(address),
+                };
+                builder.add_allocation(gas_coin);
+                builder.add_allocation(stake);
+            }
+
             builder.build()
         };
 
@@ -248,7 +330,22 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     )
                 })
                 .collect(),
-            vec![], // TODO: add initial encoders at genesis if any
+            encoders
+                .iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    Encoder::new(
+                        (&e.account_key_pair.public()).into(),
+                        e.encoder_key_pair.public().clone(),
+                        NetworkPublicKey::new(e.peer_key_pair.public().into_inner()),
+                        e.internal_network_address.clone(),
+                        e.object_address.clone(),
+                        0,
+                        e.commission_rate,
+                        ObjectID::random(),
+                    )
+                })
+                .collect(),
             duration_since_unix_epoch.as_millis() as u64,
             SystemParameters {
                 epoch_duration_ms: genesis_config.parameters.epoch_duration_ms,
@@ -280,6 +377,21 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     TransactionDigest::default(),
                 );
                 objects.push(staked_soma_object);
+            } else if let Some(encoder) = allocation.staked_with_encoder {
+                let staked_soma = system_state
+                    .request_add_encoder_stake_at_genesis(
+                        allocation.recipient_address,
+                        encoder,
+                        allocation.amount_shannons,
+                    )
+                    .expect("Could not stake in encoder at Genesis.");
+                let staked_soma_object = Object::new_staked_soma_object(
+                    ObjectID::random(),
+                    staked_soma,
+                    Owner::AddressOwner(allocation.recipient_address),
+                    TransactionDigest::default(),
+                );
+                objects.push(staked_soma_object);
             } else {
                 let coin_object = Object::new_coin(
                     ObjectID::random(),
@@ -292,6 +404,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         }
 
         system_state.validators.set_voting_power();
+        system_state.encoders.set_voting_power();
 
         let state_object = Object::new(
             ObjectData::new_with_id(
@@ -355,6 +468,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             })
             .collect();
 
+        let validator_rpc_address = validators[0].encoder_validator_address.clone(); // TODO: Temporarily using first validator as RPC address
+
         let validator_configs = validators
             .into_iter()
             .enumerate()
@@ -363,8 +478,30 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 builder.build(validator, genesis.clone(), seed_peers.clone())
             })
             .collect();
+
+        let encoder_configs = encoders
+            .into_iter()
+            .map(|encoder| {
+                EncoderConfig::new(
+                    encoder.account_key_pair,
+                    encoder.encoder_key_pair,
+                    encoder.peer_key_pair,
+                    encoder.internal_network_address,
+                    encoder.external_network_address,
+                    encoder.object_address,
+                    encoder.probe_address,
+                    PathBuf::from("/project/root"), // Default path, should be configurable
+                    PathBuf::from("/entry/point.py"), // Default path, should be configurable
+                    validator_rpc_address.clone(),
+                    genesis.clone(),
+                )
+                .with_epoch_duration(genesis_config.parameters.epoch_duration_ms)
+            })
+            .collect();
+
         NetworkConfig {
             validator_configs,
+            encoder_configs,
             genesis,
             account_keys,
         }

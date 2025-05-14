@@ -1,11 +1,13 @@
 use std::{
     num::NonZeroUsize,
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
+use shared::crypto::keys::{EncoderKeyPair, PeerKeyPair};
 use swarm::{Swarm, SwarmBuilder};
 use tokio::time::timeout;
 use tracing::{error, info};
@@ -13,13 +15,16 @@ use types::{
     base::{AuthorityName, ConciseableName, SomaAddress},
     committee::{CommitteeTrait, EpochId},
     config::{
+        encoder_config::{EncoderConfig, EncoderGenesisConfig},
         genesis_config::{
             AccountConfig, GenesisConfig, ValidatorGenesisConfig, DEFAULT_GAS_AMOUNT,
         },
+        local_ip_utils,
         network_config::NetworkConfig,
         node_config::{FullnodeConfigBuilder, NodeConfig, ValidatorConfigBuilder},
         p2p_config::SeedPeer,
     },
+    crypto::SomaKeyPair,
     effects::TransactionEffects,
     error::SomaResult,
     genesis::Genesis,
@@ -307,27 +312,143 @@ impl TestCluster {
             })
             .await
     }
+
+    // Get all encoder configs
+    pub fn encoder_configs(&self) -> &[EncoderConfig] {
+        &self.swarm.config().encoder_configs
+    }
+
+    // Get a reference to an encoder config by index
+    pub fn encoder_config(&self, index: usize) -> Option<&EncoderConfig> {
+        self.swarm.config().encoder_configs.get(index)
+    }
+
+    // Get encoder configs for creating a TestEncoderCluster
+    pub fn get_encoder_configs_for_encoder_cluster(&self) -> Vec<EncoderConfig> {
+        let validator_rpc_address = self
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.get_config().encoder_validator_address.clone());
+
+        // Get epoch duration from system state
+        let epoch_duration = self
+            .swarm
+            .config()
+            .genesis
+            .system_object()
+            .parameters
+            .epoch_duration_ms;
+
+        // Clone and update all encoder configs to point to fullnode
+        self.encoder_configs()
+            .iter()
+            .map(|config| {
+                let mut config = config.clone();
+                // Update config to point to fullnode for validation
+                config.validator_rpc_address = validator_rpc_address.clone();
+                config.genesis = self.get_genesis();
+                // Set epoch duration to match the validator system
+                config.epoch_duration_ms = epoch_duration;
+                config
+            })
+            .collect()
+    }
+
+    // Create an encoder config for a new encoder (not from genesis)
+    pub fn create_new_encoder_config(
+        &self,
+        encoder_keypair: EncoderKeyPair,
+        account_keypair: SomaKeyPair,
+        peer_keypair: PeerKeyPair,
+    ) -> EncoderConfig {
+        // Get a unique IP for this encoder
+        let ip = local_ip_utils::get_new_ip();
+
+        // Generate addresses
+        let internal_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+        let external_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+        let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+        let probe_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+
+        // Get validator address from fullnode
+        let validator_rpc_address = self
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.get_config().encoder_validator_address.clone());
+
+        // Get genesis
+        let genesis = self.get_genesis();
+        let epoch_duration = genesis.system_object().parameters.epoch_duration_ms;
+
+        // Default paths for testing
+        let project_root = PathBuf::from("/tmp");
+        let entry_point = PathBuf::from("test_module.py");
+
+        // Create the encoder config
+        let mut config = EncoderConfig::new(
+            account_keypair,
+            encoder_keypair,
+            peer_keypair,
+            internal_network_address,
+            external_network_address,
+            object_address,
+            probe_address,
+            project_root,
+            entry_point,
+            validator_rpc_address,
+            genesis,
+        );
+
+        // Set epoch duration to match the validator system
+        config.epoch_duration_ms = epoch_duration;
+
+        config
+    }
+
+    pub fn get_encoder_committee_size(&self) -> usize {
+        self.fullnode_handle.soma_node.with(|node| {
+            let system_state = node.state().get_system_state_object_for_testing();
+            system_state
+                .get_current_epoch_encoder_committee()
+                .members
+                .len()
+        })
+    }
 }
 
 pub struct TestClusterBuilder {
     num_validators: Option<usize>,
+    num_encoders: Option<usize>,
     genesis_config: Option<GenesisConfig>,
     network_config: Option<NetworkConfig>,
     validators: Option<Vec<ValidatorGenesisConfig>>,
+    encoders: Option<Vec<EncoderGenesisConfig>>,
 }
 
 impl TestClusterBuilder {
     pub fn new() -> Self {
         TestClusterBuilder {
             num_validators: None,
+            num_encoders: None,
             genesis_config: None,
             network_config: None,
             validators: None,
+            encoders: None,
         }
     }
 
     pub fn with_num_validators(mut self, num: usize) -> Self {
         self.num_validators = Some(num);
+        self
+    }
+
+    pub fn with_num_encoders(mut self, num: usize) -> Self {
+        self.num_encoders = Some(num);
+        self
+    }
+
+    pub fn with_encoders(mut self, encoders: Vec<EncoderGenesisConfig>) -> Self {
+        self.encoders = Some(encoders);
         self
     }
 
@@ -384,6 +505,14 @@ impl TestClusterBuilder {
                 NonZeroUsize::new(self.num_validators.unwrap_or(NUM_VALIDATORS)).unwrap(),
             )
         };
+
+        if let Some(encoders) = self.encoders.take() {
+            builder = builder.with_encoders(encoders);
+        } else if let Some(num_encoders) = self.num_encoders {
+            if num_encoders > 0 {
+                builder = builder.encoder_committee_size(NonZeroUsize::new(num_encoders).unwrap());
+            }
+        }
 
         if let Some(genesis_config) = self.genesis_config.take() {
             builder = builder.with_genesis_config(genesis_config);

@@ -1,9 +1,9 @@
-use crate::config::EncoderConfig;
+use types::config::encoder_config::EncoderConfig;
 
 use super::container::Container;
 use anyhow::Result;
 use encoder::core::encoder_node::EncoderNodeHandle;
-use shared::crypto::keys::EncoderPublicKey;
+use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use std::sync::{Mutex, MutexGuard};
 use tracing::info;
 
@@ -17,6 +17,7 @@ use tracing::info;
 pub struct Node {
     container: Mutex<Option<Container>>,
     config: Mutex<EncoderConfig>,
+    client_key: Option<PeerPublicKey>,
 }
 
 impl Node {
@@ -24,10 +25,11 @@ impl Node {
     ///
     /// The Node is returned without being started. See [`Node::spawn`] or [`Node::start`] for how to
     /// start the node.
-    pub fn new(config: EncoderConfig) -> Self {
+    pub fn new(config: EncoderConfig, client_key: Option<PeerPublicKey>) -> Self {
         Self {
             container: Default::default(),
             config: config.into(),
+            client_key,
         }
     }
 
@@ -44,7 +46,8 @@ impl Node {
     pub async fn spawn(&self) -> Result<()> {
         info!("starting in-memory node {:?}", self.name());
         let config = self.config().clone();
-        *self.container.lock().unwrap() = Some(Container::spawn(config).await);
+        *self.container.lock().unwrap() =
+            Some(Container::spawn(config, self.client_key.clone()).await);
         Ok(())
     }
 

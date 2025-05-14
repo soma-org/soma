@@ -46,8 +46,8 @@ impl Processor for FinalityProcessor {
                 }
                 GuardResult::Timeout => (),
             }
-            info!("Performing mock clean up for shard: {}", shard_digest);
-            msg.cancellation.cancel();
+            // info!("Performing mock clean up for shard: {}", shard_digest);
+            // TODO: msg.cancellation.cancel();
             Ok(())
         }
         .await;

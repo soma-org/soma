@@ -2337,6 +2337,8 @@ impl EndOfEpochAPI for AuthorityPerEpochStore {
             .read()
             .as_ref()
             .map(|(state, digest)| {
+                let enc = state.get_current_epoch_encoder_committee();
+                info!("NEW ENCODER COMMITTEE: {:?}", enc);
                 (
                     ValidatorSet(
                         state

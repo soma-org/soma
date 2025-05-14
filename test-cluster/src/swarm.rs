@@ -8,6 +8,7 @@ use tracing::info;
 use types::{
     base::AuthorityName,
     config::{
+        encoder_config::{EncoderCommitteeConfig, EncoderConfig, EncoderGenesisConfig},
         genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
         network_config::{CommitteeConfig, ConfigBuilder, NetworkConfig},
         node_config::{FullnodeConfigBuilder, NodeConfig},
@@ -49,6 +50,15 @@ impl Swarm {
     /// Return a reference to this Swarm's `NetworkConfig`.
     pub fn config(&self) -> &NetworkConfig {
         &self.network_config
+    }
+
+    pub fn encoder_configs(&self) -> impl Iterator<Item = &EncoderConfig> {
+        self.network_config.encoder_configs.iter()
+    }
+
+    /// Return a reference to an encoder config by index.
+    pub fn encoder_config(&self, index: usize) -> Option<&EncoderConfig> {
+        self.network_config.encoder_configs.get(index)
     }
 
     pub fn all_nodes(&self) -> impl Iterator<Item = &Node> {
@@ -108,6 +118,7 @@ impl Swarm {
 pub struct SwarmBuilder<R = OsRng> {
     rng: R,
     committee: CommitteeConfig,
+    encoder_committee: EncoderCommitteeConfig,
     genesis_config: Option<GenesisConfig>,
     network_config: Option<NetworkConfig>,
     fullnode_count: usize,
@@ -120,6 +131,7 @@ impl SwarmBuilder {
         Self {
             rng: OsRng,
             committee: CommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
+            encoder_committee: EncoderCommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             genesis_config: None,
             network_config: None,
             fullnode_count: 0,
@@ -134,6 +146,7 @@ impl<R> SwarmBuilder<R> {
         SwarmBuilder {
             rng,
             committee: self.committee,
+            encoder_committee: self.encoder_committee,
             genesis_config: self.genesis_config,
             network_config: self.network_config,
             fullnode_count: self.fullnode_count,
@@ -152,6 +165,16 @@ impl<R> SwarmBuilder<R> {
 
     pub fn with_validators(mut self, validators: Vec<ValidatorGenesisConfig>) -> Self {
         self.committee = CommitteeConfig::Validators(validators);
+        self
+    }
+
+    pub fn encoder_committee_size(mut self, committee_size: NonZeroUsize) -> Self {
+        self.encoder_committee = EncoderCommitteeConfig::Size(committee_size);
+        self
+    }
+
+    pub fn with_encoders(mut self, encoders: Vec<EncoderGenesisConfig>) -> Self {
+        self.encoder_committee = EncoderCommitteeConfig::Encoders(encoders);
         self
     }
 
@@ -201,7 +224,7 @@ impl<R> SwarmBuilder<R> {
 impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
     /// Create the configured Swarm.
     pub fn build(self) -> Swarm {
-        let network_config = self.network_config.unwrap_or_else(|| {
+        let mut network_config = self.network_config.unwrap_or_else(|| {
             let mut config_builder = ConfigBuilder::new();
 
             if let Some(genesis_config) = self.genesis_config {
@@ -210,6 +233,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
 
             config_builder
                 .committee(self.committee)
+                .encoder_committee(self.encoder_committee)
                 .rng(self.rng)
                 .build()
         });
@@ -226,8 +250,10 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             })
             .collect();
 
-        let fullnode_config_builder = FullnodeConfigBuilder::new();
+        let mut fullnode_configs = Vec::new();
 
+        let fullnode_config_builder = FullnodeConfigBuilder::new();
+        // First create all the fullnodes if requested
         if self.fullnode_count > 0 {
             (0..self.fullnode_count).for_each(|idx| {
                 let builder = fullnode_config_builder.clone();
@@ -237,9 +263,33 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                     "SwarmBuilder configuring full node with name {}",
                     config.protocol_public_key()
                 );
+                // Store the full node config for later encoder assignment
+                fullnode_configs.push(config.clone());
                 nodes.insert(config.protocol_public_key(), Node::new(config));
             });
         }
+
+        // Now update the encoder configs to point to fullnodes if any are available
+        if !fullnode_configs.is_empty() && !network_config.encoder_configs.is_empty() {
+            // Update each encoder to connect to a fullnode for validation
+            // Use round-robin assignment if there are multiple fullnodes
+            for (i, encoder_config) in network_config.encoder_configs.iter_mut().enumerate() {
+                // Pick a fullnode using round-robin
+                let fullnode_index = i % fullnode_configs.len();
+                let fullnode_config = &fullnode_configs[fullnode_index];
+
+                // Update the encoder's validator_rpc_address to point to the fullnode's encoder_validator_address
+                encoder_config.validator_rpc_address =
+                    fullnode_config.encoder_validator_address.clone();
+
+                info!(
+                    "Assigned encoder {:?} to fullnode {} for validation",
+                    encoder_config.protocol_public_key(),
+                    fullnode_config.protocol_public_key()
+                );
+            }
+        }
+
         Swarm {
             network_config,
             nodes,

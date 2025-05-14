@@ -1,4 +1,4 @@
-use shared::crypto::keys::EncoderPublicKey;
+use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use soma_tls::AllowPublicKeys;
 use std::{
     collections::BTreeSet,
@@ -49,6 +49,8 @@ pub struct CommitteeSyncManager {
 
     /// Signal for shutdown
     shutdown: Arc<AtomicBool>,
+
+    client_key: Option<PeerPublicKey>,
 }
 
 impl CommitteeSyncManager {
@@ -59,8 +61,10 @@ impl CommitteeSyncManager {
         networking_info: NetworkingInfo,
         connections_info: ConnectionsInfo,
         allower: AllowPublicKeys,
+        epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
         own_encoder_key: EncoderPublicKey,
+        client_key: Option<PeerPublicKey>,
     ) -> Self {
         let inner_context = context.inner();
         let current_epoch = inner_context.current_epoch;
@@ -73,9 +77,10 @@ impl CommitteeSyncManager {
             allower,
             epoch_duration_ms,
             current_epoch: AtomicU64::new(current_epoch),
-            next_epoch_time_ms: AtomicU64::new(0),
+            next_epoch_time_ms: AtomicU64::new(epoch_start_timestamp_ms + epoch_duration_ms),
             own_encoder_key,
             shutdown: Arc::new(AtomicBool::new(false)),
+            client_key,
         }
     }
 
@@ -182,10 +187,31 @@ impl CommitteeSyncManager {
     }
 
     /// Perform initial synchronization from genesis to current epoch
+
     async fn initial_sync(&self) -> ShardResult<()> {
         info!("Starting initial committee synchronization");
 
-        // Initialize from genesis
+        // Get the current epoch from the validator
+        let current_epoch = {
+            let mut client = self.validator_client.lock().await;
+            client
+                .get_current_epoch()
+                .await
+                .map_err(|e| ShardError::Other(format!("Failed to get current epoch: {}", e)))?
+        };
+
+        // Check if we're still in genesis epoch
+        if current_epoch == 0 {
+            info!("System is still in genesis epoch (0) - skipping initial sync");
+
+            info!(
+                "Genesis epoch (0), next epoch expected around {:?}ms",
+                self.next_epoch_time_ms
+            );
+            return Ok(());
+        }
+
+        // Normal path for non-genesis epochs
         let mut client = self.validator_client.lock().await;
         let verified_committees = client
             .setup_from_genesis()
@@ -196,7 +222,10 @@ impl CommitteeSyncManager {
         drop(client); // Release lock before applying
         self.apply_committees(verified_committees).await?;
 
-        info!("Initial committee synchronization complete");
+        info!(
+            "Initial committee synchronization complete for epoch {}",
+            current_epoch
+        );
         Ok(())
     }
 
@@ -287,6 +316,11 @@ impl CommitteeSyncManager {
         for peer_key in committees.connections_info.keys() {
             // Add inner key to allowed set
             allowed_keys.insert(peer_key.clone().into_inner());
+        }
+
+        // TODO: Remove this after NetworkingCommittee is defined
+        if let Some(client_key) = self.client_key.clone() {
+            allowed_keys.insert(client_key.into_inner());
         }
 
         info!(

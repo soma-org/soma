@@ -1,14 +1,15 @@
-use crate::config::EncoderConfig;
-use crate::swarm::multiaddr_compat::to_network_multiaddr;
 use encoder::core::encoder_node::{EncoderNode, EncoderNodeHandle};
 use fastcrypto::encoding::{Encoding, Hex};
+use fastcrypto::traits::KeyPair;
 use msim::runtime::Handle;
+use shared::crypto::keys::PeerPublicKey;
 use std::{
     net::{IpAddr, SocketAddr},
     sync::{Arc, Weak},
 };
 use tokio::sync::watch;
 use tracing::{info, trace};
+use types::config::encoder_config::EncoderConfig;
 
 #[derive(Debug)]
 pub(crate) struct Container {
@@ -34,7 +35,7 @@ impl Drop for Container {
 
 impl Container {
     /// Spawn a new Node.
-    pub async fn spawn(config: EncoderConfig) -> Self {
+    pub async fn spawn(config: EncoderConfig, peer_key: Option<PeerPublicKey>) -> Self {
         let (startup_sender, mut startup_receiver) = tokio::sync::watch::channel(Weak::new());
         let (cancel_sender, cancel_receiver) = tokio::sync::watch::channel(false);
 
@@ -62,28 +63,11 @@ impl Container {
             .init(move || {
                 info!("Node restarted");
                 let config = config.clone();
+                let peer_key = peer_key.clone();
                 let mut cancel_receiver = cancel_receiver.clone();
                 let startup_sender = startup_sender.clone();
                 async move {
-                    let server = Arc::new(
-                        EncoderNode::start(
-                            config.encoder_keypair.encoder_keypair().clone(),
-                            config.parameters,
-                            config.object_parameters,
-                            config.probe_parameters,
-                            PeerKeyPair::new(config.peer_keypair.keypair().inner().copy()),
-                            to_network_multiaddr(&config.internal_network_address),
-                            to_network_multiaddr(&config.external_network_address),
-                            to_network_multiaddr(&config.object_address),
-                            to_network_multiaddr(&config.probe_address),
-                            &config.project_root,
-                            &config.entry_point,
-                            config.validator_rpc_address,
-                            config.genesis_committee,
-                            config.epoch_duration_ms,
-                        )
-                        .await,
-                    );
+                    let server = Arc::new(EncoderNode::start(config, peer_key).await);
 
                     startup_sender.send(Arc::downgrade(&server)).ok();
 

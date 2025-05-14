@@ -16,4 +16,5 @@ serde.workspace = true
 fastcrypto.workspace = true
 futures.workspace = true
 bcs.workspace = true
+shared.workspace = true
 tempfile = "3.12.0"

@@ -115,6 +115,7 @@ impl GenesisConfig {
                     recipient_address: address,
                     amount_shannons: *a,
                     staked_with_validator: None,
+                    staked_with_encoder: None,
                 });
             });
         }
@@ -302,6 +303,7 @@ pub struct TokenAllocation {
 
     /// Indicates if this allocation should be staked at genesis and with which validator
     pub staked_with_validator: Option<SomaAddress>,
+    pub staked_with_encoder: Option<SomaAddress>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

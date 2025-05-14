@@ -1,12 +1,10 @@
-use anyhow::anyhow;
-use encoder::{
-    messaging::tonic::{internal::ConnectionsInfo, NetworkingInfo},
-    types::{
-        context::{Committees, Context, InnerContext},
-        encoder_committee::{EncoderCommittee, EncoderIndex},
-        parameters::Parameters,
-    },
+use crate::{
+    committee::Committee,
+    crypto::{get_key_pair_from_rng, EncodeDecodeBase64, SomaKeyPair},
+    genesis::Genesis,
+    multiaddr::Multiaddr,
 };
+use anyhow::anyhow;
 use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -23,25 +21,18 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
-use types::{
-    committee::Committee,
-    crypto::{EncodeDecodeBase64, SomaKeyPair},
-    multiaddr::Multiaddr,
-};
+
+use super::local_ip_utils;
 
 /// Represents configuration options for creating encoder committees
 pub enum EncoderCommitteeConfig {
-    /// Create a committee with a specific size (number of encoders)
     Size(NonZeroUsize),
-    /// Create a committee with specific encoder configurations
-    Encoders(Vec<EncoderConfig>),
-    /// Create a committee using existing encoder keypairs
+    Encoders(Vec<EncoderGenesisConfig>),
     EncoderKeys(Vec<EncoderKeyPair>),
-    // Create a deterministic committee with optional provided keys
-    // Deterministic((NonZeroUsize, Option<Vec<EncoderKeyPair>>)),
+    Deterministic((NonZeroUsize, Option<Vec<EncoderKeyPair>>)),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncoderConfig {
     pub account_keypair: KeyPairWithPath,
     /// Keys for the encoder protocol
@@ -55,7 +46,7 @@ pub struct EncoderConfig {
     /// The network address for probe service
     pub probe_address: Multiaddr,
     /// Parameters for the encoder system
-    pub parameters: Arc<Parameters>,
+    // TODO: pub parameters: Arc<Parameters>,
     /// Parameters for the object system
     pub object_parameters: Arc<objects::parameters::Parameters>,
     /// Parameters for the probe system
@@ -68,8 +59,8 @@ pub struct EncoderConfig {
     /// Address of the validator node for fetching committees
     pub validator_rpc_address: Multiaddr,
 
-    /// Genesis committee for committee verification
-    pub genesis_committee: Committee,
+    /// Genesis for blockchain, including validator and encoder committees
+    pub genesis: Genesis,
 
     pub epoch_duration_ms: u64,
 }
@@ -87,10 +78,10 @@ impl EncoderConfig {
         project_root: PathBuf,
         entry_point: PathBuf,
         validator_rpc_address: Multiaddr,
-        genesis_committee: Committee,
+        genesis: Genesis,
     ) -> Self {
         // Create default parameters
-        let parameters = Arc::new(Parameters::default());
+        // TODO: let parameters = Arc::new(Parameters::default());
         let object_parameters = Arc::new(objects::parameters::Parameters::default());
         let probe_parameters = Arc::new(probe::parameters::Parameters::default());
 
@@ -102,13 +93,13 @@ impl EncoderConfig {
             external_network_address,
             object_address,
             probe_address,
-            parameters,
+            // parameters,
             object_parameters,
             probe_parameters,
             project_root,
             entry_point,
             validator_rpc_address,
-            genesis_committee,
+            genesis,
             epoch_duration_ms: 1000, //TODO: Default epoch duration
         }
     }
@@ -242,4 +233,120 @@ pub fn read_encoder_keypair_from_file<P: AsRef<std::path::Path>>(
 pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Result<SomaKeyPair> {
     let contents = std::fs::read_to_string(path)?;
     SomaKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
+}
+
+// 1. Create EncoderGenesisConfig struct similar to ValidatorGenesisConfig
+#[derive(Serialize, Deserialize)]
+pub struct EncoderGenesisConfig {
+    pub encoder_key_pair: EncoderKeyPair,
+    pub account_key_pair: SomaKeyPair,
+    pub peer_key_pair: PeerKeyPair,
+    pub internal_network_address: Multiaddr,
+    pub external_network_address: Multiaddr,
+    pub object_address: Multiaddr,
+    pub probe_address: Multiaddr,
+    pub stake: u64,
+    pub commission_rate: u64,
+}
+
+// 2. Create a builder for EncoderGenesisConfig
+#[derive(Default)]
+pub struct EncoderGenesisConfigBuilder {
+    encoder_key_pair: Option<EncoderKeyPair>,
+    account_key_pair: Option<SomaKeyPair>,
+    peer_key_pair: Option<PeerKeyPair>,
+    ip: Option<String>,
+    port_offset: Option<u16>,
+    stake: Option<u64>,
+}
+
+impl EncoderGenesisConfigBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_encoder_key_pair(mut self, key_pair: EncoderKeyPair) -> Self {
+        self.encoder_key_pair = Some(key_pair);
+        self
+    }
+
+    pub fn with_account_key_pair(mut self, key_pair: SomaKeyPair) -> Self {
+        self.account_key_pair = Some(key_pair);
+        self
+    }
+
+    pub fn with_peer_key_pair(mut self, key_pair: PeerKeyPair) -> Self {
+        self.peer_key_pair = Some(key_pair);
+        self
+    }
+
+    pub fn with_ip(mut self, ip: String) -> Self {
+        self.ip = Some(ip);
+        self
+    }
+
+    pub fn with_deterministic_ports(mut self, port_offset: u16) -> Self {
+        self.port_offset = Some(port_offset);
+        self
+    }
+
+    pub fn with_stake(mut self, stake: u64) -> Self {
+        self.stake = Some(stake);
+        self
+    }
+
+    pub fn build<R: rand::RngCore + rand::CryptoRng>(self, rng: &mut R) -> EncoderGenesisConfig {
+        let ip = self.ip.unwrap_or_else(local_ip_utils::get_new_ip);
+        let stake = self.stake.unwrap_or(default_encoder_stake());
+
+        // Generate or use provided keypairs
+        let encoder_key_pair = self
+            .encoder_key_pair
+            .unwrap_or_else(|| EncoderKeyPair::new(get_key_pair_from_rng(rng).1));
+
+        let account_key_pair = self
+            .account_key_pair
+            .unwrap_or_else(|| SomaKeyPair::Ed25519(get_key_pair_from_rng(rng).1));
+
+        let peer_key_pair = self
+            .peer_key_pair
+            .unwrap_or_else(|| PeerKeyPair::new(get_key_pair_from_rng(rng).1));
+
+        // Generate network addresses
+        let (internal_network_address, external_network_address, object_address, probe_address) =
+            if let Some(offset) = self.port_offset {
+                (
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
+                )
+            } else {
+                (
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                )
+            };
+
+        EncoderGenesisConfig {
+            encoder_key_pair,
+            account_key_pair,
+            peer_key_pair,
+            internal_network_address,
+            external_network_address,
+            object_address,
+            probe_address,
+            stake,
+            commission_rate: DEFAULT_ENCODER_COMMISSION_RATE,
+        }
+    }
+}
+
+// 3. Add default constants for encoders
+const DEFAULT_ENCODER_COMMISSION_RATE: u64 = 200;
+
+fn default_encoder_stake() -> u64 {
+    20_000_000_000_000_000 // Same as validator default stake
 }

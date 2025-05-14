@@ -1,3 +1,4 @@
+pub mod encoder_config;
 pub mod genesis_config;
 pub mod local_ip_utils;
 pub mod network_config;

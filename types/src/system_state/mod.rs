@@ -410,6 +410,34 @@ impl SystemState {
         }
     }
 
+    pub fn request_add_encoder_stake_at_genesis(
+        &mut self,
+        signer: SomaAddress,
+        address: SomaAddress,
+        amount: u64,
+    ) -> ExecutionResult<StakedSoma> {
+        let encoder = self.encoders.find_encoder_with_pending_mut(address);
+
+        if let Some(encoder) = encoder {
+            if amount == 0 {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: "Stake amount cannot be 0!".to_string(),
+                });
+            }
+            // Found in active or pending validators
+            let staked_soma = encoder.request_add_stake_at_genesis(amount, signer, self.epoch);
+
+            // Update staking pool mappings
+            self.encoders
+                .staking_pool_mappings
+                .insert(staked_soma.pool_id, address);
+
+            Ok(staked_soma)
+        } else {
+            Err(ExecutionFailureStatus::EncoderNotFound)
+        }
+    }
+
     /// Request to withdraw stake
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma) -> ExecutionResult<u64> {
         let pool_id = staked_soma.pool_id;

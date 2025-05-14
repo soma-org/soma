@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use config::EncoderConfig;
 use encoder::{
     core::encoder_node::EncoderNodeHandle,
     error::{ShardError, ShardResult},
@@ -32,9 +31,10 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
-use swarm::{multiaddr_compat::to_network_multiaddr, EncoderSwarm, EncoderSwarmBuilder};
+use swarm::{EncoderSwarm, EncoderSwarmBuilder};
 use tonic::Request;
 use tracing::info;
+use types::{base::SomaAddress, config::encoder_config::EncoderConfig};
 use vdf::{
     class_group::{discriminant::DISCRIMINANT_3072, QuadraticForm},
     vdf::{wesolowski::DefaultVDF, VDF},
@@ -42,7 +42,6 @@ use vdf::{
 
 const NUM_ENCODERS: usize = 4;
 
-pub mod config;
 #[cfg(msim)]
 #[path = "./container-sim.rs"]
 mod container;
@@ -99,23 +98,16 @@ impl TestEncoderCluster {
         node.start().await.unwrap();
     }
 
+    // Spawn a new encoder node from a config
     pub async fn spawn_new_encoder(&mut self, config: EncoderConfig) -> EncoderNodeHandle {
-        // TODO: when spawning a new encoder, make sure that the config is updated to know of the current encoder committee
-        // let seed_peers = self
-        //     .swarm
-        //     .config()
-        //     .validator_configs
-        //     .iter()
-        //     .map(|config| SeedPeer {
-        //         peer_id: Some(PeerId(
-        //             config.network_key_pair().public().into_inner().0.to_bytes(),
-        //         )),
-        //         address: config.p2p_config.external_address.clone().unwrap(),
-        //     })
-        //     .collect();
-
         self.swarm.spawn_new_encoder(config).await
     }
+
+    // Get encoder address from config
+    pub fn get_address_from_config(config: &EncoderConfig) -> SomaAddress {
+        (&config.account_keypair.keypair().public()).into()
+    }
+
     // Get a preconfigured external client
     pub fn get_external_client(&self) -> EncoderExternalTonicClient {
         EncoderExternalTonicClient::new(
@@ -286,49 +278,25 @@ pub fn create_valid_test_token() -> ShardAuthToken {
 }
 
 pub struct TestEncoderClusterBuilder {
-    num_encoders: Option<usize>,
-    // genesis_config: Option<GenesisConfig>,
-    // network_config: Option<NetworkConfig>,
     encoders: Option<Vec<EncoderConfig>>,
-    client_keypair: Option<PeerKeyPair>, // Add this field
+    client_keypair: Option<PeerKeyPair>,
 }
 
 impl TestEncoderClusterBuilder {
     pub fn new() -> Self {
         TestEncoderClusterBuilder {
-            num_encoders: None,
-            // genesis_config: None,
-            // network_config: None,
             encoders: None,
             client_keypair: None,
         }
     }
 
-    pub fn with_num_encoders(mut self, num: usize) -> Self {
-        self.num_encoders = Some(num);
+    pub fn with_encoders(mut self, encoders: Vec<EncoderConfig>) -> Self {
+        self.encoders = Some(encoders);
         self
     }
 
     pub fn with_client_keypair(mut self, keypair: PeerKeyPair) -> Self {
         self.client_keypair = Some(keypair);
-        self
-    }
-
-    // pub fn set_genesis_config(mut self, genesis_config: GenesisConfig) -> Self {
-    //     assert!(self.genesis_config.is_none() && self.network_config.is_none());
-    //     self.genesis_config = Some(genesis_config);
-    //     self
-    // }
-
-    // pub fn set_network_config(mut self, network_config: NetworkConfig) -> Self {
-    //     assert!(self.genesis_config.is_none() && self.network_config.is_none());
-    //     self.network_config = Some(network_config);
-    //     self
-    // }
-
-    /// Provide encoder configs, overrides the `num_encoders` setting.
-    pub fn with_encoders(mut self, encoders: Vec<EncoderConfig>) -> Self {
-        self.encoders = Some(encoders);
         self
     }
 
@@ -339,14 +307,12 @@ impl TestEncoderClusterBuilder {
             PeerKeyPair::generate(&mut rng)
         });
 
-        let mut builder = EncoderSwarm::builder().with_client_keypair(client_keypair.clone());
+        let mut builder = EncoderSwarm::builder().with_client_key(client_keypair.public());
 
-        if let Some(encoders) = self.encoders.take() {
+        if let Some(encoders) = self.encoders {
             builder = builder.with_encoders(encoders);
         } else {
-            builder = builder.committee_size(
-                NonZeroUsize::new(self.num_encoders.unwrap_or(NUM_ENCODERS)).unwrap(),
-            );
+            panic!("Encoder configs must be provided when building TestEncoderCluster");
         }
 
         let mut swarm = builder.build();

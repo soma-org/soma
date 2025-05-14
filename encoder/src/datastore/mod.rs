@@ -63,7 +63,7 @@ impl RevealVoteCounts {
 }
 
 /// The store is a common interface for accessing encoder data
-pub(crate) trait Store: Send + Sync + 'static {
+pub trait Store: Send + Sync + 'static {
     /// lock_signed_commit must return an error if a different commit
     /// already exists. Return ok if the same commit digest exists.
     ///

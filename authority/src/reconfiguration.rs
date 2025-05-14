@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::info;
 
 use crate::epoch_store::AuthorityPerEpochStore;
 

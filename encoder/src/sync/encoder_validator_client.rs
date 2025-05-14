@@ -154,8 +154,7 @@ impl EncoderValidatorClient {
         Ok(Committee::new(epoch, voting_rights, authorities))
     }
 
-    fn convert_encoder_committee(
-        &self,
+    pub fn convert_encoder_committee(
         committee: &EncoderCommittee,
         epoch: EpochId,
     ) -> Result<ShardCommittee> {
@@ -197,7 +196,7 @@ impl EncoderValidatorClient {
         ))
     }
 
-    fn convert_to_authority_committee(&self, committee: &Committee) -> AuthorityCommittee {
+    pub fn convert_to_authority_committee(committee: &Committee) -> AuthorityCommittee {
         // Extract authorities from the Committee
         let authorities = committee
             .authorities()
@@ -220,12 +219,12 @@ impl EncoderValidatorClient {
         epoch: EpochId,
     ) -> Result<(Committee, ShardCommittee)> {
         let validator_committee = self.validator_set_to_committee(validator_set, epoch)?;
-        let encoder_committee = self.convert_encoder_committee(blockchain_committee, epoch)?;
+        let encoder_committee =
+            EncoderValidatorClient::convert_encoder_committee(blockchain_committee, epoch)?;
         Ok((validator_committee, encoder_committee))
     }
 
-    fn extract_network_info(
-        &self,
+    pub fn extract_network_info(
         encoder_committee: &types::committee::EncoderCommittee,
         previous_encoder_committee: Option<&types::committee::EncoderCommittee>,
     ) -> (
@@ -400,8 +399,10 @@ impl EncoderValidatorClient {
 
         let validator_committee =
             self.validator_set_to_committee(&validator_set, committee_data.epoch)?;
-        let encoder_committee =
-            self.convert_encoder_committee(&encoder_committee, committee_data.epoch)?;
+        let encoder_committee = EncoderValidatorClient::convert_encoder_committee(
+            &encoder_committee,
+            committee_data.epoch,
+        )?;
 
         Ok((validator_committee, encoder_committee))
     }
@@ -416,7 +417,8 @@ impl EncoderValidatorClient {
         previous_committee_data: Option<&EpochCommittee>,
     ) -> Result<EnrichedVerifiedCommittees> {
         // Create authority committee
-        let authority_committee = self.convert_to_authority_committee(&validator_committee);
+        let authority_committee =
+            EncoderValidatorClient::convert_to_authority_committee(&validator_committee);
 
         // Extract timestamp
         let epoch_start_timestamp_ms = committee_data.next_epoch_start_timestamp_ms;
@@ -440,10 +442,11 @@ impl EncoderValidatorClient {
         };
 
         // Extract network info
-        let (networking_info, connections_info, object_servers) = self.extract_network_info(
-            &blockchain_committee,
-            previous_blockchain_committee.as_ref(),
-        );
+        let (networking_info, connections_info, object_servers) =
+            EncoderValidatorClient::extract_network_info(
+                &blockchain_committee,
+                previous_blockchain_committee.as_ref(),
+            );
 
         Ok(EnrichedVerifiedCommittees {
             validator_committee,
@@ -471,8 +474,9 @@ impl EncoderValidatorClient {
                     anyhow!("No encoder committee for epoch {}", self.current_epoch)
                 })?,
                 previous_encoder_committee: self.previous_encoder_committee.clone(),
-                authority_committee: self
-                    .convert_to_authority_committee(&self.current_validator_committee),
+                authority_committee: EncoderValidatorClient::convert_to_authority_committee(
+                    &self.current_validator_committee,
+                ),
                 networking_info: BTreeMap::new(),
                 connections_info: BTreeMap::new(),
                 object_servers: HashMap::new(),

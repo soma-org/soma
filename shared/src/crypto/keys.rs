@@ -15,7 +15,8 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PeerPublicKey(ed25519::Ed25519PublicKey);
 pub struct PeerPrivateKey(ed25519::Ed25519PrivateKey);
-#[derive(Debug)]
+
+#[derive(Serialize, Debug, Deserialize)]
 pub struct PeerKeyPair(ed25519::Ed25519KeyPair);
 
 impl PeerPublicKey {
@@ -251,7 +252,7 @@ impl AuthorityAggregateSignature {
 pub struct EncoderPublicKey(bls12381::min_sig::BLS12381PublicKey);
 
 /// A BLS keypair wrapper for encoding operations
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncoderKeyPair(bls12381::min_sig::BLS12381KeyPair);
 
 /// A BLS signature wrapper for encoding operations

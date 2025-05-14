@@ -7,7 +7,7 @@ use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use shared::crypto::keys::EncoderPublicKey;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     base::SomaAddress,
@@ -402,6 +402,11 @@ impl EncoderSet {
         // Add the staking pool mapping
         let new_pool_id = encoder.staking_pool.id;
         self.staking_pool_mappings.insert(new_pool_id, address);
+
+        info!(
+            "ADDED PENDING ACTIVE ENCODER: {:?}",
+            encoder.metadata.net_address
+        );
 
         // Add to pending encoders
         self.pending_active_encoders.push(encoder);
@@ -1022,11 +1027,19 @@ impl EncoderSet {
             if voting_power >= ENCODER_MIN_POWER {
                 // Activate encoder's staking pool
                 encoder.activate(new_epoch);
+                info!(
+                    "Encoder activated!: {:?}, {}",
+                    encoder.metadata.net_address, voting_power
+                );
 
                 // Move to active encoders
                 let encoder = self.pending_active_encoders.remove(i);
                 self.active_encoders.push(encoder);
             } else {
+                warn!(
+                    "VOTING POWER NOT ENOUGH: {:?}, {}, {}",
+                    encoder.metadata.net_address, voting_power, ENCODER_MIN_POWER
+                );
                 // Keep in pending and check the next one
                 i += 1;
             }

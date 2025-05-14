@@ -1,6 +1,7 @@
-use std::{future::Future, path::Path, sync::Arc};
+use std::{collections::BTreeSet, future::Future, path::Path, sync::Arc};
 
-use model::client::MockModelClient;
+use fastcrypto::traits::KeyPair;
+use model::client::{self, MockModelClient};
 use objects::{
     networking::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -13,7 +14,7 @@ use probe::messaging::tonic::{ProbeTonicClient, ProbeTonicManager};
 use probe::messaging::ProbeManager;
 use shared::{
     authority_committee::AuthorityCommittee,
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair},
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
     entropy::EntropyVDF,
     probe::ProbeMetadata,
 };
@@ -21,7 +22,9 @@ use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use tokio::sync::{Mutex, Semaphore};
 use tracing::{error, info, warn};
-use types::committee::Committee;
+use types::{
+    committee::Committee, config::encoder_config::EncoderConfig, system_state::SystemStateTrait,
+};
 
 use crate::{
     actors::{
@@ -104,6 +107,7 @@ use simulator::SimState;
 // }
 
 pub struct EncoderNode {
+    config: EncoderConfig,
     internal_network_manager: EncoderInternalTonicManager,
     external_network_manager: EncoderExternalTonicManager,
     object_network_manager: ObjectHttpManager,
@@ -118,29 +122,33 @@ pub struct EncoderNode {
 }
 
 impl EncoderNode {
-    pub async fn start(
-        encoder_keypair: EncoderKeyPair,
-        parameters: Arc<Parameters>,
-        object_parameters: Arc<objects::parameters::Parameters>,
-        probe_parameters: Arc<probe::parameters::Parameters>,
-        peer_keypair: PeerKeyPair,
-        internal_address: Multiaddr,
-        external_address: Multiaddr,
-        object_address: Multiaddr,
-        probe_address: Multiaddr,
-        project_root: &Path,
-        entry_point: &Path,
-        validator_rpc_address: types::multiaddr::Multiaddr,
-        genesis_committee: Committee,
-        epoch_duration_ms: u64,
-    ) -> Self {
-        let networking_info = NetworkingInfo::default();
-        let connections_info = ConnectionsInfo::default();
-        let allower = AllowPublicKeys::default();
+    pub async fn start(config: EncoderConfig, client_key: Option<PeerPublicKey>) -> Self {
+        let encoder_keypair = config.encoder_keypair.encoder_keypair().clone();
+        let peer_keypair = PeerKeyPair::new(config.peer_keypair.keypair().inner().copy());
+        let parameters = Arc::new(Parameters::default());
+        let internal_address: Multiaddr = config
+            .internal_network_address
+            .to_string()
+            .parse()
+            .expect("Valid multiaddr");
+        let external_address: Multiaddr = config
+            .external_network_address
+            .to_string()
+            .parse()
+            .expect("Valid multiaddr");
+        let object_address: Multiaddr = config
+            .object_address
+            .to_string()
+            .parse()
+            .expect("Valid multiaddr");
+        let probe_address: Multiaddr = config
+            .probe_address
+            .to_string()
+            .parse()
+            .expect("Valid multiaddr");
 
-        // Create minimal default context with empty committees
-        // This creates a Context with epoch 0 and minimal valid structures
-        let context = Self::create_default_context(encoder_keypair.public());
+        let (context, networking_info, connections_info, allower) =
+            create_context_from_genesis(&config, encoder_keypair.public(), client_key.clone());
 
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),
@@ -166,12 +174,13 @@ impl EncoderNode {
         let object_network_service: ObjectNetworkService<MemoryObjectStore> =
             ObjectNetworkService::new(object_storage.clone());
 
-        let mut object_network_manager = <ObjectHttpManager as ObjectNetworkManager<
-            MemoryObjectStore,
-        >>::new(
-            peer_keypair.clone(), object_parameters, allower.clone()
-        )
-        .unwrap();
+        let mut object_network_manager =
+            <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::new(
+                peer_keypair.clone(),
+                config.object_parameters.clone(),
+                allower.clone(),
+            )
+            .unwrap();
 
         object_network_manager
             .start(&object_address, object_network_service)
@@ -183,13 +192,13 @@ impl EncoderNode {
 
         ///////////////////////////
         let mut probe_network_manager =
-            ProbeTonicManager::new(probe_parameters.clone(), probe_address.clone());
+            ProbeTonicManager::new(config.probe_parameters.clone(), probe_address.clone());
 
         let probe_service = Arc::new(MockProbeService::new());
         probe_network_manager.start(probe_service).await;
 
         let probe_client = Arc::new(
-            ProbeTonicClient::new(probe_address.clone(), probe_parameters.clone())
+            ProbeTonicClient::new(probe_address.clone(), config.probe_parameters.clone())
                 .await
                 .unwrap(),
         );
@@ -367,19 +376,23 @@ impl EncoderNode {
 
         info!(
             "Creating validator client connecting to {}",
-            validator_rpc_address
+            config.validator_rpc_address
         );
-        let validator_client =
-            match EncoderValidatorClient::new(&validator_rpc_address, genesis_committee).await {
-                Ok(client) => {
-                    info!("Successfully connected to validator node for committee updates");
-                    Arc::new(Mutex::new(client))
-                }
-                Err(e) => {
-                    error!("Failed to create validator client: {}", e);
-                    panic!("Validator client initialization failed: {}", e);
-                }
-            };
+        let validator_client = match EncoderValidatorClient::new(
+            &config.validator_rpc_address,
+            config.genesis.committee().unwrap(),
+        )
+        .await
+        {
+            Ok(client) => {
+                info!("Successfully connected to validator node for committee updates");
+                Arc::new(Mutex::new(client))
+            }
+            Err(e) => {
+                error!("Failed to create validator client: {}", e);
+                panic!("Validator client initialization failed: {}", e);
+            }
+        };
 
         // Initialize and start the committee sync manager
         let committee_sync_manager = CommitteeSyncManager::new(
@@ -388,13 +401,16 @@ impl EncoderNode {
             networking_info.clone(),
             connections_info.clone(),
             allower.clone(),
-            epoch_duration_ms,
+            config.genesis.system_object().epoch_start_timestamp_ms(),
+            config.epoch_duration_ms,
             encoder_keypair.public(),
+            client_key.clone(),
         );
 
         let committee_sync_manager = committee_sync_manager.start().await;
 
         Self {
+            config,
             internal_network_manager,
             external_network_manager,
             object_network_manager,
@@ -406,50 +422,6 @@ impl EncoderNode {
             #[cfg(msim)]
             sim_state: Default::default(),
         }
-    }
-
-    // TODO: make this more robust
-    fn create_default_context(own_encoder_key: EncoderPublicKey) -> Context {
-        // Create minimal valid committees with just our own encoder
-        let (authority_committee, _) = AuthorityCommittee::local_test_committee(
-            0,       // Genesis epoch
-            vec![1], // Minimal valid stake
-        );
-
-        // Create minimal encoder committee with just ourselves
-        let test_probe = ProbeMetadata::new_for_test(&[0u8; 32]);
-        let encoder = Encoder {
-            voting_power: 10000, // Total voting power
-            encoder_key: own_encoder_key.clone(),
-            probe: test_probe,
-        };
-
-        // Create encoder committee with minimal valid configuration
-        let encoder_committee = EncoderCommittee::new(
-            0, // Genesis epoch
-            1, // Minimal shard size
-            1, // Minimal quorum threshold
-            vec![encoder],
-        );
-
-        // Create committees with our encoder as index 0
-        let committees = Committees::new(
-            0, // Genesis epoch
-            authority_committee,
-            encoder_committee,
-            1, // Minimal valid VDF iterations
-        );
-
-        // Create inner context with current and previous committees the same
-        let inner_context = InnerContext::new(
-            [committees.clone(), committees], // Same committee for current and previous
-            0,                                // Genesis epoch
-            own_encoder_key,
-            std::collections::HashMap::new(), // Empty object servers map
-        );
-
-        // Create and return the context
-        Context::new(inner_context)
     }
 
     pub(crate) async fn stop(mut self) {
@@ -482,6 +454,112 @@ impl EncoderNode {
 
         // TODO: self.object_network_manager.stop().await;
     }
+
+    pub fn get_config(&self) -> &EncoderConfig {
+        &self.config
+    }
+
+    pub fn get_store_for_testing(&self) -> Arc<dyn Store> {
+        self.store.clone()
+    }
+}
+
+fn create_context_from_genesis(
+    config: &EncoderConfig,
+    own_encoder_key: EncoderPublicKey,
+    client_key: Option<PeerPublicKey>,
+) -> (Context, NetworkingInfo, ConnectionsInfo, AllowPublicKeys) {
+    let networking_info = NetworkingInfo::default();
+    let connections_info = ConnectionsInfo::default();
+    let allower = AllowPublicKeys::default();
+
+    // Extract validator committee from genesis
+    let validator_committee = match config.genesis.committee() {
+        Ok(committee) => committee,
+        Err(e) => {
+            warn!("Failed to extract committee from genesis: {}", e);
+            panic!("Failed to extract committee from genesis: {}", e);
+        }
+    };
+
+    // Convert validator committee to AuthorityCommittee
+    let authority_committee =
+        EncoderValidatorClient::convert_to_authority_committee(&validator_committee);
+
+    // Convert EncoderCommittee from genesis to our internal ShardCommittee format
+    let genesis_encoder_committee = match EncoderValidatorClient::convert_encoder_committee(
+        &config.genesis.encoder_committee(),
+        0,
+    ) {
+        Ok(committee) => committee,
+        Err(e) => {
+            warn!("Failed to convert encoder committee from genesis: {}", e);
+            panic!("Failed to convert encoder committee from genesis: {}", e);
+        }
+    };
+
+    // Extract peer keys and network addresses for network info
+    let (initial_networking_info, initial_connections_info, object_servers) =
+        EncoderValidatorClient::extract_network_info(&config.genesis.encoder_committee(), None);
+
+    // Create committees struct with proper genesis parameters
+    let committees = Committees::new(
+        0, // Genesis epoch
+        authority_committee,
+        genesis_encoder_committee,
+        1, // TODO: Default VDF iterations, adjust as needed
+    );
+
+    // Create inner context with our committees
+    let inner_context = InnerContext::new(
+        [committees.clone(), committees], // Same committee for current and previous in genesis
+        0,                                // Genesis epoch
+        own_encoder_key,
+        object_servers, // Initialize with object servers from genesis
+    );
+
+    // Update the NetworkingInfo
+    if !initial_networking_info.is_empty() {
+        info!(
+            "Initializing networking info with {} entries from genesis",
+            initial_networking_info.len()
+        );
+        networking_info.update(initial_networking_info);
+    }
+
+    // Update the ConnectionsInfo
+    if !initial_connections_info.is_empty() {
+        info!(
+            "Initializing connections info with {} entries from genesis",
+            initial_connections_info.len()
+        );
+        connections_info.update(initial_connections_info.clone());
+    }
+
+    // Update allowed public keys
+    let mut allowed_keys = BTreeSet::new();
+    for peer_key in initial_connections_info.keys() {
+        allowed_keys.insert(peer_key.clone().into_inner());
+    }
+    // TODO: This is temporary for tests
+    if let Some(client) = client_key {
+        allowed_keys.insert(client.into_inner());
+    }
+    if !allowed_keys.is_empty() {
+        info!(
+            "Initializing allowed public keys with {} entries from genesis",
+            allowed_keys.len()
+        );
+        allower.update(allowed_keys);
+    }
+
+    // Create and return the context
+    (
+        Context::new(inner_context),
+        networking_info,
+        connections_info,
+        allower,
+    )
 }
 
 /// Wrap EncoderNode to allow correct access to EncoderNode in simulator tests.
@@ -505,10 +583,6 @@ impl EncoderNodeHandle {
     pub fn with<T>(&self, cb: impl FnOnce(&EncoderNode) -> T) -> T {
         let _guard = self.guard();
         cb(self.inner())
-    }
-
-    pub fn store(&self) -> Arc<dyn Store> {
-        self.with(|soma_node| soma_node.store.clone())
     }
 
     pub fn object_storage(&self) -> Arc<MemoryObjectStore> {

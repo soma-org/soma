@@ -93,7 +93,7 @@ impl EncoderCommittee {
         &self.encoders[encoder_index]
     }
 
-    pub(crate) fn encoder_by_key(&self, encoder: &EncoderPublicKey) -> Option<&Encoder> {
+    pub fn encoder_by_key(&self, encoder: &EncoderPublicKey) -> Option<&Encoder> {
         self.encoders.iter().find(|e| &e.encoder_key == encoder)
     }
     /// returns all the encoders
@@ -211,7 +211,7 @@ impl EncoderCommittee {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Encoder {
+pub struct Encoder {
     pub voting_power: VotingPowerUnit,
     pub encoder_key: EncoderPublicKey,
     pub probe: ProbeMetadata,
