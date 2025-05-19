@@ -119,6 +119,9 @@ pub enum TransactionKind {
     SetEncoderCommissionRate {
         new_rate: u64,
     },
+    SetEncoderBytePrice {
+        new_price: u64,
+    },
     // Coin and object transactions
     TransferCoin {
         coin: ObjectRef,
@@ -263,6 +266,7 @@ impl TransactionKind {
                 | TransactionKind::UndoReportEncoder { .. }
                 | TransactionKind::SetEncoderCommissionRate { .. }
                 | TransactionKind::UpdateEncoderMetadata(_)
+                | TransactionKind::SetEncoderBytePrice { .. }
         )
     }
 

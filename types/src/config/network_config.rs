@@ -342,6 +342,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         e.object_address.clone(),
                         0,
                         e.commission_rate,
+                        e.byte_price,
                         ObjectID::random(),
                     )
                 })

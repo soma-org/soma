@@ -247,6 +247,7 @@ pub struct EncoderGenesisConfig {
     pub probe_address: Multiaddr,
     pub stake: u64,
     pub commission_rate: u64,
+    pub byte_price: u64,
 }
 
 // 2. Create a builder for EncoderGenesisConfig
@@ -340,12 +341,14 @@ impl EncoderGenesisConfigBuilder {
             probe_address,
             stake,
             commission_rate: DEFAULT_ENCODER_COMMISSION_RATE,
+            byte_price: DEFAULT_ENCODER_BYTE_PRICE,
         }
     }
 }
 
 // 3. Add default constants for encoders
 const DEFAULT_ENCODER_COMMISSION_RATE: u64 = 200;
+const DEFAULT_ENCODER_BYTE_PRICE: u64 = 1000;
 
 fn default_encoder_stake() -> u64 {
     20_000_000_000_000_000 // Same as validator default stake

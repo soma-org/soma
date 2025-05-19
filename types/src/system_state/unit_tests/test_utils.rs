@@ -372,6 +372,7 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
         object_server_address,
         0, // Initial voting power is 0, will be set later
         0,
+        1_000,
         ObjectID::random(),
     );
 

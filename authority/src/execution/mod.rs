@@ -258,6 +258,7 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::ReportEncoder { .. }
         | TransactionKind::UndoReportEncoder { .. }
         | TransactionKind::SetEncoderCommissionRate { .. }
+        | TransactionKind::SetEncoderBytePrice { .. }
         | TransactionKind::UpdateEncoderMetadata(_) => Box::new(EncoderExecutor::new()),
 
         // System transactions

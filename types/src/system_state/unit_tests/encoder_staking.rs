@@ -15,7 +15,7 @@ mod encoder_staking_tests {
                 stake_with, stake_with_encoder, total_soma_balance, unstake,
                 validator_stake_amount,
             },
-            SystemParameters, SystemState,
+            SystemParameters, SystemState, SystemStateTrait,
         },
         transaction::UpdateEncoderMetadataArgs,
     };
@@ -333,5 +333,192 @@ mod encoder_staking_tests {
 
         // Validator stake return should include rewards
         assert!(withdrawn_validator > 50 * SHANNONS_PER_SOMA);
+    }
+
+    #[test]
+    fn test_encoder_reference_byte_price_derivation() {
+        use crate::{
+            base::dbg_addr,
+            config::genesis_config::SHANNONS_PER_SOMA,
+            system_state::{
+                encoder::Encoder,
+                test_utils::{
+                    add_encoder, advance_epoch_with_rewards, create_encoder_for_testing,
+                    create_test_system_state, create_validator_for_testing, encoder_stake_amount,
+                    set_up_system_state, stake_with, stake_with_encoder, validator_stake_amount,
+                },
+            },
+        };
+
+        // Create constant addresses for testing
+        let validator_addr_1 = dbg_addr(1);
+        let validator_addr_2 = dbg_addr(2);
+        let encoder_addr_1 = dbg_addr(10);
+        let encoder_addr_2 = dbg_addr(11);
+        let encoder_addr_3 = dbg_addr(12);
+        let encoder_addr_4 = dbg_addr(13);
+        let encoder_addr_5 = dbg_addr(14);
+        let staker_addr = dbg_addr(20);
+
+        // Create validators for the system
+        let validators = vec![
+            create_validator_for_testing(validator_addr_1, 100 * SHANNONS_PER_SOMA),
+            create_validator_for_testing(validator_addr_2, 150 * SHANNONS_PER_SOMA),
+        ];
+
+        // Create encoders with different stakes and byte prices
+        let mut encoders = vec![
+            create_encoder_for_testing(encoder_addr_1, 1 * SHANNONS_PER_SOMA), // 1 SOMA stake
+        ];
+
+        // Set encoder byte prices
+        // The first encoder gets 45 as byte price
+        encoders[0].byte_price = 45;
+        encoders[0].next_epoch_byte_price = 45;
+
+        // Initialize system state with validators and the first encoder
+        let mut system_state = create_test_system_state(
+            validators, encoders, 1000, // Supply amount
+            10,   // Stake subsidy initial amount
+            10,   // Subsidy period
+            500,  // Subsidy decrease rate
+        );
+
+        // Verify validators were properly initialized
+        assert_eq!(
+            validator_stake_amount(&system_state, validator_addr_1).unwrap(),
+            100 * SHANNONS_PER_SOMA
+        );
+        assert_eq!(
+            validator_stake_amount(&system_state, validator_addr_2).unwrap(),
+            150 * SHANNONS_PER_SOMA
+        );
+
+        // Verify initial reference byte price (only one encoder)
+        assert_eq!(system_state.encoders.reference_byte_price, 45);
+
+        // Add some stake to the first encoder from a staker
+        let staked_soma = stake_with_encoder(&mut system_state, staker_addr, encoder_addr_1, 4);
+
+        // Advance epoch to activate stake
+        advance_epoch_with_rewards(&mut system_state, 10 * SHANNONS_PER_SOMA).unwrap();
+
+        // Verify the stake was added to the encoder
+        assert_eq!(
+            encoder_stake_amount(&system_state, encoder_addr_1).unwrap(),
+            5 * SHANNONS_PER_SOMA // Original 1 + staked 4
+        );
+
+        // Create more encoders with different byte prices
+        let mut encoder2 = create_encoder_for_testing(encoder_addr_2, 2 * SHANNONS_PER_SOMA);
+        encoder2.byte_price = 42;
+        encoder2.next_epoch_byte_price = 42;
+
+        let mut encoder3 = create_encoder_for_testing(encoder_addr_3, 3 * SHANNONS_PER_SOMA);
+        encoder3.byte_price = 40;
+        encoder3.next_epoch_byte_price = 40;
+
+        let mut encoder4 = create_encoder_for_testing(encoder_addr_4, 4 * SHANNONS_PER_SOMA);
+        encoder4.byte_price = 41;
+        encoder4.next_epoch_byte_price = 41;
+
+        let mut encoder5 = create_encoder_for_testing(encoder_addr_5, 10 * SHANNONS_PER_SOMA);
+        encoder5.byte_price = 43;
+        encoder5.next_epoch_byte_price = 43;
+
+        // Add the second encoder and advance epoch to activate it
+        system_state
+            .encoders
+            .request_add_encoder(encoder2)
+            .expect("Failed to add encoder 2");
+        advance_epoch_with_rewards(&mut system_state, 10 * SHANNONS_PER_SOMA).unwrap();
+
+        // Verify reference byte price with 2 encoders
+        // Encoder 1: 5 stake, 45 price
+        // Encoder 2: 2 stake, 42 price
+        // Total stake: 7
+        // 2/3 threshold is ~5 stake
+        // So reference price should be 45 (as encoder 1 has exactly 5 stake = threshold)
+        assert_eq!(system_state.encoders.reference_byte_price, 45);
+
+        // Add the third encoder and advance epoch
+        system_state
+            .encoders
+            .request_add_encoder(encoder3)
+            .expect("Failed to add encoder 3");
+        advance_epoch_with_rewards(&mut system_state, 10 * SHANNONS_PER_SOMA).unwrap();
+
+        // Verify reference byte price with 3 encoders
+        // Encoder 1: 5 stake, 45 price
+        // Encoder 2: 2 stake, 42 price
+        // Encoder 3: 3 stake, 40 price
+        // Total stake: 10
+        // 2/3 threshold is ~7 stake
+        // So reference price should be 42 (as encoder 1 + 2 have 7 stake = threshold)
+        assert_eq!(system_state.encoders.reference_byte_price, 42);
+
+        // Add the fourth encoder and advance epoch
+        system_state
+            .encoders
+            .request_add_encoder(encoder4)
+            .expect("Failed to add encoder 4");
+        advance_epoch_with_rewards(&mut system_state, 10 * SHANNONS_PER_SOMA).unwrap();
+
+        // Verify reference byte price with 4 encoders
+        // Encoder 1: 5 stake, 45 price
+        // Encoder 2: 2 stake, 42 price
+        // Encoder 3: 3 stake, 40 price
+        // Encoder 4: 4 stake, 41 price
+        // Total stake: 14
+        // 2/3 threshold is ~10 stake (9.33...)
+        // So reference price should be 41 (as encoder 1 + 4 have 9 stake < threshold,
+        // but encoder 1 + 4 + 2 have 11 stake > threshold)
+        assert_eq!(system_state.encoders.reference_byte_price, 41);
+
+        // Add the fifth encoder and advance epoch
+        system_state
+            .encoders
+            .request_add_encoder(encoder5)
+            .expect("Failed to add encoder 5");
+        advance_epoch_with_rewards(&mut system_state, 10 * SHANNONS_PER_SOMA).unwrap();
+
+        // Verify reference byte price with 5 encoders
+        // Encoder 1: 5 stake, 45 price
+        // Encoder 2: 2 stake, 42 price
+        // Encoder 3: 3 stake, 40 price
+        // Encoder 4: 4 stake, 41 price
+        // Encoder 5: 10 stake, 43 price
+        // Total stake: 24
+        // 2/3 threshold is 16 stake
+        // So reference price should be 43 (as encoder 5 + 1 have 15 stake < threshold,
+        // but encoder 5 + 1 + 4 have 19 stake > threshold)
+        assert_eq!(system_state.encoders.reference_byte_price, 43);
+
+        // Test setting a byte price through a transaction
+        // Update validator 1's byte price to 50
+        system_state
+            .request_set_encoder_byte_price(encoder_addr_1, 50)
+            .expect("Failed to set byte price");
+
+        // Check that next_epoch_byte_price is updated but current byte_price remains the same
+        let encoder1 = system_state.encoders.find_encoder(encoder_addr_1).unwrap();
+        assert_eq!(encoder1.byte_price, 45);
+        assert_eq!(encoder1.next_epoch_byte_price, 50);
+
+        // Advance epoch to apply the new byte price
+        advance_epoch_with_rewards(&mut system_state, 10 * SHANNONS_PER_SOMA).unwrap();
+
+        // Verify that the byte price is updated
+        let encoder1 = system_state.encoders.find_encoder(encoder_addr_1).unwrap();
+        assert_eq!(encoder1.byte_price, 50);
+
+        // Reference price should still be 43 since voting power distribution hasn't changed
+        // significantly enough to affect the threshold calculation
+        assert_eq!(system_state.encoders.reference_byte_price, 43);
+
+        // Test the integration with epoch_start_state
+        // The reference byte price should be available via EpochStartSystemState
+        let epoch_start_state = system_state.into_epoch_start_state();
+        assert_eq!(epoch_start_state.reference_byte_price, 43);
     }
 }

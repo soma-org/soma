@@ -41,6 +41,8 @@ pub struct EpochStartSystemState {
 
     /// The active validators at the start of the epoch
     pub active_validators: Vec<EpochStartValidatorInfo>,
+
+    pub reference_byte_price: u64,
 }
 
 impl EpochStartSystemState {
@@ -63,12 +65,14 @@ impl EpochStartSystemState {
         epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
         active_validators: Vec<EpochStartValidatorInfo>,
+        reference_byte_price: u64,
     ) -> Self {
         Self {
             epoch,
             epoch_start_timestamp_ms,
             epoch_duration_ms,
             active_validators,
+            reference_byte_price,
         }
     }
 
@@ -100,6 +104,7 @@ impl EpochStartSystemState {
             epoch_start_timestamp_ms: 0,
             epoch_duration_ms: 1000,
             active_validators: vec![],
+            reference_byte_price: 0,
         }
     }
 }
@@ -115,6 +120,10 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
 
     fn epoch_duration_ms(&self) -> u64 {
         self.epoch_duration_ms
+    }
+
+    fn reference_byte_price(&self) -> u64 {
+        self.reference_byte_price
     }
 
     fn get_validator_addresses(&self) -> Vec<SomaAddress> {
@@ -242,6 +251,9 @@ pub trait EpochStartSystemStateTrait {
 
     /// Get a mapping from authority names to hostnames
     fn get_authority_names_to_hostnames(&self) -> HashMap<AuthorityName, String>;
+
+    /// Get the reference byte price for the epoch
+    fn reference_byte_price(&self) -> u64;
 }
 
 /// # EpochStartValidatorInfo

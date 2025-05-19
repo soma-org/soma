@@ -1,5 +1,6 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    cmp::Reverse,
+    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -90,6 +91,10 @@ pub struct Encoder {
     pub next_epoch_stake: u64,
 
     pub next_epoch_commission_rate: u64,
+
+    pub byte_price: u64,
+
+    pub next_epoch_byte_price: u64,
 }
 
 impl Encoder {
@@ -115,6 +120,7 @@ impl Encoder {
         object_server_address: Multiaddr,
         voting_power: u64,
         commission_rate: u64,
+        byte_price: u64,
         staking_pool_id: ObjectID,
     ) -> Self {
         Self {
@@ -133,6 +139,8 @@ impl Encoder {
             next_epoch_stake: 0,
             next_epoch_commission_rate: commission_rate,
             staking_pool: StakingPool::new(staking_pool_id),
+            byte_price,
+            next_epoch_byte_price: byte_price,
         }
     }
 
@@ -218,6 +226,21 @@ impl Encoder {
         Ok(())
     }
 
+    pub fn request_set_byte_price(&mut self, new_price: u64) -> Result<(), String> {
+        const MIN_BYTE_PRICE: u64 = 1;
+        const MAX_BYTE_PRICE: u64 = 1_000_000; // TODO: Set appropriate max
+
+        if new_price < MIN_BYTE_PRICE || new_price > MAX_BYTE_PRICE {
+            return Err(format!(
+                "Byte price must be between {} and {}",
+                MIN_BYTE_PRICE, MAX_BYTE_PRICE
+            ));
+        }
+
+        self.next_epoch_byte_price = new_price;
+        Ok(())
+    }
+
     /// Activate this encoder and its staking pool
     pub fn activate(&mut self, activation_epoch: u64) {
         // Add initial exchange rate to staking pool
@@ -249,8 +272,9 @@ impl Encoder {
         self.staking_pool.deactivation_epoch = Some(deactivation_epoch);
     }
 
-    fn adjust_commission_rate(&mut self) {
+    fn adjust_commission_rate_and_byte_price(&mut self) {
         self.commission_rate = self.next_epoch_commission_rate;
+        self.byte_price = self.next_epoch_byte_price;
     }
 
     pub fn stage_next_epoch_metadata(
@@ -348,6 +372,8 @@ pub struct EncoderSet {
     pub inactive_encoders: BTreeMap<ObjectID, Encoder>,
 
     pub at_risk_encoders: BTreeMap<SomaAddress, u64>,
+
+    pub reference_byte_price: u64,
 }
 
 impl EncoderSet {
@@ -382,12 +408,66 @@ impl EncoderSet {
             staking_pool_mappings,
             inactive_encoders: BTreeMap::new(),
             at_risk_encoders: BTreeMap::new(),
+            reference_byte_price: 1,
         };
 
-        // Set initial voting power
+        // Set initial voting power and reference byte price
         encoder_set.set_voting_power();
 
+        encoder_set.calculate_reference_byte_price();
+
         encoder_set
+    }
+
+    /// Calculate the reference byte price using a weighted approach based on voting power
+    /// The reference byte price is the price at which ≥2/3 of the voting power agrees
+    /// (i.e., the price is greater than or equal to what 2/3 of validators want, weighted by stake)
+    fn calculate_reference_byte_price(&mut self) {
+        if self.active_encoders.is_empty() {
+            self.reference_byte_price = 1; // Default if no encoders
+            return;
+        }
+
+        // Get total voting power
+        let total_voting_power: u64 = self
+            .active_encoders
+            .iter()
+            .map(|encoder| encoder.voting_power)
+            .sum();
+
+        if total_voting_power == 0 {
+            self.reference_byte_price = 1; // Default if no voting power
+            return;
+        }
+
+        // Calculate the quorum threshold (2/3 of total voting power)
+        // This is the amount of voting power needed to reach consensus
+        let quorum_threshold = (total_voting_power * 2 + 2) / 3; // Ceiling division for 2/3
+
+        // Create entries sorted by byte price (descending)
+        let mut entries: Vec<_> = self
+            .active_encoders
+            .iter()
+            .map(|encoder| (encoder.byte_price, encoder.voting_power))
+            .collect();
+
+        // Sort by byte price in descending order
+        entries.sort_by(|a, b| b.0.cmp(&a.0));
+
+        // Find the highest price where accumulated voting power >= quorum threshold
+        let mut accumulated_power = 0;
+        let mut result = 1; // Default to minimum byte price
+
+        for (byte_price, voting_power) in entries {
+            accumulated_power += voting_power;
+            // The moment we reach the threshold, we have our price
+            if accumulated_power >= quorum_threshold {
+                result = byte_price;
+                break;
+            }
+        }
+
+        self.reference_byte_price = result;
     }
 
     /// Request to add an encoder (either new or previously removed)
@@ -513,6 +593,9 @@ impl EncoderSet {
 
         // Finally readjust voting power after all encoder changes
         self.set_voting_power();
+
+        // Recalculate reference byte price for the new epoch
+        self.calculate_reference_byte_price();
 
         return encoder_rewards;
     }
@@ -756,7 +839,7 @@ impl EncoderSet {
     fn adjust_commission_rates(&mut self) {
         self.active_encoders
             .iter_mut()
-            .for_each(|encoder| encoder.adjust_commission_rate());
+            .for_each(|encoder| encoder.adjust_commission_rate_and_byte_price());
     }
 
     /// Update encoder voting power based on stake

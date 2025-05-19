@@ -726,6 +726,10 @@ impl AuthorityPerEpochStore {
         self.committee.epoch
     }
 
+    pub fn reference_byte_price(&self) -> u64 {
+        self.epoch_start_state().reference_byte_price()
+    }
+
     pub fn get_state_hash_for_commit(
         &self,
         commit: &CommitIndex,

@@ -578,8 +578,9 @@ impl SystemState {
             ),
             Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&object_server_address).unwrap()).unwrap(),
-            0,  // Initial voting power
-            10, // Default commission rate (0.1%)
+            0,     // Initial voting power
+            10,    // Default commission rate (0.1%)
+            1_000, // TODO: Default Shannons per byte
             staking_pool_id,
         );
 
@@ -744,6 +745,25 @@ impl SystemState {
         // Set commission rate
         encoder
             .request_set_commission_rate(new_rate)
+            .map_err(|e| ExecutionFailureStatus::SomaError(SomaError::from(e)))?;
+
+        Ok(())
+    }
+
+    pub fn request_set_encoder_byte_price(
+        &mut self,
+        signer: SomaAddress,
+        new_price: u64,
+    ) -> Result<(), ExecutionFailureStatus> {
+        // Find encoder by address
+        let encoder = self
+            .encoders
+            .find_encoder_mut(signer)
+            .ok_or(ExecutionFailureStatus::NotAnEncoder)?;
+
+        // Set byte price
+        encoder
+            .request_set_byte_price(new_price)
             .map_err(|e| ExecutionFailureStatus::SomaError(SomaError::from(e)))?;
 
         Ok(())
@@ -939,6 +959,7 @@ impl SystemStateTrait for SystemState {
                     }
                 })
                 .collect(),
+            reference_byte_price: self.encoders.reference_byte_price,
         }
     }
 }
