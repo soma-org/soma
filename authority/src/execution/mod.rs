@@ -5,6 +5,7 @@ use coin::CoinExecutor;
 use encoder::EncoderExecutor;
 use object::ObjectExecutor;
 use prepare_gas::{calculate_and_deduct_remaining_fees, prepare_gas, GasPreparationResult};
+use shard::ShardExecutor;
 use staking::StakingExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
@@ -30,6 +31,7 @@ mod coin;
 mod encoder;
 mod object;
 mod prepare_gas;
+mod shard;
 mod staking;
 mod system;
 mod validator;
@@ -276,6 +278,11 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::AddStake { .. }
         | TransactionKind::WithdrawStake { .. }
         | TransactionKind::AddStakeToEncoder { .. } => Box::new(StakingExecutor::new()),
+
+        // Shard transactions
+        TransactionKind::EmbedData { .. }
+        | TransactionKind::ClaimEscrow { .. }
+        | TransactionKind::ReportScores { .. } => Box::new(ShardExecutor::new()),
     }
 }
 

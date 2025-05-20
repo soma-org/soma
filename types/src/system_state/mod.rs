@@ -72,6 +72,7 @@ use crate::{
 
 pub mod encoder;
 pub mod epoch_start;
+pub mod shard;
 pub mod staking;
 pub mod subsidy;
 pub mod validator;

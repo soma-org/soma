@@ -40,6 +40,11 @@ use fastcrypto::{
 use itertools::{Either, Itertools};
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
+use shared::{
+    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
+    digest::Digest,
+    metadata::MetadataCommitment,
+};
 use tracing::trace;
 
 use crate::{
@@ -150,6 +155,22 @@ pub enum TransactionKind {
     },
     WithdrawStake {
         staked_soma: ObjectRef,
+    },
+
+    // Shard txs
+    EmbedData {
+        digest: Digest<MetadataCommitment>,
+        data_size_bytes: u64,
+        coin_ref: ObjectRef,
+    },
+    ClaimEscrow {
+        shard_input_ref: ObjectRef,
+    },
+    ReportScores {
+        shard_input_ref: ObjectRef,
+        // scores: ShardScores, // encoder/src/types/shard_scores
+        signature: Vec<u8>, // BCS serialized EncoderAggregateSignature (BLS)
+        signers: Vec<EncoderPublicKey>,
     },
 }
 
@@ -267,6 +288,7 @@ impl TransactionKind {
                 | TransactionKind::SetEncoderCommissionRate { .. }
                 | TransactionKind::UpdateEncoderMetadata(_)
                 | TransactionKind::SetEncoderBytePrice { .. }
+                | TransactionKind::ReportScores { .. }
         )
     }
 
@@ -301,14 +323,38 @@ impl TransactionKind {
 
     /// Returns an iterator of all shared input objects used by this transaction.
     pub fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {
-        // Return iterator of shared objects used by this transaction
-        let system_obj = if self.requires_system_state() {
-            Some(SharedInputObject::SYSTEM_OBJ)
-        } else {
-            None
-        };
+        let mut objects: Vec<SharedInputObject> = Vec::new();
 
-        system_obj.into_iter()
+        // Add system object if needed
+        if self.requires_system_state() {
+            objects.push(SharedInputObject::SYSTEM_OBJ);
+        }
+
+        // Add transaction-specific shared objects
+        match self {
+            // Add ShardInput as shared object for ClaimEscrow
+            TransactionKind::ClaimEscrow { shard_input_ref } => {
+                objects.push(SharedInputObject {
+                    id: shard_input_ref.0,
+                    initial_shared_version: shard_input_ref.1,
+                    mutable: true,
+                });
+            }
+            // Add ShardInput as shared object for ReportScores
+            // (note: system state is already added above)
+            TransactionKind::ReportScores {
+                shard_input_ref, ..
+            } => {
+                objects.push(SharedInputObject {
+                    id: shard_input_ref.0,
+                    initial_shared_version: shard_input_ref.1,
+                    mutable: true,
+                });
+            }
+            _ => {}
+        }
+
+        objects.into_iter()
     }
 
     /// Return the metadata of each of the input objects for the transaction.
@@ -350,6 +396,25 @@ impl TransactionKind {
             }
             TransactionKind::WithdrawStake { staked_soma } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
+            }
+            TransactionKind::EmbedData { coin_ref, .. } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
+            }
+            TransactionKind::ClaimEscrow { shard_input_ref } => {
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: shard_input_ref.0,
+                    initial_shared_version: shard_input_ref.1,
+                    mutable: true,
+                });
+            }
+            TransactionKind::ReportScores {
+                shard_input_ref, ..
+            } => {
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: shard_input_ref.0,
+                    initial_shared_version: shard_input_ref.1,
+                    mutable: true,
+                });
             }
             _ => {}
         }

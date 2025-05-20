@@ -32,10 +32,11 @@
 
 use crate::{
     base::{FullObjectID, FullObjectRef, SomaAddress, SOMA_ADDRESS_LENGTH},
+    committee::EpochId,
     crypto::{default_hash, DefaultHash},
     digests::{ObjectDigest, TransactionDigest},
     error::{SomaError, SomaResult},
-    system_state::staking::StakedSoma,
+    system_state::{shard::ShardInput, staking::StakedSoma},
 };
 use anyhow::anyhow;
 use fastcrypto::{
@@ -47,6 +48,7 @@ use rand::{rngs::OsRng, Rng};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
+use shared::{digest::Digest, metadata::MetadataCommitment};
 use std::{
     cmp::max,
     fmt::{Display, Formatter},
@@ -422,6 +424,44 @@ impl Object {
             None
         }
     }
+
+    /// Create a new ShardInput object
+    pub fn new_shard_input(
+        id: ObjectID,
+        digest: Digest<MetadataCommitment>,
+        data_size_bytes: u64,
+        amount: u64,
+        expiration_epoch: EpochId,
+        submitter: SomaAddress,
+        owner: Owner,
+        previous_transaction: TransactionDigest,
+    ) -> Self {
+        let shard_input = ShardInput {
+            digest,
+            data_size_bytes,
+            amount,
+            expiration_epoch,
+            submitter,
+        };
+
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::ShardInput,
+            Version::MIN,
+            bcs::to_bytes(&shard_input).unwrap(),
+        );
+
+        Self::new(data, owner, previous_transaction)
+    }
+
+    /// Extract ShardInput from an Object
+    pub fn as_shard_input(&self) -> Option<ShardInput> {
+        if *self.data.object_type() == ObjectType::ShardInput {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -580,6 +620,8 @@ pub enum ObjectType {
     Coin,
     /// Represents an owned Staked Soma object
     StakedSoma,
+    /// Represents a shard input with escrowed funds
+    ShardInput,
 }
 
 /// # ObjectID
