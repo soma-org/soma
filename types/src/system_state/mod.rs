@@ -214,7 +214,7 @@ pub struct SystemState {
     /// Cached committees: [previous_epoch, current_epoch]
     /// Index 0: Previous epoch committees
     /// Index 1: Current epoch committees
-    committees: [Option<Committees>; 2],
+    pub committees: [Option<Committees>; 2],
 }
 
 impl SystemState {
@@ -279,7 +279,7 @@ impl SystemState {
     }
 
     /// Build committees for a specific epoch using current validator and encoder sets
-    fn build_committees_for_epoch(&self, epoch: u64) -> Committees {
+    pub fn build_committees_for_epoch(&self, epoch: u64) -> Committees {
         // Create snapshots of the current validator and encoder sets
         Committees::new(epoch, self.validators.clone(), self.encoders.clone())
     }

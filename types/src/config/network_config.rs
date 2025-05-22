@@ -407,6 +407,10 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         system_state.validators.set_voting_power();
         system_state.encoders.set_voting_power();
 
+        // Initialize current epoch committees
+        let current_committees = system_state.build_committees_for_epoch(0);
+        system_state.committees[1] = Some(current_committees);
+
         let state_object = Object::new(
             ObjectData::new_with_id(
                 SYSTEM_STATE_OBJECT_ID,
