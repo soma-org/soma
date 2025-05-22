@@ -55,7 +55,7 @@ impl EncoderExecutor {
 
 impl TransactionExecutor for EncoderExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,

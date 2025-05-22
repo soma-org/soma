@@ -14,8 +14,8 @@ use numpy::{
 };
 
 use super::Model;
-use crate::error::{ShardError, ShardResult};
 use async_trait::async_trait;
+use shared::error::{ShardError, ShardResult};
 
 pub const REGISTERED_MODULE_ATTR: &str = "__REGISTERED_MODULE__";
 

@@ -20,4 +20,4 @@ chrono.workspace = true
 regex.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true
-encoder.workspace = true
+shared.workspace = true

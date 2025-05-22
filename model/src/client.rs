@@ -1,14 +1,11 @@
+use crate::{ByteRange, ModelInput, ModelOutput, ModelOutputV1};
 use async_trait::async_trait;
 use ndarray::array;
 use reqwest::Client;
+use shared::error::{ModelError, ModelResult};
 use soma_network::multiaddr::{to_host_port_str, Multiaddr};
 use std::{str::FromStr, time::Duration};
 use url::Url;
-
-use crate::{
-    error::{ModelError, ModelResult},
-    ByteRange, ModelInput, ModelOutput, ModelOutputV1,
-};
 
 #[async_trait]
 pub trait ModelClient: Send + Sync + Sized + 'static {

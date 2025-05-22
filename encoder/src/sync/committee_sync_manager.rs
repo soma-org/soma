@@ -1,4 +1,10 @@
+use crate::{
+    messaging::tonic::{internal::ConnectionsInfo, NetworkingInfo},
+    sync::encoder_validator_client::{EncoderValidatorClient, EnrichedVerifiedCommittees},
+    types::context::{Committees, Context, InnerContext},
+};
 use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use shared::error::{ShardError, ShardResult};
 use soma_tls::AllowPublicKeys;
 use std::{
     collections::BTreeSet,
@@ -10,13 +16,6 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
-
-use crate::{
-    error::{ShardError, ShardResult},
-    messaging::tonic::{internal::ConnectionsInfo, NetworkingInfo},
-    sync::encoder_validator_client::{EncoderValidatorClient, EnrichedVerifiedCommittees},
-    types::context::{Committees, Context, InnerContext},
-};
 
 /// Manager for committee synchronization with validator nodes
 pub struct CommitteeSyncManager {

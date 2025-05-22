@@ -516,7 +516,7 @@ impl StakingExecutor {
 
 impl TransactionExecutor for StakingExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,

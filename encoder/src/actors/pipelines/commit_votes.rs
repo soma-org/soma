@@ -5,13 +5,10 @@ use std::{
 };
 
 use crate::{
-    actors::{ActorHandle, ActorMessage, Processor},
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
-    error::{ShardError, ShardResult},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
-        shard::Shard,
         shard_commit_votes::{ShardCommitVotes, ShardCommitVotesAPI},
         shard_reveal::{ShardReveal, ShardRevealV1},
     },
@@ -22,12 +19,15 @@ use objects::storage::ObjectStorage;
 use probe::messaging::ProbeClient;
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
+    actors::{ActorHandle, ActorMessage, Processor},
     crypto::{
         keys::{EncoderKeyPair, EncoderPublicKey},
         Aes256IV, Aes256Key, EncryptionKey,
     },
     digest::Digest,
+    error::{ShardError, ShardResult},
     scope::Scope,
+    shard::Shard,
     signed::Signed,
     verified::Verified,
 };

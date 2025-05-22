@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::parameters::Parameters;
 use async_trait::async_trait;
 use axum::{
     body::Body,
@@ -16,6 +17,7 @@ use axum::{
 use fastcrypto::hash::HashFunction;
 use quick_cache::sync::Cache;
 use reqwest::Client;
+use shared::error::{ObjectError, ObjectResult};
 use shared::{
     checksum::Checksum,
     crypto::{
@@ -25,6 +27,10 @@ use shared::{
     metadata::{Metadata, MetadataAPI},
 };
 use soma_http::{PeerCertificates, ServerHandle};
+use soma_network::{
+    multiaddr::{to_host_port_str, to_socket_addr, Multiaddr},
+    CERTIFICATE_NAME,
+};
 use soma_tls::{
     create_rustls_client_config, public_key_from_certificate, AllowPublicKeys, TlsConnectionInfo,
 };
@@ -32,15 +38,6 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 use tracing::{info, warn};
 use url::Url;
-
-use crate::{
-    error::{ObjectError, ObjectResult},
-    parameters::Parameters,
-};
-use soma_network::{
-    multiaddr::{to_host_port_str, to_socket_addr, Multiaddr},
-    CERTIFICATE_NAME,
-};
 
 use super::{
     ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService, ObjectPath, ObjectStorage,

@@ -350,6 +350,17 @@ impl EncoderAggregateSignature {
         let inner_keys: Vec<_> = pks.iter().map(|pk| pk.inner().to_owned()).collect();
         self.0.verify(&inner_keys, message)
     }
+
+    /// Returns the signature as bytes
+    pub fn to_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+
+    /// Creates a new `EncoderAggregateSignature` from bytes
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, FastCryptoError> {
+        bls12381::min_sig::BLS12381AggregateSignature::from_bytes(bytes)
+            .map(EncoderAggregateSignature)
+    }
 }
 
 #[cfg(test)]

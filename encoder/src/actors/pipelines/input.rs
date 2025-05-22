@@ -1,22 +1,17 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    actors::{
-        workers::{
-            compression::{CompressionProcessor, CompressorInput},
-            downloader::Downloader,
-            encryption::{EncryptionInput, EncryptionProcessor},
-            storage::StorageProcessor,
-        },
-        ActorHandle, ActorMessage, Processor,
+    actors::workers::{
+        compression::{CompressionProcessor, CompressorInput},
+        downloader::Downloader,
+        encryption::{EncryptionInput, EncryptionProcessor},
+        storage::{StorageHandle, StorageProcessor},
     },
     compression::zstd_compressor::ZstdCompressor,
     core::internal_broadcaster::Broadcaster,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
-    error::{ShardError, ShardResult},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
-        shard::Shard,
         shard_commit::ShardCommit,
         shard_input::{ShardInput, ShardInputAPI},
     },
@@ -31,15 +26,18 @@ use objects::{
 };
 use probe::messaging::ProbeClient;
 use shared::{
+    actors::{ActorHandle, ActorMessage, Processor},
     checksum::Checksum,
     crypto::{
         keys::{EncoderKeyPair, PeerPublicKey},
         Aes256IV, Aes256Key, EncryptionKey,
     },
     digest::Digest,
+    error::{ShardError, ShardResult},
     metadata::{CompressionAlgorithmV1, CompressionV1, EncryptionV1, Metadata},
     probe::ProbeMetadata,
     scope::Scope,
+    shard::Shard,
     signed::Signed,
     verified::Verified,
 };
@@ -61,7 +59,7 @@ pub(crate) struct InputProcessor<
     model_client: Arc<M>,
     encryptor: ActorHandle<EncryptionProcessor<Aes256Ctr64LEEncryptor>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    storage: ActorHandle<StorageProcessor<S>>,
+    storage: StorageHandle<S>,
     commit_pipeline: ActorHandle<CommitProcessor<C, O, S, P>>,
 }
 
@@ -91,7 +89,7 @@ impl<
             model_client,
             encryptor,
             encoder_keypair,
-            storage,
+            storage: StorageHandle::new(storage),
             commit_pipeline,
         }
     }

@@ -49,7 +49,10 @@ use rand::rngs::{OsRng, StdRng, ThreadRng};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
+use shared::authority_committee::AuthorityCommittee;
 use shared::crypto::keys::EncoderPublicKey;
+use shared::encoder_committee::Encoder;
+use shared::probe::ProbeMetadata;
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Display, Formatter, Write};
@@ -324,6 +327,25 @@ impl Committee {
         }
 
         Self::new(epoch, voting_weights, authorities)
+    }
+
+    pub fn convert_to_authority_committee(committee: &Committee) -> AuthorityCommittee {
+        // Extract authorities from the Committee
+        let authorities = committee
+            .authorities()
+            .map(|(_, auth)| shared::authority_committee::Authority {
+                stake: auth.stake,
+                authority_key: shared::crypto::keys::AuthorityPublicKey::new(
+                    auth.authority_key.clone(),
+                ),
+                protocol_key: shared::crypto::keys::ProtocolPublicKey::new(
+                    auth.protocol_key.inner(),
+                ),
+            })
+            .collect();
+
+        // Create new AuthorityCommittee with proper constructor
+        AuthorityCommittee::new(committee.epoch(), authorities)
     }
 
     // We call this if these have not yet been computed
@@ -821,6 +843,48 @@ impl EncoderCommittee {
         public_key
             .verify(&message, signature)
             .map_err(ConsensusError::SignatureVerificationFailure)
+    }
+
+    pub fn convert_encoder_committee(
+        committee: &EncoderCommittee,
+        epoch: EpochId,
+    ) -> shared::encoder_committee::EncoderCommittee {
+        // Extract encoders with their voting powers
+        let encoders = committee
+            .members
+            .iter()
+            .map(|(key, voting_power)| {
+                // Calculate voting power as u16
+                let voting_power = (*voting_power as u16).min(10_000);
+
+                // TODO: Create a test probe metadata (will be replaced with real data in production)
+                let mut seed = [0u8; 32];
+                seed[0..8].copy_from_slice(&key.to_bytes()[0..8]); // Use part of the public key as seed
+                let probe = ProbeMetadata::new_for_test(&seed);
+
+                Encoder {
+                    voting_power,
+                    encoder_key: key.clone(),
+                    probe,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let shard_size = std::cmp::min(
+            encoders.len() as u32,
+            std::cmp::max(3, (encoders.len() / 2) as u32),
+        );
+
+        // Calculate quorum threshold - typically 2/3 rounded up
+        let quorum_threshold = (shard_size * 2 + 2) / 3;
+
+        // Create the encoder service EncoderCommittee
+        shared::encoder_committee::EncoderCommittee::new(
+            epoch,
+            shard_size,
+            quorum_threshold,
+            encoders,
+        )
     }
 }
 

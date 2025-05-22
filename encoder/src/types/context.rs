@@ -8,9 +8,9 @@ use shared::{
 };
 use soma_network::multiaddr::Multiaddr;
 
-use crate::error::{ShardError, ShardResult};
+use shared::error::{ShardError, ShardResult};
 
-use super::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex, Epoch};
+use shared::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex, Epoch};
 
 #[derive(Clone, Debug)]
 pub struct Context {

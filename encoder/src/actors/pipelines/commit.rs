@@ -1,14 +1,9 @@
 use crate::{
-    actors::{
-        workers::downloader::{Downloader, DownloaderInput},
-        ActorHandle, ActorMessage, Processor,
-    },
+    actors::workers::downloader::{Downloader, DownloaderInput},
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
-    error::{ShardError, ShardResult},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
-        shard::Shard,
         shard_commit::{ShardCommit, ShardCommitAPI},
         shard_commit_votes::{ShardCommitVotes, ShardCommitVotesV1},
     },
@@ -20,10 +15,13 @@ use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use probe::messaging::ProbeClient;
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
+    actors::{ActorHandle, ActorMessage, Processor},
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerPublicKey},
     digest::Digest,
+    error::{ShardError, ShardResult},
     probe::ProbeMetadata,
     scope::Scope,
+    shard::Shard,
     signed::Signed,
     verified::Verified,
 };

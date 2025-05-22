@@ -4,20 +4,19 @@ pub(crate) mod mem_store;
 
 use std::time::Instant;
 
+use crate::types::{
+    shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes, shard_reveal::ShardReveal,
+    shard_reveal_votes::ShardRevealVotes,
+};
 use fastcrypto::bls12381::min_sig;
+use shared::error::ShardResult;
 use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
     digest::Digest,
+    shard::Shard,
+    shard_scores::ShardScores,
     signed::Signed,
     verified::Verified,
-};
-
-use crate::{
-    error::ShardResult,
-    types::{
-        shard::Shard, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_reveal::ShardReveal, shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
-    },
 };
 
 pub(crate) struct CommitVoteCounts {

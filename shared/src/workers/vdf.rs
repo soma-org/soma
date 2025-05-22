@@ -1,4 +1,4 @@
-use shared::{
+use crate::{
     block::BlockRef,
     entropy::{BlockEntropy, BlockEntropyProof, EntropyAPI},
 };
@@ -9,17 +9,17 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{error::ShardError, types::encoder_committee::Epoch};
+use crate::{encoder_committee::Epoch, error::ShardError};
 use async_trait::async_trait;
 
 use crate::actors::{ActorMessage, Processor};
 
-pub(crate) struct VDFProcessor<E: EntropyAPI> {
+pub struct VDFProcessor<E: EntropyAPI> {
     vdf: Arc<Mutex<E>>,
 }
 
 impl<E: EntropyAPI> VDFProcessor<E> {
-    pub(crate) fn new(mut vdf: E, buffer: usize) -> Self {
+    pub fn new(mut vdf: E, buffer: usize) -> Self {
         Self {
             vdf: Arc::new(Mutex::new(vdf)),
         }
@@ -70,8 +70,8 @@ mod tests {
     use super::*;
     use crate::actors::ActorMessage;
     use crate::error::{ShardError, ShardResult};
+    use crate::error::{SharedError, SharedResult};
     use bytes::Bytes;
-    use shared::error::{SharedError, SharedResult};
     use std::time::Duration;
     use tokio::sync::oneshot::Sender;
     use tokio::time::sleep;

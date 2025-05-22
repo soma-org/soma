@@ -1,7 +1,7 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
-use super::shard_verifier::ShardAuthToken;
+use shared::shard::ShardAuthToken;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardInputAPI)]

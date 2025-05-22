@@ -27,7 +27,7 @@ impl FeeCalculator for ChangeEpochExecutor {}
 
 impl TransactionExecutor for ChangeEpochExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,

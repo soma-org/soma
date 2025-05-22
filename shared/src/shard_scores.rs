@@ -1,14 +1,17 @@
 use std::{collections::HashSet, ops::Deref};
 
-use enum_dispatch::enum_dispatch;
-use fastcrypto::bls12381::min_sig;
-use serde::{Deserialize, Serialize};
-use shared::{
+use crate::{
     crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
     signed::Signed,
 };
+use enum_dispatch::enum_dispatch;
+use fastcrypto::bls12381::min_sig;
+use serde::{Deserialize, Serialize};
 
-use super::{encoder_committee::Epoch, shard::Shard, shard_verifier::ShardAuthToken};
+use super::{
+    encoder_committee::Epoch,
+    shard::{Shard, ShardAuthToken},
+};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
@@ -20,7 +23,7 @@ pub enum ShardScores {
 
 /// `ShardScoresAPI` is the trait that every shard commit version must implement
 #[enum_dispatch]
-pub(crate) trait ShardScoresAPI {
+pub trait ShardScoresAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn evaluator(&self) -> &EncoderPublicKey;
     fn signed_score_set(&self) -> Signed<ScoreSet, min_sig::BLS12381Signature>;
@@ -29,14 +32,14 @@ pub(crate) trait ShardScoresAPI {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct ShardScoresV1 {
+pub struct ShardScoresV1 {
     auth_token: ShardAuthToken,
     evaluator: EncoderPublicKey,
     signed_score_set: Signed<ScoreSet, min_sig::BLS12381Signature>,
 }
 
 impl ShardScoresV1 {
-    pub(crate) const fn new(
+    pub const fn new(
         auth_token: ShardAuthToken,
         evaluator: EncoderPublicKey,
         signed_score_set: Signed<ScoreSet, min_sig::BLS12381Signature>,
@@ -82,6 +85,7 @@ impl ShardScoresAPI for ShardScoresV1 {
 #[enum_dispatch]
 pub trait ScoreSetAPI {
     fn scores(&self) -> Vec<Score>;
+    fn shard_digest(&self) -> Digest<Shard>;
 }
 
 /// Compression is the top level type. Notice that the MetadataAPI returns
@@ -113,6 +117,10 @@ impl ScoreSetAPI for ScoreSetV1 {
     fn scores(&self) -> Vec<Score> {
         self.scores.iter().map(|s| Score::V1(s.clone())).collect()
     }
+
+    fn shard_digest(&self) -> Digest<Shard> {
+        self.shard_ref
+    }
 }
 
 #[enum_dispatch]
@@ -121,14 +129,14 @@ pub trait ScoreAPI {
     fn rank(&self) -> u8;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[enum_dispatch(ScoreAPI)]
 pub enum Score {
     V1(ScoreV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ScoreV1 {
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ScoreV1 {
     encoder: EncoderPublicKey,
     rank: u8,
 }
@@ -147,24 +155,24 @@ impl ScoreAPI for ScoreV1 {
     }
 }
 
-pub(crate) fn verify_signed_scores(
+pub fn verify_signed_scores(
     signed_scores: &Signed<ShardScores, min_sig::BLS12381Signature>,
     shard: &Shard,
 ) -> SharedResult<()> {
     if !shard.contains(&signed_scores.evaluator()) {
-        return Err(shared::error::SharedError::ValidationError(
+        return Err(crate::error::SharedError::ValidationError(
             "evaluator is not in the shard".to_string(),
         ));
     }
 
     if signed_scores.unique_scores() != shard.size() {
-        return Err(shared::error::SharedError::ValidationError(
+        return Err(crate::error::SharedError::ValidationError(
             "unique scores does not match shard size".to_string(),
         ));
     }
     for encoder in signed_scores.encoders() {
         if !shard.contains(&encoder) {
-            return Err(shared::error::SharedError::ValidationError(
+            return Err(crate::error::SharedError::ValidationError(
                 "scored encoder is not in shard".to_string(),
             ));
         }

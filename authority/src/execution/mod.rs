@@ -39,7 +39,7 @@ mod validator;
 /// Core trait for all transaction executors
 trait TransactionExecutor: FeeCalculator {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
@@ -99,7 +99,7 @@ pub fn execute_transaction(
         epoch_id,
     );
 
-    let executor = create_executor(&kind);
+    let mut executor = create_executor(&kind);
 
     // Phase 1: Gas preparation (validation, smashing, base fee deduction)
     let gas_result = match prepare_gas(
@@ -413,7 +413,7 @@ fn handle_shared_object_transaction(
     }
 
     // Create appropriate executor
-    let executor = create_executor(&kind);
+    let mut executor = create_executor(&kind);
 
     // Execute the transaction
     let result = executor.execute(

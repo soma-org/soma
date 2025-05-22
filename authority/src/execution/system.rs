@@ -21,7 +21,7 @@ impl GenesisExecutor {
 
 impl TransactionExecutor for GenesisExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         _signer: SomaAddress,
         kind: TransactionKind,
@@ -53,7 +53,7 @@ impl ConsensusCommitExecutor {
 
 impl TransactionExecutor for ConsensusCommitExecutor {
     fn execute(
-        &self,
+        &mut self,
         _store: &mut TemporaryStore,
         _signer: SomaAddress,
         _kind: TransactionKind,

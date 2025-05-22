@@ -1,16 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    actors::{workers::storage::StorageProcessor, ActorHandle, ActorMessage, Processor},
+    actors::workers::storage::StorageProcessor,
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
-    error::{ShardError, ShardResult},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::{
-        shard::Shard,
-        shard_scores::{ScoreSet, ScoreSetV1, ScoreV1, ShardScores, ShardScoresV1},
-        shard_verifier::ShardAuthToken,
-    },
 };
 use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
@@ -18,13 +12,17 @@ use objects::storage::ObjectStorage;
 use probe::{messaging::ProbeClient, EmbeddingV1, ProbeInputV1, ProbeOutputAPI, ScoreAPI};
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
+    actors::{ActorHandle, ActorMessage, Processor},
     crypto::{
         keys::{EncoderKeyPair, EncoderPublicKey},
         EncryptionKey,
     },
     digest::Digest,
+    error::{ShardError, ShardResult},
     metadata::Metadata,
     scope::Scope,
+    shard::{Shard, ShardAuthToken},
+    shard_scores::{ScoreSet, ScoreSetV1, ScoreV1, ShardScores, ShardScoresV1},
     signed::Signed,
     verified::Verified,
 };

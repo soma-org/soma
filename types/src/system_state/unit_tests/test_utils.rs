@@ -465,6 +465,7 @@ pub fn create_test_system_state(
     // System parameters
     let parameters = SystemParameters {
         epoch_duration_ms: 42, // Doesn't matter what number we put here for tests
+        vdf_iterations: 1,
     };
 
     // Create system state

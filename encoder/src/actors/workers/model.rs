@@ -1,7 +1,8 @@
-use crate::actors::{ActorMessage, Processor};
-use crate::{error::ShardResult, intelligence::model::Model};
+use crate::intelligence::model::Model;
 use async_trait::async_trait;
 use numpy::ndarray::ArrayD;
+use shared::actors::{ActorMessage, Processor};
+use shared::error::{ShardError, ShardResult};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
@@ -59,9 +60,9 @@ impl<M: Model> Processor for ModelProcessor<M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::ShardError;
     use async_trait::async_trait;
     use numpy::ndarray::{Array, IxDyn};
+    use shared::error::ShardError;
     use std::time::Duration;
     use tokio::sync::oneshot;
     use tokio_util::sync::CancellationToken;

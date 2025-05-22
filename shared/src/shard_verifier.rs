@@ -1,6 +1,6 @@
-use quick_cache::sync::Cache;
-use serde::{Deserialize, Serialize};
-use shared::{
+use std::fmt::format;
+
+use crate::{
     authority_committee::{AuthorityBitSet, AuthorityCommittee, AuthorityIndex},
     block::BlockRef,
     crypto::{
@@ -11,27 +11,23 @@ use shared::{
         },
     },
     digest::Digest,
-    entropy::{BlockEntropy, BlockEntropyProof, EntropyVDF},
+    encoder_committee::Epoch,
+    entropy::{BlockEntropy, BlockEntropyProof, EntropyAPI, EntropyVDF, SimpleVDF},
+    error::{ShardError, ShardResult},
     finality_proof::{BlockClaim, FinalityProof},
     metadata::{Metadata, MetadataCommitment},
     scope::{Scope, ScopedMessage},
+    shard::{Shard, ShardAuthToken, ShardEntropy},
     transaction::{
         ShardTransaction, SignedTransaction, TransactionData, TransactionExpiration,
         TransactionKind,
     },
 };
+use quick_cache::sync::Cache;
+use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    actors::{workers::vdf::VDFProcessor, ActorHandle},
-    error::{ShardError, ShardResult},
-};
-
-use super::{
-    context::Context,
-    encoder_committee::Epoch,
-    shard::{Shard, ShardEntropy},
-};
+use crate::{actors::ActorHandle, encoder_committee::EncoderCommittee, workers::vdf::VDFProcessor};
 
 /// Tracks the cached verification status for a given auth token
 #[derive(Clone)]
@@ -42,110 +38,33 @@ enum VerificationStatus {
     Invalid,
 }
 /// Verifies shard auth tokens and returns a shard
-pub(crate) struct ShardVerifier {
+pub struct ShardVerifier {
     /// caches verification status for a given auth token digest
     cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
     cancellation_cache: Cache<Digest<Shard>, CancellationToken>,
-    /// holds the actor wrapped VDF
-    vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
-    own_key: EncoderPublicKey,
+    // TODO: hold the actor wrapped VDF
+    // Since Validators use ShardVerifier too, this is optional
+    own_key: Option<EncoderPublicKey>,
 }
 
 impl ShardVerifier {
-    pub(crate) fn new(
-        capacity: usize,
-        vdf: ActorHandle<VDFProcessor<EntropyVDF>>,
-        own_key: EncoderPublicKey,
-    ) -> Self {
+    pub fn new(capacity: usize, own_key: Option<EncoderPublicKey>) -> Self {
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(capacity);
         Self {
             cache,
             cancellation_cache: Cache::new(capacity),
-            vdf,
+
             own_key,
         }
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ShardAuthToken {
-    pub proof: FinalityProof,
-    pub metadata_commitment: MetadataCommitment,
-    pub block_entropy: BlockEntropy,
-    pub entropy_proof: BlockEntropyProof,
-}
-
-impl ShardAuthToken {
-    pub fn metadata_commitment(&self) -> MetadataCommitment {
-        self.metadata_commitment.clone()
-    }
-    pub fn epoch(&self) -> Epoch {
-        self.proof.epoch()
-    }
-
-    pub fn new_for_test() -> Self {
-        fn mock_tx() -> SignedTransaction {
-            let sig = ProtocolKeySignature::from_bytes(&[1u8; 64]).unwrap();
-            let tx = ShardTransaction::new(Digest::new_from_bytes(b"test"), 100);
-            let tx_kind = TransactionKind::ShardTransaction(tx);
-            SignedTransaction {
-                scoped_message: ScopedMessage::new(
-                    Scope::TransactionData,
-                    TransactionData::new_v1(
-                        tx_kind,
-                        Address::default(),
-                        TransactionExpiration::None,
-                    ),
-                ),
-                tx_signatures: vec![sig],
-            }
-        }
-        let epoch = 0_u64;
-        let stakes = vec![1u64; 4];
-        let (authority_committee, authority_keypairs) =
-            AuthorityCommittee::local_test_committee(0, stakes);
-        let metadata = Metadata::new_v1(
-            None,               // no compression
-            None,               // no encryption
-            Default::default(), // default checksum
-            1024,               // size in bytes
-        );
-        let metadata_commitment = MetadataCommitment::new(metadata, [0u8; 32]);
-
-        // Create a test claim
-        let claim = BlockClaim::new(epoch, BlockRef::default(), mock_tx());
-
-        // Sign with 3 out of 4 authorities (meeting 2f+1 threshold)
-        let message = bcs::to_bytes(&claim).unwrap();
-        let signatures: Vec<AuthoritySignature> = authority_keypairs[..3]
-            .iter()
-            .map(|(_, authority_kp)| authority_kp.sign(&message))
-            .collect();
-
-        // Create authority bitset for the signing authorities
-        let authorities =
-            AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
-
-        // Create and verify the proof
-        let proof = FinalityProof::new(
-            claim,
-            authorities,
-            AuthorityAggregateSignature::new(&signatures).unwrap(),
-        );
-
-        Self {
-            proof,
-            metadata_commitment,
-            block_entropy: BlockEntropy::default(),
-            entropy_proof: BlockEntropyProof::default(),
-        }
-    }
-}
-
 impl ShardVerifier {
-    pub(crate) async fn verify(
+    pub fn verify(
         &self,
-        context: &Context,
+        authority_committee: AuthorityCommittee,
+        encoder_committee: EncoderCommittee,
+        vdf_iterations: u64,
         token: &ShardAuthToken,
     ) -> ShardResult<(Shard, CancellationToken)> {
         tracing::info!(
@@ -192,50 +111,29 @@ impl ShardVerifier {
             };
         }
 
-        tracing::debug!("Accessing inner context from Context");
-        let inner_context = context.inner();
-
-        tracing::debug!("Getting committees for epoch: {}", token.epoch());
-        let committees = match inner_context.committees(token.epoch()) {
-            Ok(c) => {
-                tracing::debug!("Successfully retrieved committees");
-                c
-            }
-            Err(e) => {
-                tracing::error!("Failed to get committees: {:?}", e);
-                return Err(e);
-            }
-        };
-
         // Debug finality proof
         tracing::debug!("Verifying finality proof against authority committee");
-        if let Err(e) = token.proof.verify(&committees.authority_committee) {
+        if let Err(e) = token.proof.verify(&authority_committee) {
             tracing::error!("Finality proof verification failed: {:?}", e);
             self.cache.insert(digest, VerificationStatus::Invalid);
             return Err(ShardError::InvalidShardToken(e.to_string()));
         }
 
         // Debug VDF
-        tracing::debug!(
-            "Starting VDF verification with epoch: {}, iterations: {}",
-            token.proof.epoch(),
-            committees.vdf_iterations
-        );
-        let vdf_params = (
+
+        // let vdf_result = self.vdf.process(vdf_params, CancellationToken::new()).await;
+        let vdf = SimpleVDF::new(vdf_iterations);
+        let vdf_result = vdf.verify_entropy(
             token.proof.epoch(),
             token.proof.block_ref(),
-            token.block_entropy.clone(),
-            token.entropy_proof.clone(),
-            committees.vdf_iterations,
+            &token.block_entropy,
+            &token.entropy_proof,
         );
-        tracing::debug!("VDF params created");
-
-        let vdf_result = self.vdf.process(vdf_params, CancellationToken::new()).await;
 
         if let Err(e) = vdf_result {
             tracing::error!("VDF verification failed: {:?}", e);
             self.cache.insert(digest, VerificationStatus::Invalid);
-            return Err(e);
+            return Err(ShardError::Other(format!("Error: {}", e)));
         }
 
         tracing::debug!("VDF verification succeeded");
@@ -261,7 +159,7 @@ impl ShardVerifier {
         };
 
         tracing::debug!("Sampling shard from encoder committee");
-        let shard = match committees.encoder_committee.sample_shard(shard_entropy) {
+        let shard = match encoder_committee.sample_shard(shard_entropy) {
             Ok(s) => {
                 tracing::debug!(
                     "Successfully sampled shard with {} encoders: {:?}",
@@ -277,8 +175,10 @@ impl ShardVerifier {
             }
         };
 
-        if !shard.contains(&self.own_key) {
-            return Err(ShardError::InvalidShardMember);
+        if let Some(key) = &self.own_key {
+            if !shard.contains(key) {
+                return Err(ShardError::InvalidShardMember);
+            }
         }
 
         let shard_digest = shard.digest()?;

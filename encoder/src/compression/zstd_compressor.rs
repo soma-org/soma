@@ -1,5 +1,5 @@
-use crate::error::{ShardError, ShardResult};
 use bytes::Bytes;
+use shared::error::{ShardError, ShardResult};
 use zstd::bulk::{compress, decompress};
 
 use super::{Compressor, SizeInBytes};

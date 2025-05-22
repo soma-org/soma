@@ -11,7 +11,7 @@ use bytes::Bytes;
 use parking_lot::RwLock;
 use tokio::io::{AsyncWrite, BufReader};
 
-use crate::error::{ObjectError, ObjectResult};
+use shared::error::{ObjectError, ObjectResult};
 
 use super::{ObjectPath, ObjectStorage};
 

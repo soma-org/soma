@@ -50,7 +50,7 @@ impl ObjectExecutor {
 
 impl TransactionExecutor for ObjectExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,

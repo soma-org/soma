@@ -132,6 +132,63 @@ impl EntropyAPI for EntropyVDF {
     }
 }
 
+pub struct SimpleVDF {
+    vdf: Arc<DefaultVDF>,
+}
+
+impl SimpleVDF {
+    pub fn new(iterations: Iterations) -> Self {
+        Self {
+            vdf: Arc::new(DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations)),
+        }
+    }
+
+    pub fn get_entropy(
+        &self,
+        epoch: Epoch,
+        block_ref: BlockRef,
+    ) -> SharedResult<(BlockEntropy, BlockEntropyProof)> {
+        let seed = bcs::to_bytes(&(epoch, block_ref)).map_err(SharedError::SerializationFailure)?;
+        let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
+            .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
+
+        let (output, proof) = self
+            .vdf
+            .evaluate(&input)
+            .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
+
+        let entropy_bytes = bcs::to_bytes(&output).map_err(SharedError::SerializationFailure)?;
+
+        let entropy = BlockEntropy(Bytes::copy_from_slice(&entropy_bytes));
+        let proof_bytes = bcs::to_bytes(&proof).map_err(SharedError::SerializationFailure)?;
+
+        let proof = BlockEntropyProof(Bytes::copy_from_slice(&proof_bytes));
+        Ok((entropy, proof))
+    }
+
+    pub fn verify_entropy(
+        &self,
+        epoch: Epoch,
+        block_ref: BlockRef,
+        tx_entropy: &BlockEntropy,
+        tx_entropy_proof: &BlockEntropyProof,
+    ) -> SharedResult<()> {
+        let seed = bcs::to_bytes(&(epoch, block_ref)).map_err(SharedError::SerializationFailure)?;
+        let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
+            .map_err(|e| SharedError::FailedVDF(e.to_string()))?;
+
+        let entropy: QuadraticForm =
+            bcs::from_bytes(&tx_entropy.0).map_err(SharedError::MalformedType)?;
+
+        let proof: QuadraticForm =
+            bcs::from_bytes(&tx_entropy_proof.0).map_err(SharedError::MalformedType)?;
+
+        self.vdf
+            .verify(&input, &entropy, &proof)
+            .map_err(|e| SharedError::FailedVDF(e.to_string()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{authority_committee::AuthorityIndex, digest::Digest};

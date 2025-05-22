@@ -3,6 +3,7 @@ use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey},
+    error::{ShardError, ShardResult},
     signed::Signed,
     verified::Verified,
 };
@@ -20,7 +21,6 @@ use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 
 use crate::{
-    error::{ShardError, ShardResult},
     messaging::{
         tonic::generated::encoder_external_tonic_service_server::EncoderExternalTonicServiceServer,
         EncoderExternalNetworkClient, EncoderExternalNetworkManager, EncoderExternalNetworkService,

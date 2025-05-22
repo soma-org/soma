@@ -2,9 +2,9 @@
 //! The set type specifies whether to sample the total shard (inference and evaluation) at once or
 //! whether it should be resampled. In all cases it should opt for disjoint sets except for the cases
 //! where the size of staked encoders does not allow it.
+use crate::{crypto::keys::EncoderPublicKey, digest::Digest, probe::ProbeMetadata};
 use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 use serde::{Deserialize, Serialize};
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, probe::ProbeMetadata};
 use std::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
@@ -19,7 +19,7 @@ type VotingPowerUnit = u16;
 /// Count of nodes, valid between 1 and shard size
 pub(crate) type CountUnit = u32;
 /// Epoch associated with the committee
-pub(crate) type Epoch = u64;
+pub type Epoch = u64;
 
 /// Holds a single encoder committee for a given modality. Each modality has a unique set of
 /// Encoders. A given encoder can register to multiple modalities, but are not required to
@@ -79,7 +79,7 @@ impl EncoderCommittee {
     pub(crate) fn shard_size(&self) -> CountUnit {
         self.shard_size
     }
-    pub(crate) fn quorum_threshold(&self) -> CountUnit {
+    pub fn quorum_threshold(&self) -> CountUnit {
         self.quorum_threshold
     }
 
@@ -89,7 +89,7 @@ impl EncoderCommittee {
     }
 
     /// returns the encoder at a specified encoder index
-    pub(crate) fn encoder(&self, encoder_index: EncoderIndex) -> &Encoder {
+    pub fn encoder(&self, encoder_index: EncoderIndex) -> &Encoder {
         &self.encoders[encoder_index]
     }
 

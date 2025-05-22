@@ -1,10 +1,9 @@
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use error::{ModelError, ModelResult};
 use ndarray::Array2;
 use serde::{Deserialize, Serialize};
+use shared::error::{ModelError, ModelResult};
 pub mod client;
-pub mod error;
 
 #[enum_dispatch]
 pub(crate) trait ModelInputAPI {

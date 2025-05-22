@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 
-use crate::error::ShardResult;
+use shared::error::ShardResult;
 
 pub(crate) mod zstd_compressor;
 

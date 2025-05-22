@@ -1,6 +1,6 @@
 use e2e_tests::integration_helpers::setup_integrated_encoder_validator_test;
-use encoder::types::shard_verifier::ShardAuthToken;
 use rand::rngs::OsRng;
+use shared::shard::ShardAuthToken;
 use std::time::Duration;
 use test_cluster::TestCluster;
 use test_encoder_cluster::{create_valid_test_token, TestEncoderClusterBuilder};

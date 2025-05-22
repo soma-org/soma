@@ -1,8 +1,8 @@
-use super::{shard::Shard, shard_verifier::ShardAuthToken};
-use crate::error::{ShardError, ShardResult};
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
+use shared::error::{ShardError, ShardResult};
+use shared::shard::{Shard, ShardAuthToken};
 use shared::{
     crypto::{keys::EncoderPublicKey, EncryptionKey},
     digest::Digest,
@@ -160,6 +160,7 @@ pub(crate) fn verify_signed_shard_commit(
 #[cfg(test)]
 mod tests {
     use fastcrypto::traits::KeyPair;
+    use shared::shard::{Shard, ShardAuthToken, ShardEntropy};
     use shared::{
         crypto::keys::EncoderKeyPair,
         digest::Digest,
@@ -167,11 +168,6 @@ mod tests {
         metadata::{Metadata, MetadataCommitment},
         scope::Scope,
         signed::Signed,
-    };
-
-    use crate::types::{
-        shard::{Shard, ShardEntropy},
-        shard_verifier::ShardAuthToken,
     };
 
     use super::{verify_signed_shard_commit, ShardCommit};

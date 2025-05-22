@@ -3,7 +3,7 @@ use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{crypto::keys::EncoderPublicKey, error::SharedResult, scope::Scope, signed::Signed};
 
-use super::{shard::Shard, shard_verifier::ShardAuthToken};
+use shared::shard::{Shard, ShardAuthToken};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardFinalityAPI)]

@@ -1,20 +1,18 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use objects::{
     networking::ObjectNetworkClient,
     storage::{ObjectPath, ObjectStorage},
 };
+use shared::actors::{ActorMessage, Processor};
+use shared::error::{ShardError, ShardResult};
 use shared::{
     crypto::keys::PeerPublicKey,
     metadata::{Metadata, MetadataAPI},
 };
 use soma_network::multiaddr::Multiaddr;
 use tracing::info;
-
-use crate::error::{ShardError, ShardResult};
-use async_trait::async_trait;
-
-use crate::actors::{ActorMessage, Processor};
 
 #[derive(Clone)]
 pub(crate) struct DownloaderInput {

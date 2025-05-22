@@ -41,7 +41,13 @@ use fastcrypto::{
     traits::ToFromBytes,
 };
 use serde::{Deserialize, Serialize};
-use shared::crypto::keys::EncoderPublicKey;
+use shard::ShardResult;
+use shared::{
+    crypto::keys::EncoderPublicKey,
+    digest::Digest,
+    shard::Shard,
+    shard_scores::{Score, ShardScores},
+};
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
 use tracing::{error, info};
@@ -111,6 +117,8 @@ pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
 pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
+
+    pub vdf_iterations: u64,
 }
 
 impl Default for SystemParameters {
@@ -122,6 +130,7 @@ impl Default for SystemParameters {
     fn default() -> Self {
         Self {
             epoch_duration_ms: 1000 * 60, // TODO: 1000 * 60 * 60 * 24, // 1 day
+            vdf_iterations: 1,            // TODO: Tweak based on block times
         }
     }
 }
@@ -195,9 +204,17 @@ pub struct SystemState {
 
     stake_subsidy: StakeSubsidy,
 
-    // New fields for encoders
     pub encoders: EncoderSet,
     pub encoder_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+
+    /// Stores ShardResults indexed by Digest<Shard>
+    /// This is intermediary state used to calculate rewards at the end of the epoch
+    pub shard_results: BTreeMap<Digest<Shard>, ShardResult>,
+
+    /// Cached committees: [previous_epoch, current_epoch]
+    /// Index 0: Previous epoch committees
+    /// Index 1: Current epoch committees
+    committees: [Option<Committees>; 2],
 }
 
 impl SystemState {
@@ -241,7 +258,7 @@ impl SystemState {
             encoder.activate(0);
         }
 
-        Self {
+        let mut system_state = Self {
             epoch: 0,
             validators,
             encoders,
@@ -250,7 +267,49 @@ impl SystemState {
             validator_report_records: BTreeMap::new(),
             encoder_report_records: BTreeMap::new(),
             stake_subsidy,
+            shard_results: BTreeMap::new(),
+            committees: [None, None],
+        };
+
+        // Initialize current epoch committees
+        let current_committees = system_state.build_committees_for_epoch(0);
+        system_state.committees[1] = Some(current_committees);
+
+        system_state
+    }
+
+    /// Build committees for a specific epoch using current validator and encoder sets
+    fn build_committees_for_epoch(&self, epoch: u64) -> Committees {
+        // Create snapshots of the current validator and encoder sets
+        Committees::new(epoch, self.validators.clone(), self.encoders.clone())
+    }
+
+    /// Get the current epoch committees
+    pub fn current_committees(&self) -> Result<&Committees, SomaError> {
+        self.committees[1].as_ref().ok_or_else(|| {
+            SomaError::SystemStateReadError("Current committees not initialized".to_string())
+        })
+    }
+
+    /// Get the previous epoch committees
+    pub fn previous_committees(&self) -> Result<&Committees, SomaError> {
+        self.committees[0].as_ref().ok_or_else(|| {
+            SomaError::SystemStateReadError("Previous committees not available".to_string())
+        })
+    }
+
+    /// Get committees for a specific epoch
+    /// Only supports current and previous epoch
+    pub fn committees(&self, epoch: u64) -> Result<&Committees, SomaError> {
+        if epoch == self.epoch {
+            return self.current_committees();
+        } else if epoch == self.epoch.saturating_sub(1) && epoch < self.epoch {
+            return self.previous_committees();
         }
+        Err(SomaError::SystemStateReadError(format!(
+            "Committees for epoch {} not available. Current epoch: {}",
+            epoch, self.epoch
+        )))
     }
 
     /// # Request to add a validator
@@ -819,6 +878,9 @@ impl SystemState {
             total_rewards += stake_subsidy;
         }
 
+        // Cache current committees as previous before advancing
+        self.committees[0] = self.committees[1].take();
+
         // Actually increment the epoch number
         self.epoch = new_epoch;
 
@@ -849,9 +911,31 @@ impl SystemState {
             ENCODER_LOW_STAKE_GRACE_PERIOD,
         );
 
+        // Build and cache new current committees after validator/encoder sets are updated
+        let new_committees = self.build_committees_for_epoch(new_epoch);
+        self.committees[1] = Some(new_committees);
+
+        // Clear shard results for the new epoch
+        self.clear_shard_scores();
+
         // For simplicity in this implementation, we're just returning validator rewards
         // In a full implementation, you'd want to return both and handle them appropriately
         Ok(validator_rewards)
+    }
+
+    /// Adds shard result to the system state
+    pub fn add_shard_result(
+        &mut self,
+        shard_digest: Digest<Shard>,
+        result: ShardResult,
+    ) -> ExecutionResult<()> {
+        self.shard_results.insert(shard_digest, result);
+        Ok(())
+    }
+
+    /// Clears all shard scores (called at the end of an epoch)
+    pub fn clear_shard_scores(&mut self) {
+        self.shard_results.clear();
     }
 }
 
@@ -869,70 +953,81 @@ impl SystemStateTrait for SystemState {
     }
 
     fn get_current_epoch_committee(&self) -> CommitteeWithNetworkMetadata {
-        let validators = self
-            .validators
-            .active_validators
-            .iter()
-            .map(|validator| {
-                let verified_metadata = validator.metadata.clone();
-                let name = (&verified_metadata.protocol_pubkey).into();
-                (
-                    name,
+        // Use cached committee if available, otherwise build on-demand
+        if let Ok(committees) = self.current_committees() {
+            committees.build_validator_committee()
+        } else {
+            // Fallback: build directly from current state
+            let validators = self
+                .validators
+                .active_validators
+                .iter()
+                .map(|validator| {
+                    let verified_metadata = validator.metadata.clone();
+                    let name = (&verified_metadata.protocol_pubkey).into();
                     (
-                        validator.voting_power,
-                        NetworkMetadata {
-                            consensus_address: verified_metadata.p2p_address.clone(),
-                            network_address: verified_metadata.net_address.clone(),
-                            primary_address: verified_metadata.primary_address.clone(),
-                            protocol_key: ProtocolPublicKey::new(
-                                verified_metadata.worker_pubkey.into_inner(),
-                            ),
-                            network_key: verified_metadata.network_pubkey,
-                            authority_key: verified_metadata.protocol_pubkey,
-                            // Use net_address as hostname if no explicit hostname is available
-                            hostname: verified_metadata.net_address.to_string(),
-                        },
-                    ),
-                )
-            })
-            .collect();
-        CommitteeWithNetworkMetadata::new(self.epoch, validators)
+                        name,
+                        (
+                            validator.voting_power,
+                            NetworkMetadata {
+                                consensus_address: verified_metadata.p2p_address.clone(),
+                                network_address: verified_metadata.net_address.clone(),
+                                primary_address: verified_metadata.primary_address.clone(),
+                                protocol_key: ProtocolPublicKey::new(
+                                    verified_metadata.worker_pubkey.into_inner(),
+                                ),
+                                network_key: verified_metadata.network_pubkey,
+                                authority_key: verified_metadata.protocol_pubkey,
+                                hostname: verified_metadata.net_address.to_string(),
+                            },
+                        ),
+                    )
+                })
+                .collect();
+            CommitteeWithNetworkMetadata::new(self.epoch, validators)
+        }
     }
 
     fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee {
-        let encoders = self
-            .encoders
-            .active_encoders
-            .iter()
-            .map(|encoder| {
-                let metadata = &encoder.metadata;
-                (metadata.encoder_pubkey.clone(), encoder.voting_power)
-            })
-            .collect();
+        // Use cached committee if available, otherwise build on-demand
+        if let Ok(committees) = self.current_committees() {
+            committees.build_encoder_committee()
+        } else {
+            // Fallback: build directly from current state
+            let encoders = self
+                .encoders
+                .active_encoders
+                .iter()
+                .map(|encoder| {
+                    let metadata = &encoder.metadata;
+                    (metadata.encoder_pubkey.clone(), encoder.voting_power)
+                })
+                .collect();
 
-        let network_metadata = self
-            .encoders
-            .active_encoders
-            .iter()
-            .map(|encoder| {
-                let metadata = &encoder.metadata;
-                let name = metadata.encoder_pubkey.clone();
-                (
-                    name,
-                    EncoderNetworkMetadata {
-                        network_address: metadata.net_address.clone(),
-                        network_key: metadata.network_pubkey.clone(),
-                        hostname: metadata.net_address.to_string(),
-                        object_server_address: metadata.object_server_address.clone(),
-                    },
-                )
-            })
-            .collect();
+            let network_metadata = self
+                .encoders
+                .active_encoders
+                .iter()
+                .map(|encoder| {
+                    let metadata = &encoder.metadata;
+                    let name = metadata.encoder_pubkey.clone();
+                    (
+                        name,
+                        EncoderNetworkMetadata {
+                            network_address: metadata.net_address.clone(),
+                            network_key: metadata.network_pubkey.clone(),
+                            hostname: metadata.net_address.to_string(),
+                            object_server_address: metadata.object_server_address.clone(),
+                        },
+                    )
+                })
+                .collect();
 
-        EncoderCommittee {
-            epoch: self.epoch,
-            members: encoders,
-            network_metadata,
+            EncoderCommittee {
+                epoch: self.epoch,
+                members: encoders,
+                network_metadata,
+            }
         }
     }
 
@@ -995,4 +1090,111 @@ pub fn get_system_state(object_store: &dyn ObjectStore) -> Result<SystemState, S
     let result = bcs::from_bytes::<SystemState>(object.as_inner().data.contents())
         .map_err(|err| SomaError::SystemStateReadError(err.to_string()))?;
     Ok(result)
+}
+
+/// # Committees
+///
+/// Combined committee information for both validators and encoders for a specific epoch.
+///
+/// ## Purpose
+/// Stores both validator and encoder set snapshots for efficient lookup
+/// and to maintain historical committee data across epoch transitions.
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub struct Committees {
+    /// The epoch these committees represent
+    pub epoch: u64,
+    /// Snapshot of the validator set for this epoch
+    pub validator_set: ValidatorSet,
+    /// Snapshot of the encoder set for this epoch
+    pub encoder_set: EncoderSet,
+}
+
+impl Committees {
+    /// Create new committees for the given epoch
+    pub fn new(epoch: u64, validator_set: ValidatorSet, encoder_set: EncoderSet) -> Self {
+        Self {
+            epoch,
+            validator_set,
+            encoder_set,
+        }
+    }
+
+    /// Get the validator set
+    pub fn validators(&self) -> &ValidatorSet {
+        &self.validator_set
+    }
+
+    /// Get the encoder set
+    pub fn encoders(&self) -> &EncoderSet {
+        &self.encoder_set
+    }
+
+    /// Build validator committee with network metadata from the stored validator set
+    pub fn build_validator_committee(&self) -> CommitteeWithNetworkMetadata {
+        let validators = self
+            .validator_set
+            .active_validators
+            .iter()
+            .map(|validator| {
+                let verified_metadata = validator.metadata.clone();
+                let name = (&verified_metadata.protocol_pubkey).into();
+                (
+                    name,
+                    (
+                        validator.voting_power,
+                        NetworkMetadata {
+                            consensus_address: verified_metadata.p2p_address.clone(),
+                            network_address: verified_metadata.net_address.clone(),
+                            primary_address: verified_metadata.primary_address.clone(),
+                            protocol_key: ProtocolPublicKey::new(
+                                verified_metadata.worker_pubkey.into_inner(),
+                            ),
+                            network_key: verified_metadata.network_pubkey,
+                            authority_key: verified_metadata.protocol_pubkey,
+                            hostname: verified_metadata.net_address.to_string(),
+                        },
+                    ),
+                )
+            })
+            .collect();
+        CommitteeWithNetworkMetadata::new(self.epoch, validators)
+    }
+
+    /// Build encoder committee from the stored encoder set
+    pub fn build_encoder_committee(&self) -> EncoderCommittee {
+        let encoders = self
+            .encoder_set
+            .active_encoders
+            .iter()
+            .map(|encoder| {
+                let metadata = &encoder.metadata;
+                (metadata.encoder_pubkey.clone(), encoder.voting_power)
+            })
+            .collect();
+
+        let network_metadata = self
+            .encoder_set
+            .active_encoders
+            .iter()
+            .map(|encoder| {
+                let metadata = &encoder.metadata;
+                let name = metadata.encoder_pubkey.clone();
+                (
+                    name,
+                    EncoderNetworkMetadata {
+                        network_address: metadata.net_address.clone(),
+                        network_key: metadata.network_pubkey.clone(),
+                        hostname: metadata.net_address.to_string(),
+                        object_server_address: metadata.object_server_address.clone(),
+                    },
+                )
+            })
+            .collect();
+
+        EncoderCommittee {
+            epoch: self.epoch,
+            members: encoders,
+            network_metadata,
+        }
+    }
 }

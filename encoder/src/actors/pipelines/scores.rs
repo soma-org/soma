@@ -1,24 +1,22 @@
 use std::{future::Future, marker::PhantomData, sync::Arc, time::Duration};
 
 use crate::{
-    actors::{ActorHandle, ActorMessage, Processor},
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
-    error::{ShardError, ShardResult},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::{
-        shard::Shard,
-        shard_finality::{ShardFinality, ShardFinalityV1},
-        shard_scores::{Score, ScoreAPI, ScoreSetAPI, ShardScores, ShardScoresAPI},
-    },
+    types::shard_finality::{ShardFinality, ShardFinalityV1},
 };
 use async_trait::async_trait;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
+    actors::{ActorHandle, ActorMessage, Processor},
     crypto::keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
     digest::Digest,
+    error::{ShardError, ShardResult},
     scope::Scope,
+    shard::Shard,
+    shard_scores::{Score, ScoreAPI, ScoreSetAPI, ShardScores, ShardScoresAPI},
     signed::Signed,
     verified::Verified,
 };

@@ -1,11 +1,25 @@
+use std::{fmt::format, sync::Arc};
+
+use fastcrypto::bls12381::min_sig;
+use shared::{
+    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
+    digest::Digest,
+    metadata::{MetadataAPI, MetadataCommitment},
+    scope::{Scope, ScopedMessage},
+    shard_scores::{verify_signed_scores, ScoreSetAPI, ShardScores, ShardScoresAPI},
+    shard_verifier::ShardVerifier,
+    signed::Signed,
+    verified::Verified,
+};
+use tracing::{debug, error};
 use types::{
     base::SomaAddress,
-    committee::EpochId,
+    committee::{Committee, EncoderCommittee, EpochId},
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError},
+    error::{ConsensusError, ExecutionResult, SomaError},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    system_state::{get_system_state, shard::ScoreSet, SystemState, SystemStateTrait},
+    system_state::{get_system_state, shard::ShardResult, SystemState, SystemStateTrait},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
     SYSTEM_STATE_OBJECT_ID,
@@ -14,11 +28,15 @@ use types::{
 use super::{object::check_ownership, FeeCalculator, TransactionExecutor};
 
 /// Executor for shard-related transactions
-pub struct ShardExecutor;
+pub struct ShardExecutor {
+    shard_verifier: ShardVerifier,
+}
 
 impl ShardExecutor {
     pub fn new() -> Self {
-        Self {}
+        let shard_verifier = ShardVerifier::new(100, None);
+
+        Self { shard_verifier }
     }
 
     /// Execute EmbedData transaction
@@ -26,12 +44,16 @@ impl ShardExecutor {
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
-        metadata_commitment_digest: [u8; 32],
-        data_size_bytes: u64,
+        digest: Digest<MetadataCommitment>,
+        data_size_bytes: usize,
         coin_ref: ObjectRef,
         tx_digest: TransactionDigest,
+        value_fee: u64,
     ) -> ExecutionResult<()> {
         let coin_id = coin_ref.0;
+
+        // Check if the coin is also the gas coin
+        let is_gas_coin = store.gas_object_id == Some(coin_id);
 
         // Get system state object to determine encoder byte price and current epoch
         let state_object = store
@@ -55,9 +77,9 @@ impl ShardExecutor {
         let current_epoch = state.epoch;
 
         // Calculate total price for the data size
-        let total_price = byte_price.saturating_mul(data_size_bytes);
+        let embed_price = byte_price.saturating_mul(data_size_bytes as u64);
 
-        if total_price == 0 {
+        if embed_price == 0 {
             return Err(ExecutionFailureStatus::InvalidArguments {
                 reason: "Total price cannot be 0. Data size too small or byte price is 0!"
                     .to_string(),
@@ -82,23 +104,34 @@ impl ShardExecutor {
                     actual_type: source_object.type_().clone(),
                 })?;
 
+        // Calculate operation fees
+        // We're creating one ShardInput object and updating the source coin (2 operations)
+        let operation_fee = self.calculate_operation_fee(2);
+
+        // If this is the gas coin, we need to ensure there's enough for both embed_price and fees
+        let total_required = if is_gas_coin {
+            // Total fee = value_fee (passed in) + operation_fee (calculated)
+            let gas_fee = value_fee + operation_fee;
+            embed_price + gas_fee
+        } else {
+            // Just need enough for the embed price
+            embed_price
+        };
+
         // Check sufficient balance
-        if source_balance < total_price {
+        if source_balance < total_required {
             return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
         }
 
-        // Calculate remaining balance
-        let remaining_balance = source_balance - total_price;
-
-        // Create ShardInput object as a shared object
         // Shard expiration = current epoch + 2
         let expiration_epoch = current_epoch + 2;
 
+        // Create ShardInput object as a shared object
         let shard_input = Object::new_shard_input(
             ObjectID::derive_id(tx_digest, store.next_creation_num()),
-            metadata_commitment_digest,
+            digest,
             data_size_bytes,
-            total_price,
+            embed_price,
             expiration_epoch,
             signer,
             Owner::Shared {
@@ -109,10 +142,20 @@ impl ShardExecutor {
 
         store.create_object(shard_input);
 
-        // Update source coin with remaining balance
-        let mut updated_source = source_object.clone();
-        updated_source.update_coin_balance(remaining_balance);
-        store.mutate_input_object(updated_source);
+        // Update source coin with remaining balance after deducting the embed price ONLY
+        // (gas fees are handled separately by the transaction system)
+        let remaining_balance = source_balance - embed_price;
+
+        // If remaining balance is 0, delete the coin
+        if remaining_balance == 0 && !is_gas_coin {
+            // Only delete if it's not the gas coin
+            store.delete_input_object(&coin_id);
+        } else {
+            // Otherwise update the coin
+            let mut updated_source = source_object.clone();
+            updated_source.update_coin_balance(remaining_balance);
+            store.mutate_input_object(updated_source);
+        }
 
         Ok(())
     }
@@ -164,7 +207,12 @@ impl ShardExecutor {
 
         // Check if caller is the submitter
         if shard_input.submitter != signer {
-            return Err(ExecutionFailureStatus::InvalidSigner.into());
+            return Err(ExecutionFailureStatus::InvalidOwnership {
+                object_id: shard_input_id,
+                expected_owner: shard_input.submitter,
+                actual_owner: Some(signer),
+            }
+            .into());
         }
 
         // Check if shard has expired
@@ -195,16 +243,30 @@ impl ShardExecutor {
 
     /// Execute ReportScores transaction
     fn execute_report_scores(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         shard_input_ref: ObjectRef,
-        score_set: ScoreSet,
-        aggregated_signature: AggregatedSignature,
-        shard_token: ShardToken,
+        scores_bytes: Vec<u8>,
+        signature: Vec<u8>,
+        signers: Vec<EncoderPublicKey>,
         tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         let shard_input_id = shard_input_ref.0;
+        // Try to get ShardInput object
+        let shard_input_object = store.read_object(&shard_input_id).ok_or_else(|| {
+            ExecutionFailureStatus::ObjectNotFound {
+                object_id: shard_input_id,
+            }
+        })?;
+
+        let shard_input = shard_input_object.as_shard_input().ok_or_else(|| {
+            ExecutionFailureStatus::InvalidObjectType {
+                object_id: shard_input_id,
+                expected_type: ObjectType::ShardInput,
+                actual_type: shard_input_object.type_().clone(),
+            }
+        })?;
 
         // Get system state object
         let state_object = store
@@ -223,77 +285,185 @@ impl ShardExecutor {
                 )))
             })?;
 
-        // Verify signers are in encoder committee
-        let encoder_committee = state.get_current_epoch_encoder_committee();
+        let current_epoch = state.epoch;
 
-        for signer_addr in &aggregated_signature.signers {
-            if !encoder_committee.members.contains_key(signer_addr) {
-                return Err(ExecutionFailureStatus::InvalidSigners {
-                    reason: format!("Signer {} is not in the encoder committee", signer_addr),
-                });
-            }
-        }
-
-        // Verify the number of signers meets quorum requirement
-        let encoder_committee_size = encoder_committee.members.len();
-        if aggregated_signature.signers.len() < (2 * encoder_committee_size / 3) {
-            return Err(ExecutionFailureStatus::InsufficientQuorum.into());
-        }
-
-        // Try to get ShardInput object
-        let shard_input_object = store.read_object(&shard_input_id);
-
-        // Verify ShardInput object exists and is valid
-        let shard_input = if let Some(obj) = shard_input_object {
-            // Extract ShardInput data
-            let shard_input =
-                obj.as_shard_input()
-                    .ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
-                        object_id: shard_input_id,
-                        expected_type: ObjectType::ShardInput,
-                        actual_type: obj.type_().clone(),
-                    })?;
-
-            // Verify that the ShardToken matches the ShardInput
-            if shard_token.token_id != shard_input_id {
-                return Err(ExecutionFailureStatus::InvalidArguments {
-                    reason: "ShardToken does not match ShardInput".to_string(),
-                });
-            }
-
-            // Verify the metadata commitment digests match
-            if shard_input.digest != score_set.digest {
-                return Err(ExecutionFailureStatus::InvalidArguments {
-                    reason: "Metadata commitment digest mismatch".to_string(),
-                });
-            }
-
-            // Verify the data sizes match
-            if shard_input.data_size_bytes != score_set.data_size_bytes {
-                return Err(ExecutionFailureStatus::InvalidArguments {
-                    reason: "Data size mismatch".to_string(),
-                });
-            }
-
-            // Delete the ShardInput object
-            store.delete_input_object(&shard_input_id);
-
-            shard_input
-        } else {
-            // ShardInput not found
-            return Err(ExecutionFailureStatus::ObjectNotFound {
-                object_id: shard_input_id,
+        // Check expiration epoch
+        if current_epoch >= shard_input.expiration_epoch {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Shard input has expired. Current epoch: {}, Expiration epoch: {}",
+                    current_epoch, shard_input.expiration_epoch
+                ),
             });
+        }
+
+        // Deserialize scores bytes
+        tracing::debug!("Deserializing scores bytes");
+        let scores: Signed<ShardScores, min_sig::BLS12381Signature> =
+            match bcs::from_bytes(&scores_bytes) {
+                Ok(s) => {
+                    tracing::debug!("Successfully deserialized scores");
+                    s
+                }
+                Err(e) => {
+                    tracing::error!("Failed to deserialize scores: {:?}", e);
+                    return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                        "Failed to deserialize scores: {}",
+                        e
+                    ))));
+                }
+            };
+
+        let committees = state.committees(scores.auth_token().epoch())?;
+        let authority_committee = Committee::convert_to_authority_committee(
+            committees.build_validator_committee().committee(),
+        );
+        let encoder_committee = EncoderCommittee::convert_encoder_committee(
+            &committees.build_encoder_committee(),
+            scores.auth_token().epoch(),
+        );
+        let vdf_iterations = state.parameters.vdf_iterations; // TODO: Revisit if this needs to be queried by the auth token epoch too
+
+        let (shard, _) = match self.shard_verifier.verify(
+            authority_committee,
+            encoder_committee,
+            vdf_iterations,
+            scores.auth_token(),
+        ) {
+            Ok(s) => {
+                debug!("Shard verification succeeded");
+                s
+            }
+            Err(e) => {
+                error!("Shard verification failed: {:?}", e);
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Shard verification failed: {:?}", e),
+                });
+            }
         };
 
-        // Update the ScoreSet with the current epoch
-        let mut updated_score_set = score_set;
-        updated_score_set.reported_epoch = state.epoch;
+        // Create verified scores object
+        let verified_scores = match Verified::new(scores, scores_bytes.into(), |scores| {
+            tracing::debug!("Verifying signed scores");
+            verify_signed_scores(scores, &shard)
+        }) {
+            Ok(v) => {
+                tracing::debug!("Verified scores created successfully");
+                v
+            }
+            Err(e) => {
+                tracing::error!("Failed to create verified scores: {:?}", e);
+                return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to create verified scores: {}",
+                    e
+                ))));
+            }
+        };
 
-        // Add the score set to the system state
-        state.add_score_set(updated_score_set)?;
+        // 2.1 Verify signers are in the shard
+        for encoder in &signers {
+            if !shard.encoders().contains(encoder) {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Encoder {:?} is not in the shard", encoder),
+                });
+            }
+        }
 
-        // Serialize and update the system state
+        // 2.2 Verify the number of signers meets quorum requirement
+        if (signers.len() as u32) < shard.quorum_threshold() {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Insufficient signers. Got: {}, Required: {}",
+                    signers.len(),
+                    shard.quorum_threshold()
+                ),
+            });
+        }
+
+        // Verify the aggregate signature
+        let message = bcs::to_bytes(&ScopedMessage::new(
+            Scope::ShardScores,
+            verified_scores.digest(),
+        ))
+        .map_err(|e| {
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "Failed to deserialize system state: {}",
+                e
+            )))
+        })?;
+        let sig = match EncoderAggregateSignature::from_bytes(&signature) {
+            Ok(s) => {
+                tracing::debug!("Successfully deserialized scores");
+                s
+            }
+            Err(e) => {
+                tracing::error!("Failed to deserialize scores: {:?}", e);
+                return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize scores: {}",
+                    e
+                ))));
+            }
+        };
+        sig.verify(&signers, &message).map_err(|e| {
+            ExecutionFailureStatus::SomaError(SomaError::from(
+                ConsensusError::SignatureVerificationFailure(e),
+            ))
+        })?;
+
+        // 2.3 Verify the metadata commitment digests match
+        let metadata_commitment_digest = verified_scores
+            .auth_token()
+            .metadata_commitment()
+            .digest()
+            .map_err(|e| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to get metadata commitment digest: {}",
+                    e
+                )))
+            })?;
+
+        if shard_input.digest != metadata_commitment_digest {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Metadata commitment digest mismatch".to_string(),
+            });
+        }
+
+        // 2.4 Verify the data sizes match
+        let data_size = verified_scores
+            .auth_token()
+            .metadata_commitment()
+            .metadata()
+            .size();
+
+        if shard_input.data_size_bytes != data_size {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Data size mismatch. ShardInput: {}, Scores: {}",
+                    shard_input.data_size_bytes, data_size
+                ),
+            });
+        }
+
+        // Delete the ShardInput object
+        store.delete_input_object(&shard_input_id);
+
+        // Add ShardResult to the system state
+        let shard_digest = verified_scores
+            .signed_score_set()
+            .into_inner()
+            .shard_digest();
+        let scores = verified_scores.signed_score_set().into_inner().scores();
+        state.add_shard_result(
+            shard_digest,
+            ShardResult {
+                digest: metadata_commitment_digest,
+                data_size_bytes: data_size,
+                amount: shard_input.amount,
+                scores,
+            },
+        );
+
+        // Serialize updated system state
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
                 "Failed to serialize updated system state: {}",
@@ -301,6 +471,7 @@ impl ShardExecutor {
             )))
         })?;
 
+        // Update the system state object
         let mut updated_state_object = state_object;
         updated_state_object.data.update_contents(state_bytes);
         store.mutate_input_object(updated_state_object);
@@ -311,7 +482,7 @@ impl ShardExecutor {
 
 impl TransactionExecutor for ShardExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
@@ -323,24 +494,30 @@ impl TransactionExecutor for ShardExecutor {
                 digest,
                 data_size_bytes,
                 coin_ref,
-            } => {
-                self.execute_embed_data(store, signer, digest, data_size_bytes, coin_ref, tx_digest)
-            }
+            } => self.execute_embed_data(
+                store,
+                signer,
+                digest,
+                data_size_bytes,
+                coin_ref,
+                tx_digest,
+                value_fee,
+            ),
             TransactionKind::ClaimEscrow { shard_input_ref } => {
                 self.execute_claim_escrow(store, signer, shard_input_ref, tx_digest)
             }
             TransactionKind::ReportScores {
                 shard_input_ref,
-                // scores,
+                scores,
                 signature,
                 signers,
             } => self.execute_report_scores(
                 store,
                 signer,
                 shard_input_ref,
-                score_set,
-                aggregated_signature,
-                shard_token,
+                scores,
+                signature,
+                signers,
                 tx_digest,
             ),
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
@@ -352,15 +529,36 @@ impl FeeCalculator for ShardExecutor {
     fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
         match kind {
             TransactionKind::EmbedData {
-                data_size_bytes, ..
+                data_size_bytes,
+                coin_ref,
+                ..
             } => {
-                // Fee based on data size, e.g., 1 fee unit per 10KB
-                let base_fee = self.base_fee();
-                let size_fee = (data_size_bytes / 10240) * 100; // 100 units per 10KB
-                base_fee + size_fee
+                // Get the actual embedding cost
+                if let Some(state_obj) = store.read_object(&SYSTEM_STATE_OBJECT_ID) {
+                    if let Ok(state) =
+                        bcs::from_bytes::<SystemState>(state_obj.as_inner().data.contents())
+                    {
+                        let byte_price = state.encoders.reference_byte_price;
+                        let embed_cost = byte_price.saturating_mul(*data_size_bytes as u64);
+
+                        // Fee is 0.05% (5 basis points) of the embedding cost
+                        let fee = (embed_cost * 5) / 10000;
+                        return std::cmp::max(fee, self.base_fee());
+                    }
+                }
+                // Default if we can't determine the state
+                self.base_fee()
             }
-            TransactionKind::ClaimEscrow { .. } => {
-                // Standard base fee for claiming escrow
+            TransactionKind::ClaimEscrow { shard_input_ref } => {
+                // Fee based on the amount being claimed
+                if let Some(shard_obj) = store.read_object(&shard_input_ref.0) {
+                    if let Some(shard_input) = shard_obj.as_shard_input() {
+                        // Fee is 0.05% (5 basis points) of the claimed amount
+                        let fee = (shard_input.amount * 5) / 10000;
+                        return std::cmp::max(fee, self.base_fee());
+                    }
+                }
+                // Default if we can't determine the value
                 self.base_fee()
             }
             TransactionKind::ReportScores { .. } => {
@@ -373,5 +571,9 @@ impl FeeCalculator for ShardExecutor {
 
     fn base_fee(&self) -> u64 {
         1500 // Higher than standard due to complexity
+    }
+
+    fn write_fee_per_object(&self) -> u64 {
+        300 // Standard per-write fee
     }
 }

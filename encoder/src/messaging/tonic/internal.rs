@@ -1,10 +1,26 @@
+use crate::{
+    messaging::{
+        tonic::generated::encoder_internal_tonic_service_server::{
+            EncoderInternalTonicService, EncoderInternalTonicServiceServer,
+        },
+        EncoderInternalNetworkClient, EncoderInternalNetworkManager, EncoderInternalNetworkService,
+        EncoderPublicKey,
+    },
+    types::{
+        parameters::Parameters, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
+        shard_finality::ShardFinality, shard_reveal::ShardReveal,
+        shard_reveal_votes::ShardRevealVotes,
+    },
+};
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use axum::http;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
+use shared::error::{ShardError, ShardResult};
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
+    shard_scores::ShardScores,
     signed::Signed,
     verified::Verified,
 };
@@ -21,22 +37,6 @@ use std::{
 };
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
-
-use crate::{
-    error::{ShardError, ShardResult},
-    messaging::{
-        tonic::generated::encoder_internal_tonic_service_server::{
-            EncoderInternalTonicService, EncoderInternalTonicServiceServer,
-        },
-        EncoderInternalNetworkClient, EncoderInternalNetworkManager, EncoderInternalNetworkService,
-        EncoderPublicKey,
-    },
-    types::{
-        parameters::Parameters, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_finality::ShardFinality, shard_reveal::ShardReveal,
-        shard_reveal_votes::ShardRevealVotes, shard_scores::ShardScores,
-    },
-};
 use tracing::{error, info, trace, warn};
 
 use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;

@@ -1,6 +1,6 @@
-use crate::types::encoder_committee::{Encoder, EncoderCommittee as ShardCommittee};
 use anyhow::{anyhow, Result};
 use encoder_validator_api::tonic_gen::encoder_validator_api_client::EncoderValidatorApiClient;
+use shared::encoder_committee::{Encoder, EncoderCommittee as ShardCommittee};
 use shared::{
     authority_committee::AuthorityCommittee,
     crypto::keys::{
@@ -154,63 +154,6 @@ impl EncoderValidatorClient {
         Ok(Committee::new(epoch, voting_rights, authorities))
     }
 
-    pub fn convert_encoder_committee(
-        committee: &EncoderCommittee,
-        epoch: EpochId,
-    ) -> Result<ShardCommittee> {
-        // Extract encoders with their voting powers
-        let encoders = committee
-            .members
-            .iter()
-            .map(|(key, voting_power)| {
-                // Calculate voting power as u16
-                let voting_power = (*voting_power as u16).min(10_000);
-
-                // TODO: Create a test probe metadata (will be replaced with real data in production)
-                let mut seed = [0u8; 32];
-                seed[0..8].copy_from_slice(&key.to_bytes()[0..8]); // Use part of the public key as seed
-                let probe = ProbeMetadata::new_for_test(&seed);
-
-                Encoder {
-                    voting_power,
-                    encoder_key: key.clone(),
-                    probe,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let shard_size = std::cmp::min(
-            encoders.len() as u32,
-            std::cmp::max(3, (encoders.len() / 2) as u32),
-        );
-
-        // Calculate quorum threshold - typically 2/3 rounded up
-        let quorum_threshold = (shard_size * 2 + 2) / 3;
-
-        // Create the encoder service EncoderCommittee
-        Ok(ShardCommittee::new(
-            epoch,
-            shard_size,
-            quorum_threshold,
-            encoders,
-        ))
-    }
-
-    pub fn convert_to_authority_committee(committee: &Committee) -> AuthorityCommittee {
-        // Extract authorities from the Committee
-        let authorities = committee
-            .authorities()
-            .map(|(_, auth)| shared::authority_committee::Authority {
-                stake: auth.stake,
-                authority_key: SharedAuthorityPublicKey::new(auth.authority_key.clone()),
-                protocol_key: ProtocolPublicKey::new(auth.protocol_key.inner()),
-            })
-            .collect();
-
-        // Create new AuthorityCommittee with proper constructor
-        AuthorityCommittee::new(committee.epoch(), authorities)
-    }
-
     /// Convert blockchain structures to our client structures
     fn convert_committees(
         &self,
@@ -220,7 +163,7 @@ impl EncoderValidatorClient {
     ) -> Result<(Committee, ShardCommittee)> {
         let validator_committee = self.validator_set_to_committee(validator_set, epoch)?;
         let encoder_committee =
-            EncoderValidatorClient::convert_encoder_committee(blockchain_committee, epoch)?;
+            EncoderCommittee::convert_encoder_committee(blockchain_committee, epoch);
         Ok((validator_committee, encoder_committee))
     }
 
@@ -399,10 +342,8 @@ impl EncoderValidatorClient {
 
         let validator_committee =
             self.validator_set_to_committee(&validator_set, committee_data.epoch)?;
-        let encoder_committee = EncoderValidatorClient::convert_encoder_committee(
-            &encoder_committee,
-            committee_data.epoch,
-        )?;
+        let encoder_committee =
+            EncoderCommittee::convert_encoder_committee(&encoder_committee, committee_data.epoch);
 
         Ok((validator_committee, encoder_committee))
     }
@@ -417,8 +358,7 @@ impl EncoderValidatorClient {
         previous_committee_data: Option<&EpochCommittee>,
     ) -> Result<EnrichedVerifiedCommittees> {
         // Create authority committee
-        let authority_committee =
-            EncoderValidatorClient::convert_to_authority_committee(&validator_committee);
+        let authority_committee = Committee::convert_to_authority_committee(&validator_committee);
 
         // Extract timestamp
         let epoch_start_timestamp_ms = committee_data.next_epoch_start_timestamp_ms;
@@ -474,7 +414,7 @@ impl EncoderValidatorClient {
                     anyhow!("No encoder committee for epoch {}", self.current_epoch)
                 })?,
                 previous_encoder_committee: self.previous_encoder_committee.clone(),
-                authority_committee: EncoderValidatorClient::convert_to_authority_committee(
+                authority_committee: Committee::convert_to_authority_committee(
                     &self.current_validator_committee,
                 ),
                 networking_info: BTreeMap::new(),

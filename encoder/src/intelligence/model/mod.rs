@@ -1,7 +1,7 @@
 pub(crate) mod python;
-use crate::error::ShardResult;
 use async_trait::async_trait;
 use numpy::ndarray::ArrayD;
+use shared::error::ShardResult;
 
 /// The `Model` trait establishes a standard set of operations that can be taken
 /// on any implementation of a model. There are two primary functions, one to initialize

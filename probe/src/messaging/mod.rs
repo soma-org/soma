@@ -1,11 +1,11 @@
 pub mod service;
 pub mod tonic;
+use crate::{parameters::Parameters, ProbeInput, ProbeOutput};
 use async_trait::async_trait;
 use bytes::Bytes;
+use shared::error::ProbeResult;
 use soma_network::multiaddr::Multiaddr;
 use std::{sync::Arc, time::Duration};
-
-use crate::{error::ProbeResult, parameters::Parameters, ProbeInput, ProbeOutput};
 
 #[async_trait]
 pub trait ProbeClient: Send + Sync + Sized + 'static {

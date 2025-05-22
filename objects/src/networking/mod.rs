@@ -5,17 +5,16 @@ use soma_tls::AllowPublicKeys;
 use std::sync::Arc;
 use tokio::io::AsyncWrite;
 
+use crate::{
+    parameters::Parameters,
+    storage::{ObjectPath, ObjectStorage},
+};
+use shared::error::ObjectResult;
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
     metadata::Metadata,
 };
 use soma_network::multiaddr::Multiaddr;
-
-use crate::{
-    error::ObjectResult,
-    parameters::Parameters,
-    storage::{ObjectPath, ObjectStorage},
-};
 
 #[async_trait]
 pub trait ObjectNetworkClient: Send + Sync + 'static {

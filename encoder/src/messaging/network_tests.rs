@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        error::ShardResult,
         messaging::{
             tonic::{
                 external::{EncoderExternalTonicClient, EncoderExternalTonicManager},
@@ -18,7 +17,6 @@ mod tests {
             parameters::Parameters,
             shard_commit::ShardCommit,
             shard_input::{ShardInput, ShardInputV1},
-            shard_verifier::ShardAuthToken,
         },
     };
     use async_trait::async_trait;
@@ -27,8 +25,10 @@ mod tests {
     use parking_lot::RwLock;
     use shared::{
         crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
+        error::ShardResult,
         metadata::Metadata,
         scope::Scope,
+        shard::ShardAuthToken,
         signed::Signed,
         verified::Verified,
     };

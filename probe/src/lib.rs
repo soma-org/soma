@@ -1,4 +1,3 @@
-pub mod error;
 pub mod messaging;
 pub(crate) mod modules;
 pub mod parameters;

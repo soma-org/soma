@@ -35,9 +35,8 @@ use crate::{
         },
         workers::{
             compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
-            storage::StorageProcessor, vdf::VDFProcessor,
+            storage::StorageProcessor,
         },
-        ActorManager,
     },
     compression::zstd_compressor::ZstdCompressor,
     datastore::{mem_store::MemStore, Store},
@@ -59,20 +58,21 @@ use crate::{
     },
     types::{
         context::{Committees, Context, InnerContext},
-        encoder_committee::{Encoder, EncoderCommittee},
         parameters::Parameters,
-        shard_verifier,
     },
 };
 
-use self::{
-    downloader::Downloader,
-    shard_verifier::{ShardAuthToken, ShardVerifier},
-};
-
+use self::downloader::Downloader;
 use super::{
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
+};
+use shared::{
+    actors::ActorManager,
+    encoder_committee::{Encoder, EncoderCommittee},
+    shard::ShardAuthToken,
+    shard_verifier::ShardVerifier,
+    workers::vdf::VDFProcessor,
 };
 
 #[cfg(msim)]
@@ -251,7 +251,8 @@ impl EncoderNode {
         let recv_dedup_cache_capacity: usize = 1000;
         let send_dedup_cache_capacity: usize = 100;
         let finality_processor = FinalityProcessor::new(store.clone(), recv_dedup_cache_capacity);
-        let finality_handle = ActorManager::new(default_buffer, finality_processor).handle();
+        let finality_handle: shared::actors::ActorHandle<FinalityProcessor> =
+            ActorManager::new(default_buffer, finality_processor).handle();
 
         let scores_processor = ScoresProcessor::new(
             store.clone(),
@@ -338,11 +339,7 @@ impl EncoderNode {
             scores_handle,
             finality_handle,
         );
-        let verifier = Arc::new(ShardVerifier::new(
-            100,
-            vdf_handle,
-            encoder_keypair.public(),
-        ));
+        let verifier = Arc::new(ShardVerifier::new(100, Some(encoder_keypair.public())));
 
         let internal_network_service = Arc::new(EncoderInternalService::new(
             context.clone(),
@@ -483,20 +480,13 @@ fn create_context_from_genesis(
     };
 
     // Convert validator committee to AuthorityCommittee
-    let authority_committee =
-        EncoderValidatorClient::convert_to_authority_committee(&validator_committee);
+    let authority_committee = Committee::convert_to_authority_committee(&validator_committee);
 
     // Convert EncoderCommittee from genesis to our internal ShardCommittee format
-    let genesis_encoder_committee = match EncoderValidatorClient::convert_encoder_committee(
+    let genesis_encoder_committee = types::committee::EncoderCommittee::convert_encoder_committee(
         &config.genesis.encoder_committee(),
         0,
-    ) {
-        Ok(committee) => committee,
-        Err(e) => {
-            warn!("Failed to convert encoder committee from genesis: {}", e);
-            panic!("Failed to convert encoder committee from genesis: {}", e);
-        }
-    };
+    );
 
     // Extract peer keys and network addresses for network info
     let (initial_networking_info, initial_connections_info, object_servers) =

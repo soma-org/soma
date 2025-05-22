@@ -1,4 +1,6 @@
+use crate::messaging::EncoderInternalNetworkClient;
 use serde::Serialize;
+use shared::error::ShardResult;
 use shared::{crypto::keys::EncoderPublicKey, verified::Verified};
 use std::future::Future;
 use std::sync::Arc;
@@ -6,8 +8,6 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tokio::{sync::Semaphore, task::JoinSet};
 use tracing::info;
-
-use crate::{error::ShardResult, messaging::EncoderInternalNetworkClient};
 
 const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
@@ -73,7 +73,7 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
                 } else {
                     NetworkingResult {
                         peer,
-                        result: Err(crate::error::ShardError::ConcurrencyError(
+                        result: Err(shared::error::ShardError::ConcurrencyError(
                             "could not acquire semaphore".to_string(),
                         )),
                         retries: 0,
@@ -113,7 +113,7 @@ impl<C: EncoderInternalNetworkClient> Broadcaster<C> {
                                 } else {
                                     NetworkingResult {
                                         peer,
-                                        result: Err(crate::error::ShardError::ConcurrencyError(
+                                        result: Err(shared::error::ShardError::ConcurrencyError(
                                             "could not acquire semaphore".to_string(),
                                         )),
                                         retries,

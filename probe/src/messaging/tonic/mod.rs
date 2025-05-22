@@ -2,13 +2,13 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/soma.ProbeTonicService.rs"));
 }
 use super::{ProbeClient, ProbeManager, ProbeService};
-use crate::error::{ProbeError, ProbeResult};
 use crate::messaging::tonic::generated::probe_tonic_service_client::ProbeTonicServiceClient;
 use crate::parameters::Parameters;
 use crate::{ProbeInput, ProbeOutput};
 use async_trait::async_trait;
 use bytes::Bytes;
 use generated::probe_tonic_service_server::{ProbeTonicService, ProbeTonicServiceServer};
+use shared::error::{ProbeError, ProbeResult};
 use soma_http::ServerHandle;
 use soma_network::multiaddr::{to_host_port_str, to_socket_addr, Multiaddr};
 use std::{sync::Arc, time::Duration};

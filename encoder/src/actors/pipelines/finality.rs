@@ -1,13 +1,15 @@
-use crate::{
-    actors::{ActorMessage, Processor},
-    datastore::Store,
-    error::{ShardError, ShardResult},
-    types::{shard::Shard, shard_finality::ShardFinality},
-};
+use crate::{datastore::Store, types::shard_finality::ShardFinality};
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use quick_cache::sync::{Cache, GuardResult};
-use shared::{digest::Digest, signed::Signed, verified::Verified};
+use shared::{
+    actors::{ActorMessage, Processor},
+    digest::Digest,
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    signed::Signed,
+    verified::Verified,
+};
 use std::{sync::Arc, time::Duration};
 use tracing::info;
 

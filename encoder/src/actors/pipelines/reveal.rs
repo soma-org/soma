@@ -1,11 +1,8 @@
 use crate::{
-    actors::{ActorHandle, ActorMessage, Processor},
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
-    error::{ShardError, ShardResult},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
-        shard::Shard,
         shard_reveal::{ShardReveal, ShardRevealAPI},
         shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesV1},
     },
@@ -17,9 +14,12 @@ use objects::storage::ObjectStorage;
 use probe::messaging::ProbeClient;
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
+    actors::{ActorHandle, ActorMessage, Processor},
     crypto::keys::{EncoderKeyPair, EncoderPublicKey},
     digest::Digest,
+    error::{ShardError, ShardResult},
     scope::Scope,
+    shard::Shard,
     signed::Signed,
     verified::Verified,
 };

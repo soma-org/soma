@@ -1,6 +1,6 @@
-use super::encoder_committee::{EncoderCommittee, EncoderIndex};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use shared::encoder_committee::{EncoderCommittee, EncoderIndex};
 use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
     digest::Digest,

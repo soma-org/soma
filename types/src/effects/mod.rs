@@ -32,6 +32,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
+use shared::error::ShardError;
 use thiserror::Error;
 
 use crate::{

@@ -10,7 +10,7 @@ use crate::{
     serialized::Serialized,
 };
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct Signed<T: Serialize + PartialEq + Eq, S: Authenticator> {
     inner: T,
     signature: Bytes,

@@ -6,8 +6,8 @@ use shared::{
     signed::Signed,
 };
 
-use super::{shard::Shard, shard_commit::ShardCommit, shard_verifier::ShardAuthToken};
-
+use super::shard_commit::ShardCommit;
+use shared::shard::{Shard, ShardAuthToken};
 /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ShardCommitVotesAPI)]

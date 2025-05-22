@@ -5,12 +5,9 @@ use objects::storage::{ObjectPath, ObjectStorage};
 use tokio::sync::Semaphore;
 
 use async_trait::async_trait;
+use shared::actors::{ActorHandle, ActorMessage, Processor};
+use shared::error::{ShardError, ShardResult};
 use tokio_util::sync::CancellationToken;
-
-use crate::{
-    actors::{ActorHandle, ActorMessage, Processor},
-    error::{ShardError, ShardResult},
-};
 
 pub(crate) struct StorageProcessor<B: ObjectStorage> {
     store: Arc<B>,
@@ -95,16 +92,41 @@ impl<B: ObjectStorage> Processor for StorageProcessor<B> {
     }
 }
 
-impl<B: ObjectStorage> ActorHandle<StorageProcessor<B>> {
-    pub(crate) async fn store(
+pub struct StorageHandle<B: ObjectStorage> {
+    inner: ActorHandle<StorageProcessor<B>>,
+}
+
+impl<B: ObjectStorage> StorageHandle<B> {
+    pub fn new(handle: ActorHandle<StorageProcessor<B>>) -> Self {
+        Self { inner: handle }
+    }
+
+    pub async fn store(
         &self,
         object_path: ObjectPath,
         bytes: Bytes,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         let input = StorageProcessorInput::Store(object_path, bytes);
-        let x = self.process(input, cancellation).await?;
+        let _ = self.inner.process(input, cancellation).await?;
         Ok(())
+    }
+
+    // Delegate any other needed methods to inner
+    pub async fn process(
+        &self,
+        input: StorageProcessorInput,
+        cancellation: CancellationToken,
+    ) -> ShardResult<StorageProcessorOutput> {
+        self.inner.process(input, cancellation).await
+    }
+}
+
+impl<B: ObjectStorage> Clone for StorageHandle<B> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
 

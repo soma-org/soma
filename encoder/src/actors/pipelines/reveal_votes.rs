@@ -1,21 +1,24 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::{
-    actors::{ActorHandle, ActorMessage, Processor},
     datastore::Store,
-    error::{ShardError, ShardResult},
     messaging::EncoderInternalNetworkClient,
-    types::{
-        shard::Shard,
-        shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
-    },
+    types::shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
 };
 use async_trait::async_trait;
 use fastcrypto::bls12381::min_sig;
 use objects::storage::ObjectStorage;
 use probe::messaging::ProbeClient;
 use quick_cache::sync::{Cache, GuardResult};
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, signed::Signed, verified::Verified};
+use shared::{
+    actors::{ActorHandle, ActorMessage, Processor},
+    crypto::keys::EncoderPublicKey,
+    digest::Digest,
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    signed::Signed,
+    verified::Verified,
+};
 use tracing::{debug, error, info, warn};
 
 use super::evaluation::EvaluationProcessor;

@@ -1,18 +1,24 @@
 use crate::{
     core::pipeline_dispatcher::ExternalDispatcher,
-    error::{ShardError, ShardResult},
     messaging::EncoderExternalNetworkService,
     types::{
         context::Context,
         shard_input::{ShardInput, ShardInputAPI},
-        shard_verifier::ShardVerifier,
     },
 };
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use shared::{crypto::keys::PeerPublicKey, signed::Signed, verified::Verified};
+use shared::{
+    authority_committee,
+    crypto::keys::PeerPublicKey,
+    error::{ShardError, ShardResult},
+    shard_verifier::ShardVerifier,
+    signed::Signed,
+    verified::Verified,
+};
 use std::sync::Arc;
+use tower_http::auth;
 
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
     context: Arc<Context>,
@@ -44,10 +50,29 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
                 }
             };
 
-        let (shard, cancellation) = self
-            .shard_verifier
-            .verify(&self.context, input.auth_token())
-            .await?;
+        let inner_context = self.context.inner();
+
+        tracing::debug!(
+            "Getting committees for epoch: {}",
+            input.auth_token().epoch()
+        );
+        let committees = match inner_context.committees(input.auth_token().epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
+            }
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        let (shard, cancellation) = self.shard_verifier.verify(
+            committees.authority_committee.clone(),
+            committees.encoder_committee.clone(),
+            committees.vdf_iterations,
+            input.auth_token(),
+        )?;
 
         let verified_input = Verified::new(input.clone(), input_bytes, |_input| Ok(()))
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;

@@ -3,7 +3,7 @@ use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{crypto::keys::EncoderPublicKey, error::SharedResult, scope::Scope, signed::Signed};
 
-use super::{shard::Shard, shard_verifier::ShardAuthToken};
+use shared::shard::{Shard, ShardAuthToken};
 
 /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

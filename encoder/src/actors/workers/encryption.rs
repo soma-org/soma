@@ -3,12 +3,11 @@ use std::sync::Arc;
 use bytes::Bytes;
 use tokio::runtime::Handle;
 
-use crate::error::ShardError;
-
 use async_trait::async_trait;
 use shared::crypto::{EncryptionKey, Encryptor};
+use shared::error::{ShardError, ShardResult};
 
-use crate::actors::{ActorMessage, Processor};
+use shared::actors::{ActorMessage, Processor};
 
 pub(crate) struct EncryptionProcessor<E: Encryptor> {
     encryptor: Arc<E>,
@@ -59,15 +58,14 @@ impl<E: Encryptor> Processor for EncryptionProcessor<E> {
 }
 #[cfg(test)]
 mod tests {
+    use crate::encryption::aes_encryptor::Aes256Ctr64LEEncryptor;
     use bytes::Bytes;
+    use shared::actors::ActorManager;
     use shared::crypto::{Aes256IV, Aes256Key};
+    use shared::error::{ShardError, ShardResult};
     use std::time::Duration;
     use tokio::time::sleep;
     use tokio_util::sync::CancellationToken;
-
-    use crate::{
-        actors::ActorManager, encryption::aes_encryptor::Aes256Ctr64LEEncryptor, error::ShardResult,
-    };
 
     use super::*;
 

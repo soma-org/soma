@@ -44,6 +44,8 @@ use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
     digest::Digest,
     metadata::MetadataCommitment,
+    shard::Shard,
+    shard_scores::{Score, ShardScores},
 };
 use tracing::trace;
 
@@ -160,7 +162,7 @@ pub enum TransactionKind {
     // Shard txs
     EmbedData {
         digest: Digest<MetadataCommitment>,
-        data_size_bytes: u64,
+        data_size_bytes: usize,
         coin_ref: ObjectRef,
     },
     ClaimEscrow {
@@ -168,7 +170,7 @@ pub enum TransactionKind {
     },
     ReportScores {
         shard_input_ref: ObjectRef,
-        // scores: ShardScores, // encoder/src/types/shard_scores
+        scores: Vec<u8>,    // BCS Serialized Signed<ShardScores, BLS>
         signature: Vec<u8>, // BCS serialized EncoderAggregateSignature (BLS)
         signers: Vec<EncoderPublicKey>,
     },

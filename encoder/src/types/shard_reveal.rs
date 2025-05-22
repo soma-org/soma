@@ -8,7 +8,7 @@ use shared::{
     signed::Signed,
 };
 
-use super::{shard::Shard, shard_verifier::ShardAuthToken};
+use shared::shard::{Shard, ShardAuthToken};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data

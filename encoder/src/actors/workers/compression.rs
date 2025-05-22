@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use crate::compression::Compressor;
+use async_trait::async_trait;
 use bytes::Bytes;
+use shared::error::ShardResult;
 use tokio::sync::Semaphore;
 
-use crate::{compression::Compressor, error::ShardResult};
-use async_trait::async_trait;
-
-use crate::actors::{ActorMessage, Processor};
+use shared::actors::{ActorMessage, Processor};
 
 type SizeInBytes = usize;
 
@@ -60,9 +60,9 @@ mod tests {
     use tokio::time::sleep;
     use tokio_util::sync::CancellationToken;
 
-    use crate::{actors::ActorManager, compression::zstd_compressor::ZstdCompressor};
-
     use super::*;
+    use crate::compression::zstd_compressor::ZstdCompressor;
+    use shared::actors::ActorManager;
 
     #[tokio::test]
     async fn test_compression_actor() -> ShardResult<()> {

@@ -1,7 +1,6 @@
 use crate::{
     core::pipeline_dispatcher::InternalDispatcher,
     datastore::Store,
-    error::{ShardError, ShardResult},
     messaging::EncoderInternalNetworkService,
     types::{
         context::Context,
@@ -10,14 +9,20 @@ use crate::{
         shard_finality::{verify_signed_finality, ShardFinality, ShardFinalityAPI},
         shard_reveal::{verify_signed_shard_reveal, ShardReveal, ShardRevealAPI},
         shard_reveal_votes::{verify_shard_reveal_votes, ShardRevealVotes, ShardRevealVotesAPI},
-        shard_scores::{verify_signed_scores, ShardScores, ShardScoresAPI},
-        shard_verifier::ShardVerifier,
     },
 };
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use shared::{crypto::keys::EncoderPublicKey, finality_proof, signed::Signed, verified::Verified};
+use shared::{
+    crypto::keys::EncoderPublicKey,
+    error::{ShardError, ShardResult},
+    finality_proof,
+    shard_scores::{verify_signed_scores, ShardScores, ShardScoresAPI},
+    shard_verifier::ShardVerifier,
+    signed::Signed,
+    verified::Verified,
+};
 use std::sync::Arc;
 use tracing::{debug, error, info, trace, warn};
 
@@ -80,11 +85,25 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let (shard, cancellation) = match self
-            .shard_verifier
-            .verify(&self.context, signed_commit.auth_token())
-            .await
-        {
+        let inner_context = self.context.inner();
+
+        let committees = match inner_context.committees(signed_commit.auth_token().epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
+            }
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        let (shard, cancellation) = match self.shard_verifier.verify(
+            committees.authority_committee.clone(),
+            committees.encoder_committee.clone(),
+            committees.vdf_iterations,
+            signed_commit.auth_token(),
+        ) {
             Ok(s) => {
                 debug!("Shard verification succeeded");
                 s
@@ -193,11 +212,25 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let (shard, cancellation) = match self
-            .shard_verifier
-            .verify(&self.context, votes.auth_token())
-            .await
-        {
+        let inner_context = self.context.inner();
+
+        let committees = match inner_context.committees(votes.auth_token().epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
+            }
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        let (shard, cancellation) = match self.shard_verifier.verify(
+            committees.authority_committee.clone(),
+            committees.encoder_committee.clone(),
+            committees.vdf_iterations,
+            votes.auth_token(),
+        ) {
             Ok(s) => {
                 debug!("Shard verification succeeded");
                 s
@@ -276,11 +309,25 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let (shard, cancellation) = match self
-            .shard_verifier
-            .verify(&self.context, reveal.auth_token())
-            .await
-        {
+        let inner_context = self.context.inner();
+
+        let committees = match inner_context.committees(reveal.auth_token().epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
+            }
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        let (shard, cancellation) = match self.shard_verifier.verify(
+            committees.authority_committee.clone(),
+            committees.encoder_committee.clone(),
+            committees.vdf_iterations,
+            reveal.auth_token(),
+        ) {
             Ok(s) => {
                 debug!("Shard verification succeeded");
                 s
@@ -365,11 +412,25 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let (shard, cancellation) = match self
-            .shard_verifier
-            .verify(&self.context, votes.auth_token())
-            .await
-        {
+        let inner_context = self.context.inner();
+
+        let committees = match inner_context.committees(votes.auth_token().epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
+            }
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        let (shard, cancellation) = match self.shard_verifier.verify(
+            committees.authority_committee.clone(),
+            committees.encoder_committee.clone(),
+            committees.vdf_iterations,
+            votes.auth_token(),
+        ) {
             Ok(s) => {
                 debug!("Shard verification succeeded");
                 s
@@ -448,11 +509,25 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         debug!("Verifying shard with auth token");
-        let (shard, cancellation) = match self
-            .shard_verifier
-            .verify(&self.context, scores.auth_token())
-            .await
-        {
+        let inner_context = self.context.inner();
+
+        let committees = match inner_context.committees(scores.auth_token().epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
+            }
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        let (shard, cancellation) = match self.shard_verifier.verify(
+            committees.authority_committee.clone(),
+            committees.encoder_committee.clone(),
+            committees.vdf_iterations,
+            scores.auth_token(),
+        ) {
             Ok(s) => {
                 debug!("Shard verification succeeded");
                 s
@@ -527,11 +602,25 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             ));
         }
         debug!("Verifying shard with auth token");
-        let (shard, cancellation) = match self
-            .shard_verifier
-            .verify(&self.context, finality.auth_token())
-            .await
-        {
+        let inner_context = self.context.inner();
+
+        let committees = match inner_context.committees(finality.auth_token().epoch()) {
+            Ok(c) => {
+                tracing::debug!("Successfully retrieved committees");
+                c
+            }
+            Err(e) => {
+                tracing::error!("Failed to get committees: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        let (shard, cancellation) = match self.shard_verifier.verify(
+            committees.authority_committee.clone(),
+            committees.encoder_committee.clone(),
+            committees.vdf_iterations,
+            finality.auth_token(),
+        ) {
             Ok(s) => {
                 debug!("Shard verification succeeded");
                 s

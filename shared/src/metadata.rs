@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use crate::{
     checksum::Checksum,
     crypto::EncryptionKey,
-    error::{SharedError, SharedResult},
+    error::{ShardError, ShardResult, SharedError, SharedResult},
 };
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -196,6 +196,10 @@ impl MetadataCommitment {
 
     pub fn metadata(&self) -> Metadata {
         self.metadata.clone()
+    }
+
+    pub fn digest(&self) -> ShardResult<Digest<Self>> {
+        Digest::new(self).map_err(ShardError::DigestFailure)
     }
 }
 

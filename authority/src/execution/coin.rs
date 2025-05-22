@@ -447,7 +447,7 @@ impl CoinExecutor {
 
 impl TransactionExecutor for CoinExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,

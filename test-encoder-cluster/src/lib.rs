@@ -3,7 +3,6 @@ use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc, time::Duration};
 use bytes::Bytes;
 use encoder::{
     core::encoder_node::EncoderNodeHandle,
-    error::{ShardError, ShardResult},
     messaging::{
         tonic::{
             external::{EncoderExternalTonicClient, SendInputRequest},
@@ -13,9 +12,7 @@ use encoder::{
     },
     types::{
         parameters::Parameters,
-        shard::{Shard, ShardEntropy},
         shard_input::{ShardInput, ShardInputV1},
-        shard_verifier::ShardAuthToken,
     },
 };
 use fastcrypto::{
@@ -27,7 +24,9 @@ use shared::{
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair},
     digest::Digest,
     entropy::{BlockEntropy, BlockEntropyProof},
+    error::{ShardError, ShardResult},
     scope::Scope,
+    shard::{Shard, ShardAuthToken, ShardEntropy},
     signed::Signed,
     verified::Verified,
 };

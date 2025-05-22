@@ -8,7 +8,7 @@ use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use shared::checksum::Checksum;
 
-use crate::error::ObjectResult;
+use shared::error::ObjectResult;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectPath {
@@ -34,7 +34,7 @@ impl ObjectPath {
 }
 
 impl FromStr for ObjectPath {
-    type Err = crate::error::ObjectError;
+    type Err = shared::error::ObjectError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         ObjectPath::new(s.to_string())

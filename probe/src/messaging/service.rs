@@ -1,7 +1,5 @@
-use crate::{
-    error::{ProbeError, ProbeResult},
-    EmbeddingAPI, ProbeInput, ProbeInputAPI, ProbeOutput, ProbeOutputV1, ScoreV1,
-};
+use crate::{EmbeddingAPI, ProbeInput, ProbeInputAPI, ProbeOutput, ProbeOutputV1, ScoreV1};
+use shared::error::{ProbeError, ProbeResult};
 
 use super::ProbeService;
 use async_trait::async_trait;

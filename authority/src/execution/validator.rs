@@ -62,7 +62,7 @@ impl ValidatorExecutor {
 
 impl TransactionExecutor for ValidatorExecutor {
     fn execute(
-        &self,
+        &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,

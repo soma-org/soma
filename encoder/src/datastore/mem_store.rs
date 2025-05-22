@@ -3,6 +3,10 @@ use parking_lot::RwLock;
 use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
     digest::Digest,
+    encoder_committee::Epoch,
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    shard_scores::{ShardScores, ShardScoresAPI},
     signed::Signed,
     verified::Verified,
 };
@@ -13,17 +17,11 @@ use std::{
 };
 use tracing::{info, warn};
 
-use crate::{
-    error::{ShardError, ShardResult},
-    types::{
-        encoder_committee::Epoch,
-        shard::Shard,
-        shard_commit::{ShardCommit, ShardCommitAPI},
-        shard_commit_votes::{ShardCommitVotes, ShardCommitVotesAPI},
-        shard_reveal::{ShardReveal, ShardRevealAPI},
-        shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
-        shard_scores::{ShardScores, ShardScoresAPI},
-    },
+use crate::types::{
+    shard_commit::{ShardCommit, ShardCommitAPI},
+    shard_commit_votes::{ShardCommitVotes, ShardCommitVotesAPI},
+    shard_reveal::{ShardReveal, ShardRevealAPI},
+    shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
 };
 
 use super::{CommitVoteCounts, RevealVoteCounts, Store};
