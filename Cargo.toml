@@ -222,7 +222,7 @@ mockall = "0.13.1"
 quick_cache = "0.6.10"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = "0.16.0"
+burn = "0.17"
 
 http = "1"
 http-body = "1"
