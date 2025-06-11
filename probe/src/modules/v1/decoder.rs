@@ -91,7 +91,7 @@ pub struct DecoderV1<B: Backend> {
 }
 
 impl<B: Backend> DecoderV1<B> {
-    pub(crate) fn init(device: &B::Device) -> Self {
+    pub fn init(device: &B::Device) -> Self {
         let layers = (0..NUM_LAYERS)
             .map(|_| DecoderLayerV1::<B>::new(device))
             .collect::<Vec<_>>();
@@ -102,11 +102,7 @@ impl<B: Backend> DecoderV1<B> {
         }
     }
 
-    pub(crate) fn forward(
-        &self,
-        byte_ids: Tensor<B, 2, Int>,
-        patch_reps: Tensor<B, 3>,
-    ) -> Tensor<B, 3> {
+    pub fn forward(&self, byte_ids: Tensor<B, 2, Int>, patch_reps: Tensor<B, 3>) -> Tensor<B, 3> {
         let device = &self.token_embeds.devices()[0];
         let [batch_size, seq_length] = byte_ids.dims();
         let index_positions = Tensor::arange(0..seq_length as i64, device)
@@ -114,7 +110,7 @@ impl<B: Backend> DecoderV1<B> {
             .repeat_dim(0, batch_size);
         let pos_embeds = self.pos_embeds.forward(index_positions);
         let token_embeds = self.token_embeds.forward(byte_ids);
-        let mut x = pos_embeds + token_embeds;
+        let mut x = token_embeds + pos_embeds;
         for layer in self.layers.iter() {
             x = layer.forward(x, patch_reps.clone());
         }

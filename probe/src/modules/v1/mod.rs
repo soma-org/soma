@@ -1,5 +1,5 @@
-pub(crate) mod decoder;
-pub(crate) mod predictor;
+pub mod decoder;
+pub mod predictor;
 
 const PATCH_EMBEDDING_DIM: usize = 2048; // big impact
 const BYTE_EMBEDDING_DIM: usize = 512; // big impact

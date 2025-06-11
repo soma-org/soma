@@ -3,6 +3,9 @@ name = "probe"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+safetensors = []
+
 [dependencies]
 zstd.workspace = true
 bcs.workspace = true
@@ -23,6 +26,10 @@ tracing.workspace = true
 tokio.workspace = true
 soma-http.workspace = true
 shared.workspace = true
+burn-import.workspace = true
+burn-ndarray.workspace = true
+safetensors.workspace = true
+memmap2.workspace = true
 
 [dependencies.burn]
 workspace = true

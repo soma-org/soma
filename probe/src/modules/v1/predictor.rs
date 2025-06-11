@@ -17,14 +17,14 @@ pub struct PredictorV1<B: Backend> {
 }
 
 impl<B: Backend> PredictorV1<B> {
-    pub(crate) fn init(device: &B::Device) -> Self {
+    pub fn init(device: &B::Device) -> Self {
         Self {
             layer_norm: LayerNormConfig::new(BYTE_EMBEDDING_DIM).init(device),
             to_logits: LinearConfig::new(BYTE_EMBEDDING_DIM, VOCAB_SIZE).init(device),
         }
     }
 
-    pub(crate) fn forward(
+    pub fn forward(
         &self,
         byte_representations: Tensor<B, 1>, // takes the byte representations
     ) -> Tensor<B, 1> {

@@ -1,5 +1,5 @@
-pub(crate) mod recorder;
-pub(crate) mod v1;
+pub mod recorder;
+pub mod v1;
 
 use burn::tensor::{backend::Backend, Int, Tensor};
 use bytes::Bytes;
