@@ -1,5 +1,4 @@
 //! testing v1 probes
-#![cfg(feature = "safetensors")]
 mod shared;
 use burn::{
     module::Module,
@@ -16,6 +15,7 @@ use std::{env, path::PathBuf};
 
 type Backend = burn_ndarray::NdArray<f32>;
 
+#[cfg(feature = "safetensors")]
 #[test]
 fn test_predictor() {
     let device = Default::default();
@@ -48,7 +48,7 @@ fn test_predictor() {
                 input.shape(),
                 to_burn_dtype(input.dtype()),
             );
-            let input = Tensor::<Backend, 1>::from_data(input, &device);
+            let input = Tensor::<Backend, 1>::from_data(input, &device).unsqueeze();
             let output = model.forward(input);
             let expected_output = output_tensors.tensor(name).unwrap();
             let expected_output = TensorData::from_bytes(
@@ -56,12 +56,14 @@ fn test_predictor() {
                 expected_output.shape(),
                 to_burn_dtype(expected_output.dtype()),
             );
-            let expected_output = Tensor::<Backend, 1>::from_data(expected_output, &device);
+            let expected_output =
+                Tensor::<Backend, 1>::from_data(expected_output, &device).unsqueeze();
             assert!(output.all_close(expected_output, None, Some(1e-6)))
         }
     }
 }
 
+#[cfg(feature = "safetensors")]
 #[test]
 fn test_decoder() {
     let device = Default::default();

@@ -1,11 +1,13 @@
 use burn::{
     module::Module,
     nn::{
-        attention::{MhaInput, MultiHeadAttention, MultiHeadAttentionConfig},
+        attention::{
+            generate_autoregressive_mask, MhaInput, MultiHeadAttention, MultiHeadAttentionConfig,
+        },
         Embedding, EmbeddingConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig,
     },
     record::{HalfPrecisionSettings, Recorder},
-    tensor::{backend::Backend, Int, Tensor},
+    tensor::{backend::Backend, Bool, Int, Tensor},
 };
 use bytes::Bytes;
 
@@ -62,11 +64,16 @@ impl<B: Backend> DecoderLayerV1<B> {
             ff: FeedForwardV1::new(device),
         }
     }
-    fn forward(&self, byte_reps: Tensor<B, 3>, patch_reps: Tensor<B, 3>) -> Tensor<B, 3> {
+    fn forward(
+        &self,
+        byte_reps: Tensor<B, 3>,
+        patch_reps: Tensor<B, 3>,
+        mask_attn: Tensor<B, 3, Bool>,
+    ) -> Tensor<B, 3> {
         let x = byte_reps;
         let residual_path = self.norm_1.forward(x.clone());
 
-        let input_mhs = MhaInput::self_attn(residual_path);
+        let input_mhs = MhaInput::self_attn(residual_path).mask_attn(mask_attn);
         let residual_path = self.self_attn.forward(input_mhs).context;
 
         let x = x + residual_path;
@@ -105,6 +112,7 @@ impl<B: Backend> DecoderV1<B> {
     pub fn forward(&self, byte_ids: Tensor<B, 2, Int>, patch_reps: Tensor<B, 3>) -> Tensor<B, 3> {
         let device = &self.token_embeds.devices()[0];
         let [batch_size, seq_length] = byte_ids.dims();
+        let mask_attn = generate_autoregressive_mask::<B>(batch_size, seq_length, device);
         let index_positions = Tensor::arange(0..seq_length as i64, device)
             .reshape([1, seq_length])
             .repeat_dim(0, batch_size);
@@ -112,7 +120,7 @@ impl<B: Backend> DecoderV1<B> {
         let token_embeds = self.token_embeds.forward(byte_ids);
         let mut x = token_embeds + pos_embeds;
         for layer in self.layers.iter() {
-            x = layer.forward(x, patch_reps.clone());
+            x = layer.forward(x, patch_reps.clone(), mask_attn.clone());
         }
         x
     }

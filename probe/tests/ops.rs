@@ -1,5 +1,4 @@
 //! Testing each burn op against expected values
-#![cfg(feature = "safetensors")]
 mod shared;
 use burn::{
     module::Module,
@@ -19,6 +18,7 @@ use std::{env, path::PathBuf};
 
 type Backend = burn_ndarray::NdArray<f32>;
 
+#[cfg(feature = "safetensors")]
 #[test]
 fn test_linear() {
     let device = Default::default();
@@ -67,6 +67,7 @@ fn test_linear() {
     }
 }
 
+#[cfg(feature = "safetensors")]
 #[test]
 fn test_layer_norm() {
     let device = Default::default();
@@ -116,6 +117,8 @@ fn test_layer_norm() {
         }
     }
 }
+
+#[cfg(feature = "safetensors")]
 #[test]
 fn test_multi_head_attention() {
     let device = Default::default();
@@ -169,6 +172,7 @@ fn test_multi_head_attention() {
     }
 }
 
+#[cfg(feature = "safetensors")]
 #[test]
 fn test_embed() {
     let device = Default::default();
@@ -206,6 +210,7 @@ fn test_embed() {
     }
 }
 
+#[cfg(feature = "safetensors")]
 #[test]
 fn test_gelu() {
     let device = Default::default();

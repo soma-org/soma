@@ -44,9 +44,9 @@ pub trait ProbeAPI<B: Backend> {
     ) -> Tensor<B, 3>;
     fn call_predictor(
         &self,
-        byte_embeds: Tensor<B, 1>, // takes the byte representations
+        byte_embeds: Tensor<B, 2>, // takes the byte representations
                                    // returns the predicted logits of vocab size
-    ) -> Tensor<B, 1>;
+    ) -> Tensor<B, 2>;
     fn serialize(self) -> SerializedProbe;
 }
 
@@ -76,9 +76,9 @@ impl<B: Backend> ProbeAPI<B> for ProbeV1<B> {
     }
     fn call_predictor(
         &self,
-        byte_representation: Tensor<B, 1>, // takes the byte representations
+        byte_representation: Tensor<B, 2>, // takes the byte representations
                                            // returns the predicted logits of vocab size
-    ) -> Tensor<B, 1> {
+    ) -> Tensor<B, 2> {
         self.predictor.forward(byte_representation)
     }
     fn serialize(self) -> SerializedProbe {

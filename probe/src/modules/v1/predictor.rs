@@ -26,9 +26,9 @@ impl<B: Backend> PredictorV1<B> {
 
     pub fn forward(
         &self,
-        byte_representations: Tensor<B, 1>, // takes the byte representations
-    ) -> Tensor<B, 1> {
-        let [byte_embedding_dim] = byte_representations.dims();
+        byte_representations: Tensor<B, 2>, // takes the byte representations
+    ) -> Tensor<B, 2> {
+        let [_batch, byte_embedding_dim] = byte_representations.dims();
         assert_eq!(
             byte_embedding_dim, BYTE_EMBEDDING_DIM,
             "Input embedding dimensions must be {BYTE_EMBEDDING_DIM}"
