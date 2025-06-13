@@ -1,0 +1,15 @@
+[package]
+name = "bin-version"
+edition = "2024"
+version.workspace = true
+publish = false
+
+[dependencies]
+git-version.workspace = true
+const-str.workspace = true
+
+[lints]
+workspace = true
+
+
+

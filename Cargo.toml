@@ -20,7 +20,7 @@ members = [
   "objects",
   "test-encoder-cluster",
   "model",
-  "encoder-validator-api",
+  "encoder-validator-api", "bin-version", "soma-config", "soma-keys",
 ]
 
 
@@ -93,6 +93,9 @@ node = { path = "node" }
 test-cluster = { path = "test-cluster" }
 p2p = { path = "p2p" }
 encoder-validator-api = { path = "encoder-validator-api" }
+bin-version = { path = "bin-version" }
+soma-config = { path = "soma-config"}
+soma-keys = { path = "soma-keys"}
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim-macros" }
@@ -195,7 +198,8 @@ test-encoder-cluster = { path = "test-encoder-cluster" }
 # external deps
 bs58 = "0.5.1"
 enum_dispatch = "0.3.13"
-strum_macros = "0.26"
+strum_macros = "0.27"
+strum = "0.27"
 url = { version = "2.5.2", features = ["serde"] }
 tonic-rustls = "0.1.0"
 aes = "0.8.4"
@@ -260,6 +264,15 @@ num-bigint-dig = "0.8"
 tonic-health = "0.12"
 safetensors = "0.5"
 memmap2 = "0.9.5"
+colored = "2"
+git-version = "0.3.9"
+const-str = "0.6.2"
+dirs = "6.0.0"
+bip32 = "0.5.3"
+tiny-bip39 = "2.0.0"
+slip10_ed25519 = "0.1.3"
+tabled = "0.20.0"
+json_to_table = "0.12.0"
 
 [patch.crates-io]
 tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9" }

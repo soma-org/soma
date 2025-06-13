@@ -6,7 +6,24 @@ edition = "2021"
 [dependencies]
 clap.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 encoder.workspace = true
+colored.workspace = true
+bin-version.workspace = true
+soma-config.workspace = true
+strum_macros.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+types.workspace = true
+soma-keys.workspace = true
+bip32.workspace = true
+tabled.workspace = true
+json_to_table.workspace = true
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "soma"
+path = "src/main.rs"
