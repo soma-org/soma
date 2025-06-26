@@ -1,3 +1,4 @@
+pub mod downloader;
 pub mod http_network;
 
 use async_trait::async_trait;
@@ -12,7 +13,7 @@ use crate::{
 use shared::error::ObjectResult;
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
-    metadata::Metadata,
+    metadata::DownloadableMetadata,
 };
 use soma_network::multiaddr::Multiaddr;
 
@@ -21,9 +22,7 @@ pub trait ObjectNetworkClient: Send + Sync + 'static {
     async fn download_object<W>(
         &self,
         writer: &mut W,
-        peer: &PeerPublicKey,
-        address: &Multiaddr,
-        metadata: &Metadata,
+        downloadable_metadata: &DownloadableMetadata,
     ) -> ObjectResult<()>
     where
         W: AsyncWrite + Unpin + Send;

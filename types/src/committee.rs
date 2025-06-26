@@ -50,9 +50,9 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shared::authority_committee::AuthorityCommittee;
+use shared::checksum::Checksum;
 use shared::crypto::keys::EncoderPublicKey;
 use shared::encoder_committee::Encoder;
-use shared::probe::ProbeMetadata;
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Display, Formatter, Write};
@@ -861,12 +861,12 @@ impl EncoderCommittee {
                 // TODO: Create a test probe metadata (will be replaced with real data in production)
                 let mut seed = [0u8; 32];
                 seed[0..8].copy_from_slice(&key.to_bytes()[0..8]); // Use part of the public key as seed
-                let probe = ProbeMetadata::new_for_test(&seed);
+                let probe_checksum = Checksum::new_from_bytes(&seed);
 
                 Encoder {
                     voting_power,
                     encoder_key: key.clone(),
-                    probe,
+                    probe_checksum,
                 }
             })
             .collect::<Vec<_>>();

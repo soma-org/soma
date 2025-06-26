@@ -5,25 +5,24 @@ pub(crate) mod internal_service;
 mod network_tests;
 pub mod tonic;
 
+use crate::types::commit::Commit;
+use crate::types::commit_votes::CommitVotes;
+use crate::types::finality::Finality;
+use crate::types::input::Input;
 use crate::types::parameters::Parameters;
-use crate::types::shard_commit::ShardCommit;
-use crate::types::shard_commit_votes::ShardCommitVotes;
-use crate::types::shard_finality::ShardFinality;
-use crate::types::shard_input::ShardInput;
-use crate::types::shard_reveal::ShardReveal;
-use crate::types::shard_reveal_votes::ShardRevealVotes;
+use crate::types::reveal::Reveal;
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
 use shared::crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey};
 use shared::error::ShardResult;
-use shared::shard_scores::ShardScores;
 use shared::{signed::Signed, verified::Verified};
 use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
 use tonic::internal::ConnectionsInfo;
 use tonic::NetworkingInfo;
+use types::shard_score::ShardScore;
 
 /// Default message timeout for each request.
 // TODO: make timeout configurable and tune the default timeout based on measured network latency
@@ -34,39 +33,33 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_commit(
         &self,
         encoder: &EncoderPublicKey,
-        commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        commit: &Verified<Signed<Commit, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_commit_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+        votes: &Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_reveal(
         &self,
         encoder: &EncoderPublicKey,
-        reveal: &Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
-        timeout: Duration,
-    ) -> ShardResult<()>;
-    async fn send_reveal_votes(
-        &self,
-        encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
+        reveal: &Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
     async fn send_scores(
         &self,
         encoder: &EncoderPublicKey,
-        scores: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        scores: &Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
     async fn send_finality(
         &self,
         encoder: &EncoderPublicKey,
-        finality: &Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        finality: &Verified<Signed<Finality, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -76,7 +69,7 @@ pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_input(
         &self,
         encoder: &EncoderPublicKey,
-        input: &Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        input: &Verified<Signed<Input, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -97,11 +90,6 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
         &self,
         encoder: &EncoderPublicKey,
         reveal_bytes: Bytes,
-    ) -> ShardResult<()>;
-    async fn handle_send_reveal_votes(
-        &self,
-        encoder: &EncoderPublicKey,
-        votes_bytes: Bytes,
     ) -> ShardResult<()>;
     async fn handle_send_scores(
         &self,

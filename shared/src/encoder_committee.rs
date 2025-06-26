@@ -2,7 +2,7 @@
 //! The set type specifies whether to sample the total shard (inference and evaluation) at once or
 //! whether it should be resampled. In all cases it should opt for disjoint sets except for the cases
 //! where the size of staked encoders does not allow it.
-use crate::{crypto::keys::EncoderPublicKey, digest::Digest, probe::ProbeMetadata};
+use crate::{checksum::Checksum, crypto::keys::EncoderPublicKey, digest::Digest};
 use rand::{rngs::StdRng, seq::index::sample_weighted, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -155,66 +155,65 @@ impl EncoderCommittee {
 }
 
 impl EncoderCommittee {
-    /// Creates a new EncoderCommittee suitable for testing
-    pub fn new_for_testing(encoder_public_keys: Vec<EncoderPublicKey>) -> Self {
-        assert!(
-            !encoder_public_keys.is_empty(),
-            "Must provide at least one encoder key"
-        );
+    // pub fn new_for_testing(encoder_public_keys: Vec<EncoderPublicKey>) -> Self {
+    //     assert!(
+    //         !encoder_public_keys.is_empty(),
+    //         "Must provide at least one encoder key"
+    //     );
 
-        let num_encoders = encoder_public_keys.len();
+    //     let num_encoders = encoder_public_keys.len();
 
-        // Calculate shard size as minimum of 3 or num_encoders / 2
-        let shard_size = std::cmp::max(
-            std::cmp::min(num_encoders as u32, 3),
-            (num_encoders / 2) as u32,
-        );
+    //     // Calculate shard size as minimum of 3 or num_encoders / 2
+    //     let shard_size = std::cmp::max(
+    //         std::cmp::min(num_encoders as u32, 3),
+    //         (num_encoders / 2) as u32,
+    //     );
 
-        // Calculate quorum threshold as 2/3 of shard size, rounded up
-        // This formula (2*n + 2) / 3 gives us ceiling(2n/3)
-        let quorum_threshold = (shard_size * 2 + 2) / 3;
+    //     // Calculate quorum threshold as 2/3 of shard size, rounded up
+    //     // This formula (2*n + 2) / 3 gives us ceiling(2n/3)
+    //     let quorum_threshold = (shard_size * 2 + 2) / 3;
 
-        // Equal voting power for testing
-        let voting_power_per_encoder = 10000 / num_encoders as u16;
-        let remainder = 10000 % num_encoders as u16;
+    //     // Equal voting power for testing
+    //     let voting_power_per_encoder = 10000 / num_encoders as u16;
+    //     let remainder = 10000 % num_encoders as u16;
 
-        // Create encoder objects with equal voting power
-        let encoders = encoder_public_keys
-            .into_iter()
-            .enumerate()
-            .map(|(i, key)| {
-                // Distribute the remainder to first few encoders to ensure total is 10000
-                let power = if i < remainder as usize {
-                    voting_power_per_encoder + 1
-                } else {
-                    voting_power_per_encoder
-                };
+    //     // Create encoder objects with equal voting power
+    //     let encoders = encoder_public_keys
+    //         .into_iter()
+    //         .enumerate()
+    //         .map(|(i, key)| {
+    //             // Distribute the remainder to first few encoders to ensure total is 10000
+    //             let power = if i < remainder as usize {
+    //                 voting_power_per_encoder + 1
+    //             } else {
+    //                 voting_power_per_encoder
+    //             };
 
-                // Create a dummy probe for testing
-                let probe = ProbeMetadata::new_for_test(&[i as u8; 32]);
+    //             // Create a dummy probe for testing
+    //             let probe = ProbeMetadata::new_for_test(&[i as u8; 32]);
 
-                Encoder {
-                    voting_power: power,
-                    encoder_key: key,
-                    probe,
-                }
-            })
-            .collect();
+    //             Encoder {
+    //                 voting_power: power,
+    //                 encoder_key: key,
+    //                 probe,
+    //             }
+    //         })
+    //         .collect();
 
-        Self::new(
-            0, // epoch
-            shard_size,
-            quorum_threshold,
-            encoders,
-        )
-    }
+    //     Self::new(
+    //         0, // epoch
+    //         shard_size,
+    //         quorum_threshold,
+    //         encoders,
+    //     )
+    // }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Encoder {
     pub voting_power: VotingPowerUnit,
     pub encoder_key: EncoderPublicKey,
-    pub probe: ProbeMetadata,
+    pub probe_checksum: Checksum,
 }
 
 /// Represents an EncoderIndex, also modality marked for type safety

@@ -45,7 +45,6 @@ use shared::{
     digest::Digest,
     metadata::MetadataCommitment,
     shard::Shard,
-    shard_scores::{Score, ShardScores},
 };
 use tracing::trace;
 

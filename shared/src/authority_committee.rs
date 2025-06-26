@@ -13,17 +13,8 @@ use crate::{
     },
 };
 
-/// The Committees [`AuthorityCommittee`] [`NetworkCommittee`][net] [`EncoderCommittee`][enc] are updated each epoch.
-/// Epoch transitions are when all stake, registration, and reconfiguration related operations are applied.
-///
-/// [net]: crate::types::network_committee::NetworkCommittee
-/// [enc]: crate::types::encoder_committee::EncoderCommittee
 type Epoch = u64;
 
-/// Voting power of a given committee member, roughly proportional to the actual amount of Soma staked
-/// in a given member.
-/// Total stake / voting power of all authorities should sum to 10,000.
-//TODO: rename to voting power?
 type Stake = u64;
 
 /// Committee is the set of authorities that participate in the consensus protocol for this epoch.

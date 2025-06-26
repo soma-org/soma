@@ -11,8 +11,8 @@ use encoder::{
         EncoderExternalNetworkClient,
     },
     types::{
+        input::{Input, InputV1},
         parameters::Parameters,
-        shard_input::{ShardInput, ShardInputV1},
     },
 };
 use fastcrypto::{
@@ -21,7 +21,7 @@ use fastcrypto::{
 };
 use rand::{rngs::StdRng, SeedableRng};
 use shared::{
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair},
+    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
     digest::Digest,
     entropy::{BlockEntropy, BlockEntropyProof},
     error::{ShardError, ShardResult},
@@ -30,6 +30,7 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
+use soma_network::multiaddr::Multiaddr;
 use swarm::{EncoderSwarm, EncoderSwarmBuilder};
 use tonic::Request;
 use tracing::info;
@@ -130,23 +131,27 @@ impl TestEncoderCluster {
         // Generate a deterministic EncoderKeyPair
         EncoderKeyPair::generate(&mut rng)
     }
-    // Create a proper ShardInput with valid VDF entropy
-    pub fn create_valid_shard_input(&self) -> ShardInput {
-        let auth_token = create_valid_test_token();
-        ShardInput::V1(ShardInputV1::new(auth_token))
+    // Create a proper Input with valid VDF entropy
+    pub fn create_valid_shard_input(&self, peer: PeerPublicKey, address: Multiaddr) -> Input {
+        let auth_token = create_valid_test_token(peer, address);
+        Input::V1(InputV1::new(auth_token))
     }
 
     // Update the existing method to use the valid input
-    pub fn create_signed_input(&self) -> Verified<Signed<ShardInput, min_sig::BLS12381Signature>> {
-        // Get a properly formed ShardInput with valid AuthToken
-        let input = self.create_valid_shard_input();
+    pub fn create_signed_input(
+        &self,
+        peer: PeerPublicKey,
+        address: Multiaddr,
+    ) -> Verified<Signed<Input, min_sig::BLS12381Signature>> {
+        // Get a properly formed Input with valid AuthToken
+        let input = self.create_valid_shard_input(peer, address);
 
         // Get a keypair for signing
         let encoder_keypair = self.get_client_encoder_keypair();
         let inner_keypair = encoder_keypair.inner().copy();
 
         // Sign the input
-        let signed_input = Signed::new(input, Scope::ShardInput, &inner_keypair.private()).unwrap();
+        let signed_input = Signed::new(input, Scope::Input, &inner_keypair.private()).unwrap();
 
         // Create a verified object
         Verified::from_trusted(signed_input).unwrap()
@@ -223,25 +228,25 @@ impl TestEncoderCluster {
     fn create_signed_input_with_token(
         &self,
         token: ShardAuthToken,
-    ) -> Verified<Signed<ShardInput, min_sig::BLS12381Signature>> {
-        // Create ShardInput with the provided token
-        let input = ShardInput::V1(ShardInputV1::new(token));
+    ) -> Verified<Signed<Input, min_sig::BLS12381Signature>> {
+        // Create Input with the provided token
+        let input = Input::V1(InputV1::new(token));
 
         // Get a keypair for signing
         let encoder_keypair = self.get_client_encoder_keypair();
         let inner_keypair = encoder_keypair.inner().copy();
 
         // Sign the input
-        let signed_input = Signed::new(input, Scope::ShardInput, &inner_keypair.private()).unwrap();
+        let signed_input = Signed::new(input, Scope::Input, &inner_keypair.private()).unwrap();
 
         // Create a verified object
         Verified::from_trusted(signed_input).unwrap()
     }
 }
 
-pub fn create_valid_test_token() -> ShardAuthToken {
+pub fn create_valid_test_token(peer: PeerPublicKey, address: Multiaddr) -> ShardAuthToken {
     // Reuse the existing token creation code
-    let basic_token = ShardAuthToken::new_for_test();
+    let basic_token = ShardAuthToken::new_for_test(peer, address);
     let epoch = basic_token.epoch();
     let block_ref = basic_token.proof.block_ref();
 

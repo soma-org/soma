@@ -21,7 +21,7 @@ bcs.workspace = true
 tonic.workspace = true
 bytes.workspace = true
 vdf.workspace = true
-probe.workspace = true
+evaluation.workspace = true
 serde.workspace = true
 
 serde_with = { version = "3.8", features = ["schemars_0_8"] }

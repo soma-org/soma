@@ -25,7 +25,7 @@ use crate::{
         tonic::generated::encoder_external_tonic_service_server::EncoderExternalTonicServiceServer,
         EncoderExternalNetworkClient, EncoderExternalNetworkManager, EncoderExternalNetworkService,
     },
-    types::{parameters::Parameters, shard_input::ShardInput},
+    types::{input::Input, parameters::Parameters},
 };
 use tracing::{info, trace, warn};
 
@@ -101,7 +101,7 @@ impl EncoderExternalNetworkClient for EncoderExternalTonicClient {
     async fn send_input(
         &self,
         encoder: &EncoderPublicKey,
-        input: &Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        input: &Verified<Signed<Input, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendInputRequest {

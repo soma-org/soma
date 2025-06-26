@@ -1,68 +1,57 @@
 use crate::{
-    actors::pipelines::{
-        commit::CommitProcessor, commit_votes::CommitVotesProcessor, finality::FinalityProcessor,
-        input::InputProcessor, reveal::RevealProcessor, reveal_votes::RevealVotesProcessor,
-        scores::ScoresProcessor,
-    },
     messaging::EncoderInternalNetworkClient,
+    pipelines::{
+        commit::CommitProcessor, commit_votes::CommitVotesProcessor, finality::FinalityProcessor,
+        input::InputProcessor, reveal::RevealProcessor, scores::ScoresProcessor,
+    },
     types::{
-        shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_finality::ShardFinality, shard_input::ShardInput, shard_reveal::ShardReveal,
-        shard_reveal_votes::ShardRevealVotes,
+        commit::Commit, commit_votes::CommitVotes, finality::Finality, input::Input, reveal::Reveal,
     },
 };
 use async_trait::async_trait;
+use evaluation::messaging::EvaluationClient;
 use fastcrypto::bls12381::min_sig;
-use model::client::ModelClient;
+use inference::client::InferenceClient;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
-use probe::messaging::ProbeClient;
 use shared::error::ShardResult;
 use shared::{
-    actors::ActorHandle, crypto::keys::PeerPublicKey, probe::ProbeMetadata, shard::Shard,
-    shard_scores::ShardScores, signed::Signed, verified::Verified,
+    actors::ActorHandle, crypto::keys::PeerPublicKey, shard::Shard, signed::Signed,
+    verified::Verified,
 };
 use soma_network::multiaddr::Multiaddr;
 use tokio_util::sync::CancellationToken;
+use types::shard_score::ShardScore;
 
 #[async_trait]
 pub trait InternalDispatcher: Sync + Send + 'static {
     async fn dispatch_commit(
         &self,
         shard: Shard,
-        commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
-        probe_metadata: ProbeMetadata,
-        peer: PeerPublicKey,
-        address: Multiaddr,
+        commit: Verified<Signed<Commit, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_commit_votes(
         &self,
         shard: Shard,
-        votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+        votes: Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_reveal(
         &self,
         shard: Shard,
-        reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
-        cancellation: CancellationToken,
-    ) -> ShardResult<()>;
-    async fn dispatch_reveal_votes(
-        &self,
-        shard: Shard,
-        votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
+        reveal: Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_scores(
         &self,
         shard: Shard,
-        scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        scores: Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_finality(
         &self,
         shard: Shard,
-        scores: Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        scores: Verified<Signed<Finality, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
 }
@@ -70,26 +59,28 @@ pub trait InternalDispatcher: Sync + Send + 'static {
 #[derive(Clone)]
 pub(crate) struct InternalPipelineDispatcher<
     E: EncoderInternalNetworkClient,
-    C: ObjectNetworkClient,
+    O: ObjectNetworkClient,
     S: ObjectStorage,
-    P: ProbeClient,
+    P: EvaluationClient,
 > {
-    certified_commit_handle: ActorHandle<CommitProcessor<E, C, S, P>>,
-    commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
-    reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
-    reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
+    certified_commit_handle: ActorHandle<CommitProcessor<O, E, S, P>>,
+    commit_votes_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
+    reveal_handle: ActorHandle<RevealProcessor<O, E, S, P>>,
     scores_handle: ActorHandle<ScoresProcessor<E>>,
     finality_handle: ActorHandle<FinalityProcessor>,
 }
 
-impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
-    InternalPipelineDispatcher<E, C, S, P>
+impl<
+        E: EncoderInternalNetworkClient,
+        O: ObjectNetworkClient,
+        S: ObjectStorage,
+        P: EvaluationClient,
+    > InternalPipelineDispatcher<E, O, S, P>
 {
     pub(crate) fn new(
-        certified_commit_handle: ActorHandle<CommitProcessor<E, C, S, P>>,
-        commit_votes_handle: ActorHandle<CommitVotesProcessor<E, S, P>>,
-        reveal_handle: ActorHandle<RevealProcessor<E, S, P>>,
-        reveal_votes_handle: ActorHandle<RevealVotesProcessor<E, S, P>>,
+        certified_commit_handle: ActorHandle<CommitProcessor<O, E, S, P>>,
+        commit_votes_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
+        reveal_handle: ActorHandle<RevealProcessor<O, E, S, P>>,
         scores_handle: ActorHandle<ScoresProcessor<E>>,
         finality_handle: ActorHandle<FinalityProcessor>,
     ) -> Self {
@@ -97,7 +88,6 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
             certified_commit_handle,
             commit_votes_handle,
             reveal_handle,
-            reveal_votes_handle,
             scores_handle,
             finality_handle,
         }
@@ -105,27 +95,28 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, P: ProbeClient>
-    InternalDispatcher for InternalPipelineDispatcher<E, C, S, P>
+impl<
+        E: EncoderInternalNetworkClient,
+        C: ObjectNetworkClient,
+        S: ObjectStorage,
+        P: EvaluationClient,
+    > InternalDispatcher for InternalPipelineDispatcher<E, C, S, P>
 {
     async fn dispatch_commit(
         &self,
         shard: Shard,
-        commit: Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
-        probe_metadata: ProbeMetadata,
-        peer: PeerPublicKey,
-        address: Multiaddr,
+        commit: Verified<Signed<Commit, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.certified_commit_handle
-            .background_process((shard, commit, probe_metadata, peer, address), cancellation)
+            .background_process((shard, commit), cancellation)
             .await?;
         Ok(())
     }
     async fn dispatch_commit_votes(
         &self,
         shard: Shard,
-        votes: Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+        votes: Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.commit_votes_handle
@@ -136,7 +127,7 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
     async fn dispatch_reveal(
         &self,
         shard: Shard,
-        reveal: Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+        reveal: Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.reveal_handle
@@ -144,21 +135,10 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
             .await?;
         Ok(())
     }
-    async fn dispatch_reveal_votes(
-        &self,
-        shard: Shard,
-        votes: Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
-        cancellation: CancellationToken,
-    ) -> ShardResult<()> {
-        self.reveal_votes_handle
-            .background_process((shard, votes), cancellation)
-            .await?;
-        Ok(())
-    }
     async fn dispatch_scores(
         &self,
         shard: Shard,
-        scores: Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        scores: Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.scores_handle
@@ -169,7 +149,7 @@ impl<E: EncoderInternalNetworkClient, C: ObjectNetworkClient, S: ObjectStorage, 
     async fn dispatch_finality(
         &self,
         shard: Shard,
-        finality: Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        finality: Verified<Signed<Finality, min_sig::BLS12381Signature>>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.finality_handle
@@ -184,8 +164,7 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
     async fn dispatch_input(
         &self,
         shard: Shard,
-        input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
-        probe_metadata: ProbeMetadata,
+        input: Verified<Signed<Input, min_sig::BLS12381Signature>>,
         peer: PeerPublicKey,
         address: Multiaddr,
         cancellation: CancellationToken,
@@ -196,9 +175,9 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
 pub(crate) struct ExternalPipelineDispatcher<
     E: EncoderInternalNetworkClient,
     O: ObjectNetworkClient,
-    M: ModelClient,
+    M: InferenceClient,
     S: ObjectStorage,
-    P: ProbeClient,
+    P: EvaluationClient,
 > {
     input_handle: ActorHandle<InputProcessor<E, O, M, S, P>>,
 }
@@ -206,9 +185,9 @@ pub(crate) struct ExternalPipelineDispatcher<
 impl<
         E: EncoderInternalNetworkClient,
         O: ObjectNetworkClient,
-        M: ModelClient,
+        M: InferenceClient,
         S: ObjectStorage,
-        P: ProbeClient,
+        P: EvaluationClient,
     > ExternalPipelineDispatcher<E, O, M, S, P>
 {
     pub(crate) fn new(input_handle: ActorHandle<InputProcessor<E, O, M, S, P>>) -> Self {
@@ -220,22 +199,21 @@ impl<
 impl<
         E: EncoderInternalNetworkClient,
         O: ObjectNetworkClient,
-        M: ModelClient,
+        M: InferenceClient,
         S: ObjectStorage,
-        P: ProbeClient,
+        P: EvaluationClient,
     > ExternalDispatcher for ExternalPipelineDispatcher<E, O, M, S, P>
 {
     async fn dispatch_input(
         &self,
         shard: Shard,
-        input: Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
-        probe_metadata: ProbeMetadata,
+        input: Verified<Signed<Input, min_sig::BLS12381Signature>>,
         peer: PeerPublicKey,
         address: Multiaddr,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.input_handle
-            .background_process((shard, input, probe_metadata, peer, address), cancellation)
+            .background_process((shard, input, peer, address), cancellation)
             .await?;
         Ok(())
     }

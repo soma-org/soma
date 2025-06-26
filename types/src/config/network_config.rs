@@ -495,7 +495,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     encoder.internal_network_address,
                     encoder.external_network_address,
                     encoder.object_address,
-                    encoder.probe_address,
+                    encoder.evaluation_address,
                     PathBuf::from("/project/root"), // Default path, should be configurable
                     PathBuf::from("/entry/point.py"), // Default path, should be configurable
                     validator_rpc_address.clone(),

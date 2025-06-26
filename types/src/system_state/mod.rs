@@ -42,12 +42,7 @@ use fastcrypto::{
 };
 use serde::{Deserialize, Serialize};
 use shard::ShardResult;
-use shared::{
-    crypto::keys::EncoderPublicKey,
-    digest::Digest,
-    shard::Shard,
-    shard_scores::{Score, ShardScores},
-};
+use shared::{crypto::keys::EncoderPublicKey, digest::Digest, shard::Shard};
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
 use tracing::{error, info};
@@ -185,7 +180,7 @@ pub trait SystemStateTrait {
 /// ## Thread Safety
 /// This struct is not thread-safe on its own and should be protected by
 /// appropriate synchronization mechanisms when accessed concurrently.
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SystemState {
     /// The current epoch number
     pub epoch: u64,

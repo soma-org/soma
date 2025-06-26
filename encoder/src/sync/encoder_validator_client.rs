@@ -7,7 +7,6 @@ use shared::{
         AuthorityPublicKey as SharedAuthorityPublicKey, EncoderPublicKey, PeerPublicKey,
         ProtocolPublicKey,
     },
-    probe::ProbeMetadata,
 };
 use std::{
     collections::{BTreeMap, HashMap},

@@ -4,9 +4,8 @@ use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
     digest::Digest,
-    metadata::{MetadataAPI, MetadataCommitment},
+    metadata::{DownloadableMetadataAPI, MetadataAPI, MetadataCommitment},
     scope::{Scope, ScopedMessage},
-    shard_scores::{verify_signed_scores, ScoreSetAPI, ShardScores, ShardScoresAPI},
     shard_verifier::ShardVerifier,
     signed::Signed,
     verified::Verified,
@@ -19,6 +18,7 @@ use types::{
     effects::ExecutionFailureStatus,
     error::{ConsensusError, ExecutionResult, SomaError},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
+    shard_score::{verify_signed_score, ScoreSetAPI, ShardScore, ShardScoreAPI},
     system_state::{get_system_state, shard::ShardResult, SystemState, SystemStateTrait},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
@@ -299,7 +299,7 @@ impl ShardExecutor {
 
         // Deserialize scores bytes
         tracing::debug!("Deserializing scores bytes");
-        let scores: Signed<ShardScores, min_sig::BLS12381Signature> =
+        let scores: Signed<ShardScore, min_sig::BLS12381Signature> =
             match bcs::from_bytes(&scores_bytes) {
                 Ok(s) => {
                     tracing::debug!("Successfully deserialized scores");
@@ -345,7 +345,7 @@ impl ShardExecutor {
         // Create verified scores object
         let verified_scores = match Verified::new(scores, scores_bytes.into(), |scores| {
             tracing::debug!("Verifying signed scores");
-            verify_signed_scores(scores, &shard)
+            verify_signed_score(scores, &shard)
         }) {
             Ok(v) => {
                 tracing::debug!("Verified scores created successfully");
@@ -383,16 +383,13 @@ impl ShardExecutor {
         }
 
         // Verify the aggregate signature
-        let message = bcs::to_bytes(&ScopedMessage::new(
-            Scope::ShardScores,
-            verified_scores.digest(),
-        ))
-        .map_err(|e| {
-            ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "Failed to deserialize system state: {}",
-                e
-            )))
-        })?;
+        let message = bcs::to_bytes(&ScopedMessage::new(Scope::Score, verified_scores.digest()))
+            .map_err(|e| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize system state: {}",
+                    e
+                )))
+            })?;
         let sig = match EncoderAggregateSignature::from_bytes(&signature) {
             Ok(s) => {
                 tracing::debug!("Successfully deserialized scores");
@@ -434,6 +431,7 @@ impl ShardExecutor {
         let data_size = verified_scores
             .auth_token()
             .metadata_commitment()
+            .downloadable_metadata()
             .metadata()
             .size();
 
@@ -454,14 +452,14 @@ impl ShardExecutor {
             .signed_score_set()
             .into_inner()
             .shard_digest();
-        let scores = verified_scores.signed_score_set().into_inner().scores();
+        let score_set = verified_scores.signed_score_set().into_inner();
         state.add_shard_result(
             shard_digest,
             ShardResult {
                 digest: metadata_commitment_digest,
                 data_size_bytes: data_size,
                 amount: shard_input.amount,
-                scores,
+                score_set,
             },
         );
 

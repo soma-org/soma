@@ -1,7 +1,11 @@
 use std::{collections::BTreeSet, future::Future, path::Path, sync::Arc};
 
+use evaluation::messaging::service::MockEvaluationService;
+use evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
+use evaluation::messaging::EvaluationManager;
 use fastcrypto::traits::KeyPair;
-use model::client::{self, MockModelClient};
+use inference::client::{self, MockInferenceClient};
+use objects::networking::downloader::Downloader;
 use objects::{
     networking::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -9,14 +13,9 @@ use objects::{
     },
     storage::{filesystem::FilesystemObjectStorage, memory::MemoryObjectStore},
 };
-use probe::messaging::service::MockProbeService;
-use probe::messaging::tonic::{ProbeTonicClient, ProbeTonicManager};
-use probe::messaging::ProbeManager;
 use shared::{
-    authority_committee::AuthorityCommittee,
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
     entropy::EntropyVDF,
-    probe::ProbeMetadata,
 };
 use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
@@ -27,21 +26,7 @@ use types::{
 };
 
 use crate::{
-    actors::{
-        pipelines::{
-            commit::CommitProcessor, commit_votes::CommitVotesProcessor,
-            evaluation::EvaluationProcessor, finality::FinalityProcessor, input::InputProcessor,
-            reveal::RevealProcessor, reveal_votes::RevealVotesProcessor, scores::ScoresProcessor,
-        },
-        workers::{
-            compression::CompressionProcessor, downloader, encryption::EncryptionProcessor,
-            storage::StorageProcessor,
-        },
-    },
-    compression::zstd_compressor::ZstdCompressor,
     datastore::{mem_store::MemStore, Store},
-    encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
-    intelligence::model::python::{PythonInterpreter, PythonModule},
     messaging::{
         external_service::EncoderExternalService,
         internal_service::EncoderInternalService,
@@ -51,6 +36,11 @@ use crate::{
             NetworkingInfo,
         },
         EncoderExternalNetworkManager, EncoderInternalNetworkManager,
+    },
+    pipelines::{
+        commit::CommitProcessor, commit_votes::CommitVotesProcessor,
+        evaluation::EvaluationProcessor, finality::FinalityProcessor, input::InputProcessor,
+        reveal::RevealProcessor, scores::ScoresProcessor,
     },
     sync::{
         committee_sync_manager::CommitteeSyncManager,
@@ -62,7 +52,6 @@ use crate::{
     },
 };
 
-use self::downloader::Downloader;
 use super::{
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
@@ -111,7 +100,7 @@ pub struct EncoderNode {
     internal_network_manager: EncoderInternalTonicManager,
     external_network_manager: EncoderExternalTonicManager,
     object_network_manager: ObjectHttpManager,
-    probe_network_manager: ProbeTonicManager,
+    evaluation_network_manager: EvaluationTonicManager,
     store: Arc<dyn Store>,
     pub context: Context,
     object_storage: Arc<MemoryObjectStore>,
@@ -141,8 +130,8 @@ impl EncoderNode {
             .to_string()
             .parse()
             .expect("Valid multiaddr");
-        let probe_address: Multiaddr = config
-            .probe_address
+        let evaluation_address: Multiaddr = config
+            .evaluation_address
             .to_string()
             .parse()
             .expect("Valid multiaddr");
@@ -165,7 +154,7 @@ impl EncoderNode {
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
                     FilesystemObjectStorage,
-                    ProbeTonicClient,
+                    EvaluationTonicClient,
                 >,
             >,
         >>::client(&internal_network_manager);
@@ -191,16 +180,21 @@ impl EncoderNode {
         );
 
         ///////////////////////////
-        let mut probe_network_manager =
-            ProbeTonicManager::new(config.probe_parameters.clone(), probe_address.clone());
+        let mut evaluation_network_manager = EvaluationTonicManager::new(
+            config.evaluation_parameters.clone(),
+            evaluation_address.clone(),
+        );
 
-        let probe_service = Arc::new(MockProbeService::new());
-        probe_network_manager.start(probe_service).await;
+        let evaluation_service = Arc::new(MockEvaluationService::new());
+        evaluation_network_manager.start(evaluation_service).await;
 
-        let probe_client = Arc::new(
-            ProbeTonicClient::new(probe_address.clone(), config.probe_parameters.clone())
-                .await
-                .unwrap(),
+        let evaluation_client = Arc::new(
+            EvaluationTonicClient::new(
+                evaluation_address.clone(),
+                config.evaluation_parameters.clone(),
+            )
+            .await
+            .unwrap(),
         );
         ////////////////////////////
 
@@ -216,26 +210,6 @@ impl EncoderNode {
         );
         let downloader_manager = ActorManager::new(default_buffer, download_processor);
         let downloader_handle = downloader_manager.handle();
-
-        let encryptor_processor: EncryptionProcessor<Aes256Ctr64LEEncryptor> =
-            EncryptionProcessor::new(Arc::new(Aes256Ctr64LEEncryptor::new()));
-        let encryptor_manager = ActorManager::new(default_buffer, encryptor_processor);
-        let encryptor_handle = encryptor_manager.handle();
-
-        let compressor_processor = CompressionProcessor::new(Arc::new(ZstdCompressor::new()));
-        let compressor_manager = ActorManager::new(default_buffer, compressor_processor);
-        let compressor_handle = compressor_manager.handle();
-
-        // let python_interpreter = PythonInterpreter::new(project_root).unwrap();
-        // let model = python_interpreter.new_module(entry_point).unwrap();
-
-        // let model_processor = ModelProcessor::new(model, None);
-        // let model_manager = ActorManager::new(default_buffer, model_processor);
-        // let model_handle = model_manager.handle();
-
-        let storage_processor = StorageProcessor::new(object_storage.clone(), None);
-        let storage_manager = ActorManager::new(default_buffer, storage_processor);
-        let storage_handle = storage_manager.handle();
 
         let vdf = EntropyVDF::new(1);
         let vdf_processor = VDFProcessor::new(vdf, 1);
@@ -266,29 +240,21 @@ impl EncoderNode {
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
+            downloader_handle.clone(),
             broadcaster.clone(),
             encoder_keypair.clone(),
-            storage_handle.clone(),
+            object_storage.clone(),
             scores_handle.clone(),
-            probe_client,
+            evaluation_client.clone(),
             recv_dedup_cache_capacity,
         );
         let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
-
-        let reveal_votes_processor = RevealVotesProcessor::new(
-            store.clone(),
-            evaluation_handle.clone(),
-            recv_dedup_cache_capacity,
-            send_dedup_cache_capacity,
-        );
-        let reveal_votes_handle =
-            ActorManager::new(default_buffer, reveal_votes_processor).handle();
 
         let reveal_processor = RevealProcessor::new(
             store.clone(),
             broadcaster.clone(),
             encoder_keypair.clone(),
-            reveal_votes_handle.clone(),
+            evaluation_handle.clone(),
             recv_dedup_cache_capacity,
             send_dedup_cache_capacity,
         );
@@ -307,7 +273,6 @@ impl EncoderNode {
 
         let commit_processor = CommitProcessor::new(
             store.clone(),
-            downloader_handle.clone(),
             broadcaster.clone(),
             commit_votes_handle.clone(),
             encoder_keypair.clone(),
@@ -316,16 +281,16 @@ impl EncoderNode {
         );
         let commit_handle = ActorManager::new(default_buffer, commit_processor).handle();
 
-        let model_client = Arc::new(MockModelClient {});
+        let inference_client = Arc::new(MockInferenceClient::new(object_storage.clone()));
 
         let input_processor = InputProcessor::new(
+            store.clone(),
             downloader_handle.clone(),
-            compressor_handle,
             broadcaster.clone(),
-            model_client,
-            encryptor_handle,
+            inference_client,
+            evaluation_client,
             encoder_keypair.clone(),
-            storage_handle.clone(),
+            object_storage.clone(),
             commit_handle.clone(),
         );
 
@@ -335,7 +300,6 @@ impl EncoderNode {
             commit_handle,
             commit_votes_handle,
             reveal_handle,
-            reveal_votes_handle,
             scores_handle,
             finality_handle,
         );
@@ -414,7 +378,7 @@ impl EncoderNode {
             store,
             object_storage,
             context,
-            probe_network_manager,
+            evaluation_network_manager,
             committee_sync_manager,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -428,7 +392,7 @@ impl EncoderNode {
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
                     MemoryObjectStore,
-                    ProbeTonicClient,
+                    EvaluationTonicClient,
                 >,
             >,
         >>::stop(&mut self.internal_network_manager)
@@ -439,9 +403,9 @@ impl EncoderNode {
                 ExternalPipelineDispatcher<
                     EncoderInternalTonicClient,
                     ObjectHttpClient,
-                    MockModelClient,
+                    MockInferenceClient<MemoryObjectStore>,
                     MemoryObjectStore,
-                    ProbeTonicClient,
+                    EvaluationTonicClient,
                 >,
             >,
         >>::stop(&mut self.external_network_manager)

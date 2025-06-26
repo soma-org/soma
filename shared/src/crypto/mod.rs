@@ -29,7 +29,7 @@ impl Default for EncryptionKey {
         EncryptionKey::Aes256(Aes256IV::default())
     }
 }
-pub trait Encryptor: Send + Sync + Sized + 'static {
+pub trait EncryptorAPI: Send + Sync + Sized + 'static {
     fn encrypt(&self, key: EncryptionKey, contents: Bytes) -> SharedResult<Bytes>;
     fn decrypt(&self, key: EncryptionKey, contents: Bytes) -> SharedResult<Bytes>;
 }

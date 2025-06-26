@@ -7,9 +7,8 @@ use crate::{
         EncoderPublicKey,
     },
     types::{
-        parameters::Parameters, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_finality::ShardFinality, shard_reveal::ShardReveal,
-        shard_reveal_votes::ShardRevealVotes,
+        commit::Commit, commit_votes::CommitVotes, finality::Finality, parameters::Parameters,
+        reveal::Reveal,
     },
 };
 use arc_swap::ArcSwap;
@@ -20,7 +19,6 @@ use fastcrypto::bls12381::min_sig;
 use shared::error::{ShardError, ShardResult};
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
-    shard_scores::ShardScores,
     signed::Signed,
     verified::Verified,
 };
@@ -38,6 +36,7 @@ use std::{
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{error, info, trace, warn};
+use types::shard_score::ShardScore;
 
 use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;
 
@@ -111,7 +110,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_commit(
         &self,
         encoder: &EncoderPublicKey,
-        commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        commit: &Verified<Signed<Commit, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendCommitRequest {
@@ -130,7 +129,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_commit_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+        votes: &Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendCommitVotesRequest {
@@ -150,7 +149,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_reveal(
         &self,
         encoder: &EncoderPublicKey,
-        reveal: &Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+        reveal: &Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendRevealRequest {
@@ -164,27 +163,10 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
     }
-    async fn send_reveal_votes(
-        &self,
-        encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
-        timeout: Duration,
-    ) -> ShardResult<()> {
-        let mut request = Request::new(SendRevealVotesRequest {
-            votes: votes.bytes(),
-        });
-        request.set_timeout(timeout);
-        self.get_client(encoder, timeout)
-            .await?
-            .send_reveal_votes(request)
-            .await
-            .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
-        Ok(())
-    }
     async fn send_scores(
         &self,
         encoder: &EncoderPublicKey,
-        scores: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        scores: &Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendScoresRequest {
@@ -201,7 +183,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_finality(
         &self,
         encoder: &EncoderPublicKey,
-        finality: &Verified<Signed<ShardFinality, min_sig::BLS12381Signature>>,
+        finality: &Verified<Signed<Finality, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendFinalityRequest {
@@ -323,26 +305,6 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendRevealResponse {}))
-    }
-    async fn send_reveal_votes(
-        &self,
-        request: Request<SendRevealVotesRequest>,
-    ) -> Result<Response<SendRevealVotesResponse>, tonic::Status> {
-        let Some(peer) = request
-            .extensions()
-            .get::<EncoderInfo>()
-            .map(|p| p.peer.clone())
-        else {
-            return Err(tonic::Status::internal("PeerInfo not found"));
-        };
-        let votes = request.into_inner().votes;
-
-        self.service
-            .handle_send_reveal_votes(&peer, votes)
-            .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
-
-        Ok(Response::new(SendRevealVotesResponse {}))
     }
     async fn send_scores(
         &self,
@@ -621,16 +583,6 @@ pub(crate) struct SendRevealRequest {
 
 #[derive(Clone, prost::Message)]
 pub(crate) struct SendRevealResponse {}
-
-// ////////////////////////////////////////////////////////////////////
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendRevealVotesRequest {
-    #[prost(bytes = "bytes", tag = "1")]
-    votes: Bytes,
-}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendRevealVotesResponse {}
 
 // ////////////////////////////////////////////////////////////////////
 #[derive(Clone, prost::Message)]

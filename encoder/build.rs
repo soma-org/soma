@@ -10,7 +10,6 @@ use std::{
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() -> Result<()> {
-    // pyo3_build_config::add_python_framework_link_args();
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     build_tonic_services(&out_dir);
     println!("cargo:rerun-if-changed=build.rs");
@@ -49,15 +48,6 @@ fn build_tonic_services(out_dir: &Path) {
                 .route_name("SendReveal")
                 .input_type("crate::messaging::tonic::internal::SendRevealRequest")
                 .output_type("crate::messaging::tonic::internal::SendRevealResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("send_reveal_votes")
-                .route_name("SendRevealVotes")
-                .input_type("crate::messaging::tonic::internal::SendRevealVotesRequest")
-                .output_type("crate::messaging::tonic::internal::SendRevealVotesResponse")
                 .codec_path(codec_path)
                 .build(),
         )

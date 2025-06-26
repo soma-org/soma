@@ -10,8 +10,8 @@ use crate::{
     serialized::Serialized,
 };
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
-pub struct Signed<T: Serialize + PartialEq + Eq, S: Authenticator> {
+#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
+pub struct Signed<T: Serialize, S: Authenticator> {
     inner: T,
     signature: Bytes,
     #[serde(skip)]
@@ -19,14 +19,14 @@ pub struct Signed<T: Serialize + PartialEq + Eq, S: Authenticator> {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Signature<T: Serialize + PartialEq + Eq, S: Authenticator> {
+pub struct Signature<T: Serialize, S: Authenticator> {
     signature: Bytes,
     #[serde(skip)]
     phantom: PhantomData<(T, S)>,
 }
 impl<T, S> Signed<T, S>
 where
-    T: Serialize + PartialEq + Eq,
+    T: Serialize,
     S: Authenticator,
 {
     pub fn new<K>(inner: T, scope: Scope, signer: &K) -> SharedResult<Self>
@@ -44,7 +44,7 @@ where
         })
     }
 
-    pub fn verify(&self, scope: Scope, key: &S::PubKey) -> SharedResult<()>
+    pub fn verify_signature(&self, scope: Scope, key: &S::PubKey) -> SharedResult<()>
     where
         S::PubKey: VerifyingKey<Sig = S>,
     {
@@ -76,7 +76,7 @@ where
 
 impl<T, S> std::ops::Deref for Signed<T, S>
 where
-    T: Serialize + PartialEq + Eq,
+    T: Serialize,
     S: Authenticator,
 {
     type Target = T;
@@ -84,3 +84,22 @@ where
         &self.inner
     }
 }
+
+impl<T: Serialize, S: Authenticator> PartialEq for Signed<T, S> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.signature != other.signature {
+            return false;
+        }
+        let self_inner_bytes = match bcs::to_bytes(&self.inner) {
+            Ok(bytes) => bytes,
+            Err(_) => return false,
+        };
+        let other_inner_bytes = match bcs::to_bytes(&other.inner) {
+            Ok(bytes) => bytes,
+            Err(_) => return false,
+        };
+        self_inner_bytes == other_inner_bytes
+    }
+}
+
+impl<T: Serialize, S: Authenticator> Eq for Signed<T, S> {}

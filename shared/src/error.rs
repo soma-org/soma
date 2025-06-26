@@ -1,5 +1,3 @@
-use std::io;
-
 // use consensus_config::{AuthorityIndex, Epoch, Stake};
 use fastcrypto::error::FastCryptoError;
 use strum_macros::IntoStaticStr;
@@ -97,6 +95,8 @@ pub enum SharedError {
     BatchSizeMismatch(String),
     #[error("Could not get the shape of the array")]
     ArrayShapeError,
+    #[error("Could not spawn blocking threadi: {0}")]
+    SpawnBlockingError(String),
     // #[error(
     //     "Expected {requested} but received {received} blocks returned from authority {authority}"
     // )]
@@ -288,10 +288,10 @@ pub enum ShardError {
     RecvDuplicate,
     #[error("Send duplicate error")]
     SendDuplicate,
-    #[error("Probe error: {0}")]
-    ProbeError(ProbeError),
+    #[error("Evaluation error: {0}")]
+    EvaluationError(EvaluationError),
     #[error("Model error: {0}")]
-    ModelError(ModelError),
+    InferenceError(InferenceError),
     #[error("Not a member of the shard")]
     InvalidShardMember,
     #[error("Cache error")]
@@ -326,6 +326,9 @@ pub enum ShardError {
     InvalidReveal(String),
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
+
+    #[error("Shard irrecoverably failed: {0}")]
+    ShardFailure(String),
 
     #[error("Invalid shard token: {0}")]
     InvalidShardToken(String),
@@ -581,10 +584,10 @@ pub enum ObjectError {
 }
 pub type ObjectResult<T> = Result<T, ObjectError>;
 
-pub type ModelResult<T> = Result<T, ModelError>;
+pub type InferenceResult<T> = Result<T, InferenceError>;
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]
-pub enum ModelError {
+pub enum InferenceError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
     #[error("Failed to parse URL: {0}")]
@@ -597,10 +600,10 @@ pub enum ModelError {
     ValidationError(String),
 }
 
-pub type ProbeResult<T> = Result<T, ProbeError>;
+pub type EvaluationResult<T> = Result<T, EvaluationError>;
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]
-pub enum ProbeError {
+pub enum EvaluationError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
     #[error("Failed to connect as client: {0:?}")]
