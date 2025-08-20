@@ -1,5 +1,5 @@
 pub mod messaging;
-pub(crate) mod modules;
+pub mod modules;
 pub mod parameters;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};

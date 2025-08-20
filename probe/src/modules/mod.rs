@@ -1,128 +1,96 @@
-pub(crate) mod module;
+pub mod recorder;
+pub mod v1;
 
-use burn::tensor::{backend::Backend, Tensor, TensorData};
+use burn::tensor::{backend::Backend, Int, Tensor};
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use module::ByteDecoderV1;
-use ndarray::Array2;
 use serde::{Deserialize, Serialize};
+use v1::decoder::DecoderV1;
+use v1::predictor::PredictorV1;
 
 #[enum_dispatch]
-pub trait SerializedProbeAPI {
-    fn to_probe<B: Backend>(self, device: &B::Device) -> Probe<B>;
+pub trait SerializedProbeAPI<B: Backend> {
+    fn to_probe(self, device: &B::Device) -> Probe<B>;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct SerializedProbeV1 {
+    decoder: Bytes,
+    predictor: Bytes,
+}
+
+impl<B: Backend> SerializedProbeAPI<B> for SerializedProbeV1 {
+    fn to_probe(self, device: &B::Device) -> Probe<B> {
+        Probe::V1(ProbeV1 {
+            decoder: DecoderV1::from_bytes(device, self.decoder),
+            predictor: PredictorV1::from_bytes(device, self.predictor),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[enum_dispatch(SerializedProbeAPI)]
 pub enum SerializedProbe {
     V1(SerializedProbeV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct SerializedProbeV1 {
-    serialized: Bytes,
+#[enum_dispatch]
+pub trait ProbeAPI<B: Backend> {
+    fn call_decoder(
+        &self,
+        byte_ids: Tensor<B, 2, Int>, // list of byte ids
+        patch_embeds: Tensor<B, 3>,  // single embedding
+                                     // returns the byte representations to be passed into the predictor
+    ) -> Tensor<B, 3>;
+    fn call_predictor(
+        &self,
+        byte_embeds: Tensor<B, 2>, // takes the byte representations
+                                   // returns the predicted logits of vocab size
+    ) -> Tensor<B, 2>;
+    fn serialize(self) -> SerializedProbe;
 }
 
-impl SerializedProbeAPI for SerializedProbeV1 {
-    fn to_probe<B: Backend>(self, device: &B::Device) -> Probe<B> {
-        Probe::V1(ByteDecoderV1::from_bytes(device, self.serialized))
+#[derive(Clone, Debug)]
+pub(crate) struct ProbeV1<B: Backend> {
+    decoder: DecoderV1<B>,
+    predictor: PredictorV1<B>,
+}
+
+impl<B: Backend> ProbeV1<B> {
+    pub(crate) fn new(device: &B::Device) -> Self {
+        Self {
+            decoder: DecoderV1::init(device),
+            predictor: PredictorV1::init(device),
+        }
     }
 }
 
-#[enum_dispatch]
-pub trait ProbeAPI<B: Backend> {
-    fn reconstruction(&self, device: &B::Device, embeddings: Array2<f32>) -> Array2<f32>;
-    fn to_serialized_probe(self) -> SerializedProbe;
+impl<B: Backend> ProbeAPI<B> for ProbeV1<B> {
+    fn call_decoder(
+        &self,
+        byte_ids: Tensor<B, 2, Int>, // list of byte ids
+        patch_embedding: Tensor<B, 3>, // single embedding
+                                     // returns the byte representations to be passed into the predictor
+    ) -> Tensor<B, 3> {
+        self.decoder.forward(byte_ids, patch_embedding)
+    }
+    fn call_predictor(
+        &self,
+        byte_representation: Tensor<B, 2>, // takes the byte representations
+                                           // returns the predicted logits of vocab size
+    ) -> Tensor<B, 2> {
+        self.predictor.forward(byte_representation)
+    }
+    fn serialize(self) -> SerializedProbe {
+        SerializedProbe::V1(SerializedProbeV1 {
+            decoder: self.decoder.to_bytes(),
+            predictor: self.predictor.to_bytes(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
 #[enum_dispatch(ProbeAPI<B>)]
 pub enum Probe<B: Backend> {
-    V1(ByteDecoderV1<B>),
-}
-
-impl<B: Backend> Probe<B> {
-    pub(crate) fn new_v1(probe: ByteDecoderV1<B>) -> Self {
-        Self::V1(probe)
-    }
-}
-
-impl<B: Backend> ProbeAPI<B> for ByteDecoderV1<B> {
-    fn reconstruction(&self, device: &B::Device, embeddings: Array2<f32>) -> Array2<f32> {
-        let input_tensor: Tensor<B, 2> = array2_to_tensor(embeddings, device);
-        let output_tensor = self.forward(input_tensor);
-        tensor_to_array2(output_tensor)
-    }
-
-    fn to_serialized_probe(self) -> SerializedProbe {
-        let serialized = self.to_bytes();
-        SerializedProbe::V1(SerializedProbeV1 { serialized })
-    }
-}
-
-fn tensor_to_array2<B: Backend>(tensor: Tensor<B, 2>) -> Array2<f32> {
-    let shape = tensor.shape();
-    let tensor_data = tensor.into_data();
-    let data = tensor_data
-        .to_vec()
-        .expect("Failed to convert TensorData to Vec");
-    let rows = shape.dims[0];
-    let cols = shape.dims[1];
-
-    Array2::from_shape_vec((rows, cols), data)
-        .expect("Failed to create Array2 from tensor data - shape mismatch")
-}
-
-fn array2_to_tensor<B: Backend>(array: Array2<f32>, device: &B::Device) -> Tensor<B, 2> {
-    let shape = array.shape();
-    let rows = shape[0];
-    let cols = shape[1];
-
-    let (data, _offset) = array.into_raw_vec_and_offset();
-
-    Tensor::from_data(TensorData::new(data, [rows, cols]), device)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{array2_to_tensor, tensor_to_array2};
-    use burn::{backend::NdArray, tensor::Device};
-    use ndarray::{array, Array2};
-
-    #[test]
-    fn test_tensor_array_conversion() {
-        // Define the backend
-        type B = NdArray<f32>;
-
-        // Create a test device
-        let device = Device::<B>::default();
-
-        // Create a sample 2D array
-        let original_array: Array2<f32> = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
-
-        // Convert array to tensor
-        let tensor = array2_to_tensor::<B>(original_array.clone(), &device);
-
-        // Convert tensor back to array
-        let converted_array = tensor_to_array2(tensor);
-
-        // Verify dimensions
-        assert_eq!(converted_array.shape(), &[2, 3]);
-
-        // Verify values match
-        for i in 0..2 {
-            for j in 0..3 {
-                assert_eq!(
-                    converted_array[[i, j]],
-                    original_array[[i, j]],
-                    "Mismatch at position [{}, {}]",
-                    i,
-                    j
-                );
-            }
-        }
-
-        // Verify exact equality
-        assert_eq!(converted_array, original_array);
-    }
+    V1(ProbeV1<B>),
 }

@@ -67,6 +67,7 @@ use serde_with::{serde_as, Bytes};
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
+use strum::EnumString;
 use tracing::{instrument, warn};
 
 /// Default hash function used throughout the Soma blockchain
@@ -978,7 +979,19 @@ where
     }
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize, JsonSchema, Debug, PartialEq, Eq)]
+#[derive(
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    JsonSchema,
+    Debug,
+    EnumString,
+    strum_macros::Display,
+    PartialEq,
+    Eq,
+)]
+#[strum(serialize_all = "lowercase")]
 pub enum SignatureScheme {
     ED25519,
     BLS12381,
@@ -1138,6 +1151,33 @@ impl PublicKey {
                 (&Ed25519PublicKey::from_bytes(key_bytes)?).into(),
             )),
             _ => Err(eyre!("Unsupported curve")),
+        }
+    }
+}
+
+impl EncodeDecodeBase64 for PublicKey {
+    fn encode_base64(&self) -> String {
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(&[self.flag()]);
+        bytes.extend_from_slice(self.as_ref());
+        Base64::encode(&bytes[..])
+    }
+
+    fn decode_base64(value: &str) -> FastCryptoResult<Self> {
+        let bytes = Base64::decode(value)?;
+        match bytes.first() {
+            Some(x) => {
+                if x == &SignatureScheme::ED25519.flag() {
+                    let pk: Ed25519PublicKey =
+                        Ed25519PublicKey::from_bytes(bytes.get(1..).ok_or(
+                            FastCryptoError::InputLengthWrong(Ed25519PublicKey::LENGTH + 1),
+                        )?)?;
+                    Ok(PublicKey::Ed25519((&pk).into()))
+                } else {
+                    Err(FastCryptoError::InvalidInput)
+                }
+            }
+            _ => Err(FastCryptoError::InvalidInput),
         }
     }
 }
