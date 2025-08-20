@@ -1,4 +1,4 @@
-use std::{fmt::format, sync::Arc};
+use std::{collections::HashSet, fmt::format, sync::Arc};
 
 use fastcrypto::bls12381::min_sig;
 use shared::{
@@ -361,7 +361,9 @@ impl ShardExecutor {
         };
 
         // 2.1 Verify signers are in the shard
-        for encoder in &signers {
+        let unique_signers: HashSet<&EncoderPublicKey> = signers.iter().collect();
+
+        for encoder in &unique_signers {
             if !shard.encoders().contains(encoder) {
                 return Err(ExecutionFailureStatus::InvalidArguments {
                     reason: format!("Encoder {:?} is not in the shard", encoder),
@@ -370,7 +372,7 @@ impl ShardExecutor {
         }
 
         // 2.2 Verify the number of signers meets quorum requirement
-        if (signers.len() as u32) < shard.quorum_threshold() {
+        if (unique_signers.len() as u32) < shard.quorum_threshold() {
             return Err(ExecutionFailureStatus::InvalidArguments {
                 reason: format!(
                     "Insufficient signers. Got: {}, Required: {}",
