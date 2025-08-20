@@ -345,6 +345,7 @@ impl SystemState {
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
+        encoder_validator_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         let validator = Validator::new(
@@ -359,6 +360,7 @@ impl SystemState {
             Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&p2p_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&primary_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&encoder_validator_address).unwrap()).unwrap(),
             0,
             10,
             staking_pool_id,
@@ -973,6 +975,9 @@ impl SystemStateTrait for SystemState {
                                 consensus_address: verified_metadata.p2p_address.clone(),
                                 network_address: verified_metadata.net_address.clone(),
                                 primary_address: verified_metadata.primary_address.clone(),
+                                encoder_validator_address: verified_metadata
+                                    .encoder_validator_address
+                                    .clone(),
                                 protocol_key: ProtocolPublicKey::new(
                                     verified_metadata.worker_pubkey.into_inner(),
                                 ),
@@ -1050,6 +1055,7 @@ impl SystemStateTrait for SystemState {
                         net_address: metadata.net_address.clone(),
                         p2p_address: metadata.p2p_address.clone(),
                         primary_address: metadata.primary_address.clone(),
+                        encoder_validator_address: metadata.encoder_validator_address.clone(),
                         voting_power: validator.voting_power,
                         hostname: metadata.net_address.to_string(),
                     }
@@ -1146,6 +1152,9 @@ impl Committees {
                             consensus_address: verified_metadata.p2p_address.clone(),
                             network_address: verified_metadata.net_address.clone(),
                             primary_address: verified_metadata.primary_address.clone(),
+                            encoder_validator_address: verified_metadata
+                                .encoder_validator_address
+                                .clone(),
                             protocol_key: ProtocolPublicKey::new(
                                 verified_metadata.worker_pubkey.into_inner(),
                             ),

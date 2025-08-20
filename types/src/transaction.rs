@@ -204,6 +204,8 @@ pub struct AddValidatorArgs {
     pub p2p_address: Vec<u8>,
     /// The validator's primary address for client communication
     pub primary_address: Vec<u8>,
+
+    pub encoder_validator_address: Vec<u8>,
 }
 
 /// # RemoveValidatorArgs

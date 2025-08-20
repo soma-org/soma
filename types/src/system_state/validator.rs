@@ -63,6 +63,8 @@ pub struct ValidatorMetadata {
     /// The primary address for validator services
     pub primary_address: Multiaddr,
 
+    pub encoder_validator_address: Multiaddr,
+
     /// Optional new protocol public key for the next epoch
     pub next_epoch_protocol_pubkey: Option<PublicKey>,
 
@@ -79,6 +81,8 @@ pub struct ValidatorMetadata {
     pub next_epoch_primary_address: Option<Multiaddr>,
 
     pub next_epoch_worker_pubkey: Option<crate::crypto::NetworkPublicKey>,
+
+    pub next_epoch_encoder_validator_address: Option<Multiaddr>,
 }
 
 /// # Validator
@@ -136,6 +140,7 @@ impl Validator {
         net_address: Multiaddr,
         p2p_address: Multiaddr,
         primary_address: Multiaddr,
+        encoder_validator_address: Multiaddr,
         voting_power: u64,
         commission_rate: u64,
         staking_pool_id: ObjectID,
@@ -149,12 +154,14 @@ impl Validator {
                 net_address,
                 p2p_address,
                 primary_address,
+                encoder_validator_address,
                 next_epoch_protocol_pubkey: None,
                 next_epoch_network_pubkey: None,
                 next_epoch_net_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
                 next_epoch_worker_pubkey: None,
+                next_epoch_encoder_validator_address: None,
             },
             voting_power,
             commission_rate,

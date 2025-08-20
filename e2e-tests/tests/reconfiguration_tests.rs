@@ -602,6 +602,8 @@ async fn execute_add_validator_transactions(
                 net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
                 p2p_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
                 primary_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
+                encoder_validator_address: bcs::to_bytes(&new_validator.encoder_validator_address)
+                    .unwrap(),
             }),
             (&new_validator.account_key_pair.public()).into(),
             gas_object,

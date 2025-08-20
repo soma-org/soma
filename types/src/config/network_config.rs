@@ -324,6 +324,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         v.network_address.clone(),
                         v.consensus_address.clone(),
                         v.network_address.clone(),
+                        v.encoder_validator_address.clone(),
                         0,
                         v.commission_rate,
                         ObjectID::random(),

@@ -146,6 +146,7 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
                             consensus_address: validator.p2p_address.clone(),
                             network_address: validator.net_address.clone(),
                             primary_address: validator.primary_address.clone(),
+                            encoder_validator_address: validator.encoder_validator_address.clone(),
                             protocol_key: ProtocolPublicKey::new(
                                 validator.worker_pubkey.clone().into_inner(),
                             ),
@@ -291,6 +292,8 @@ pub struct EpochStartValidatorInfo {
 
     /// The primary address for validator services
     pub primary_address: Multiaddr,
+
+    pub encoder_validator_address: Multiaddr,
 
     /// The validator's voting power in the consensus protocol
     pub voting_power: VotingPower,

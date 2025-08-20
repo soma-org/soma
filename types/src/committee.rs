@@ -647,6 +647,7 @@ pub struct NetworkMetadata {
     pub consensus_address: Multiaddr,
     pub network_address: Multiaddr,
     pub primary_address: Multiaddr,
+    pub encoder_validator_address: Multiaddr,
 
     // Added fields from ValidatorMetadata
     pub protocol_key: ProtocolPublicKey,
