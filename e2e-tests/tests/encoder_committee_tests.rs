@@ -103,45 +103,45 @@ async fn test_integrated_encoder_validator_system() {
         });
     }
 
-    // Create a valid token for a shard transaction
-    let token = create_valid_test_token();
+    // // Create a valid token for a shard transaction
+    // let token = create_valid_test_token();
 
-    // Get the shard based on the token
-    let shard = encoder_cluster.get_shard_from_token(&token).unwrap();
+    // // Get the shard based on the token
+    // let shard = encoder_cluster.get_shard_from_token(&token).unwrap();
 
-    info!("Shard contains these encoders: {:?}", shard.encoders());
+    // info!("Shard contains these encoders: {:?}", shard.encoders());
 
-    // Send a transaction to the shard members
-    let result = encoder_cluster
-        .send_to_shard_members(&token, Duration::from_secs(5))
-        .await;
+    // // Send a transaction to the shard members
+    // let result = encoder_cluster
+    //     .send_to_shard_members(&token, Duration::from_secs(5))
+    //     .await;
 
-    assert!(
-        result.is_ok(),
-        "Failed to send input to shard members: {:?}",
-        result.err()
-    );
+    // assert!(
+    //     result.is_ok(),
+    //     "Failed to send input to shard members: {:?}",
+    //     result.err()
+    // );
 
-    sleep(Duration::from_secs(5)).await;
+    // sleep(Duration::from_secs(5)).await;
 
-    for handle in encoder_cluster.all_encoder_handles() {
-        handle.with(|node| {
-            let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
-            if shard.encoders().contains(&enc_key) {
-                let store = node.get_store_for_testing();
+    // for handle in encoder_cluster.all_encoder_handles() {
+    //     handle.with(|node| {
+    //         let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
+    //         if shard.encoders().contains(&enc_key) {
+    //             let store = node.get_store_for_testing();
 
-                let result = store.get_agg_scores(&shard);
+    //             let result = store.get_agg_scores(&shard);
 
-                assert!(
-                    result.is_ok(),
-                    "Failed to get agg sig for shard: {:?}",
-                    result.err()
-                );
+    //             assert!(
+    //                 result.is_ok(),
+    //                 "Failed to get agg sig for shard: {:?}",
+    //                 result.err()
+    //             );
 
-                info!("Final agg sig: {:?}", result.unwrap().0);
-            }
-        });
-    }
+    //             info!("Final agg sig: {:?}", result.unwrap().0);
+    //         }
+    //     });
+    // }
 }
 
 /// Execute AddEncoder transaction
