@@ -11,8 +11,9 @@ use tracing::{error, info};
 use crate::{
     base::SomaAddress,
     committee::{
-        MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_LOW_POWER,
-        VALIDATOR_MIN_POWER, VALIDATOR_VERY_LOW_POWER,
+        MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_CONSENSUS_LOW_POWER,
+        VALIDATOR_CONSENSUS_MIN_POWER, VALIDATOR_CONSENSUS_VERY_LOW_POWER,
+        VALIDATOR_NETWORKING_MIN_POWER,
     },
     crypto::{self, NetworkPublicKey},
     effects::ExecutionFailureStatus,
@@ -453,14 +454,18 @@ pub struct ValidatorSet {
     /// The total stake across all active validators
     pub total_stake: u64,
 
-    /// The currently active validators participating in consensus
-    pub active_validators: Vec<Validator>,
+    /// Validators participating in consensus (formerly "active_validators")
+    pub consensus_validators: Vec<Validator>,
 
-    /// Validators that will be added to the active set in the next epoch
-    pub pending_active_validators: Vec<Validator>,
+    /// Validators that only participate in networking (not consensus)
+    pub networking_validators: Vec<Validator>,
 
-    /// Active validators that will be removed in the next epoch
-    pub pending_removals: Vec<usize>,
+    /// Validators that will be added in the next epoch
+    pub pending_validators: Vec<Validator>,
+
+    /// Indices of validators that will be removed in the next epoch
+    /// Format: (is_consensus, index) - true for consensus, false for networking
+    pub pending_removals: Vec<(bool, usize)>,
 
     pub staking_pool_mappings: BTreeMap<ObjectID, SomaAddress>,
 
@@ -496,8 +501,9 @@ impl ValidatorSet {
 
         let mut validator_set = Self {
             total_stake,
-            active_validators: init_active_validators,
-            pending_active_validators: Vec::new(),
+            consensus_validators: init_active_validators,
+            networking_validators: Vec::new(),
+            pending_validators: Vec::new(),
             pending_removals: Vec::new(),
             staking_pool_mappings,
             inactive_validators: BTreeMap::new(),
@@ -532,7 +538,7 @@ impl ValidatorSet {
         self.staking_pool_mappings.insert(new_pool_id, address);
 
         // Add to pending validators
-        self.pending_active_validators.push(validator);
+        self.pending_validators.push(validator);
 
         Ok(())
     }
@@ -557,20 +563,41 @@ impl ValidatorSet {
     /// Returns SomaError::NotAValidator if the validator is not in the active set
     /// Returns SomaError::ValidatorAlreadyRemoved if the validator is already marked for removal
     pub fn request_remove_validator(&mut self, address: SomaAddress) -> ExecutionResult {
-        let validator = self
-            .active_validators
+        // Check consensus validators first
+        if let Some((i, _)) = self
+            .consensus_validators
             .iter()
-            .find_position(|v| address == v.metadata.soma_address);
-
-        if let Some((i, _)) = validator {
-            if self.pending_removals.contains(&i) {
+            .find_position(|v| address == v.metadata.soma_address)
+        {
+            if self
+                .pending_removals
+                .iter()
+                .any(|(is_consensus, idx)| *is_consensus && *idx == i)
+            {
                 return Err(ExecutionFailureStatus::ValidatorAlreadyRemoved);
             }
-            self.pending_removals.push(i);
-        } else {
-            return Err(ExecutionFailureStatus::NotAValidator);
+            self.pending_removals.push((true, i));
+            return Ok(());
         }
-        Ok(())
+
+        // Check networking validators
+        if let Some((i, _)) = self
+            .networking_validators
+            .iter()
+            .find_position(|v| address == v.metadata.soma_address)
+        {
+            if self
+                .pending_removals
+                .iter()
+                .any(|(is_consensus, idx)| !*is_consensus && *idx == i)
+            {
+                return Err(ExecutionFailureStatus::ValidatorAlreadyRemoved);
+            }
+            self.pending_removals.push((false, i));
+            return Ok(());
+        }
+
+        Err(ExecutionFailureStatus::NotAValidator)
     }
 
     /// # Advance to the next epoch
@@ -594,42 +621,12 @@ impl ValidatorSet {
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         validator_low_stake_grace_period: u64,
     ) -> HashMap<SomaAddress, StakedSoma> {
-        // Calculate total voting power
-        let total_voting_power = self.active_validators.iter().map(|v| v.voting_power).sum();
-
-        // Compute basic reward distribution
-        let unadjusted_reward_amounts =
-            self.compute_unadjusted_reward_distribution(total_voting_power, *total_rewards);
-
-        // Identify validators to be slashed
-        let slashed_validators = self.compute_slashed_validators(validator_report_records);
-
-        // Calculate total voting power of slashed validators
-        let total_slashed_validator_voting_power =
-            self.sum_voting_power_by_addresses(&slashed_validators);
-
-        // Get indices of slashed validators
-        let slashed_indices = self.get_validator_indices(&slashed_validators);
-
-        // Compute reward adjustments for slashed validators
-        let (total_adjustment, individual_adjustments) = self.compute_reward_adjustments(
-            slashed_indices,
+        let validator_rewards = self.calculate_and_distribute_rewards(
+            total_rewards,
             reward_slashing_rate,
-            &unadjusted_reward_amounts,
+            validator_report_records,
+            new_epoch,
         );
-
-        // Calculate adjusted rewards
-        let adjusted_reward_amounts = self.compute_adjusted_reward_distribution(
-            total_voting_power,
-            total_slashed_validator_voting_power,
-            unadjusted_reward_amounts,
-            total_adjustment,
-            &individual_adjustments,
-        );
-
-        // Distribute rewards to validators
-        let validator_rewards =
-            self.distribute_rewards(&adjusted_reward_amounts, total_rewards, new_epoch);
 
         self.adjust_commission_rates();
 
@@ -642,16 +639,15 @@ impl ValidatorSet {
 
         self.process_pending_removals(validator_report_records, new_epoch);
 
-        // Process validators with low voting power and get new total stake
-        let new_total_stake = self.update_validator_positions_and_calculate_total_stake(
-            validator_low_stake_grace_period,
-            validator_report_records,
+        // 5. Process validator transitions (REPLACES update_validator_positions_and_calculate_total_stake)
+        self.process_validator_transitions(
             new_epoch,
+            validator_report_records,
+            validator_low_stake_grace_period,
         );
-        self.total_stake = new_total_stake;
 
-        // Now process pending validators AFTER processing low voting power validators
-        self.process_pending_validators(new_epoch);
+        // 6. Update total stake after all transitions
+        self.total_stake = self.calculate_total_stake();
 
         self.effectuate_staged_metadata();
 
@@ -663,11 +659,16 @@ impl ValidatorSet {
 
     /// Effectuate pending next epoch metadata changes for all active validators.
     fn effectuate_staged_metadata(&mut self) {
-        for validator in &mut self.active_validators {
+        for validator in &mut self.consensus_validators {
             validator.effectuate_staged_metadata();
             // TODO: Add validation after effectuation if needed, e.g., check for duplicates based on new metadata.
             // self.assert_no_active_duplicates(validator); // Example if needed
         }
+
+        for validator in &mut self.networking_validators {
+            validator.effectuate_staged_metadata();
+        }
+
         // Optional: Check for duplicates *after* all changes are applied
         self.check_for_duplicate_metadata_post_effectuation();
     }
@@ -681,7 +682,12 @@ impl ValidatorSet {
         let mut seen_p2p_addrs = HashSet::new();
         // Add others as needed (primary, worker addr)
 
-        for validator in &self.active_validators {
+        let all_validators = self
+            .consensus_validators
+            .iter()
+            .chain(self.networking_validators.iter());
+
+        for validator in all_validators {
             let meta = &validator.metadata;
             if !seen_protocol_keys.insert(meta.protocol_pubkey.as_bytes()) {
                 error!(
@@ -719,20 +725,48 @@ impl ValidatorSet {
         }
     }
 
+    /// Check if address is specifically a consensus validator
+    pub fn is_consensus_validator(&self, address: SomaAddress) -> bool {
+        self.consensus_validators
+            .iter()
+            .any(|v| v.metadata.soma_address == address)
+    }
+
+    /// Check if address is specifically a networking-only validator  
+    pub fn is_networking_validator(&self, address: SomaAddress) -> bool {
+        self.networking_validators
+            .iter()
+            .any(|v| v.metadata.soma_address == address)
+    }
+
+    /// Get all validators eligible for networking (consensus + networking-only)
+    pub fn get_all_networking_validators(&self) -> impl Iterator<Item = &Validator> {
+        self.consensus_validators
+            .iter()
+            .chain(self.networking_validators.iter())
+    }
+
     /// Find a validator by address (including pending validators)
     pub fn find_validator_with_pending_mut(
         &mut self,
         validator_address: SomaAddress,
     ) -> Option<&mut Validator> {
-        // First check active validators
-        for validator in &mut self.active_validators {
+        // First check consensus validators
+        for validator in &mut self.consensus_validators {
+            if validator.metadata.soma_address == validator_address {
+                return Some(validator);
+            }
+        }
+
+        // Then check networking-only validators
+        for validator in &mut self.networking_validators {
             if validator.metadata.soma_address == validator_address {
                 return Some(validator);
             }
         }
 
         // Then check pending validators
-        for validator in &mut self.pending_active_validators {
+        for validator in &mut self.pending_validators {
             if validator.metadata.soma_address == validator_address {
                 return Some(validator);
             }
@@ -743,21 +777,39 @@ impl ValidatorSet {
 
     /// Find a validator by address
     pub fn find_validator_mut(&mut self, validator_address: SomaAddress) -> Option<&mut Validator> {
-        for validator in &mut self.active_validators {
+        // First check consensus validators
+        for validator in &mut self.consensus_validators {
             if validator.metadata.soma_address == validator_address {
                 return Some(validator);
             }
         }
+
+        // Then check networking validators
+        for validator in &mut self.networking_validators {
+            if validator.metadata.soma_address == validator_address {
+                return Some(validator);
+            }
+        }
+
         None
     }
 
     /// Find a validator by address (immutable version)
     pub fn find_validator(&self, validator_address: SomaAddress) -> Option<&Validator> {
-        for validator in &self.active_validators {
+        // Check consensus validators
+        for validator in &self.consensus_validators {
             if validator.metadata.soma_address == validator_address {
                 return Some(validator);
             }
         }
+
+        // Check networking validators
+        for validator in &self.networking_validators {
+            if validator.metadata.soma_address == validator_address {
+                return Some(validator);
+            }
+        }
+
         None
     }
 
@@ -768,7 +820,7 @@ impl ValidatorSet {
 
     /// Check if an address belongs to a pending active validator
     pub fn is_pending_validator(&self, address: SomaAddress) -> bool {
-        self.pending_active_validators
+        self.pending_validators
             .iter()
             .any(|v| v.metadata.soma_address == address)
     }
@@ -779,9 +831,9 @@ impl ValidatorSet {
         total_voting_power: u64,
         total_rewards: u64,
     ) -> Vec<u64> {
-        let mut reward_amounts = Vec::with_capacity(self.active_validators.len());
+        let mut reward_amounts = Vec::with_capacity(self.consensus_validators.len());
 
-        for validator in &self.active_validators {
+        for validator in &self.consensus_validators {
             // Calculate proportional to voting power
             let voting_power = validator.voting_power as u128;
             let reward = voting_power * (total_rewards as u128) / (total_voting_power as u128);
@@ -830,12 +882,12 @@ impl ValidatorSet {
         sum
     }
 
-    /// Find validator indices in active_validators list
-    pub fn get_validator_indices(&self, addresses: &[SomaAddress]) -> Vec<usize> {
+    /// Find validator indices in consensus validators list
+    pub fn get_consensus_validator_indices(&self, addresses: &[SomaAddress]) -> Vec<usize> {
         let mut indices = Vec::new();
 
         for &address in addresses {
-            for (i, validator) in self.active_validators.iter().enumerate() {
+            for (i, validator) in self.consensus_validators.iter().enumerate() {
                 if validator.metadata.soma_address == address {
                     indices.push(i);
                     break;
@@ -844,6 +896,46 @@ impl ValidatorSet {
         }
 
         indices
+    }
+
+    fn calculate_and_distribute_rewards(
+        &mut self,
+        total_rewards: &mut u64,
+        reward_slashing_rate: u64,
+        validator_report_records: &BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+        new_epoch: u64,
+    ) -> HashMap<SomaAddress, StakedSoma> {
+        // Only consensus validators participate in rewards
+        let total_voting_power: u64 = self
+            .consensus_validators
+            .iter()
+            .map(|v| v.voting_power)
+            .sum();
+
+        if total_voting_power == 0 {
+            return HashMap::new();
+        }
+
+        // Calculate rewards distribution (existing logic)
+        let unadjusted_rewards =
+            self.compute_unadjusted_reward_distribution(total_voting_power, *total_rewards);
+        let slashed_validators = self.compute_slashed_validators(validator_report_records);
+        let total_slashed_voting_power = self.sum_voting_power_by_addresses(&slashed_validators);
+        let slashed_indices = self.get_consensus_validator_indices(&slashed_validators);
+        let (total_adjustment, individual_adjustments) = self.compute_reward_adjustments(
+            slashed_indices,
+            reward_slashing_rate,
+            &unadjusted_rewards,
+        );
+        let adjusted_rewards = self.compute_adjusted_reward_distribution(
+            total_voting_power,
+            total_slashed_voting_power,
+            unadjusted_rewards,
+            total_adjustment,
+            &individual_adjustments,
+        );
+
+        self.distribute_rewards(&adjusted_rewards, total_rewards, new_epoch)
     }
 
     /// Calculate reward adjustments for slashed validators
@@ -877,10 +969,10 @@ impl ValidatorSet {
         individual_adjustments: &BTreeMap<usize, u64>,
     ) -> Vec<u64> {
         let total_unslashed_voting_power = total_voting_power - total_slashed_voting_power;
-        let mut adjusted_rewards = Vec::with_capacity(self.active_validators.len());
+        let mut adjusted_rewards = Vec::with_capacity(self.consensus_validators.len());
 
-        for i in 0..self.active_validators.len() {
-            let validator = &self.active_validators[i];
+        for i in 0..self.consensus_validators.len() {
+            let validator = &self.consensus_validators[i];
             let unadjusted_reward = unadjusted_rewards[i];
 
             let adjusted_reward = if individual_adjustments.contains_key(&i) {
@@ -907,12 +999,12 @@ impl ValidatorSet {
         total_rewards: &mut u64,
         new_epoch: u64,
     ) -> HashMap<SomaAddress, StakedSoma> {
-        assert!(!self.active_validators.is_empty(), "Validator set empty");
+        assert!(!self.consensus_validators.is_empty(), "Validator set empty");
 
         let mut rewards = HashMap::new();
         let mut distributed_total = 0;
 
-        for (i, validator) in self.active_validators.iter_mut().enumerate() {
+        for (i, validator) in self.consensus_validators.iter_mut().enumerate() {
             let reward_amount = adjusted_rewards[i];
 
             // Validator commission
@@ -945,15 +1037,41 @@ impl ValidatorSet {
 
     /// Calculate total stake across all validators
     pub fn calculate_total_stake(&self) -> u64 {
-        self.active_validators
+        let consensus_stake: u64 = self
+            .consensus_validators
             .iter()
             .map(|v| v.staking_pool.soma_balance)
-            .sum()
+            .sum();
+
+        let networking_stake: u64 = self
+            .networking_validators
+            .iter()
+            .map(|v| v.staking_pool.soma_balance)
+            .sum();
+
+        consensus_stake + networking_stake
+    }
+
+    /// Calculate total stake INCLUDING pending (for threshold calculations)
+    pub fn calculate_total_stake_with_pending(&self) -> u64 {
+        let active_stake = self.calculate_total_stake();
+
+        let pending_stake: u64 = self
+            .pending_validators
+            .iter()
+            .map(|v| v.staking_pool.soma_balance)
+            .sum();
+
+        active_stake + pending_stake
     }
 
     /// Process the pending stake changes for each validator.
     fn adjust_commission_rates(&mut self) {
-        self.active_validators
+        self.consensus_validators
+            .iter_mut()
+            .for_each(|validator| validator.adjust_commission_rate());
+
+        self.networking_validators
             .iter_mut()
             .for_each(|validator| validator.adjust_commission_rate());
     }
@@ -961,14 +1079,19 @@ impl ValidatorSet {
     /// Update validator voting power based on stake
     pub fn set_voting_power(&mut self) {
         let total_stake = self.calculate_total_stake();
-        self.total_stake = self.calculate_total_stake();
+        self.total_stake = total_stake;
         if total_stake == 0 {
             return;
         }
 
+        // Combine all validators for voting power calculation
+        let mut all_validators: Vec<&mut Validator> = Vec::new();
+        all_validators.extend(self.consensus_validators.iter_mut());
+        all_validators.extend(self.networking_validators.iter_mut());
+
         // Calculate dynamic threshold
         // Ensure threshold is at least high enough to distribute all power
-        let validator_count = self.active_validators.len();
+        let validator_count = all_validators.len();
         let min_threshold = if validator_count > 0 {
             (TOTAL_VOTING_POWER + validator_count as u64 - 1) / validator_count as u64
         // divide_and_round_up
@@ -981,7 +1104,7 @@ impl ValidatorSet {
         );
 
         // Sort validators by stake in descending order for consistent processing
-        self.active_validators.sort_by(|a, b| {
+        all_validators.sort_by(|a, b| {
             b.staking_pool
                 .soma_balance
                 .cmp(&a.staking_pool.soma_balance)
@@ -989,7 +1112,7 @@ impl ValidatorSet {
 
         // First pass: calculate capped voting power based on stake
         let mut total_power = 0;
-        for validator in &mut self.active_validators {
+        for validator in &mut all_validators {
             let stake_fraction = (validator.staking_pool.soma_balance as u128)
                 * (TOTAL_VOTING_POWER as u128)
                 / (total_stake as u128);
@@ -1000,13 +1123,13 @@ impl ValidatorSet {
         // Second pass: distribute remaining power proportionally
         let mut remaining_power = TOTAL_VOTING_POWER.saturating_sub(total_power);
         let mut i = 0;
-        while i < self.active_validators.len() && remaining_power > 0 {
+        while i < all_validators.len() && remaining_power > 0 {
             // Calculate planned distribution (evenly among remaining validators)
-            let validators_left = self.active_validators.len() - i;
+            let validators_left = all_validators.len() - i;
             let planned = (remaining_power + validators_left as u64 - 1) / validators_left as u64; // divide_and_round_up
 
             // Target power capped by threshold
-            let validator = &mut self.active_validators[i];
+            let validator = &mut all_validators[i];
             let target = std::cmp::min(threshold, validator.voting_power + planned);
 
             // Actual power to distribute to this validator
@@ -1029,14 +1152,20 @@ impl ValidatorSet {
         self.verify_voting_power_ordering();
     }
 
-    // Add this helper function to verify relative power ordering
     fn verify_voting_power_ordering(&self) {
-        for i in 0..self.active_validators.len() {
-            for j in i + 1..self.active_validators.len() {
-                let stake_i = self.active_validators[i].staking_pool.soma_balance;
-                let stake_j = self.active_validators[j].staking_pool.soma_balance;
-                let power_i = self.active_validators[i].voting_power;
-                let power_j = self.active_validators[j].voting_power;
+        // Combine all validators for verification
+        let all_validators: Vec<&Validator> = self
+            .consensus_validators
+            .iter()
+            .chain(self.networking_validators.iter())
+            .collect();
+
+        for i in 0..all_validators.len() {
+            for j in i + 1..all_validators.len() {
+                let stake_i = all_validators[i].staking_pool.soma_balance;
+                let stake_j = all_validators[j].staking_pool.soma_balance;
+                let power_i = all_validators[i].voting_power;
+                let power_j = all_validators[j].voting_power;
 
                 if stake_i > stake_j {
                     assert!(
@@ -1054,80 +1183,141 @@ impl ValidatorSet {
         }
     }
 
-    /// Process validators with voting power below thresholds
-    pub fn update_validator_positions_and_calculate_total_stake(
+    fn process_validator_transitions(
         &mut self,
-        low_stake_grace_period: u64,
-        validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         new_epoch: u64,
-    ) -> u64 {
-        // Calculate total stake including pending validators
-        let pending_total_stake: u64 = self
-            .pending_active_validators
-            .iter()
-            .map(|v| v.staking_pool.soma_balance)
-            .sum();
-        let initial_total_stake = self.calculate_total_stake() + pending_total_stake;
+        validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+        grace_period: u64,
+    ) {
+        let total_stake_for_thresholds = self.calculate_total_stake_with_pending();
 
-        // Process active validators for removal if below thresholds
-        let mut total_removed_stake = 0;
-        let mut i = self.active_validators.len();
-
+        // === PROCESS CONSENSUS VALIDATORS ===
+        let mut i = self.consensus_validators.len();
         while i > 0 {
             i -= 1;
-            let validator = &self.active_validators[i];
+            let validator = &self.consensus_validators[i];
             let validator_address = validator.metadata.soma_address;
-            let validator_stake = validator.staking_pool.soma_balance;
+            let voting_power = derive_raw_voting_power(
+                validator.staking_pool.soma_balance,
+                total_stake_for_thresholds,
+            );
 
-            // Calculate voting power as a proportion of total stake
-            let voting_power = derive_raw_voting_power(validator_stake, initial_total_stake);
-
-            if voting_power >= VALIDATOR_LOW_POWER {
-                // Validator is safe - remove from at-risk if present
+            if voting_power >= VALIDATOR_CONSENSUS_LOW_POWER {
+                // Safe - remove from at-risk
                 self.at_risk_validators.remove(&validator_address);
-            } else if voting_power >= VALIDATOR_VERY_LOW_POWER {
-                // Below threshold but above critical - increment grace period
-                let new_low_stake_period =
-                    if let Some(&period) = self.at_risk_validators.get(&validator_address) {
-                        // Already at risk, increment period
-                        let new_period = period + 1;
-                        self.at_risk_validators
-                            .insert(validator_address, new_period);
-                        new_period
-                    } else {
-                        // New at-risk validator
-                        self.at_risk_validators.insert(validator_address, 1);
-                        1
-                    };
+            } else if voting_power >= VALIDATOR_CONSENSUS_VERY_LOW_POWER {
+                // At risk - track grace period
+                let period = self
+                    .at_risk_validators
+                    .get(&validator_address)
+                    .unwrap_or(&0)
+                    + 1;
+                self.at_risk_validators.insert(validator_address, period);
 
-                // If grace period exceeded, remove validator
-                if new_low_stake_period > low_stake_grace_period {
-                    let validator = self.active_validators.swap_remove(i);
-                    let removed_stake = validator.staking_pool.soma_balance;
+                if period > grace_period {
+                    // Grace period exceeded - demote to networking
+                    let validator = self.consensus_validators.swap_remove(i);
+                    if voting_power >= VALIDATOR_NETWORKING_MIN_POWER {
+                        info!(
+                            "Demoting {} to networking after grace period",
+                            validator_address
+                        );
+                        self.networking_validators.push(validator);
+                    } else {
+                        self.process_validator_departure(
+                            validator,
+                            validator_report_records,
+                            new_epoch,
+                            false,
+                        );
+                    }
+                }
+            } else {
+                // Below critical threshold - immediate action
+                let validator = self.consensus_validators.swap_remove(i);
+                if voting_power >= VALIDATOR_NETWORKING_MIN_POWER {
+                    // Demote to networking
+                    info!(
+                        "Immediately demoting {} to networking (power: {})",
+                        validator.metadata.soma_address, voting_power
+                    );
+                    self.networking_validators.push(validator);
+                } else {
+                    // Remove entirely
                     self.process_validator_departure(
                         validator,
                         validator_report_records,
                         new_epoch,
-                        false, // not voluntary departure
+                        false,
                     );
-                    total_removed_stake += removed_stake;
                 }
-            } else {
-                // Voting power critically low - remove immediately
-                let validator = self.active_validators.swap_remove(i);
-                let removed_stake = validator.staking_pool.soma_balance;
+            }
+        }
+
+        // === PROCESS NETWORKING VALIDATORS ===
+        let mut i = self.networking_validators.len();
+        while i > 0 {
+            i -= 1;
+            let validator = &self.networking_validators[i];
+            let voting_power = derive_raw_voting_power(
+                validator.staking_pool.soma_balance,
+                total_stake_for_thresholds,
+            );
+
+            if voting_power >= VALIDATOR_CONSENSUS_MIN_POWER {
+                // Promote to consensus
+                let validator = self.networking_validators.swap_remove(i);
+                let address = validator.metadata.soma_address;
+                self.consensus_validators.push(validator);
+                self.at_risk_validators.remove(&address);
+                info!(
+                    "Promoting {} to consensus (power: {})",
+                    address, voting_power
+                );
+            } else if voting_power < VALIDATOR_NETWORKING_MIN_POWER {
+                // Remove from networking
+                let validator = self.networking_validators.swap_remove(i);
                 self.process_validator_departure(
                     validator,
                     validator_report_records,
                     new_epoch,
-                    false, // not voluntary departure
+                    false,
                 );
-                total_removed_stake += removed_stake;
             }
         }
 
-        // Return new total stake (initial minus removed)
-        initial_total_stake - total_removed_stake
+        // === PROCESS PENDING VALIDATORS ===
+        let mut i = 0;
+        while i < self.pending_validators.len() {
+            let validator = &mut self.pending_validators[i];
+            let voting_power = derive_raw_voting_power(
+                validator.staking_pool.soma_balance,
+                total_stake_for_thresholds,
+            );
+
+            if voting_power >= VALIDATOR_CONSENSUS_MIN_POWER {
+                // Join as consensus validator
+                validator.activate(new_epoch);
+                let validator = self.pending_validators.remove(i);
+                info!(
+                    "New consensus validator {} (power: {})",
+                    validator.metadata.soma_address, voting_power
+                );
+                self.consensus_validators.push(validator);
+            } else if voting_power >= VALIDATOR_NETWORKING_MIN_POWER {
+                // Join as networking validator
+                validator.activate(new_epoch);
+                let validator = self.pending_validators.remove(i);
+                info!(
+                    "New networking validator {} (power: {})",
+                    validator.metadata.soma_address, voting_power
+                );
+                self.networking_validators.push(validator);
+            } else {
+                // Stay pending
+                i += 1;
+            }
+        }
     }
 
     /// Handle validator departure while maintaining staking pool
@@ -1145,7 +1335,7 @@ impl ValidatorSet {
         self.at_risk_validators.remove(&validator_address);
 
         // Update total stake
-        self.total_stake -= validator.staking_pool.soma_balance;
+        // self.total_stake -= validator.staking_pool.soma_balance;
 
         // Clean up report records
         self.clean_report_records(validator_report_records, validator_address);
@@ -1178,12 +1368,23 @@ impl ValidatorSet {
 
     /// Process pending stakes and withdrawals for all validators
     fn process_active_validator_stakes(&mut self, new_epoch: u64) {
-        for validator in &mut self.active_validators {
-            // Process pending stakes and withdrawals
+        // Process consensus validators
+        for validator in &mut self.consensus_validators {
             validator.staking_pool.process_pending_stake_withdraw();
             validator.staking_pool.process_pending_stake();
+            validator.staking_pool.exchange_rates.insert(
+                new_epoch,
+                PoolTokenExchangeRate {
+                    soma_amount: validator.staking_pool.soma_balance,
+                    pool_token_amount: validator.staking_pool.pool_token_balance,
+                },
+            );
+        }
 
-            // Update exchange rate for new epoch
+        // Process networking validators
+        for validator in &mut self.networking_validators {
+            validator.staking_pool.process_pending_stake_withdraw();
+            validator.staking_pool.process_pending_stake();
             validator.staking_pool.exchange_rates.insert(
                 new_epoch,
                 PoolTokenExchangeRate {
@@ -1196,7 +1397,7 @@ impl ValidatorSet {
 
     /// Process pending stakes for pending validators
     fn process_pending_validator_stakes(&mut self, new_epoch: u64) {
-        for validator in &mut self.pending_active_validators {
+        for validator in &mut self.pending_validators {
             // Process pending stakes and withdrawals
             validator.staking_pool.process_pending_stake_withdraw();
             validator.staking_pool.process_pending_stake();
@@ -1206,50 +1407,55 @@ impl ValidatorSet {
         }
     }
 
-    /// Process validators during epoch advancement
-    pub fn process_pending_validators(&mut self, new_epoch: u64) {
-        // Calculate total stake for voting power calculations
-        let total_stake = self.calculate_total_stake();
-
-        let mut i = 0;
-        while i < self.pending_active_validators.len() {
-            let validator = &mut self.pending_active_validators[i];
-            let validator_stake = validator.staking_pool.soma_balance;
-
-            // Calculate voting power
-            let voting_power = derive_raw_voting_power(validator_stake, total_stake);
-
-            // Check if validator meets minimum voting power requirement
-            if voting_power >= VALIDATOR_MIN_POWER {
-                // Activate validator's staking pool
-                validator.activate(new_epoch);
-
-                // Move to active validators
-                let validator = self.pending_active_validators.remove(i);
-                self.active_validators.push(validator);
-            } else {
-                // Keep in pending and check the next one
-                i += 1;
-            }
-        }
-    }
-
     /// Process validators that have requested removal
     pub fn process_pending_removals(
         &mut self,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         new_epoch: u64,
     ) {
-        // Sort removal list in descending order to avoid index shifting issues
-        sort_removal_list(&mut self.pending_removals);
+        let mut consensus_removals: Vec<usize> = Vec::new();
+        let mut networking_removals: Vec<usize> = Vec::new();
 
-        // Process each removal
-        while let Some(index) = self.pending_removals.pop() {
-            let validator = self.active_validators.remove(index);
-
-            // Process as voluntary departure
-            self.process_validator_departure(validator, validator_report_records, new_epoch, true);
+        for (is_consensus, index) in &self.pending_removals {
+            if *is_consensus {
+                consensus_removals.push(*index);
+            } else {
+                networking_removals.push(*index);
+            }
         }
+
+        // Sort both lists in descending order using existing function
+        sort_removal_list(&mut consensus_removals);
+        sort_removal_list(&mut networking_removals);
+
+        // Process consensus removals first
+        for index in consensus_removals.into_iter().rev() {
+            if index < self.consensus_validators.len() {
+                let validator = self.consensus_validators.remove(index);
+                self.process_validator_departure(
+                    validator,
+                    validator_report_records,
+                    new_epoch,
+                    true, // voluntary removal
+                );
+            }
+        }
+
+        // Then process networking removals
+        for index in networking_removals.into_iter().rev() {
+            if index < self.networking_validators.len() {
+                let validator = self.networking_validators.remove(index);
+                self.process_validator_departure(
+                    validator,
+                    validator_report_records,
+                    new_epoch,
+                    true, // voluntary removal
+                );
+            }
+        }
+
+        // Clear pending removals
+        self.pending_removals.clear();
     }
 }
 

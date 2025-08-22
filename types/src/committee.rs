@@ -106,19 +106,24 @@ pub const MAX_VOTING_POWER: u64 = 1_000;
 /// Minimum amount of voting power required to become a validator
 /// .12% of voting power
 // TODO: consider making this .06 or .03
-pub const VALIDATOR_MIN_POWER: u64 = 12;
+pub const VALIDATOR_CONSENSUS_MIN_POWER: u64 = 12;
 
 /// Low voting power threshold for validators
 /// Validators below this threshold fall into the "at risk" group.
 /// .08% of voting power
 // TODO: consider making this .04 or .02
-pub const VALIDATOR_LOW_POWER: u64 = 8;
+pub const VALIDATOR_CONSENSUS_LOW_POWER: u64 = 8;
 
 /// Very low voting power threshold for validators
 /// Validators below this threshold will be removed immediately at epoch change.
 /// .04% of voting power
 // TODO: consider making this .02 or .01
-pub const VALIDATOR_VERY_LOW_POWER: u64 = 4;
+pub const VALIDATOR_CONSENSUS_VERY_LOW_POWER: u64 = 4;
+
+/// Minimum amount of voting power required to become a networking validator
+/// This is the minimum stake required to communicate with validators and encoders
+/// 0.01% of voting power
+pub const VALIDATOR_NETWORKING_MIN_POWER: u64 = 1;
 
 /// A validator can have stake below `validator_low_stake_threshold`
 /// for this many epochs before being kicked out.
@@ -894,4 +899,52 @@ pub fn to_encoder_committee_intent(
     digest: EncoderCommitteeDigest,
 ) -> IntentMessage<EncoderCommitteeDigest> {
     IntentMessage::new(Intent::consensus_app(IntentScope::EncoderCommittee), digest)
+}
+
+/// Represents a committee of networking validators for a specific epoch.
+///
+/// NetworkingCommittee includes all validators with sufficient stake to participate
+/// in network communications, serving as DDOS protection. This is a superset of
+/// consensus validators and includes networking-only validators.
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct NetworkingCommittee {
+    /// The epoch this committee is active for
+    pub epoch: EpochId,
+
+    /// Mapping of authority names to their network metadata
+    /// Note: We don't store voting power here as networking validators
+    /// don't participate in consensus decisions
+    pub members: BTreeMap<AuthorityName, NetworkMetadata>,
+}
+
+impl NetworkingCommittee {
+    /// Creates a new networking committee for the specified epoch
+    pub fn new(epoch: EpochId, members: BTreeMap<AuthorityName, NetworkMetadata>) -> Self {
+        Self { epoch, members }
+    }
+
+    /// Get the epoch this committee is active for
+    pub fn epoch(&self) -> EpochId {
+        self.epoch
+    }
+
+    /// Get all networking committee members
+    pub fn members(&self) -> &BTreeMap<AuthorityName, NetworkMetadata> {
+        &self.members
+    }
+
+    /// Check if a validator is in the networking committee
+    pub fn contains(&self, name: &AuthorityName) -> bool {
+        self.members.contains_key(name)
+    }
+
+    /// Get network metadata for a specific validator
+    pub fn get_metadata(&self, name: &AuthorityName) -> Option<&NetworkMetadata> {
+        self.members.get(name)
+    }
+
+    /// Get the total number of networking participants
+    pub fn size(&self) -> usize {
+        self.members.len()
+    }
 }

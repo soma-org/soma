@@ -201,7 +201,7 @@ pub fn assert_validator_total_stake_amounts(
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
             .expect("Validator not found");
@@ -233,7 +233,7 @@ pub fn assert_validator_self_stake_amounts(
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
             .expect("Validator not found");
@@ -269,7 +269,7 @@ pub fn assert_validator_non_self_stake_amounts(
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
             .expect("Validator not found");
@@ -541,7 +541,7 @@ pub fn validator_stake_amount(
     system_state: &SystemState,
     validator_address: SomaAddress,
 ) -> Option<u64> {
-    for validator in &system_state.validators.active_validators {
+    for validator in &system_state.validators.consensus_validators {
         if validator.metadata.soma_address == validator_address {
             return Some(validator.staking_pool.soma_balance);
         }
@@ -554,7 +554,7 @@ pub fn stake_plus_current_rewards_for_validator(
     system_state: &SystemState,
     validator_address: SomaAddress,
 ) -> Option<u64> {
-    for validator in &system_state.validators.active_validators {
+    for validator in &system_state.validators.consensus_validators {
         if validator.metadata.soma_address == validator_address {
             return Some(validator.staking_pool.soma_balance);
         }

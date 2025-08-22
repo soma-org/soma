@@ -129,10 +129,13 @@ impl BlockVerifier for SignedBlockVerifier {
             match (
                 &eoe.next_validator_set,
                 &eoe.next_encoder_committee,
+                &eoe.next_networking_committee,
                 &eoe.validator_set_signature,
                 &eoe.encoder_committee_signature,
+                &eoe.networking_committee_signature,
                 &eoe.validator_aggregate_signature,
                 &eoe.encoder_aggregate_signature,
+                &eoe.networking_aggregate_signature,
             ) {
                 // Valid cases - must progress through stages synchronously
 

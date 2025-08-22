@@ -12,7 +12,7 @@ use super::context::Context;
 use super::{commit::CommitVote, validator_set::ValidatorSet};
 use crate::{
     accumulator::{Accumulator, CommitIndex},
-    committee::{AuthorityIndex, EncoderCommittee, Epoch},
+    committee::{AuthorityIndex, EncoderCommittee, Epoch, NetworkingCommittee},
 };
 use crate::{
     committee::Committee,
@@ -64,6 +64,8 @@ pub struct EndOfEpochData {
     pub next_validator_set: Option<ValidatorSet>,
     /// The proposed encoder committee for next epoch
     pub next_encoder_committee: Option<EncoderCommittee>,
+    /// The proposed networking committee for next epoch
+    pub next_networking_committee: Option<NetworkingCommittee>,
 
     /// Accumulated state hash digest of the last commit of the epoch
     pub state_hash: Option<ECMHLiveObjectSetDigest>,

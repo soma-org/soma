@@ -57,7 +57,7 @@ use crate::{
     base::{AuthorityName, SomaAddress},
     committee::{
         Authority, Committee, CommitteeWithNetworkMetadata, EncoderCommittee,
-        EncoderNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
+        EncoderNetworkMetadata, EpochId, NetworkMetadata, NetworkingCommittee, VotingPower,
         ENCODER_LOW_STAKE_GRACE_PERIOD, VALIDATOR_LOW_STAKE_GRACE_PERIOD,
     },
     config::genesis_config::{TokenDistributionSchedule, SHANNONS_PER_SOMA},
@@ -89,6 +89,9 @@ mod delegation_tests;
 #[cfg(test)]
 #[path = "unit_tests/encoder_staking.rs"]
 mod encoder_staking_tests;
+#[cfg(test)]
+#[path = "unit_tests/networking_validator_tests.rs"]
+mod networking_validator_tests;
 #[cfg(test)]
 #[path = "unit_tests/rewards_distribution_tests.rs"]
 mod rewards_distribution_tests;
@@ -163,6 +166,9 @@ pub trait SystemStateTrait {
 
     /// Get the encoder committee for the current epoch
     fn get_current_epoch_encoder_committee(&self) -> EncoderCommittee;
+
+    /// Get the networking committee for the current epoch
+    fn get_current_epoch_networking_committee(&self) -> NetworkingCommittee;
 
     /// Convert this system state to an epoch start system state
     fn into_epoch_start_state(self) -> EpochStartSystemState;
@@ -250,7 +256,7 @@ impl SystemState {
         let mut validators = ValidatorSet::new(validators);
         let mut encoders = EncoderSet::new(encoders);
 
-        for validator in &mut validators.active_validators {
+        for validator in &mut validators.consensus_validators {
             validator.activate(0);
         }
 
@@ -962,7 +968,7 @@ impl SystemStateTrait for SystemState {
             // Fallback: build directly from current state
             let validators = self
                 .validators
-                .active_validators
+                .consensus_validators
                 .iter()
                 .map(|validator| {
                     let verified_metadata = validator.metadata.clone();
@@ -1036,6 +1042,39 @@ impl SystemStateTrait for SystemState {
         }
     }
 
+    fn get_current_epoch_networking_committee(&self) -> NetworkingCommittee {
+        if let Ok(committees) = self.current_committees() {
+            committees.build_networking_committee()
+        } else {
+            // Fallback: build directly from current state
+            let members = self
+                .validators
+                .get_all_networking_validators()
+                .map(|validator| {
+                    let metadata = &validator.metadata;
+                    let name = (&metadata.protocol_pubkey).into();
+                    (
+                        name,
+                        NetworkMetadata {
+                            consensus_address: metadata.p2p_address.clone(),
+                            network_address: metadata.net_address.clone(),
+                            primary_address: metadata.primary_address.clone(),
+                            encoder_validator_address: metadata.encoder_validator_address.clone(),
+                            protocol_key: ProtocolPublicKey::new(
+                                metadata.worker_pubkey.clone().into_inner(),
+                            ),
+                            network_key: metadata.network_pubkey.clone(),
+                            authority_key: metadata.protocol_pubkey.clone(),
+                            hostname: metadata.net_address.to_string(),
+                        },
+                    )
+                })
+                .collect();
+
+            NetworkingCommittee::new(self.epoch, members)
+        }
+    }
+
     fn into_epoch_start_state(self) -> EpochStartSystemState {
         EpochStartSystemState {
             epoch: self.epoch,
@@ -1043,7 +1082,7 @@ impl SystemStateTrait for SystemState {
             epoch_duration_ms: self.parameters.epoch_duration_ms,
             active_validators: self
                 .validators
-                .active_validators
+                .consensus_validators
                 .iter()
                 .map(|validator| {
                     let metadata = validator.metadata.clone();
@@ -1139,7 +1178,7 @@ impl Committees {
     pub fn build_validator_committee(&self) -> CommitteeWithNetworkMetadata {
         let validators = self
             .validator_set
-            .active_validators
+            .consensus_validators
             .iter()
             .map(|validator| {
                 let verified_metadata = validator.metadata.clone();
@@ -1205,5 +1244,33 @@ impl Committees {
             members: encoders,
             network_metadata,
         }
+    }
+
+    pub fn build_networking_committee(&self) -> NetworkingCommittee {
+        let members = self
+            .validator_set
+            .get_all_networking_validators()
+            .map(|validator| {
+                let metadata = &validator.metadata;
+                let name = (&metadata.protocol_pubkey).into();
+                (
+                    name,
+                    NetworkMetadata {
+                        consensus_address: metadata.p2p_address.clone(),
+                        network_address: metadata.net_address.clone(),
+                        primary_address: metadata.primary_address.clone(),
+                        encoder_validator_address: metadata.encoder_validator_address.clone(),
+                        protocol_key: ProtocolPublicKey::new(
+                            metadata.worker_pubkey.clone().into_inner(),
+                        ),
+                        network_key: metadata.network_pubkey.clone(),
+                        authority_key: metadata.protocol_pubkey.clone(),
+                        hostname: metadata.net_address.to_string(),
+                    },
+                )
+            })
+            .collect();
+
+        NetworkingCommittee::new(self.epoch, members)
     }
 }

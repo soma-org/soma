@@ -54,7 +54,7 @@ use types::{
         AuthorityName, ConciseableName, ConsensusObjectSequenceKey, FullObjectID, Round,
         SomaAddress,
     },
-    committee::{Authority, Committee, EncoderCommittee, EpochId},
+    committee::{Authority, Committee, EncoderCommittee, EpochId, NetworkingCommittee},
     consensus::{
         validator_set::ValidatorSet, ConsensusCommitPrologue, ConsensusTransaction,
         ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
@@ -2336,7 +2336,13 @@ impl AuthorityPerEpochStore {
 impl EndOfEpochAPI for AuthorityPerEpochStore {
     fn get_next_epoch_state(
         &self,
-    ) -> Option<(ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64)> {
+    ) -> Option<(
+        ValidatorSet,
+        EncoderCommittee,
+        NetworkingCommittee,
+        ECMHLiveObjectSetDigest,
+        u64,
+    )> {
         self.next_epoch_state
             .read()
             .as_ref()
@@ -2359,6 +2365,7 @@ impl EndOfEpochAPI for AuthorityPerEpochStore {
                             .collect(),
                     ),
                     state.get_current_epoch_encoder_committee(),
+                    state.get_current_epoch_networking_committee(),
                     digest.clone(),
                     state.epoch_start_timestamp_ms,
                 )

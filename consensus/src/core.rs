@@ -413,6 +413,7 @@ impl Core {
         let end_of_epoch_data = if let Some((
             next_validator_set,
             next_encoder_committee,
+            next_networking_committee,
             state_digest,
             epoch_start_timestamp_ms,
         )) = self.epoch_store.get_next_epoch_state()
@@ -689,12 +690,14 @@ impl Core {
                             if let Some((
                                 our_val_set,
                                 our_enc_set,
+                                our_net_com,
                                 our_digest,
                                 our_epoch_start_timestamp,
                             )) = self.epoch_store.get_next_epoch_state()
                             {
                                 return eoe.next_validator_set == Some(our_val_set)
                                     && eoe.next_encoder_committee == Some(our_enc_set)
+                                    && eoe.next_networking_committee == Some(our_net_com)
                                     && eoe.state_hash == Some(our_digest)
                                     && eoe.next_epoch_start_timestamp_ms
                                         == our_epoch_start_timestamp;
