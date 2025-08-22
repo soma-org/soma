@@ -122,6 +122,7 @@ pub struct EncoderNode {
 }
 
 impl EncoderNode {
+    // TODO: Remove client_key after NetworkingCommittee is confirmed working
     pub async fn start(config: EncoderConfig, client_key: Option<PeerPublicKey>) -> Self {
         let encoder_keypair = config.encoder_keypair.encoder_keypair().clone();
         let peer_keypair = PeerKeyPair::new(config.peer_keypair.keypair().inner().copy());
@@ -401,6 +402,7 @@ impl EncoderNode {
             config.genesis.system_object().epoch_start_timestamp_ms(),
             config.epoch_duration_ms,
             encoder_keypair.public(),
+            // TODO: Remove this after NetworkingCommittee is confirmed working
             client_key.clone(),
         );
 
@@ -497,6 +499,7 @@ fn create_context_from_genesis(
         0, // Genesis epoch
         authority_committee,
         genesis_encoder_committee,
+        config.genesis.networking_committee(),
         1, // TODO: Default VDF iterations, adjust as needed
     );
 
@@ -531,7 +534,7 @@ fn create_context_from_genesis(
     for peer_key in initial_connections_info.keys() {
         allowed_keys.insert(peer_key.clone().into_inner());
     }
-    // TODO: This is temporary for tests
+    // TODO: Remove this after NetworkingCommittee is confirmed working
     if let Some(client) = client_key {
         allowed_keys.insert(client.into_inner());
     }

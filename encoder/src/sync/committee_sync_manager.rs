@@ -49,6 +49,7 @@ pub struct CommitteeSyncManager {
     /// Signal for shutdown
     shutdown: Arc<AtomicBool>,
 
+    // TODO: Remove this after NetworkingCommittee is confirmed working
     client_key: Option<PeerPublicKey>,
 }
 
@@ -63,6 +64,7 @@ impl CommitteeSyncManager {
         epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
         own_encoder_key: EncoderPublicKey,
+        // TODO: Remove this after NetworkingCommittee is confirmed working
         client_key: Option<PeerPublicKey>,
     ) -> Self {
         let inner_context = context.inner();
@@ -246,6 +248,7 @@ impl CommitteeSyncManager {
             epoch,
             committees.authority_committee.clone(),
             committees.encoder_committee.clone(),
+            committees.networking_committee.clone(),
             self.context.inner().current_committees().vdf_iterations, // Keep the same VDF iterations
         );
 
@@ -317,7 +320,12 @@ impl CommitteeSyncManager {
             allowed_keys.insert(peer_key.clone().into_inner());
         }
 
-        // TODO: Remove this after NetworkingCommittee is defined
+        // Extract network keys from the NetworkingCommittee
+        for (_, network_metadata) in committees.networking_committee.members() {
+            allowed_keys.insert(network_metadata.network_key.clone().into_inner());
+        }
+
+        // TODO: Remove this after NetworkingCommittee is fully integrated
         if let Some(client_key) = self.client_key.clone() {
             allowed_keys.insert(client_key.into_inner());
         }

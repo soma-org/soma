@@ -916,6 +916,9 @@ pub struct NetworkingCommittee {
     /// don't participate in consensus decisions
     pub members: BTreeMap<AuthorityName, NetworkMetadata>,
 }
+/// Digest of networking committee, used for signing
+#[derive(Serialize, Deserialize)]
+pub struct NetworkingCommitteeDigest([u8; DIGEST_LENGTH]);
 
 impl NetworkingCommittee {
     /// Creates a new networking committee for the specified epoch
@@ -947,4 +950,43 @@ impl NetworkingCommittee {
     pub fn size(&self) -> usize {
         self.members.len()
     }
+
+    /// Compute the digest of the networking committee for signing
+    pub fn compute_digest(&self) -> ConsensusResult<NetworkingCommitteeDigest> {
+        let mut hasher = DefaultHashFunction::new();
+        hasher.update(bcs::to_bytes(self).map_err(ConsensusError::SerializationFailure)?);
+        Ok(NetworkingCommitteeDigest(hasher.finalize().into()))
+    }
+
+    /// Sign the networking committee with the given keypair
+    pub fn sign(&self, keypair: &AuthorityKeyPair) -> ConsensusResult<AuthoritySignature> {
+        let digest = self.compute_digest()?;
+        let message = bcs::to_bytes(&to_networking_committee_intent(digest))
+            .map_err(ConsensusError::SerializationFailure)?;
+        Ok(keypair.sign(&message))
+    }
+
+    /// Verify a signature on the networking committee
+    pub fn verify_signature(
+        &self,
+        signature: &AuthoritySignature,
+        public_key: &AuthorityPublicKey,
+    ) -> ConsensusResult<()> {
+        let digest = self.compute_digest()?;
+        let message = bcs::to_bytes(&to_networking_committee_intent(digest))
+            .map_err(ConsensusError::SerializationFailure)?;
+        public_key
+            .verify(&message, signature)
+            .map_err(ConsensusError::SignatureVerificationFailure)
+    }
+}
+
+/// Wrap a NetworkingCommitteeDigest in the intent message
+pub fn to_networking_committee_intent(
+    digest: NetworkingCommitteeDigest,
+) -> IntentMessage<NetworkingCommitteeDigest> {
+    IntentMessage::new(
+        Intent::consensus_app(IntentScope::NetworkingCommittee),
+        digest,
+    )
 }

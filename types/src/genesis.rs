@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     committee::{
         AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EncoderCommittee, EpochId,
+        NetworkingCommittee,
     },
     consensus::{
         block::{BlockDigest, BlockRef},
@@ -37,6 +38,11 @@ impl Genesis {
 
     pub fn encoder_committee(&self) -> EncoderCommittee {
         self.system_object().get_current_epoch_encoder_committee()
+    }
+
+    pub fn networking_committee(&self) -> NetworkingCommittee {
+        self.system_object()
+            .get_current_epoch_networking_committee()
     }
 
     pub fn committee_with_network(&self) -> CommitteeWithNetworkMetadata {

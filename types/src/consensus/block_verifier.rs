@@ -8,7 +8,9 @@ use super::block::{
 use super::context::Context;
 use super::transaction::TransactionVerifier;
 use crate::accumulator::{self, AccumulatorStore};
-use crate::committee::{to_encoder_committee_intent, Committee, EpochId};
+use crate::committee::{
+    to_encoder_committee_intent, to_networking_committee_intent, Committee, EpochId,
+};
 use crate::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use crate::consensus::validator_set::to_validator_set_intent;
 use crate::crypto::AuthorityPublicKey;
@@ -139,17 +141,20 @@ impl BlockVerifier for SignedBlockVerifier {
             ) {
                 // Valid cases - must progress through stages synchronously
 
-                // Stage 1: Valid proposal of both sets without signatures
-                (Some(_), Some(_), None, None, None, None) => {
-                    // First proposal with both sets, no signatures yet - this is valid
+                // Stage 1: Valid proposal of all three sets without signatures
+                (Some(_), Some(_), Some(_), None, None, None, None, None, None) => {
+                    // First proposal with all three sets, no signatures yet - this is valid
                 }
 
-                // Stage 2: Both sets with individual signatures, no aggregate yet
+                // Stage 2: All three sets with individual signatures, no aggregate yet
                 (
                     Some(validator_set),
                     Some(encoder_committee),
+                    Some(networking_committee),
                     Some(val_sig),
                     Some(enc_sig),
+                    Some(net_sig),
+                    None,
                     None,
                     None,
                 ) => {
@@ -159,16 +164,20 @@ impl BlockVerifier for SignedBlockVerifier {
                         .unwrap();
                     validator_set.verify_signature(val_sig, &authority.authority_key)?;
                     encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
+                    networking_committee.verify_signature(net_sig, &authority.authority_key)?;
                 }
 
-                // Stage 3: Complete data with both sets, both signatures, and both aggregates
+                // Stage 3: Complete data with all three sets, all signatures, and all aggregates
                 (
                     Some(validator_set),
                     Some(encoder_committee),
+                    Some(networking_committee),
                     Some(val_sig),
                     Some(enc_sig),
+                    Some(net_sig),
                     Some(val_agg),
                     Some(enc_agg),
+                    Some(net_agg),
                 ) => {
                     // Verify individual signatures first
                     let authority = committee
@@ -176,23 +185,24 @@ impl BlockVerifier for SignedBlockVerifier {
                         .unwrap();
                     validator_set.verify_signature(val_sig, &authority.authority_key)?;
                     encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
+                    networking_committee.verify_signature(net_sig, &authority.authority_key)?;
 
                     // Aggregate signatures would be verified in a separate detailed verification function
                     // that handles the ancestor collection, quorum checks, etc.
                 }
 
                 // No end of epoch data case
-                (None, None, None, None, None, None) => {
+                (None, None, None, None, None, None, None, None, None) => {
                     // No end of epoch data at all - this is valid
                 }
 
                 // All other combinations are invalid - they represent out-of-sync progression
                 _ => {
                     return Err(ConsensusError::InvalidEndOfEpoch(
-                        "End of epoch data must include both validator set and encoder committee, \
-                         and signatures must progress through stages synchronously"
-                            .into(),
-                    ));
+                "End of epoch data must include validator set, encoder committee, and networking committee, \
+                 and signatures must progress through stages synchronously"
+                    .into(),
+            ));
                 }
             }
         }
@@ -303,10 +313,12 @@ impl BlockVerifier for SignedBlockVerifier {
                 }
             }
 
-            // Check if we have both validator set and encoder committee data
-            if let (Some(validator_set), Some(encoder_committee)) =
-                (&eoe.next_validator_set, &eoe.next_encoder_committee)
-            {
+            // Check if we have all three sets
+            if let (Some(validator_set), Some(encoder_committee), Some(networking_committee)) = (
+                &eoe.next_validator_set,
+                &eoe.next_encoder_committee,
+                &eoe.next_networking_committee,
+            ) {
                 // Verify individual signatures if present
                 if let Some(val_sig) = &eoe.validator_set_signature {
                     let authority = self
@@ -326,10 +338,20 @@ impl BlockVerifier for SignedBlockVerifier {
                     encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
                 }
 
-                // Verify aggregate signatures if both are present
-                if let (Some(val_agg), Some(enc_agg)) = (
+                if let Some(net_sig) = &eoe.networking_committee_signature {
+                    let authority = self
+                        .context
+                        .committee
+                        .authority_by_authority_index(block.author())
+                        .unwrap();
+                    networking_committee.verify_signature(net_sig, &authority.authority_key)?;
+                }
+
+                // Verify aggregate signatures if all three are present
+                if let (Some(val_agg), Some(enc_agg), Some(net_agg)) = (
                     &eoe.validator_aggregate_signature,
                     &eoe.encoder_aggregate_signature,
+                    &eoe.networking_aggregate_signature,
                 ) {
                     info!(
                         "Verifying block with aggregate signatures from: {}",
@@ -338,7 +360,7 @@ impl BlockVerifier for SignedBlockVerifier {
 
                     let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
 
-                    // Get messages for verification
+                    // Get messages for verification - you'll need to add to_networking_committee_intent
                     let val_digest = validator_set.compute_digest()?;
                     let val_message = bcs::to_bytes(&to_validator_set_intent(val_digest))
                         .map_err(ConsensusError::SerializationFailure)?;
@@ -347,20 +369,28 @@ impl BlockVerifier for SignedBlockVerifier {
                     let enc_message = bcs::to_bytes(&to_encoder_committee_intent(enc_digest))
                         .map_err(ConsensusError::SerializationFailure)?;
 
+                    let net_digest = networking_committee.compute_digest()?;
+                    let net_message = bcs::to_bytes(&to_networking_committee_intent(net_digest))
+                        .map_err(ConsensusError::SerializationFailure)?;
+
                     // Add this block's signatures if present
                     if eoe.validator_set_signature.is_some()
                         && eoe.encoder_committee_signature.is_some()
+                        && eoe.networking_committee_signature.is_some()
                     {
                         aggregator.add(block.author(), &self.context.committee);
                     }
 
-                    // Add ancestor signatures that match both validator set and encoder committee
+                    // Add ancestor signatures that match all three sets
                     for ancestor in ancestors {
                         if let Some(ancestor_eoe) = ancestor.end_of_epoch_data() {
                             if ancestor_eoe.next_validator_set == eoe.next_validator_set
                                 && ancestor_eoe.next_encoder_committee == eoe.next_encoder_committee
+                                && ancestor_eoe.next_networking_committee
+                                    == eoe.next_networking_committee
                                 && ancestor_eoe.validator_set_signature.is_some()
                                 && ancestor_eoe.encoder_committee_signature.is_some()
+                                && ancestor_eoe.networking_committee_signature.is_some()
                             {
                                 aggregator.add(ancestor.author(), &self.context.committee);
                             }
@@ -393,7 +423,7 @@ impl BlockVerifier for SignedBlockVerifier {
                         })
                         .collect();
 
-                    // Verify both aggregate signatures
+                    // Verify all three aggregate signatures
                     val_agg.verify(&pubkeys, &val_message).map_err(|e| {
                         warn!(
                             "Validator set aggregate signature verification failed: {}",
@@ -411,6 +441,16 @@ impl BlockVerifier for SignedBlockVerifier {
                         );
                         ConsensusError::InvalidEndOfEpoch(
                             "Invalid encoder committee aggregate signature".into(),
+                        )
+                    })?;
+
+                    net_agg.verify(&pubkeys, &net_message).map_err(|e| {
+                        warn!(
+                            "Networking committee aggregate signature verification failed: {}",
+                            e
+                        );
+                        ConsensusError::InvalidEndOfEpoch(
+                            "Invalid networking committee aggregate signature".into(),
                         )
                     })?;
                 }

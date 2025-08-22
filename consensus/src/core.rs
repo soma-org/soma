@@ -20,7 +20,7 @@ use tracing::{debug, info, warn};
 use types::{
     accumulator::AccumulatorStore,
     base::AuthorityName,
-    committee::{AuthorityIndex, EncoderCommittee, Stake},
+    committee::{AuthorityIndex, EncoderCommittee, NetworkingCommittee, Stake},
     consensus::{
         block::EndOfEpochData, validator_set::ValidatorSet, EndOfEpochAPI, TestEpochStore,
     },
@@ -419,11 +419,12 @@ impl Core {
         )) = self.epoch_store.get_next_epoch_state()
         {
             info!("Proposing end of epoch data here");
-            // Find first ancestor block proposing this validator set, encoder committee, and state digest
+            // Find first ancestor block proposing this validator set, encoder committee, networking committee, and state digest
             let matching_ancestor = ancestors.iter().find(|block| {
                 if let Some(eoe) = block.end_of_epoch_data() {
                     eoe.next_validator_set == Some(next_validator_set.clone())
                         && eoe.next_encoder_committee == Some(next_encoder_committee.clone())
+                        && eoe.next_networking_committee == Some(next_networking_committee.clone())
                         && eoe.state_hash == Some(state_digest.clone())
                         && eoe.next_epoch_start_timestamp_ms == epoch_start_timestamp_ms
                 } else {
@@ -432,73 +433,84 @@ impl Core {
             });
 
             Some(match matching_ancestor {
-                // Case 1: First to propose validator set and state digest
+                // Case 1: First to propose validator set, committees, and state digest
                 None => {
-                    info!("First to propose validator set and state object");
+                    info!("First to propose validator set, committees, and state object");
                     EndOfEpochData {
                         next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                         next_validator_set: Some(next_validator_set),
                         next_encoder_committee: Some(next_encoder_committee),
+                        next_networking_committee: Some(next_networking_committee),
                         state_hash: Some(state_digest),
                         validator_set_signature: None,
                         encoder_committee_signature: None,
+                        networking_committee_signature: None,
                         validator_aggregate_signature: None,
                         encoder_aggregate_signature: None,
+                        networking_aggregate_signature: None,
                     }
                 }
 
-                // Case 2: Ancestor proposed matching validator set, encoder committee, and state digest
+                // Case 2: Ancestor proposed matching validator set, committees, and state digest
                 Some(_proposing_block) => {
-                    info!("Ancestor proposed matching validator set, encoder committee,  and state digest");
+                    info!("Ancestor proposed matching validator set, committees, and state digest");
                     // Create a stake aggregator for quorum threshold
                     let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
 
-                    // Sign using ValidatorSet's and EncoderCommittee's implementations
+                    // Sign using ValidatorSet's, EncoderCommittee's, and NetworkingCommittee's implementations
                     let val_sig = next_validator_set
                         .sign(&self.committee_signer)
                         .expect("Cannot sign validator set");
                     let enc_sig = next_encoder_committee
                         .sign(&self.committee_signer)
                         .expect("Cannot sign encoder committee");
+                    let net_sig = next_networking_committee
+                        .sign(&self.committee_signer)
+                        .expect("Cannot sign networking committee");
 
                     // Add our own authority to aggregator
                     aggregator.add(self.context.own_index.unwrap(), &self.context.committee);
 
-                    // Collect ancestor signatures that signed both sets
+                    // Collect ancestor signatures that signed all three sets
                     let ancestor_sigs = self.collect_set_signatures(
                         &ancestors,
                         next_validator_set.clone(),
                         next_encoder_committee.clone(),
+                        next_networking_committee.clone(),
                     );
 
-                    // Add ancestors that signed both sets to the aggregator
-                    for (ancestor, _, _) in &ancestor_sigs {
+                    // Add ancestors that signed all three sets to the aggregator
+                    for (ancestor, _, _, _) in &ancestor_sigs {
                         aggregator.add(*ancestor, &self.context.committee);
                     }
 
                     if aggregator.reached_threshold(&self.context.committee) {
                         // We have quorum - create aggregate signatures
 
-                        // Extract validator signatures in authority index order
+                        // Extract signatures in authority index order
                         let mut val_sigs = Vec::with_capacity(aggregator.votes().len());
-                        // Extract encoder signatures in same authority index order
                         let mut enc_sigs = Vec::with_capacity(aggregator.votes().len());
+                        let mut net_sigs = Vec::with_capacity(aggregator.votes().len());
 
                         // Collect signatures in order of authority indices
                         for &auth_idx in aggregator.votes() {
                             if auth_idx == self.context.own_index.unwrap() {
                                 val_sigs.push(val_sig.clone());
                                 enc_sigs.push(enc_sig.clone());
+                                net_sigs.push(net_sig.clone());
                             } else {
                                 // Find matching ancestor signature
-                                let (vs, es) = ancestor_sigs
+                                let (vs, es, ns) = ancestor_sigs
                                     .iter()
-                                    .find(|(idx, _, _)| *idx == auth_idx)
-                                    .map(|(_, val_sig, enc_sig)| (val_sig.clone(), enc_sig.clone()))
+                                    .find(|(idx, _, _, _)| *idx == auth_idx)
+                                    .map(|(_, val_sig, enc_sig, net_sig)| {
+                                        (val_sig.clone(), enc_sig.clone(), net_sig.clone())
+                                    })
                                     .expect("Must have signatures for aggregated authority");
 
                                 val_sigs.push(vs);
                                 enc_sigs.push(es);
+                                net_sigs.push(ns);
                             }
                         }
 
@@ -510,31 +522,38 @@ impl Core {
                         // Create aggregate signatures
                         let val_agg_sig = self.aggregate_signatures(val_sigs);
                         let enc_agg_sig = self.aggregate_signatures(enc_sigs);
+                        let net_agg_sig = self.aggregate_signatures(net_sigs);
 
                         EndOfEpochData {
                             next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                             next_validator_set: Some(next_validator_set),
                             next_encoder_committee: Some(next_encoder_committee),
+                            next_networking_committee: Some(next_networking_committee),
                             state_hash: Some(state_digest),
                             validator_set_signature: Some(val_sig),
                             encoder_committee_signature: Some(enc_sig),
+                            networking_committee_signature: Some(net_sig),
                             validator_aggregate_signature: val_agg_sig,
                             encoder_aggregate_signature: enc_agg_sig,
+                            networking_aggregate_signature: net_agg_sig,
                         }
                     } else {
                         info!(
-                            "Not enough stake for quorum (current: {}), continuing without aggregate", 
-                            aggregator.stake()
-                        );
+                    "Not enough stake for quorum (current: {}), continuing without aggregate", 
+                    aggregator.stake()
+                );
                         EndOfEpochData {
                             next_epoch_start_timestamp_ms: epoch_start_timestamp_ms,
                             next_validator_set: Some(next_validator_set),
                             next_encoder_committee: Some(next_encoder_committee),
+                            next_networking_committee: Some(next_networking_committee),
                             state_hash: Some(state_digest),
                             validator_set_signature: Some(val_sig),
                             encoder_committee_signature: Some(enc_sig),
+                            networking_committee_signature: Some(net_sig),
                             validator_aggregate_signature: None,
                             encoder_aggregate_signature: None,
+                            networking_aggregate_signature: None,
                         }
                     }
                 }
@@ -685,7 +704,7 @@ impl Core {
                 ancestors
                     .into_iter()
                     .filter(|block| {
-                        // Keep if no end of epoch data or matching set + state hash
+                        // Keep if no end of epoch data or matching all three sets + state hash
                         if let Some(eoe) = block.end_of_epoch_data() {
                             if let Some((
                                 our_val_set,
@@ -787,21 +806,29 @@ impl Core {
         ancestors: &[VerifiedBlock],
         validator_set: ValidatorSet,
         encoder_committee: EncoderCommittee,
-    ) -> Vec<(AuthorityIndex, AuthoritySignature, AuthoritySignature)> {
+        networking_committee: NetworkingCommittee,
+    ) -> Vec<(
+        AuthorityIndex,
+        AuthoritySignature,
+        AuthoritySignature,
+        AuthoritySignature,
+    )> {
         ancestors
             .iter()
             .filter_map(|block| {
                 if let Some(eoe) = block.end_of_epoch_data() {
                     if eoe.next_validator_set == Some(validator_set.clone())
                         && eoe.next_encoder_committee == Some(encoder_committee.clone())
+                        && eoe.next_networking_committee == Some(networking_committee.clone())
                     {
                         match (
                             eoe.validator_set_signature.clone(),
                             eoe.encoder_committee_signature.clone(),
+                            eoe.networking_committee_signature.clone(),
                         ) {
-                            (Some(val_sig), Some(enc_sig)) => {
-                                // Only include authorities that have signed both
-                                Some((block.author(), val_sig, enc_sig))
+                            (Some(val_sig), Some(enc_sig), Some(net_sig)) => {
+                                // Only include authorities that have signed all three
+                                Some((block.author(), val_sig, enc_sig, net_sig))
                             }
                             _ => None,
                         }

@@ -26,7 +26,6 @@ impl EncoderValidatorService {
             commit_store,
         }
     }
-
     async fn fetch_committees_impl(
         &self,
         request: tonic::Request<FetchCommitteesRequest>,
@@ -101,17 +100,21 @@ impl EncoderValidatorService {
                     if let Some(end_of_epoch_data) = end_of_epoch_block.end_of_epoch_data() {
                         debug!("Found end of epoch data for epoch {}", epoch);
 
-                        // Check for complete validator set and encoder committee data
+                        // Check for complete validator set, encoder committee, and networking committee data
                         if let (
                             Some(validator_set),
                             Some(encoder_committee),
+                            Some(networking_committee),
                             Some(val_agg_sig),
                             Some(enc_agg_sig),
+                            Some(net_agg_sig),
                         ) = (
                             &end_of_epoch_data.next_validator_set,
                             &end_of_epoch_data.next_encoder_committee,
+                            &end_of_epoch_data.next_networking_committee,
                             &end_of_epoch_data.validator_aggregate_signature,
                             &end_of_epoch_data.encoder_aggregate_signature,
+                            &end_of_epoch_data.networking_aggregate_signature,
                         ) {
                             let next_epoch = epoch + 1;
                             info!("Building committee data for epoch {}", next_epoch);
@@ -119,9 +122,10 @@ impl EncoderValidatorService {
                             // Simple collection of signer indices
                             let mut signer_indices = Vec::new();
 
-                            // First, add the block's author if it has both signatures
+                            // First, add the block's author if it has all three signatures
                             if end_of_epoch_data.validator_set_signature.is_some()
                                 && end_of_epoch_data.encoder_committee_signature.is_some()
+                                && end_of_epoch_data.networking_committee_signature.is_some()
                             {
                                 debug!(
                                     "Adding block author {} to signer indices",
@@ -130,13 +134,13 @@ impl EncoderValidatorService {
                                 signer_indices.push(end_of_epoch_block.author().0);
                             }
 
-                            // Find ancestor blocks that have signed both sets
+                            // Find ancestor blocks that have signed all three sets
                             let ancestor_count = end_of_epoch_block.ancestors().len();
                             debug!("Processing {} ancestors for signatures", ancestor_count);
 
                             for ancestor_ref in end_of_epoch_block.ancestors() {
                                 // We would need to fetch actual ancestor blocks here to check
-                                // if they have signatures for both sets, but for simplicity
+                                // if they have signatures for all three sets, but for simplicity
                                 // let's just add all ancestors for now
                                 debug!(
                                     "Adding ancestor author {} to signer indices",
@@ -145,7 +149,7 @@ impl EncoderValidatorService {
                                 signer_indices.push(ancestor_ref.author.0);
                             }
 
-                            // Serialize the validator set and encoder committee
+                            // Serialize the validator set
                             debug!("Serializing validator set for epoch {}", next_epoch);
                             let validator_set_bytes = match bcs::to_bytes(validator_set) {
                                 Ok(bytes) => {
@@ -164,6 +168,7 @@ impl EncoderValidatorService {
                                 }
                             };
 
+                            // Serialize the encoder committee
                             debug!("Serializing encoder committee for epoch {}", next_epoch);
                             let encoder_committee_bytes = match bcs::to_bytes(encoder_committee) {
                                 Ok(bytes) => {
@@ -182,7 +187,31 @@ impl EncoderValidatorService {
                                 }
                             };
 
-                            // Serialize the aggregate signatures
+                            // Serialize the networking committee
+                            debug!("Serializing networking committee for epoch {}", next_epoch);
+                            let networking_committee_bytes = match bcs::to_bytes(
+                                networking_committee,
+                            ) {
+                                Ok(bytes) => {
+                                    debug!(
+                                        "Networking committee serialized: {} bytes",
+                                        bytes.len()
+                                    );
+                                    bytes
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "Failed to serialize networking committee for epoch {}: {}",
+                                        next_epoch, e
+                                    );
+                                    return Err(tonic::Status::internal(format!(
+                                        "Failed to serialize networking committee for epoch {}: {}",
+                                        next_epoch, e
+                                    )));
+                                }
+                            };
+
+                            // Serialize the validator aggregate signature
                             debug!(
                                 "Serializing validator aggregate signature for epoch {}",
                                 next_epoch
@@ -207,6 +236,7 @@ impl EncoderValidatorService {
                                 }
                             };
 
+                            // Serialize the encoder aggregate signature
                             debug!(
                                 "Serializing encoder aggregate signature for epoch {}",
                                 next_epoch
@@ -231,6 +261,31 @@ impl EncoderValidatorService {
                                 }
                             };
 
+                            // Serialize the networking aggregate signature
+                            debug!(
+                                "Serializing networking aggregate signature for epoch {}",
+                                next_epoch
+                            );
+                            let net_agg_sig_bytes = match bcs::to_bytes(net_agg_sig) {
+                                Ok(bytes) => {
+                                    debug!(
+                                        "Networking aggregate signature serialized: {} bytes",
+                                        bytes.len()
+                                    );
+                                    bytes
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "Failed to serialize networking aggregate signature for epoch {}: {}",
+                                        next_epoch, e
+                                    );
+                                    return Err(tonic::Status::internal(format!(
+                                        "Failed to serialize networking aggregate signature for epoch {}: {}",
+                                        next_epoch, e
+                                    )));
+                                }
+                            };
+
                             debug!("Adding complete committee data for epoch {}", next_epoch);
                             response.epoch_committees.push(EpochCommittee {
                                 epoch: next_epoch,
@@ -241,10 +296,12 @@ impl EncoderValidatorService {
                                 signer_indices,
                                 encoder_committee: encoder_committee_bytes.into(),
                                 encoder_aggregate_signature: enc_agg_sig_bytes.into(),
+                                networking_committee: networking_committee_bytes.into(),
+                                networking_aggregate_signature: net_agg_sig_bytes.into(),
                             });
                         } else {
                             warn!(
-                                "Incomplete committee data for epoch {}: missing validator set, encoder committee, or signatures",
+                                "Incomplete committee data for epoch {}: missing validator set, encoder committee, networking committee, or signatures",
                                 epoch + 1
                             );
                         }

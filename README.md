@@ -16,6 +16,8 @@ RUSTFLAGS="--cfg msim" RUST_BACKTRACE=1 cargo test -p e2e-tests --test reconfigu
 RUSTFLAGS="--cfg msim" RUST_BACKTRACE=1 cargo test -p authority --lib -- state::authority_tests --test test_conflicting_transactions
 
 RUST_BACKTRACE=1 cargo test -p authority --lib -- pay_coin_tests
+
+RUSTFLAGS="--cfg msim" RUST_BACKTRACE=1 cargo test -p e2e-tests --test encoder_committee_tests test_integrated_encoder_validator_system
 ```
 
 ## Shard
