@@ -67,6 +67,7 @@ pub enum IntentScope {
     ValidatorSet = 6,   // Used for a signature on a validator set.
     EncoderCommittee = 7,
     NetworkingCommittee = 8,
+    ConsensusFinality = 9,
 }
 
 impl TryFrom<u8> for IntentScope {

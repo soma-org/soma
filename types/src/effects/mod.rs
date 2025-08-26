@@ -38,6 +38,7 @@ use thiserror::Error;
 use crate::{
     base::SomaAddress,
     committee::{Committee, EpochId},
+    consensus::block::BlockRef,
     crypto::{
         default_hash, AuthoritySignInfo, AuthoritySignInfoTrait, AuthorityStrongQuorumSignInfo,
         EmptySignInfo,

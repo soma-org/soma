@@ -56,8 +56,8 @@ use types::{
     },
     committee::{Authority, Committee, EncoderCommittee, EpochId, NetworkingCommittee},
     consensus::{
-        validator_set::ValidatorSet, ConsensusCommitPrologue, ConsensusTransaction,
-        ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
+        block::BlockRef, validator_set::ValidatorSet, ConsensusCommitPrologue,
+        ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
     },
     crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo, Signer},
     digests::{ECMHLiveObjectSetDigest, TransactionDigest, TransactionEffectsDigest},
@@ -69,6 +69,7 @@ use types::{
     envelope::TrustedEnvelope,
     error::{ExecutionError, SomaError, SomaResult},
     execution_indices::ExecutionIndices,
+    finality::{ConsensusFinality, VerifiedSignedConsensusFinality},
     mutex_table::{MutexGuard, MutexTable},
     object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version},
     protocol::{Chain, ProtocolConfig},
@@ -322,6 +323,9 @@ pub struct AuthorityPerEpochStore {
     synced_commit_notify_read: NotifyRead<CommitIndex, ()>,
 
     next_epoch_state: RwLock<Option<(SystemState, ECMHLiveObjectSetDigest)>>,
+
+    /// NotifyRead for consensus leader blocks - allows async waiting for finality
+    consensus_leader_notify_read: NotifyRead<TransactionDigest, BlockRef>,
 }
 
 /// # AuthorityEpochTables
@@ -422,6 +426,8 @@ pub struct AuthorityEpochTables {
     // TODO:  Transactions that were executed in the current epoch: executed_in_epoch
     // TODO: Transactions that are being deferred until some future time deferred_transactions: DBMap<DeferralKey, Vec<VerifiedSequencedConsensusTransaction>>,
     // TODO: Accumulated per-object debts for congestion control. congestion_control_object_debts: DBMap<ObjectID, CongestionPerObjectDebt>,
+    /// Signed consensus finality for EmbedData transactions
+    pub(crate) consensus_finalities: RwLock<BTreeMap<TransactionDigest, BlockRef>>,
 }
 
 impl AuthorityEpochTables {
@@ -575,6 +581,7 @@ impl AuthorityPerEpochStore {
             highest_synced_commit: RwLock::new(0),
             synced_commit_notify_read: NotifyRead::new(),
             next_epoch_state: RwLock::new(None),
+            consensus_leader_notify_read: NotifyRead::new(),
         });
         s
     }
@@ -694,6 +701,7 @@ impl AuthorityPerEpochStore {
             highest_synced_commit: RwLock::new(0),
             synced_commit_notify_read: NotifyRead::new(),
             next_epoch_state: RwLock::new(None),
+            consensus_leader_notify_read: NotifyRead::new(),
         })
     }
 
@@ -2330,6 +2338,56 @@ impl AuthorityPerEpochStore {
         output.write_to_batch(self)?;
 
         Ok(())
+    }
+
+    /// Try to insert consensus leader block - only succeeds if not already present
+    pub fn try_insert_consensus_leader(
+        &self,
+        tx_digest: &TransactionDigest,
+        block_ref: BlockRef,
+    ) -> SomaResult<bool> {
+        let tables = self.tables()?;
+        let mut consensus_leaders = tables.consensus_finalities.write();
+
+        // Only insert if not already present (first write wins)
+        if !consensus_leaders.contains_key(tx_digest) {
+            consensus_leaders.insert(*tx_digest, block_ref);
+            // Notify waiters
+            self.consensus_leader_notify_read
+                .notify(tx_digest, &block_ref);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Get consensus leader block if available
+    pub fn get_consensus_leader(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> SomaResult<Option<BlockRef>> {
+        Ok(self
+            .tables()?
+            .consensus_finalities
+            .read()
+            .get(tx_digest)
+            .cloned())
+    }
+
+    /// Wait for consensus leader block to become available
+    pub async fn notify_read_consensus_leader(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> SomaResult<BlockRef> {
+        let registration = self.consensus_leader_notify_read.register_one(tx_digest);
+
+        // Check if already available
+        if let Some(block_ref) = self.get_consensus_leader(tx_digest)? {
+            return Ok(block_ref);
+        }
+
+        // Wait for notification
+        Ok(registration.await)
     }
 }
 

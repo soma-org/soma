@@ -15,8 +15,6 @@ use std::{
 use thiserror::Error;
 use tokio::time::{sleep, timeout};
 use tracing::{debug, error, info, instrument, trace, trace_span, warn, Instrument};
-use types::committee::CommitteeTrait;
-use types::storage::committee_store::CommitteeStore;
 use types::{
     base::{AuthorityName, ConciseableName},
     client::Config,
@@ -29,11 +27,14 @@ use types::{
     },
     envelope::Message,
     error::{SomaError, SomaResult},
+    finality::{SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
     grpc::{HandleCertificateRequest, HandleCertificateResponse},
     quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse},
     system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
     transaction::{CertifiedTransaction, SignedTransaction, Transaction},
 };
+use types::{committee::CommitteeTrait, finality::ConsensusFinality};
+use types::{finality::CertifiedConsensusFinality, storage::committee_store::CommitteeStore};
 use utils::agg::{quorum_map_then_reduce_with_timeout, AsyncResult, ReduceOutput};
 
 #[derive(Debug)]
@@ -41,6 +42,7 @@ struct ProcessTransactionState {
     // The list of signatures gathered at any point
     tx_signatures: StakeAggregator<AuthoritySignInfo, true>,
     effects_map: MultiStakeAggregator<TransactionEffectsDigest, TransactionEffects, true>,
+    finality_map: Option<MultiStakeAggregator<TransactionDigest, ConsensusFinality, true>>,
     // The list of errors gathered at any point
     errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>,
     // If there are conflicting transactions, we note them down and may attempt to retry
@@ -94,14 +96,20 @@ impl ProcessTransactionState {
 }
 
 struct ProcessCertificateState {
+    certificate: CertifiedTransaction,
     // Different authorities could return different effects.  We want at least one effect to come
     // from 2f+1 authorities, which meets quorum and can be considered the approved effect.
     // The map here allows us to count the stake for each unique effect.
     effects_map:
         MultiStakeAggregator<(EpochId, TransactionEffectsDigest), TransactionEffects, true>,
+    finality_map:
+        Option<MultiStakeAggregator<(EpochId, TransactionDigest), ConsensusFinality, true>>,
     non_retryable_stake: VotingPower,
     non_retryable_errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>,
     retryable_errors: Vec<(SomaError, Vec<AuthorityName>, VotingPower)>,
+    // Track achieved quorums
+    effects_cert: Option<VerifiedCertifiedTransactionEffects>,
+    finality_cert: Option<VerifiedCertifiedConsensusFinality>,
     // As long as none of the exit criteria are met we consider the state retryable
     // 1) >= 2f+1 signatures
     // 2) >= f+1 non-retryable errors
@@ -118,7 +126,10 @@ pub enum ProcessTransactionResult {
         /// such as settlement latency.
         newly_formed: bool,
     },
-    Executed(VerifiedCertifiedTransactionEffects),
+    Executed {
+        effects: VerifiedCertifiedTransactionEffects,
+        finality: Option<VerifiedCertifiedConsensusFinality>,
+    },
 }
 
 #[derive(Clone)]
@@ -416,6 +427,7 @@ where
             tx_signatures: StakeAggregator::new(committee.clone()),
             errors: vec![],
             effects_map: MultiStakeAggregator::new(committee.clone()),
+            finality_map: None,
             retryable: true,
             conflicting_tx_digests: Default::default(),
 
@@ -491,13 +503,13 @@ where
                 debug!(?tx_digest, name=?name.concise(), weight, "Received signed transaction from validator handle_transaction");
                 self.handle_transaction_response_with_signed(state, signed)
             }
-            Ok(PlainTransactionInfoResponse::ExecutedWithCert(cert, effects)) => {
+            Ok(PlainTransactionInfoResponse::ExecutedWithCert(cert, effects, finality)) => {
                 debug!(?tx_digest, name=?name.concise(), weight, "Received prev certificate and effects from validator handle_transaction");
-                self.handle_transaction_response_with_executed(state, Some(cert), effects)
+                self.handle_transaction_response_with_executed(state, Some(cert), effects, finality)
             }
-            Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(_, effects)) => {
+            Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(_, effects, finality)) => {
                 debug!(?tx_digest, name=?name.concise(), weight, "Received prev effects from validator handle_transaction");
-                self.handle_transaction_response_with_executed(state, None, effects)
+                self.handle_transaction_response_with_executed(state, None, effects, finality)
             }
             Err(err) => {
                 debug!(
@@ -556,49 +568,91 @@ where
         state: &mut ProcessTransactionState,
         certificate: Option<CertifiedTransaction>,
         plain_tx_effects: SignedTransactionEffects,
+        plain_tx_finality: Option<SignedConsensusFinality>,
     ) -> SomaResult<Option<ProcessTransactionResult>> {
         match certificate {
             Some(certificate) if certificate.epoch() == self.committee.epoch => {
-                // If we get a certificate in the same epoch, then we use it.
-                // A certificate in a past epoch does not guarantee finality
-                // and validators may reject to process it.
-                Ok(Some(ProcessTransactionResult::Certified {
+                return Ok(Some(ProcessTransactionResult::Certified {
                     certificate,
                     newly_formed: false,
-                }))
+                }));
             }
-            _ => {
-                // If we get 2f+1 effects, it's a proof that the transaction
-                // has already been finalized. This works because validators would re-sign effects for transactions
-                // that were finalized in previous epochs.
-                let digest = plain_tx_effects.data().digest();
-                match state.effects_map.insert(digest, plain_tx_effects.clone()) {
-                    InsertResult::NotEnoughVotes {
-                        bad_votes,
+            _ => {}
+        }
+
+        // Track finality if provided
+        let mut finality_cert = None;
+        if let Some(finality) = plain_tx_finality {
+            if state.finality_map.is_none() {
+                state.finality_map = Some(MultiStakeAggregator::new(self.committee.clone()));
+            }
+
+            let finality_map = state.finality_map.as_mut().unwrap();
+            let tx_digest = finality.data().tx_digest;
+
+            match finality_map.insert(tx_digest, finality.clone()) {
+                InsertResult::QuorumReached(cert_sig) => {
+                    // Get the finality data from the map
+                    let finality_data = finality.into_data();
+                    let certified =
+                        CertifiedConsensusFinality::new_from_data_and_sig(finality_data, cert_sig);
+                    finality_cert = Some(certified.verify(&self.committee)?);
+                }
+                InsertResult::NotEnoughVotes {
+                    bad_votes,
+                    bad_authorities,
+                } => {
+                    if bad_votes > 0 {
+                        state.errors.push((
+                            SomaError::InvalidSignature {
+                                error: "Finality signature verification failed".to_string(),
+                            },
+                            bad_authorities,
+                            bad_votes,
+                        ));
+                    }
+                }
+                InsertResult::Failed { error } => {
+                    // Log but don't fail the whole operation
+                    warn!("Failed to insert finality: {:?}", error);
+                }
+            }
+        }
+
+        // Process effects
+        let digest = plain_tx_effects.data().digest();
+        match state.effects_map.insert(digest, plain_tx_effects.clone()) {
+            InsertResult::NotEnoughVotes {
+                bad_votes,
+                bad_authorities,
+            } => {
+                if bad_votes > 0 {
+                    state.errors.push((
+                        SomaError::InvalidSignature {
+                            error: "Individual signature verification failed".to_string(),
+                        },
                         bad_authorities,
-                    } => {
-                        // state.non_retryable_stake += bad_votes;
-                        if bad_votes > 0 {
-                            state.errors.push((
-                                SomaError::InvalidSignature {
-                                    error: "Individual signature verification failed".to_string(),
-                                },
-                                bad_authorities,
-                                bad_votes,
-                            ));
-                        }
-                        Ok(None)
-                    }
-                    InsertResult::Failed { error } => Err(error),
-                    InsertResult::QuorumReached(cert_sig) => {
-                        let ct = CertifiedTransactionEffects::new_from_data_and_sig(
-                            plain_tx_effects.into_data(),
-                            cert_sig,
-                        );
-                        Ok(Some(ProcessTransactionResult::Executed(
-                            ct.verify(&self.committee)?,
-                        )))
-                    }
+                        bad_votes,
+                    ));
+                }
+                Ok(None)
+            }
+            InsertResult::Failed { error } => Err(error),
+            InsertResult::QuorumReached(cert_sig) => {
+                let effects_cert = CertifiedTransactionEffects::new_from_data_and_sig(
+                    plain_tx_effects.into_data(),
+                    cert_sig,
+                );
+
+                // If transaction requires finality and we don't have it yet, keep waiting
+                if finality_cert.is_none() && state.finality_map.is_some() {
+                    Ok(None)
+                } else {
+                    // Either we don't need finality, or we have it
+                    Ok(Some(ProcessTransactionResult::Executed {
+                        effects: effects_cert.verify(&self.committee)?,
+                        finality: finality_cert,
+                    }))
                 }
             }
         }
@@ -735,7 +789,11 @@ where
         client_addr: Option<SocketAddr>,
     ) -> Result<QuorumDriverResponse, AggregatorProcessCertificateError> {
         let state = ProcessCertificateState {
+            certificate: request.certificate.clone(),
             effects_map: MultiStakeAggregator::new(self.committee.clone()),
+            finality_map: None,
+            effects_cert: None,
+            finality_cert: None,
             non_retryable_stake: 0,
             non_retryable_errors: vec![],
             retryable_errors: vec![],
@@ -860,57 +918,158 @@ where
         name: AuthorityName,
     ) -> SomaResult<Option<QuorumDriverResponse>> {
         match response {
-            Ok(HandleCertificateResponse { signed_effects }) => {
+            Ok(HandleCertificateResponse {
+                signed_effects,
+                signed_finality,
+            }) => {
                 debug!(
                     ?tx_digest,
                     name = ?name.concise(),
+                    has_finality = signed_finality.is_some(),
                     "Validator handled certificate successfully",
                 );
 
                 let effects_digest = *signed_effects.digest();
-                // Note: here we aggregate votes by the hash of the effects structure
-                match state.effects_map.insert(
-                    (signed_effects.epoch(), effects_digest),
-                    signed_effects.clone(),
-                ) {
-                    InsertResult::NotEnoughVotes {
-                        bad_votes,
-                        bad_authorities,
-                    } => {
-                        warn!(
-                            ?tx_digest,
-                            ?effects_digest,
-                            bad_votes,
-                            "Not enough votes for effects"
-                        );
-                        // state.non_retryable_stake += bad_votes;
-                        if bad_votes > 0 {
-                            state.non_retryable_errors.push((
-                                SomaError::InvalidSignature {
-                                    error: "Individual signature verification failed".to_string(),
-                                },
-                                bad_authorities,
-                                bad_votes,
-                            ));
-                        }
-                        Ok(None)
-                    }
-                    InsertResult::Failed { error } => {
-                        warn!(?tx_digest, ?effects_digest, "Failed to insert effects");
-                        Err(error)
-                    }
-                    InsertResult::QuorumReached(cert_sig) => {
-                        let ct = CertifiedTransactionEffects::new_from_data_and_sig(
-                            signed_effects.into_data(),
-                            cert_sig,
-                        );
 
-                        ct.verify(&committee).map(|ct| {
-                            debug!(?tx_digest, "Got quorum for validators handle_certificate.");
-                            Some(QuorumDriverResponse { effects_cert: ct })
-                        })
+                // Handle effects aggregation - store result but don't return yet
+                if state.effects_cert.is_none() {
+                    match state.effects_map.insert(
+                        (signed_effects.epoch(), effects_digest),
+                        signed_effects.clone(),
+                    ) {
+                        InsertResult::NotEnoughVotes {
+                            bad_votes,
+                            bad_authorities,
+                        } => {
+                            warn!(
+                                ?tx_digest,
+                                ?effects_digest,
+                                bad_votes,
+                                "Not enough votes for effects"
+                            );
+                            if bad_votes > 0 {
+                                state.non_retryable_errors.push((
+                                    SomaError::InvalidSignature {
+                                        error: "Individual signature verification failed"
+                                            .to_string(),
+                                    },
+                                    bad_authorities,
+                                    bad_votes,
+                                ));
+                            }
+                        }
+                        InsertResult::Failed { error } => {
+                            warn!(?tx_digest, ?effects_digest, "Failed to insert effects");
+                            return Err(error);
+                        }
+                        InsertResult::QuorumReached(cert_sig) => {
+                            let ct = CertifiedTransactionEffects::new_from_data_and_sig(
+                                signed_effects.into_data(),
+                                cert_sig,
+                            );
+                            state.effects_cert = Some(ct.verify(&committee)?);
+                            debug!(?tx_digest, "Reached quorum for effects");
+                        }
                     }
                 }
+
+                // Handle finality aggregation if present
+                if let Some(signed_finality) = signed_finality {
+                    // Initialize finality_map if needed
+                    if state.finality_map.is_none() {
+                        state.finality_map = Some(MultiStakeAggregator::new(committee.clone()));
+                    }
+
+                    if state.finality_cert.is_none() {
+                        let finality_map = state.finality_map.as_mut().unwrap();
+
+                        match finality_map.insert(
+                            (signed_finality.epoch(), *tx_digest),
+                            signed_finality.clone(),
+                        ) {
+                            InsertResult::NotEnoughVotes {
+                                bad_votes,
+                                bad_authorities,
+                            } => {
+                                if bad_votes > 0 {
+                                    warn!(
+                                        ?tx_digest,
+                                        ?bad_authorities,
+                                        bad_votes,
+                                        "Invalid finality signatures detected"
+                                    );
+                                    state.retryable_errors.push((
+                                        SomaError::InvalidSignature {
+                                            error: "Finality signature verification failed"
+                                                .to_string(),
+                                        },
+                                        bad_authorities,
+                                        bad_votes,
+                                    ));
+                                }
+                            }
+                            InsertResult::Failed { error } => {
+                                warn!(?tx_digest, "Failed to insert finality: {:?}", error);
+                                state.retryable_errors.push((
+                                    error,
+                                    vec![name],
+                                    committee.weight(&name),
+                                ));
+                            }
+                            InsertResult::QuorumReached(cert_sig) => {
+                                debug!(?tx_digest, "Reached quorum for consensus finality");
+                                let certified_finality =
+                                    CertifiedConsensusFinality::new_from_data_and_sig(
+                                        signed_finality.into_data(),
+                                        cert_sig,
+                                    );
+                                state.finality_cert = Some(certified_finality.verify(&committee)?);
+                            }
+                        }
+                    }
+                } else if state.finality_map.is_some() {
+                    // We expected finality but didn't get it from this validator
+                    debug!(
+                        ?tx_digest,
+                        name = ?name.concise(),
+                        "Validator did not return finality data when others did"
+                    );
+                    state.retryable_errors.push((
+                        SomaError::InvalidCommittee(
+                            "Expected finality but didn't get one for this transaction."
+                                .to_string(),
+                        ),
+                        vec![name],
+                        committee.weight(&name),
+                    ));
+                }
+
+                // Check if we have all required quorums
+                if let Some(effects_cert) = &state.effects_cert {
+                    // If we're not expecting finality, or we have finality quorum, return
+                    let waiting_for_finality =
+                        state.finality_map.is_some() && state.finality_cert.is_none();
+
+                    if !waiting_for_finality {
+                        debug!(
+                            ?tx_digest,
+                            has_finality = state.finality_cert.is_some(),
+                            "Got all required quorums for handle_certificate"
+                        );
+
+                        return Ok(Some(QuorumDriverResponse {
+                            effects_cert: effects_cert.clone(),
+                            finality_cert: state.finality_cert.clone(),
+                        }));
+                    } else {
+                        debug!(
+                            ?tx_digest,
+                            "Have effects quorum but still waiting for finality quorum"
+                        );
+                    }
+                }
+
+                Ok(None)
             }
             Err(err) => Err(err),
         }

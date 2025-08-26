@@ -8,6 +8,8 @@ use std::sync::Arc;
 use tonic::{async_trait, Response};
 use tracing::debug;
 use tracing::{error_span, info, Instrument};
+use types::effects::TransactionEffectsAPI;
+use types::finality::ConsensusFinality;
 use types::{
     consensus::ConsensusTransaction,
     error::SomaError,
@@ -103,6 +105,7 @@ impl ValidatorService {
         certificates: NonEmpty<CertifiedTransaction>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
         wait_for_effects: bool,
+        wait_for_finality: bool,
     ) -> Result<Option<Vec<HandleCertificateResponse>>, tonic::Status> {
         // Fullnode does not serve handle_certificate call.
         if !(!self.state.is_fullnode(epoch_store)) {
@@ -119,8 +122,17 @@ impl ValidatorService {
                 .state
                 .get_signed_effects_and_maybe_resign(&tx_digest, epoch_store)?
             {
+                // Also check for existing finality if transaction requires it
+                let signed_finality = if wait_for_finality {
+                    self.state
+                        .get_signed_consensus_finality(&tx_digest, epoch_store)?
+                } else {
+                    None
+                };
+
                 return Ok(Some(vec![HandleCertificateResponse {
                     signed_effects: signed_effects.into_inner(),
+                    signed_finality,
                 }]));
             };
         }
@@ -201,19 +213,44 @@ impl ValidatorService {
         let responses = futures::future::try_join_all(verified_certificates.into_iter().map(
             |certificate| async move {
                 debug!("Executing certificate: {:?}", certificate);
+                let tx_digest = certificate.digest();
 
                 let effects = self
                     .state
                     .execute_certificate(&certificate, epoch_store)
                     .await?;
 
+                let execution_status = effects.status().clone();
+
                 debug!("Got effects: {:?}", effects);
 
                 let signed_effects = self.state.sign_effects(effects, epoch_store)?;
                 epoch_store.insert_tx_cert_sig(certificate.digest(), certificate.auth_sig())?;
 
+                let signed_finality = if wait_for_finality {
+                    // Wait for consensus leader block to be available
+                    let leader_block = epoch_store
+                        .within_alive_epoch(epoch_store.notify_read_consensus_leader(tx_digest))
+                        .await
+                        .map_err(|_| SomaError::EpochEnded(epoch_store.epoch()))??;
+
+                    let finality = ConsensusFinality {
+                        tx_digest: *tx_digest,
+                        leader_block,
+                        execution_status,
+                    };
+
+                    let signed_finality =
+                        self.state.sign_consensus_finality(finality, &epoch_store)?;
+
+                    Some(signed_finality)
+                } else {
+                    None
+                };
+
                 Ok::<_, SomaError>(HandleCertificateResponse {
                     signed_effects: signed_effects.into_inner(),
+                    signed_finality,
                 })
             },
         ))
@@ -226,6 +263,7 @@ impl ValidatorService {
 }
 
 impl ValidatorService {
+    // TODO: remove this
     async fn submit_certificate_impl(
         &self,
         request: tonic::Request<CertifiedTransaction>,
@@ -234,7 +272,7 @@ impl ValidatorService {
         let certificate = request.into_inner();
 
         let span = error_span!("submit_certificate", tx_digest = ?certificate.digest());
-        self.handle_certificates(nonempty![certificate], &epoch_store, false)
+        self.handle_certificates(nonempty![certificate], &epoch_store, false, false)
             .instrument(span)
             .await
             .map(|executed| {
@@ -252,17 +290,20 @@ impl ValidatorService {
         let request = request.into_inner();
 
         let span = error_span!("handle_certificate", tx_digest = ?request.certificate.digest());
-        self.handle_certificates(nonempty![request.certificate], &epoch_store, true)
-            .instrument(span)
-            .await
-            .map(|resp| {
-                tonic::Response::new(
-                    resp.expect(
-                        "handle_certificate should not return none with wait_for_effects=true",
-                    )
+        self.handle_certificates(
+            nonempty![request.certificate],
+            &epoch_store,
+            true,
+            request.wait_for_finality,
+        )
+        .instrument(span)
+        .await
+        .map(|resp| {
+            tonic::Response::new(
+                resp.expect("handle_certificate should not return none with wait_for_effects=true")
                     .remove(0),
-                )
-            })
+            )
+        })
     }
 }
 
@@ -275,6 +316,7 @@ impl Validator for ValidatorService {
         self.handle_transaction(request).await
     }
 
+    // TODO: remove this
     async fn submit_certificate(
         &self,
         request: tonic::Request<CertifiedTransaction>,

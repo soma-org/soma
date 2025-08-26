@@ -12,6 +12,7 @@ pub mod encoder_validator;
 pub mod envelope;
 pub mod error;
 pub mod execution_indices;
+pub mod finality;
 pub mod genesis;
 pub mod grpc;
 pub mod intent;

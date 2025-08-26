@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo},
     effects::SignedTransactionEffects,
+    finality::SignedConsensusFinality,
     transaction::CertifiedTransaction,
 };
 
@@ -17,6 +18,7 @@ pub enum TransactionStatus {
     Executed(
         Option<AuthorityStrongQuorumSignInfo>,
         SignedTransactionEffects,
+        Option<SignedConsensusFinality>,
     ),
 }
 
@@ -30,7 +32,7 @@ impl TransactionStatus {
 
     pub fn into_effects_for_testing(self) -> SignedTransactionEffects {
         match self {
-            Self::Executed(_, e) => e,
+            Self::Executed(_, e, _) => e,
             _ => unreachable!("Incorrect response type"),
         }
     }
@@ -43,11 +45,12 @@ impl PartialEq for TransactionStatus {
                 Self::Signed(s2) => s1.epoch == s2.epoch,
                 _ => false,
             },
-            Self::Executed(c1, e1) => match other {
-                Self::Executed(c2, e2) => {
+            Self::Executed(c1, e1, f1) => match other {
+                Self::Executed(c2, e2, f2) => {
                     c1.as_ref().map(|a| a.epoch) == c2.as_ref().map(|a| a.epoch)
                         && e1.epoch() == e2.epoch()
                         && e1.digest() == e2.digest()
+                        && f1 == f2
                 }
                 _ => false,
             },
@@ -63,11 +66,13 @@ pub struct HandleTransactionResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HandleCertificateResponse {
     pub signed_effects: SignedTransactionEffects,
+    pub signed_finality: Option<SignedConsensusFinality>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HandleCertificateRequest {
     pub certificate: CertifiedTransaction,
+    pub wait_for_finality: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

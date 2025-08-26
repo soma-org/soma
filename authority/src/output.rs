@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use types::committee::AuthorityIndex;
+use types::consensus::block::BlockRef;
 use types::consensus::{block::BlockAPI, commit::CommittedSubDag};
 use types::{
     consensus::ConsensusTransaction, digests::ConsensusCommitDigest, protocol::ProtocolConfig,
@@ -14,6 +15,7 @@ type ConsensusOutputTransactions<'a> = Vec<(AuthorityIndex, Vec<(&'a [u8], Conse
 pub(crate) trait ConsensusOutputAPI: Display {
     fn leader_round(&self) -> u64;
     fn leader_author_index(&self) -> AuthorityIndex;
+    fn leader_block_ref(&self) -> BlockRef;
 
     /// Returns epoch UNIX timestamp in milliseconds
     fn commit_timestamp_ms(&self) -> u64;
@@ -44,6 +46,10 @@ impl ConsensusOutputAPI for CommittedSubDag {
 
     fn commit_sub_dag_index(&self) -> u64 {
         self.commit_ref.index.into()
+    }
+
+    fn leader_block_ref(&self) -> BlockRef {
+        self.leader
     }
 
     fn transactions(&self) -> ConsensusOutputTransactions {

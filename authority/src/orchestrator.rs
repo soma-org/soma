@@ -138,7 +138,10 @@ where
             false
         };
 
-        let QuorumDriverResponse { effects_cert } = response;
+        let QuorumDriverResponse {
+            effects_cert,
+            finality_cert,
+        } = response;
 
         let response = ExecuteTransactionResponse {
             effects: FinalizedEffects::new_from_effects_cert(effects_cert.into()),
@@ -279,7 +282,13 @@ where
     ) {
         loop {
             match effects_receiver.recv().await {
-                Ok(Ok((transaction, QuorumDriverResponse { effects_cert }))) => {
+                Ok(Ok((
+                    transaction,
+                    QuorumDriverResponse {
+                        effects_cert,
+                        finality_cert,
+                    },
+                ))) => {
                     let tx_digest = transaction.digest();
 
                     let epoch_store = validator_state.load_epoch_store_one_call_per_task();

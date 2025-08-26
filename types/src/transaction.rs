@@ -312,6 +312,11 @@ impl TransactionKind {
             || self.is_encoder_tx()
     }
 
+    /// Returns true if this transaction requires consensus sequencing for finality proof
+    pub fn requires_consensus_finality(&self) -> bool {
+        matches!(self, TransactionKind::EmbedData { .. })
+    }
+
     pub fn is_epoch_change(&self) -> bool {
         matches!(self, TransactionKind::ChangeEpoch(_))
     }
@@ -773,6 +778,10 @@ impl TransactionData {
 
     fn contains_shared_object(&self) -> bool {
         self.kind.shared_input_objects().next().is_some()
+    }
+
+    pub fn requires_consensus_finality(&self) -> bool {
+        self.kind.requires_consensus_finality()
     }
 
     pub fn shared_input_objects(&self) -> Vec<SharedInputObject> {
