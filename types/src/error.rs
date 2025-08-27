@@ -371,6 +371,9 @@ pub enum SomaError {
 
     #[error("VDF failed: {0}")]
     FailedVDF(String),
+
+    #[error("Shard sampling failed: {0}")]
+    ShardSamplingError(String),
 }
 
 impl From<Status> for SomaError {

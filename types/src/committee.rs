@@ -51,8 +51,10 @@ use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shared::authority_committee::AuthorityCommittee;
 use shared::crypto::keys::EncoderPublicKey;
+use shared::digest::Digest;
 use shared::encoder_committee::Encoder;
 use shared::probe::ProbeMetadata;
+use shared::shard::{Shard, ShardEntropy};
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Display, Formatter, Write};
@@ -891,6 +893,32 @@ impl EncoderCommittee {
             quorum_threshold,
             encoders,
         )
+    }
+
+    pub fn sample_shard(&self, entropy: Digest<ShardEntropy>) -> Result<Shard, SomaError> {
+        let mut rng = StdRng::from_seed(entropy.into());
+
+        // TODO: change this shard size to be more dynamic
+        let shard_size = std::cmp::min(
+            self.members.len() as u32,
+            std::cmp::max(3, (self.members.len() / 2) as u32),
+        );
+
+        // Calculate quorum threshold - typically 2/3 rounded up
+        let quorum_threshold = (shard_size * 2 + 2) / 3;
+
+        // Collect encoders with their weights
+        let encoders_with_weights: Vec<(&EncoderPublicKey, u64)> =
+            self.members.iter().map(|(k, v)| (k, *v)).collect();
+
+        // Weighted sampling without replacement
+        let selected = encoders_with_weights
+            .choose_multiple_weighted(&mut rng, shard_size as usize, |item| item.1 as f64)
+            .map_err(|e| SomaError::ShardSamplingError(format!("Failed to sample shard: {}", e)))?
+            .map(|(key, _)| (*key).clone())
+            .collect::<Vec<_>>();
+
+        Ok(Shard::new(quorum_threshold, selected, entropy, self.epoch))
     }
 }
 

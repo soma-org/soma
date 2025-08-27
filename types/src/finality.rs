@@ -4,13 +4,13 @@ use crate::{
     crypto::{AuthoritySignInfo, AuthoritySignInfoTrait, AuthorityStrongQuorumSignInfo},
     digests::TransactionDigest,
     effects::ExecutionStatus,
-    entropy::{BlockEntropy, BlockEntropyProof},
     envelope::{Envelope, Message, VerifiedEnvelope},
     error::SomaResult,
     intent::{Intent, IntentScope},
     transaction::Transaction,
 };
 use serde::{Deserialize, Serialize};
+use shared::entropy::{BlockEntropy, BlockEntropyProof};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConsensusFinality {

@@ -4,29 +4,12 @@ use crate::{
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use shared::entropy::{BlockEntropy, BlockEntropyProof};
 use std::sync::Arc;
 use vdf::{
     class_group::{discriminant::DISCRIMINANT_3072, QuadraticForm},
     vdf::{wesolowski::DefaultVDF, VDF},
 };
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub struct BlockEntropy(pub Bytes);
-
-impl BlockEntropy {
-    pub fn new(bytes: Bytes) -> Self {
-        Self(bytes)
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub struct BlockEntropyProof(pub Bytes);
-
-impl BlockEntropyProof {
-    pub fn new(bytes: Bytes) -> Self {
-        Self(bytes)
-    }
-}
 
 type Iterations = u64;
 
@@ -72,10 +55,10 @@ impl SimpleVDF {
 
         let entropy_bytes = bcs::to_bytes(&output).expect("BCS serialization should not fail");
 
-        let entropy = BlockEntropy(Bytes::copy_from_slice(&entropy_bytes));
+        let entropy = BlockEntropy::new(Bytes::copy_from_slice(&entropy_bytes));
         let proof_bytes = bcs::to_bytes(&proof).expect("BCS serialization should not fail");
 
-        let proof = BlockEntropyProof(Bytes::copy_from_slice(&proof_bytes));
+        let proof = BlockEntropyProof::new(Bytes::copy_from_slice(&proof_bytes));
         Ok((entropy, proof))
     }
 
