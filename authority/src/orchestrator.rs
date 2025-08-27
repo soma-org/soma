@@ -158,10 +158,13 @@ where
             .requires_consensus_finality()
         {
             if let Some(finality_cert) = finality_cert {
-                match self.generate_finality_proof(
-                    transaction.inner().clone(),
-                    finality_cert.into_inner(),
-                ) {
+                match self
+                    .generate_finality_proof(
+                        transaction.inner().clone(),
+                        finality_cert.into_inner(),
+                    )
+                    .await
+                {
                     Ok(proof) => Some(proof),
                     Err(e) => {
                         error!(
@@ -372,20 +375,27 @@ where
     }
 
     /// Generate a FinalityProof for EmbedData transactions with consensus finality
-    fn generate_finality_proof(
+    async fn generate_finality_proof(
         &self,
         transaction: Transaction,
         consensus_finality: CertifiedConsensusFinality,
     ) -> SomaResult<FinalityProof> {
-        let block_ref = consensus_finality.data().leader_block;
+        let block_ref = consensus_finality.data().leader_block.clone();
+        let vdf = self.vdf.clone();
 
-        let (block_entropy, block_entropy_proof) = self.vdf.get_entropy(block_ref)?;
+        // Move the VDF computation to a blocking thread pool
+        let (block_entropy, block_entropy_proof) =
+            tokio::task::spawn_blocking(move || vdf.get_entropy(block_ref))
+                .await
+                .map_err(|e| SomaError::from(format!("VDF task failed: {}", e)))??;
 
         debug!(
+            block_ref = ?consensus_finality.data().leader_block,
             tx_digest = ?transaction.digest(),
             "Generated entropy proof for finality"
         );
 
+        // Create the FinalityProof
         let finality_proof = FinalityProof::new(
             transaction,
             consensus_finality,
