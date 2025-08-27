@@ -40,6 +40,7 @@ soma-tls.workspace = true
 probe.workspace = true
 objects.workspace = true
 strum_macros.workspace = true
+vdf.workspace = true
 strum.workspace = true
 serde_with = { version = "3.8", features = ["schemars_0_8"] }
 derive_more = "0.99.17"

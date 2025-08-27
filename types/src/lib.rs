@@ -9,6 +9,7 @@ pub mod digests;
 pub mod discovery;
 pub mod effects;
 pub mod encoder_validator;
+pub mod entropy;
 pub mod envelope;
 pub mod error;
 pub mod execution_indices;

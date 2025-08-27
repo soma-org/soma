@@ -13,14 +13,16 @@ use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
 use types::{
     digests::TransactionDigest,
     effects::{TransactionEffectsAPI, VerifiedCertifiedTransactionEffects},
+    entropy::SimpleVDF,
     error::{SomaError, SomaResult},
+    finality::{CertifiedConsensusFinality, FinalityProof},
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
         FinalizedEffects, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
         QuorumDriverError, QuorumDriverResponse, QuorumDriverResult,
     },
     system_state::SystemState,
-    transaction::{VerifiedExecutableTransaction, VerifiedTransaction},
+    transaction::{Transaction, VerifiedExecutableTransaction, VerifiedTransaction},
 };
 use utils::notify_read::NotifyRead;
 
@@ -46,6 +48,7 @@ pub struct TransactiondOrchestrator<A: Clone> {
     _local_executor_handle: JoinHandle<()>,
     // pending_tx_log: Arc<WritePathPendingTransactionLog>,
     notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
+    vdf: Arc<SimpleVDF>,
 }
 
 impl TransactiondOrchestrator<NetworkAuthorityClient> {
@@ -87,11 +90,15 @@ where
             })
         };
 
+        // TODO: Configure VDF iterations
+        const VDF_ITERATIONS: u64 = 10; // Adjust based on security requirements
+
         Self {
             quorum_driver_handler,
             validator_state,
             _local_executor_handle,
             notifier,
+            vdf: Arc::new(SimpleVDF::new(VDF_ITERATIONS)),
         }
     }
 }
@@ -123,7 +130,7 @@ where
             ExecuteTransactionRequestType::WaitForLocalExecution
         ) {
             let executable_tx = VerifiedExecutableTransaction::new_from_quorum_execution(
-                transaction,
+                transaction.clone(),
                 response.effects_cert.executed_epoch(),
             );
             Self::wait_for_finalized_tx_executed_locally_with_timeout(
@@ -143,8 +150,38 @@ where
             finality_cert,
         } = response;
 
+        // Check if this is an EmbedData transaction with consensus finality
+        // TODO: generalize this to all transactions that require consensus finality (that don't need VDF randomness)
+        let finality_proof = if transaction
+            .data()
+            .transaction_data()
+            .requires_consensus_finality()
+        {
+            if let Some(finality_cert) = finality_cert {
+                match self.generate_finality_proof(
+                    transaction.inner().clone(),
+                    finality_cert.into_inner(),
+                ) {
+                    Ok(proof) => Some(proof),
+                    Err(e) => {
+                        error!(
+                            tx_digest = ?transaction.digest(),
+                            error = ?e,
+                            "Failed to generate FinalityProof"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let response = ExecuteTransactionResponse {
             effects: FinalizedEffects::new_from_effects_cert(effects_cert.into()),
+            finality_proof,
         };
 
         Ok((response, executed_locally))
@@ -332,6 +369,31 @@ where
                 }
             }
         }
+    }
+
+    /// Generate a FinalityProof for EmbedData transactions with consensus finality
+    fn generate_finality_proof(
+        &self,
+        transaction: Transaction,
+        consensus_finality: CertifiedConsensusFinality,
+    ) -> SomaResult<FinalityProof> {
+        let block_ref = consensus_finality.data().leader_block;
+
+        let (block_entropy, block_entropy_proof) = self.vdf.get_entropy(block_ref)?;
+
+        debug!(
+            tx_digest = ?transaction.digest(),
+            "Generated entropy proof for finality"
+        );
+
+        let finality_proof = FinalityProof::new(
+            transaction,
+            consensus_finality,
+            block_entropy,
+            block_entropy_proof,
+        );
+
+        Ok(finality_proof)
     }
 
     pub fn quorum_driver(&self) -> &Arc<QuorumDriverHandler<A>> {

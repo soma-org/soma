@@ -364,6 +364,13 @@ pub enum SomaError {
     /// Error when transaction inputs contain duplicate object references
     #[error("The transaction inputs contain duplicated ObjectRef's")]
     DuplicateObjectRefInput,
+
+    /// Error when serialization fails
+    #[error("Error serializing: {0}")]
+    SerializationFailure(String),
+
+    #[error("VDF failed: {0}")]
+    FailedVDF(String),
 }
 
 impl From<Status> for SomaError {

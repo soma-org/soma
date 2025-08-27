@@ -10,7 +10,7 @@ use crate::{
         VerifiedCertifiedTransactionEffects,
     },
     error::SomaError,
-    finality::{SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
+    finality::{FinalityProof, SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
     transaction::{CertifiedTransaction, SignedTransaction, Transaction, VerifiedTransaction},
 };
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ pub struct ExecuteTransactionRequest {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecuteTransactionResponse {
     pub effects: FinalizedEffects,
+    pub finality_proof: Option<FinalityProof>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, schemars::JsonSchema)]
