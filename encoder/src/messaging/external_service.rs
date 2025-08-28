@@ -1,10 +1,6 @@
 use crate::{
-    core::pipeline_dispatcher::ExternalDispatcher,
-    messaging::EncoderExternalNetworkService,
-    types::{
-        context::Context,
-        shard_input::{ShardInput, ShardInputAPI},
-    },
+    core::pipeline_dispatcher::ExternalDispatcher, messaging::EncoderExternalNetworkService,
+    types::context::Context,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -13,12 +9,13 @@ use shared::{
     authority_committee,
     crypto::keys::PeerPublicKey,
     error::{ShardError, ShardResult},
-    shard_verifier::ShardVerifier,
     signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
 use tower_http::auth;
+use types::shard::{ShardInput, ShardInputAPI};
+use types::shard_verifier::ShardVerifier;
 
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
     context: Arc<Context>,

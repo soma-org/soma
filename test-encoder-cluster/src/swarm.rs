@@ -1,6 +1,6 @@
 use crate::swarm_node::Node;
 use anyhow::Result;
-use encoder::{core::encoder_node::EncoderNodeHandle, messaging::tonic::NetworkingInfo};
+use encoder::core::encoder_node::EncoderNodeHandle;
 use futures::future::try_join_all;
 use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use std::collections::HashMap;
@@ -10,7 +10,6 @@ use types::config::encoder_config::EncoderConfig;
 #[derive(Debug)]
 pub struct EncoderSwarm {
     nodes: HashMap<EncoderPublicKey, Node>,
-    pub external_addresses: NetworkingInfo,
     client_key: Option<PeerPublicKey>,
 }
 
@@ -67,18 +66,6 @@ impl EncoderSwarm {
     pub async fn spawn_new_encoder(&mut self, config: EncoderConfig) -> EncoderNodeHandle {
         let name = config.protocol_public_key();
 
-        self.external_addresses.add(
-            name.clone(),
-            (
-                config
-                    .external_network_address
-                    .to_string()
-                    .parse()
-                    .expect("Valid multiaddr"),
-                config.peer_public_key(),
-            ),
-        );
-
         let node = Node::new(config, self.client_key.clone());
         node.start().await.unwrap();
         let handle = node.get_node_handle().unwrap();
@@ -129,27 +116,8 @@ impl EncoderSwarmBuilder {
             })
             .collect();
 
-        // Build the NetworkingInfo for external addresses
-        let external_addresses = encoder_configs
-            .iter()
-            .map(|config| {
-                (
-                    config.protocol_public_key(),
-                    (
-                        config
-                            .external_network_address
-                            .to_string()
-                            .parse()
-                            .expect("Valid multiaddr"),
-                        config.peer_public_key(),
-                    ),
-                )
-            })
-            .collect();
-
         EncoderSwarm {
             nodes,
-            external_addresses: NetworkingInfo::new(external_addresses),
             client_key: self.client_key,
         }
     }

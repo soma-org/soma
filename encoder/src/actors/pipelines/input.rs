@@ -11,10 +11,7 @@ use crate::{
     core::internal_broadcaster::Broadcaster,
     encryption::aes_encryptor::Aes256Ctr64LEEncryptor,
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::{
-        shard_commit::ShardCommit,
-        shard_input::{ShardInput, ShardInputAPI},
-    },
+    types::shard_commit::ShardCommit,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -43,6 +40,7 @@ use shared::{
 };
 use soma_network::multiaddr::Multiaddr;
 use tracing::{debug, info};
+use types::shard::{ShardInput, ShardInputAPI};
 
 use super::commit::CommitProcessor;
 

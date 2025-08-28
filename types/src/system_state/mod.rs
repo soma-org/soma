@@ -42,12 +42,7 @@ use fastcrypto::{
 };
 use serde::{Deserialize, Serialize};
 use shard::ShardResult;
-use shared::{
-    crypto::keys::EncoderPublicKey,
-    digest::Digest,
-    shard::Shard,
-    shard_scores::{Score, ShardScores},
-};
+use shared::{crypto::keys::EncoderPublicKey, digest::Digest, shard::Shard};
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
 use tracing::{error, info};
@@ -68,6 +63,7 @@ use crate::{
     object::ObjectID,
     parameters,
     peer_id::PeerId,
+    shard_scores::{Score, ShardScores},
     transaction::{UpdateEncoderMetadataArgs, UpdateValidatorMetadataArgs},
     SYSTEM_STATE_OBJECT_ID,
 };

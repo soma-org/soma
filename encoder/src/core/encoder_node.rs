@@ -48,7 +48,6 @@ use crate::{
         tonic::{
             external::EncoderExternalTonicManager,
             internal::{ConnectionsInfo, EncoderInternalTonicClient, EncoderInternalTonicManager},
-            NetworkingInfo,
         },
         EncoderExternalNetworkManager, EncoderInternalNetworkManager,
     },
@@ -56,11 +55,9 @@ use crate::{
         committee_sync_manager::CommitteeSyncManager,
         encoder_validator_client::EncoderValidatorClient,
     },
-    types::{
-        context::{Committees, Context, InnerContext},
-        parameters::Parameters,
-    },
+    types::context::{Committees, Context, InnerContext},
 };
+use types::shard_networking::NetworkingInfo;
 
 use self::downloader::Downloader;
 use super::{
@@ -70,10 +67,10 @@ use super::{
 use shared::{
     actors::ActorManager,
     encoder_committee::{Encoder, EncoderCommittee},
-    shard::ShardAuthToken,
-    shard_verifier::ShardVerifier,
+    parameters::Parameters,
     workers::vdf::VDFProcessor,
 };
+use types::{shard::ShardAuthToken, shard_verifier::ShardVerifier};
 
 #[cfg(msim)]
 use msim::task::NodeId;

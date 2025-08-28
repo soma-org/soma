@@ -1,18 +1,18 @@
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
+use shared::shard::Shard;
 use shared::{
     crypto::{keys::EncoderPublicKey, EncryptionKey},
     error::SharedResult,
     scope::Scope,
     signed::Signed,
 };
-
-use shared::shard::{Shard, ShardAuthToken};
+use types::shard::ShardAuthToken;
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardRevealAPI)]
 pub enum ShardReveal {
     V1(ShardRevealV1),
@@ -27,7 +27,7 @@ pub(crate) trait ShardRevealAPI {
     fn key(&self) -> &EncryptionKey;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct ShardRevealV1 {
     auth_token: ShardAuthToken,
     encoder: EncoderPublicKey,

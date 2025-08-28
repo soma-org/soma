@@ -1,38 +1,28 @@
 use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use encoder::{
-    core::encoder_node::EncoderNodeHandle,
-    messaging::{
-        tonic::{
-            external::{EncoderExternalTonicClient, SendInputRequest},
-            NetworkingInfo,
-        },
-        EncoderExternalNetworkClient,
-    },
-    types::{
-        parameters::Parameters,
-        shard_input::{ShardInput, ShardInputV1},
-    },
-};
+use encoder::core::encoder_node::EncoderNodeHandle;
 use fastcrypto::{
     bls12381::min_sig::{self, BLS12381PublicKey},
     traits::KeyPair,
 };
 use rand::{rngs::StdRng, SeedableRng};
+
+use shared::parameters::Parameters;
 use shared::{
     crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair},
     digest::Digest,
     entropy::{BlockEntropy, BlockEntropyProof},
     error::{ShardError, ShardResult},
     scope::Scope,
-    shard::{Shard, ShardAuthToken, ShardEntropy},
+    shard::{Shard, ShardEntropy},
     signed::Signed,
     verified::Verified,
 };
 use swarm::{EncoderSwarm, EncoderSwarmBuilder};
 use tonic::Request;
 use tracing::info;
+use types::shard::{ShardAuthToken, ShardInput, ShardInputV1};
 use types::{base::SomaAddress, config::encoder_config::EncoderConfig};
 use vdf::{
     class_group::{discriminant::DISCRIMINANT_3072, QuadraticForm},
@@ -107,16 +97,6 @@ impl TestEncoderCluster {
         (&config.account_keypair.keypair().public()).into()
     }
 
-    // Get a preconfigured external client
-    pub fn get_external_client(&self) -> EncoderExternalTonicClient {
-        EncoderExternalTonicClient::new(
-            self.swarm.external_addresses.clone(),
-            self.client_keypair.clone(),
-            self.parameters.clone(),
-            100,
-        )
-    }
-
     // Generate a deterministic EncoderKeyPair derived from the client's PeerKeyPair
     fn get_client_encoder_keypair(&self) -> EncoderKeyPair {
         // Create a seed from the client's PeerKeyPair's Ed25519 private key bytes
@@ -129,150 +109,6 @@ impl TestEncoderCluster {
 
         // Generate a deterministic EncoderKeyPair
         EncoderKeyPair::generate(&mut rng)
-    }
-    // Create a proper ShardInput with valid VDF entropy
-    pub fn create_valid_shard_input(&self) -> ShardInput {
-        let auth_token = create_valid_test_token();
-        ShardInput::V1(ShardInputV1::new(auth_token))
-    }
-
-    // Update the existing method to use the valid input
-    pub fn create_signed_input(&self) -> Verified<Signed<ShardInput, min_sig::BLS12381Signature>> {
-        // Get a properly formed ShardInput with valid AuthToken
-        let input = self.create_valid_shard_input();
-
-        // Get a keypair for signing
-        let encoder_keypair = self.get_client_encoder_keypair();
-        let inner_keypair = encoder_keypair.inner().copy();
-
-        // Sign the input
-        let signed_input = Signed::new(input, Scope::ShardInput, &inner_keypair.private()).unwrap();
-
-        // Create a verified object
-        Verified::from_trusted(signed_input).unwrap()
-    }
-
-    pub fn get_shard_from_token(&self, token: &ShardAuthToken) -> ShardResult<Shard> {
-        // Get the first encoder node to access its context and committee
-        let any_encoder = self
-            .swarm
-            .encoder_nodes()
-            .next()
-            .ok_or_else(|| ShardError::NotFound("No encoder nodes available".to_string()))?;
-
-        if let Some(handle) = any_encoder.get_node_handle() {
-            // Use the encoder's context to access the committee
-            let context = handle.with(|node| node.context.clone());
-
-            // Create the shard entropy from the token
-            let shard_entropy_input = ShardEntropy::new(
-                token.metadata_commitment.clone(),
-                token.block_entropy.clone(),
-            );
-
-            // Create a digest from the shard entropy
-            let shard_entropy = Digest::new(&shard_entropy_input).unwrap();
-
-            // Get the committees from the context
-            let inner_context = context.inner();
-            let committees = inner_context.committees(token.epoch())?;
-
-            // Sample the shard using the same method as ShardVerifier
-            let shard = committees.encoder_committee.sample_shard(shard_entropy)?;
-
-            Ok(shard)
-        } else {
-            Err(ShardError::NotFound(
-                "No active encoder node handle available".to_string(),
-            ))
-        }
-    }
-
-    pub async fn send_to_shard_members(
-        &self,
-        token: &ShardAuthToken,
-        timeout: Duration,
-    ) -> Result<(), Vec<(EncoderPublicKey, ShardError)>> {
-        // Get the shard from the token
-        let shard = self.get_shard_from_token(token).unwrap();
-
-        // Get the encoder public keys in the shard
-        let shard_members = shard.encoders();
-
-        // Create the input with the given token
-        let input = self.create_signed_input_with_token(token.clone());
-
-        // Send input only to shard members
-        let mut errors = Vec::new();
-        let client = self.get_external_client();
-
-        for key in shard_members {
-            match client.send_input(&key, &input, timeout).await {
-                Ok(_) => {}
-                Err(e) => errors.push((key, e)),
-            }
-        }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
-    }
-
-    fn create_signed_input_with_token(
-        &self,
-        token: ShardAuthToken,
-    ) -> Verified<Signed<ShardInput, min_sig::BLS12381Signature>> {
-        // Create ShardInput with the provided token
-        let input = ShardInput::V1(ShardInputV1::new(token));
-
-        // Get a keypair for signing
-        let encoder_keypair = self.get_client_encoder_keypair();
-        let inner_keypair = encoder_keypair.inner().copy();
-
-        // Sign the input
-        let signed_input = Signed::new(input, Scope::ShardInput, &inner_keypair.private()).unwrap();
-
-        // Create a verified object
-        Verified::from_trusted(signed_input).unwrap()
-    }
-}
-
-pub fn create_valid_test_token() -> ShardAuthToken {
-    // Reuse the existing token creation code
-    let basic_token = ShardAuthToken::new_for_test();
-    let epoch = basic_token.epoch();
-    let block_ref = basic_token.proof.block_ref();
-
-    // Create VDF entropy and proof directly without relying on the cache
-    // Generate a seed for VDF input
-    let seed = bcs::to_bytes(&(epoch, block_ref)).unwrap();
-
-    // Create input for VDF
-    let input =
-        QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072).unwrap();
-
-    // Create VDF instance directly (bypass the cache)
-    let iterations = 1; // Use minimal iterations for testing
-    let vdf = DefaultVDF::new(DISCRIMINANT_3072.clone(), iterations);
-
-    // Evaluate VDF directly
-    let (output, proof) = vdf.evaluate(&input).unwrap();
-
-    // Convert output and proof to the expected format
-    let entropy_bytes = bcs::to_bytes(&output).unwrap();
-    let proof_bytes = bcs::to_bytes(&proof).unwrap();
-
-    let block_entropy = BlockEntropy::new(Bytes::copy_from_slice(&entropy_bytes));
-    let entropy_proof = BlockEntropyProof::new(Bytes::copy_from_slice(&proof_bytes));
-
-    // Create a new token with valid entropy data
-    ShardAuthToken {
-        proof: basic_token.proof,
-        metadata_commitment: basic_token.metadata_commitment,
-        block_entropy,
-        entropy_proof,
     }
 }
 

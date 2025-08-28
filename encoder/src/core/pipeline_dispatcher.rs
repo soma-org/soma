@@ -7,7 +7,7 @@ use crate::{
     messaging::EncoderInternalNetworkClient,
     types::{
         shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
-        shard_finality::ShardFinality, shard_input::ShardInput, shard_reveal::ShardReveal,
+        shard_finality::ShardFinality, shard_reveal::ShardReveal,
         shard_reveal_votes::ShardRevealVotes,
     },
 };
@@ -19,10 +19,12 @@ use probe::messaging::ProbeClient;
 use shared::error::ShardResult;
 use shared::{
     actors::ActorHandle, crypto::keys::PeerPublicKey, probe::ProbeMetadata, shard::Shard,
-    shard_scores::ShardScores, signed::Signed, verified::Verified,
+    signed::Signed, verified::Verified,
 };
 use soma_network::multiaddr::Multiaddr;
 use tokio_util::sync::CancellationToken;
+use types::shard::ShardInput;
+use types::shard_scores::ShardScores;
 
 #[async_trait]
 pub trait InternalDispatcher: Sync + Send + 'static {

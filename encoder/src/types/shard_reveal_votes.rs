@@ -1,12 +1,12 @@
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
+use shared::shard::Shard;
 use shared::{crypto::keys::EncoderPublicKey, error::SharedResult, scope::Scope, signed::Signed};
-
-use shared::shard::{Shard, ShardAuthToken};
+use types::shard::ShardAuthToken;
 
 /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardRevealVotesAPI)]
 pub enum ShardRevealVotes {
     V1(ShardRevealVotesV1),
@@ -19,7 +19,7 @@ pub trait ShardRevealVotesAPI {
     fn accepts(&self) -> &[EncoderPublicKey];
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct ShardRevealVotesV1 {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,

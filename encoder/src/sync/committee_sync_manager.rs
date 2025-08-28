@@ -1,5 +1,5 @@
 use crate::{
-    messaging::tonic::{internal::ConnectionsInfo, NetworkingInfo},
+    messaging::tonic::internal::ConnectionsInfo,
     sync::encoder_validator_client::{EncoderValidatorClient, EnrichedVerifiedCommittees},
     types::context::{Committees, Context, InnerContext},
 };
@@ -16,6 +16,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
+use types::shard_networking::NetworkingInfo;
 
 /// Manager for committee synchronization with validator nodes
 pub struct CommitteeSyncManager {

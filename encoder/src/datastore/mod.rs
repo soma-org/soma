@@ -14,11 +14,10 @@ use shared::{
     crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
     digest::Digest,
     shard::Shard,
-    shard_scores::ShardScores,
     signed::Signed,
     verified::Verified,
 };
-
+use types::shard_scores::ShardScores;
 pub(crate) struct CommitVoteCounts {
     accepts: Option<usize>,
     rejects: usize,

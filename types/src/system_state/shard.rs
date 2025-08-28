@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use shared::{digest::Digest, metadata::MetadataCommitment, shard_scores::Score};
+use shared::{digest::Digest, metadata::MetadataCommitment};
 
-use crate::{base::SomaAddress, committee::EpochId};
+use crate::{base::SomaAddress, committee::EpochId, shard_scores::Score};
 
 /// ShardInput represents an escrowed amount for data encoding
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

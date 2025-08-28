@@ -1,27 +1,23 @@
 use std::{collections::HashSet, ops::Deref};
 
-use crate::{
-    crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
-    signed::Signed,
-};
+use crate::shard::ShardAuthToken;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-
-use super::{
-    encoder_committee::Epoch,
-    shard::{Shard, ShardAuthToken},
+use shared::{
+    crypto::keys::EncoderPublicKey, digest::Digest, encoder_committee::Epoch, error::SharedResult,
+    scope::Scope, shard::Shard, signed::Signed,
 };
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardScoresAPI)]
 pub enum ShardScores {
     V1(ShardScoresV1),
 }
 
-/// `ShardScoresAPI` is the trait that every shard commit version must implement
+// `ShardScoresAPI` is the trait that every shard commit version must implement
 #[enum_dispatch]
 pub trait ShardScoresAPI {
     fn auth_token(&self) -> &ShardAuthToken;
@@ -31,7 +27,7 @@ pub trait ShardScoresAPI {
     fn encoders(&self) -> Vec<EncoderPublicKey>;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShardScoresV1 {
     auth_token: ShardAuthToken,
     evaluator: EncoderPublicKey,
@@ -159,20 +155,20 @@ pub fn verify_signed_scores(
     signed_scores: &Signed<ShardScores, min_sig::BLS12381Signature>,
     shard: &Shard,
 ) -> SharedResult<()> {
-    if !shard.contains(&signed_scores.evaluator()) {
-        return Err(crate::error::SharedError::ValidationError(
+    if !shard.contains(signed_scores.evaluator()) {
+        return Err(shared::error::SharedError::ValidationError(
             "evaluator is not in the shard".to_string(),
         ));
     }
 
     if signed_scores.unique_scores() != shard.size() {
-        return Err(crate::error::SharedError::ValidationError(
+        return Err(shared::error::SharedError::ValidationError(
             "unique scores does not match shard size".to_string(),
         ));
     }
     for encoder in signed_scores.encoders() {
         if !shard.contains(&encoder) {
-            return Err(crate::error::SharedError::ValidationError(
+            return Err(shared::error::SharedError::ValidationError(
                 "scored encoder is not in shard".to_string(),
             ));
         }

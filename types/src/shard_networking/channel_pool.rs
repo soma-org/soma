@@ -1,31 +1,31 @@
 //! `ChannelPool` stores tonic channels for re-use.
-use crate::types::parameters::TonicParameters;
 use quick_cache::sync::Cache;
 use shared::crypto::keys::{PeerKeyPair, PeerPublicKey};
 use shared::error::{ShardError, ShardResult};
+use shared::parameters::TonicParameters;
 use soma_network::multiaddr::{to_host_port_str, Multiaddr};
 use soma_network::CERTIFICATE_NAME;
 use std::time::Duration;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, trace};
 
-pub(crate) struct ChannelPool {
+pub struct ChannelPool {
     channels: Cache<(PeerPublicKey, Multiaddr), Channel>,
 }
 
 /// Type alias since the type definition is so long
-pub(crate) type Channel = tower_http::trace::Trace<
+pub type Channel = tower_http::trace::Trace<
     tonic_rustls::Channel,
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
 >;
 
 impl ChannelPool {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             channels: Cache::new(capacity),
         }
     }
-    pub(crate) async fn get_channel(
+    pub async fn get_channel(
         &self,
         address: &Multiaddr,
         peer_public_key: PeerPublicKey,

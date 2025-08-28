@@ -21,11 +21,12 @@ use shared::{
     error::{ShardError, ShardResult},
     metadata::Metadata,
     scope::Scope,
-    shard::{Shard, ShardAuthToken},
-    shard_scores::{ScoreSet, ScoreSetV1, ScoreV1, ShardScores, ShardScoresV1},
+    shard::Shard,
     signed::Signed,
     verified::Verified,
 };
+use types::shard::ShardAuthToken;
+use types::shard_scores::{ScoreSet, ScoreSetV1, ScoreV1, ShardScores, ShardScoresV1};
 
 use super::scores::ScoresProcessor;
 

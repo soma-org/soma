@@ -1,3 +1,4 @@
+use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;
 use crate::{
     messaging::{
         tonic::generated::encoder_internal_tonic_service_server::{
@@ -7,7 +8,7 @@ use crate::{
         EncoderPublicKey,
     },
     types::{
-        parameters::Parameters, shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
+        shard_commit::ShardCommit, shard_commit_votes::ShardCommitVotes,
         shard_finality::ShardFinality, shard_reveal::ShardReveal,
         shard_reveal_votes::ShardRevealVotes,
     },
@@ -18,9 +19,9 @@ use axum::http;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
 use shared::error::{ShardError, ShardResult};
+use shared::parameters::Parameters;
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
-    shard_scores::ShardScores,
     signed::Signed,
     verified::Verified,
 };
@@ -38,13 +39,10 @@ use std::{
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{error, info, trace, warn};
+use types::shard_networking::NetworkingInfo;
+use types::shard_scores::ShardScores;
 
-use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;
-
-use super::{
-    channel_pool::{Channel, ChannelPool},
-    NetworkingInfo,
-};
+use types::shard_networking::channel_pool::{Channel, ChannelPool};
 
 // Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderInternalTonicClient {

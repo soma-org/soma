@@ -38,6 +38,7 @@ use utils::notify_read::NotifyRead;
 use crate::{
     aggregator::AuthorityAggregator,
     client::{AuthorityAPI, NetworkAuthorityClient},
+    encoder_client::EncoderClientService,
     epoch_store::AuthorityPerEpochStore,
     quorum_driver::{
         OnsiteReconfigObserver, QuorumDriverHandler, QuorumDriverHandlerBuilder, ReconfigObserver,
@@ -58,9 +59,21 @@ pub struct TransactiondOrchestrator<A: Clone> {
     // pending_tx_log: Arc<WritePathPendingTransactionLog>,
     notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
     vdf: Arc<SimpleVDF>,
+    encoder_client: Option<Arc<EncoderClientService>>,
 }
 
 impl TransactiondOrchestrator<NetworkAuthorityClient> {
+    pub fn new_with_encoder_client(
+        validators: Arc<AuthorityAggregator<NetworkAuthorityClient>>,
+        validator_state: Arc<AuthorityState>,
+        reconfig_channel: Receiver<SystemState>,
+        encoder_client: Option<Arc<EncoderClientService>>,
+    ) -> Self {
+        let observer =
+            OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
+        TransactiondOrchestrator::new(validators, validator_state, observer, encoder_client)
+    }
+
     pub fn new_with_auth_aggregator(
         validators: Arc<AuthorityAggregator<NetworkAuthorityClient>>,
         validator_state: Arc<AuthorityState>,
@@ -68,7 +81,7 @@ impl TransactiondOrchestrator<NetworkAuthorityClient> {
     ) -> Self {
         let observer =
             OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
-        TransactiondOrchestrator::new(validators, validator_state, observer)
+        TransactiondOrchestrator::new(validators, validator_state, observer, None)
     }
 }
 
@@ -81,6 +94,7 @@ where
         validators: Arc<AuthorityAggregator<A>>,
         validator_state: Arc<AuthorityState>,
         reconfig_observer: OnsiteReconfigObserver,
+        encoder_client: Option<Arc<EncoderClientService>>,
     ) -> Self {
         let notifier = Arc::new(NotifyRead::new());
         let quorum_driver_handler = Arc::new(
@@ -108,6 +122,7 @@ where
             _local_executor_handle,
             notifier,
             vdf: Arc::new(SimpleVDF::new(VDF_ITERATIONS)),
+            encoder_client,
         }
     }
 }
@@ -426,19 +441,28 @@ where
                     "Generated shard selection for EmbedData transaction"
                 );
 
-                // TODO: Spawn encoder work as a separate task to avoid blocking transaction response
-                // let self_clone = self.clone();
-                // let token = shard_auth_token;
-                // let tx_digest = *tx_digest;
-                // tokio::spawn(async move {
-                //     if let Err(e) = self_clone.dispatch_encoder_work(token).await {
-                //         error!(
-                //             ?tx_digest,
-                //             error = ?e,
-                //             "Failed to dispatch encoder work"
-                //         );
-                //     }
-                // });
+                if let Some(encoder_client) = &self.encoder_client {
+                    // Update encoder committee before sending
+                    if let Ok(committee) = self.get_current_encoder_committee().await {
+                        encoder_client.update_encoder_committee(&committee);
+                    }
+
+                    // Spawn async task to avoid blocking transaction response
+                    let client = encoder_client.clone();
+                    let token = shard_auth_token.clone();
+                    let digest = *tx_digest;
+
+                    tokio::spawn(async move {
+                        match client.send_to_shard(token, Duration::from_secs(5)).await {
+                            Ok(()) => {
+                                debug!(?digest, "Successfully sent shard input to all members");
+                            }
+                            Err(e) => {
+                                error!(?digest, error = ?e, "Failed to send to shard members");
+                            }
+                        }
+                    });
+                }
             }
             Err(e) => {
                 error!(

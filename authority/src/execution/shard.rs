@@ -6,8 +6,6 @@ use shared::{
     digest::Digest,
     metadata::{MetadataAPI, MetadataCommitment},
     scope::{Scope, ScopedMessage},
-    shard_scores::{verify_signed_scores, ScoreSetAPI, ShardScores, ShardScoresAPI},
-    shard_verifier::ShardVerifier,
     signed::Signed,
     verified::Verified,
 };
@@ -19,6 +17,8 @@ use types::{
     effects::ExecutionFailureStatus,
     error::{ConsensusError, ExecutionResult, SomaError},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
+    shard_scores::{verify_signed_scores, ScoreSetAPI, ShardScores, ShardScoresAPI},
+    shard_verifier::ShardVerifier,
     system_state::{get_system_state, shard::ShardResult, SystemState, SystemStateTrait},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
@@ -415,7 +415,7 @@ impl ShardExecutor {
         // 2.3 Verify the metadata commitment digests match
         let metadata_commitment_digest = verified_scores
             .auth_token()
-            .metadata_commitment()
+            .metadata_commitment
             .digest()
             .map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -433,7 +433,7 @@ impl ShardExecutor {
         // 2.4 Verify the data sizes match
         let data_size = verified_scores
             .auth_token()
-            .metadata_commitment()
+            .metadata_commitment
             .metadata()
             .size();
 

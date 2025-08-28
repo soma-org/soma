@@ -16,13 +16,13 @@ use shared::{
     error::{ShardError, ShardResult},
     scope::Scope,
     shard::Shard,
-    shard_scores::{Score, ScoreAPI, ScoreSetAPI, ShardScores, ShardScoresAPI},
     signed::Signed,
     verified::Verified,
 };
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
+use types::shard_scores::{Score, ScoreAPI, ScoreSetAPI, ShardScores, ShardScoresAPI};
 
 use super::finality::FinalityProcessor;
 

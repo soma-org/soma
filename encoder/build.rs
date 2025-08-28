@@ -80,24 +80,8 @@ fn build_tonic_services(out_dir: &Path) {
                 .build(),
         )
         .build();
-    let encoder_external_tonic_service = tonic_build::manual::Service::builder()
-        .name("EncoderExternalTonicService")
-        .package("soma")
-        .comment("Soma encoder external interface")
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("send_input")
-                .route_name("SendInput")
-                .input_type("crate::messaging::tonic::external::SendInputRequest")
-                .output_type("crate::messaging::tonic::external::SendInputResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .build();
+
     tonic_build::manual::Builder::new()
         .out_dir(out_dir)
-        .compile(&[
-            encoder_internal_tonic_service,
-            encoder_external_tonic_service,
-        ]);
+        .compile(&[encoder_internal_tonic_service]);
 }

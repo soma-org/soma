@@ -18,13 +18,15 @@ use shared::{
     crypto::keys::EncoderPublicKey,
     error::{ShardError, ShardResult},
     finality_proof,
-    shard_scores::{verify_signed_scores, ShardScores, ShardScoresAPI},
-    shard_verifier::ShardVerifier,
     signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
 use tracing::{debug, error, info, trace, warn};
+use types::{
+    shard_scores::{verify_signed_scores, ShardScores, ShardScoresAPI},
+    shard_verifier::ShardVerifier,
+};
 
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
     context: Context,

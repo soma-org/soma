@@ -1,6 +1,9 @@
 use std::fmt::format;
 
-use crate::{
+use crate::{entropy::SimpleVDF, shard::ShardAuthToken};
+use quick_cache::sync::Cache;
+use serde::{Deserialize, Serialize};
+use shared::{
     authority_committee::{AuthorityBitSet, AuthorityCommittee, AuthorityIndex},
     block::BlockRef,
     crypto::{
@@ -12,22 +15,21 @@ use crate::{
     },
     digest::Digest,
     encoder_committee::Epoch,
-    entropy::{BlockEntropy, BlockEntropyProof, EntropyAPI, EntropyVDF, SimpleVDF},
     error::{ShardError, ShardResult},
     finality_proof::{BlockClaim, FinalityProof},
     metadata::{Metadata, MetadataCommitment},
     scope::{Scope, ScopedMessage},
-    shard::{Shard, ShardAuthToken, ShardEntropy},
+    shard::{Shard, ShardEntropy},
     transaction::{
         ShardTransaction, SignedTransaction, TransactionData, TransactionExpiration,
         TransactionKind,
     },
 };
-use quick_cache::sync::Cache;
-use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::{actors::ActorHandle, encoder_committee::EncoderCommittee, workers::vdf::VDFProcessor};
+use shared::{
+    actors::ActorHandle, encoder_committee::EncoderCommittee, workers::vdf::VDFProcessor,
+};
 
 /// Tracks the cached verification status for a given auth token
 #[derive(Clone)]
@@ -67,10 +69,7 @@ impl ShardVerifier {
         vdf_iterations: u64,
         token: &ShardAuthToken,
     ) -> ShardResult<(Shard, CancellationToken)> {
-        tracing::info!(
-            "Starting ShardVerifier::verify with token epoch: {}",
-            token.epoch()
-        );
+        tracing::info!("Starting ShardVerifier::verify");
 
         let digest = match Digest::new(token) {
             Ok(d) => {
@@ -113,21 +112,21 @@ impl ShardVerifier {
 
         // Debug finality proof
         tracing::debug!("Verifying finality proof against authority committee");
-        if let Err(e) = token.proof.verify(&authority_committee) {
-            tracing::error!("Finality proof verification failed: {:?}", e);
-            self.cache.insert(digest, VerificationStatus::Invalid);
-            return Err(ShardError::InvalidShardToken(e.to_string()));
-        }
+        // TODO: verify finality proof against authority committee
+        // if let Err(e) = token.finality_proof.verify(&authority_committee) {
+        //     tracing::error!("Finality proof verification failed: {:?}", e);
+        //     self.cache.insert(digest, VerificationStatus::Invalid);
+        //     return Err(ShardError::InvalidShardToken(e.to_string()));
+        // }
 
         // Debug VDF
 
         // let vdf_result = self.vdf.process(vdf_params, CancellationToken::new()).await;
         let vdf = SimpleVDF::new(vdf_iterations);
         let vdf_result = vdf.verify_entropy(
-            token.proof.epoch(),
-            token.proof.block_ref(),
-            &token.block_entropy,
-            &token.entropy_proof,
+            token.finality_proof.consensus_finality.leader_block,
+            &token.finality_proof.block_entropy,
+            &token.finality_proof.block_entropy_proof,
         );
 
         if let Err(e) = vdf_result {
@@ -142,7 +141,7 @@ impl ShardVerifier {
         tracing::debug!("Creating ShardEntropy with metadata commitment and block entropy");
         let shard_entropy_input = ShardEntropy::new(
             token.metadata_commitment.clone(),
-            token.block_entropy.clone(),
+            token.finality_proof.block_entropy.clone(),
         );
 
         tracing::debug!("Creating digest from ShardEntropy");

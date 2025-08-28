@@ -45,7 +45,6 @@ use shared::{
     digest::Digest,
     metadata::MetadataCommitment,
     shard::Shard,
-    shard_scores::{Score, ShardScores},
 };
 use tracing::trace;
 
@@ -64,6 +63,7 @@ use crate::{
     error::{SomaError, SomaResult},
     intent::{Intent, IntentMessage, IntentScope},
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
+    shard_scores::{Score, ShardScores},
     state_sync::CommitTimestamp,
     temporary_store::SharedInput,
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,

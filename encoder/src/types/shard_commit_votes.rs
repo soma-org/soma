@@ -7,9 +7,10 @@ use shared::{
 };
 
 use super::shard_commit::ShardCommit;
-use shared::shard::{Shard, ShardAuthToken};
+use shared::shard::Shard;
+use types::shard::ShardAuthToken;
 /// Reject votes are explicit. The rest of encoders in a shard receive implicit accept votes.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(ShardCommitVotesAPI)]
 pub enum ShardCommitVotes {
     V1(ShardCommitVotesV1),
@@ -27,7 +28,7 @@ pub trait ShardCommitVotesAPI {
     )];
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct ShardCommitVotesV1 {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,
