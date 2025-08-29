@@ -11,7 +11,6 @@ use shared::{
     verified::Verified,
 };
 use std::{sync::Arc, time::Duration};
-use tracing::info;
 
 pub(crate) struct FinalityProcessor {
     store: Arc<dyn Store>,

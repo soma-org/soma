@@ -15,8 +15,8 @@ mod tests {
         },
         types::{
             parameters::Parameters,
-            shard_commit::ShardCommit,
-            shard_input::{ShardInput, ShardInputV1},
+            commit::Commit,
+            input::{Input, InputV1},
         },
     };
     use async_trait::async_trait;
@@ -122,16 +122,7 @@ mod tests {
                 .push((encoder.to_owned(), reveal_bytes));
             Ok(())
         }
-        async fn handle_send_reveal_votes(
-            &self,
-            encoder: &EncoderPublicKey,
-            votes_bytes: Bytes,
-        ) -> ShardResult<()> {
-            self.handle_send_reveal_votes
-                .write()
-                .push((encoder.to_owned(), votes_bytes));
-            Ok(())
-        }
+
         async fn handle_send_scores(
             &self,
             encoder: &EncoderPublicKey,
@@ -207,9 +198,9 @@ mod tests {
             100,
         );
 
-        let input = ShardInput::V1(ShardInputV1::new(ShardAuthToken::new_for_test()));
+        let input = Input::V1(InputV1::new(ShardAuthToken::new_for_test()));
         let inner_keypair = encoder_key.inner().copy();
-        let signed_input = Signed::new(input, Scope::ShardInput, &inner_keypair.private()).unwrap();
+        let signed_input = Signed::new(input, Scope::Input, &inner_keypair.private()).unwrap();
         let verified = Verified::from_trusted(signed_input.clone()).unwrap();
 
         client
@@ -263,7 +254,7 @@ mod tests {
             100,
         );
 
-        let commit: ShardCommit = ShardCommit::new_v1(
+        let commit: Commit = Commit::new_v1(
             ShardAuthToken::new_for_test(),
             client_encoder_key.public(),
             None,
@@ -272,7 +263,7 @@ mod tests {
         let inner_keypair = client_encoder_key.inner().copy();
 
         let signed_commit =
-            Signed::new(commit, Scope::ShardCommit, &inner_keypair.private()).unwrap();
+            Signed::new(commit, Scope::Commit, &inner_keypair.private()).unwrap();
         let verified = Verified::from_trusted(signed_commit.clone()).unwrap();
 
         client
