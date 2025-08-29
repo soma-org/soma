@@ -33,7 +33,7 @@
 use crate::{
     accumulator::Accumulator,
     base::{AuthorityName, ConciseableName},
-    committee::EncoderCommittee,
+    committee::{EncoderCommittee, NetworkingCommittee},
     crypto::AuthorityPublicKeyBytes,
     digests::{ConsensusCommitDigest, ECMHLiveObjectSetDigest, TransactionDigest},
     state_sync::CommitTimestamp,
@@ -224,7 +224,13 @@ pub trait EndOfEpochAPI: Send + Sync + 'static {
     /// - `None` if the next epoch state has not yet been computed
     fn get_next_epoch_state(
         &self,
-    ) -> Option<(ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64)>;
+    ) -> Option<(
+        ValidatorSet,
+        EncoderCommittee,
+        NetworkingCommittee,
+        ECMHLiveObjectSetDigest,
+        u64,
+    )>;
 }
 
 /// # TestEpochStore
@@ -236,7 +242,13 @@ pub trait EndOfEpochAPI: Send + Sync + 'static {
 /// implementation of the authority state and epoch store.
 pub struct TestEpochStore {
     /// The next epoch state, if one has been computed
-    pub next_epoch_state: Option<(ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64)>,
+    pub next_epoch_state: Option<(
+        ValidatorSet,
+        EncoderCommittee,
+        NetworkingCommittee,
+        ECMHLiveObjectSetDigest,
+        u64,
+    )>,
 }
 
 impl TestEpochStore {
@@ -248,7 +260,13 @@ impl TestEpochStore {
 
     pub fn set_next_epoch_state(
         &mut self,
-        state: (ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64),
+        state: (
+            ValidatorSet,
+            EncoderCommittee,
+            NetworkingCommittee,
+            ECMHLiveObjectSetDigest,
+            u64,
+        ),
     ) {
         self.next_epoch_state = Some(state);
     }
@@ -257,7 +275,13 @@ impl TestEpochStore {
 impl EndOfEpochAPI for TestEpochStore {
     fn get_next_epoch_state(
         &self,
-    ) -> Option<(ValidatorSet, EncoderCommittee, ECMHLiveObjectSetDigest, u64)> {
+    ) -> Option<(
+        ValidatorSet,
+        EncoderCommittee,
+        NetworkingCommittee,
+        ECMHLiveObjectSetDigest,
+        u64,
+    )> {
         self.next_epoch_state.clone()
     }
 }

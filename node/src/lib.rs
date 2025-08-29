@@ -6,6 +6,7 @@ use authority::{
     cache::build_execution_cache,
     client::NetworkAuthorityClient,
     commit::{executor::CommitExecutor, CommitStore},
+    encoder_client::EncoderClientService,
     epoch_store::AuthorityPerEpochStore,
     handler::ConsensusHandlerInitializer,
     manager::{ConsensusClient, ConsensusManager, ConsensusManagerTrait},
@@ -136,6 +137,7 @@ pub struct SomaNode {
     // AuthorityAggregator of the network, created at start and beginning of each epoch.
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
     encoder_validator_server_handle: Mutex<Option<JoinHandle<Result<()>>>>,
+    encoder_client_service: Option<Arc<EncoderClientService>>,
 
     #[cfg(msim)]
     sim_state: SimState,
@@ -319,7 +321,7 @@ impl SomaNode {
 
         // let connection_monitor_status = Arc::new(connection_monitor_status);
 
-        let validator_components = if state.is_validator(&epoch_store) {
+        let validator_components = if state.is_validator(&epoch_store) && is_validator {
             let components = Self::construct_validator_components(
                 config.clone(),
                 state.clone(),
@@ -341,14 +343,23 @@ impl SomaNode {
         // setup shutdown channel
         // let (shutdown_channel, _) = broadcast::channel::<Option<RunWithRange>>(1);
 
+        let encoder_client_service = if is_full_node {
+            // Only fullnodes send to encoders, not validators
+            Some(Arc::new(EncoderClientService::new(
+                config.protocol_key_pair().copy(),
+                config.network_key_pair(),
+            )))
+        } else {
+            None
+        };
+
         let transaction_orchestrator = if is_full_node {
-            Some(Arc::new(
-                TransactiondOrchestrator::new_with_auth_aggregator(
-                    auth_agg.load_full(),
-                    state.clone(),
-                    end_of_epoch_receiver,
-                ),
-            ))
+            Some(Arc::new(TransactiondOrchestrator::new_with_encoder_client(
+                auth_agg.load_full(),
+                state.clone(),
+                end_of_epoch_receiver,
+                encoder_client_service.clone(),
+            )))
         } else {
             None
         };
@@ -375,6 +386,7 @@ impl SomaNode {
             commit_store,
             consensus_store,
             encoder_validator_server_handle: Mutex::new(encoder_validator_server_handle),
+            encoder_client_service,
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -699,6 +711,12 @@ impl SomaNode {
                 }
             }
 
+            if let Some(encoder_client) = &self.encoder_client_service {
+                let encoder_committee = latest_system_state.get_current_epoch_encoder_committee();
+                info!("Updating encoder committee after reconfiguration");
+                encoder_client.update_encoder_committee(&encoder_committee);
+            }
+
             let new_epoch_start_state = latest_system_state.clone().into_epoch_start_state();
 
             self.auth_agg.store(Arc::new(
@@ -747,7 +765,9 @@ impl SomaNode {
                 let weak_accumulator = Arc::downgrade(&new_accumulator);
                 *accumulator_guard = Some(new_accumulator);
 
-                if self.state.is_validator(&new_epoch_store) {
+                if self.state.is_validator(&new_epoch_store)
+                    && self.config.consensus_config().is_some()
+                {
                     // Only restart consensus if this node is still a validator in the new epoch.
                     Some(
                         Self::start_epoch_specific_validator_components(
@@ -782,7 +802,9 @@ impl SomaNode {
                 let weak_accumulator = Arc::downgrade(&new_accumulator);
                 *accumulator_guard = Some(new_accumulator);
 
-                if self.state.is_validator(&new_epoch_store) {
+                if self.state.is_validator(&new_epoch_store)
+                    && self.config.consensus_config().is_some()
+                {
                     info!("Promoting the node from fullnode to validator, starting grpc server");
 
                     Some(

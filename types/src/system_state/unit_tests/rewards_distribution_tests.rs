@@ -50,7 +50,7 @@ mod rewards_distribution_tests {
         let mut system_state = set_up_system_state();
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Need to advance epoch so validator's staking starts counting
         advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
@@ -103,7 +103,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Need to advance epoch so validator's staking starts counting
         advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
@@ -131,7 +131,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Add stake to validators
         let staked_soma_1 = stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 200);
@@ -243,7 +243,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Stake a large amount
         let staked_soma_1 = stake_with(
@@ -286,7 +286,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Add stake to validators
         let staked_soma_1 = stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 100);
@@ -374,7 +374,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Advance epoch to start reward counting
         advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
@@ -443,7 +443,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Advance epoch to start reward counting
         advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
@@ -508,7 +508,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Add stake to validator 1
         let staked_soma_1_1 =
@@ -545,7 +545,7 @@ mod rewards_distribution_tests {
         // Verify total stake in validator 1's pool
         let validator_1 = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == validator_addr_1())
             .expect("Validator 1 not found");
@@ -608,7 +608,7 @@ mod rewards_distribution_tests {
         // Verify validator pool now only has the validator's original stake
         let validator_1 = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == validator_addr_1())
             .expect("Validator 1 not found");
@@ -639,7 +639,7 @@ mod rewards_distribution_tests {
 
         // Record initial validator states
         let mut validator_stakes =
-            ValidatorRewards::new(&system_state.validators.active_validators);
+            ValidatorRewards::new(&system_state.validators.consensus_validators);
 
         // Double the stake of each validator through rewards
         advance_epoch_with_reward_amounts(&mut system_state, 10000, &mut validator_stakes);
@@ -650,7 +650,7 @@ mod rewards_distribution_tests {
 
             let validator = system_state
                 .validators
-                .active_validators
+                .consensus_validators
                 .iter()
                 .find(|v| v.metadata.soma_address == addr)
                 .expect("Validator not found");

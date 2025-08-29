@@ -1,12 +1,5 @@
 use async_trait::async_trait;
-use bytes::Bytes;
-use fastcrypto::bls12381::min_sig;
-use shared::{
-    crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey},
-    error::{ShardError, ShardResult},
-    signed::Signed,
-    verified::Verified,
-};
+use shared::crypto::keys::{PeerKeyPair, PeerPublicKey};
 use soma_http::ServerHandle;
 use soma_network::{
     multiaddr::{to_socket_addr, Multiaddr},
@@ -20,102 +13,17 @@ use std::{
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 
-use crate::{
-    messaging::{
-        tonic::generated::encoder_external_tonic_service_server::EncoderExternalTonicServiceServer,
-        EncoderExternalNetworkClient, EncoderExternalNetworkManager, EncoderExternalNetworkService,
-    },
-    types::{input::Input, parameters::Parameters},
-};
+use crate::messaging::{EncoderExternalNetworkManager, EncoderExternalNetworkService};
 use tracing::{info, trace, warn};
-
-use super::{
-    channel_pool::{Channel, ChannelPool},
-    generated::{
-        encoder_external_tonic_service_client::EncoderExternalTonicServiceClient,
-        encoder_external_tonic_service_server::EncoderExternalTonicService,
+use types::{
+    parameters::Parameters,
+    shard_networking::{
+        external::{SendInputRequest, SendInputResponse},
+        generated::encoder_external_tonic_service_server::{
+            EncoderExternalTonicService, EncoderExternalTonicServiceServer,
+        },
     },
-    NetworkingInfo,
 };
-
-// Implements Tonic RPC client for Encoders.
-pub struct EncoderExternalTonicClient {
-    networking_info: NetworkingInfo,
-    own_peer_keypair: PeerKeyPair,
-    parameters: Arc<Parameters>,
-    channel_pool: Arc<ChannelPool>,
-}
-impl EncoderExternalTonicClient {
-    /// Creates a new encoder tonic client and establishes an arc'd channel pool
-    pub fn new(
-        networking_info: NetworkingInfo,
-        own_peer_keypair: PeerKeyPair,
-        parameters: Arc<Parameters>,
-        capacity: usize,
-    ) -> Self {
-        Self {
-            networking_info,
-            own_peer_keypair,
-            parameters,
-            channel_pool: Arc::new(ChannelPool::new(capacity)),
-        }
-    }
-
-    /// returns an encoder client
-    // TODO: re-introduce configuring limits to the client for safety
-    pub async fn get_client(
-        &self,
-        encoder: &EncoderPublicKey,
-        timeout: Duration,
-    ) -> ShardResult<EncoderExternalTonicServiceClient<Channel>> {
-        let config = &self.parameters.tonic;
-        if let Some((address, peer_public_key)) = self.networking_info.lookup(encoder) {
-            let channel = self
-                .channel_pool
-                .get_channel(
-                    &address,
-                    peer_public_key,
-                    &self.parameters.tonic,
-                    self.own_peer_keypair.clone(),
-                    timeout,
-                )
-                .await?;
-            let mut client = EncoderExternalTonicServiceClient::new(channel)
-                .max_encoding_message_size(config.message_size_limit)
-                .max_decoding_message_size(config.message_size_limit);
-
-            client = client
-                .send_compressed(CompressionEncoding::Zstd)
-                .accept_compressed(CompressionEncoding::Zstd);
-            Ok(client)
-        } else {
-            Err(ShardError::NetworkClientConnection(
-                "failed to get networking info for peer".to_string(),
-            ))
-        }
-    }
-}
-
-#[async_trait]
-impl EncoderExternalNetworkClient for EncoderExternalTonicClient {
-    async fn send_input(
-        &self,
-        encoder: &EncoderPublicKey,
-        input: &Verified<Signed<Input, min_sig::BLS12381Signature>>,
-        timeout: Duration,
-    ) -> ShardResult<()> {
-        let mut request = Request::new(SendInputRequest {
-            input: input.bytes(),
-        });
-        request.set_timeout(timeout);
-        self.get_client(encoder, timeout)
-            .await?
-            .send_input(request)
-            .await
-            .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
-        Ok(())
-    }
-}
 
 /// Proxies Tonic requests to `NetworkService` with actual handler implementation.
 struct EncoderExternalTonicServiceProxy<S: EncoderExternalNetworkService> {
@@ -319,12 +227,3 @@ fn peer_info_from_certs(peer_certificates: &soma_http::PeerCertificates) -> Opti
     let peer = PeerPublicKey::new(public_key);
     Some(PeerInfo { peer })
 }
-
-#[derive(Clone, prost::Message)]
-pub struct SendInputRequest {
-    #[prost(bytes = "bytes", tag = "1")]
-    pub input: Bytes,
-}
-
-#[derive(Clone, prost::Message)]
-pub struct SendInputResponse {}

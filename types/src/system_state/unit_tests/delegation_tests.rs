@@ -66,15 +66,12 @@ mod delegation_tests {
         // Find and remove the validator from pending_active_validators
         let idx = system_state
             .validators
-            .pending_active_validators
+            .pending_validators
             .iter()
             .position(|v| v.metadata.soma_address == address)
             .expect("Validator candidate not found");
 
-        system_state
-            .validators
-            .pending_active_validators
-            .remove(idx);
+        system_state.validators.pending_validators.remove(idx);
     }
 
     #[test]
@@ -439,7 +436,7 @@ mod delegation_tests {
         // Check exchange rates
         let validator = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == validator_addr_2())
             .expect("Validator not found");

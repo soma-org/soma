@@ -52,7 +52,9 @@ use serde::{Deserialize, Serialize};
 use shared::authority_committee::AuthorityCommittee;
 use shared::checksum::Checksum;
 use shared::crypto::keys::EncoderPublicKey;
+use shared::digest::Digest;
 use shared::encoder_committee::Encoder;
+use shared::shard::{Shard, ShardEntropy};
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Display, Formatter, Write};
@@ -106,19 +108,24 @@ pub const MAX_VOTING_POWER: u64 = 1_000;
 /// Minimum amount of voting power required to become a validator
 /// .12% of voting power
 // TODO: consider making this .06 or .03
-pub const VALIDATOR_MIN_POWER: u64 = 12;
+pub const VALIDATOR_CONSENSUS_MIN_POWER: u64 = 12;
 
 /// Low voting power threshold for validators
 /// Validators below this threshold fall into the "at risk" group.
 /// .08% of voting power
 // TODO: consider making this .04 or .02
-pub const VALIDATOR_LOW_POWER: u64 = 8;
+pub const VALIDATOR_CONSENSUS_LOW_POWER: u64 = 8;
 
 /// Very low voting power threshold for validators
 /// Validators below this threshold will be removed immediately at epoch change.
 /// .04% of voting power
 // TODO: consider making this .02 or .01
-pub const VALIDATOR_VERY_LOW_POWER: u64 = 4;
+pub const VALIDATOR_CONSENSUS_VERY_LOW_POWER: u64 = 4;
+
+/// Minimum amount of voting power required to become a networking validator
+/// This is the minimum stake required to communicate with validators and encoders
+/// 0.01% of voting power
+pub const VALIDATOR_NETWORKING_MIN_POWER: u64 = 1;
 
 /// A validator can have stake below `validator_low_stake_threshold`
 /// for this many epochs before being kicked out.
@@ -809,7 +816,8 @@ pub struct EncoderCommittee {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct EncoderNetworkMetadata {
-    pub network_address: Multiaddr,
+    pub internal_network_address: Multiaddr,
+    pub external_network_address: Multiaddr,
     pub object_server_address: Multiaddr,
     pub network_key: NetworkPublicKey,
     pub hostname: String,
@@ -887,6 +895,32 @@ impl EncoderCommittee {
             encoders,
         )
     }
+
+    pub fn sample_shard(&self, entropy: Digest<ShardEntropy>) -> Result<Shard, SomaError> {
+        let mut rng = StdRng::from_seed(entropy.into());
+
+        // TODO: change this shard size to be more dynamic
+        let shard_size = std::cmp::min(
+            self.members.len() as u32,
+            std::cmp::max(3, (self.members.len() / 2) as u32),
+        );
+
+        // Calculate quorum threshold - typically 2/3 rounded up
+        let quorum_threshold = (shard_size * 2 + 2) / 3;
+
+        // Collect encoders with their weights
+        let encoders_with_weights: Vec<(&EncoderPublicKey, u64)> =
+            self.members.iter().map(|(k, v)| (k, *v)).collect();
+
+        // Weighted sampling without replacement
+        let selected = encoders_with_weights
+            .choose_multiple_weighted(&mut rng, shard_size as usize, |item| item.1 as f64)
+            .map_err(|e| SomaError::ShardSamplingError(format!("Failed to sample shard: {}", e)))?
+            .map(|(key, _)| (*key).clone())
+            .collect::<Vec<_>>();
+
+        Ok(Shard::new(quorum_threshold, selected, entropy, self.epoch))
+    }
 }
 
 /// Wrap an EncoderCommitteeDigest in the intent message
@@ -894,4 +928,94 @@ pub fn to_encoder_committee_intent(
     digest: EncoderCommitteeDigest,
 ) -> IntentMessage<EncoderCommitteeDigest> {
     IntentMessage::new(Intent::consensus_app(IntentScope::EncoderCommittee), digest)
+}
+
+/// Represents a committee of networking validators for a specific epoch.
+///
+/// NetworkingCommittee includes all validators with sufficient stake to participate
+/// in network communications, serving as DDOS protection. This is a superset of
+/// consensus validators and includes networking-only validators.
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct NetworkingCommittee {
+    /// The epoch this committee is active for
+    pub epoch: EpochId,
+
+    /// Mapping of authority names to their network metadata
+    /// Note: We don't store voting power here as networking validators
+    /// don't participate in consensus decisions
+    pub members: BTreeMap<AuthorityName, NetworkMetadata>,
+}
+/// Digest of networking committee, used for signing
+#[derive(Serialize, Deserialize)]
+pub struct NetworkingCommitteeDigest([u8; DIGEST_LENGTH]);
+
+impl NetworkingCommittee {
+    /// Creates a new networking committee for the specified epoch
+    pub fn new(epoch: EpochId, members: BTreeMap<AuthorityName, NetworkMetadata>) -> Self {
+        Self { epoch, members }
+    }
+
+    /// Get the epoch this committee is active for
+    pub fn epoch(&self) -> EpochId {
+        self.epoch
+    }
+
+    /// Get all networking committee members
+    pub fn members(&self) -> &BTreeMap<AuthorityName, NetworkMetadata> {
+        &self.members
+    }
+
+    /// Check if a validator is in the networking committee
+    pub fn contains(&self, name: &AuthorityName) -> bool {
+        self.members.contains_key(name)
+    }
+
+    /// Get network metadata for a specific validator
+    pub fn get_metadata(&self, name: &AuthorityName) -> Option<&NetworkMetadata> {
+        self.members.get(name)
+    }
+
+    /// Get the total number of networking participants
+    pub fn size(&self) -> usize {
+        self.members.len()
+    }
+
+    /// Compute the digest of the networking committee for signing
+    pub fn compute_digest(&self) -> ConsensusResult<NetworkingCommitteeDigest> {
+        let mut hasher = DefaultHashFunction::new();
+        hasher.update(bcs::to_bytes(self).map_err(ConsensusError::SerializationFailure)?);
+        Ok(NetworkingCommitteeDigest(hasher.finalize().into()))
+    }
+
+    /// Sign the networking committee with the given keypair
+    pub fn sign(&self, keypair: &AuthorityKeyPair) -> ConsensusResult<AuthoritySignature> {
+        let digest = self.compute_digest()?;
+        let message = bcs::to_bytes(&to_networking_committee_intent(digest))
+            .map_err(ConsensusError::SerializationFailure)?;
+        Ok(keypair.sign(&message))
+    }
+
+    /// Verify a signature on the networking committee
+    pub fn verify_signature(
+        &self,
+        signature: &AuthoritySignature,
+        public_key: &AuthorityPublicKey,
+    ) -> ConsensusResult<()> {
+        let digest = self.compute_digest()?;
+        let message = bcs::to_bytes(&to_networking_committee_intent(digest))
+            .map_err(ConsensusError::SerializationFailure)?;
+        public_key
+            .verify(&message, signature)
+            .map_err(ConsensusError::SignatureVerificationFailure)
+    }
+}
+
+/// Wrap a NetworkingCommitteeDigest in the intent message
+pub fn to_networking_committee_intent(
+    digest: NetworkingCommitteeDigest,
+) -> IntentMessage<NetworkingCommitteeDigest> {
+    IntentMessage::new(
+        Intent::consensus_app(IntentScope::NetworkingCommittee),
+        digest,
+    )
 }

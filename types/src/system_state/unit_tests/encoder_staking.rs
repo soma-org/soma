@@ -266,7 +266,8 @@ mod encoder_staking_tests {
         let encoded_address = bcs::to_bytes(&network_address).expect("Failed to BCS serialize");
 
         let args = UpdateEncoderMetadataArgs {
-            next_epoch_network_address: Some(encoded_address),
+            next_epoch_internal_network_address: Some(encoded_address),
+            next_epoch_external_network_address: None,
             next_epoch_network_pubkey: None,
             next_epoch_object_server_address: None,
         };
@@ -281,7 +282,7 @@ mod encoder_staking_tests {
             .encoders
             .find_encoder(encoder_addr_1())
             .unwrap();
-        let old_address = encoder_before.metadata.net_address.clone();
+        let old_address = encoder_before.metadata.internal_network_address.clone();
 
         // Advance epoch to apply changes
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -291,7 +292,7 @@ mod encoder_staking_tests {
             .encoders
             .find_encoder(encoder_addr_1())
             .unwrap();
-        assert_ne!(encoder_after.metadata.net_address, old_address);
+        assert_ne!(encoder_after.metadata.internal_network_address, old_address);
     }
 
     #[test]

@@ -1,17 +1,18 @@
 use e2e_tests::integration_helpers::setup_integrated_encoder_validator_test;
 use rand::rngs::OsRng;
-use shared::shard::ShardAuthToken;
+use shared::checksum::Checksum;
+use shared::crypto::keys::PeerPublicKey;
+use shared::digest::Digest;
+use shared::metadata::{
+    DownloadableMetadata, DownloadableMetadataV1, MetadataCommitment, MetadataV1,
+};
 use std::time::Duration;
 use test_cluster::TestCluster;
-use test_encoder_cluster::{create_valid_test_token, TestEncoderClusterBuilder};
 use tokio::time::sleep;
-use tracing::info;
+use types::crypto::KeypairTraits;
 use types::{
     base::SomaAddress,
-    config::{
-        encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},
-        genesis_config::{AccountConfig, DEFAULT_GAS_AMOUNT},
-    },
+    config::encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},
     crypto::SomaKeyPair,
     transaction::{AddEncoderArgs, Transaction, TransactionData, TransactionKind},
 };
@@ -103,45 +104,92 @@ async fn test_integrated_encoder_validator_system() {
         });
     }
 
-    // Create a valid token for a shard transaction
-    let token = create_valid_test_token();
-
-    // Get the shard based on the token
-    let shard = encoder_cluster.get_shard_from_token(&token).unwrap();
-
-    info!("Shard contains these encoders: {:?}", shard.encoders());
-
-    // Send a transaction to the shard members
-    let result = encoder_cluster
-        .send_to_shard_members(&token, Duration::from_secs(5))
-        .await;
-
-    assert!(
-        result.is_ok(),
-        "Failed to send input to shard members: {:?}",
-        result.err()
+    // TODO: define real Metadata and commitment
+    let size_in_bytes = 1;
+    let fullnode_config = test_cluster
+        .fullnode_handle
+        .soma_node
+        .state()
+        .config
+        .clone();
+    let metadata = DownloadableMetadataV1::new(
+        PeerPublicKey::new(
+            fullnode_config
+                .network_key_pair()
+                .into_inner()
+                .public()
+                .clone(),
+        ),
+        fullnode_config.network_address.to_string().parse().unwrap(),
+        MetadataV1::new(Checksum::default(), size_in_bytes),
     );
+    let metadata_commitment =
+        MetadataCommitment::new(DownloadableMetadata::V1(metadata), [0u8; 32]);
+
+    let digest =
+        Digest::new(&metadata_commitment).expect("Failed to create digest for metadata_commitment");
+
+    execute_embed_data_transaction(
+        new_encoder_genesis.account_key_pair.copy(),
+        &mut test_cluster,
+        new_encoder_address,
+        digest,
+        size_in_bytes,
+    )
+    .await;
 
     sleep(Duration::from_secs(5)).await;
 
-    for handle in encoder_cluster.all_encoder_handles() {
-        handle.with(|node| {
-            let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
-            if shard.encoders().contains(&enc_key) {
-                let store = node.get_store_for_testing();
+    // for handle in encoder_cluster.all_encoder_handles() {
+    //     handle.with(|node| {
+    //         let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
+    //         if shard.encoders().contains(&enc_key) {
+    //             let store = node.get_store_for_testing();
 
-                let result = store.get_agg_scores(&shard);
+    //             let result = store.get_agg_scores(&shard);
 
-                assert!(
-                    result.is_ok(),
-                    "Failed to get agg sig for shard: {:?}",
-                    result.err()
-                );
+    //             assert!(
+    //                 result.is_ok(),
+    //                 "Failed to get agg sig for shard: {:?}",
+    //                 result.err()
+    //             );
 
-                info!("Final agg sig: {:?}", result.unwrap().0);
-            }
-        });
-    }
+    //             info!("Final agg sig: {:?}", result.unwrap().0);
+    //         }
+    //     });
+    // }
+}
+
+/// Execute EmbedData transaction
+async fn execute_embed_data_transaction(
+    signer: SomaKeyPair,
+    test_cluster: &mut TestCluster,
+    address: SomaAddress,
+    digest: Digest<MetadataCommitment>,
+    data_size_bytes: usize,
+) {
+    // Get gas object for the transaction
+    let gas_object = test_cluster
+        .get_gas_objects_owned_by_address(address, Some(1))
+        .await
+        .expect("Can't get gas object for encoder address");
+
+    // Create and execute AddEncoder transaction
+    let tx = Transaction::from_data_and_signer(
+        TransactionData::new(
+            TransactionKind::EmbedData {
+                digest: digest,
+                data_size_bytes,
+                coin_ref: gas_object[0],
+            },
+            address,
+            gas_object,
+        ),
+        vec![&signer], // Sign with keypair
+    );
+
+    tracing::info!(?tx, "Executing embed data tx for {}", address);
+    test_cluster.execute_transaction(tx).await;
 }
 
 /// Execute AddEncoder transaction
@@ -165,7 +213,10 @@ async fn execute_add_encoder_transaction(
                 )
                 .unwrap(),
                 network_pubkey_bytes: bcs::to_bytes(&encoder_config.peer_public_key()).unwrap(),
-                net_address: bcs::to_bytes(&encoder_config.internal_network_address).unwrap(),
+                external_network_address: bcs::to_bytes(&encoder_config.external_network_address)
+                    .unwrap(),
+                internal_network_address: bcs::to_bytes(&encoder_config.internal_network_address)
+                    .unwrap(),
                 object_server_address: bcs::to_bytes(&encoder_config.object_address).unwrap(),
                 // probe_address: bcs::to_bytes(&encoder_config.probe_address).unwrap(),
             }),

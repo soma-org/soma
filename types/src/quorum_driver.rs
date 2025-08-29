@@ -10,6 +10,7 @@ use crate::{
         VerifiedCertifiedTransactionEffects,
     },
     error::SomaError,
+    finality::{FinalityProof, SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
     transaction::{CertifiedTransaction, SignedTransaction, Transaction, VerifiedTransaction},
 };
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,7 @@ pub struct ExecuteTransactionRequest {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecuteTransactionResponse {
     pub effects: FinalizedEffects,
+    pub finality_proof: Option<FinalityProof>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, schemars::JsonSchema)]
@@ -51,6 +53,7 @@ pub struct QuorumDriverRequest {
 #[derive(Debug, Clone)]
 pub struct QuorumDriverResponse {
     pub effects_cert: VerifiedCertifiedTransactionEffects,
+    pub finality_cert: Option<VerifiedCertifiedConsensusFinality>,
 }
 
 pub type QuorumDriverResult = Result<QuorumDriverResponse, QuorumDriverError>;
@@ -121,16 +124,24 @@ pub type GroupedErrors = Vec<(SomaError, VotingPower, Vec<ConciseAuthorityPublic
 #[derive(Clone, Debug)]
 pub enum PlainTransactionInfoResponse {
     Signed(SignedTransaction),
-    ExecutedWithCert(CertifiedTransaction, SignedTransactionEffects),
-    ExecutedWithoutCert(Transaction, SignedTransactionEffects),
+    ExecutedWithCert(
+        CertifiedTransaction,
+        SignedTransactionEffects,
+        Option<SignedConsensusFinality>,
+    ),
+    ExecutedWithoutCert(
+        Transaction,
+        SignedTransactionEffects,
+        Option<SignedConsensusFinality>,
+    ),
 }
 
 impl PlainTransactionInfoResponse {
     pub fn is_executed(&self) -> bool {
         match self {
             PlainTransactionInfoResponse::Signed(_) => false,
-            PlainTransactionInfoResponse::ExecutedWithCert(_, _) => true,
-            PlainTransactionInfoResponse::ExecutedWithoutCert(_, _) => true,
+            PlainTransactionInfoResponse::ExecutedWithCert(_, _, _) => true,
+            PlainTransactionInfoResponse::ExecutedWithoutCert(_, _, _) => true,
         }
     }
 }

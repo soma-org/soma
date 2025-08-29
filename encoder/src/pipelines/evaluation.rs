@@ -31,12 +31,15 @@ use shared::{
     error::{ShardError, ShardResult},
     metadata::{DownloadableMetadataAPI, Metadata},
     scope::Scope,
-    shard::{Shard, ShardAuthToken},
+    shard::Shard,
     signed::Signed,
     verified::Verified,
 };
 use tokio_util::sync::CancellationToken;
-use types::shard_score::{ScoreSet, ScoreSetV1, ShardScore, ShardScoreV1};
+use types::{
+    shard::ShardAuthToken,
+    shard_score::{ScoreSet, ScoreSetV1, ShardScore, ShardScoreV1},
+};
 
 use super::scores::ScoresProcessor;
 

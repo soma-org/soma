@@ -42,14 +42,18 @@ use tap::TapFallible;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, warn, Instrument};
+use types::consensus::block::BlockRef;
 use types::digests::{ECMHLiveObjectSetDigest, TransactionEffectsDigest};
 use types::effects::{
-    self, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
+    self, ExecutionStatus, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
     VerifiedCertifiedTransactionEffects, VerifiedSignedTransactionEffects,
 };
 use types::encoder_validator::{FetchCommitteesRequest, FetchCommitteesResponse};
 use types::envelope::Message;
 use types::error::ExecutionError;
+use types::finality::{
+    ConsensusFinality, SignedConsensusFinality, VerifiedSignedConsensusFinality,
+};
 use types::object::{Object, ObjectID, ObjectRef};
 use types::state_sync::CommitTimestamp;
 use types::storage::object_store::ObjectStore;
@@ -1467,9 +1471,20 @@ impl AuthorityState {
             {
                 let cert_sig = epoch_store.get_transaction_cert_sig(transaction_digest)?;
 
+                // Check if this transaction requires consensus finality
+                let signed_finality = if transaction
+                    .data()
+                    .transaction_data()
+                    .requires_consensus_finality()
+                {
+                    self.get_signed_consensus_finality(transaction_digest, epoch_store)?
+                } else {
+                    None
+                };
+
                 return Ok(Some((
                     (*transaction).clone().into_message(),
-                    TransactionStatus::Executed(cert_sig, effects.into_inner()),
+                    TransactionStatus::Executed(cert_sig, effects.into_inner(), signed_finality),
                 )));
             } else {
                 // The read of effects and read of transaction are not atomic. It's possible that we reverted
@@ -1559,6 +1574,80 @@ impl AuthorityState {
         Ok(VerifiedSignedTransactionEffects::new_unchecked(
             signed_effects,
         ))
+    }
+
+    #[instrument(level = "trace", skip_all)]
+    pub fn sign_consensus_finality(
+        &self,
+        finality: ConsensusFinality,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<SignedConsensusFinality> {
+        let sig = AuthoritySignInfo::new(
+            epoch_store.epoch(),
+            &finality,
+            Intent::soma_transaction(), // Or create Intent::consensus_finality()
+            self.name,
+            &*self.secret,
+        );
+
+        let signed_finality = SignedConsensusFinality::new_from_data_and_sig(finality, sig);
+        Ok(signed_finality)
+    }
+
+    /// Get signed consensus finality for a transaction
+    pub async fn get_signed_consensus_finality_wait(
+        &self,
+        transaction_digest: &TransactionDigest,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<Option<SignedConsensusFinality>> {
+        // First check if we have a consensus leader block
+        let leader_block = epoch_store
+            .within_alive_epoch(epoch_store.notify_read_consensus_leader(transaction_digest))
+            .await
+            .map_err(|_| SomaError::EpochEnded(epoch_store.epoch()))??;
+
+        // Get the effects to determine execution status
+        if let Some(effects) = self
+            .get_transaction_cache_reader()
+            .get_executed_effects(transaction_digest)?
+        {
+            let finality = ConsensusFinality {
+                tx_digest: *transaction_digest,
+                leader_block,
+                execution_status: effects.status().clone(),
+            };
+
+            let signed = self.sign_consensus_finality(finality, epoch_store)?;
+            return Ok(Some(signed));
+        }
+
+        Ok(None)
+    }
+
+    pub fn get_signed_consensus_finality(
+        &self,
+        transaction_digest: &TransactionDigest,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<Option<SignedConsensusFinality>> {
+        // First check if we have a consensus leader block
+        if let Some(leader_block) = epoch_store.get_consensus_leader(transaction_digest)? {
+            // Get the effects to determine execution status
+            if let Some(effects) = self
+                .get_transaction_cache_reader()
+                .get_executed_effects(transaction_digest)?
+            {
+                let finality = ConsensusFinality {
+                    tx_digest: *transaction_digest,
+                    leader_block,
+                    execution_status: effects.status().clone(),
+                };
+
+                let signed = self.sign_consensus_finality(finality, epoch_store)?;
+                return Ok(Some(signed));
+            }
+        }
+
+        Ok(None)
     }
 
     pub async fn get_root_state_digest(

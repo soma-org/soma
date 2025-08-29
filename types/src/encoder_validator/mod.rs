@@ -53,4 +53,8 @@ pub struct EpochCommittee {
     pub encoder_committee: Bytes, // Serialized EncoderCommittee
     #[prost(bytes, tag = "7")]
     pub encoder_aggregate_signature: Bytes, // Serialized AggregateAuthoritySignature for encoder committee
+    #[prost(bytes, tag = "8")]
+    pub networking_committee: Bytes, // Serialized NetworkingCommittee
+    #[prost(bytes, tag = "9")]
+    pub networking_aggregate_signature: Bytes, // Serialized AggregateAuthoritySignature for networking committee
 }

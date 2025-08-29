@@ -201,7 +201,7 @@ pub fn assert_validator_total_stake_amounts(
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
             .expect("Validator not found");
@@ -233,7 +233,7 @@ pub fn assert_validator_self_stake_amounts(
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
             .expect("Validator not found");
@@ -269,7 +269,7 @@ pub fn assert_validator_non_self_stake_amounts(
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
             .expect("Validator not found");
@@ -363,15 +363,17 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
     let network_keypair = NetworkKeyPair::generate(&mut rng);
 
     // Create multiaddress
-    let net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
+    let external_net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
     let object_server_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8081").unwrap();
+    let internal_net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8082").unwrap();
 
     // Create encoder
     let mut encoder = Encoder::new(
         addr,
         encoder_keypair.public(),
         network_keypair.public(),
-        net_address,
+        internal_net_address,
+        external_net_address,
         object_server_address,
         0, // Initial voting power is 0, will be set later
         0,
@@ -477,6 +479,7 @@ pub fn create_test_system_state(
 
     SystemState::create(
         validators,
+        vec![],
         encoders,
         epoch_start_timestamp_ms,
         parameters,
@@ -541,7 +544,7 @@ pub fn validator_stake_amount(
     system_state: &SystemState,
     validator_address: SomaAddress,
 ) -> Option<u64> {
-    for validator in &system_state.validators.active_validators {
+    for validator in &system_state.validators.consensus_validators {
         if validator.metadata.soma_address == validator_address {
             return Some(validator.staking_pool.soma_balance);
         }
@@ -554,7 +557,7 @@ pub fn stake_plus_current_rewards_for_validator(
     system_state: &SystemState,
     validator_address: SomaAddress,
 ) -> Option<u64> {
-    for validator in &system_state.validators.active_validators {
+    for validator in &system_state.validators.consensus_validators {
         if validator.metadata.soma_address == validator_address {
             return Some(validator.staking_pool.soma_balance);
         }

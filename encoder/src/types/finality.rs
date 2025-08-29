@@ -3,9 +3,10 @@ use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{crypto::keys::EncoderPublicKey, error::SharedResult, scope::Scope, signed::Signed};
 
-use shared::shard::{Shard, ShardAuthToken};
+use shared::shard::Shard;
+use types::shard::ShardAuthToken;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[enum_dispatch(FinalityAPI)]
 pub enum Finality {
     V1(FinalityV1),
@@ -17,7 +18,7 @@ pub trait FinalityAPI {
     fn encoder(&self) -> &EncoderPublicKey;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FinalityV1 {
     auth_token: ShardAuthToken,
     encoder: EncoderPublicKey,

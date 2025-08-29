@@ -27,7 +27,7 @@ resolver = "2"
 
 [workspace.lints.rust]
 unsafe_code = "warn"
-missing_docs = "warn"
+#TODO: missing_docs = "warn"
 unused = { level = "warn", priority = -1 }
 
 [workspace.lints.clippy]
@@ -41,7 +41,7 @@ redundant_pub_crate = { level = "allow", priority = 1 }
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
-private_intra_doc_links = "warn"
+# TODO: private_intra_doc_links = "warn"
 
 
 [workspace.package]
@@ -93,11 +93,11 @@ test-cluster = { path = "test-cluster" }
 p2p = { path = "p2p" }
 encoder-validator-api = { path = "encoder-validator-api" }
 bin-version = { path = "bin-version" }
-soma-config = { path = "soma-config"}
-soma-keys = { path = "soma-keys"}
+soma-config = { path = "soma-config" }
+soma-keys = { path = "soma-keys" }
 
-msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim" }
-msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9", package = "msim-macros" }
+msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim" }
+msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim-macros" }
 tokio-stream = { version = "0.1.14", features = ["sync", "net"] }
 futures = "0.3.30"
 itertools = "0.13.0"
@@ -114,8 +114,7 @@ tempfile = "3.12.0"
 regex = "1.11"
 chrono = "0.4"
 
-# SHARED DEPENDENCIES
-tokio = { version = "1.44.2", features = [
+tokio = { version = "1.46.1", features = [
   "full",
   "test-util",
   "sync",
@@ -148,7 +147,7 @@ serde = { version = "1.0.204", features = [
 ] } # serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0.63"
-tokio-util = "0.7.12"
+tokio-util = "0.7.10"
 ed25519 = { version = "2.2.3", features = ["pkcs8", "alloc", "zeroize"] } # 2
 base64 = "0.22.1"
 arc-swap = "1.7.1"
@@ -225,9 +224,11 @@ mockall = "0.13.1"
 quick_cache = "0.6.10"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = { git = "https://github.com/tracel-ai/burn.git"}
-burn-ndarray = { git = "https://github.com/tracel-ai/burn.git"}
-burn-import = { git = "https://github.com/tracel-ai/burn.git", features = ["safetensors"] }
+burn = { git = "https://github.com/tracel-ai/burn.git" }
+burn-ndarray = { git = "https://github.com/tracel-ai/burn.git" }
+burn-import = { git = "https://github.com/tracel-ai/burn.git", features = [
+  "safetensors",
+] }
 
 http = "1"
 http-body = "1"
@@ -274,4 +275,5 @@ tabled = "0.20.0"
 json_to_table = "0.12.0"
 
 [patch.crates-io]
-tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "cad62679fd180a48c665f842cb80045f8fcfdee9" }
+tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98" }
+# SHARED DEPENDENCIES

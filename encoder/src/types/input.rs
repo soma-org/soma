@@ -1,9 +1,8 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use types::shard::ShardAuthToken;
 
-use shared::shard::ShardAuthToken;
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[enum_dispatch(InputAPI)]
 pub enum Input {
     V1(InputV1),
@@ -14,7 +13,7 @@ pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InputV1 {
     auth_token: ShardAuthToken,
 }

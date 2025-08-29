@@ -9,7 +9,6 @@ use crate::types::commit::Commit;
 use crate::types::commit_votes::CommitVotes;
 use crate::types::finality::Finality;
 use crate::types::input::Input;
-use crate::types::parameters::Parameters;
 use crate::types::reveal::Reveal;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -21,7 +20,8 @@ use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
 use tonic::internal::ConnectionsInfo;
-use tonic::NetworkingInfo;
+use types::parameters::Parameters;
+use types::shard_networking::NetworkingInfo;
 use types::shard_score::ShardScore;
 
 /// Default message timeout for each request.

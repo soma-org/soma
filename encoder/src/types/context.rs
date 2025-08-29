@@ -11,6 +11,7 @@ use soma_network::multiaddr::Multiaddr;
 use shared::error::{ShardError, ShardResult};
 
 use shared::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex, Epoch};
+use types::committee::NetworkingCommittee;
 
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -124,6 +125,8 @@ pub struct Committees {
     pub authority_committee: AuthorityCommittee,
     /// the committee of allowed network keys
     pub encoder_committee: EncoderCommittee,
+    /// the committee of all validators with minimum stake for networking
+    pub networking_committee: NetworkingCommittee,
     // TODO: move this to a more robust protocol config
     pub vdf_iterations: u64,
 }
@@ -133,12 +136,14 @@ impl Committees {
         epoch: Epoch,
         authority_committee: AuthorityCommittee,
         encoder_committee: EncoderCommittee,
+        networking_committee: NetworkingCommittee,
         vdf_iterations: u64,
     ) -> Self {
         Self {
             epoch,
             authority_committee,
             encoder_committee,
+            networking_committee,
             vdf_iterations,
         }
     }

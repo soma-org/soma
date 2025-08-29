@@ -3,13 +3,11 @@ use evaluation::{EvaluationScore, ProbeSet, SummaryEmbedding};
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::EncoderPublicKey,
-    digest::Digest,
-    error::SharedResult,
-    scope::Scope,
-    shard::{Shard, ShardAuthToken},
-    signed::Signed,
+    crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
+    shard::Shard, signed::Signed,
 };
+
+use crate::shard::ShardAuthToken;
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data

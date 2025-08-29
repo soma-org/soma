@@ -11,8 +11,9 @@ use types::{
         encoder_config::{EncoderCommitteeConfig, EncoderConfig, EncoderGenesisConfig},
         genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
         network_config::{CommitteeConfig, ConfigBuilder, NetworkConfig},
-        node_config::{FullnodeConfigBuilder, NodeConfig},
+        node_config::NodeConfig,
     },
+    multiaddr::Multiaddr,
 };
 
 /// A handle to an in-memory Sui Network.
@@ -20,8 +21,6 @@ use types::{
 pub struct Swarm {
     network_config: NetworkConfig,
     nodes: HashMap<AuthorityName, Node>,
-    // Save a copy of the fullnode config builder to build future fullnodes.
-    fullnode_config_builder: FullnodeConfigBuilder,
 }
 
 impl Drop for Swarm {
@@ -108,10 +107,6 @@ impl Swarm {
         let handle = node.get_node_handle().unwrap();
         self.nodes.insert(name, node);
         handle
-    }
-
-    pub fn get_fullnode_config_builder(&self) -> FullnodeConfigBuilder {
-        self.fullnode_config_builder.clone()
     }
 }
 
@@ -231,69 +226,78 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                 config_builder = config_builder.with_genesis_config(genesis_config);
             }
 
+            // Automatically add networking validators if fullnode_count > 0
+            let committee = if self.fullnode_count > 0 {
+                match self.committee {
+                    CommitteeConfig::Size(consensus_size) => CommitteeConfig::Mixed {
+                        consensus_count: consensus_size,
+                        networking_count: NonZeroUsize::new(self.fullnode_count).unwrap(),
+                    },
+                    other => other, // Keep as-is for other variants
+                }
+            } else {
+                self.committee
+            };
+
             config_builder
-                .committee(self.committee)
+                .committee(committee)
                 .encoder_committee(self.encoder_committee)
                 .rng(self.rng)
                 .build()
         });
 
+        let networking_validator_addresses: Vec<Multiaddr> = network_config
+            .validator_configs()
+            .iter()
+            .filter(|c| c.consensus_config.is_none())
+            .map(|c| c.encoder_validator_address.clone())
+            .collect();
+
+        // Now update encoder configs without holding any borrows to validator_configs
+        if !networking_validator_addresses.is_empty() && !network_config.encoder_configs.is_empty()
+        {
+            for (i, encoder_config) in network_config.encoder_configs.iter_mut().enumerate() {
+                let validator_index = i % networking_validator_addresses.len();
+                encoder_config.validator_rpc_address =
+                    networking_validator_addresses[validator_index].clone();
+
+                info!("Assigned encoder {} to networking validator", i);
+            }
+        } else if !network_config.encoder_configs.is_empty() {
+            // Fallback: get first validator address
+            if let Some(first_validator_address) = network_config
+                .validator_configs()
+                .first()
+                .map(|c| c.encoder_validator_address.clone())
+            {
+                for encoder_config in network_config.encoder_configs.iter_mut() {
+                    encoder_config.validator_rpc_address = first_validator_address.clone();
+                }
+            }
+        }
+
+        // Create all validator nodes
         let mut nodes: HashMap<_, _> = network_config
             .validator_configs()
             .iter()
             .map(|config| {
+                let node_type = if config.consensus_config.is_some() {
+                    "consensus validator"
+                } else {
+                    "networking validator"
+                };
                 info!(
-                    "SwarmBuilder configuring validator with name {}",
+                    "SwarmBuilder configuring {} {}",
+                    node_type,
                     config.protocol_public_key()
                 );
                 (config.protocol_public_key(), Node::new(config.to_owned()))
             })
             .collect();
 
-        let mut fullnode_configs = Vec::new();
-
-        let fullnode_config_builder = FullnodeConfigBuilder::new();
-        // First create all the fullnodes if requested
-        if self.fullnode_count > 0 {
-            (0..self.fullnode_count).for_each(|idx| {
-                let builder = fullnode_config_builder.clone();
-
-                let config = builder.build(&mut OsRng, &network_config);
-                info!(
-                    "SwarmBuilder configuring full node with name {}",
-                    config.protocol_public_key()
-                );
-                // Store the full node config for later encoder assignment
-                fullnode_configs.push(config.clone());
-                nodes.insert(config.protocol_public_key(), Node::new(config));
-            });
-        }
-
-        // Now update the encoder configs to point to fullnodes if any are available
-        if !fullnode_configs.is_empty() && !network_config.encoder_configs.is_empty() {
-            // Update each encoder to connect to a fullnode for validation
-            // Use round-robin assignment if there are multiple fullnodes
-            for (i, encoder_config) in network_config.encoder_configs.iter_mut().enumerate() {
-                // Pick a fullnode using round-robin
-                let fullnode_index = i % fullnode_configs.len();
-                let fullnode_config = &fullnode_configs[fullnode_index];
-
-                // Update the encoder's validator_rpc_address to point to the fullnode's encoder_validator_address
-                encoder_config.validator_rpc_address =
-                    fullnode_config.encoder_validator_address.clone();
-
-                info!(
-                    "Assigned encoder {:?} to fullnode {} for validation",
-                    encoder_config.protocol_public_key(),
-                    fullnode_config.protocol_public_key()
-                );
-            }
-        }
-
         Swarm {
             network_config,
             nodes,
-            fullnode_config_builder,
         }
     }
 }

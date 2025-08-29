@@ -9,8 +9,8 @@ use tracing::info;
 use types::{
     base::SomaAddress,
     committee::{
-        VALIDATOR_LOW_POWER, VALIDATOR_LOW_STAKE_GRACE_PERIOD, VALIDATOR_MIN_POWER,
-        VALIDATOR_VERY_LOW_POWER,
+        VALIDATOR_CONSENSUS_LOW_POWER, VALIDATOR_CONSENSUS_MIN_POWER,
+        VALIDATOR_CONSENSUS_VERY_LOW_POWER, VALIDATOR_LOW_STAKE_GRACE_PERIOD,
     },
     config::genesis_config::{
         AccountConfig, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder, DEFAULT_GAS_AMOUNT,
@@ -580,7 +580,7 @@ async fn execute_add_validator_transactions(
 ) {
     let pending_active_count = test_cluster.fullnode_handle.soma_node.with(|node| {
         let system_state = node.state().get_system_state_object_for_testing();
-        system_state.validators.pending_active_validators.len()
+        system_state.validators.pending_validators.len()
     });
 
     let gas_object = test_cluster
@@ -630,7 +630,7 @@ async fn execute_add_validator_transactions(
     // Check that we can get the pending validator from 0x5.
     test_cluster.fullnode_handle.soma_node.with(|node| {
         let system_state = node.state().get_system_state_object_for_testing();
-        let pending_active_validators = system_state.validators.pending_active_validators;
+        let pending_active_validators = system_state.validators.pending_validators;
         assert_eq!(pending_active_validators.len(), pending_active_count + 1);
         assert_eq!(
             pending_active_validators[pending_active_validators.len() - 1]

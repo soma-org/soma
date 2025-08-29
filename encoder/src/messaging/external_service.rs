@@ -12,11 +12,11 @@ use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::PeerPublicKey,
     error::{ShardError, ShardResult},
-    shard_verifier::ShardVerifier,
     signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
+use types::shard_verifier::ShardVerifier;
 
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
     context: Arc<Context>,

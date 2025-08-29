@@ -16,13 +16,15 @@ use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::EncoderPublicKey,
     error::{ShardError, ShardResult},
-    shard_verifier::ShardVerifier,
     signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
 use tracing::{debug, error, info, trace, warn};
-use types::shard_score::{verify_signed_score, ShardScore, ShardScoreAPI};
+use types::{
+    shard_score::{verify_signed_score, ShardScore, ShardScoreAPI},
+    shard_verifier::ShardVerifier,
+};
 
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
     context: Context,

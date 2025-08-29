@@ -16,6 +16,7 @@ use tracing::{error, info, instrument, warn};
 use types::committee::AuthorityIndex;
 use types::consensus::commit::CommittedSubDag;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
+use types::transaction::TransactionKind;
 use types::{
     accumulator::CommitIndex,
     base::AuthorityName,
@@ -257,6 +258,17 @@ impl ConsensusHandler {
             )
             .await
             .expect("Unrecoverable error in consensus handler");
+
+        let leader_block = consensus_output.leader_block_ref();
+
+        // After processing transactions, store finality for txs - but only if not already stored
+        for cert in &transactions_to_schedule {
+            // Only insert if this is the first time we're seeing this transaction
+            // Use insert_if_not_exists pattern to ensure we keep the first block ref
+            self.epoch_store
+                .try_insert_consensus_leader(cert.digest(), leader_block)
+                .expect("Failed to insert consensus leader block");
+        }
 
         if end_of_publish_quorum {
             // Execute advance epoch tx

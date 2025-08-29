@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub struct BlockEntropy(Bytes);
+pub struct BlockEntropy(pub Bytes);
 
 impl BlockEntropy {
     pub fn new(bytes: Bytes) -> Self {
@@ -23,7 +23,7 @@ impl BlockEntropy {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub struct BlockEntropyProof(Bytes);
+pub struct BlockEntropyProof(pub Bytes);
 impl BlockEntropyProof {
     pub fn new(bytes: Bytes) -> Self {
         Self(bytes)

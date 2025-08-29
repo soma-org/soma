@@ -33,7 +33,6 @@ use crate::{
         tonic::{
             external::EncoderExternalTonicManager,
             internal::{ConnectionsInfo, EncoderInternalTonicClient, EncoderInternalTonicManager},
-            NetworkingInfo,
         },
         EncoderExternalNetworkManager, EncoderInternalNetworkManager,
     },
@@ -46,11 +45,9 @@ use crate::{
         committee_sync_manager::CommitteeSyncManager,
         encoder_validator_client::EncoderValidatorClient,
     },
-    types::{
-        context::{Committees, Context, InnerContext},
-        parameters::Parameters,
-    },
+    types::context::{Committees, Context, InnerContext},
 };
+use types::shard_networking::NetworkingInfo;
 
 use super::{
     internal_broadcaster::Broadcaster,
@@ -59,10 +56,9 @@ use super::{
 use shared::{
     actors::ActorManager,
     encoder_committee::{Encoder, EncoderCommittee},
-    shard::ShardAuthToken,
-    shard_verifier::ShardVerifier,
     workers::vdf::VDFProcessor,
 };
+use types::{shard::ShardAuthToken, shard_verifier::ShardVerifier};
 
 #[cfg(msim)]
 use msim::task::NodeId;
@@ -111,10 +107,11 @@ pub struct EncoderNode {
 }
 
 impl EncoderNode {
+    // TODO: Remove client_key after NetworkingCommittee is confirmed working
     pub async fn start(config: EncoderConfig, client_key: Option<PeerPublicKey>) -> Self {
         let encoder_keypair = config.encoder_keypair.encoder_keypair().clone();
         let peer_keypair = PeerKeyPair::new(config.peer_keypair.keypair().inner().copy());
-        let parameters = Arc::new(Parameters::default());
+        let parameters = Arc::new(types::parameters::Parameters::default());
         let internal_address: Multiaddr = config
             .internal_network_address
             .to_string()
@@ -365,6 +362,7 @@ impl EncoderNode {
             config.genesis.system_object().epoch_start_timestamp_ms(),
             config.epoch_duration_ms,
             encoder_keypair.public(),
+            // TODO: Remove this after NetworkingCommittee is confirmed working
             client_key.clone(),
         );
 
@@ -461,6 +459,7 @@ fn create_context_from_genesis(
         0, // Genesis epoch
         authority_committee,
         genesis_encoder_committee,
+        config.genesis.networking_committee(),
         1, // TODO: Default VDF iterations, adjust as needed
     );
 
@@ -495,7 +494,7 @@ fn create_context_from_genesis(
     for peer_key in initial_connections_info.keys() {
         allowed_keys.insert(peer_key.clone().into_inner());
     }
-    // TODO: This is temporary for tests
+    // TODO: Remove this after NetworkingCommittee is confirmed working
     if let Some(client) = client_key {
         allowed_keys.insert(client.into_inner());
     }

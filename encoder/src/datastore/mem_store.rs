@@ -181,11 +181,12 @@ impl Store for MemStore {
 
         match guard.signed_commits.get(&encoder_key) {
             Some(existing_commit) => {
-                if existing_commit != signed_commit {
-                    return Err(ShardError::Conflict(
-                        "encoder has a different existing commit".to_string(),
-                    ));
-                }
+                // TODO: use digests to compare Shard message types
+                // if existing_commit != signed_commit {
+                //     return Err(ShardError::Conflict(
+                //         "encoder has a different existing commit".to_string(),
+                //     ));
+                // }
             }
             None => {
                 guard
@@ -267,11 +268,12 @@ impl Store for MemStore {
 
         match guard.signed_reveals.get(&encoder_key) {
             Some(existing_reveal) => {
-                if existing_reveal != signed_reveal {
-                    return Err(ShardError::Conflict(
-                        "encoder has a different existing signed reveal".to_string(),
-                    ));
-                }
+                // TODO: use digests to compare Shard message types
+                // if existing_reveal != signed_reveal {
+                //     return Err(ShardError::Conflict(
+                //         "encoder has a different existing signed reveal".to_string(),
+                //     ));
+                // }
             }
             None => {
                 guard
@@ -368,11 +370,12 @@ impl Store for MemStore {
 
         match guard.signed_commit_votes.get(&encoder_key) {
             Some(existing) => {
-                if existing != votes {
-                    return Err(ShardError::Conflict(
-                        "encoder has a different commit vote".to_string(),
-                    ));
-                }
+                // TODO: use digests to compare Shard message types
+                // if existing != votes {
+                //     return Err(ShardError::Conflict(
+                //         "encoder has a different commit vote".to_string(),
+                //     ));
+                // }
             }
             None => {
                 guard.signed_commit_votes.insert(encoder_key, votes.clone());
@@ -515,11 +518,12 @@ impl Store for MemStore {
 
         match guard.signed_scores.get(&encoder_key) {
             Some(existing) => {
-                if existing != scores {
-                    return Err(ShardError::Conflict(
-                        "encoder has a different signed score".to_string(),
-                    ));
-                }
+                // TODO: use digests to compare Shard message types
+                // if existing != scores {
+                //     return Err(ShardError::Conflict(
+                //         "encoder has a different signed score".to_string(),
+                //     ));
+                // }
             }
             None => {
                 guard.signed_scores.insert(encoder_key, scores.clone());

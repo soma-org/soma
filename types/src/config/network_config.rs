@@ -41,6 +41,7 @@ use super::{
     node_config::ValidatorConfigBuilder,
 };
 
+#[derive(Debug)]
 pub enum CommitteeConfig {
     Size(NonZeroUsize),
     Validators(Vec<ValidatorGenesisConfig>),
@@ -48,6 +49,10 @@ pub enum CommitteeConfig {
     /// Indicates that a committee should be deterministically generated, using the provided rng
     /// as a source of randomness as well as generating deterministic network port information.
     Deterministic((NonZeroUsize, Option<Vec<SomaKeyPair>>)),
+    Mixed {
+        consensus_count: NonZeroUsize,
+        networking_count: NonZeroUsize,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -155,7 +160,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         let encoder_committee = self.encoder_committee;
 
         let mut rng = self.rng.unwrap();
-        let validators = match committee {
+        let all_validators = match committee {
             CommitteeConfig::Size(size) => {
                 // We always get fixed protocol keys from this function (which is isolated from
                 // external test randomness because it uses a fixed seed). Necessary because some
@@ -206,6 +211,35 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 }
                 configs
             }
+            CommitteeConfig::Mixed {
+                consensus_count,
+                networking_count,
+            } => {
+                let mut configs = vec![];
+
+                // Generate consensus validators
+                let (_, consensus_keys) =
+                    Committee::new_simple_test_committee_of_size(consensus_count.get());
+                for (i, authority_key) in consensus_keys.into_iter().enumerate() {
+                    // let port_offset = 8000 + i * 10;
+                    let builder =
+                        ValidatorGenesisConfigBuilder::new().with_protocol_key_pair(authority_key);
+                    // .with_ip("127.0.0.1".to_owned())
+                    // .with_deterministic_ports(port_offset as u16);
+                    configs.push(builder.build(&mut rng));
+                }
+
+                // Generate networking validators
+                for i in 0..networking_count.get() {
+                    let builder = ValidatorGenesisConfigBuilder::new()
+                        // .with_ip("127.0.0.1".to_owned())
+                        // .with_deterministic_ports(port_offset as u16)
+                        .as_networking_only(); // Mark as networking-only
+                    configs.push(builder.build(&mut rng));
+                }
+
+                configs
+            }
         };
 
         // Generate encoders
@@ -252,13 +286,17 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         let (account_keys, allocations) = genesis_config.generate_accounts(&mut rng).unwrap();
 
+        let (networking_configs, consensus_configs): (Vec<_>, Vec<_>) = all_validators
+            .into_iter()
+            .partition(|v| v.is_networking_only);
+
         let token_distribution_schedule = {
             let mut builder = TokenDistributionScheduleBuilder::new();
             for allocation in allocations {
                 builder.add_allocation(allocation);
             }
             // Add allocations for each validator
-            for validator in &validators {
+            for validator in &consensus_configs {
                 let account_key: PublicKey = validator.account_key_pair.public();
                 let address = SomaAddress::from(&account_key);
                 // Give each validator some gas so they can pay for their transactions.
@@ -271,6 +309,27 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 let stake = TokenAllocation {
                     recipient_address: address,
                     amount_shannons: validator.stake,
+                    staked_with_validator: Some(address),
+                    staked_with_encoder: None,
+                };
+                builder.add_allocation(gas_coin);
+                builder.add_allocation(stake);
+            }
+
+            for validator in &networking_configs {
+                let account_key: PublicKey = validator.account_key_pair.public();
+                let address = SomaAddress::from(&account_key);
+                // Give each validator some gas so they can pay for their transactions.
+                let gas_coin = TokenAllocation {
+                    recipient_address: address,
+                    amount_shannons: DEFAULT_GAS_AMOUNT * 10,
+                    staked_with_validator: None,
+                    staked_with_encoder: None,
+                };
+                // TODO: determine a cleaner way of making the starting fullnode have above min networking voting power but below min consensus power
+                let stake = TokenAllocation {
+                    recipient_address: address,
+                    amount_shannons: validator.stake / 10,
                     staked_with_validator: Some(address),
                     staked_with_encoder: None,
                 };
@@ -312,7 +371,26 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         // let unix_epoch_instant = now.checked_sub(duration_since_unix_epoch).unwrap();
 
         let mut system_state = SystemState::create(
-            validators
+            consensus_configs
+                .iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    Validator::new(
+                        (&v.account_key_pair.public()).into(),
+                        (v.key_pair.public()).clone(),
+                        v.network_key_pair.public().into(),
+                        v.worker_key_pair.public().into(),
+                        v.network_address.clone(),
+                        v.consensus_address.clone(),
+                        v.network_address.clone(),
+                        v.encoder_validator_address.clone(),
+                        0,
+                        v.commission_rate,
+                        ObjectID::random(),
+                    )
+                })
+                .collect(),
+            networking_configs
                 .iter()
                 .enumerate()
                 .map(|(i, v)| {
@@ -340,6 +418,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         e.encoder_key_pair.public().clone(),
                         NetworkPublicKey::new(e.peer_key_pair.public().into_inner()),
                         e.internal_network_address.clone(),
+                        e.external_network_address.clone(),
                         e.object_address.clone(),
                         0,
                         e.commission_rate,
@@ -464,7 +543,12 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             inner.written.iter().map(|(_, o)| o.clone()).collect(),
         );
 
-        let seed_peers: Vec<SeedPeer> = validators
+        let all_validators: Vec<ValidatorGenesisConfig> = networking_configs
+            .into_iter()
+            .chain(consensus_configs.into_iter())
+            .collect();
+
+        let seed_peers: Vec<SeedPeer> = all_validators
             .iter()
             .map(|config| SeedPeer {
                 peer_id: Some(PeerId(
@@ -474,9 +558,9 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             })
             .collect();
 
-        let validator_rpc_address = validators[0].encoder_validator_address.clone(); // TODO: Temporarily using first validator as RPC address
+        let validator_rpc_address = all_validators[0].encoder_validator_address.clone(); // TODO: Temporarily using first validator as RPC address
 
-        let validator_configs = validators
+        let validator_configs = all_validators
             .into_iter()
             .enumerate()
             .map(|(idx, validator)| {

@@ -14,6 +14,7 @@ use std::{
 };
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, info, warn};
+use types::committee::{to_networking_committee_intent, NetworkingCommittee};
 use types::{
     base::AuthorityName,
     client::connect,
@@ -31,11 +32,12 @@ use types::{
     },
     multiaddr::Multiaddr,
 };
-
 pub struct VerifiedCommittees {
     pub validator_committee: Committee,
     pub encoder_committee: ShardCommittee,
+    pub networking_committee: NetworkingCommittee,
     pub previous_encoder_committee: Option<ShardCommittee>,
+    pub previous_networking_committee: Option<NetworkingCommittee>,
 }
 
 /// Enriched result type with all necessary committee information
@@ -43,7 +45,9 @@ pub struct EnrichedVerifiedCommittees {
     // Original verification data
     pub validator_committee: Committee,
     pub encoder_committee: ShardCommittee,
+    pub networking_committee: NetworkingCommittee,
     pub previous_encoder_committee: Option<ShardCommittee>,
+    pub previous_networking_committee: Option<NetworkingCommittee>,
 
     // Additional data for CommitteeSyncManager
     pub authority_committee: AuthorityCommittee,
@@ -61,7 +65,9 @@ pub struct EncoderValidatorClient {
 
     current_validator_committee: Committee,
     current_encoder_committee: Option<ShardCommittee>,
+    current_networking_committee: Option<NetworkingCommittee>,
     previous_encoder_committee: Option<ShardCommittee>,
+    previous_networking_committee: Option<NetworkingCommittee>,
     current_epoch: EpochId,
 }
 
@@ -80,8 +86,10 @@ impl EncoderValidatorClient {
         Ok(Self {
             client,
             current_validator_committee: genesis_committee,
+            current_networking_committee: None,
             current_encoder_committee: None,
             previous_encoder_committee: None,
+            previous_networking_committee: None,
             current_epoch: 0, // Genesis epoch
         })
     }
@@ -189,12 +197,12 @@ impl EncoderValidatorClient {
                     // Convert NetworkPublicKey to PeerPublicKey (they have the same inner type)
                     let peer_key = PeerPublicKey::new(metadata.network_key.clone().into_inner());
 
-                    // Add to network info mapping
+                    // Add internal network address to network info mapping
                     networking.insert(
                         encoder_key.clone(),
                         (
                             metadata
-                                .network_address
+                                .internal_network_address
                                 .clone()
                                 .to_string()
                                 .parse()
@@ -248,16 +256,20 @@ impl EncoderValidatorClient {
         &self,
         prev_committee: &Committee,
         committee_data: &EpochCommittee,
-    ) -> Result<(Committee, ShardCommittee)> {
+    ) -> Result<(Committee, ShardCommittee, NetworkingCommittee)> {
         info!("Verifying committee for epoch {}", committee_data.epoch);
 
-        // Deserialize validator set and encoder committee
+        // Deserialize validator set, encoder committee, and networking committee
         let validator_set: ValidatorSet = bcs::from_bytes(&committee_data.validator_set)
             .map_err(|e| anyhow!("Failed to deserialize validator set: {}", e))?;
 
         let encoder_committee: EncoderCommittee =
             bcs::from_bytes(&committee_data.encoder_committee)
                 .map_err(|e| anyhow!("Failed to deserialize encoder committee: {}", e))?;
+
+        let networking_committee: NetworkingCommittee =
+            bcs::from_bytes(&committee_data.networking_committee)
+                .map_err(|e| anyhow!("Failed to deserialize networking committee: {}", e))?;
 
         // Deserialize aggregate signatures
         let val_agg_sig: AggregateAuthoritySignature =
@@ -268,6 +280,14 @@ impl EncoderValidatorClient {
         let enc_agg_sig: AggregateAuthoritySignature =
             bcs::from_bytes(&committee_data.encoder_aggregate_signature)
                 .map_err(|e| anyhow!("Failed to deserialize encoder aggregate signature: {}", e))?;
+
+        let net_agg_sig: AggregateAuthoritySignature =
+            bcs::from_bytes(&committee_data.networking_aggregate_signature).map_err(|e| {
+                anyhow!(
+                    "Failed to deserialize networking aggregate signature: {}",
+                    e
+                )
+            })?;
 
         // Get the messages that were signed
         let val_digest = validator_set
@@ -283,6 +303,13 @@ impl EncoderValidatorClient {
 
         let enc_message = bcs::to_bytes(&to_encoder_committee_intent(enc_digest))
             .map_err(|e| anyhow!("Failed to serialize encoder intent message: {}", e))?;
+
+        let net_digest = networking_committee
+            .compute_digest()
+            .map_err(|e| anyhow!("Failed to compute networking committee digest: {}", e))?;
+
+        let net_message = bcs::to_bytes(&to_networking_committee_intent(net_digest))
+            .map_err(|e| anyhow!("Failed to serialize networking intent message: {}", e))?;
 
         // Create a stake aggregator to check quorum
         let mut aggregator = StakeAggregator::<QuorumThreshold>::new();
@@ -324,7 +351,7 @@ impl EncoderValidatorClient {
             })
             .collect();
 
-        // Verify both aggregate signatures
+        // Verify all three aggregate signatures
         val_agg_sig.verify(&pubkeys, &val_message).map_err(|e| {
             warn!("Validator aggregate signature verification failed: {}", e);
             anyhow!("Invalid validator aggregate signature: {}", e)
@@ -337,14 +364,22 @@ impl EncoderValidatorClient {
             );
             anyhow!("Invalid encoder committee aggregate signature: {}", e)
         })?;
-        // If verification succeeded, convert validator set to committee
 
+        net_agg_sig.verify(&pubkeys, &net_message).map_err(|e| {
+            warn!(
+                "Networking committee aggregate signature verification failed: {}",
+                e
+            );
+            anyhow!("Invalid networking committee aggregate signature: {}", e)
+        })?;
+
+        // If verification succeeded, convert to committees
         let validator_committee =
             self.validator_set_to_committee(&validator_set, committee_data.epoch)?;
         let encoder_committee =
             EncoderCommittee::convert_encoder_committee(&encoder_committee, committee_data.epoch);
 
-        Ok((validator_committee, encoder_committee))
+        Ok((validator_committee, encoder_committee, networking_committee))
     }
 
     /// Verify a single committee and enrich it with network data
@@ -352,7 +387,9 @@ impl EncoderValidatorClient {
         &self,
         validator_committee: Committee,
         encoder_committee: ShardCommittee,
+        networking_committee: NetworkingCommittee,
         previous_encoder_committee: Option<ShardCommittee>,
+        previous_networking_committee: Option<NetworkingCommittee>,
         committee_data: &EpochCommittee,
         previous_committee_data: Option<&EpochCommittee>,
     ) -> Result<EnrichedVerifiedCommittees> {
@@ -390,7 +427,9 @@ impl EncoderValidatorClient {
         Ok(EnrichedVerifiedCommittees {
             validator_committee,
             encoder_committee,
+            networking_committee,
             previous_encoder_committee,
+            previous_networking_committee,
             authority_committee,
             networking_info,
             connections_info,
@@ -412,7 +451,11 @@ impl EncoderValidatorClient {
                 encoder_committee: self.current_encoder_committee.clone().ok_or_else(|| {
                     anyhow!("No encoder committee for epoch {}", self.current_epoch)
                 })?,
+                networking_committee: self.current_networking_committee.clone().ok_or_else(
+                    || anyhow!("No networking committee for epoch {}", self.current_epoch),
+                )?,
                 previous_encoder_committee: self.previous_encoder_committee.clone(),
+                previous_networking_committee: self.previous_networking_committee.clone(),
                 authority_committee: Committee::convert_to_authority_committee(
                     &self.current_validator_committee,
                 ),
@@ -430,7 +473,9 @@ impl EncoderValidatorClient {
         let mut current_epoch = self.current_epoch;
         let mut current_validator_committee = self.current_validator_committee.clone();
         let mut current_encoder_committee = self.current_encoder_committee.clone();
+        let mut current_networking_committee = self.current_networking_committee.clone();
         let mut previous_encoder_committee = self.previous_encoder_committee.clone();
+        let mut previous_networking_committee = self.previous_networking_committee.clone();
 
         // Track the most recently processed committee data for enrichment
         let mut last_committee_data: Option<EpochCommittee> = None;
@@ -468,12 +513,13 @@ impl EncoderValidatorClient {
                 }
 
                 // Use verify_committee for each committee
-                let (validator_committee, encoder_committee) =
+                let (validator_committee, encoder_committee, networking_committee) =
                     self.verify_committee(&current_validator_committee, &committee_data)?;
 
                 // Store the committee data for previous epoch
                 if current_encoder_committee.is_some() {
                     previous_encoder_committee = current_encoder_committee;
+                    previous_networking_committee = current_networking_committee;
                     if let Some(last_data) = last_committee_data.take() {
                         previous_committee_data = Some(last_data);
                     }
@@ -482,6 +528,7 @@ impl EncoderValidatorClient {
                 // Update current committees
                 current_validator_committee = validator_committee;
                 current_encoder_committee = Some(encoder_committee);
+                current_networking_committee = Some(networking_committee);
                 current_epoch = committee_data.epoch;
 
                 // Keep track of the most recent committee data
@@ -502,25 +549,31 @@ impl EncoderValidatorClient {
         // Update the client's state
         self.current_validator_committee = current_validator_committee.clone();
         self.current_encoder_committee = current_encoder_committee.clone();
+        self.current_networking_committee = current_networking_committee.clone();
         self.previous_encoder_committee = previous_encoder_committee.clone();
+        self.previous_networking_committee = previous_networking_committee.clone();
         self.current_epoch = current_epoch;
 
         // Create enriched result using committee data
-        if let (Some(encoder_committee), Some(committee_data)) =
-            (current_encoder_committee, last_committee_data)
-        {
+        if let (Some(encoder_committee), Some(networking_committee), Some(committee_data)) = (
+            current_encoder_committee,
+            current_networking_committee,
+            last_committee_data,
+        ) {
             // Create enriched result using both current and previous committee data
             let enriched = self.enrich_committee(
                 current_validator_committee,
                 encoder_committee,
+                networking_committee,
                 previous_encoder_committee,
+                previous_networking_committee,
                 &committee_data,
                 previous_committee_data.as_ref(),
             )?;
 
             Ok(enriched)
         } else {
-            // If no committees were processed or we don't have an encoder committee
+            // If no committees were processed or we don't have required committees
             Err(anyhow!("No valid committees found or processed"))
         }
     }
@@ -573,7 +626,12 @@ impl EncoderValidatorClient {
                 .current_encoder_committee
                 .clone()
                 .ok_or_else(|| anyhow!("No encoder committee available"))?,
+            networking_committee: self
+                .current_networking_committee
+                .clone()
+                .ok_or_else(|| anyhow!("No networking committee available"))?,
             previous_encoder_committee: self.previous_encoder_committee.clone(),
+            previous_networking_committee: self.previous_networking_committee.clone(),
         })
     }
 }

@@ -1,8 +1,18 @@
 use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
+use fastcrypto::traits::KeyPair;
 use futures::{
     future::{select, Either},
     FutureExt,
+};
+use shared::{
+    checksum::Checksum,
+    crypto::keys::PeerPublicKey,
+    digest::Digest,
+    metadata::{
+        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
+    },
+    shard::ShardEntropy,
 };
 use tokio::{
     sync::broadcast::{error::RecvError, Receiver},
@@ -11,22 +21,29 @@ use tokio::{
 };
 use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
 use types::{
+    committee::EncoderCommittee,
     digests::TransactionDigest,
     effects::{TransactionEffectsAPI, VerifiedCertifiedTransactionEffects},
+    entropy::SimpleVDF,
     error::{SomaError, SomaResult},
+    finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
         FinalizedEffects, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
         QuorumDriverError, QuorumDriverResponse, QuorumDriverResult,
     },
-    system_state::SystemState,
-    transaction::{VerifiedExecutableTransaction, VerifiedTransaction},
+    shard::ShardAuthToken,
+    system_state::{SystemState, SystemStateTrait},
+    transaction::{
+        Transaction, TransactionKind, VerifiedExecutableTransaction, VerifiedTransaction,
+    },
 };
 use utils::notify_read::NotifyRead;
 
 use crate::{
     aggregator::AuthorityAggregator,
     client::{AuthorityAPI, NetworkAuthorityClient},
+    encoder_client::EncoderClientService,
     epoch_store::AuthorityPerEpochStore,
     quorum_driver::{
         OnsiteReconfigObserver, QuorumDriverHandler, QuorumDriverHandlerBuilder, ReconfigObserver,
@@ -46,9 +63,22 @@ pub struct TransactiondOrchestrator<A: Clone> {
     _local_executor_handle: JoinHandle<()>,
     // pending_tx_log: Arc<WritePathPendingTransactionLog>,
     notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
+    vdf: Arc<SimpleVDF>,
+    encoder_client: Option<Arc<EncoderClientService>>,
 }
 
 impl TransactiondOrchestrator<NetworkAuthorityClient> {
+    pub fn new_with_encoder_client(
+        validators: Arc<AuthorityAggregator<NetworkAuthorityClient>>,
+        validator_state: Arc<AuthorityState>,
+        reconfig_channel: Receiver<SystemState>,
+        encoder_client: Option<Arc<EncoderClientService>>,
+    ) -> Self {
+        let observer =
+            OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
+        TransactiondOrchestrator::new(validators, validator_state, observer, encoder_client)
+    }
+
     pub fn new_with_auth_aggregator(
         validators: Arc<AuthorityAggregator<NetworkAuthorityClient>>,
         validator_state: Arc<AuthorityState>,
@@ -56,7 +86,7 @@ impl TransactiondOrchestrator<NetworkAuthorityClient> {
     ) -> Self {
         let observer =
             OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
-        TransactiondOrchestrator::new(validators, validator_state, observer)
+        TransactiondOrchestrator::new(validators, validator_state, observer, None)
     }
 }
 
@@ -69,6 +99,7 @@ where
         validators: Arc<AuthorityAggregator<A>>,
         validator_state: Arc<AuthorityState>,
         reconfig_observer: OnsiteReconfigObserver,
+        encoder_client: Option<Arc<EncoderClientService>>,
     ) -> Self {
         let notifier = Arc::new(NotifyRead::new());
         let quorum_driver_handler = Arc::new(
@@ -87,11 +118,16 @@ where
             })
         };
 
+        // TODO: Configure VDF iterations
+        const VDF_ITERATIONS: u64 = 1; // Adjust based on security requirements
+
         Self {
             quorum_driver_handler,
             validator_state,
             _local_executor_handle,
             notifier,
+            vdf: Arc::new(SimpleVDF::new(VDF_ITERATIONS)),
+            encoder_client,
         }
     }
 }
@@ -123,7 +159,7 @@ where
             ExecuteTransactionRequestType::WaitForLocalExecution
         ) {
             let executable_tx = VerifiedExecutableTransaction::new_from_quorum_execution(
-                transaction,
+                transaction.clone(),
                 response.effects_cert.executed_epoch(),
             );
             Self::wait_for_finalized_tx_executed_locally_with_timeout(
@@ -138,10 +174,18 @@ where
             false
         };
 
-        let QuorumDriverResponse { effects_cert } = response;
+        let QuorumDriverResponse {
+            effects_cert,
+            finality_cert,
+        } = response;
+
+        let finality_proof = self
+            .process_finality_and_encoder_work(&transaction, finality_cert)
+            .await;
 
         let response = ExecuteTransactionResponse {
             effects: FinalizedEffects::new_from_effects_cert(effects_cert.into()),
+            finality_proof,
         };
 
         Ok((response, executed_locally))
@@ -279,7 +323,13 @@ where
     ) {
         loop {
             match effects_receiver.recv().await {
-                Ok(Ok((transaction, QuorumDriverResponse { effects_cert }))) => {
+                Ok(Ok((
+                    transaction,
+                    QuorumDriverResponse {
+                        effects_cert,
+                        finality_cert,
+                    },
+                ))) => {
                     let tx_digest = transaction.digest();
 
                     let epoch_store = validator_state.load_epoch_store_one_call_per_task();
@@ -323,6 +373,202 @@ where
                 }
             }
         }
+    }
+
+    /// Process finality proof generation and encoder work initiation for transactions requiring consensus finality
+    async fn process_finality_and_encoder_work(
+        &self,
+        transaction: &VerifiedTransaction,
+        finality_cert: Option<VerifiedCertifiedConsensusFinality>,
+    ) -> Option<FinalityProof> {
+        info!(
+            "Processing finality and encoder work for tx: {}",
+            transaction.digest()
+        );
+        // Early return if transaction doesn't require consensus finality
+        if !transaction
+            .data()
+            .transaction_data()
+            .requires_consensus_finality()
+        {
+            info!("No finality required for tx: {}", transaction.digest());
+            return None;
+        }
+
+        // Early return if no finality certificate
+        let finality_cert = finality_cert?;
+
+        // Generate finality proof
+        let finality_proof = match self
+            .generate_finality_proof(transaction.inner().clone(), finality_cert.inner().clone())
+            .await
+        {
+            Ok(proof) => proof,
+            Err(e) => {
+                error!(
+                    tx_digest = ?transaction.digest(),
+                    error = ?e,
+                    "Failed to generate FinalityProof"
+                );
+                return None;
+            }
+        };
+
+        info!("Generated finality proof for tx: {}", transaction.digest());
+
+        // TODO: define real Metadata and commitment
+        let size_in_bytes = 1;
+        let metadata = DownloadableMetadataV1::new(
+            PeerPublicKey::new(
+                self.validator_state
+                    .config
+                    .network_key_pair()
+                    .into_inner()
+                    .public()
+                    .clone(),
+            ),
+            self.validator_state
+                .config
+                .network_address
+                .to_string()
+                .parse()
+                .unwrap(),
+            MetadataV1::new(Checksum::default(), size_in_bytes),
+        );
+        let metadata_commitment =
+            MetadataCommitment::new(DownloadableMetadata::V1(metadata), [0u8; 32]);
+
+        self.initiate_encoder_work_for_embed_data(
+            &finality_proof,
+            metadata_commitment.clone(),
+            transaction.digest(),
+        )
+        .await;
+
+        Some(finality_proof)
+    }
+
+    /// Initiate encoder work for EmbedData transactions
+    async fn initiate_encoder_work_for_embed_data(
+        &self,
+        finality_proof: &FinalityProof,
+        metadata_commitment: MetadataCommitment,
+        tx_digest: &TransactionDigest,
+    ) {
+        match self
+            .generate_shard_selection(finality_proof, metadata_commitment)
+            .await
+        {
+            Ok(shard_auth_token) => {
+                debug!(
+                    ?tx_digest,
+                    shard_size = shard_auth_token.shard.size(),
+                    "Generated shard selection for EmbedData transaction"
+                );
+
+                if let Some(encoder_client) = &self.encoder_client {
+                    // Update encoder committee before sending
+                    if let Ok(committee) = self.get_current_encoder_committee().await {
+                        encoder_client.update_encoder_committee(&committee);
+                    }
+
+                    // Spawn async task to avoid blocking transaction response
+                    let client = encoder_client.clone();
+                    let token = shard_auth_token.clone();
+                    let digest = *tx_digest;
+
+                    tokio::spawn(async move {
+                        match client.send_to_shard(token, Duration::from_secs(5)).await {
+                            Ok(()) => {
+                                debug!(?digest, "Successfully sent shard input to all members");
+                            }
+                            Err(e) => {
+                                error!(?digest, error = ?e, "Failed to send to shard members");
+                            }
+                        }
+                    });
+                }
+            }
+            Err(e) => {
+                error!(
+                    ?tx_digest,
+                    error = ?e,
+                    "Failed to generate shard selection"
+                );
+            }
+        }
+    }
+
+    /// Generate a FinalityProof for EmbedData transactions with consensus finality
+    async fn generate_finality_proof(
+        &self,
+        transaction: Transaction,
+        consensus_finality: CertifiedConsensusFinality,
+    ) -> SomaResult<FinalityProof> {
+        let block_ref = consensus_finality.data().leader_block.clone();
+        let vdf = self.vdf.clone();
+
+        // Move the VDF computation to a blocking thread pool
+        let (block_entropy, block_entropy_proof) =
+            tokio::task::spawn_blocking(move || vdf.get_entropy(block_ref))
+                .await
+                .map_err(|e| SomaError::from(format!("VDF task failed: {}", e)))??;
+
+        info!(
+            block_ref = ?consensus_finality.data().leader_block,
+            tx_digest = ?transaction.digest(),
+            "Generated entropy proof for finality"
+        );
+
+        // Create the FinalityProof
+        let finality_proof = FinalityProof::new(
+            transaction,
+            consensus_finality,
+            block_entropy,
+            block_entropy_proof,
+        );
+
+        Ok(finality_proof)
+    }
+
+    /// Generate shard selection for EmbedData transactions
+    async fn generate_shard_selection(
+        &self,
+        finality_proof: &FinalityProof,
+        metadata_commitment: MetadataCommitment,
+    ) -> SomaResult<ShardAuthToken> {
+        // Get current encoder committee from system state
+        let encoder_committee = self.get_current_encoder_committee().await?;
+
+        // Create ShardEntropy
+        let shard_entropy = ShardEntropy::new(
+            metadata_commitment.clone(),
+            finality_proof.block_entropy.clone(),
+        );
+
+        // Calculate entropy digest
+        let entropy_digest = Digest::new(&shard_entropy)
+            .map_err(|e| SomaError::from(format!("Failed to compute shard entropy: {}", e)))?;
+
+        let shard = encoder_committee.sample_shard(entropy_digest)?;
+
+        // Create ShardAuthToken
+        let shard_auth_token =
+            ShardAuthToken::new(finality_proof.clone(), metadata_commitment, shard);
+
+        Ok(shard_auth_token)
+    }
+
+    /// Get current encoder committee from system state
+    async fn get_current_encoder_committee(&self) -> SomaResult<EncoderCommittee> {
+        // Get system state object
+        let system_state = self
+            .validator_state
+            .get_object_cache_reader()
+            .get_system_state_object()?;
+
+        // Get encoder committee for current epoch
+        Ok(system_state.get_current_epoch_encoder_committee())
     }
 
     pub fn quorum_driver(&self) -> &Arc<QuorumDriverHandler<A>> {

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 // All information needed to build a NodeConfig for a validator.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ValidatorGenesisConfig {
     pub key_pair: AuthorityKeyPair,
     pub worker_key_pair: NetworkKeyPair,
@@ -26,6 +26,7 @@ pub struct ValidatorGenesisConfig {
     #[serde(default = "default_stake")]
     pub stake: u64,
     pub commission_rate: u64,
+    pub is_networking_only: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -129,6 +130,7 @@ pub struct ValidatorGenesisConfigBuilder {
     protocol_key_pair: Option<AuthorityKeyPair>,
     account_key_pair: Option<SomaKeyPair>,
     ip: Option<String>,
+    is_networking_only: Option<bool>,
     /// If set, the validator will use deterministic addresses based on the port offset.
     /// This is useful for benchmarking.
     port_offset: Option<u16>,
@@ -152,6 +154,11 @@ impl ValidatorGenesisConfigBuilder {
 
     pub fn with_ip(mut self, ip: String) -> Self {
         self.ip = Some(ip);
+        self
+    }
+
+    pub fn as_networking_only(mut self) -> Self {
+        self.is_networking_only = Some(true);
         self
     }
 
@@ -209,6 +216,7 @@ impl ValidatorGenesisConfigBuilder {
             encoder_validator_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,
+            is_networking_only: self.is_networking_only.unwrap_or(false),
         }
     }
 }

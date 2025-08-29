@@ -26,7 +26,6 @@ use tokio::{
 };
 use tonic::async_trait;
 use tracing::{debug, error, info, instrument, trace_span, warn};
-use types::storage::committee_store::CommitteeStore;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::{
     base::AuthorityName,
@@ -41,6 +40,7 @@ use types::{
     system_state::{SystemState, SystemStateTrait},
     transaction::{CertifiedTransaction, Transaction},
 };
+use types::{finality, storage::committee_store::CommitteeStore};
 use utils::notify_read::{NotifyRead, Registration};
 
 const TASK_QUEUE_SIZE: usize = 2000;
@@ -566,12 +566,15 @@ where
                     debug!(?tx_digest, "Transaction processing succeeded");
                     (certificate, newly_formed)
                 }
-                Ok(ProcessTransactionResult::Executed(effects_cert)) => {
+                Ok(ProcessTransactionResult::Executed { effects, finality }) => {
                     debug!(
                         ?tx_digest,
                         "Transaction processing succeeded with effects directly"
                     );
-                    let response = QuorumDriverResponse { effects_cert };
+                    let response = QuorumDriverResponse {
+                        effects_cert: effects,
+                        finality_cert: finality,
+                    };
                     quorum_driver.notify(transaction, &Ok(response), old_retry_times + 1);
                     return;
                 }
@@ -591,10 +594,16 @@ where
             Some(tx_cert) => (tx_cert, false),
         };
 
+        let wait_for_finality = tx_cert
+            .data()
+            .transaction_data()
+            .requires_consensus_finality();
+
         let response = match quorum_driver
             .process_certificate(
                 HandleCertificateRequest {
                     certificate: tx_cert.clone(),
+                    wait_for_finality,
                 },
                 client_addr,
             )

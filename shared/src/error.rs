@@ -261,6 +261,9 @@ pub enum SharedError {
 
     #[error("Consensus has shut down!")]
     Shutdown,
+
+    #[error("Shard error: {0}")]
+    Shard(String),
 }
 
 pub type SharedResult<T> = Result<T, SharedError>;
@@ -612,4 +615,10 @@ pub enum EvaluationError {
     NetworkRequest(String),
     #[error("Error deserializing type: {0}")]
     MalformedType(bcs::Error),
+}
+
+impl From<ShardError> for SharedError {
+    fn from(e: ShardError) -> Self {
+        Self::Shard(e.to_string())
+    }
 }

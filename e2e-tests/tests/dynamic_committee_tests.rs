@@ -104,10 +104,10 @@ impl StressTestRunner {
         let system_state = self.system_state();
         system_state
             .validators
-            .active_validators
+            .consensus_validators
             .get(
                 self.rng
-                    .gen_range(0..system_state.validators.active_validators.len()),
+                    .gen_range(0..system_state.validators.consensus_validators.len()),
             )
             .unwrap()
             .clone()

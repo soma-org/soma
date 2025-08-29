@@ -6,11 +6,12 @@ use shared::{
     signed::Signed,
 };
 
-use shared::shard::{Shard, ShardAuthToken};
+use shared::shard::Shard;
+use types::shard::ShardAuthToken;
 
 use super::reveal::Reveal;
 // reject votes are implicit
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(CommitVotesAPI)]
 pub enum CommitVotes {
     V1(CommitVotesV1),
@@ -28,7 +29,7 @@ pub trait CommitVotesAPI {
     )];
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct CommitVotesV1 {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,

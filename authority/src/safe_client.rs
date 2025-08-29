@@ -2,6 +2,9 @@ use std::{net::SocketAddr, sync::Arc};
 
 use crate::client::AuthorityAPI;
 use tracing::debug;
+use types::crypto::AuthoritySignInfoTrait;
+use types::finality::SignedConsensusFinality;
+use types::intent::Intent;
 use types::storage::committee_store::CommitteeStore;
 use types::{
     committee::{Committee, EpochId},
@@ -91,6 +94,49 @@ impl<C: Clone> SafeClient<C> {
         Ok(signed_effects)
     }
 
+    fn check_signed_finality_plain(
+        &self,
+        digest: &TransactionDigest,
+        signed_finality: SignedConsensusFinality,
+    ) -> SomaResult<SignedConsensusFinality> {
+        // Check it has the right signer
+        if signed_finality.auth_sig().authority != self.address {
+            return Err(SomaError::ByzantineAuthoritySuspicion {
+                authority: self.address,
+                reason: format!(
+                    "Unexpected validator address in the signed finality signature: {:?}",
+                    signed_finality.auth_sig().authority
+                ),
+            });
+        }
+
+        // Check it concerns the right tx
+        if signed_finality.data().tx_digest != *digest {
+            return Err(SomaError::ByzantineAuthoritySuspicion {
+                authority: self.address,
+                reason: "Unexpected tx digest in the signed consensus finality".to_string(),
+            });
+        }
+
+        // Verify the signature is valid for this epoch
+        let committee = self.get_committee(&signed_finality.epoch())?;
+
+        // Verify the signature
+        signed_finality
+            .auth_sig()
+            .verify_secure(
+                signed_finality.data(),
+                Intent::soma_transaction(),
+                &committee,
+            )
+            .map_err(|e| SomaError::ByzantineAuthoritySuspicion {
+                authority: self.address,
+                reason: format!("Invalid consensus finality signature: {}", e),
+            })?;
+
+        Ok(signed_finality)
+    }
+
     fn check_transaction_info(
         &self,
         digest: &TransactionDigest,
@@ -110,8 +156,12 @@ impl<C: Clone> SafeClient<C> {
                     SignedTransaction::new_from_data_and_sig(transaction.into_data(), signed),
                 ))
             }
-            TransactionStatus::Executed(cert_opt, effects) => {
+            TransactionStatus::Executed(cert_opt, effects, finality) => {
                 let signed_effects = self.check_signed_effects_plain(digest, effects, None)?;
+                // Verify finality if present
+                let signed_finality = finality
+                    .map(|f| self.check_signed_finality_plain(digest, f))
+                    .transpose()?;
                 match cert_opt {
                     Some(cert) => {
                         let committee = self.get_committee(&cert.epoch)?;
@@ -128,11 +178,13 @@ impl<C: Clone> SafeClient<C> {
                         Ok(PlainTransactionInfoResponse::ExecutedWithCert(
                             ct,
                             signed_effects,
+                            signed_finality,
                         ))
                     }
                     None => Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(
                         transaction,
                         signed_effects,
+                        signed_finality,
                     )),
                 }
             }
@@ -146,13 +198,27 @@ impl<C: Clone> SafeClient<C> {
     fn verify_certificate_response(
         &self,
         digest: &TransactionDigest,
-        HandleCertificateResponse { signed_effects }: HandleCertificateResponse,
+        HandleCertificateResponse {
+            signed_effects,
+            signed_finality,
+        }: HandleCertificateResponse,
     ) -> SomaResult<HandleCertificateResponse> {
         let signed_effects = self.check_signed_effects_plain(digest, signed_effects, None)?;
 
-        debug!("Verified certificate response: {:?}", signed_effects);
+        let signed_finality = signed_finality
+            .map(|finality| self.check_signed_finality_plain(digest, finality))
+            .transpose()?;
 
-        Ok(HandleCertificateResponse { signed_effects })
+        debug!(
+            "Verified certificate response: effects={:?}, has_finality={}",
+            signed_effects,
+            signed_finality.is_some()
+        );
+
+        Ok(HandleCertificateResponse {
+            signed_effects,
+            signed_finality,
+        })
     }
 }
 

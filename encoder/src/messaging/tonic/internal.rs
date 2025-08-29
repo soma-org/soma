@@ -1,3 +1,4 @@
+use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;
 use crate::{
     messaging::{
         tonic::generated::encoder_internal_tonic_service_server::{
@@ -6,10 +7,7 @@ use crate::{
         EncoderInternalNetworkClient, EncoderInternalNetworkManager, EncoderInternalNetworkService,
         EncoderPublicKey,
     },
-    types::{
-        commit::Commit, commit_votes::CommitVotes, finality::Finality, parameters::Parameters,
-        reveal::Reveal,
-    },
+    types::{commit::Commit, commit_votes::CommitVotes, finality::Finality, reveal::Reveal},
 };
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
@@ -36,14 +34,11 @@ use std::{
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{error, info, trace, warn};
+use types::parameters::Parameters;
+use types::shard_networking::NetworkingInfo;
 use types::shard_score::ShardScore;
 
-use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;
-
-use super::{
-    channel_pool::{Channel, ChannelPool},
-    NetworkingInfo,
-};
+use types::shard_networking::channel_pool::{Channel, ChannelPool};
 
 // Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderInternalTonicClient {
