@@ -32,14 +32,11 @@ pub struct ActorMessage<P: Processor> {
 }
 
 impl<P: Processor> Actor<P> {
-    // intentionally not a reference, run consumes the actor
     async fn run(mut self) {
         loop {
             select! {
-                Ok(()) = &mut self.shutdown_rx => {
+                _ = &mut self.shutdown_rx => {  // Match any result, not just Ok(())
                     info!("Processor shutting down.");
-                    // TODO: potentially process whatever messages are remaining?
-                    // Shutdown the processor
                     self.processor.shutdown();
                     break;
                 }
@@ -57,7 +54,6 @@ impl<P: Processor> Actor<P> {
                         }
                         None => {
                             info!("Processor shutting down after receiving a None message.");
-                            // Channel closed, cleanup processor
                             self.processor.shutdown();
                             break;
                         }
@@ -86,19 +82,29 @@ impl<P: Processor> ActorHandle<P> {
         input: P::Input,
         cancellation: CancellationToken,
     ) -> ShardResult<P::Output> {
-        info!("Processing ActorHandle");
-        // TODO: make this more explicitly the actor response
+        info!("Processing ActorHandle - creating channel");
         let (sender, receiver) = oneshot::channel();
+
         let msg = ActorMessage {
             input,
             sender,
             cancellation,
         };
+
         match self.sender.send(msg).await {
-            Ok(_) => match receiver.await {
-                Ok(res) => res,
-                Err(_) => Err(ShardError::ActorError("channel closed".to_string())),
-            },
+            Ok(_) => {
+                info!("Message sent to actor, awaiting response");
+                match receiver.await {
+                    Ok(res) => {
+                        info!("Received response from actor");
+                        res
+                    }
+                    Err(e) => {
+                        info!("Receiver error: {:?}", e);
+                        Err(ShardError::ActorError("channel closed".to_string()))
+                    }
+                }
+            }
             Err(_) => Err(ShardError::ActorError("channel closed".to_string())),
         }
     }

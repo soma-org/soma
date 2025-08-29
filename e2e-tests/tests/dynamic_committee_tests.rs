@@ -132,7 +132,7 @@ impl StressTestRunner {
             )
         });
 
-        let effects = self
+        let (effects, _) = self
             .test_cluster
             .execute_transaction(transaction)
             .await

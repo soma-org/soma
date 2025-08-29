@@ -9,7 +9,9 @@ use shared::metadata::{
 use std::time::Duration;
 use test_cluster::TestCluster;
 use tokio::time::sleep;
+use tracing::info;
 use types::crypto::KeypairTraits;
+use types::shard::ShardAuthToken;
 use types::{
     base::SomaAddress,
     config::encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},
@@ -129,35 +131,38 @@ async fn test_integrated_encoder_validator_system() {
     let digest =
         Digest::new(&metadata_commitment).expect("Failed to create digest for metadata_commitment");
 
-    execute_embed_data_transaction(
+    let shard_auth_token = execute_embed_data_transaction(
         new_encoder_genesis.account_key_pair.copy(),
         &mut test_cluster,
         new_encoder_address,
         digest,
         size_in_bytes,
     )
-    .await;
+    .await
+    .expect("Could not get shard auth token from transaction execution");
 
     sleep(Duration::from_secs(5)).await;
 
-    // for handle in encoder_cluster.all_encoder_handles() {
-    //     handle.with(|node| {
-    //         let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
-    //         if shard.encoders().contains(&enc_key) {
-    //             let store = node.get_store_for_testing();
+    let shard = shard_auth_token.shard;
 
-    //             let result = store.get_agg_scores(&shard);
+    for handle in encoder_cluster.all_encoder_handles() {
+        handle.with(|node| {
+            let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
+            if shard.encoders().contains(&enc_key) {
+                let store = node.get_store_for_testing();
 
-    //             assert!(
-    //                 result.is_ok(),
-    //                 "Failed to get agg sig for shard: {:?}",
-    //                 result.err()
-    //             );
+                let result = store.get_agg_score(&shard);
 
-    //             info!("Final agg sig: {:?}", result.unwrap().0);
-    //         }
-    //     });
-    // }
+                assert!(
+                    result.is_ok(),
+                    "Failed to get agg sig for shard: {:?}",
+                    result.err()
+                );
+
+                info!("Final agg sig: {:?}", result.unwrap().0);
+            }
+        });
+    }
 }
 
 /// Execute EmbedData transaction
@@ -167,7 +172,7 @@ async fn execute_embed_data_transaction(
     address: SomaAddress,
     digest: Digest<MetadataCommitment>,
     data_size_bytes: usize,
-) {
+) -> Option<ShardAuthToken> {
     // Get gas object for the transaction
     let gas_object = test_cluster
         .get_gas_objects_owned_by_address(address, Some(1))
@@ -189,7 +194,11 @@ async fn execute_embed_data_transaction(
     );
 
     tracing::info!(?tx, "Executing embed data tx for {}", address);
-    test_cluster.execute_transaction(tx).await;
+    if let Ok((_, shard_auth_token)) = test_cluster.execute_transaction(tx).await {
+        shard_auth_token
+    } else {
+        None
+    }
 }
 
 /// Execute AddEncoder transaction

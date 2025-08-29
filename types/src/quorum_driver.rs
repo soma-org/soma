@@ -10,7 +10,8 @@ use crate::{
         VerifiedCertifiedTransactionEffects,
     },
     error::SomaError,
-    finality::{FinalityProof, SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
+    finality::{SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
+    shard::ShardAuthToken,
     transaction::{CertifiedTransaction, SignedTransaction, Transaction, VerifiedTransaction},
 };
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,7 @@ pub struct ExecuteTransactionRequest {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecuteTransactionResponse {
     pub effects: FinalizedEffects,
-    pub finality_proof: Option<FinalityProof>,
+    pub shard_auth_token: Option<ShardAuthToken>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, schemars::JsonSchema)]

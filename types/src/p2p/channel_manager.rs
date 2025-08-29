@@ -519,7 +519,10 @@ async fn handle_connection(
 
     // Setup service stack
     let svc = ServiceBuilder::new()
-        .add_extension(PeerInfo { peer_id })
+        .map_request(move |mut request: http::Request<_>| {
+            request.extensions_mut().insert(PeerInfo { peer_id });
+            request
+        })
         .service(service.clone());
 
     pin! {

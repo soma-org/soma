@@ -755,9 +755,10 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                     };
 
                     let svc = tower::ServiceBuilder::new()
-                        // NOTE: the PeerInfo extension is copied to every request served.
-                        // If PeerInfo starts to contain complex values, it should be wrapped in an Arc<>.
-                        .add_extension(PeerInfo { authority_index })
+                        .map_request(move |mut request: http::Request<_>| {
+                            request.extensions_mut().insert(PeerInfo { authority_index });
+                            request
+                        })
                         .service(consensus_service.clone());
 
                     pin! {

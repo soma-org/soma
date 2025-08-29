@@ -30,6 +30,7 @@ use types::{
     genesis::Genesis,
     object::ObjectRef,
     peer_id::PeerId,
+    shard::ShardAuthToken,
     system_state::{SystemState, SystemStateTrait},
     transaction::Transaction,
 };
@@ -289,7 +290,10 @@ impl TestCluster {
             .expect("timed out waiting for reconfiguration to complete");
     }
 
-    pub async fn execute_transaction(&self, tx: Transaction) -> SomaResult<TransactionEffects> {
+    pub async fn execute_transaction(
+        &self,
+        tx: Transaction,
+    ) -> SomaResult<(TransactionEffects, Option<ShardAuthToken>)> {
         self.fullnode_handle
             .soma_node
             .with_async(|node| async { node.execute_transaction(tx).await })

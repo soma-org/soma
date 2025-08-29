@@ -179,13 +179,13 @@ where
             finality_cert,
         } = response;
 
-        let finality_proof = self
+        let shard_auth_token = self
             .process_finality_and_encoder_work(&transaction, finality_cert)
             .await;
 
         let response = ExecuteTransactionResponse {
             effects: FinalizedEffects::new_from_effects_cert(effects_cert.into()),
-            finality_proof,
+            shard_auth_token,
         };
 
         Ok((response, executed_locally))
@@ -380,7 +380,7 @@ where
         &self,
         transaction: &VerifiedTransaction,
         finality_cert: Option<VerifiedCertifiedConsensusFinality>,
-    ) -> Option<FinalityProof> {
+    ) -> Option<ShardAuthToken> {
         info!(
             "Processing finality and encoder work for tx: {}",
             transaction.digest()
@@ -438,14 +438,18 @@ where
         let metadata_commitment =
             MetadataCommitment::new(DownloadableMetadata::V1(metadata), [0u8; 32]);
 
-        self.initiate_encoder_work_for_embed_data(
-            &finality_proof,
-            metadata_commitment.clone(),
-            transaction.digest(),
-        )
-        .await;
-
-        Some(finality_proof)
+        if let Ok(shard_auth_token) = self
+            .initiate_encoder_work_for_embed_data(
+                &finality_proof,
+                metadata_commitment.clone(),
+                transaction.digest(),
+            )
+            .await
+        {
+            Some(shard_auth_token)
+        } else {
+            None
+        }
     }
 
     /// Initiate encoder work for EmbedData transactions
@@ -454,49 +458,41 @@ where
         finality_proof: &FinalityProof,
         metadata_commitment: MetadataCommitment,
         tx_digest: &TransactionDigest,
-    ) {
-        match self
+    ) -> SomaResult<ShardAuthToken> {
+        let shard_auth_token = self
             .generate_shard_selection(finality_proof, metadata_commitment)
-            .await
-        {
-            Ok(shard_auth_token) => {
-                debug!(
-                    ?tx_digest,
-                    shard_size = shard_auth_token.shard.size(),
-                    "Generated shard selection for EmbedData transaction"
-                );
+            .await?;
 
-                if let Some(encoder_client) = &self.encoder_client {
-                    // Update encoder committee before sending
-                    if let Ok(committee) = self.get_current_encoder_committee().await {
-                        encoder_client.update_encoder_committee(&committee);
+        debug!(
+            ?tx_digest,
+            shard_size = shard_auth_token.shard.size(),
+            "Generated shard selection for EmbedData transaction"
+        );
+
+        if let Some(encoder_client) = &self.encoder_client {
+            // Update encoder committee before sending
+            if let Ok(committee) = self.get_current_encoder_committee().await {
+                encoder_client.update_encoder_committee(&committee);
+            }
+
+            // Spawn async task to avoid blocking transaction response
+            let client = encoder_client.clone();
+            let token = shard_auth_token.clone();
+            let digest = *tx_digest;
+
+            tokio::spawn(async move {
+                match client.send_to_shard(token, Duration::from_secs(5)).await {
+                    Ok(()) => {
+                        debug!(?digest, "Successfully sent shard input to all members");
                     }
-
-                    // Spawn async task to avoid blocking transaction response
-                    let client = encoder_client.clone();
-                    let token = shard_auth_token.clone();
-                    let digest = *tx_digest;
-
-                    tokio::spawn(async move {
-                        match client.send_to_shard(token, Duration::from_secs(5)).await {
-                            Ok(()) => {
-                                debug!(?digest, "Successfully sent shard input to all members");
-                            }
-                            Err(e) => {
-                                error!(?digest, error = ?e, "Failed to send to shard members");
-                            }
-                        }
-                    });
+                    Err(e) => {
+                        error!(?digest, error = ?e, "Failed to send to shard members");
+                    }
                 }
-            }
-            Err(e) => {
-                error!(
-                    ?tx_digest,
-                    error = ?e,
-                    "Failed to generate shard selection"
-                );
-            }
+            });
         }
+
+        return Ok(shard_auth_token);
     }
 
     /// Generate a FinalityProof for EmbedData transactions with consensus finality
