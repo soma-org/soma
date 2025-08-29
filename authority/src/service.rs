@@ -125,7 +125,8 @@ impl ValidatorService {
                 // Also check for existing finality if transaction requires it
                 let signed_finality = if wait_for_finality {
                     self.state
-                        .get_signed_consensus_finality(&tx_digest, epoch_store)?
+                        .get_signed_consensus_finality_wait(&tx_digest, epoch_store)
+                        .await?
                 } else {
                     None
                 };

@@ -96,7 +96,6 @@ impl ProcessTransactionState {
 }
 
 struct ProcessCertificateState {
-    certificate: CertifiedTransaction,
     // Different authorities could return different effects.  We want at least one effect to come
     // from 2f+1 authorities, which meets quorum and can be considered the approved effect.
     // The map here allows us to count the stake for each unique effect.
@@ -789,7 +788,6 @@ where
         client_addr: Option<SocketAddr>,
     ) -> Result<QuorumDriverResponse, AggregatorProcessCertificateError> {
         let state = ProcessCertificateState {
-            certificate: request.certificate.clone(),
             effects_map: MultiStakeAggregator::new(self.committee.clone()),
             finality_map: None,
             effects_cert: None,
@@ -975,6 +973,7 @@ where
 
                 // Handle finality aggregation if present
                 if let Some(signed_finality) = signed_finality {
+                    info!("Received signed finality");
                     // Initialize finality_map if needed
                     if state.finality_map.is_none() {
                         state.finality_map = Some(MultiStakeAggregator::new(committee.clone()));

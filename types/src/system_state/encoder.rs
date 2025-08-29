@@ -48,8 +48,8 @@ pub struct EncoderMetadata {
     /// The network public key used for network identity and authentication
     pub network_pubkey: crate::crypto::NetworkPublicKey,
 
-    /// The network address for general network communication
-    pub net_address: Multiaddr,
+    pub internal_network_address: Multiaddr,
+    pub external_network_address: Multiaddr,
 
     pub object_server_address: Multiaddr,
 
@@ -57,7 +57,8 @@ pub struct EncoderMetadata {
     pub next_epoch_network_pubkey: Option<crate::crypto::NetworkPublicKey>,
 
     /// Optional new network address for the next epoch
-    pub next_epoch_net_address: Option<Multiaddr>,
+    pub next_epoch_internal_network_address: Option<Multiaddr>,
+    pub next_epoch_external_network_address: Option<Multiaddr>,
 
     /// Optional new object server address for the next epoch
     pub next_epoch_object_server_address: Option<Multiaddr>,
@@ -116,7 +117,8 @@ impl Encoder {
         soma_address: SomaAddress,
         encoder_pubkey: EncoderPublicKey,
         network_pubkey: crypto::NetworkPublicKey,
-        net_address: Multiaddr,
+        internal_network_address: Multiaddr,
+        external_network_address: Multiaddr,
         object_server_address: Multiaddr,
         voting_power: u64,
         commission_rate: u64,
@@ -128,10 +130,12 @@ impl Encoder {
                 soma_address,
                 encoder_pubkey,
                 network_pubkey,
-                net_address,
+                internal_network_address,
+                external_network_address,
                 object_server_address,
                 next_epoch_network_pubkey: None,
-                next_epoch_net_address: None,
+                next_epoch_external_network_address: None,
+                next_epoch_internal_network_address: None,
                 next_epoch_object_server_address: None,
             },
             voting_power,
@@ -282,7 +286,7 @@ impl Encoder {
         args: &UpdateEncoderMetadataArgs,
     ) -> ExecutionResult<()> {
         // Process Network Address
-        if let Some(ref addr_bytes) = args.next_epoch_network_address {
+        if let Some(ref addr_bytes) = args.next_epoch_external_network_address {
             let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
                 ExecutionFailureStatus::InvalidArguments {
                     reason: format!("Failed to BCS deserialize network address string"),
@@ -293,7 +297,35 @@ impl Encoder {
                     reason: format!("Invalid network multiaddr format: {}", e),
                 }
             })?;
-            self.metadata.next_epoch_net_address = Some(multiaddr);
+            self.metadata.next_epoch_external_network_address = Some(multiaddr);
+        }
+
+        if let Some(ref addr_bytes) = args.next_epoch_internal_network_address {
+            let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Failed to BCS deserialize network address string"),
+                }
+            })?;
+            let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid network multiaddr format: {}", e),
+                }
+            })?;
+            self.metadata.next_epoch_internal_network_address = Some(multiaddr);
+        }
+
+        if let Some(ref addr_bytes) = args.next_epoch_object_server_address {
+            let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Failed to BCS deserialize network address string"),
+                }
+            })?;
+            let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid network multiaddr format: {}", e),
+                }
+            })?;
+            self.metadata.next_epoch_object_server_address = Some(multiaddr);
         }
 
         // Process Network Public Key
@@ -312,8 +344,14 @@ impl Encoder {
 
     /// Apply staged metadata changes. Called during epoch transition.
     fn effectuate_staged_metadata(&mut self) {
-        if let Some(addr) = self.metadata.next_epoch_net_address.take() {
-            self.metadata.net_address = addr;
+        if let Some(addr) = self.metadata.next_epoch_internal_network_address.take() {
+            self.metadata.internal_network_address = addr;
+        }
+        if let Some(addr) = self.metadata.next_epoch_external_network_address.take() {
+            self.metadata.external_network_address = addr;
+        }
+        if let Some(addr) = self.metadata.next_epoch_object_server_address.take() {
+            self.metadata.object_server_address = addr;
         }
         if let Some(key) = self.metadata.next_epoch_network_pubkey.take() {
             self.metadata.network_pubkey = key;
@@ -485,7 +523,7 @@ impl EncoderSet {
 
         info!(
             "ADDED PENDING ACTIVE ENCODER: {:?}",
-            encoder.metadata.net_address
+            encoder.metadata.external_network_address
         );
 
         // Add to pending encoders
@@ -1112,7 +1150,7 @@ impl EncoderSet {
                 encoder.activate(new_epoch);
                 info!(
                     "Encoder activated!: {:?}, {}",
-                    encoder.metadata.net_address, voting_power
+                    encoder.metadata.external_network_address, voting_power
                 );
 
                 // Move to active encoders
@@ -1121,7 +1159,7 @@ impl EncoderSet {
             } else {
                 warn!(
                     "VOTING POWER NOT ENOUGH: {:?}, {}, {}",
-                    encoder.metadata.net_address, voting_power, ENCODER_MIN_POWER
+                    encoder.metadata.external_network_address, voting_power, ENCODER_MIN_POWER
                 );
                 // Keep in pending and check the next one
                 i += 1;

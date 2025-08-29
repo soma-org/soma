@@ -1,5 +1,4 @@
 use fastcrypto::traits::KeyPair;
-// In soma-node/src/encoder_client_service.rs
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
     error::SharedResult,
@@ -57,7 +56,7 @@ impl EncoderClientService {
 
                 // TODO: Temporary conversion between Multiaddr types
                 // Convert types::multiaddr::Multiaddr to soma_network::multiaddr::Multiaddr
-                let network_addr_str = metadata.network_address.to_string();
+                let network_addr_str = metadata.external_network_address.to_string();
                 let network_multiaddr =
                     soma_network::multiaddr::Multiaddr::try_from(network_addr_str)
                         .expect("Failed to convert multiaddr");

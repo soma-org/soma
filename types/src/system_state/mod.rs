@@ -232,7 +232,8 @@ impl SystemState {
     /// ## Returns
     /// A new SystemState instance with epoch 0 and the specified validators, parameters, and timestamp
     pub fn create(
-        validators: Vec<Validator>,
+        consensus_validators: Vec<Validator>,
+        networking_validators: Vec<Validator>,
         encoders: Vec<Encoder>,
         epoch_start_timestamp_ms: u64,
         parameters: SystemParameters,
@@ -249,10 +250,14 @@ impl SystemState {
             stake_subsidy_decrease_rate,
         );
 
-        let mut validators = ValidatorSet::new(validators);
+        let mut validators = ValidatorSet::new(consensus_validators, networking_validators);
         let mut encoders = EncoderSet::new(encoders);
 
         for validator in &mut validators.consensus_validators {
+            validator.activate(0);
+        }
+
+        for validator in &mut validators.networking_validators {
             validator.activate(0);
         }
 
@@ -630,7 +635,8 @@ impl SystemState {
         signer: SomaAddress,
         encoder_pubkey_bytes: Vec<u8>,
         network_pubkey_bytes: Vec<u8>,
-        net_address: Vec<u8>,
+        internal_net_address: Vec<u8>,
+        external_net_address: Vec<u8>,
         object_server_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
@@ -640,7 +646,8 @@ impl SystemState {
             crypto::NetworkPublicKey::new(
                 Ed25519PublicKey::from_bytes(&network_pubkey_bytes).unwrap(),
             ),
-            Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&internal_net_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&external_net_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&object_server_address).unwrap()).unwrap(),
             0,     // Initial voting power
             10,    // Default commission rate (0.1%)
@@ -1021,9 +1028,10 @@ impl SystemStateTrait for SystemState {
                     (
                         name,
                         EncoderNetworkMetadata {
-                            network_address: metadata.net_address.clone(),
+                            external_network_address: metadata.external_network_address.clone(),
+                            internal_network_address: metadata.internal_network_address.clone(),
                             network_key: metadata.network_pubkey.clone(),
-                            hostname: metadata.net_address.to_string(),
+                            hostname: metadata.external_network_address.to_string(),
                             object_server_address: metadata.object_server_address.clone(),
                         },
                     )
@@ -1226,9 +1234,10 @@ impl Committees {
                 (
                     name,
                     EncoderNetworkMetadata {
-                        network_address: metadata.net_address.clone(),
+                        internal_network_address: metadata.internal_network_address.clone(),
+                        external_network_address: metadata.external_network_address.clone(),
                         network_key: metadata.network_pubkey.clone(),
-                        hostname: metadata.net_address.to_string(),
+                        hostname: metadata.external_network_address.to_string(),
                         object_server_address: metadata.object_server_address.clone(),
                     },
                 )

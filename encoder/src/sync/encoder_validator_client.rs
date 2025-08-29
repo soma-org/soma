@@ -198,12 +198,12 @@ impl EncoderValidatorClient {
                     // Convert NetworkPublicKey to PeerPublicKey (they have the same inner type)
                     let peer_key = PeerPublicKey::new(metadata.network_key.clone().into_inner());
 
-                    // Add to network info mapping
+                    // Add internal network address to network info mapping
                     networking.insert(
                         encoder_key.clone(),
                         (
                             metadata
-                                .network_address
+                                .internal_network_address
                                 .clone()
                                 .to_string()
                                 .parse()

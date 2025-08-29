@@ -21,7 +21,7 @@ use types::{
         },
         local_ip_utils,
         network_config::NetworkConfig,
-        node_config::{FullnodeConfigBuilder, NodeConfig, ValidatorConfigBuilder},
+        node_config::{NodeConfig, ValidatorConfigBuilder},
         p2p_config::SeedPeer,
     },
     crypto::SomaKeyPair,
@@ -64,10 +64,6 @@ pub struct TestCluster {
 }
 
 impl TestCluster {
-    pub fn fullnode_config_builder(&self) -> FullnodeConfigBuilder {
-        self.swarm.get_fullnode_config_builder()
-    }
-
     pub fn all_node_handles(&self) -> Vec<SomaNodeHandle> {
         self.swarm
             .all_nodes()
@@ -145,13 +141,13 @@ impl TestCluster {
     }
 
     /// Convenience method to start a new fullnode in the test cluster.
-    pub async fn spawn_new_fullnode(&mut self) -> FullNodeHandle {
-        self.start_fullnode_from_config(
-            self.fullnode_config_builder()
-                .build(&mut OsRng, self.swarm.config()),
-        )
-        .await
-    }
+    // pub async fn spawn_new_fullnode(&mut self) -> FullNodeHandle {
+    //     self.start_fullnode_from_config(
+    //         self.fullnode_config_builder()
+    //             .build(&mut OsRng, self.swarm.config()),
+    //     )
+    //     .await
+    // }
 
     pub async fn start_fullnode_from_config(&mut self, config: NodeConfig) -> FullNodeHandle {
         // let json_rpc_address = config.json_rpc_address;
@@ -484,7 +480,16 @@ impl TestClusterBuilder {
 
     pub async fn build(mut self) -> TestCluster {
         let swarm = self.start_swarm().await.unwrap();
-        let fullnode = swarm.fullnodes().next().unwrap();
+
+        // Find a networking validator to use as the "fullnode"
+        let fullnode = swarm
+            .all_nodes()
+            .find(|node| {
+                // It's a networking validator if it has no consensus config
+                node.config().consensus_config.is_none()
+            })
+            .expect("No networking validator found to use as fullnode");
+
         let fullnode_handle = fullnode.get_node_handle().unwrap();
 
         TestCluster {

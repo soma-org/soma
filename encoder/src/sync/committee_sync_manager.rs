@@ -323,6 +323,10 @@ impl CommitteeSyncManager {
 
         // Extract network keys from the NetworkingCommittee
         for (_, network_metadata) in committees.networking_committee.members() {
+            info!(
+                "Updating allowed keys with networking committee member {}",
+                network_metadata.hostname
+            );
             allowed_keys.insert(network_metadata.network_key.clone().into_inner());
         }
 

@@ -363,15 +363,17 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
     let network_keypair = NetworkKeyPair::generate(&mut rng);
 
     // Create multiaddress
-    let net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
+    let external_net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
     let object_server_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8081").unwrap();
+    let internal_net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8082").unwrap();
 
     // Create encoder
     let mut encoder = Encoder::new(
         addr,
         encoder_keypair.public(),
         network_keypair.public(),
-        net_address,
+        internal_net_address,
+        external_net_address,
         object_server_address,
         0, // Initial voting power is 0, will be set later
         0,
@@ -477,6 +479,7 @@ pub fn create_test_system_state(
 
     SystemState::create(
         validators,
+        vec![],
         encoders,
         epoch_start_timestamp_ms,
         parameters,

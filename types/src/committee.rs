@@ -816,7 +816,8 @@ pub struct EncoderCommittee {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct EncoderNetworkMetadata {
-    pub network_address: Multiaddr,
+    pub internal_network_address: Multiaddr,
+    pub external_network_address: Multiaddr,
     pub object_server_address: Multiaddr,
     pub network_key: NetworkPublicKey,
     pub hostname: String,

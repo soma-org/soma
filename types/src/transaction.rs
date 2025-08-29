@@ -249,13 +249,15 @@ pub struct UpdateValidatorMetadataArgs {
 pub struct AddEncoderArgs {
     pub encoder_pubkey_bytes: Vec<u8>,
     pub network_pubkey_bytes: Vec<u8>,
-    pub net_address: Vec<u8>,
+    pub internal_network_address: Vec<u8>,
+    pub external_network_address: Vec<u8>,
     pub object_server_address: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct UpdateEncoderMetadataArgs {
-    pub next_epoch_network_address: Option<Vec<u8>>,
+    pub next_epoch_external_network_address: Option<Vec<u8>>,
+    pub next_epoch_internal_network_address: Option<Vec<u8>>,
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
     pub next_epoch_object_server_address: Option<Vec<u8>>,
 }

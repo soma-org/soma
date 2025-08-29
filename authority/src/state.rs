@@ -1595,6 +1595,35 @@ impl AuthorityState {
     }
 
     /// Get signed consensus finality for a transaction
+    pub async fn get_signed_consensus_finality_wait(
+        &self,
+        transaction_digest: &TransactionDigest,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult<Option<SignedConsensusFinality>> {
+        // First check if we have a consensus leader block
+        let leader_block = epoch_store
+            .within_alive_epoch(epoch_store.notify_read_consensus_leader(transaction_digest))
+            .await
+            .map_err(|_| SomaError::EpochEnded(epoch_store.epoch()))??;
+
+        // Get the effects to determine execution status
+        if let Some(effects) = self
+            .get_transaction_cache_reader()
+            .get_executed_effects(transaction_digest)?
+        {
+            let finality = ConsensusFinality {
+                tx_digest: *transaction_digest,
+                leader_block,
+                execution_status: effects.status().clone(),
+            };
+
+            let signed = self.sign_consensus_finality(finality, epoch_store)?;
+            return Ok(Some(signed));
+        }
+
+        Ok(None)
+    }
+
     pub fn get_signed_consensus_finality(
         &self,
         transaction_digest: &TransactionDigest,
@@ -1617,6 +1646,7 @@ impl AuthorityState {
                 return Ok(Some(signed));
             }
         }
+
         Ok(None)
     }
 

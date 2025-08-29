@@ -114,7 +114,7 @@ where
         };
 
         // TODO: Configure VDF iterations
-        const VDF_ITERATIONS: u64 = 10; // Adjust based on security requirements
+        const VDF_ITERATIONS: u64 = 1; // Adjust based on security requirements
 
         Self {
             quorum_driver_handler,
@@ -376,12 +376,17 @@ where
         transaction: &VerifiedTransaction,
         finality_cert: Option<VerifiedCertifiedConsensusFinality>,
     ) -> Option<FinalityProof> {
+        info!(
+            "Processing finality and encoder work for tx: {}",
+            transaction.digest()
+        );
         // Early return if transaction doesn't require consensus finality
         if !transaction
             .data()
             .transaction_data()
             .requires_consensus_finality()
         {
+            info!("No finality required for tx: {}", transaction.digest());
             return None;
         }
 
@@ -403,6 +408,8 @@ where
                 return None;
             }
         };
+
+        info!("Generated finality proof for tx: {}", transaction.digest());
 
         // TODO: define real Metadata and commitment
         let metadata = Metadata::new_v1(
@@ -489,7 +496,7 @@ where
                 .await
                 .map_err(|e| SomaError::from(format!("VDF task failed: {}", e)))??;
 
-        debug!(
+        info!(
             block_ref = ?consensus_finality.data().leader_block,
             tx_digest = ?transaction.digest(),
             "Generated entropy proof for finality"

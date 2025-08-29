@@ -485,24 +485,41 @@ impl ValidatorSet {
     /// ## Returns
     /// A new ValidatorSet instance with the specified active validators and
     /// calculated total stake
-    pub fn new(init_active_validators: Vec<Validator>) -> Self {
-        let total_stake = init_active_validators
+    pub fn new(
+        consensus_validators: Vec<Validator>,
+        networking_validators: Vec<Validator>,
+    ) -> Self {
+        // Calculate total stake from both sets
+        let consensus_stake: u64 = consensus_validators
             .iter()
             .map(|v| v.staking_pool.soma_balance)
             .sum();
 
+        let networking_stake: u64 = networking_validators
+            .iter()
+            .map(|v| v.staking_pool.soma_balance)
+            .sum();
+
+        let total_stake = consensus_stake + networking_stake;
+
         let mut staking_pool_mappings = BTreeMap::new();
 
-        // Initialize staking pool mappings
-        for validator in &init_active_validators {
+        // Initialize staking pool mappings for consensus validators
+        for validator in &consensus_validators {
+            staking_pool_mappings
+                .insert(validator.staking_pool.id, validator.metadata.soma_address);
+        }
+
+        // Initialize staking pool mappings for networking validators
+        for validator in &networking_validators {
             staking_pool_mappings
                 .insert(validator.staking_pool.id, validator.metadata.soma_address);
         }
 
         let mut validator_set = Self {
             total_stake,
-            consensus_validators: init_active_validators,
-            networking_validators: Vec::new(),
+            consensus_validators,
+            networking_validators,
             pending_validators: Vec::new(),
             pending_removals: Vec::new(),
             staking_pool_mappings,
