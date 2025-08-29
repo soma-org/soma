@@ -321,7 +321,7 @@ impl SomaNode {
 
         // let connection_monitor_status = Arc::new(connection_monitor_status);
 
-        let validator_components = if state.is_validator(&epoch_store) {
+        let validator_components = if state.is_validator(&epoch_store) && is_validator {
             let components = Self::construct_validator_components(
                 config.clone(),
                 state.clone(),
@@ -765,7 +765,9 @@ impl SomaNode {
                 let weak_accumulator = Arc::downgrade(&new_accumulator);
                 *accumulator_guard = Some(new_accumulator);
 
-                if self.state.is_validator(&new_epoch_store) {
+                if self.state.is_validator(&new_epoch_store)
+                    && self.config.consensus_config().is_some()
+                {
                     // Only restart consensus if this node is still a validator in the new epoch.
                     Some(
                         Self::start_epoch_specific_validator_components(
@@ -800,7 +802,9 @@ impl SomaNode {
                 let weak_accumulator = Arc::downgrade(&new_accumulator);
                 *accumulator_guard = Some(new_accumulator);
 
-                if self.state.is_validator(&new_epoch_store) {
+                if self.state.is_validator(&new_epoch_store)
+                    && self.config.consensus_config().is_some()
+                {
                     info!("Promoting the node from fullnode to validator, starting grpc server");
 
                     Some(

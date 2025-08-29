@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 // All information needed to build a NodeConfig for a validator.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ValidatorGenesisConfig {
     pub key_pair: AuthorityKeyPair,
     pub worker_key_pair: NetworkKeyPair,
