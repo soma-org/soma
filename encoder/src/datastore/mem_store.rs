@@ -15,16 +15,15 @@ use std::{
     time::Instant,
 };
 use tracing::{info, warn};
-use types::shard_scores::{ShardScores, ShardScoresAPI};
+use types::shard_score::{ShardScore, ShardScoreAPI};
 
 use crate::types::{
-    shard_commit::{ShardCommit, ShardCommitAPI},
-    shard_commit_votes::{ShardCommitVotes, ShardCommitVotesAPI},
-    shard_reveal::{ShardReveal, ShardRevealAPI},
-    shard_reveal_votes::{ShardRevealVotes, ShardRevealVotesAPI},
+    commit::{Commit, CommitAPI},
+    commit_votes::{CommitVotes, CommitVotesAPI},
+    reveal::{Reveal, RevealAPI},
 };
 
-use super::{CommitVoteCounts, RevealVoteCounts, Store};
+use super::{CommitVoteCounts, Store};
 
 /// In-memory storage for testing.
 #[allow(unused)]
@@ -40,34 +39,32 @@ struct Inner {
     #[allow(clippy::type_complexity)]
     signed_commit_digests: BTreeMap<
         (Epoch, Digest<Shard>, Encoder),
-        Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        Digest<Signed<Commit, min_sig::BLS12381Signature>>,
     >,
     #[allow(clippy::type_complexity)]
     shard_committers: BTreeMap<
         (Epoch, Digest<Shard>, Committer),
-        Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        Digest<Signed<Commit, min_sig::BLS12381Signature>>,
     >,
     #[allow(clippy::type_complexity)]
     signed_commits:
-        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<Commit, min_sig::BLS12381Signature>>,
 
     signed_reveals:
-        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardReveal, min_sig::BLS12381Signature>>,
+        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<Reveal, min_sig::BLS12381Signature>>,
 
     first_commit_time: BTreeMap<(Epoch, Digest<Shard>), Instant>,
 
     //      ////////////////////
-    signed_commit_votes: BTreeMap<
-        (Epoch, Digest<Shard>, Encoder),
-        Signed<ShardCommitVotes, min_sig::BLS12381Signature>,
-    >,
+    signed_commit_votes:
+        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<CommitVotes, min_sig::BLS12381Signature>>,
     #[allow(clippy::type_complexity)]
     commit_accept_digest_voters: BTreeMap<
         (
             Epoch,
             Digest<Shard>,
             EncoderPublicKey,
-            Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+            Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
         ),
         BTreeSet<EncoderPublicKey>,
     >,
@@ -75,12 +72,6 @@ struct Inner {
         BTreeMap<(Epoch, Digest<Shard>, EncoderPublicKey), BTreeSet<EncoderPublicKey>>,
 
     commit_votes_highest_digest: BTreeMap<(Epoch, Digest<Shard>, EncoderPublicKey), usize>,
-
-    //      ////////////////////
-    signed_reveal_votes: BTreeMap<
-        (Epoch, Digest<Shard>, Encoder),
-        Signed<ShardRevealVotes, min_sig::BLS12381Signature>,
-    >,
 
     reveal_accept_voters:
         BTreeMap<(Epoch, Digest<Shard>, EncoderPublicKey), BTreeSet<EncoderPublicKey>>,
@@ -91,7 +82,7 @@ struct Inner {
     first_reveal_time: BTreeMap<(Epoch, Digest<Shard>), Instant>,
 
     signed_scores:
-        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardScores, min_sig::BLS12381Signature>>,
+        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardScore, min_sig::BLS12381Signature>>,
 
     agg_scores:
         BTreeMap<(Epoch, Digest<Shard>), (EncoderAggregateSignature, Vec<EncoderPublicKey>)>,
@@ -110,7 +101,6 @@ impl MemStore {
                 commit_accept_digest_voters: BTreeMap::new(),
                 commit_reject_voters: BTreeMap::new(),
                 commit_votes_highest_digest: BTreeMap::new(),
-                signed_reveal_votes: BTreeMap::new(),
                 reveal_accept_voters: BTreeMap::new(),
                 reveal_reject_voters: BTreeMap::new(),
                 signed_scores: BTreeMap::new(),
@@ -125,12 +115,12 @@ impl Store for MemStore {
     fn lock_signed_commit(
         &self,
         shard: &Shard,
-        signed_commit: &Signed<ShardCommit, min_sig::BLS12381Signature>,
+        signed_commit: &Signed<Commit, min_sig::BLS12381Signature>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
-        let encoder = signed_commit.encoder();
-        let committer = signed_commit.committer();
+        let encoder = signed_commit.author();
+        let committer = signed_commit.author();
 
         let signed_commit_digest = Digest::new(signed_commit).map_err(ShardError::DigestFailure)?;
 
@@ -179,11 +169,11 @@ impl Store for MemStore {
     fn add_signed_commit(
         &self,
         shard: &Shard,
-        signed_commit: &Verified<Signed<ShardCommit, min_sig::BLS12381Signature>>,
+        signed_commit: &Verified<Signed<Commit, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
-        let encoder = signed_commit.encoder();
+        let encoder = signed_commit.author();
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let signed_commit = signed_commit.deref();
 
@@ -223,7 +213,7 @@ impl Store for MemStore {
     fn get_signed_commits(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<Signed<ShardCommit, min_sig::BLS12381Signature>>> {
+    ) -> ShardResult<Vec<Signed<Commit, min_sig::BLS12381Signature>>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -263,40 +253,14 @@ impl Store for MemStore {
         }
     }
 
-    fn check_reveal_key(
-        &self,
-        shard: &Shard,
-        signed_reveal: &Signed<ShardReveal, min_sig::BLS12381Signature>,
-    ) -> ShardResult<()> {
-        let epoch = shard.epoch();
-        let shard_digest = shard.digest()?;
-        let encoder = signed_reveal.encoder();
-        let encoder_key = (epoch, shard_digest, encoder.clone());
-        let inner = self.inner.read();
-        match inner.signed_commits.get(&encoder_key) {
-            Some(signed_commits) => {
-                let key_digest =
-                    Digest::new(signed_reveal.key()).map_err(ShardError::DigestFailure)?;
-                if signed_commits.reveal_key_digest()? != key_digest {
-                    return Err(ShardError::Conflict(
-                        "encryption key digest did not match commmit".to_string(),
-                    ));
-                }
-                Ok(())
-            }
-            None => Err(ShardError::NotFound(
-                "encryption key for commit".to_string(),
-            )),
-        }
-    }
     fn add_signed_reveal(
         &self,
         shard: &Shard,
-        signed_reveal: &Verified<Signed<ShardReveal, min_sig::BLS12381Signature>>,
+        signed_reveal: &Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
-        let encoder = signed_reveal.encoder();
+        let encoder = signed_reveal.author();
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let signed_reveal = signed_reveal.deref();
 
@@ -336,7 +300,7 @@ impl Store for MemStore {
     fn get_signed_reveals(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<Signed<ShardReveal, min_sig::BLS12381Signature>>> {
+    ) -> ShardResult<Vec<Signed<Reveal, min_sig::BLS12381Signature>>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -351,6 +315,23 @@ impl Store for MemStore {
 
         Ok(reveals)
     }
+
+    fn get_encoder_signed_reveal(
+        &self,
+        shard: &Shard,
+        encoder: &EncoderPublicKey,
+    ) -> ShardResult<Signed<Reveal, min_sig::BLS12381Signature>> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let encoder_key = (epoch, shard_digest, encoder.clone());
+
+        if let Some(reveal) = self.inner.read().signed_reveals.get(&encoder_key) {
+            Ok(reveal.clone())
+        } else {
+            Err(ShardError::NotFound("signed reveal".to_string()))
+        }
+    }
+
     fn add_first_reveal_time(&self, shard: &Shard) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
@@ -377,11 +358,11 @@ impl Store for MemStore {
     fn add_commit_votes(
         &self,
         shard: &Shard,
-        votes: &Verified<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>,
+        votes: &Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
-        let encoder = votes.voter();
+        let encoder = votes.author();
         let encoder_key = (epoch, shard_digest, encoder.clone());
         let votes = &**votes;
 
@@ -419,7 +400,7 @@ impl Store for MemStore {
                         .commit_accept_digest_voters
                         .entry(receiving_encoder_digest_key.clone())
                         .or_default()
-                        .insert(votes.voter().clone());
+                        .insert(votes.author().clone());
 
                     let this_digests_votes = guard
                         .commit_accept_digest_voters
@@ -443,7 +424,7 @@ impl Store for MemStore {
                         .commit_reject_voters
                         .entry(receiving_encoder_key)
                         .or_default()
-                        .insert(votes.voter().clone());
+                        .insert(votes.author().clone());
                 }
             }
         }
@@ -467,7 +448,7 @@ impl Store for MemStore {
         &self,
         shard: &Shard,
         encoder: &EncoderPublicKey,
-        digest: Option<&Digest<Signed<ShardCommit, min_sig::BLS12381Signature>>>,
+        digest: Option<&Digest<Signed<Reveal, min_sig::BLS12381Signature>>>,
     ) -> ShardResult<CommitVoteCounts> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
@@ -506,7 +487,7 @@ impl Store for MemStore {
     fn get_commit_votes(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<Signed<ShardCommitVotes, min_sig::BLS12381Signature>>> {
+    ) -> ShardResult<Vec<Signed<CommitVotes, min_sig::BLS12381Signature>>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -522,108 +503,16 @@ impl Store for MemStore {
         Ok(commit_votes)
     }
 
-    fn add_reveal_votes(
+    fn add_signed_score(
         &self,
         shard: &Shard,
-        votes: &Verified<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>,
-    ) -> ShardResult<()> {
-        info!("Adding reveal votes");
-        let epoch = shard.epoch();
-        let shard_digest = shard.digest()?;
-        let voter_key = (epoch, shard_digest, votes.voter().clone());
-        let votes = &**votes;
-
-        let mut guard = self.inner.write();
-
-        match guard.signed_reveal_votes.get(&voter_key) {
-            Some(existing) => {
-                // TODO: use digests to compare Shard message types
-                // if existing != votes {
-                //     return Err(ShardError::Conflict(
-                //         "encoder has a different reveal vote".to_string(),
-                //     ));
-                // }
-            }
-            None => {
-                guard.signed_reveal_votes.insert(voter_key, votes.clone());
-            }
-        };
-
-        for receiving_encoder in shard.encoders() {
-            let receiving_encoder_key = (epoch, shard_digest, receiving_encoder.clone());
-            if votes.accepts().contains(&receiving_encoder) {
-                // explicit accept vote
-                guard
-                    .reveal_accept_voters
-                    .entry(receiving_encoder_key)
-                    .or_default()
-                    .insert(votes.voter().clone());
-            } else {
-                // implicit reject vote
-                guard
-                    .reveal_reject_voters
-                    .entry(receiving_encoder_key)
-                    .or_default()
-                    .insert(votes.voter().clone());
-            }
-        }
-        Ok(())
-    }
-    fn get_reveal_votes(
-        &self,
-        shard: &Shard,
-    ) -> ShardResult<Vec<Signed<ShardRevealVotes, min_sig::BLS12381Signature>>> {
-        let epoch = shard.epoch();
-        let shard_digest = shard.digest()?;
-
-        let reveal_votes: Vec<_> = self
-            .inner
-            .read()
-            .signed_reveal_votes
-            .iter()
-            .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
-            .map(|(_, value)| value.clone())
-            .collect();
-
-        Ok(reveal_votes)
-    }
-
-    fn get_reveal_votes_for_encoder(
-        &self,
-        shard: &Shard,
-        encoder: &EncoderPublicKey,
-    ) -> ShardResult<RevealVoteCounts> {
-        let epoch = shard.epoch();
-        let shard_digest = shard.digest()?;
-        let encoder_key = (epoch, shard_digest, encoder.clone());
-
-        let guard = self.inner.read();
-
-        let accepts = guard
-            .reveal_accept_voters
-            .get(&encoder_key)
-            .map(|voters| voters.len())
-            .unwrap_or(0);
-
-        let rejects = guard
-            .reveal_reject_voters
-            .get(&encoder_key)
-            .map(|voters| voters.len())
-            .unwrap_or(0);
-
-        Ok(RevealVoteCounts::new(accepts, rejects))
-    }
-
-    fn add_signed_scores(
-        &self,
-        shard: &Shard,
-        scores: &Verified<Signed<ShardScores, min_sig::BLS12381Signature>>,
+        score: &Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
-        let encoder = scores.evaluator();
+        let encoder = score.author();
         let encoder_key = (epoch, shard_digest, encoder.clone());
-        let scores = scores.deref();
+        let scores = score.deref();
 
         let mut guard = self.inner.write();
 
@@ -645,7 +534,7 @@ impl Store for MemStore {
     fn get_signed_scores(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<Signed<ShardScores, min_sig::BLS12381Signature>>> {
+    ) -> ShardResult<Vec<Signed<ShardScore, min_sig::BLS12381Signature>>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -686,7 +575,7 @@ impl Store for MemStore {
         };
         Ok(())
     }
-    fn get_agg_scores(
+    fn get_agg_score(
         &self,
         shard: &Shard,
     ) -> ShardResult<(EncoderAggregateSignature, Vec<EncoderPublicKey>)> {

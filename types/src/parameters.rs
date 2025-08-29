@@ -200,6 +200,9 @@ pub struct TonicParameters {
     /// If unspecified, this will default to 1GiB.
     #[serde(default = "TonicParameters::default_message_size_limit")]
     pub message_size_limit: usize,
+
+    #[serde(default = "TonicParameters::default_channel_pool_capacity")]
+    pub channel_pool_capacity: usize,
 }
 
 impl TonicParameters {
@@ -218,6 +221,9 @@ impl TonicParameters {
     fn default_message_size_limit() -> usize {
         64 << 20
     }
+    fn default_channel_pool_capacity() -> usize {
+        1 << 8
+    }
 }
 
 impl Default for TonicParameters {
@@ -227,6 +233,7 @@ impl Default for TonicParameters {
             connection_buffer_size: TonicParameters::default_connection_buffer_size(),
             excessive_message_size: TonicParameters::default_excessive_message_size(),
             message_size_limit: TonicParameters::default_message_size_limit(),
+            channel_pool_capacity: TonicParameters::default_channel_pool_capacity(),
         }
     }
 }

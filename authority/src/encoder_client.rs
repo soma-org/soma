@@ -2,7 +2,6 @@ use fastcrypto::traits::KeyPair;
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
     error::SharedResult,
-    parameters::Parameters,
     scope::Scope,
     signed::Signed,
     verified::Verified,
@@ -12,6 +11,7 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use types::{
     committee::EncoderCommittee,
     crypto::{AuthorityKeyPair, NetworkKeyPair},
+    parameters::Parameters,
     shard::{ShardAuthToken, ShardInput, ShardInputV1},
     shard_networking::{
         external::{EncoderExternalNetworkClient, EncoderExternalTonicClient},
@@ -79,7 +79,7 @@ impl EncoderClientService {
         let input = ShardInput::V1(ShardInputV1::new(token.clone()));
         let signed_input = Signed::new(
             input,
-            Scope::ShardInput,
+            Scope::Input,
             &self.authority_keypair.copy().private(),
         )?;
         let verified_input = Verified::from_trusted(signed_input)?;

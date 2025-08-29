@@ -28,7 +28,7 @@ pub mod quorum_driver;
 pub(crate) mod serde;
 pub mod shard;
 pub mod shard_networking;
-pub mod shard_scores;
+pub mod shard_score;
 pub mod shard_verifier;
 pub mod signature_verifier;
 pub mod state_sync;

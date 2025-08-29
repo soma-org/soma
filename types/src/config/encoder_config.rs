@@ -1,24 +1,16 @@
 use crate::{
-    committee::Committee,
     crypto::{get_key_pair_from_rng, EncodeDecodeBase64, SomaKeyPair},
     genesis::Genesis,
     multiaddr::Multiaddr,
 };
 use anyhow::anyhow;
 use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
-use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use shared::{
-    authority_committee::AuthorityCommittee,
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
-};
-use soma_tls::AllowPublicKeys;
+use shared::crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    net::{IpAddr, Ipv4Addr},
     num::NonZeroUsize,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, OnceLock},
 };
 
@@ -43,14 +35,14 @@ pub struct EncoderConfig {
     pub external_network_address: Multiaddr,
     /// The network address for object storage
     pub object_address: Multiaddr,
-    /// The network address for probe service
-    pub probe_address: Multiaddr,
+    /// The network address for evaluation service
+    pub evaluation_address: Multiaddr,
     /// Parameters for the encoder system
     // TODO: pub parameters: Arc<Parameters>,
     /// Parameters for the object system
     pub object_parameters: Arc<objects::parameters::Parameters>,
-    /// Parameters for the probe system
-    pub probe_parameters: Arc<probe::parameters::Parameters>,
+    /// Parameters for the evaluation system
+    pub evaluation_parameters: Arc<evaluation::parameters::Parameters>,
     /// Path to the project root for Python interpreter
     pub project_root: PathBuf,
     /// Path to the entry point for Python module
@@ -74,7 +66,7 @@ impl EncoderConfig {
         internal_network_address: Multiaddr,
         external_network_address: Multiaddr,
         object_address: Multiaddr,
-        probe_address: Multiaddr,
+        evaluation_address: Multiaddr,
         project_root: PathBuf,
         entry_point: PathBuf,
         validator_rpc_address: Multiaddr,
@@ -83,7 +75,7 @@ impl EncoderConfig {
         // Create default parameters
         // TODO: let parameters = Arc::new(Parameters::default());
         let object_parameters = Arc::new(objects::parameters::Parameters::default());
-        let probe_parameters = Arc::new(probe::parameters::Parameters::default());
+        let evaluation_parameters = Arc::new(evaluation::parameters::Parameters::default());
 
         Self {
             account_keypair: KeyPairWithPath::new(soma_keypair),
@@ -92,10 +84,10 @@ impl EncoderConfig {
             internal_network_address,
             external_network_address,
             object_address,
-            probe_address,
+            evaluation_address,
             // parameters,
             object_parameters,
-            probe_parameters,
+            evaluation_parameters,
             project_root,
             entry_point,
             validator_rpc_address,
@@ -244,7 +236,7 @@ pub struct EncoderGenesisConfig {
     pub internal_network_address: Multiaddr,
     pub external_network_address: Multiaddr,
     pub object_address: Multiaddr,
-    pub probe_address: Multiaddr,
+    pub evaluation_address: Multiaddr,
     pub stake: u64,
     pub commission_rate: u64,
     pub byte_price: u64,
@@ -314,22 +306,26 @@ impl EncoderGenesisConfigBuilder {
             .unwrap_or_else(|| PeerKeyPair::new(get_key_pair_from_rng(rng).1));
 
         // Generate network addresses
-        let (internal_network_address, external_network_address, object_address, probe_address) =
-            if let Some(offset) = self.port_offset {
-                (
-                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
-                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
-                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
-                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
-                )
-            } else {
-                (
-                    local_ip_utils::new_tcp_address_for_testing(&ip),
-                    local_ip_utils::new_tcp_address_for_testing(&ip),
-                    local_ip_utils::new_tcp_address_for_testing(&ip),
-                    local_ip_utils::new_tcp_address_for_testing(&ip),
-                )
-            };
+        let (
+            internal_network_address,
+            external_network_address,
+            object_address,
+            evaluation_address,
+        ) = if let Some(offset) = self.port_offset {
+            (
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
+            )
+        } else {
+            (
+                local_ip_utils::new_tcp_address_for_testing(&ip),
+                local_ip_utils::new_tcp_address_for_testing(&ip),
+                local_ip_utils::new_tcp_address_for_testing(&ip),
+                local_ip_utils::new_tcp_address_for_testing(&ip),
+            )
+        };
 
         EncoderGenesisConfig {
             encoder_key_pair,
@@ -338,7 +334,7 @@ impl EncoderGenesisConfigBuilder {
             internal_network_address,
             external_network_address,
             object_address,
-            probe_address,
+            evaluation_address,
             stake,
             commission_rate: DEFAULT_ENCODER_COMMISSION_RATE,
             byte_price: DEFAULT_ENCODER_BYTE_PRICE,

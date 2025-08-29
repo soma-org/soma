@@ -42,17 +42,14 @@ pub enum Scope {
     HeaderDigest = 6,      // Used for narwhal authority signature on header digest.
     BridgeEventUnused = 7, // for bridge purposes but it's currently not included in messages.
     ConsensusBlockHeader = 8, // Used for consensus authority signature on block's digest
-    ShardInput = 9,
-    ShardCommit = 10,
-    ShardReveal = 11,
-    ShardEndorsement = 12,
-    ShardCommitRoute = 13,
-    ShardCommitVotes = 15,
-    ShardRevealVotes = 16,
-    ShardScores = 17,
-    EncryptionKey = 18,
-    ShardCommitCertificate = 19,
-    ShardFinality = 20,
+    Input = 9,
+    Commit = 10,
+    Reveal = 11,
+    Endorsement = 12,
+    CommitVotes = 15,
+    Score = 17,
+    ScoreSet = 18,
+    Finality = 20,
 }
 
 impl TryFrom<u8> for Scope {

@@ -14,7 +14,7 @@ use super::container::Container;
 /// Each Node is attempted to run in isolation from each other by running them in their own tokio
 /// runtime in a separate thread. By doing this we can ensure that all asynchronous tasks
 /// associated with a Node are able to be stopped when desired (either when a Node is dropped or
-/// explicitly stopped by calling [`Node::stop`]) by simply dropping that Node's runtime.
+/// explicitly stopped by calling `Node.stop`) by simply dropping that Node's runtime.
 #[derive(Debug)]
 pub struct Node {
     container: Mutex<Option<Container>>,

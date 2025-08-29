@@ -11,19 +11,15 @@ members = [
   "shared",
   "cli",
   "encoder",
-  "soma-python",
-  "probe",
+  "evaluation",
   "soma-http",
   "soma-tls",
   "soma-network",
   "vdf",
   "objects",
   "test-encoder-cluster",
-  "model",
-  "encoder-validator-api",
-  "bin-version",
-  "soma-config",
-  "soma-keys",
+  "inference",
+  "encoder-validator-api", "bin-version", "soma-config", "soma-keys",
 ]
 
 
@@ -188,13 +184,13 @@ prost = "0.13.2" # prost = "0.13.1"
 # ENCODER-ONLY DEPENDENCIES
 encoder = { path = "encoder" }
 shared = { path = "shared" }
-probe = { path = "probe" }
+evaluation = { path = "evaluation" }
 vdf = { path = "vdf" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
 objects = { path = "objects" }
-model = { path = "model" }
+inference = { path = "inference" }
 test-encoder-cluster = { path = "test-encoder-cluster" }
 
 # external deps

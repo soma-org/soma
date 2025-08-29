@@ -22,6 +22,9 @@ impl ShardAuthToken {
             shard,
         }
     }
+    pub fn metadata_commitment(&self) -> MetadataCommitment {
+        self.metadata_commitment.clone()
+    }
 
     pub fn epoch(&self) -> u64 {
         self.finality_proof.consensus_finality.leader_block.epoch

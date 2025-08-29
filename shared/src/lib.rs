@@ -12,7 +12,6 @@ pub mod error;
 pub mod finality_proof;
 pub mod metadata;
 pub mod parameters;
-pub mod probe;
 pub mod scope;
 pub mod serialized;
 pub mod shard;
