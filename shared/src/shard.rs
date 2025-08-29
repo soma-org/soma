@@ -11,13 +11,15 @@ use crate::{
         address::Address,
         keys::{
             AuthorityAggregateSignature, AuthorityKeyPair, AuthoritySignature,
-            EncoderAggregateSignature, EncoderPublicKey, ProtocolKeySignature,
+            EncoderAggregateSignature, EncoderPublicKey, PeerPublicKey, ProtocolKeySignature,
         },
     },
     digest::Digest,
     entropy::{BlockEntropy, BlockEntropyProof, EntropyVDF},
     finality_proof::{BlockClaim, FinalityProof},
-    metadata::{Metadata, MetadataCommitment},
+    metadata::{
+        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
+    },
     scope::{Scope, ScopedMessage},
     transaction::{
         ShardTransaction, SignedTransaction, TransactionData, TransactionExpiration,
@@ -26,6 +28,7 @@ use crate::{
 };
 
 use serde::{Deserialize, Serialize};
+use soma_network::multiaddr::Multiaddr;
 
 use crate::error::{ShardError, ShardResult};
 
@@ -99,3 +102,79 @@ impl ShardEntropy {
         }
     }
 }
+
+// #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+// pub struct ShardAuthToken {
+//     pub proof: FinalityProof,
+//     pub metadata_commitment: MetadataCommitment,
+//     pub block_entropy: BlockEntropy,
+//     pub entropy_proof: BlockEntropyProof,
+// }
+
+// impl ShardAuthToken {
+//     pub fn metadata_commitment(&self) -> MetadataCommitment {
+//         self.metadata_commitment.clone()
+//     }
+//     pub fn epoch(&self) -> Epoch {
+//         self.proof.epoch()
+//     }
+
+//     pub fn new_for_test(peer: PeerPublicKey, address: Multiaddr) -> Self {
+//         fn mock_tx() -> SignedTransaction {
+//             let sig = ProtocolKeySignature::from_bytes(&[1u8; 64]).unwrap();
+//             let tx = ShardTransaction::new(Digest::new_from_bytes(b"test"), 100);
+//             let tx_kind = TransactionKind::ShardTransaction(tx);
+//             SignedTransaction {
+//                 scoped_message: ScopedMessage::new(
+//                     Scope::TransactionData,
+//                     TransactionData::new_v1(
+//                         tx_kind,
+//                         Address::default(),
+//                         TransactionExpiration::None,
+//                     ),
+//                 ),
+//                 tx_signatures: vec![sig],
+//             }
+//         }
+//         let epoch = 0_u64;
+//         let stakes = vec![1u64; 4];
+//         let (authority_committee, authority_keypairs) =
+//             AuthorityCommittee::local_test_committee(0, stakes);
+//         let metadata = MetadataV1::new(
+//             Default::default(), // default checksum
+//             1024,               // size in bytes
+//         );
+
+//         let downloadable_metadata =
+//             DownloadableMetadata::V1(DownloadableMetadataV1::new(peer, address, metadata));
+//         let metadata_commitment = MetadataCommitment::new(downloadable_metadata, [0u8; 32]);
+
+//         // Create a test claim
+//         let claim = BlockClaim::new(epoch, BlockRef::default(), mock_tx());
+
+//         // Sign with 3 out of 4 authorities (meeting 2f+1 threshold)
+//         let message = bcs::to_bytes(&claim).unwrap();
+//         let signatures: Vec<AuthoritySignature> = authority_keypairs[..3]
+//             .iter()
+//             .map(|(_, authority_kp)| authority_kp.sign(&message))
+//             .collect();
+
+//         // Create authority bitset for the signing authorities
+//         let authorities =
+//             AuthorityBitSet::new(&(0..3).map(AuthorityIndex::new_for_test).collect::<Vec<_>>());
+
+//         // Create and verify the proof
+//         let proof = FinalityProof::new(
+//             claim,
+//             authorities,
+//             AuthorityAggregateSignature::new(&signatures).unwrap(),
+//         );
+
+//         Self {
+//             proof,
+//             metadata_commitment,
+//             block_entropy: BlockEntropy::default(),
+//             entropy_proof: BlockEntropyProof::default(),
+//         }
+//     }
+// }

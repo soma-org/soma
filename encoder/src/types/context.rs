@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use arc_swap::ArcSwap;
 use shared::{
     authority_committee::AuthorityCommittee,
+    checksum::Checksum,
     crypto::keys::{EncoderPublicKey, PeerPublicKey},
-    probe::ProbeMetadata,
 };
 use soma_network::multiaddr::Multiaddr;
 
@@ -45,11 +45,11 @@ impl Context {
         self.inner.load_full()
     }
 
-    pub fn probe_metadata(
+    pub fn probe_checksum(
         &self,
         epoch: Epoch,
         encoder: &EncoderPublicKey,
-    ) -> ShardResult<ProbeMetadata> {
+    ) -> ShardResult<Checksum> {
         match self
             .inner
             .load()
@@ -57,7 +57,7 @@ impl Context {
             .encoder_committee
             .encoder_by_key(&encoder)
         {
-            Some(e) => Ok(e.probe.clone()),
+            Some(e) => Ok(e.probe_checksum.clone()),
             None => Err(ShardError::NotFound(
                 "probe metadata not found for encoder".to_string(),
             )),

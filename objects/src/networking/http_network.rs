@@ -24,7 +24,10 @@ use shared::{
         keys::{PeerKeyPair, PeerPublicKey},
         DefaultHashFunction,
     },
-    metadata::{Metadata, MetadataAPI},
+    metadata::{
+        DownloadableMetadata, DownloadableMetadataAPI, DownloadableMetadataV1, Metadata,
+        MetadataAPI,
+    },
 };
 use soma_http::{PeerCertificates, ServerHandle};
 use soma_network::{
@@ -116,26 +119,27 @@ impl ObjectNetworkClient for ObjectHttpClient {
     async fn download_object<W>(
         &self,
         writer: &mut W,
-        peer: &PeerPublicKey,
-        address: &Multiaddr,
-        metadata: &Metadata,
+        downloadable_metadata: &DownloadableMetadata,
     ) -> ObjectResult<()>
     where
         W: AsyncWrite + Unpin + Send,
     {
-        let address = to_host_port_str(address).map_err(|e| {
+        let address = to_host_port_str(&downloadable_metadata.address()).map_err(|e| {
             ObjectError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         // warn!("checksum: {}", metadata.checksum());
-        let address = format!("https://{address}/{}", metadata.checksum());
+        let address = format!(
+            "https://{address}/{}",
+            downloadable_metadata.metadata().checksum()
+        );
         // warn!("address: {}", address);
         let url = Url::from_str(&address).map_err(|e| ObjectError::UrlParseError(e.to_string()))?;
 
-        let timeout = calculate_timeout(metadata.size());
+        let timeout = calculate_timeout(downloadable_metadata.metadata().size());
         // warn!("timeout: {:?}", timeout);
 
         let mut response = self
-            .get_client(peer)
+            .get_client(&downloadable_metadata.peer())
             .await?
             .get(url.clone())
             .timeout(timeout)
@@ -178,19 +182,19 @@ impl ObjectNetworkClient for ObjectHttpClient {
 
         let checksum = Checksum::new_from_hash(hasher.finalize().into());
 
-        if total_size != metadata.size() {
+        if total_size != downloadable_metadata.metadata().size() {
             return Err(ObjectError::VerificationError(format!(
                 "Size mismatch: expected {}, got {}",
-                metadata.size(),
+                downloadable_metadata.metadata().size(),
                 total_size
             )));
         }
 
         // Verify checksum
-        if checksum != metadata.checksum() {
+        if checksum != downloadable_metadata.metadata().checksum() {
             return Err(ObjectError::VerificationError(format!(
                 "Checksum mismatch: expected {}, got {}",
-                metadata.checksum(),
+                downloadable_metadata.metadata().checksum(),
                 checksum
             )));
         }
@@ -351,7 +355,11 @@ mod tests {
 
     use bytes::Bytes;
     use rand::{rngs::OsRng, RngCore};
-    use shared::{checksum::Checksum, crypto::keys::PeerKeyPair, metadata::Metadata};
+    use shared::{
+        checksum::Checksum,
+        crypto::keys::PeerKeyPair,
+        metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataV1},
+    };
     use soma_network::multiaddr::Multiaddr;
     use soma_tls::AllowPublicKeys;
     use tracing::warn;
@@ -403,13 +411,20 @@ mod tests {
         OsRng.fill_bytes(&mut buffer);
         let random_bytes = Bytes::from(buffer);
 
+        let address = get_available_local_address();
+        let client_keypair = PeerKeyPair::generate(&mut rng);
+        let server_keypair = PeerKeyPair::generate(&mut rng);
         let checksum = Checksum::new_from_bytes(&random_bytes);
         let download_size = random_bytes.len();
         let object_path = ObjectPath::new(checksum.to_string()).unwrap();
-        let metadata = Metadata::new_v1(None, None, checksum, download_size);
 
-        let client_keypair = PeerKeyPair::generate(&mut rng);
-        let server_keypair = PeerKeyPair::generate(&mut rng);
+        let metadata = MetadataV1::new(checksum, download_size);
+
+        let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
+            server_keypair.public(),
+            address.clone(),
+            metadata,
+        ));
 
         let client_object_storage = Arc::new(MemoryObjectStore::new_for_test());
         let server_object_storage = Arc::new(MemoryObjectStore::new_for_test());
@@ -435,7 +450,6 @@ mod tests {
             )
             .unwrap();
 
-        let address = get_available_local_address();
         server_object_network_manager
             .start(&address, server_object_network_service)
             .await;
@@ -448,7 +462,7 @@ mod tests {
             .unwrap();
 
         object_client
-            .download_object(&mut writer, &server_keypair.public(), &address, &metadata)
+            .download_object(&mut writer, &downloadable_metadata)
             .await
             .unwrap();
 

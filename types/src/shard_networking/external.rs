@@ -6,13 +6,13 @@ use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::{EncoderPublicKey, PeerKeyPair},
     error::{ShardError, ShardResult},
-    parameters::Parameters,
     signed::Signed,
     verified::Verified,
 };
 use tonic::{codec::CompressionEncoding, Request};
 
 use crate::{
+    parameters::Parameters,
     shard::ShardInput,
     shard_networking::{
         channel_pool::{Channel, ChannelPool},

@@ -2,12 +2,13 @@
 use quick_cache::sync::Cache;
 use shared::crypto::keys::{PeerKeyPair, PeerPublicKey};
 use shared::error::{ShardError, ShardResult};
-use shared::parameters::TonicParameters;
 use soma_network::multiaddr::{to_host_port_str, Multiaddr};
 use soma_network::CERTIFICATE_NAME;
 use std::time::Duration;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, trace};
+
+use crate::parameters::TonicParameters;
 
 pub struct ChannelPool {
     channels: Cache<(PeerPublicKey, Multiaddr), Channel>,

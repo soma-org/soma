@@ -12,7 +12,7 @@ use tracing::info;
 /// Each Encoder is attempted to run in isolation from each other by running them in their own tokio
 /// runtime in a separate thread. By doing this we can ensure that all asynchronous tasks
 /// associated with a Encoder are able to be stopped when desired (either when a Encoder is dropped or
-/// explicitly stopped by calling [`Encoder::stop`]) by simply dropping that Encoder's runtime.
+/// explicitly stopped by calling encoder stop) by simply dropping that Encoder's runtime.
 #[derive(Debug)]
 pub struct Node {
     container: Mutex<Option<Container>>,
@@ -21,10 +21,6 @@ pub struct Node {
 }
 
 impl Node {
-    /// Create a new Node from the provided `EncoderConfig`.
-    ///
-    /// The Node is returned without being started. See [`Node::spawn`] or [`Node::start`] for how to
-    /// start the node.
     pub fn new(config: EncoderConfig, client_key: Option<PeerPublicKey>) -> Self {
         Self {
             container: Default::default(),

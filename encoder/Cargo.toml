@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 objects.workspace = true
-model.workspace = true
+inference.workspace = true
 shared.workspace = true
-probe.workspace = true
+evaluation.workspace = true
 soma-http.workspace = true
 soma-tls.workspace = true
 soma-network.workspace = true

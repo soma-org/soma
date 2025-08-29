@@ -12,7 +12,11 @@ mod tests {
             EncoderInternalNetworkClient, EncoderInternalNetworkManager,
             EncoderInternalNetworkService,
         },
-        types::shard_commit::ShardCommit,
+        types::{
+            commit::Commit,
+            input::{Input, InputV1},
+            parameters::Parameters,
+        },
     };
     use async_trait::async_trait;
     use bytes::Bytes;
@@ -120,16 +124,7 @@ mod tests {
                 .push((encoder.to_owned(), reveal_bytes));
             Ok(())
         }
-        async fn handle_send_reveal_votes(
-            &self,
-            encoder: &EncoderPublicKey,
-            votes_bytes: Bytes,
-        ) -> ShardResult<()> {
-            self.handle_send_reveal_votes
-                .write()
-                .push((encoder.to_owned(), votes_bytes));
-            Ok(())
-        }
+
         async fn handle_send_scores(
             &self,
             encoder: &EncoderPublicKey,
@@ -206,10 +201,10 @@ mod tests {
     //         100,
     //     );
 
-    //     let input = ShardInput::V1(ShardInputV1::new(ShardAuthToken::new_for_test()));
-    //     let inner_keypair = encoder_key.inner().copy();
-    //     let signed_input = Signed::new(input, Scope::ShardInput, &inner_keypair.private()).unwrap();
-    //     let verified = Verified::from_trusted(signed_input.clone()).unwrap();
+    // let input = Input::V1(InputV1::new(ShardAuthToken::new_for_test()));
+    // let inner_keypair = encoder_key.inner().copy();
+    // let signed_input = Signed::new(input, Scope::Input, &inner_keypair.private()).unwrap();
+    // let verified = Verified::from_trusted(signed_input.clone()).unwrap();
 
     //     client
     //         .send_input(&encoder_key.public(), &verified, Duration::from_secs(2))
@@ -262,17 +257,17 @@ mod tests {
     //         100,
     //     );
 
-    //     let commit: ShardCommit = ShardCommit::new_v1(
-    //         ShardAuthToken::new_for_test(),
-    //         client_encoder_key.public(),
-    //         None,
-    //         Metadata::default(),
-    //     );
-    //     let inner_keypair = client_encoder_key.inner().copy();
+    // let commit: Commit = Commit::new_v1(
+    //     ShardAuthToken::new_for_test(),
+    //     client_encoder_key.public(),
+    //     None,
+    //     Metadata::default(),
+    // );
+    // let inner_keypair = client_encoder_key.inner().copy();
 
-    //     let signed_commit =
-    //         Signed::new(commit, Scope::ShardCommit, &inner_keypair.private()).unwrap();
-    //     let verified = Verified::from_trusted(signed_commit.clone()).unwrap();
+    // let signed_commit =
+    //     Signed::new(commit, Scope::Commit, &inner_keypair.private()).unwrap();
+    // let verified = Verified::from_trusted(signed_commit.clone()).unwrap();
 
     //     client
     //         .send_commit(

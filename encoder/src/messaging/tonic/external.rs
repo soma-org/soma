@@ -14,12 +14,14 @@ use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 
 use crate::messaging::{EncoderExternalNetworkManager, EncoderExternalNetworkService};
-use shared::parameters::Parameters;
 use tracing::{info, trace, warn};
-use types::shard_networking::{
-    external::{SendInputRequest, SendInputResponse},
-    generated::encoder_external_tonic_service_server::{
-        EncoderExternalTonicService, EncoderExternalTonicServiceServer,
+use types::{
+    parameters::Parameters,
+    shard_networking::{
+        external::{SendInputRequest, SendInputResponse},
+        generated::encoder_external_tonic_service_server::{
+            EncoderExternalTonicService, EncoderExternalTonicServiceServer,
+        },
     },
 };
 

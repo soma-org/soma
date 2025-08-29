@@ -1,0 +1,71 @@
+use enum_dispatch::enum_dispatch;
+use fastcrypto::bls12381::min_sig;
+use serde::{Deserialize, Serialize};
+use shared::shard::Shard;
+use shared::{
+    crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
+    signed::Signed,
+};
+use types::shard::ShardAuthToken;
+
+use super::reveal::Reveal;
+
+#[enum_dispatch]
+pub(crate) trait CommitAPI {
+    fn auth_token(&self) -> &ShardAuthToken;
+    fn author(&self) -> &EncoderPublicKey;
+    fn reveal_digest(&self) -> &Digest<Signed<Reveal, min_sig::BLS12381Signature>>;
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct CommitV1 {
+    auth_token: ShardAuthToken,
+    author: EncoderPublicKey,
+    reveal_digest: Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
+}
+
+impl CommitV1 {
+    pub(crate) fn new(
+        auth_token: ShardAuthToken,
+        author: EncoderPublicKey,
+        reveal_digest: Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
+    ) -> Self {
+        Self {
+            auth_token,
+            author,
+            reveal_digest,
+        }
+    }
+}
+
+impl CommitAPI for CommitV1 {
+    fn auth_token(&self) -> &ShardAuthToken {
+        &self.auth_token
+    }
+    fn author(&self) -> &EncoderPublicKey {
+        &self.author
+    }
+    fn reveal_digest(&self) -> &Digest<Signed<Reveal, min_sig::BLS12381Signature>> {
+        &self.reveal_digest
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[enum_dispatch(CommitAPI)]
+pub enum Commit {
+    V1(CommitV1),
+}
+
+pub(crate) fn verify_signed_commit(
+    signed_commit: &Signed<Commit, min_sig::BLS12381Signature>,
+    shard: &Shard,
+) -> SharedResult<()> {
+    if !shard.contains(signed_commit.author()) {
+        return Err(shared::error::SharedError::ValidationError(
+            "author is not in shard".to_string(),
+        ));
+    }
+
+    signed_commit.verify_signature(Scope::Commit, signed_commit.author().inner())?;
+    Ok(())
+}

@@ -1,0 +1,43 @@
+[package]
+name = "evaluation"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+safetensors = []
+
+[dependencies]
+objects.workspace = true
+zstd.workspace = true
+bcs.workspace = true
+serde.workspace = true
+enum_dispatch.workspace = true
+numpy.workspace = true
+ndarray.workspace = true
+bytes.workspace = true
+tonic.workspace = true
+prost.workspace = true
+async-trait.workspace = true
+strum_macros.workspace = true
+thiserror.workspace = true
+soma-network.workspace = true
+tower-http.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+soma-http.workspace = true
+shared.workspace = true
+burn-import.workspace = true
+burn-ndarray.workspace = true
+safetensors.workspace = true
+memmap2.workspace = true
+
+[dependencies.burn]
+workspace = true
+features = ["ndarray", "autodiff"]
+
+[build-dependencies]
+tonic-build.workspace = true
+
+[lints]
+workspace = true

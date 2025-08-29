@@ -44,7 +44,7 @@ where
         })
     }
 
-    pub fn verify(&self, scope: Scope, key: &S::PubKey) -> SharedResult<()>
+    pub fn verify_signature(&self, scope: Scope, key: &S::PubKey) -> SharedResult<()>
     where
         S::PubKey: VerifyingKey<Sig = S>,
     {
@@ -84,3 +84,22 @@ where
         &self.inner
     }
 }
+
+impl<T: Serialize, S: Authenticator> PartialEq for Signed<T, S> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.signature != other.signature {
+            return false;
+        }
+        let self_inner_bytes = match bcs::to_bytes(&self.inner) {
+            Ok(bytes) => bytes,
+            Err(_) => return false,
+        };
+        let other_inner_bytes = match bcs::to_bytes(&other.inner) {
+            Ok(bytes) => bytes,
+            Err(_) => return false,
+        };
+        self_inner_bytes == other_inner_bytes
+    }
+}
+
+impl<T: Serialize, S: Authenticator> Eq for Signed<T, S> {}

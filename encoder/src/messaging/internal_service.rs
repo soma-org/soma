@@ -3,12 +3,11 @@ use crate::{
     datastore::Store,
     messaging::EncoderInternalNetworkService,
     types::{
+        commit::{verify_signed_commit, Commit, CommitAPI},
+        commit_votes::{verify_commit_votes, CommitVotes, CommitVotesAPI},
         context::Context,
-        shard_commit::{verify_signed_shard_commit, ShardCommit, ShardCommitAPI},
-        shard_commit_votes::{verify_shard_commit_votes, ShardCommitVotes, ShardCommitVotesAPI},
-        shard_finality::{verify_signed_finality, ShardFinality, ShardFinalityAPI},
-        shard_reveal::{verify_signed_shard_reveal, ShardReveal, ShardRevealAPI},
-        shard_reveal_votes::{verify_shard_reveal_votes, ShardRevealVotes, ShardRevealVotesAPI},
+        finality::{verify_signed_finality, Finality, FinalityAPI},
+        reveal::{verify_signed_reveal, Reveal, RevealAPI},
     },
 };
 use async_trait::async_trait;
@@ -17,14 +16,13 @@ use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::EncoderPublicKey,
     error::{ShardError, ShardResult},
-    finality_proof,
     signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
 use tracing::{debug, error, info, trace, warn};
 use types::{
-    shard_scores::{verify_signed_scores, ShardScores, ShardScoresAPI},
+    shard_score::{verify_signed_score, ShardScore, ShardScoreAPI},
     shard_verifier::ShardVerifier,
 };
 
@@ -62,7 +60,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Commit bytes size: {} bytes", commit_bytes.len());
 
         trace!("Deserializing commit bytes to signed commit");
-        let signed_commit: Signed<ShardCommit, min_sig::BLS12381Signature> =
+        let signed_commit: Signed<Commit, min_sig::BLS12381Signature> =
             match bcs::from_bytes(&commit_bytes) {
                 Ok(commit) => {
                     debug!("Successfully deserialized commit");
@@ -75,11 +73,11 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             };
 
         debug!("Checking if peer is the committer");
-        if peer != signed_commit.committer() {
+        if peer != signed_commit.author() {
             warn!(
                 "Sender must be committer. Got: {:?}, expected: {:?}",
                 peer,
-                signed_commit.committer()
+                signed_commit.author()
             );
             return Err(ShardError::FailedTypeVerification(
                 "sender must be committer".to_string(),
@@ -120,7 +118,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         let verified_commit =
             match Verified::new(signed_commit.clone(), commit_bytes, |signed_commit| {
                 debug!("Verifying signed shard commit");
-                verify_signed_shard_commit(signed_commit, &shard)?;
+                verify_signed_commit(signed_commit, &shard)?;
                 Ok(())
             }) {
                 Ok(v) => {
@@ -141,21 +139,9 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
 
         debug!("Looking up object server for peer: {:?}", peer);
         if let Some((peer, address)) = self.context.inner().object_server(peer) {
-            let probe_metadata = self
-                .context
-                .probe_metadata(shard.epoch(), signed_commit.committer())?;
-            debug!("Found object server at address: {:?}", address);
-            debug!("Dispatching commit to object server");
             match self
                 .dispatcher
-                .dispatch_commit(
-                    shard,
-                    verified_commit,
-                    probe_metadata,
-                    peer,
-                    address,
-                    cancellation,
-                )
+                .dispatch_commit(shard, verified_commit, cancellation)
                 .await
             {
                 Ok(_) => {
@@ -189,7 +175,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Votes bytes size: {} bytes", votes_bytes.len());
 
         trace!("Deserializing votes bytes");
-        let votes: Signed<ShardCommitVotes, min_sig::BLS12381Signature> =
+        let votes: Signed<CommitVotes, min_sig::BLS12381Signature> =
             match bcs::from_bytes(&votes_bytes) {
                 Ok(v) => {
                     debug!("Successfully deserialized votes");
@@ -202,11 +188,11 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             };
 
         debug!("Checking if peer is the voter");
-        if peer != votes.voter() {
+        if peer != votes.author() {
             warn!(
                 "Sender must be voter. Got: {:?}, expected: {:?}",
                 peer,
-                votes.voter()
+                votes.author()
             );
             return Err(ShardError::FailedTypeVerification(
                 "sender must be voter".to_string(),
@@ -246,7 +232,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Creating verified commit votes object");
         let verified_commit_votes = match Verified::new(votes, votes_bytes, |votes| {
             debug!("Verifying shard commit votes");
-            verify_shard_commit_votes(votes, &shard)
+            verify_commit_votes(votes, &shard)
         }) {
             Ok(v) => {
                 debug!("Verified commit votes created successfully");
@@ -286,7 +272,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Reveal bytes size: {} bytes", reveal_bytes.len());
 
         trace!("Deserializing reveal bytes");
-        let reveal: Signed<ShardReveal, min_sig::BLS12381Signature> =
+        let reveal: Signed<Reveal, min_sig::BLS12381Signature> =
             match bcs::from_bytes(&reveal_bytes) {
                 Ok(r) => {
                     debug!("Successfully deserialized reveal");
@@ -299,11 +285,11 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             };
 
         debug!("Checking if peer is the encoder");
-        if peer != reveal.encoder() {
+        if peer != reveal.author() {
             warn!(
                 "Sender must be inference encoder for reveal. Got: {:?}, expected: {:?}",
                 peer,
-                reveal.encoder()
+                reveal.author()
             );
             return Err(ShardError::FailedTypeVerification(
                 "sender must be inference encoder for reveal".to_string(),
@@ -343,7 +329,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Creating verified reveal object");
         let verified_reveal = match Verified::new(reveal.clone(), reveal_bytes, |reveal| {
             debug!("Verifying signed shard reveal");
-            verify_signed_shard_reveal(reveal, &shard)
+            verify_signed_reveal(reveal, &shard)
         }) {
             Ok(v) => {
                 debug!("Verified reveal created successfully");
@@ -354,12 +340,6 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 return Err(ShardError::FailedTypeVerification(e.to_string()));
             }
         };
-
-        debug!("Checking reveal key in store");
-        if let Err(e) = self.store.check_reveal_key(&shard, &reveal) {
-            error!("Failed to check reveal key: {:?}", e);
-            return Err(e);
-        }
 
         debug!("Dispatching reveal");
         match self
@@ -380,103 +360,6 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         Ok(())
     }
 
-    async fn handle_send_reveal_votes(
-        &self,
-        peer: &EncoderPublicKey,
-        votes_bytes: Bytes,
-    ) -> ShardResult<()> {
-        info!("Handling send reveal votes from peer: {:?}", peer);
-        debug!("Votes bytes size: {} bytes", votes_bytes.len());
-
-        trace!("Deserializing votes bytes");
-        let votes: Signed<ShardRevealVotes, min_sig::BLS12381Signature> =
-            match bcs::from_bytes(&votes_bytes) {
-                Ok(v) => {
-                    debug!("Successfully deserialized votes");
-                    v
-                }
-                Err(e) => {
-                    error!("Failed to deserialize votes: {:?}", e);
-                    return Err(ShardError::MalformedType(e));
-                }
-            };
-
-        debug!("Checking if peer is the voter");
-        if peer != votes.voter() {
-            warn!(
-                "Sender must be voter. Got: {:?}, expected: {:?}",
-                peer,
-                votes.voter()
-            );
-            return Err(ShardError::FailedTypeVerification(
-                "sender must be voter".to_string(),
-            ));
-        }
-
-        debug!("Verifying shard with auth token");
-        let inner_context = self.context.inner();
-
-        let committees = match inner_context.committees(votes.auth_token().epoch()) {
-            Ok(c) => {
-                tracing::debug!("Successfully retrieved committees");
-                c
-            }
-            Err(e) => {
-                tracing::error!("Failed to get committees: {:?}", e);
-                return Err(e);
-            }
-        };
-
-        let (shard, cancellation) = match self.shard_verifier.verify(
-            committees.authority_committee.clone(),
-            committees.encoder_committee.clone(),
-            committees.vdf_iterations,
-            votes.auth_token(),
-        ) {
-            Ok(s) => {
-                debug!("Shard verification succeeded");
-                s
-            }
-            Err(e) => {
-                error!("Shard verification failed: {:?}", e);
-                return Err(e);
-            }
-        };
-
-        debug!("Creating verified reveal votes object");
-        let verified_reveal_votes = match Verified::new(votes, votes_bytes, |votes| {
-            debug!("Verifying shard reveal votes");
-            verify_shard_reveal_votes(votes, &shard)
-        }) {
-            Ok(v) => {
-                debug!("Verified reveal votes created successfully");
-                v
-            }
-            Err(e) => {
-                error!("Failed to create verified reveal votes: {:?}", e);
-                return Err(ShardError::FailedTypeVerification(e.to_string()));
-            }
-        };
-
-        debug!("Dispatching reveal votes");
-        match self
-            .dispatcher
-            .dispatch_reveal_votes(shard, verified_reveal_votes, cancellation)
-            .await
-        {
-            Ok(_) => {
-                info!("Successfully dispatched reveal votes");
-            }
-            Err(e) => {
-                error!("Failed to dispatch reveal votes: {:?}", e);
-                return Err(e);
-            }
-        }
-
-        info!("handle_send_reveal_votes completed successfully");
-        Ok(())
-    }
-
     async fn handle_send_scores(
         &self,
         peer: &EncoderPublicKey,
@@ -486,7 +369,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Scores bytes size: {} bytes", scores_bytes.len());
 
         trace!("Deserializing scores bytes");
-        let scores: Signed<ShardScores, min_sig::BLS12381Signature> =
+        let scores: Signed<ShardScore, min_sig::BLS12381Signature> =
             match bcs::from_bytes(&scores_bytes) {
                 Ok(s) => {
                     debug!("Successfully deserialized scores");
@@ -499,11 +382,11 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             };
 
         debug!("Checking if peer is the evaluator");
-        if peer != scores.evaluator() {
+        if peer != scores.author() {
             warn!(
                 "Sender must be score producer. Got: {:?}, expected: {:?}",
                 peer,
-                scores.evaluator()
+                scores.author()
             );
             return Err(ShardError::FailedTypeVerification(
                 "sender must be score producer".to_string(),
@@ -543,7 +426,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Creating verified scores object");
         let verified_scores = match Verified::new(scores, scores_bytes, |scores| {
             debug!("Verifying signed scores");
-            verify_signed_scores(scores, &shard)
+            verify_signed_score(scores, &shard)
         }) {
             Ok(v) => {
                 debug!("Verified scores created successfully");
@@ -581,7 +464,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         info!("Handling send finality from peer: {:?}", peer);
         debug!("Finality bytes size: {} bytes", finality_bytes.len());
         trace!("Deserializing finality bytes");
-        let finality: Signed<ShardFinality, min_sig::BLS12381Signature> =
+        let finality: Signed<Finality, min_sig::BLS12381Signature> =
             match bcs::from_bytes(&finality_bytes) {
                 Ok(s) => {
                     debug!("Successfully deserialized");

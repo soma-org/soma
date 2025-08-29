@@ -6,7 +6,9 @@ use futures::{
 };
 use shared::{
     digest::Digest,
-    metadata::{Metadata, MetadataCommitment},
+    metadata::{
+        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
+    },
     shard::ShardEntropy,
 };
 use tokio::{
@@ -412,13 +414,17 @@ where
         info!("Generated finality proof for tx: {}", transaction.digest());
 
         // TODO: define real Metadata and commitment
-        let metadata = Metadata::new_v1(
-            None,               // no compression
-            None,               // no encryption
+        let metadata = MetadataV1::new(
             Default::default(), // default checksum
             1024,               // size in bytes
         );
-        let metadata_commitment = MetadataCommitment::new(metadata, [0u8; 32]);
+
+        let peer = unimplemented!();
+        let address = unimplemented!();
+
+        let downloadable_metadata =
+            DownloadableMetadata::V1(DownloadableMetadataV1::new(peer, address, metadata));
+        let metadata_commitment = MetadataCommitment::new(downloadable_metadata, [0u8; 32]);
 
         self.initiate_encoder_work_for_embed_data(
             &finality_proof,

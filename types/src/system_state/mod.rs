@@ -63,7 +63,6 @@ use crate::{
     object::ObjectID,
     parameters,
     peer_id::PeerId,
-    shard_scores::{Score, ShardScores},
     transaction::{UpdateEncoderMetadataArgs, UpdateValidatorMetadataArgs},
     SYSTEM_STATE_OBJECT_ID,
 };
@@ -187,7 +186,7 @@ pub trait SystemStateTrait {
 /// ## Thread Safety
 /// This struct is not thread-safe on its own and should be protected by
 /// appropriate synchronization mechanisms when accessed concurrently.
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SystemState {
     /// The current epoch number
     pub epoch: u64,

@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+
+soma-network.workspace = true
 vdf.workspace = true
 serde.workspace = true
 fastcrypto.workspace = true

@@ -3,6 +3,7 @@ pub mod memory;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
@@ -10,7 +11,7 @@ use shared::checksum::Checksum;
 
 use shared::error::ObjectResult;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct ObjectPath {
     // TODO: make this better
     path: String,

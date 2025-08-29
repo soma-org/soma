@@ -1,9 +1,7 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 use shared::{digest::Digest, metadata::MetadataCommitment};
 
-use crate::{base::SomaAddress, committee::EpochId, shard_scores::Score};
+use crate::{base::SomaAddress, committee::EpochId, shard_score::ScoreSet};
 
 /// ShardInput represents an escrowed amount for data encoding
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,7 +19,7 @@ pub struct ShardInput {
 }
 
 /// Scores associated with a particular metadata commitment
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShardResult {
     /// Metadata commitment digest the scores are for
     pub digest: Digest<MetadataCommitment>,
@@ -30,5 +28,5 @@ pub struct ShardResult {
     /// Escrowed amount for the shard
     pub amount: u64,
     /// Score entries mapping encoder addresses to their scores
-    pub scores: Vec<Score>,
+    pub score_set: ScoreSet,
 }

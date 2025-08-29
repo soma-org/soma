@@ -1,0 +1,44 @@
+[package]
+name = "inference"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+objects.workspace = true
+evaluation.workspace = true
+serde.workspace = true
+shared.workspace = true
+multiaddr.workspace = true
+async-trait.workspace = true 
+bytes.workspace = true
+tokio.workspace = true
+axum.workspace = true
+url.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+strum_macros.workspace = true
+soma-network.workspace = true
+soma-tls.workspace = true
+soma-http.workspace = true
+fastcrypto.workspace = true
+axum-server.workspace = true
+tower-http.workspace = true
+quick_cache.workspace = true
+parking_lot.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+arc-swap.workspace = true
+enum_dispatch.workspace = true
+prost.workspace = true
+ndarray.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+
+[lints]
+workspace = true
