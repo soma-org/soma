@@ -1,19 +1,18 @@
 use e2e_tests::integration_helpers::setup_integrated_encoder_validator_test;
 use rand::rngs::OsRng;
+use shared::checksum::Checksum;
+use shared::crypto::keys::PeerPublicKey;
 use shared::digest::Digest;
-use shared::metadata::{Metadata, MetadataCommitment};
+use shared::metadata::{
+    DownloadableMetadata, DownloadableMetadataV1, MetadataCommitment, MetadataV1,
+};
 use std::time::Duration;
 use test_cluster::TestCluster;
-use test_encoder_cluster::TestEncoderClusterBuilder;
 use tokio::time::sleep;
-use tracing::info;
-use types::shard::ShardAuthToken;
+use types::crypto::KeypairTraits;
 use types::{
     base::SomaAddress,
-    config::{
-        encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},
-        genesis_config::{AccountConfig, DEFAULT_GAS_AMOUNT},
-    },
+    config::encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},
     crypto::SomaKeyPair,
     transaction::{AddEncoderArgs, Transaction, TransactionData, TransactionKind},
 };
@@ -106,13 +105,26 @@ async fn test_integrated_encoder_validator_system() {
     }
 
     // TODO: define real Metadata and commitment
-    let metadata = Metadata::new_v1(
-        None,               // no compression
-        None,               // no encryption
-        Default::default(), // default checksum
-        1024,               // size in bytes
+    let size_in_bytes = 1;
+    let fullnode_config = test_cluster
+        .fullnode_handle
+        .soma_node
+        .state()
+        .config
+        .clone();
+    let metadata = DownloadableMetadataV1::new(
+        PeerPublicKey::new(
+            fullnode_config
+                .network_key_pair()
+                .into_inner()
+                .public()
+                .clone(),
+        ),
+        fullnode_config.network_address.to_string().parse().unwrap(),
+        MetadataV1::new(Checksum::default(), size_in_bytes),
     );
-    let metadata_commitment = MetadataCommitment::new(metadata, [0u8; 32]);
+    let metadata_commitment =
+        MetadataCommitment::new(DownloadableMetadata::V1(metadata), [0u8; 32]);
 
     let digest =
         Digest::new(&metadata_commitment).expect("Failed to create digest for metadata_commitment");
@@ -122,6 +134,7 @@ async fn test_integrated_encoder_validator_system() {
         &mut test_cluster,
         new_encoder_address,
         digest,
+        size_in_bytes,
     )
     .await;
 
@@ -153,6 +166,7 @@ async fn execute_embed_data_transaction(
     test_cluster: &mut TestCluster,
     address: SomaAddress,
     digest: Digest<MetadataCommitment>,
+    data_size_bytes: usize,
 ) {
     // Get gas object for the transaction
     let gas_object = test_cluster
@@ -165,7 +179,7 @@ async fn execute_embed_data_transaction(
         TransactionData::new(
             TransactionKind::EmbedData {
                 digest: digest,
-                data_size_bytes: 1, // TODO: make this real data size
+                data_size_bytes,
                 coin_ref: gas_object[0],
             },
             address,

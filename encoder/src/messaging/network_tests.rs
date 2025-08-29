@@ -15,7 +15,6 @@ mod tests {
         types::{
             commit::Commit,
             input::{Input, InputV1},
-            parameters::Parameters,
         },
     };
     use async_trait::async_trait;

@@ -1,10 +1,13 @@
 use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
+use fastcrypto::traits::KeyPair;
 use futures::{
     future::{select, Either},
     FutureExt,
 };
 use shared::{
+    checksum::Checksum,
+    crypto::keys::PeerPublicKey,
     digest::Digest,
     metadata::{
         DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
@@ -414,17 +417,26 @@ where
         info!("Generated finality proof for tx: {}", transaction.digest());
 
         // TODO: define real Metadata and commitment
-        let metadata = MetadataV1::new(
-            Default::default(), // default checksum
-            1024,               // size in bytes
+        let size_in_bytes = 1;
+        let metadata = DownloadableMetadataV1::new(
+            PeerPublicKey::new(
+                self.validator_state
+                    .config
+                    .network_key_pair()
+                    .into_inner()
+                    .public()
+                    .clone(),
+            ),
+            self.validator_state
+                .config
+                .network_address
+                .to_string()
+                .parse()
+                .unwrap(),
+            MetadataV1::new(Checksum::default(), size_in_bytes),
         );
-
-        let peer = unimplemented!();
-        let address = unimplemented!();
-
-        let downloadable_metadata =
-            DownloadableMetadata::V1(DownloadableMetadataV1::new(peer, address, metadata));
-        let metadata_commitment = MetadataCommitment::new(downloadable_metadata, [0u8; 32]);
+        let metadata_commitment =
+            MetadataCommitment::new(DownloadableMetadata::V1(metadata), [0u8; 32]);
 
         self.initiate_encoder_work_for_embed_data(
             &finality_proof,
