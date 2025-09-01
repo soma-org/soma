@@ -53,19 +53,10 @@ fn build_tonic_services(out_dir: &Path) {
         )
         .method(
             tonic_build::manual::Method::builder()
-                .name("send_scores")
-                .route_name("SendScores")
-                .input_type("crate::messaging::tonic::internal::SendScoresRequest")
-                .output_type("crate::messaging::tonic::internal::SendScoresResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("send_finality")
-                .route_name("SendFinality")
-                .input_type("crate::messaging::tonic::internal::SendFinalityRequest")
-                .output_type("crate::messaging::tonic::internal::SendFinalityResponse")
+                .name("send_score_vote")
+                .route_name("SendScoreVote")
+                .input_type("crate::messaging::tonic::internal::SendScoreVoteRequest")
+                .output_type("crate::messaging::tonic::internal::SendScoreVoteResponse")
                 .codec_path(codec_path)
                 .build(),
         )

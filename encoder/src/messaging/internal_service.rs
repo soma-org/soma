@@ -6,8 +6,8 @@ use crate::{
         commit::{verify_signed_commit, Commit, CommitAPI},
         commit_votes::{verify_commit_votes, CommitVotes, CommitVotesAPI},
         context::Context,
-        finality::{verify_signed_finality, Finality, FinalityAPI},
         reveal::{verify_signed_reveal, Reveal, RevealAPI},
+        score_vote::{verify_signed_score_vote, ScoreVote, ScoreVoteAPI},
     },
 };
 use async_trait::async_trait;
@@ -21,10 +21,7 @@ use shared::{
 };
 use std::sync::Arc;
 use tracing::{debug, error, info, trace, warn};
-use types::{
-    shard_score::{verify_signed_score, ShardScore, ShardScoreAPI},
-    shard_verifier::ShardVerifier,
-};
+use types::shard_verifier::ShardVerifier;
 
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
     context: Context,
@@ -360,33 +357,33 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         Ok(())
     }
 
-    async fn handle_send_scores(
+    async fn handle_send_score_vote(
         &self,
         peer: &EncoderPublicKey,
-        scores_bytes: Bytes,
+        score_vote_bytes: Bytes,
     ) -> ShardResult<()> {
-        info!("Handling send scores from peer: {:?}", peer);
-        debug!("Scores bytes size: {} bytes", scores_bytes.len());
+        info!("Handling send score vote from peer: {:?}", peer);
+        debug!("Score vote bytes size: {} bytes", score_vote_bytes.len());
 
-        trace!("Deserializing scores bytes");
-        let scores: Signed<ShardScore, min_sig::BLS12381Signature> =
-            match bcs::from_bytes(&scores_bytes) {
+        trace!("Deserializing score votes bytes");
+        let score_vote: Signed<ScoreVote, min_sig::BLS12381Signature> =
+            match bcs::from_bytes(&score_vote_bytes) {
                 Ok(s) => {
-                    debug!("Successfully deserialized scores");
+                    debug!("Successfully deserialized score vote");
                     s
                 }
                 Err(e) => {
-                    error!("Failed to deserialize scores: {:?}", e);
+                    error!("Failed to deserialize score vote: {:?}", e);
                     return Err(ShardError::MalformedType(e));
                 }
             };
 
         debug!("Checking if peer is the evaluator");
-        if peer != scores.author() {
+        if peer != score_vote.author() {
             warn!(
                 "Sender must be score producer. Got: {:?}, expected: {:?}",
                 peer,
-                scores.author()
+                score_vote.author()
             );
             return Err(ShardError::FailedTypeVerification(
                 "sender must be score producer".to_string(),
@@ -396,7 +393,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Verifying shard with auth token");
         let inner_context = self.context.inner();
 
-        let committees = match inner_context.committees(scores.auth_token().epoch()) {
+        let committees = match inner_context.committees(score_vote.auth_token().epoch()) {
             Ok(c) => {
                 tracing::debug!("Successfully retrieved committees");
                 c
@@ -411,7 +408,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             committees.authority_committee.clone(),
             committees.encoder_committee.clone(),
             committees.vdf_iterations,
-            scores.auth_token(),
+            score_vote.auth_token(),
         ) {
             Ok(s) => {
                 debug!("Shard verification succeeded");
@@ -424,9 +421,9 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         };
 
         debug!("Creating verified scores object");
-        let verified_scores = match Verified::new(scores, scores_bytes, |scores| {
+        let verified_score_vote = match Verified::new(score_vote, score_vote_bytes, |score_vote| {
             debug!("Verifying signed scores");
-            verify_signed_score(scores, &shard)
+            verify_signed_score_vote(&score_vote, &shard)
         }) {
             Ok(v) => {
                 debug!("Verified scores created successfully");
@@ -441,7 +438,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         debug!("Dispatching scores");
         match self
             .dispatcher
-            .dispatch_scores(shard, verified_scores, cancellation)
+            .dispatch_score_vote(shard, verified_score_vote, cancellation)
             .await
         {
             Ok(_) => {
@@ -454,97 +451,6 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
 
         info!("handle_send_scores completed successfully");
-        Ok(())
-    }
-    async fn handle_send_finality(
-        &self,
-        peer: &EncoderPublicKey,
-        finality_bytes: Bytes,
-    ) -> ShardResult<()> {
-        info!("Handling send finality from peer: {:?}", peer);
-        debug!("Finality bytes size: {} bytes", finality_bytes.len());
-        trace!("Deserializing finality bytes");
-        let finality: Signed<Finality, min_sig::BLS12381Signature> =
-            match bcs::from_bytes(&finality_bytes) {
-                Ok(s) => {
-                    debug!("Successfully deserialized");
-                    s
-                }
-                Err(e) => {
-                    error!("Failed to deserialize: {:?}", e);
-                    return Err(ShardError::MalformedType(e));
-                }
-            };
-        debug!("Checking if peer is the encoder");
-        if peer != finality.encoder() {
-            warn!(
-                "Sender must be encoder. Got: {:?}, expected: {:?}",
-                peer,
-                finality.encoder()
-            );
-            return Err(ShardError::FailedTypeVerification(
-                "sender must be score producer".to_string(),
-            ));
-        }
-        debug!("Verifying shard with auth token");
-        let inner_context = self.context.inner();
-
-        let committees = match inner_context.committees(finality.auth_token().epoch()) {
-            Ok(c) => {
-                tracing::debug!("Successfully retrieved committees");
-                c
-            }
-            Err(e) => {
-                tracing::error!("Failed to get committees: {:?}", e);
-                return Err(e);
-            }
-        };
-
-        let (shard, cancellation) = match self.shard_verifier.verify(
-            committees.authority_committee.clone(),
-            committees.encoder_committee.clone(),
-            committees.vdf_iterations,
-            finality.auth_token(),
-        ) {
-            Ok(s) => {
-                debug!("Shard verification succeeded");
-                s
-            }
-            Err(e) => {
-                error!("Shard verification failed: {:?}", e);
-                return Err(e);
-            }
-        };
-        debug!("Creating verified finality object");
-        let verified_finality = match Verified::new(finality, finality_bytes, |finality| {
-            debug!("Verifying signed finality");
-            verify_signed_finality(finality, &shard)
-        }) {
-            Ok(v) => {
-                debug!("Verified finality created successfully");
-                v
-            }
-            Err(e) => {
-                error!("Failed to create verified finality: {:?}", e);
-                return Err(ShardError::FailedTypeVerification(e.to_string()));
-            }
-        };
-        debug!("Dispatching finality");
-        match self
-            .dispatcher
-            .dispatch_finality(shard, verified_finality, cancellation)
-            .await
-        {
-            Ok(_) => {
-                info!("Successfully dispatched finality");
-            }
-            Err(e) => {
-                error!("Failed to dispatch finality: {:?}", e);
-                return Err(e);
-            }
-        }
-
-        info!("handle_send_finality completed successfully");
         Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;
+use crate::types::score_vote::ScoreVote;
 use crate::{
     messaging::{
         tonic::generated::encoder_internal_tonic_service_server::{
@@ -7,7 +8,7 @@ use crate::{
         EncoderInternalNetworkClient, EncoderInternalNetworkManager, EncoderInternalNetworkService,
         EncoderPublicKey,
     },
-    types::{commit::Commit, commit_votes::CommitVotes, finality::Finality, reveal::Reveal},
+    types::{commit::Commit, commit_votes::CommitVotes, reveal::Reveal},
 };
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
@@ -36,7 +37,6 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{error, info, trace, warn};
 use types::parameters::Parameters;
 use types::shard_networking::NetworkingInfo;
-use types::shard_score::ShardScore;
 
 use types::shard_networking::channel_pool::{Channel, ChannelPool};
 
@@ -158,36 +158,19 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
     }
-    async fn send_scores(
+    async fn send_score_vote(
         &self,
         encoder: &EncoderPublicKey,
-        scores: &Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
+        score_vote: &Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()> {
-        let mut request = Request::new(SendScoresRequest {
-            scores: scores.bytes(),
+        let mut request = Request::new(SendScoreVoteRequest {
+            score_vote: score_vote.bytes(),
         });
         request.set_timeout(timeout);
         self.get_client(encoder, timeout)
             .await?
-            .send_scores(request)
-            .await
-            .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
-        Ok(())
-    }
-    async fn send_finality(
-        &self,
-        encoder: &EncoderPublicKey,
-        finality: &Verified<Signed<Finality, min_sig::BLS12381Signature>>,
-        timeout: Duration,
-    ) -> ShardResult<()> {
-        let mut request = Request::new(SendFinalityRequest {
-            finality: finality.bytes(),
-        });
-        request.set_timeout(timeout);
-        self.get_client(encoder, timeout)
-            .await?
-            .send_finality(request)
+            .send_score_vote(request)
             .await
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
@@ -301,10 +284,10 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
 
         Ok(Response::new(SendRevealResponse {}))
     }
-    async fn send_scores(
+    async fn send_score_vote(
         &self,
-        request: Request<SendScoresRequest>,
-    ) -> Result<Response<SendScoresResponse>, tonic::Status> {
+        request: Request<SendScoreVoteRequest>,
+    ) -> Result<Response<SendScoreVoteResponse>, tonic::Status> {
         let Some(peer) = request
             .extensions()
             .get::<EncoderInfo>()
@@ -312,34 +295,14 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
         else {
             return Err(tonic::Status::internal("PeerInfo not found"));
         };
-        let scores = request.into_inner().scores;
+        let score_vote = request.into_inner().score_vote;
 
         self.service
-            .handle_send_scores(&peer, scores)
+            .handle_send_score_vote(&peer, score_vote)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
-        Ok(Response::new(SendScoresResponse {}))
-    }
-    async fn send_finality(
-        &self,
-        request: Request<SendFinalityRequest>,
-    ) -> Result<Response<SendFinalityResponse>, tonic::Status> {
-        let Some(peer) = request
-            .extensions()
-            .get::<EncoderInfo>()
-            .map(|p| p.peer.clone())
-        else {
-            return Err(tonic::Status::internal("PeerInfo not found"));
-        };
-        let finality = request.into_inner().finality;
-
-        self.service
-            .handle_send_finality(&peer, finality)
-            .await
-            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
-
-        Ok(Response::new(SendFinalityResponse {}))
+        Ok(Response::new(SendScoreVoteResponse {}))
     }
 }
 
@@ -581,20 +544,10 @@ pub(crate) struct SendRevealResponse {}
 
 // ////////////////////////////////////////////////////////////////////
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendScoresRequest {
+pub(crate) struct SendScoreVoteRequest {
     #[prost(bytes = "bytes", tag = "1")]
-    scores: Bytes,
+    score_vote: Bytes,
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendScoresResponse {}
-
-// ////////////////////////////////////////////////////////////////////
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendFinalityRequest {
-    #[prost(bytes = "bytes", tag = "1")]
-    finality: Bytes,
-}
-
-#[derive(Clone, prost::Message)]
-pub(crate) struct SendFinalityResponse {}
+pub(crate) struct SendScoreVoteResponse {}

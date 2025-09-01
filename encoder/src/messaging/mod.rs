@@ -7,9 +7,9 @@ pub mod tonic;
 
 use crate::types::commit::Commit;
 use crate::types::commit_votes::CommitVotes;
-use crate::types::finality::Finality;
 use crate::types::input::Input;
 use crate::types::reveal::Reveal;
+use crate::types::score_vote::ScoreVote;
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
@@ -22,7 +22,6 @@ use std::{sync::Arc, time::Duration};
 use tonic::internal::ConnectionsInfo;
 use types::parameters::Parameters;
 use types::shard_networking::NetworkingInfo;
-use types::shard_score::ShardScore;
 
 /// Default message timeout for each request.
 // TODO: make timeout configurable and tune the default timeout based on measured network latency
@@ -50,16 +49,11 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
         reveal: &Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
-    async fn send_scores(
+
+    async fn send_score_vote(
         &self,
         encoder: &EncoderPublicKey,
-        scores: &Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
-        timeout: Duration,
-    ) -> ShardResult<()>;
-    async fn send_finality(
-        &self,
-        encoder: &EncoderPublicKey,
-        finality: &Verified<Signed<Finality, min_sig::BLS12381Signature>>,
+        scores: &Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -91,15 +85,10 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
         encoder: &EncoderPublicKey,
         reveal_bytes: Bytes,
     ) -> ShardResult<()>;
-    async fn handle_send_scores(
+    async fn handle_send_score_vote(
         &self,
         encoder: &EncoderPublicKey,
-        scores_bytes: Bytes,
-    ) -> ShardResult<()>;
-    async fn handle_send_finality(
-        &self,
-        encoder: &EncoderPublicKey,
-        finality_bytes: Bytes,
+        score_vote_bytes: Bytes,
     ) -> ShardResult<()>;
 }
 

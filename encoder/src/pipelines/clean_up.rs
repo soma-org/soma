@@ -1,22 +1,20 @@
-use crate::{datastore::Store, types::finality::Finality};
+use crate::datastore::Store;
 use async_trait::async_trait;
-use fastcrypto::bls12381::min_sig;
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
     actors::{ActorMessage, Processor},
     digest::Digest,
     error::{ShardError, ShardResult},
     shard::Shard,
-    signed::Signed,
-    verified::Verified,
 };
 use std::{sync::Arc, time::Duration};
+use tracing::info;
 
-pub(crate) struct FinalityProcessor {
+pub(crate) struct CleanUpProcessor {
     store: Arc<dyn Store>,
     recv_dedup: Cache<Digest<Shard>, ()>,
 }
-impl FinalityProcessor {
+impl CleanUpProcessor {
     pub(crate) fn new(store: Arc<dyn Store>, recv_cache_capacity: usize) -> Self {
         Self {
             store,
@@ -26,16 +24,13 @@ impl FinalityProcessor {
 }
 
 #[async_trait]
-impl Processor for FinalityProcessor {
-    type Input = (
-        Shard,
-        Verified<Signed<Finality, min_sig::BLS12381Signature>>,
-    );
+impl Processor for CleanUpProcessor {
+    type Input = Shard;
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, _verified_signed_finality) = msg.input;
+            let shard = msg.input;
             let shard_digest = shard.digest()?;
             match self
                 .recv_dedup
@@ -47,7 +42,7 @@ impl Processor for FinalityProcessor {
                 }
                 GuardResult::Timeout => (),
             }
-            // info!("Performing mock clean up for shard: {}", shard_digest);
+            info!("Performing mock clean up for shard: {}", shard_digest);
             // TODO: msg.cancellation.cancel();
             Ok(())
         }

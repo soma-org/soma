@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use shared::{digest::Digest, metadata::MetadataCommitment};
 
-use crate::{base::SomaAddress, committee::EpochId, shard_score::ScoreSet};
+use crate::{base::SomaAddress, committee::EpochId, score_set::ScoreSet};
 
 /// ShardInput represents an escrowed amount for data encoding
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

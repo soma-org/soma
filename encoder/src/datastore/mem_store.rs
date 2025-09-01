@@ -15,12 +15,12 @@ use std::{
     time::Instant,
 };
 use tracing::{info, warn};
-use types::shard_score::{ShardScore, ShardScoreAPI};
 
 use crate::types::{
     commit::{Commit, CommitAPI},
     commit_votes::{CommitVotes, CommitVotesAPI},
     reveal::{Reveal, RevealAPI},
+    score_vote::{ScoreVote, ScoreVoteAPI},
 };
 
 use super::{CommitVoteCounts, Store};
@@ -81,8 +81,8 @@ struct Inner {
 
     first_reveal_time: BTreeMap<(Epoch, Digest<Shard>), Instant>,
 
-    signed_scores:
-        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ShardScore, min_sig::BLS12381Signature>>,
+    signed_score_votes:
+        BTreeMap<(Epoch, Digest<Shard>, Encoder), Signed<ScoreVote, min_sig::BLS12381Signature>>,
 
     agg_scores:
         BTreeMap<(Epoch, Digest<Shard>), (EncoderAggregateSignature, Vec<EncoderPublicKey>)>,
@@ -103,7 +103,7 @@ impl MemStore {
                 commit_votes_highest_digest: BTreeMap::new(),
                 reveal_accept_voters: BTreeMap::new(),
                 reveal_reject_voters: BTreeMap::new(),
-                signed_scores: BTreeMap::new(),
+                signed_score_votes: BTreeMap::new(),
                 first_reveal_time: BTreeMap::new(),
                 agg_scores: BTreeMap::new(),
             }),
@@ -503,20 +503,20 @@ impl Store for MemStore {
         Ok(commit_votes)
     }
 
-    fn add_signed_score(
+    fn add_signed_score_vote(
         &self,
         shard: &Shard,
-        score: &Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
+        score_vote: &Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
-        let encoder = score.author();
+        let encoder = score_vote.author();
         let encoder_key = (epoch, shard_digest, encoder.clone());
-        let scores = score.deref();
+        let score_vote = score_vote.deref();
 
         let mut guard = self.inner.write();
 
-        match guard.signed_scores.get(&encoder_key) {
+        match guard.signed_score_votes.get(&encoder_key) {
             Some(existing) => {
                 // TODO: use digests to compare Shard message types
                 // if existing != scores {
@@ -526,28 +526,30 @@ impl Store for MemStore {
                 // }
             }
             None => {
-                guard.signed_scores.insert(encoder_key, scores.clone());
+                guard
+                    .signed_score_votes
+                    .insert(encoder_key, score_vote.clone());
             }
         };
         Ok(())
     }
-    fn get_signed_scores(
+    fn get_signed_score_vote(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<Signed<ShardScore, min_sig::BLS12381Signature>>> {
+    ) -> ShardResult<Vec<Signed<ScoreVote, min_sig::BLS12381Signature>>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
-        let scores: Vec<_> = self
+        let score_votes: Vec<_> = self
             .inner
             .read()
-            .signed_scores
+            .signed_score_votes
             .iter()
             .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
             .map(|(_, value)| value.clone())
             .collect();
 
-        Ok(scores)
+        Ok(score_votes)
     }
     fn add_aggregate_score(
         &self,

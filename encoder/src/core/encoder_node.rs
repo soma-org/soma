@@ -25,6 +25,7 @@ use types::{
     committee::Committee, config::encoder_config::EncoderConfig, system_state::SystemStateTrait,
 };
 
+use crate::pipelines::clean_up::CleanUpProcessor;
 use crate::{
     datastore::{mem_store::MemStore, Store},
     messaging::{
@@ -38,8 +39,8 @@ use crate::{
     },
     pipelines::{
         commit::CommitProcessor, commit_votes::CommitVotesProcessor,
-        evaluation::EvaluationProcessor, finality::FinalityProcessor, input::InputProcessor,
-        reveal::RevealProcessor, scores::ScoresProcessor,
+        evaluation::EvaluationProcessor, input::InputProcessor, reveal::RevealProcessor,
+        score_vote::ScoreVoteProcessor,
     },
     sync::{
         committee_sync_manager::CommitteeSyncManager,
@@ -53,12 +54,8 @@ use super::{
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
 };
-use shared::{
-    actors::ActorManager,
-    encoder_committee::{Encoder, EncoderCommittee},
-    workers::vdf::VDFProcessor,
-};
-use types::{shard::ShardAuthToken, shard_verifier::ShardVerifier};
+use shared::{actors::ActorManager, workers::vdf::VDFProcessor};
+use types::shard_verifier::ShardVerifier;
 
 #[cfg(msim)]
 use msim::task::NodeId;
@@ -221,19 +218,19 @@ impl EncoderNode {
 
         let recv_dedup_cache_capacity: usize = 1000;
         let send_dedup_cache_capacity: usize = 100;
-        let finality_processor = FinalityProcessor::new(store.clone(), recv_dedup_cache_capacity);
-        let finality_handle: shared::actors::ActorHandle<FinalityProcessor> =
-            ActorManager::new(default_buffer, finality_processor).handle();
+        let clean_up_processor = CleanUpProcessor::new(store.clone(), recv_dedup_cache_capacity);
+        let clean_up_handle: shared::actors::ActorHandle<CleanUpProcessor> =
+            ActorManager::new(default_buffer, clean_up_processor).handle();
 
-        let scores_processor = ScoresProcessor::new(
+        let score_vote_processor = ScoreVoteProcessor::new(
             store.clone(),
             broadcaster.clone(),
             encoder_keypair.clone(),
-            finality_handle.clone(),
+            clean_up_handle.clone(),
             recv_dedup_cache_capacity,
             send_dedup_cache_capacity,
         );
-        let scores_handle = ActorManager::new(default_buffer, scores_processor).handle();
+        let score_vote_handle = ActorManager::new(default_buffer, score_vote_processor).handle();
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
@@ -241,7 +238,7 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             object_storage.clone(),
-            scores_handle.clone(),
+            score_vote_handle.clone(),
             evaluation_client.clone(),
             recv_dedup_cache_capacity,
         );
@@ -297,8 +294,7 @@ impl EncoderNode {
             commit_handle,
             commit_votes_handle,
             reveal_handle,
-            scores_handle,
-            finality_handle,
+            score_vote_handle,
         );
         let verifier = Arc::new(ShardVerifier::new(100, Some(encoder_keypair.public())));
 

@@ -1,10 +1,10 @@
-use std::{future::Future, marker::PhantomData, sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use crate::{
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::finality::{Finality, FinalityV1},
+    types::score_vote::{ScoreVote, ScoreVoteAPI},
 };
 use async_trait::async_trait;
 use evaluation::EvaluationScore;
@@ -23,25 +23,25 @@ use shared::{
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
-use types::shard_score::{ScoreSetAPI, ShardScore, ShardScoreAPI};
+use types::score_set::ScoreSetAPI;
 
-use super::finality::FinalityProcessor;
+use super::clean_up::CleanUpProcessor;
 
-pub(crate) struct ScoresProcessor<E: EncoderInternalNetworkClient> {
+pub(crate) struct ScoreVoteProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
     broadcaster: Arc<Broadcaster<E>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    finality_pipeline: ActorHandle<FinalityProcessor>,
+    clean_up_pipeline: ActorHandle<CleanUpProcessor>,
     recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
     send_dedup: Cache<Digest<Shard>, ()>,
 }
 
-impl<E: EncoderInternalNetworkClient> ScoresProcessor<E> {
+impl<E: EncoderInternalNetworkClient> ScoreVoteProcessor<E> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        finality_pipeline: ActorHandle<FinalityProcessor>,
+        clean_up_pipeline: ActorHandle<CleanUpProcessor>,
         recv_cache_capacity: usize,
         send_cache_capacity: usize,
     ) -> Self {
@@ -49,7 +49,7 @@ impl<E: EncoderInternalNetworkClient> ScoresProcessor<E> {
             store,
             broadcaster,
             encoder_keypair,
-            finality_pipeline,
+            clean_up_pipeline,
             recv_dedup: Cache::new(recv_cache_capacity),
             send_dedup: Cache::new(send_cache_capacity),
         }
@@ -77,20 +77,20 @@ impl<E: EncoderInternalNetworkClient> ScoresProcessor<E> {
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
+impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
     type Input = (
         Shard,
-        Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
+        Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
     );
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, scores) = msg.input;
+            let (shard, score_vote) = msg.input;
             let shard_digest = shard.digest()?;
 
             match self.recv_dedup.get_value_or_guard(
-                &(shard_digest, scores.author().clone()),
+                &(shard_digest, score_vote.author().clone()),
                 Some(Duration::from_secs(5)),
             ) {
                 GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
@@ -99,36 +99,37 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
                 }
                 GuardResult::Timeout => (),
             }
-            self.store.add_signed_score(&shard, &scores)?;
+            self.store.add_signed_score_vote(&shard, &score_vote)?;
             info!(
                 "Starting track_valid_scores for scorer: {:?}",
-                scores.author()
+                score_vote.author()
             );
 
-            let all_scores = self.store.get_signed_scores(&shard)?;
+            let all_scores = self.store.get_signed_score_vote(&shard)?;
             debug!(
                 "Current score count: {}, quorum_threshold: {}",
                 all_scores.len(),
                 shard.quorum_threshold()
             );
 
-            let matching_scores: Vec<Signed<ShardScore, min_sig::BLS12381Signature>> = all_scores
-                .iter()
-                .filter(|score| {
-                    score.signed_score_set().winner() == scores.signed_score_set().winner()
-                })
-                .cloned()
-                .collect();
+            let matching_score_votes: Vec<Signed<ScoreVote, min_sig::BLS12381Signature>> =
+                all_scores
+                    .iter()
+                    .filter(|sv| {
+                        score_vote.signed_score_set().winner() == sv.signed_score_set().winner()
+                    })
+                    .cloned()
+                    .collect();
 
             info!(
                 "Found matching scores: {}, quorum_threshold: {}",
-                matching_scores.len(),
+                matching_score_votes.len(),
                 shard.quorum_threshold()
             );
 
             info!(
                 "Matching scores: {:?}",
-                matching_scores
+                matching_score_votes
                     .iter()
                     .map(|s| s
                         .clone()
@@ -140,7 +141,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
                     .collect::<Vec<EvaluationScore>>()
             );
 
-            if matching_scores.len() >= shard.quorum_threshold() as usize {
+            if matching_score_votes.len() >= shard.quorum_threshold() as usize {
                 match self
                     .send_dedup
                     .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
@@ -157,7 +158,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
                 let (signatures, evaluators): (Vec<EncoderSignature>, Vec<EncoderPublicKey>) = {
                     let mut sigs = Vec::new();
                     let mut evaluators = Vec::new();
-                    for signed_scores in matching_scores.iter() {
+                    for signed_scores in matching_score_votes.iter() {
                         let sig = EncoderSignature::from_bytes(&signed_scores.raw_signature())
                             .map_err(ShardError::SignatureAggregationFailure)?;
                         sigs.push(sig);
@@ -179,6 +180,9 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
                     "Successfully created aggregate score with {} evaluators",
                     evaluators.len()
                 );
+                self.clean_up_pipeline
+                    .process(shard.clone(), msg.cancellation.clone())
+                    .await?;
 
                 self.store
                     .add_aggregate_score(&shard, (agg.clone(), evaluators))?;
@@ -188,51 +192,21 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoresProcessor<E> {
                     agg
                 );
 
-                if scores.signed_score_set().winner() == &self.encoder_keypair.public() {
-                    let finality_pipeline = self.finality_pipeline.clone();
-                    let auth_token = scores.auth_token().clone();
-                    let broadcaster = self.broadcaster.clone();
-                    let encoder_keypair = self.encoder_keypair.clone();
-                    let cancellation = msg.cancellation.clone();
+                if score_vote.signed_score_set().winner() == &self.encoder_keypair.public() {
                     // call on-chain
                     info!("MOCK SUBMIT ON CHAIN");
-                    let finality =
-                        Finality::V1(FinalityV1::new(auth_token, encoder_keypair.public()));
-                    let inner_keypair = encoder_keypair.inner().copy();
-
-                    // Sign scores
-                    let signed_finality =
-                        Signed::new(finality, Scope::Finality, &inner_keypair.private()).unwrap();
-                    let verified = Verified::from_trusted(signed_finality).unwrap();
-
-                    info!("dispatching finality pipeline to oneself");
-                    finality_pipeline
-                        .process((shard.clone(), verified.clone()), cancellation.clone())
-                        .await?;
-
-                    info!("broadcasting finality pipeline to peers");
-                    broadcaster
-                        .broadcast(
-                            verified.clone(),
-                            shard.encoders(),
-                            |client, peer, verified_type| async move {
-                                client
-                                    .send_finality(&peer, &verified_type, MESSAGE_TIMEOUT)
-                                    .await?;
-                                Ok(())
-                            },
-                        )
-                        .await?;
-
-                    // broadcast to peers
                 }
             } else {
                 debug!(
                 "Not enough matching scores yet - waiting for more scores. Matching scores: {}, \
                  quorum_threshold: {}",
-                matching_scores.len(),
+                matching_score_votes.len(),
                 shard.quorum_threshold()
             );
+
+                self.clean_up_pipeline
+                    .process(shard, msg.cancellation.clone())
+                    .await?;
             }
 
             info!("Completed track_valid_scores");

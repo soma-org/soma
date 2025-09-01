@@ -4,6 +4,7 @@ pub(crate) mod mem_store;
 
 use std::time::Instant;
 
+use crate::types::score_vote::ScoreVote;
 use crate::types::{commit::Commit, commit_votes::CommitVotes, reveal::Reveal};
 use fastcrypto::bls12381::min_sig;
 use shared::error::ShardResult;
@@ -14,7 +15,6 @@ use shared::{
     signed::Signed,
     verified::Verified,
 };
-use types::shard_score::ShardScore;
 
 pub(crate) struct CommitVoteCounts {
     accepts: Option<usize>,
@@ -106,16 +106,16 @@ pub trait Store: Send + Sync + 'static {
         encoder: &EncoderPublicKey,
         digest: Option<&Digest<Signed<Reveal, min_sig::BLS12381Signature>>>,
     ) -> ShardResult<CommitVoteCounts>;
-    fn add_signed_score(
+    fn add_signed_score_vote(
         &self,
         shard: &Shard,
-        votes: &Verified<Signed<ShardScore, min_sig::BLS12381Signature>>,
+        score_vote: &Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
     ) -> ShardResult<()>;
     fn count_commit_votes(&self, shard: &Shard) -> ShardResult<usize>;
-    fn get_signed_scores(
+    fn get_signed_score_vote(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<Signed<ShardScore, min_sig::BLS12381Signature>>>;
+    ) -> ShardResult<Vec<Signed<ScoreVote, min_sig::BLS12381Signature>>>;
 
     fn add_aggregate_score(
         &self,

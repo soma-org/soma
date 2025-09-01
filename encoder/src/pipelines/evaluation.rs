@@ -5,7 +5,10 @@ use crate::{
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::reveal::{verify_reveal_score_matches, Reveal, RevealAPI},
+    types::{
+        reveal::{verify_reveal_score_matches, Reveal, RevealAPI},
+        score_vote::{ScoreVote, ScoreVoteV1},
+    },
 };
 use async_trait::async_trait;
 use evaluation::{
@@ -14,19 +17,13 @@ use evaluation::{
 };
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::{
-    networking::{
-        downloader::{self, Downloader},
-        ObjectNetworkClient,
-    },
+    networking::{downloader::Downloader, ObjectNetworkClient},
     storage::ObjectStorage,
 };
 use quick_cache::sync::{Cache, GuardResult};
 use shared::{
     actors::{ActorHandle, ActorMessage, Processor},
-    crypto::{
-        keys::{EncoderKeyPair, EncoderPublicKey},
-        EncryptionKey,
-    },
+    crypto::keys::EncoderKeyPair,
     digest::Digest,
     error::{ShardError, ShardResult},
     metadata::{DownloadableMetadataAPI, Metadata},
@@ -37,11 +34,11 @@ use shared::{
 };
 use tokio_util::sync::CancellationToken;
 use types::{
+    score_set::{ScoreSet, ScoreSetV1},
     shard::ShardAuthToken,
-    shard_score::{ScoreSet, ScoreSetV1, ShardScore, ShardScoreV1},
 };
 
-use super::scores::ScoresProcessor;
+use super::score_vote::ScoreVoteProcessor;
 
 // use super::broadcast::{BroadcastAction, BroadcastProcessor};
 
@@ -56,7 +53,7 @@ pub(crate) struct EvaluationProcessor<
     broadcaster: Arc<Broadcaster<E>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: Arc<S>,
-    score_pipeline: ActorHandle<ScoresProcessor<E>>,
+    score_pipeline: ActorHandle<ScoreVoteProcessor<E>>,
     evaluation_client: Arc<P>,
     recv_dedup: Cache<Digest<Shard>, ()>,
 }
@@ -74,7 +71,7 @@ impl<
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: Arc<S>,
-        score_pipeline: ActorHandle<ScoresProcessor<E>>,
+        score_pipeline: ActorHandle<ScoreVoteProcessor<E>>,
         evaluation_client: Arc<P>,
         recv_cache_capacity: usize,
     ) -> Self {
@@ -151,15 +148,16 @@ impl<
                 Signed::new(score_set, Scope::ScoreSet, &inner_keypair.copy().private()).unwrap();
 
             // Create scores
-            let score = ShardScore::V1(ShardScoreV1::new(
+            let score_vote = ScoreVote::V1(ScoreVoteV1::new(
                 auth_token,
                 self.encoder_keypair.public(),
                 signed_score_set,
             ));
 
             // Sign scores
-            let signed_scores = Signed::new(score, Scope::Score, &inner_keypair.private()).unwrap();
-            let verified = Verified::from_trusted(signed_scores).unwrap();
+            let signed_score_vote =
+                Signed::new(score_vote, Scope::Score, &inner_keypair.private()).unwrap();
+            let verified = Verified::from_trusted(signed_score_vote).unwrap();
 
             self.score_pipeline
                 .process((shard.clone(), verified.clone()), msg.cancellation.clone())
@@ -172,7 +170,7 @@ impl<
                     shard.encoders(),
                     |client, peer, verified_type| async move {
                         client
-                            .send_scores(&peer, &verified_type, MESSAGE_TIMEOUT)
+                            .send_score_vote(&peer, &verified_type, MESSAGE_TIMEOUT)
                             .await?;
                         Ok(())
                     },
