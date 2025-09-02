@@ -4,7 +4,7 @@ use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{
     crypto::keys::EncoderPublicKey,
-    error::SharedResult,
+    error::{SharedError, SharedResult},
     metadata::{verify_metadata, DownloadableMetadata, DownloadableMetadataAPI},
     scope::Scope,
     signed::Signed,
@@ -85,8 +85,14 @@ impl RevealAPI for RevealV1 {
 
 pub(crate) fn verify_signed_reveal(
     signed_reveal: &Signed<Reveal, min_sig::BLS12381Signature>,
+    peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
+    if peer != signed_reveal.author() {
+        return Err(SharedError::FailedTypeVerification(
+            "sending peer must be author".to_string(),
+        ));
+    }
     if !shard.contains(&signed_reveal.author()) {
         return Err(shared::error::SharedError::ValidationError(
             "encoder is not in the shard".to_string(),

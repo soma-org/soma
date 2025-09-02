@@ -42,7 +42,7 @@ impl CommitVoteCounts {
 }
 
 /// The store is a common interface for accessing encoder data
-pub trait Store: Send + Sync + 'static {
+pub(crate) trait Store: Send + Sync + 'static {
     fn lock_signed_commit(
         &self,
         shard: &Shard,
@@ -106,6 +106,7 @@ pub trait Store: Send + Sync + 'static {
         encoder: &EncoderPublicKey,
         digest: Option<&Digest<Signed<Reveal, min_sig::BLS12381Signature>>>,
     ) -> ShardResult<CommitVoteCounts>;
+
     fn add_signed_score_vote(
         &self,
         shard: &Shard,

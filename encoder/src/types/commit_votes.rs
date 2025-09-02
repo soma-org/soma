@@ -2,7 +2,10 @@ use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
+    crypto::keys::EncoderPublicKey,
+    digest::Digest,
+    error::{SharedError, SharedResult},
+    scope::Scope,
     signed::Signed,
 };
 
@@ -13,12 +16,12 @@ use super::reveal::Reveal;
 // reject votes are implicit
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(CommitVotesAPI)]
-pub enum CommitVotes {
+pub(crate) enum CommitVotes {
     V1(CommitVotesV1),
 }
 
 #[enum_dispatch]
-pub trait CommitVotesAPI {
+pub(crate) trait CommitVotesAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
     fn accepts(
@@ -75,17 +78,16 @@ impl CommitVotesAPI for CommitVotesV1 {
 }
 
 pub(crate) fn verify_commit_votes(
-    votes: &Signed<CommitVotes, min_sig::BLS12381Signature>,
+    commit_votes: &Signed<CommitVotes, min_sig::BLS12381Signature>,
+    peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
-    // the voter must be a member of the evaluation set
-    // evaluation sets do not change for a given shard
-    if !shard.contains(&votes.author()) {
-        return Err(shared::error::SharedError::ValidationError(
-            "voter is not in evaluation set".to_string(),
+    if peer != commit_votes.author() {
+        return Err(SharedError::FailedTypeVerification(
+            "sending peer must be author".to_string(),
         ));
     }
-    for (encoder, _commit_digest) in votes.accepts() {
+    for (encoder, _commit_digest) in commit_votes.accepts() {
         if !shard.contains(encoder) {
             return Err(shared::error::SharedError::ValidationError(
                 "encoder not in shard".to_string(),
@@ -94,7 +96,7 @@ pub(crate) fn verify_commit_votes(
     }
     // the signature of the vote message must match the voter. The inclusion of the voter in the
     // evaluation set is checked above
-    votes.verify_signature(Scope::CommitVotes, votes.author().inner())?;
+    commit_votes.verify_signature(Scope::CommitVotes, commit_votes.author().inner())?;
 
     Ok(())
 }

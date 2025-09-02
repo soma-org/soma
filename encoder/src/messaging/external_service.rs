@@ -3,7 +3,7 @@ use crate::{
     messaging::EncoderExternalNetworkService,
     types::{
         context::Context,
-        input::{Input, InputAPI},
+        input::{verify_input, Input, InputAPI},
     },
 };
 use async_trait::async_trait;
@@ -12,11 +12,14 @@ use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::PeerPublicKey,
     error::{ShardError, ShardResult},
+    shard::Shard,
     signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
-use types::shard_verifier::ShardVerifier;
+use tokio_util::sync::CancellationToken;
+use tracing::error;
+use types::{shard::ShardAuthToken, shard_verifier::ShardVerifier};
 
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
     context: Arc<Context>,
@@ -36,60 +39,72 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
             shard_verifier,
         }
     }
-}
-#[async_trait]
-impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
-    async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()> {
-        let input: Signed<Input, min_sig::BLS12381Signature> = match bcs::from_bytes(&input_bytes) {
-            Ok(i) => i,
-            Err(e) => {
-                return Err(ShardError::MalformedType(e));
-            }
-        };
-
+    fn shard_verification(
+        &self,
+        auth_token: &ShardAuthToken,
+    ) -> ShardResult<(Shard, CancellationToken)> {
         let inner_context = self.context.inner();
-
-        tracing::debug!(
-            "Getting committees for epoch: {}",
-            input.auth_token().epoch()
-        );
-        let committees = match inner_context.committees(input.auth_token().epoch()) {
-            Ok(c) => {
-                tracing::debug!("Successfully retrieved committees");
-                c
-            }
-            Err(e) => {
-                tracing::error!("Failed to get committees: {:?}", e);
-                return Err(e);
-            }
-        };
+        let committees = inner_context.committees(auth_token.epoch())?;
 
         let (shard, cancellation) = self.shard_verifier.verify(
             committees.authority_committee.clone(),
             committees.encoder_committee.clone(),
             committees.vdf_iterations,
-            input.auth_token(),
+            &auth_token,
         )?;
 
-        let verified_input = Verified::new(input.clone(), input_bytes, |_input| Ok(()))
-            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+        if !shard.contains(&self.context.own_encoder_key()) {
+            return Err(ShardError::UnauthorizedPeer);
+        }
 
-        let own_encoder_key = &self.context.own_encoder_key();
+        Ok((shard, cancellation))
+    }
+}
+#[async_trait]
+impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
+    async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()> {
+        // TODO: need to adjust this to lookup the encoder and do encoder validation on the input
+        // expecting a staked full node to speak to the encoders rather than arbitrary peers
+        // We must also verify the correct signature and should look up the staked full node
+        // and pass that in as the peer.
 
-        if let Some((own_object_peer, own_object_address)) =
-            self.context.inner().object_server(own_encoder_key)
-        {
-            let _ = self
-                .dispatcher
-                .dispatch_input(
-                    shard,
-                    verified_input,
-                    own_object_peer,
-                    own_object_address,
-                    cancellation,
-                )
-                .await?;
+        let result: ShardResult<()> = {
+            let input: Signed<Input, min_sig::BLS12381Signature> =
+                bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
+
+            // should check that the sender is the correct person to be sending?
+            let (shard, cancellation) = self.shard_verification(input.auth_token())?;
+
+            // TODO: fix the verification to actually work
+            let verified_input = Verified::new(input, input_bytes, |i| verify_input(&i, &shard))
+                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+
+            let own_encoder_key = &self.context.own_encoder_key();
+
+            // TODO: this is clunky come back and fix perhaps just initializing the input pipeline with its own object peer and address?
+            if let Some((own_object_peer, own_object_address)) =
+                self.context.inner().object_server(own_encoder_key)
+            {
+                let _ = self
+                    .dispatcher
+                    .dispatch_input(
+                        shard,
+                        verified_input,
+                        own_object_peer,
+                        own_object_address,
+                        cancellation,
+                    )
+                    .await?;
+            };
+            Ok(())
         };
-        Ok(())
+
+        match result {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                error!("{}", e.to_string());
+                Err(e)
+            }
+        }
     }
 }

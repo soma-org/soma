@@ -3,7 +3,10 @@ use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::shard::Shard;
 use shared::{
-    crypto::keys::EncoderPublicKey, digest::Digest, error::SharedResult, scope::Scope,
+    crypto::keys::EncoderPublicKey,
+    digest::Digest,
+    error::{SharedError, SharedResult},
+    scope::Scope,
     signed::Signed,
 };
 use types::shard::ShardAuthToken;
@@ -52,17 +55,18 @@ impl CommitAPI for CommitV1 {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(CommitAPI)]
-pub enum Commit {
+pub(crate) enum Commit {
     V1(CommitV1),
 }
 
 pub(crate) fn verify_signed_commit(
     signed_commit: &Signed<Commit, min_sig::BLS12381Signature>,
+    peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
-    if !shard.contains(signed_commit.author()) {
-        return Err(shared::error::SharedError::ValidationError(
-            "author is not in shard".to_string(),
+    if peer != signed_commit.author() {
+        return Err(SharedError::FailedTypeVerification(
+            "sending peer must be author".to_string(),
         ));
     }
 

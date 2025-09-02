@@ -2,7 +2,11 @@ use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use shared::{
-    crypto::keys::EncoderPublicKey, error::SharedResult, scope::Scope, shard::Shard, signed::Signed,
+    crypto::keys::EncoderPublicKey,
+    error::{SharedError, SharedResult},
+    scope::Scope,
+    shard::Shard,
+    signed::Signed,
 };
 use types::{score_set::ScoreSet, shard::ShardAuthToken};
 
@@ -56,9 +60,15 @@ impl ScoreVoteAPI for ScoreVoteV1 {
 }
 
 pub fn verify_signed_score_vote(
-    signed_scores: &Signed<ScoreVote, min_sig::BLS12381Signature>,
+    signed_score_vote: &Signed<ScoreVote, min_sig::BLS12381Signature>,
+    peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
+    if peer != signed_score_vote.author() {
+        return Err(SharedError::FailedTypeVerification(
+            "sending peer must be author".to_string(),
+        ));
+    }
     // if !shard.contains(&signed_scores.evaluator()) {
     //     return Err(SharedError::ValidationError(
     //         "evaluator is not in the shard".to_string(),
@@ -78,7 +88,7 @@ pub fn verify_signed_score_vote(
     //     }
     // }
 
-    let _ = signed_scores.verify_signature(Scope::Score, signed_scores.author().inner())?;
+    let _ = signed_score_vote.verify_signature(Scope::Score, signed_score_vote.author().inner())?;
 
     Ok(())
 }
