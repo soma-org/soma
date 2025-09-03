@@ -78,10 +78,7 @@ impl<E: EncoderInternalNetworkClient> ScoreVoteProcessor<E> {
 
 #[async_trait]
 impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
-    type Input = (
-        Shard,
-        Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
-    );
+    type Input = (Shard, Verified<ScoreVote>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
@@ -99,27 +96,26 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
                 }
                 GuardResult::Timeout => (),
             }
-            self.store.add_signed_score_vote(&shard, &score_vote)?;
+            self.store.add_score_vote(&shard, &score_vote)?;
             info!(
                 "Starting track_valid_scores for scorer: {:?}",
                 score_vote.author()
             );
 
-            let all_scores = self.store.get_signed_score_vote(&shard)?;
+            let all_scores = self.store.get_score_vote(&shard)?;
             debug!(
                 "Current score count: {}, quorum_threshold: {}",
                 all_scores.len(),
                 shard.quorum_threshold()
             );
 
-            let matching_score_votes: Vec<Signed<ScoreVote, min_sig::BLS12381Signature>> =
-                all_scores
-                    .iter()
-                    .filter(|sv| {
-                        score_vote.signed_score_set().winner() == sv.signed_score_set().winner()
-                    })
-                    .cloned()
-                    .collect();
+            let matching_score_votes: Vec<ScoreVote> = all_scores
+                .iter()
+                .filter(|sv| {
+                    score_vote.signed_score_set().winner() == sv.signed_score_set().winner()
+                })
+                .cloned()
+                .collect();
 
             info!(
                 "Found matching scores: {}, quorum_threshold: {}",
@@ -131,13 +127,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
                 "Matching scores: {:?}",
                 matching_score_votes
                     .iter()
-                    .map(|s| s
-                        .clone()
-                        .into_inner()
-                        .signed_score_set()
-                        .into_inner()
-                        .score()
-                        .clone())
+                    .map(|s| s.clone().signed_score_set().into_inner().score().clone())
                     .collect::<Vec<EvaluationScore>>()
             );
 
@@ -158,11 +148,13 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
                 let (signatures, evaluators): (Vec<EncoderSignature>, Vec<EncoderPublicKey>) = {
                     let mut sigs = Vec::new();
                     let mut evaluators = Vec::new();
-                    for signed_scores in matching_score_votes.iter() {
-                        let sig = EncoderSignature::from_bytes(&signed_scores.raw_signature())
-                            .map_err(ShardError::SignatureAggregationFailure)?;
+                    for score_vote in matching_score_votes.iter() {
+                        let sig = EncoderSignature::from_bytes(
+                            &score_vote.signed_score_set().raw_signature(),
+                        )
+                        .map_err(ShardError::SignatureAggregationFailure)?;
                         sigs.push(sig);
-                        evaluators.push(signed_scores.author().clone());
+                        evaluators.push(score_vote.author().clone());
                     }
                     (sigs, evaluators)
                 };

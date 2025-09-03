@@ -19,9 +19,8 @@ use shared::{signed::Signed, verified::Verified};
 use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
-use tonic::internal::ConnectionsInfo;
 use types::parameters::Parameters;
-use types::shard_networking::NetworkingInfo;
+use types::shard_networking::EncoderNetworkingInfo;
 
 /// Default message timeout for each request.
 // TODO: make timeout configurable and tune the default timeout based on measured network latency
@@ -32,28 +31,28 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_commit(
         &self,
         encoder: &EncoderPublicKey,
-        commit: &Verified<Signed<Commit, min_sig::BLS12381Signature>>,
+        commit: &Verified<Commit>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_commit_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
+        votes: &Verified<CommitVotes>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_reveal(
         &self,
         encoder: &EncoderPublicKey,
-        reveal: &Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
+        reveal: &Verified<Reveal>,
         timeout: Duration,
     ) -> ShardResult<()>;
 
     async fn send_score_vote(
         &self,
         encoder: &EncoderPublicKey,
-        scores: &Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
+        scores: &Verified<ScoreVote>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -63,7 +62,7 @@ pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_input(
         &self,
         encoder: &EncoderPublicKey,
-        input: &Verified<Signed<Input, min_sig::BLS12381Signature>>,
+        input: &Verified<Input>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -108,12 +107,11 @@ where
     /// Creates a new manager by taking an encoder context and a network keypair.
     /// The network keypair is used for TLS authentication.
     fn new(
-        networking_info: NetworkingInfo,
+        networking_info: EncoderNetworkingInfo,
         parameters: Arc<Parameters>,
         peer_keypair: PeerKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
-        connections_info: ConnectionsInfo,
     ) -> Self;
     /// Returns a client
     fn client(&self) -> Arc<Self::Client>;

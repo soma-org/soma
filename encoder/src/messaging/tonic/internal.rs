@@ -10,15 +10,12 @@ use crate::{
     },
     types::{commit::Commit, commit_votes::CommitVotes, reveal::Reveal},
 };
-use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use axum::http;
 use bytes::Bytes;
-use fastcrypto::bls12381::min_sig;
 use shared::error::{ShardError, ShardResult};
 use shared::{
     crypto::keys::{PeerKeyPair, PeerPublicKey},
-    signed::Signed,
     verified::Verified,
 };
 use soma_http::ServerHandle;
@@ -28,7 +25,6 @@ use soma_network::{
 };
 use soma_tls::AllowPublicKeys;
 use std::{
-    collections::BTreeMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -36,13 +32,13 @@ use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{error, info, trace, warn};
 use types::parameters::Parameters;
-use types::shard_networking::NetworkingInfo;
+use types::shard_networking::EncoderNetworkingInfo;
 
 use types::shard_networking::channel_pool::{Channel, ChannelPool};
 
 // Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderInternalTonicClient {
-    networking_info: NetworkingInfo,
+    networking_info: EncoderNetworkingInfo,
     own_peer_keypair: PeerKeyPair,
     parameters: Arc<Parameters>,
     channel_pool: Arc<ChannelPool>,
@@ -52,7 +48,7 @@ pub(crate) struct EncoderInternalTonicClient {
 impl EncoderInternalTonicClient {
     /// Creates a new encoder tonic client and establishes an arc'd channel pool
     pub(crate) fn new(
-        networking_info: NetworkingInfo,
+        networking_info: EncoderNetworkingInfo,
         own_peer_keypair: PeerKeyPair,
         parameters: Arc<Parameters>,
         capacity: usize,
@@ -73,7 +69,7 @@ impl EncoderInternalTonicClient {
         timeout: Duration,
     ) -> ShardResult<EncoderInternalTonicServiceClient<Channel>> {
         let config = &self.parameters.tonic;
-        if let Some((address, peer_public_key)) = self.networking_info.lookup(encoder) {
+        if let Some((peer_public_key, address)) = self.networking_info.encoder_to_tls(encoder) {
             let channel = self
                 .channel_pool
                 .get_channel(
@@ -105,7 +101,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_commit(
         &self,
         encoder: &EncoderPublicKey,
-        commit: &Verified<Signed<Commit, min_sig::BLS12381Signature>>,
+        commit: &Verified<Commit>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendCommitRequest {
@@ -124,7 +120,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_commit_votes(
         &self,
         encoder: &EncoderPublicKey,
-        votes: &Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
+        votes: &Verified<CommitVotes>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendCommitVotesRequest {
@@ -144,7 +140,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_reveal(
         &self,
         encoder: &EncoderPublicKey,
-        reveal: &Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
+        reveal: &Verified<Reveal>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendRevealRequest {
@@ -161,7 +157,7 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
     async fn send_score_vote(
         &self,
         encoder: &EncoderPublicKey,
-        score_vote: &Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
+        score_vote: &Verified<ScoreVote>,
         timeout: Duration,
     ) -> ShardResult<()> {
         let mut request = Request::new(SendScoreVoteRequest {
@@ -189,29 +185,6 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicServiceProxy<S> {
     /// Creates the tonic service proxy using pre-established context and service
     const fn new(service: Arc<S>) -> Self {
         Self { service }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ConnectionsInfo {
-    inner: Arc<ArcSwap<BTreeMap<PeerPublicKey, EncoderPublicKey>>>,
-}
-
-impl ConnectionsInfo {
-    pub fn new(mapping: BTreeMap<PeerPublicKey, EncoderPublicKey>) -> Self {
-        Self {
-            inner: Arc::new(ArcSwap::from_pointee(mapping)),
-        }
-    }
-
-    pub fn update(&self, new_mapping: BTreeMap<PeerPublicKey, EncoderPublicKey>) {
-        self.inner.store(Arc::new(new_mapping));
-    }
-    fn encoder_public_key(&self, key: &PeerPublicKey) -> Option<EncoderPublicKey> {
-        match self.inner.load().get(key) {
-            Some(k) => Some(k.clone()),
-            None => None,
-        }
     }
 }
 
@@ -313,7 +286,7 @@ pub struct EncoderInternalTonicManager {
     peer_keypair: PeerKeyPair,
     address: Multiaddr,
     allower: AllowPublicKeys,
-    connections_info: ConnectionsInfo,
+    networking_info: EncoderNetworkingInfo,
     client: Arc<EncoderInternalTonicClient>,
     server: Option<ServerHandle>,
 }
@@ -323,12 +296,11 @@ pub struct EncoderInternalTonicManager {
 impl EncoderInternalTonicManager {
     /// Takes context, and network keypair and creates a new encoder tonic client
     pub fn new(
-        networking_info: NetworkingInfo,
+        networking_info: EncoderNetworkingInfo,
         parameters: Arc<Parameters>,
         peer_keypair: PeerKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
-        connections_info: ConnectionsInfo,
     ) -> Self {
         let channel_pool_capacaity = parameters.tonic.channel_pool_capacity;
         Self {
@@ -336,7 +308,7 @@ impl EncoderInternalTonicManager {
             peer_keypair: peer_keypair.clone(),
             address,
             allower,
-            connections_info,
+            networking_info: networking_info.clone(),
             client: Arc::new(EncoderInternalTonicClient::new(
                 networking_info,
                 peer_keypair,
@@ -354,21 +326,13 @@ impl<S: EncoderInternalNetworkService> EncoderInternalNetworkManager<S>
     type Client = EncoderInternalTonicClient;
 
     fn new(
-        networking_info: NetworkingInfo,
+        networking_info: EncoderNetworkingInfo,
         parameters: Arc<Parameters>,
         peer_keypair: PeerKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
-        connections_info: ConnectionsInfo,
     ) -> Self {
-        Self::new(
-            networking_info,
-            parameters,
-            peer_keypair,
-            address,
-            allower,
-            connections_info,
-        )
+        Self::new(networking_info, parameters, peer_keypair, address, allower)
     }
 
     fn client(&self) -> Arc<Self::Client> {
@@ -393,7 +357,7 @@ impl<S: EncoderInternalNetworkService> EncoderInternalNetworkManager<S>
 
         let service = EncoderInternalTonicServiceProxy::new(service);
 
-        let connections_info = self.connections_info.clone();
+        let networking_info = self.networking_info.clone();
 
         let layers = tower::ServiceBuilder::new()
             // Add a layer to extract a peer's PeerInfo from their TLS certs
@@ -402,7 +366,7 @@ impl<S: EncoderInternalNetworkService> EncoderInternalNetworkManager<S>
                     request.extensions().get::<soma_http::PeerCertificates>()
                 {
                     if let Some(peer_info) =
-                        encoder_info_from_certs(&connections_info, peer_certificates)
+                        encoder_info_from_certs(&networking_info, peer_certificates)
                     {
                         request.extensions_mut().insert(peer_info);
                     }
@@ -484,7 +448,7 @@ impl Drop for EncoderInternalTonicManager {
 }
 
 fn encoder_info_from_certs(
-    connections_info: &ConnectionsInfo,
+    networking_info: &EncoderNetworkingInfo,
     peer_certificates: &soma_http::PeerCertificates,
 ) -> Option<EncoderInfo> {
     let certs = peer_certificates.peer_certs();
@@ -504,7 +468,7 @@ fn encoder_info_from_certs(
         })
         .ok()?;
     let client_public_key = PeerPublicKey::new(public_key);
-    let Some(peer) = connections_info.encoder_public_key(&client_public_key) else {
+    let Some(peer) = networking_info.tls_to_encoder(&client_public_key) else {
         error!("Failed to find the authority with public key {client_public_key:?}");
         return None;
     };

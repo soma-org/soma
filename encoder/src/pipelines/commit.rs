@@ -104,17 +104,17 @@ impl<
         P: EvaluationClient,
     > Processor for CommitProcessor<O, E, S, P>
 {
-    type Input = (Shard, Verified<Signed<Commit, min_sig::BLS12381Signature>>);
+    type Input = (Shard, Verified<Commit>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, verified_signed_commit) = msg.input;
+            let (shard, verified_commit) = msg.input;
 
             let shard_digest = shard.digest()?;
 
             match self.recv_dedup.get_value_or_guard(
-                &(shard_digest, verified_signed_commit.author().clone()),
+                &(shard_digest, verified_commit.author().clone()),
                 Some(Duration::from_secs(5)),
             ) {
                 GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
@@ -124,18 +124,16 @@ impl<
                 GuardResult::Timeout => (),
             }
 
-            let _ = self
-                .store
-                .add_signed_commit(&shard, &verified_signed_commit)?;
+            let _ = self.store.add_commit(&shard, &verified_commit)?;
 
             let quorum_threshold = shard.quorum_threshold() as usize;
             let max_size = shard.size();
-            let count = self.store.count_signed_commits(&shard)?;
+            let count = self.store.count_commits(&shard)?;
             let shard_digest = shard.digest()?;
 
             info!(
                 "Tracking commit from: {:?}",
-                verified_signed_commit.clone().author()
+                verified_commit.clone().author()
             );
 
             match count {
@@ -172,7 +170,7 @@ impl<
                     let commit_vote_handle = self.commit_vote_handle.clone();
                     self.start_timer(shard_digest, duration, async move || {
                         info!("On trigger - sending commit vote to BroadcastProcessor");
-                        let commits = match store.get_signed_commits(&shard) {
+                        let commits = match store.get_commits(&shard) {
                             Ok(commits) => commits,
                             Err(e) => {
                                 tracing::error!("Error getting signed commits: {:?}", e);
@@ -188,17 +186,12 @@ impl<
 
                         // Create votes
                         let votes = CommitVotes::V1(CommitVotesV1::new(
-                            verified_signed_commit.auth_token().clone(),
+                            verified_commit.auth_token().clone(),
                             encoder_keypair.public(),
                             commits,
                         ));
 
-                        // Sign votes
-                        let inner_keypair = encoder_keypair.inner().copy();
-                        let signed_votes =
-                            Signed::new(votes, Scope::CommitVotes, &inner_keypair.private())
-                                .unwrap();
-                        let verified = Verified::from_trusted(signed_votes).unwrap();
+                        let verified = Verified::from_trusted(votes).unwrap();
 
                         info!(
                             "Broadcasting commit vote to other encoders: {:?}",

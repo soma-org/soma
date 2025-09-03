@@ -24,12 +24,7 @@ pub(crate) enum CommitVotes {
 pub(crate) trait CommitVotesAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
-    fn accepts(
-        &self,
-    ) -> &[(
-        EncoderPublicKey,
-        Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
-    )];
+    fn accepts(&self) -> &[(EncoderPublicKey, Digest<Reveal>)];
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -37,20 +32,14 @@ pub(crate) struct CommitVotesV1 {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,
     author: EncoderPublicKey,
-    accepts: Vec<(
-        EncoderPublicKey,
-        Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
-    )>,
+    accepts: Vec<(EncoderPublicKey, Digest<Reveal>)>,
 }
 
 impl CommitVotesV1 {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
         author: EncoderPublicKey,
-        accepts: Vec<(
-            EncoderPublicKey,
-            Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
-        )>,
+        accepts: Vec<(EncoderPublicKey, Digest<Reveal>)>,
     ) -> Self {
         Self {
             auth_token,
@@ -67,18 +56,13 @@ impl CommitVotesAPI for CommitVotesV1 {
     fn author(&self) -> &EncoderPublicKey {
         &self.author
     }
-    fn accepts(
-        &self,
-    ) -> &[(
-        EncoderPublicKey,
-        Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
-    )] {
+    fn accepts(&self) -> &[(EncoderPublicKey, Digest<Reveal>)] {
         &self.accepts
     }
 }
 
 pub(crate) fn verify_commit_votes(
-    commit_votes: &Signed<CommitVotes, min_sig::BLS12381Signature>,
+    commit_votes: &CommitVotes,
     peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
@@ -94,9 +78,6 @@ pub(crate) fn verify_commit_votes(
             ));
         }
     }
-    // the signature of the vote message must match the voter. The inclusion of the voter in the
-    // evaluation set is checked above
-    commit_votes.verify_signature(Scope::CommitVotes, commit_votes.author().inner())?;
 
     Ok(())
 }

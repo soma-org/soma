@@ -69,8 +69,7 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
         // and pass that in as the peer.
 
         let result: ShardResult<()> = {
-            let input: Signed<Input, min_sig::BLS12381Signature> =
-                bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
+            let input: Input = bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
 
             // should check that the sender is the correct person to be sending?
             let (shard, cancellation) = self.shard_verification(input.auth_token())?;

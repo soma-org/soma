@@ -33,7 +33,7 @@ use crate::{
         internal_service::EncoderInternalService,
         tonic::{
             external::EncoderExternalTonicManager,
-            internal::{ConnectionsInfo, EncoderInternalTonicClient, EncoderInternalTonicManager},
+            internal::{EncoderInternalTonicClient, EncoderInternalTonicManager},
         },
         EncoderExternalNetworkManager, EncoderInternalNetworkManager,
     },
@@ -48,7 +48,7 @@ use crate::{
     },
     types::context::{Committees, Context, InnerContext},
 };
-use types::shard_networking::NetworkingInfo;
+use types::shard_networking::EncoderNetworkingInfo;
 
 use super::{
     internal_broadcaster::Broadcaster,
@@ -130,7 +130,7 @@ impl EncoderNode {
             .parse()
             .expect("Valid multiaddr");
 
-        let (context, networking_info, connections_info, allower) =
+        let (context, networking_info, allower) =
             create_context_from_genesis(&config, encoder_keypair.public(), client_key.clone());
 
         let mut internal_network_manager = EncoderInternalTonicManager::new(
@@ -139,7 +139,6 @@ impl EncoderNode {
             peer_keypair.clone(),
             internal_address.clone(),
             allower.clone(),
-            connections_info.clone(),
         );
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
@@ -353,7 +352,6 @@ impl EncoderNode {
             validator_client.clone(),
             context.clone(),
             networking_info.clone(),
-            connections_info.clone(),
             allower.clone(),
             config.genesis.system_object().epoch_start_timestamp_ms(),
             config.epoch_duration_ms,
@@ -423,9 +421,8 @@ fn create_context_from_genesis(
     config: &EncoderConfig,
     own_encoder_key: EncoderPublicKey,
     client_key: Option<PeerPublicKey>,
-) -> (Context, NetworkingInfo, ConnectionsInfo, AllowPublicKeys) {
-    let networking_info = NetworkingInfo::default();
-    let connections_info = ConnectionsInfo::default();
+) -> (Context, EncoderNetworkingInfo, AllowPublicKeys) {
+    let networking_info = EncoderNetworkingInfo::default();
     let allower = AllowPublicKeys::default();
 
     // Extract validator committee from genesis
@@ -447,7 +444,7 @@ fn create_context_from_genesis(
     );
 
     // Extract peer keys and network addresses for network info
-    let (initial_networking_info, initial_connections_info, object_servers) =
+    let (initial_networking_info, object_servers) =
         EncoderValidatorClient::extract_network_info(&config.genesis.encoder_committee(), None);
 
     // Create committees struct with proper genesis parameters
@@ -473,21 +470,12 @@ fn create_context_from_genesis(
             "Initializing networking info with {} entries from genesis",
             initial_networking_info.len()
         );
-        networking_info.update(initial_networking_info);
-    }
-
-    // Update the ConnectionsInfo
-    if !initial_connections_info.is_empty() {
-        info!(
-            "Initializing connections info with {} entries from genesis",
-            initial_connections_info.len()
-        );
-        connections_info.update(initial_connections_info.clone());
+        networking_info.update(initial_networking_info.clone());
     }
 
     // Update allowed public keys
     let mut allowed_keys = BTreeSet::new();
-    for peer_key in initial_connections_info.keys() {
+    for (encoder_public_key, (peer_key, address)) in initial_networking_info {
         allowed_keys.insert(peer_key.clone().into_inner());
     }
     // TODO: Remove this after NetworkingCommittee is confirmed working
@@ -503,12 +491,7 @@ fn create_context_from_genesis(
     }
 
     // Create and return the context
-    (
-        Context::new(inner_context),
-        networking_info,
-        connections_info,
-        allower,
-    )
+    (Context::new(inner_context), networking_info, allower)
 }
 
 /// Wrap EncoderNode to allow correct access to EncoderNode in simulator tests.

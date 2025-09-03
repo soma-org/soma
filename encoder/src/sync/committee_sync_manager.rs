@@ -1,5 +1,4 @@
 use crate::{
-    messaging::tonic::internal::ConnectionsInfo,
     sync::encoder_validator_client::{EncoderValidatorClient, EnrichedVerifiedCommittees},
     types::context::{Committees, Context, InnerContext},
 };
@@ -16,7 +15,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
-use types::shard_networking::NetworkingInfo;
+use types::shard_networking::EncoderNetworkingInfo;
 
 /// Manager for committee synchronization with validator nodes
 pub struct CommitteeSyncManager {
@@ -27,10 +26,7 @@ pub struct CommitteeSyncManager {
     context: Context,
 
     /// Network information to update
-    networking_info: NetworkingInfo,
-
-    /// Connection information to update
-    connections_info: ConnectionsInfo,
+    networking_info: EncoderNetworkingInfo,
 
     /// AllowPublicKeys to update with peer keys
     allower: AllowPublicKeys,
@@ -59,8 +55,7 @@ impl CommitteeSyncManager {
     pub fn new(
         validator_client: Arc<Mutex<EncoderValidatorClient>>,
         context: Context,
-        networking_info: NetworkingInfo,
-        connections_info: ConnectionsInfo,
+        networking_info: EncoderNetworkingInfo,
         allower: AllowPublicKeys,
         epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
@@ -75,7 +70,6 @@ impl CommitteeSyncManager {
             validator_client,
             context,
             networking_info,
-            connections_info,
             allower,
             epoch_duration_ms,
             current_epoch: AtomicU64::new(current_epoch),
@@ -256,16 +250,7 @@ impl CommitteeSyncManager {
         // Update AllowPublicKeys with all peer keys from both current and previous epochs
         self.update_allowed_public_keys(&committees);
 
-        // Update ConnectionsInfo with the pre-extracted data
-        if !committees.connections_info.is_empty() {
-            info!(
-                "Updating connections info with {} entries",
-                committees.connections_info.len()
-            );
-            self.connections_info.update(committees.connections_info);
-        }
-
-        // Update NetworkingInfo with the pre-extracted data
+        // Update EncoderNetworkingInfo with the pre-extracted data
         if !committees.networking_info.is_empty() {
             info!(
                 "Updating networking info with {} entries",
@@ -316,7 +301,7 @@ impl CommitteeSyncManager {
         // Extract all peer public keys from connections_info
         let mut allowed_keys = BTreeSet::new();
 
-        for peer_key in committees.connections_info.keys() {
+        for (_, (peer_key, _)) in committees.networking_info.clone() {
             // Add inner key to allowed set
             allowed_keys.insert(peer_key.clone().into_inner());
         }

@@ -6,7 +6,6 @@ use shared::{
     crypto::keys::EncoderPublicKey,
     digest::Digest,
     error::{SharedError, SharedResult},
-    scope::Scope,
     signed::Signed,
 };
 use types::shard::ShardAuthToken;
@@ -17,21 +16,21 @@ use super::reveal::Reveal;
 pub(crate) trait CommitAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
-    fn reveal_digest(&self) -> &Digest<Signed<Reveal, min_sig::BLS12381Signature>>;
+    fn reveal_digest(&self) -> &Digest<Reveal>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct CommitV1 {
     auth_token: ShardAuthToken,
     author: EncoderPublicKey,
-    reveal_digest: Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
+    reveal_digest: Digest<Reveal>,
 }
 
 impl CommitV1 {
     pub(crate) fn new(
         auth_token: ShardAuthToken,
         author: EncoderPublicKey,
-        reveal_digest: Digest<Signed<Reveal, min_sig::BLS12381Signature>>,
+        reveal_digest: Digest<Reveal>,
     ) -> Self {
         Self {
             auth_token,
@@ -48,7 +47,7 @@ impl CommitAPI for CommitV1 {
     fn author(&self) -> &EncoderPublicKey {
         &self.author
     }
-    fn reveal_digest(&self) -> &Digest<Signed<Reveal, min_sig::BLS12381Signature>> {
+    fn reveal_digest(&self) -> &Digest<Reveal> {
         &self.reveal_digest
     }
 }
@@ -59,8 +58,8 @@ pub(crate) enum Commit {
     V1(CommitV1),
 }
 
-pub(crate) fn verify_signed_commit(
-    signed_commit: &Signed<Commit, min_sig::BLS12381Signature>,
+pub(crate) fn verify_commit(
+    signed_commit: &Commit,
     peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
@@ -70,6 +69,6 @@ pub(crate) fn verify_signed_commit(
         ));
     }
 
-    signed_commit.verify_signature(Scope::Commit, signed_commit.author().inner())?;
+    // signed_commit.verify_signature(Scope::Commit, signed_commit.author().inner())?;
     Ok(())
 }

@@ -11,14 +11,10 @@ use crate::{
 };
 use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
-use fastcrypto::bls12381::min_sig;
 use inference::client::InferenceClient;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use shared::error::ShardResult;
-use shared::{
-    actors::ActorHandle, crypto::keys::PeerPublicKey, shard::Shard, signed::Signed,
-    verified::Verified,
-};
+use shared::{actors::ActorHandle, crypto::keys::PeerPublicKey, shard::Shard, verified::Verified};
 use soma_network::multiaddr::Multiaddr;
 use tokio_util::sync::CancellationToken;
 
@@ -27,25 +23,25 @@ pub trait InternalDispatcher: Sync + Send + 'static {
     async fn dispatch_commit(
         &self,
         shard: Shard,
-        commit: Verified<Signed<Commit, min_sig::BLS12381Signature>>,
+        commit: Verified<Commit>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_commit_votes(
         &self,
         shard: Shard,
-        votes: Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
+        votes: Verified<CommitVotes>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_reveal(
         &self,
         shard: Shard,
-        reveal: Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
+        reveal: Verified<Reveal>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_score_vote(
         &self,
         shard: Shard,
-        scores: Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
+        scores: Verified<ScoreVote>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
 }
@@ -96,7 +92,7 @@ impl<
     async fn dispatch_commit(
         &self,
         shard: Shard,
-        commit: Verified<Signed<Commit, min_sig::BLS12381Signature>>,
+        commit: Verified<Commit>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.commit_handle
@@ -107,7 +103,7 @@ impl<
     async fn dispatch_commit_votes(
         &self,
         shard: Shard,
-        votes: Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
+        votes: Verified<CommitVotes>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.commit_votes_handle
@@ -118,7 +114,7 @@ impl<
     async fn dispatch_reveal(
         &self,
         shard: Shard,
-        reveal: Verified<Signed<Reveal, min_sig::BLS12381Signature>>,
+        reveal: Verified<Reveal>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.reveal_handle
@@ -129,7 +125,7 @@ impl<
     async fn dispatch_score_vote(
         &self,
         shard: Shard,
-        score_vote: Verified<Signed<ScoreVote, min_sig::BLS12381Signature>>,
+        score_vote: Verified<ScoreVote>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.score_vote_handle
@@ -144,7 +140,7 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
     async fn dispatch_input(
         &self,
         shard: Shard,
-        input: Verified<Signed<Input, min_sig::BLS12381Signature>>,
+        input: Verified<Input>,
         peer: PeerPublicKey,
         address: Multiaddr,
         cancellation: CancellationToken,
@@ -187,7 +183,7 @@ impl<
     async fn dispatch_input(
         &self,
         shard: Shard,
-        input: Verified<Signed<Input, min_sig::BLS12381Signature>>,
+        input: Verified<Input>,
         peer: PeerPublicKey,
         address: Multiaddr,
         cancellation: CancellationToken,

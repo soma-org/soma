@@ -59,12 +59,12 @@ impl ScoreVoteAPI for ScoreVoteV1 {
     }
 }
 
-pub fn verify_signed_score_vote(
-    signed_score_vote: &Signed<ScoreVote, min_sig::BLS12381Signature>,
+pub fn verify_score_vote(
+    score_vote: &ScoreVote,
     peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
-    if peer != signed_score_vote.author() {
+    if peer != score_vote.author() {
         return Err(SharedError::FailedTypeVerification(
             "sending peer must be author".to_string(),
         ));
@@ -87,8 +87,6 @@ pub fn verify_signed_score_vote(
     //         ));
     //     }
     // }
-
-    let _ = signed_score_vote.verify_signature(Scope::Score, signed_score_vote.author().inner())?;
 
     Ok(())
 }

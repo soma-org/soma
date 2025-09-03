@@ -114,7 +114,7 @@ impl<
                 GuardResult::Timeout => (),
             }
 
-            let mut reveals = self.store.get_signed_reveals(&shard)?;
+            let mut reveals = self.store.get_reveals(&shard)?;
             reveals.sort_by(|a, b| {
                 a.score()
                     .value()
@@ -154,10 +154,7 @@ impl<
                 signed_score_set,
             ));
 
-            // Sign scores
-            let signed_score_vote =
-                Signed::new(score_vote, Scope::Score, &inner_keypair.private()).unwrap();
-            let verified = Verified::from_trusted(signed_score_vote).unwrap();
+            let verified = Verified::from_trusted(score_vote).unwrap();
 
             self.score_pipeline
                 .process((shard.clone(), verified.clone()), msg.cancellation.clone())
@@ -194,10 +191,10 @@ impl<
 {
     async fn process_reveals(
         &self,
-        reveals: Vec<Signed<Reveal, min_sig::BLS12381Signature>>,
+        reveals: Vec<Reveal>,
         data_metadata: Metadata,
         cancellation: CancellationToken,
-    ) -> ShardResult<Signed<Reveal, min_sig::BLS12381Signature>> {
+    ) -> ShardResult<Reveal> {
         for reveal in reveals {
             // TODO: skip early if your own representations
             // download the representations

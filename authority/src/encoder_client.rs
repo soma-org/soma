@@ -15,7 +15,7 @@ use types::{
     shard::{ShardAuthToken, ShardInput, ShardInputV1},
     shard_networking::{
         external::{EncoderExternalNetworkClient, EncoderExternalTonicClient},
-        NetworkingInfo,
+        EncoderNetworkingInfo,
     },
 };
 
@@ -30,7 +30,7 @@ impl EncoderClientService {
         let peer_keypair = PeerKeyPair::new(network_keypair.into_inner());
 
         // Create empty NetworkingInfo initially
-        let networking_info = NetworkingInfo::new(BTreeMap::new());
+        let networking_info = EncoderNetworkingInfo::new(Vec::new());
 
         // Create the tonic client
         let client = Arc::new(EncoderExternalTonicClient::new(
@@ -48,7 +48,7 @@ impl EncoderClientService {
 
     /// Update networking info when encoder committee changes
     pub fn update_encoder_committee(&self, committee: &EncoderCommittee) {
-        let mut network_mapping = BTreeMap::new();
+        let mut network_mapping = Vec::new();
 
         for (encoder_key, _) in &committee.members {
             if let Some(metadata) = committee.network_metadata.get(encoder_key) {
@@ -61,7 +61,7 @@ impl EncoderClientService {
                     soma_network::multiaddr::Multiaddr::try_from(network_addr_str)
                         .expect("Failed to convert multiaddr");
 
-                network_mapping.insert(encoder_key.clone(), (network_multiaddr, peer_public_key));
+                network_mapping.push((encoder_key.clone(), (peer_public_key, network_multiaddr)))
             }
         }
 

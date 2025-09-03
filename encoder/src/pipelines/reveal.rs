@@ -100,7 +100,7 @@ impl<
         P: EvaluationClient,
     > Processor for RevealProcessor<O, E, S, P>
 {
-    type Input = (Shard, Verified<Signed<Reveal, min_sig::BLS12381Signature>>);
+    type Input = (Shard, Verified<Reveal>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
@@ -119,7 +119,7 @@ impl<
                 GuardResult::Timeout => (),
             }
 
-            self.store.add_signed_reveal(&shard, &verified_reveal)?;
+            self.store.add_reveal(&shard, &verified_reveal)?;
 
             info!(
                 "Starting track_valid_reveal for revealer: {:?}",
@@ -128,7 +128,7 @@ impl<
 
             let quorum_threshold = shard.quorum_threshold() as usize;
             let max_size = shard.size();
-            let count = self.store.count_signed_reveal(&shard)?;
+            let count = self.store.count_reveal(&shard)?;
             let shard_digest = shard.digest()?;
 
             info!(

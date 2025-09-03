@@ -32,10 +32,7 @@ impl InputAPI for InputV1 {
     }
 }
 
-pub(crate) fn verify_input(
-    input: &Signed<Input, min_sig::BLS12381Signature>,
-    shard: &Shard,
-) -> SharedResult<()> {
+pub(crate) fn verify_input(input: &Input, shard: &Shard) -> SharedResult<()> {
     // TODO: need to fix this to work with the correct signature
     // input.verify_signature(Scope::Input, .author().inner())?;
     Ok(())

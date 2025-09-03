@@ -17,7 +17,7 @@ use crate::{
     shard_networking::{
         channel_pool::{Channel, ChannelPool},
         generated::encoder_external_tonic_service_client::EncoderExternalTonicServiceClient,
-        NetworkingInfo,
+        EncoderNetworkingInfo,
     },
 };
 
@@ -33,15 +33,16 @@ pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
 
 // Implements Tonic RPC client for Encoders.
 pub struct EncoderExternalTonicClient {
-    pub networking_info: NetworkingInfo,
+    pub networking_info: EncoderNetworkingInfo,
     own_peer_keypair: PeerKeyPair,
     parameters: Arc<Parameters>,
     channel_pool: Arc<ChannelPool>,
 }
+
 impl EncoderExternalTonicClient {
     /// Creates a new encoder tonic client and establishes an arc'd channel pool
     pub fn new(
-        networking_info: NetworkingInfo,
+        networking_info: EncoderNetworkingInfo,
         own_peer_keypair: PeerKeyPair,
         parameters: Arc<Parameters>,
         capacity: usize,
@@ -62,7 +63,7 @@ impl EncoderExternalTonicClient {
         timeout: Duration,
     ) -> ShardResult<EncoderExternalTonicServiceClient<Channel>> {
         let config = &self.parameters.tonic;
-        if let Some((address, peer_public_key)) = self.networking_info.lookup(encoder) {
+        if let Some((peer_public_key, address)) = self.networking_info.encoder_to_tls(encoder) {
             let channel = self
                 .channel_pool
                 .get_channel(

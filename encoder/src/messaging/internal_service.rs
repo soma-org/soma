@@ -3,21 +3,19 @@ use crate::{
     datastore::Store,
     messaging::EncoderInternalNetworkService,
     types::{
-        commit::{verify_signed_commit, Commit, CommitAPI},
+        commit::{verify_commit, Commit, CommitAPI},
         commit_votes::{verify_commit_votes, CommitVotes, CommitVotesAPI},
         context::Context,
-        reveal::{verify_signed_reveal, Reveal, RevealAPI},
-        score_vote::{verify_signed_score_vote, ScoreVote, ScoreVoteAPI},
+        reveal::{verify_reveal, Reveal, RevealAPI},
+        score_vote::{verify_score_vote, ScoreVote, ScoreVoteAPI},
     },
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use fastcrypto::bls12381::min_sig;
 use shared::{
     crypto::keys::EncoderPublicKey,
     error::{ShardError, ShardResult},
     shard::Shard,
-    signed::Signed,
     verified::Verified,
 };
 use std::sync::Arc;
@@ -81,15 +79,13 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         commit_bytes: Bytes,
     ) -> ShardResult<()> {
         let result: ShardResult<()> = {
-            let signed_commit: Signed<Commit, min_sig::BLS12381Signature> =
+            let commit: Commit =
                 bcs::from_bytes(&commit_bytes).map_err(ShardError::MalformedType)?;
-            let (shard, cancellation) =
-                self.shard_verification(signed_commit.auth_token(), peer)?;
-            let verified_commit =
-                Verified::new(signed_commit.clone(), commit_bytes, |signed_commit| {
-                    verify_signed_commit(signed_commit, peer, &shard)
-                })
-                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+            let (shard, cancellation) = self.shard_verification(commit.auth_token(), peer)?;
+            let verified_commit = Verified::new(commit.clone(), commit_bytes, |signed_commit| {
+                verify_commit(signed_commit, peer, &shard)
+            })
+            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
             self.dispatcher
                 .dispatch_commit(shard, verified_commit, cancellation)
@@ -111,7 +107,7 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         commit_votes_bytes: Bytes,
     ) -> ShardResult<()> {
         let result: ShardResult<()> = {
-            let commit_votes: Signed<CommitVotes, min_sig::BLS12381Signature> =
+            let commit_votes: CommitVotes =
                 bcs::from_bytes(&commit_votes_bytes).map_err(ShardError::MalformedType)?;
 
             let (shard, cancellation) = self.shard_verification(commit_votes.auth_token(), peer)?;
@@ -140,13 +136,13 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         reveal_bytes: Bytes,
     ) -> ShardResult<()> {
         let result: ShardResult<()> = {
-            let reveal: Signed<Reveal, min_sig::BLS12381Signature> =
+            let reveal: Reveal =
                 bcs::from_bytes(&reveal_bytes).map_err(ShardError::MalformedType)?;
 
             let (shard, cancellation) = self.shard_verification(reveal.auth_token(), peer)?;
 
             let verified_reveal = Verified::new(reveal, reveal_bytes, |reveal| {
-                verify_signed_reveal(reveal, peer, &shard)
+                verify_reveal(reveal, peer, &shard)
             })
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
@@ -169,13 +165,13 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         score_vote_bytes: Bytes,
     ) -> ShardResult<()> {
         let result: ShardResult<()> = {
-            let score_vote: Signed<ScoreVote, min_sig::BLS12381Signature> =
+            let score_vote: ScoreVote =
                 bcs::from_bytes(&score_vote_bytes).map_err(ShardError::MalformedType)?;
 
             let (shard, cancellation) = self.shard_verification(score_vote.auth_token(), peer)?;
 
             let verified_score_vote = Verified::new(score_vote, score_vote_bytes, |score_vote| {
-                verify_signed_score_vote(&score_vote, peer, &shard)
+                verify_score_vote(&score_vote, peer, &shard)
             })
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 

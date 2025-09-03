@@ -83,22 +83,22 @@ impl RevealAPI for RevealV1 {
     }
 }
 
-pub(crate) fn verify_signed_reveal(
-    signed_reveal: &Signed<Reveal, min_sig::BLS12381Signature>,
+pub(crate) fn verify_reveal(
+    reveal: &Reveal,
     peer: &EncoderPublicKey,
     shard: &Shard,
 ) -> SharedResult<()> {
-    if peer != signed_reveal.author() {
+    if peer != reveal.author() {
         return Err(SharedError::FailedTypeVerification(
             "sending peer must be author".to_string(),
         ));
     }
-    if !shard.contains(&signed_reveal.author()) {
+    if !shard.contains(&reveal.author()) {
         return Err(shared::error::SharedError::ValidationError(
             "encoder is not in the shard".to_string(),
         ));
     }
-    if signed_reveal.score().value() <= 0.0 {
+    if reveal.score().value() <= 0.0 {
         return Err(shared::error::SharedError::ValidationError(
             "score value must be greater than zero".to_string(),
         ));
@@ -108,15 +108,14 @@ pub(crate) fn verify_signed_reveal(
     // TODO: verify the summary embedding's length
 
     let max_size = None;
-    verify_metadata(&signed_reveal.tensors().metadata(), max_size)?;
+    verify_metadata(&reveal.tensors().metadata(), max_size)?;
 
-    let _ = signed_reveal.verify_signature(Scope::Reveal, signed_reveal.author().inner())?;
     Ok(())
 }
 pub(crate) fn verify_reveal_score_matches(
     score: EvaluationScore,
     summary_embedding: SummaryEmbedding,
-    signed_reveal: &Signed<Reveal, min_sig::BLS12381Signature>,
+    reveal: &Reveal,
 ) -> SharedResult<()> {
     Ok(())
 }

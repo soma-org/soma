@@ -99,20 +99,15 @@ impl<
         P: EvaluationClient,
     > Processor for InputProcessor<C, O, M, S, P>
 {
-    type Input = (
-        Shard,
-        Verified<Signed<Input, min_sig::BLS12381Signature>>,
-        PeerPublicKey,
-        Multiaddr,
-    );
+    type Input = (Shard, Verified<Input>, PeerPublicKey, Multiaddr);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let keypair = self.encoder_keypair.inner().copy();
         let result: ShardResult<()> = async {
-            let (shard, verified_signed_input, peer, address) = msg.input;
+            let (shard, verified_input, peer, address) = msg.input;
             let epoch = shard.epoch();
-            let downloadable_metadata = verified_signed_input
+            let downloadable_metadata = verified_input
                 .auth_token()
                 .metadata_commitment()
                 .downloadable_metadata();
@@ -164,7 +159,7 @@ impl<
             ));
 
             let reveal = Reveal::V1(RevealV1::new(
-                verified_signed_input.auth_token().clone(),
+                verified_input.auth_token().clone(),
                 self.encoder_keypair.public(),
                 evaluation_output.score(),
                 inference_output.probe_set(),
@@ -172,36 +167,31 @@ impl<
                 evaluation_output.summary_embedding(),
             ));
 
-            let inner_keypair = self.encoder_keypair.inner().copy();
-            let signed_reveal =
-                Signed::new(reveal, Scope::Reveal, &inner_keypair.private()).unwrap();
+            let reveal_digest = Digest::new(&reveal).map_err(ShardError::DigestFailure)?;
 
-            let signed_reveal_digest =
-                Digest::new(&signed_reveal).map_err(ShardError::DigestFailure)?;
+            let verified_reveal = Verified::from_trusted(reveal).unwrap();
 
-            let verified_reveal = Verified::from_trusted(signed_reveal).unwrap();
-            self.store.add_signed_reveal(&shard, &verified_reveal)?;
+            self.store.add_reveal(&shard, &verified_reveal)?;
 
             let commit = Commit::V1(CommitV1::new(
-                verified_signed_input.auth_token().clone(),
+                verified_input.auth_token().clone(),
                 self.encoder_keypair.public(),
-                signed_reveal_digest,
+                reveal_digest,
             ));
 
-            let inner_keypair = self.encoder_keypair.inner().copy();
-            // Sign the commit
-            let signed_commit =
-                Signed::new(commit, Scope::Commit, &inner_keypair.private()).unwrap();
-            let verified = Verified::from_trusted(signed_commit).unwrap();
+            let verified_commit = Verified::from_trusted(commit).unwrap();
 
             self.commit_pipeline
-                .process((shard.clone(), verified.clone()), msg.cancellation.clone())
+                .process(
+                    (shard.clone(), verified_commit.clone()),
+                    msg.cancellation.clone(),
+                )
                 .await?;
             info!("Broadcasting to other nodes");
             // Broadcast to other encoders
             self.broadcaster
                 .broadcast(
-                    verified.clone(),
+                    verified_commit.clone(),
                     shard.encoders(),
                     |client, peer, verified_type| async move {
                         client

@@ -81,10 +81,7 @@ impl<
         P: EvaluationClient,
     > Processor for CommitVotesProcessor<O, E, S, P>
 {
-    type Input = (
-        Shard,
-        Verified<Signed<CommitVotes, min_sig::BLS12381Signature>>,
-    );
+    type Input = (Shard, Verified<CommitVotes>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
@@ -217,10 +214,10 @@ impl<
 
                     // TODO: SHOULD USE A NOTIFY IF NOT EXISTS FLOW TO WAIT IF IT DOES NOT EXIST
 
-                    let own_signed_reveal = self
+                    let own_reveal = self
                         .store
-                        .get_encoder_signed_reveal(&shard, &self.encoder_keypair.public())?;
-                    let verified_reveal = Verified::from_trusted(own_signed_reveal).unwrap();
+                        .get_encoder_reveal(&shard, &self.encoder_keypair.public())?;
+                    let verified_reveal = Verified::from_trusted(own_reveal).unwrap();
                     info!("Broadcasting reveal to other nodes");
                     // call reveal pipeline
                     self.reveal_pipeline
