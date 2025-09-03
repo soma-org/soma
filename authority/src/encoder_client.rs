@@ -12,7 +12,7 @@ use types::{
     committee::EncoderCommittee,
     crypto::{AuthorityKeyPair, NetworkKeyPair},
     parameters::Parameters,
-    shard::{ShardAuthToken, ShardInput, ShardInputV1},
+    shard::{Input, InputV1, ShardAuthToken},
     shard_networking::{
         external::{EncoderExternalNetworkClient, EncoderExternalTonicClient},
         EncoderNetworkingInfo,
@@ -76,18 +76,11 @@ impl EncoderClientService {
         timeout: Duration,
     ) -> SharedResult<()> {
         // Create and sign the shard input
-        let input = ShardInput::V1(ShardInputV1::new(token.clone()));
-        let signed_input = Signed::new(
-            input,
-            Scope::Input,
-            &self.authority_keypair.copy().private(),
-        )?;
-        let verified_input = Verified::from_trusted(signed_input)?;
-
+        let input = Input::V1(InputV1::new(token.clone()));
         // Send to each shard member
         for encoder_key in token.shard.encoders() {
             self.client
-                .send_input(&encoder_key, &verified_input, timeout)
+                .send_input(&encoder_key, &input, timeout)
                 .await?;
         }
 

@@ -1,7 +1,7 @@
 use crate::finality::FinalityProof;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use shared::{metadata::MetadataCommitment, shard::Shard};
+use shared::{error::SharedResult, metadata::MetadataCommitment, shard::Shard};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShardAuthToken {
@@ -32,29 +32,35 @@ impl ShardAuthToken {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[enum_dispatch(ShardInputAPI)]
-pub enum ShardInput {
-    V1(ShardInputV1),
+#[enum_dispatch(InputAPI)]
+pub enum Input {
+    V1(InputV1),
 }
 
 #[enum_dispatch]
-pub trait ShardInputAPI {
+pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ShardInputV1 {
+pub struct InputV1 {
     auth_token: ShardAuthToken,
 }
 
-impl ShardInputV1 {
+impl InputV1 {
     pub fn new(auth_token: ShardAuthToken) -> Self {
         Self { auth_token }
     }
 }
 
-impl ShardInputAPI for ShardInputV1 {
+impl InputAPI for InputV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
+}
+
+pub fn verify_input(input: &Input, shard: &Shard) -> SharedResult<()> {
+    // TODO: need to fix this to work with the correct signature
+    // input.verify_signature(Scope::Input, .author().inner())?;
+    Ok(())
 }

@@ -172,9 +172,6 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
                     "Successfully created aggregate score with {} evaluators",
                     evaluators.len()
                 );
-                self.clean_up_pipeline
-                    .process(shard.clone(), msg.cancellation.clone())
-                    .await?;
 
                 self.store
                     .add_aggregate_score(&shard, (agg.clone(), evaluators))?;
@@ -188,17 +185,17 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
                     // call on-chain
                     info!("MOCK SUBMIT ON CHAIN");
                 }
-            } else {
-                debug!(
-                "Not enough matching scores yet - waiting for more scores. Matching scores: {}, \
-                 quorum_threshold: {}",
-                matching_score_votes.len(),
-                shard.quorum_threshold()
-            );
 
                 self.clean_up_pipeline
-                    .process(shard, msg.cancellation.clone())
+                    .process(shard.clone(), msg.cancellation.clone())
                     .await?;
+            } else {
+                debug!(
+                    "Not enough matching scores yet - waiting for more scores. Matching scores: {}, \
+                    quorum_threshold: {}",
+                    matching_score_votes.len(),
+                    shard.quorum_threshold()
+                );
             }
 
             info!("Completed track_valid_scores");

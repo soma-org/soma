@@ -89,7 +89,7 @@ impl EvaluationOutputAPI for EvaluationOutputV1 {
 
 #[enum_dispatch]
 pub trait EvaluationScoreAPI {
-    fn value(&self) -> f32;
+    fn value(&self) -> u64;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -100,23 +100,23 @@ pub enum EvaluationScore {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd)]
 pub struct EvaluationScoreV1 {
-    value: f32,
+    value: u64,
 }
 impl EvaluationScoreV1 {
-    pub fn new(value: f32) -> Self {
+    pub fn new(value: u64) -> Self {
         Self { value }
     }
 }
 
 impl EvaluationScoreAPI for EvaluationScoreV1 {
-    fn value(&self) -> f32 {
+    fn value(&self) -> u64 {
         self.value
     }
 }
 
 #[enum_dispatch]
 pub trait SummaryEmbeddingAPI {
-    fn value(&self) -> Vec<f32>;
+    fn value(&self) -> Vec<u64>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -127,30 +127,30 @@ pub enum SummaryEmbedding {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd)]
 pub struct SummaryEmbeddingV1 {
-    value: Vec<f32>,
+    value: Vec<u64>,
 }
 impl SummaryEmbeddingV1 {
-    pub fn new(value: Vec<f32>) -> Self {
+    pub fn new(value: Vec<u64>) -> Self {
         Self { value }
     }
 }
 
 impl SummaryEmbeddingAPI for SummaryEmbeddingV1 {
-    fn value(&self) -> Vec<f32> {
+    fn value(&self) -> Vec<u64> {
         self.value.clone()
     }
 }
 #[enum_dispatch]
 pub trait ProbeWeightAPI {
     fn encoder(&self) -> &EncoderPublicKey;
-    fn weight(&self) -> f32;
+    fn weight(&self) -> u64;
     fn downloadable_metadata(&self) -> DownloadableMetadata;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProbeWeightV1 {
     encoder: EncoderPublicKey,
-    weight: f32,
+    weight: u64,
     downloadable_metadata: DownloadableMetadata,
 }
 
@@ -159,7 +159,7 @@ impl ProbeWeightAPI for ProbeWeightV1 {
         &self.encoder
     }
 
-    fn weight(&self) -> f32 {
+    fn weight(&self) -> u64 {
         self.weight
     }
 

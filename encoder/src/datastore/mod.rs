@@ -40,7 +40,7 @@ impl CommitVoteCounts {
 }
 
 /// The store is a common interface for accessing encoder data
-pub(crate) trait Store: Send + Sync + 'static {
+pub trait Store: Send + Sync + 'static {
     fn lock_commit(&self, shard: &Shard, commit: &Commit) -> ShardResult<()>;
     /// adds the signed commit, returns an error if there is a preexisting different signed commit
     fn add_commit(&self, shard: &Shard, commit: &Verified<Commit>) -> ShardResult<()>;

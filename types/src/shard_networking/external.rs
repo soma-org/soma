@@ -13,7 +13,7 @@ use tonic::{codec::CompressionEncoding, Request};
 
 use crate::{
     parameters::Parameters,
-    shard::ShardInput,
+    shard::Input,
     shard_networking::{
         channel_pool::{Channel, ChannelPool},
         generated::encoder_external_tonic_service_client::EncoderExternalTonicServiceClient,
@@ -26,7 +26,7 @@ pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
     async fn send_input(
         &self,
         encoder: &EncoderPublicKey,
-        input: &Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        input: &Input,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -95,11 +95,12 @@ impl EncoderExternalNetworkClient for EncoderExternalTonicClient {
     async fn send_input(
         &self,
         encoder: &EncoderPublicKey,
-        input: &Verified<Signed<ShardInput, min_sig::BLS12381Signature>>,
+        input: &Input,
         timeout: Duration,
     ) -> ShardResult<()> {
+        let input_bytes = bcs::to_bytes(input).expect("Could not serialize Input");
         let mut request = Request::new(SendInputRequest {
-            input: input.bytes(),
+            input: Bytes::copy_from_slice(&input_bytes),
         });
         request.set_timeout(timeout);
         self.get_client(encoder, timeout)

@@ -2,10 +2,12 @@ use std::{collections::BTreeSet, future::Future, path::Path, sync::Arc};
 
 use evaluation::messaging::service::MockEvaluationService;
 use evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
-use evaluation::messaging::EvaluationManager;
+use evaluation::messaging::{EvaluationClient, EvaluationManager};
 use fastcrypto::traits::KeyPair;
-use inference::client::{self, MockInferenceClient};
+use inference::client::{self, InferenceClient, MockInferenceClient};
 use objects::networking::downloader::Downloader;
+use objects::networking::ObjectNetworkClient;
+use objects::storage::ObjectStorage;
 use objects::{
     networking::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -25,6 +27,7 @@ use types::{
     committee::Committee, config::encoder_config::EncoderConfig, system_state::SystemStateTrait,
 };
 
+use crate::messaging::EncoderInternalNetworkClient;
 use crate::pipelines::clean_up::CleanUpProcessor;
 use crate::{
     datastore::{mem_store::MemStore, Store},
@@ -94,6 +97,50 @@ pub struct EncoderNode {
     external_network_manager: EncoderExternalTonicManager,
     object_network_manager: ObjectHttpManager,
     evaluation_network_manager: EvaluationTonicManager,
+    downloader_manager: ActorManager<Downloader<ObjectHttpClient, MemoryObjectStore>>,
+    clean_up_manager: ActorManager<CleanUpProcessor>,
+    score_vote_manager: ActorManager<ScoreVoteProcessor<EncoderInternalTonicClient>>,
+    evaluation_manager: ActorManager<
+        EvaluationProcessor<
+            ObjectHttpClient,
+            EncoderInternalTonicClient,
+            MemoryObjectStore,
+            EvaluationTonicClient,
+        >,
+    >,
+    reveal_manager: ActorManager<
+        RevealProcessor<
+            ObjectHttpClient,
+            EncoderInternalTonicClient,
+            MemoryObjectStore,
+            EvaluationTonicClient,
+        >,
+    >,
+    commit_votes_manager: ActorManager<
+        CommitVotesProcessor<
+            ObjectHttpClient,
+            EncoderInternalTonicClient,
+            MemoryObjectStore,
+            EvaluationTonicClient,
+        >,
+    >,
+    commit_manager: ActorManager<
+        CommitProcessor<
+            ObjectHttpClient,
+            EncoderInternalTonicClient,
+            MemoryObjectStore,
+            EvaluationTonicClient,
+        >,
+    >,
+    input_manager: ActorManager<
+        InputProcessor<
+            EncoderInternalTonicClient,
+            ObjectHttpClient,
+            MockInferenceClient<MemoryObjectStore>,
+            MemoryObjectStore,
+            EvaluationTonicClient,
+        >,
+    >,
     store: Arc<dyn Store>,
     pub context: Context,
     object_storage: Arc<MemoryObjectStore>,
@@ -204,9 +251,10 @@ impl EncoderNode {
         let downloader_manager = ActorManager::new(default_buffer, download_processor);
         let downloader_handle = downloader_manager.handle();
 
-        let vdf = EntropyVDF::new(1);
-        let vdf_processor = VDFProcessor::new(vdf, 1);
-        let vdf_handle = ActorManager::new(1, vdf_processor).handle();
+        // TODO: Remove - VDF handle is created in ShardVerifier
+        // let vdf = EntropyVDF::new(1);
+        // let vdf_processor = VDFProcessor::new(vdf, 1);
+        // let vdf_handle = ActorManager::new(1, vdf_processor).handle();
         let store = Arc::new(MemStore::new());
 
         let broadcaster = Arc::new(Broadcaster::new(
@@ -218,8 +266,8 @@ impl EncoderNode {
         let recv_dedup_cache_capacity: usize = 1000;
         let send_dedup_cache_capacity: usize = 100;
         let clean_up_processor = CleanUpProcessor::new(store.clone(), recv_dedup_cache_capacity);
-        let clean_up_handle: shared::actors::ActorHandle<CleanUpProcessor> =
-            ActorManager::new(default_buffer, clean_up_processor).handle();
+        let clean_up_manager = ActorManager::new(default_buffer, clean_up_processor);
+        let clean_up_handle = clean_up_manager.handle();
 
         let score_vote_processor = ScoreVoteProcessor::new(
             store.clone(),
@@ -229,7 +277,8 @@ impl EncoderNode {
             recv_dedup_cache_capacity,
             send_dedup_cache_capacity,
         );
-        let score_vote_handle = ActorManager::new(default_buffer, score_vote_processor).handle();
+        let score_vote_manager = ActorManager::new(default_buffer, score_vote_processor);
+        let score_vote_handle = score_vote_manager.handle();
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
@@ -241,7 +290,8 @@ impl EncoderNode {
             evaluation_client.clone(),
             recv_dedup_cache_capacity,
         );
-        let evaluation_handle = ActorManager::new(default_buffer, evaluation_processor).handle();
+        let evaluation_manager = ActorManager::new(default_buffer, evaluation_processor);
+        let evaluation_handle = evaluation_manager.handle();
 
         let reveal_processor = RevealProcessor::new(
             store.clone(),
@@ -251,7 +301,8 @@ impl EncoderNode {
             recv_dedup_cache_capacity,
             send_dedup_cache_capacity,
         );
-        let reveal_handle = ActorManager::new(default_buffer, reveal_processor).handle();
+        let reveal_manager = ActorManager::new(default_buffer, reveal_processor);
+        let reveal_handle = reveal_manager.handle();
 
         let commit_votes_processor = CommitVotesProcessor::new(
             store.clone(),
@@ -261,8 +312,8 @@ impl EncoderNode {
             recv_dedup_cache_capacity,
             send_dedup_cache_capacity,
         );
-        let commit_votes_handle =
-            ActorManager::new(default_buffer, commit_votes_processor).handle();
+        let commit_votes_manager = ActorManager::new(default_buffer, commit_votes_processor);
+        let commit_votes_handle = commit_votes_manager.handle();
 
         let commit_processor = CommitProcessor::new(
             store.clone(),
@@ -272,7 +323,8 @@ impl EncoderNode {
             recv_dedup_cache_capacity,
             send_dedup_cache_capacity,
         );
-        let commit_handle = ActorManager::new(default_buffer, commit_processor).handle();
+        let commit_manager = ActorManager::new(default_buffer, commit_processor);
+        let commit_handle = commit_manager.handle();
 
         let inference_client = Arc::new(MockInferenceClient::new(object_storage.clone()));
 
@@ -286,8 +338,8 @@ impl EncoderNode {
             object_storage.clone(),
             commit_handle.clone(),
         );
-
-        let input_handle = ActorManager::new(default_buffer, input_processor).handle();
+        let input_manager = ActorManager::new(default_buffer, input_processor);
+        let input_handle = input_manager.handle();
 
         let pipeline_dispatcher = InternalPipelineDispatcher::new(
             commit_handle,
@@ -372,6 +424,14 @@ impl EncoderNode {
             context,
             evaluation_network_manager,
             committee_sync_manager,
+            downloader_manager,
+            clean_up_manager,
+            score_vote_manager,
+            evaluation_manager,
+            reveal_manager,
+            commit_votes_manager,
+            commit_manager,
+            input_manager,
             #[cfg(msim)]
             sim_state: Default::default(),
         }
@@ -405,7 +465,25 @@ impl EncoderNode {
 
         self.committee_sync_manager.stop();
 
-        // TODO: self.object_network_manager.stop().await;
+        <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::stop(
+            &mut self.object_network_manager,
+        )
+        .await;
+
+        // TODO: Replace mock with real service
+        <EvaluationTonicManager as EvaluationManager<MockEvaluationService>>::stop(
+            &mut self.evaluation_network_manager,
+        )
+        .await;
+
+        self.downloader_manager.shutdown();
+        self.clean_up_manager.shutdown();
+        self.score_vote_manager.shutdown();
+        self.evaluation_manager.shutdown();
+        self.reveal_manager.shutdown();
+        self.commit_votes_manager.shutdown();
+        self.commit_manager.shutdown();
+        self.input_manager.shutdown();
     }
 
     pub fn get_config(&self) -> &EncoderConfig {

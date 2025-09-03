@@ -23,8 +23,8 @@ impl EvaluationService for MockEvaluationService {
 
         // TODO: do something with the input
 
-        let score = EvaluationScoreV1::new(1.0);
-        let summary_embedding = SummaryEmbeddingV1::new(vec![1.0, 1.0, 1.0]);
+        let score = EvaluationScoreV1::new(rand::random());
+        let summary_embedding = SummaryEmbeddingV1::new(vec![1, 1, 1]);
 
         let output = EvaluationOutput::V1(EvaluationOutputV1::new(score, summary_embedding));
 

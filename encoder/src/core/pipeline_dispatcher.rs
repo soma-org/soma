@@ -4,10 +4,7 @@ use crate::{
         commit::CommitProcessor, commit_votes::CommitVotesProcessor, input::InputProcessor,
         reveal::RevealProcessor, score_vote::ScoreVoteProcessor,
     },
-    types::{
-        commit::Commit, commit_votes::CommitVotes, input::Input, reveal::Reveal,
-        score_vote::ScoreVote,
-    },
+    types::{commit::Commit, commit_votes::CommitVotes, reveal::Reveal, score_vote::ScoreVote},
 };
 use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
@@ -17,6 +14,7 @@ use shared::error::ShardResult;
 use shared::{actors::ActorHandle, crypto::keys::PeerPublicKey, shard::Shard, verified::Verified};
 use soma_network::multiaddr::Multiaddr;
 use tokio_util::sync::CancellationToken;
+use types::shard::Input;
 
 #[async_trait]
 pub trait InternalDispatcher: Sync + Send + 'static {

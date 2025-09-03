@@ -198,15 +198,18 @@ impl<
         for reveal in reveals {
             // TODO: skip early if your own representations
             // download the representations
-            self.downloader
-                .process(reveal.tensors().clone(), cancellation.clone())
-                .await?;
-
-            for probe in reveal.probe_set().probe_weights() {
-                // download probes
+            // TODO: actually store things in object storage
+            if !cfg!(msim) {
                 self.downloader
-                    .process(probe.downloadable_metadata(), cancellation.clone())
+                    .process(reveal.tensors().clone(), cancellation.clone())
                     .await?;
+
+                for probe in reveal.probe_set().probe_weights() {
+                    // download probes
+                    self.downloader
+                        .process(probe.downloadable_metadata(), cancellation.clone())
+                        .await?;
+                }
             }
 
             let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(

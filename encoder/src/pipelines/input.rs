@@ -1,18 +1,16 @@
-use std::{sync::Arc, time::Duration};
-
 use crate::{
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
         commit::{Commit, CommitV1},
-        input::{Input, InputAPI},
         reveal::{Reveal, RevealV1},
     },
 };
 use async_trait::async_trait;
 use evaluation::{
     messaging::EvaluationClient, EvaluationInput, EvaluationInputV1, EvaluationOutputAPI,
+    EvaluationScore, EvaluationScoreV1, SummaryEmbedding, SummaryEmbeddingV1,
 };
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use inference::{
@@ -37,7 +35,9 @@ use shared::{
     verified::Verified,
 };
 use soma_network::multiaddr::Multiaddr;
-use tracing::info;
+use std::{sync::Arc, time::Duration};
+use tracing::{error, info};
+use types::shard::{Input, InputAPI};
 
 use super::commit::CommitProcessor;
 
@@ -114,9 +114,12 @@ impl<
 
             let metadata = downloadable_metadata.metadata();
 
-            self.downloader
-                .process(downloadable_metadata, msg.cancellation.clone())
-                .await?;
+            if !cfg!(msim) {
+                // TODO: Actually store input in fullnode for download
+                self.downloader
+                    .process(downloadable_metadata, msg.cancellation.clone())
+                    .await?;
+            }
 
             let inference_input = InferenceInput::V1(InferenceInputV1::new(metadata.clone()));
 
@@ -169,7 +172,7 @@ impl<
 
             let reveal_digest = Digest::new(&reveal).map_err(ShardError::DigestFailure)?;
 
-            let verified_reveal = Verified::from_trusted(reveal).unwrap();
+            let verified_reveal: Verified<Reveal> = Verified::from_trusted(reveal).unwrap();
 
             self.store.add_reveal(&shard, &verified_reveal)?;
 
@@ -187,7 +190,7 @@ impl<
                     msg.cancellation.clone(),
                 )
                 .await?;
-            info!("Broadcasting to other nodes");
+
             // Broadcast to other encoders
             self.broadcaster
                 .broadcast(
@@ -205,7 +208,9 @@ impl<
             Ok(())
         }
         .await;
-        msg.sender.send(result);
+        if let Err(Err(err)) = msg.sender.send(result) {
+            error!("Input Pipeline Error: {:?}", err);
+        }
     }
 
     fn shutdown(&mut self) {}

@@ -7,7 +7,6 @@ pub mod tonic;
 
 use crate::types::commit::Commit;
 use crate::types::commit_votes::CommitVotes;
-use crate::types::input::Input;
 use crate::types::reveal::Reveal;
 use crate::types::score_vote::ScoreVote;
 use async_trait::async_trait;
@@ -20,6 +19,7 @@ use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
 use types::parameters::Parameters;
+use types::shard::Input;
 use types::shard_networking::EncoderNetworkingInfo;
 
 /// Default message timeout for each request.

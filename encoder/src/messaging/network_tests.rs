@@ -4,18 +4,13 @@ mod tests {
         messaging::{
             tonic::{
                 external::EncoderExternalTonicManager,
-                internal::{
-                    ConnectionsInfo, EncoderInternalTonicClient, EncoderInternalTonicManager,
-                },
+                internal::{EncoderInternalTonicClient, EncoderInternalTonicManager},
             },
             EncoderExternalNetworkManager, EncoderExternalNetworkService,
             EncoderInternalNetworkClient, EncoderInternalNetworkManager,
             EncoderInternalNetworkService,
         },
-        types::{
-            commit::Commit,
-            input::{Input, InputV1},
-        },
+        types::commit::Commit,
     };
     use async_trait::async_trait;
     use bytes::Bytes;
@@ -38,8 +33,6 @@ mod tests {
         net::{TcpListener, TcpStream},
     };
     use types::shard::ShardAuthToken;
-    use types::shard::{ShardInput, ShardInputV1};
-    use types::shard_networking::NetworkingInfo;
 
     fn get_available_local_address() -> Multiaddr {
         let host = "127.0.0.1";
@@ -98,49 +91,28 @@ mod tests {
             encoder: &EncoderPublicKey,
             commit_bytes: Bytes,
         ) -> ShardResult<()> {
-            self.handle_send_commit
-                .write()
-                .push((encoder.to_owned(), commit_bytes));
-            Ok(())
+            unimplemented!()
         }
         async fn handle_send_commit_votes(
             &self,
             encoder: &EncoderPublicKey,
             votes_bytes: Bytes,
         ) -> ShardResult<()> {
-            self.handle_send_commit_votes
-                .write()
-                .push((encoder.to_owned(), votes_bytes));
-            Ok(())
+            unimplemented!()
         }
         async fn handle_send_reveal(
             &self,
             encoder: &EncoderPublicKey,
             reveal_bytes: Bytes,
         ) -> ShardResult<()> {
-            self.handle_send_reveal
-                .write()
-                .push((encoder.to_owned(), reveal_bytes));
-            Ok(())
+            unimplemented!()
         }
-
-        async fn handle_send_scores(
+        async fn handle_send_score_vote(
             &self,
             encoder: &EncoderPublicKey,
-            scores_bytes: Bytes,
+            score_vote_bytes: Bytes,
         ) -> ShardResult<()> {
-            self.handle_send_scores
-                .write()
-                .push((encoder.to_owned(), scores_bytes));
-            Ok(())
-        }
-
-        async fn handle_send_finality(
-            &self,
-            encoder: &EncoderPublicKey,
-            finality_bytes: Bytes,
-        ) -> ShardResult<()> {
-            todo!()
+            unimplemented!()
         }
     }
 

@@ -31,6 +31,7 @@ burn-import.workspace = true
 burn-ndarray.workspace = true
 safetensors.workspace = true
 memmap2.workspace = true
+rand.workspace = true
 
 [dependencies.burn]
 workspace = true

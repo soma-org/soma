@@ -1,10 +1,6 @@
 use crate::{
-    core::pipeline_dispatcher::ExternalDispatcher,
-    messaging::EncoderExternalNetworkService,
-    types::{
-        context::Context,
-        input::{verify_input, Input, InputAPI},
-    },
+    core::pipeline_dispatcher::ExternalDispatcher, messaging::EncoderExternalNetworkService,
+    types::context::Context,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -18,8 +14,11 @@ use shared::{
 };
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
-use tracing::error;
-use types::{shard::ShardAuthToken, shard_verifier::ShardVerifier};
+use tracing::{error, info};
+use types::{
+    shard::{verify_input, Input, InputAPI, ShardAuthToken},
+    shard_verifier::ShardVerifier,
+};
 
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
     context: Arc<Context>,

@@ -32,7 +32,7 @@ pub enum SharedError {
     WrongEpoch,
     #[error("Validation error: {0}")]
     ValidationError(String),
-    #[error("Actor error: {0}")]
+    #[error("Shard Not Found: {0}")]
     ShardNotFound(String),
 
     #[error("Actor error: {0}")]
@@ -312,7 +312,7 @@ pub enum ShardError {
     #[error("weighted sample error: {0}")]
     WeightedSampleError(String),
 
-    #[error("Actor error: {0}")]
+    #[error("Shard Not Found: {0}")]
     ShardNotFound(String),
 
     #[error("Object validation error: {0}")]

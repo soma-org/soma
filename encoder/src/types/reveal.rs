@@ -98,7 +98,7 @@ pub(crate) fn verify_reveal(
             "encoder is not in the shard".to_string(),
         ));
     }
-    if reveal.score().value() <= 0.0 {
+    if reveal.score().value() <= 0 {
         return Err(shared::error::SharedError::ValidationError(
             "score value must be greater than zero".to_string(),
         ));
