@@ -1,5 +1,4 @@
 use enum_dispatch::enum_dispatch;
-use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
 use types::shard::Shard;
 use types::shard::ShardAuthToken;
@@ -66,7 +65,5 @@ pub(crate) fn verify_commit(
             "sending peer must be author".to_string(),
         ));
     }
-
-    // signed_commit.verify_signature(Scope::Commit, signed_commit.author().inner())?;
     Ok(())
 }

@@ -375,6 +375,9 @@ pub enum SomaError {
 
     #[error("Shard sampling failed: {0}")]
     ShardSamplingError(String),
+
+    #[error("Invalid finality proof")]
+    InvalidFinalityProof(String),
 }
 
 impl From<Status> for SomaError {

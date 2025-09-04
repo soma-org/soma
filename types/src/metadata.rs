@@ -106,20 +106,17 @@ pub enum DownloadableMetadata {
 /// that if a piece of metadata had been submitted earlier, the hash and values would be known to network participants.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct MetadataCommitment {
-    downloadable_metadata: DownloadableMetadata,
+    metadata: Metadata,
     nonce: [u8; 32],
 }
 
 impl MetadataCommitment {
-    pub fn new(downloadable_metadata: DownloadableMetadata, nonce: [u8; 32]) -> Self {
-        MetadataCommitment {
-            downloadable_metadata,
-            nonce,
-        }
+    pub fn new(metadata: Metadata, nonce: [u8; 32]) -> Self {
+        MetadataCommitment { metadata, nonce }
     }
 
-    pub fn downloadable_metadata(&self) -> DownloadableMetadata {
-        self.downloadable_metadata.clone()
+    pub fn metadata(&self) -> Metadata {
+        self.metadata.clone()
     }
 
     pub fn digest(&self) -> ShardResult<Digest<Self>> {

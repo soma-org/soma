@@ -1,4 +1,4 @@
-use crate::entropy::{BlockEntropy, BlockEntropyProof};
+use crate::error::SomaError;
 use crate::{
     committee::Committee,
     consensus::block::BlockRef,
@@ -53,29 +53,15 @@ impl CertifiedConsensusFinality {
 pub struct FinalityProof {
     /// The original user-signed transaction with inputs
     pub transaction: Transaction,
-
     /// The certified consensus finality containing the leader block reference
     pub consensus_finality: CertifiedConsensusFinality,
-
-    /// The entropy generated from the leader block
-    pub block_entropy: BlockEntropy,
-
-    /// The proof of the entropy generation
-    pub block_entropy_proof: BlockEntropyProof,
 }
 
 impl FinalityProof {
-    pub fn new(
-        transaction: Transaction,
-        consensus_finality: CertifiedConsensusFinality,
-        block_entropy: BlockEntropy,
-        block_entropy_proof: BlockEntropyProof,
-    ) -> Self {
+    pub fn new(transaction: Transaction, consensus_finality: CertifiedConsensusFinality) -> Self {
         Self {
             transaction,
             consensus_finality,
-            block_entropy,
-            block_entropy_proof,
         }
     }
 
@@ -87,5 +73,28 @@ impl FinalityProof {
     /// Get the block reference from the consensus finality
     pub fn block_ref(&self) -> &BlockRef {
         &self.consensus_finality.data().leader_block
+    }
+
+    pub fn verify(&self, committee: &Committee) -> SomaResult<()> {
+        let _ = self
+            .consensus_finality
+            .verify_authority_signatures(committee)?;
+
+        let _ = match self.consensus_finality.execution_status {
+            ExecutionStatus::Success => {}
+            _ => {
+                return Err(SomaError::InvalidFinalityProof(
+                    "execution unsuccessful".to_string(),
+                ));
+            }
+        };
+
+        if self.transaction_digest() != self.consensus_finality.digest() {
+            return Err(SomaError::InvalidFinalityProof(
+                "consensus finality transaction digest does not match transaction data".to_string(),
+            ));
+        };
+
+        Ok(())
     }
 }

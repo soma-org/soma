@@ -45,6 +45,15 @@ impl<D: InternalDispatcher> EncoderInternalService<D> {
         }
     }
 
+    // All internal shard requests
+    // - allowed communication (matches tls key associated with valid encoder)
+    // - shard auth token is valid
+    // - peer is in shard
+    // - own key is in shard
+    // ABOVE HANDLED BY SHARD VERIFICATION
+
+    // - peer matches author (handled in corresponding type verification fn)
+    // - haven’t received a conflicting or redundant message (handled by pipelines)
     fn shard_verification(
         &self,
         auth_token: &ShardAuthToken,

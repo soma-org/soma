@@ -21,7 +21,7 @@ use types::{
         verified::Verified,
     },
     shard_verifier::ShardVerifier,
-    system_state::{get_system_state, shard::ShardResult, SystemState, SystemStateTrait},
+    system_state::SystemState,
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
     SYSTEM_STATE_OBJECT_ID,
@@ -36,8 +36,7 @@ pub struct ShardExecutor {
 
 impl ShardExecutor {
     pub fn new() -> Self {
-        let shard_verifier = ShardVerifier::new(100, None);
-
+        let shard_verifier = ShardVerifier::new(100);
         Self { shard_verifier }
     }
 

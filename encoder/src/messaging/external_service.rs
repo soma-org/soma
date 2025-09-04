@@ -4,15 +4,13 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use fastcrypto::bls12381::min_sig;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
+use tracing::error;
 use types::{
     error::{ShardError, ShardResult},
     shard::Shard,
     shard_crypto::keys::PeerPublicKey,
-    shard_crypto::signed::Signed,
     shard_crypto::verified::Verified,
 };
 use types::{
@@ -38,6 +36,13 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
             shard_verifier,
         }
     }
+    // - allowed communication: allower key in tonic service
+    //
+    // - shard auth token is valid: finality proof, vdf, transaction
+    // - own key is in the shard: shard_verification below
+
+    // - peer matches author (handled in corresponding type verification fn)
+    // - haven’t received a conflicting or redundant message (handled by pipelines)
     fn shard_verification(
         &self,
         auth_token: &ShardAuthToken,
@@ -62,18 +67,11 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
 #[async_trait]
 impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
     async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()> {
-        // TODO: need to adjust this to lookup the encoder and do encoder validation on the input
-        // expecting a staked full node to speak to the encoders rather than arbitrary peers
-        // We must also verify the correct signature and should look up the staked full node
-        // and pass that in as the peer.
-
         let result: ShardResult<()> = {
             let input: Input = bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
 
-            // should check that the sender is the correct person to be sending?
             let (shard, cancellation) = self.shard_verification(input.auth_token())?;
 
-            // TODO: fix the verification to actually work
             let verified_input = Verified::new(input, input_bytes, |i| verify_input(&i, &shard))
                 .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 

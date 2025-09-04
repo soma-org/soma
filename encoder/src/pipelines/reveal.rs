@@ -1,13 +1,12 @@
 use crate::{
     core::internal_broadcaster::Broadcaster,
     datastore::Store,
-    messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
+    messaging::EncoderInternalNetworkClient,
     types::reveal::{Reveal, RevealAPI},
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
 use evaluation::messaging::EvaluationClient;
-use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use quick_cache::sync::{Cache, GuardResult};
 use std::{future::Future, sync::Arc, time::Duration};
@@ -20,8 +19,6 @@ use types::{
     shard_crypto::{
         digest::Digest,
         keys::{EncoderKeyPair, EncoderPublicKey},
-        scope::Scope,
-        signed::Signed,
         verified::Verified,
     },
 };

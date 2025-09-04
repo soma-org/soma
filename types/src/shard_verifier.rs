@@ -1,10 +1,13 @@
 use crate::committee::Committee;
 use crate::encoder_committee::EncoderCommittee;
+use crate::error::SomaResult;
+use crate::metadata::MetadataAPI;
+use crate::transaction::{verify_sender_signed_data_message_signatures, TransactionKind};
 use crate::{entropy::SimpleVDF, shard::ShardAuthToken};
 use crate::{
     error::{ShardError, ShardResult},
     shard::{Shard, ShardEntropy},
-    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
+    shard_crypto::digest::Digest,
 };
 use quick_cache::sync::Cache;
 use tokio_util::sync::CancellationToken;
@@ -19,22 +22,16 @@ enum VerificationStatus {
 }
 /// Verifies shard auth tokens and returns a shard
 pub struct ShardVerifier {
-    /// caches verification status for a given auth token digest
     cache: Cache<Digest<ShardAuthToken>, VerificationStatus>,
     cancellation_cache: Cache<Digest<Shard>, CancellationToken>,
-    // TODO: hold the actor wrapped VDF
-    // Since Validators use ShardVerifier too, this is optional
-    own_key: Option<EncoderPublicKey>,
 }
 
 impl ShardVerifier {
-    pub fn new(capacity: usize, own_key: Option<EncoderPublicKey>) -> Self {
+    pub fn new(capacity: usize) -> Self {
         let cache: Cache<Digest<ShardAuthToken>, VerificationStatus> = Cache::new(capacity);
         Self {
             cache,
             cancellation_cache: Cache::new(capacity),
-
-            own_key,
         }
     }
 }
@@ -47,33 +44,17 @@ impl ShardVerifier {
         vdf_iterations: u64,
         token: &ShardAuthToken,
     ) -> ShardResult<(Shard, CancellationToken)> {
-        tracing::info!("Starting ShardVerifier::verify");
-
-        let digest = match Digest::new(token) {
-            Ok(d) => {
-                tracing::debug!("Successfully created digest for token");
-                d
-            }
-            Err(e) => {
-                tracing::error!("Failed to create digest for token: {:?}", e);
-                return Err(ShardError::InvalidShardToken(e.to_string()));
-            }
-        };
-
-        // Check cache
-        if let Some(status) = self.cache.get(&digest) {
-            tracing::debug!("Found cached verification status");
+        let auth_token_digest = Digest::new(token).map_err(ShardError::DigestFailure)?;
+        if let Some(status) = self.cache.get(&auth_token_digest) {
             return match status {
                 VerificationStatus::Valid(shard) => {
-                    tracing::debug!("Cache hit: valid shard");
                     let shard_digest = shard.digest()?;
                     let cancellation = self
                         .cancellation_cache
                         .get_or_insert_with(&shard_digest, || Ok(CancellationToken::new()))
                         .map_err(|e: ShardError| {
-                            // unreachable, cancellation token new does not fail
                             ShardError::InvalidShardToken(
-                                "issue with cancellation token".to_string(),
+                                "issue with getting existing cancellation token".to_string(),
                             )
                         })?;
 
@@ -87,92 +68,73 @@ impl ShardVerifier {
                 }
             };
         }
+        let result: ShardResult<Shard> = {
+            let _ = token
+                .finality_proof
+                .verify(&authority_committee)
+                .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
-        // Debug finality proof
-        tracing::debug!("Verifying finality proof against authority committee");
-        // TODO: verify finality proof against authority committee
-        // if let Err(e) = token.finality_proof.verify(&authority_committee) {
-        //     tracing::error!("Finality proof verification failed: {:?}", e);
-        //     self.cache.insert(digest, VerificationStatus::Invalid);
-        //     return Err(ShardError::InvalidShardToken(e.to_string()));
-        // }
-
-        // Debug VDF
-
-        // let vdf_result = self.vdf.process(vdf_params, CancellationToken::new()).await;
-        let vdf = SimpleVDF::new(vdf_iterations);
-        let vdf_result = vdf.verify_entropy(
-            token.finality_proof.consensus_finality.leader_block,
-            &token.finality_proof.block_entropy,
-            &token.finality_proof.block_entropy_proof,
-        );
-
-        if let Err(e) = vdf_result {
-            tracing::error!("VDF verification failed: {:?}", e);
-            self.cache.insert(digest, VerificationStatus::Invalid);
-            return Err(ShardError::Other(format!("Error: {}", e)));
-        }
-
-        tracing::debug!("VDF verification succeeded");
-
-        // Debug shard entropy
-        tracing::debug!("Creating ShardEntropy with metadata commitment and block entropy");
-        let shard_entropy_input = ShardEntropy::new(
-            token.metadata_commitment.clone(),
-            token.finality_proof.block_entropy.clone(),
-        );
-
-        tracing::debug!("Creating digest from ShardEntropy");
-        let shard_entropy = match Digest::new(&shard_entropy_input) {
-            Ok(entropy) => {
-                tracing::debug!("Successfully created shard entropy digest");
-                entropy
+            if let TransactionKind::EmbedData {
+                digest,
+                data_size_bytes,
+                coin_ref: _coin_ref, // Use `_coin_ref` if you don’t need this field
+            } = token.finality_proof.transaction.transaction_data().kind()
+            {
+                if digest.to_owned() != token.metadata_commitment().digest().unwrap() {
+                    return Err(ShardError::InvalidShardToken(
+                        "metadata commitment digest does not match transaction".to_string(),
+                    ));
+                }
+                if token.metadata_commitment().metadata().size() != data_size_bytes.clone() {
+                    return Err(ShardError::InvalidShardToken(
+                        "metadata size in commitment does not match transaction".to_string(),
+                    ));
+                }
+            } else {
+                return Err(ShardError::InvalidShardToken(
+                    "incorrect transaction kind for shard auth token".to_string(),
+                ));
             }
-            Err(e) => {
-                tracing::error!("Failed to create shard entropy digest: {:?}", e);
-                self.cache.insert(digest, VerificationStatus::Invalid);
-                return Err(ShardError::InvalidShardToken(e.to_string()));
-            }
+            let vdf = SimpleVDF::new(vdf_iterations);
+            let _ = vdf
+                .verify_entropy(
+                    token.finality_proof.consensus_finality.leader_block,
+                    &token.block_entropy,
+                    &token.block_entropy_proof,
+                )
+                .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
+
+            let shard_entropy_input = ShardEntropy::new(
+                token.metadata_commitment.clone(),
+                token.block_entropy.clone(),
+            );
+            let shard_seed = Digest::new(&shard_entropy_input)
+                .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
+            let shard = encoder_committee.sample_shard(shard_seed)?;
+            Ok(shard)
         };
 
-        tracing::debug!("Sampling shard from encoder committee");
-        let shard = match encoder_committee.sample_shard(shard_entropy) {
-            Ok(s) => {
-                tracing::debug!(
-                    "Successfully sampled shard with {} encoders: {:?}",
-                    s.encoders().len(),
-                    s.encoders()
-                );
-                s
+        match result {
+            Ok(shard) => {
+                let shard_digest = shard.digest()?;
+                self.cache
+                    .insert(auth_token_digest, VerificationStatus::Valid(shard.clone()));
+                let cancellation = self
+                    .cancellation_cache
+                    .get_or_insert_with(&shard_digest, || Ok(CancellationToken::new()))
+                    .map_err(|_: ShardError| {
+                        // unreachable, cancellation token new does not fail
+                        ShardError::InvalidShardToken("issue with cancellation token".to_string())
+                    })?;
+
+                Ok((shard, cancellation))
             }
             Err(e) => {
-                tracing::error!("Failed to sample shard: {:?}", e);
-                self.cache.insert(digest, VerificationStatus::Invalid);
-                return Err(e);
-            }
-        };
-
-        if let Some(key) = &self.own_key {
-            if !shard.contains(key) {
-                return Err(ShardError::InvalidShardMember);
+                self.cache
+                    .insert(auth_token_digest, VerificationStatus::Invalid);
+                Err(e)
             }
         }
-
-        let shard_digest = shard.digest()?;
-
-        tracing::debug!("Caching successful verification result");
-        self.cache
-            .insert(digest, VerificationStatus::Valid(shard.clone()));
-        tracing::info!("ShardVerifier::verify completed successfully");
-        let cancellation = self
-            .cancellation_cache
-            .get_or_insert_with(&shard_digest, || Ok(CancellationToken::new()))
-            .map_err(|_: ShardError| {
-                // unreachable, cancellation token new does not fail
-                ShardError::InvalidShardToken("issue with cancellation token".to_string())
-            })?;
-
-        Ok((shard, cancellation))
     }
 }
 

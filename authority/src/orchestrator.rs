@@ -22,13 +22,13 @@ use types::{
     metadata::{
         DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
     },
+    multiaddr::Multiaddr,
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
         FinalizedEffects, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
         QuorumDriverError, QuorumDriverResponse, QuorumDriverResult,
     },
-    shard::ShardAuthToken,
-    shard::ShardEntropy,
+    shard::{Shard, ShardAuthToken, ShardEntropy},
     shard_crypto::{digest::Digest, keys::PeerPublicKey},
     system_state::{SystemState, SystemStateTrait},
     transaction::{
@@ -415,30 +415,31 @@ where
 
         // TODO: define real Metadata and commitment
         let size_in_bytes = 1;
-        let metadata = DownloadableMetadataV1::new(
-            PeerPublicKey::new(
-                self.validator_state
-                    .config
-                    .network_key_pair()
-                    .into_inner()
-                    .public()
-                    .clone(),
-            ),
+        let metadata = MetadataV1::new(Checksum::default(), size_in_bytes);
+        let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
+
+        let tls_key = PeerPublicKey::new(
             self.validator_state
                 .config
-                .network_address
-                .to_string()
-                .parse()
-                .unwrap(),
-            MetadataV1::new(Checksum::default(), size_in_bytes),
+                .network_key_pair()
+                .into_inner()
+                .public()
+                .clone(),
         );
-        let metadata_commitment =
-            MetadataCommitment::new(DownloadableMetadata::V1(metadata), [0u8; 32]);
+        let address = self
+            .validator_state
+            .config
+            .network_address
+            .to_string()
+            .parse()
+            .unwrap();
 
         if let Ok(shard_auth_token) = self
             .initiate_encoder_work_for_embed_data(
                 &finality_proof,
                 metadata_commitment.clone(),
+                tls_key,
+                address,
                 transaction.digest(),
             )
             .await
@@ -454,17 +455,13 @@ where
         &self,
         finality_proof: &FinalityProof,
         metadata_commitment: MetadataCommitment,
+        tls_key: PeerPublicKey,
+        address: Multiaddr,
         tx_digest: &TransactionDigest,
     ) -> SomaResult<ShardAuthToken> {
-        let shard_auth_token = self
+        let (shard, shard_auth_token) = self
             .generate_shard_selection(finality_proof, metadata_commitment)
             .await?;
-
-        debug!(
-            ?tx_digest,
-            shard_size = shard_auth_token.shard.size(),
-            "Generated shard selection for EmbedData transaction"
-        );
 
         if let Some(encoder_client) = &self.encoder_client {
             // Update encoder committee before sending
@@ -472,13 +469,21 @@ where
                 encoder_client.update_encoder_committee(&committee);
             }
 
-            // Spawn async task to avoid blocking transaction response
             let client = encoder_client.clone();
             let token = shard_auth_token.clone();
             let digest = *tx_digest;
 
             tokio::spawn(async move {
-                match client.send_to_shard(token, Duration::from_secs(5)).await {
+                match client
+                    .send_to_shard(
+                        shard.encoders(),
+                        token,
+                        tls_key,
+                        address,
+                        Duration::from_secs(5),
+                    )
+                    .await
+                {
                     Ok(()) => {
                         debug!(?digest, "Successfully sent shard input to all members");
                     }
@@ -498,29 +503,7 @@ where
         transaction: Transaction,
         consensus_finality: CertifiedConsensusFinality,
     ) -> SomaResult<FinalityProof> {
-        let block_ref = consensus_finality.data().leader_block.clone();
-        let vdf = self.vdf.clone();
-
-        // Move the VDF computation to a blocking thread pool
-        let (block_entropy, block_entropy_proof) =
-            tokio::task::spawn_blocking(move || vdf.get_entropy(block_ref))
-                .await
-                .map_err(|e| SomaError::from(format!("VDF task failed: {}", e)))??;
-
-        info!(
-            block_ref = ?consensus_finality.data().leader_block,
-            tx_digest = ?transaction.digest(),
-            "Generated entropy proof for finality"
-        );
-
-        // Create the FinalityProof
-        let finality_proof = FinalityProof::new(
-            transaction,
-            consensus_finality,
-            block_entropy,
-            block_entropy_proof,
-        );
-
+        let finality_proof = FinalityProof::new(transaction, consensus_finality);
         Ok(finality_proof)
     }
 
@@ -529,15 +512,20 @@ where
         &self,
         finality_proof: &FinalityProof,
         metadata_commitment: MetadataCommitment,
-    ) -> SomaResult<ShardAuthToken> {
+    ) -> SomaResult<(Shard, ShardAuthToken)> {
+        let block_ref = finality_proof.block_ref().clone();
+        let vdf = self.vdf.clone();
+
+        // Move the VDF computation to a blocking thread pool
+        let (block_entropy, block_entropy_proof) =
+            tokio::task::spawn_blocking(move || vdf.get_entropy(block_ref))
+                .await
+                .map_err(|e| SomaError::from(format!("VDF task failed: {}", e)))??;
         // Get current encoder committee from system state
         let encoder_committee = self.get_current_encoder_committee().await?;
 
         // Create ShardEntropy
-        let shard_entropy = ShardEntropy::new(
-            metadata_commitment.clone(),
-            finality_proof.block_entropy.clone(),
-        );
+        let shard_entropy = ShardEntropy::new(metadata_commitment.clone(), block_entropy.clone());
 
         // Calculate entropy digest
         let entropy_digest = Digest::new(&shard_entropy)
@@ -548,10 +536,14 @@ where
             .map_err(|e| SomaError::from(e.to_string()))?;
 
         // Create ShardAuthToken
-        let shard_auth_token =
-            ShardAuthToken::new(finality_proof.clone(), metadata_commitment, shard);
+        let shard_auth_token = ShardAuthToken::new(
+            finality_proof.clone(),
+            block_entropy,
+            block_entropy_proof,
+            metadata_commitment,
+        );
 
-        Ok(shard_auth_token)
+        Ok((shard, shard_auth_token))
     }
 
     /// Get current encoder committee from system state

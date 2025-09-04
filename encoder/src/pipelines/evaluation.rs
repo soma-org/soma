@@ -124,10 +124,7 @@ impl<
             let best_reveal = self
                 .process_reveals(
                     reveals,
-                    auth_token
-                        .metadata_commitment()
-                        .downloadable_metadata()
-                        .metadata(),
+                    auth_token.metadata_commitment().metadata(),
                     msg.cancellation.clone(),
                 )
                 .await?;

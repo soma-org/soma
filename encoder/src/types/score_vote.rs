@@ -68,24 +68,9 @@ pub fn verify_score_vote(
             "sending peer must be author".to_string(),
         ));
     }
-    // if !shard.contains(&signed_scores.evaluator()) {
-    //     return Err(SharedError::ValidationError(
-    //         "evaluator is not in the shard".to_string(),
-    //     ));
-    // }
 
-    // if signed_scores.unique_scores() != shard.size() {
-    //     return Err(SharedError::ValidationError(
-    //         "unique scores does not match shard size".to_string(),
-    //     ));
-    // }
-    // for encoder in signed_scores.encoders() {
-    //     if !shard.contains(&encoder) {
-    //         return Err(SharedError::ValidationError(
-    //             "scored encoder is not in shard".to_string(),
-    //         ));
-    //     }
-    // }
+    // score set signature is valid
+    //
 
     Ok(())
 }

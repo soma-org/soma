@@ -1,10 +1,11 @@
 use crate::committee::Epoch;
 use crate::encoder_committee::CountUnit;
-use crate::entropy::BlockEntropy;
+use crate::entropy::{BlockEntropy, BlockEntropyProof};
 use crate::error::{ShardError, ShardResult};
 use crate::finality::FinalityProof;
 use crate::metadata::MetadataCommitment;
-use crate::shard_crypto::keys::EncoderPublicKey;
+use crate::multiaddr::Multiaddr;
+use crate::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use crate::{error::SharedResult, shard_crypto::digest::Digest};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -81,21 +82,33 @@ impl ShardEntropy {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShardAuthToken {
     pub finality_proof: FinalityProof,
+    pub block_entropy: BlockEntropy,
+    pub block_entropy_proof: BlockEntropyProof,
     pub metadata_commitment: MetadataCommitment,
-    pub shard: Shard,
 }
 
 impl ShardAuthToken {
     pub fn new(
         finality_proof: FinalityProof,
+        block_entropy: BlockEntropy,
+        block_entropy_proof: BlockEntropyProof,
         metadata_commitment: MetadataCommitment,
-        shard: Shard,
     ) -> Self {
         Self {
             finality_proof,
+            block_entropy,
+            block_entropy_proof,
             metadata_commitment,
-            shard,
         }
+    }
+    pub fn finality_proof(&self) -> FinalityProof {
+        self.finality_proof.clone()
+    }
+    pub fn block_entropy(&self) -> BlockEntropy {
+        self.block_entropy.clone()
+    }
+    pub fn block_entropy_proof(&self) -> BlockEntropyProof {
+        self.block_entropy_proof.clone()
     }
     pub fn metadata_commitment(&self) -> MetadataCommitment {
         self.metadata_commitment.clone()
@@ -115,22 +128,36 @@ pub enum Input {
 #[enum_dispatch]
 pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
+    fn tls_key(&self) -> &PeerPublicKey;
+    fn address(&self) -> &Multiaddr;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InputV1 {
     auth_token: ShardAuthToken,
+    tls_key: PeerPublicKey,
+    address: Multiaddr,
 }
 
 impl InputV1 {
-    pub fn new(auth_token: ShardAuthToken) -> Self {
-        Self { auth_token }
+    pub fn new(auth_token: ShardAuthToken, tls_key: PeerPublicKey, address: Multiaddr) -> Self {
+        Self {
+            auth_token,
+            tls_key,
+            address,
+        }
     }
 }
 
 impl InputAPI for InputV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
+    }
+    fn tls_key(&self) -> &PeerPublicKey {
+        &self.tls_key
+    }
+    fn address(&self) -> &Multiaddr {
+        &self.address
     }
 }
 

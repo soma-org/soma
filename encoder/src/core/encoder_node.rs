@@ -1,13 +1,11 @@
-use std::{collections::BTreeSet, future::Future, path::Path, sync::Arc};
+use std::{collections::BTreeSet, future::Future, sync::Arc};
 
 use evaluation::messaging::service::MockEvaluationService;
 use evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
-use evaluation::messaging::{EvaluationClient, EvaluationManager};
+use evaluation::messaging::EvaluationManager;
 use fastcrypto::traits::KeyPair;
-use inference::client::{self, InferenceClient, MockInferenceClient};
+use inference::client::MockInferenceClient;
 use objects::networking::downloader::Downloader;
-use objects::networking::ObjectNetworkClient;
-use objects::storage::ObjectStorage;
 use objects::{
     networking::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -18,13 +16,11 @@ use objects::{
 use soma_tls::AllowPublicKeys;
 use tokio::sync::{Mutex, Semaphore};
 use tracing::{error, info, warn};
+use types::actors::ActorManager;
 use types::multiaddr::Multiaddr;
-use types::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey};
-use types::{
-    committee::Committee, config::encoder_config::EncoderConfig, system_state::SystemStateTrait,
-};
+use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair};
+use types::{config::encoder_config::EncoderConfig, system_state::SystemStateTrait};
 
-use crate::messaging::EncoderInternalNetworkClient;
 use crate::pipelines::clean_up::CleanUpProcessor;
 use crate::{
     datastore::{mem_store::MemStore, Store},
@@ -54,7 +50,6 @@ use super::{
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
 };
-use types::actors::ActorManager;
 use types::shard_verifier::ShardVerifier;
 
 #[cfg(msim)]
@@ -343,7 +338,7 @@ impl EncoderNode {
             reveal_handle,
             score_vote_handle,
         );
-        let verifier = Arc::new(ShardVerifier::new(100, Some(encoder_keypair.public())));
+        let verifier = Arc::new(ShardVerifier::new(100));
 
         let internal_network_service = Arc::new(EncoderInternalService::new(
             context.clone(),

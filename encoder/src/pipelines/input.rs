@@ -10,37 +10,30 @@ use crate::{
 use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
 
-use fastcrypto::{bls12381::min_sig, traits::KeyPair};
-use inference::{
-    client::InferenceClient, InferenceInput, InferenceInputV1, InferenceOutput, InferenceOutputAPI,
-};
+use fastcrypto::traits::KeyPair;
+use inference::{client::InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI};
 use objects::{
     networking::{downloader::Downloader, ObjectNetworkClient},
-    storage::{ObjectPath, ObjectStorage},
+    storage::ObjectStorage,
 };
 use std::{sync::Arc, time::Duration};
-use tracing::{error, info};
-use types::shard::{Input, InputAPI};
+use tracing::error;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
-    evaluation::{
-        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, EvaluationScore,
-        EvaluationScoreV1, SummaryEmbedding, SummaryEmbeddingV1,
-    },
-    metadata::{
-        DownloadableMetadata, DownloadableMetadataAPI, DownloadableMetadataV1, Metadata,
-        MetadataAPI,
-    },
+    evaluation::{EvaluationInput, EvaluationInputV1, EvaluationOutputAPI},
+    metadata::{DownloadableMetadata, DownloadableMetadataAPI, DownloadableMetadataV1, Metadata},
     multiaddr::Multiaddr,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
         keys::{EncoderKeyPair, PeerPublicKey},
-        scope::Scope,
-        signed::Signed,
         verified::Verified,
     },
+};
+use types::{
+    metadata::MetadataV1,
+    shard::{Input, InputAPI},
 };
 
 use super::commit::CommitProcessor;
@@ -111,14 +104,15 @@ impl<
         let result: ShardResult<()> = async {
             let (shard, verified_input, peer, address) = msg.input;
             let epoch = shard.epoch();
-            let downloadable_metadata = verified_input
-                .auth_token()
-                .metadata_commitment()
-                .downloadable_metadata();
-
-            let metadata = downloadable_metadata.metadata();
+            let metadata = verified_input.auth_token().metadata_commitment().metadata();
 
             if !cfg!(msim) {
+                let Metadata::V1(m) = metadata.clone();
+                let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
+                    verified_input.tls_key().clone(),
+                    verified_input.address().clone(),
+                    m,
+                ));
                 // TODO: Actually store input in fullnode for download
                 self.downloader
                     .process(downloadable_metadata, msg.cancellation.clone())

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
@@ -68,7 +70,15 @@ pub(crate) fn verify_commit_votes(
             "sending peer must be author".to_string(),
         ));
     }
+
+    let mut unique_encoders = HashSet::new();
     for (encoder, _commit_digest) in commit_votes.accepts() {
+        if !unique_encoders.insert(encoder) {
+            return Err(SharedError::ValidationError(format!(
+                "redundant encoder detected: {:?}",
+                encoder
+            )));
+        }
         if !shard.contains(encoder) {
             return Err(types::error::SharedError::ValidationError(
                 "encoder not in shard".to_string(),

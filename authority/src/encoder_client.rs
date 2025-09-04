@@ -1,14 +1,15 @@
 use fastcrypto::traits::KeyPair;
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use types::{
     crypto::{AuthorityKeyPair, NetworkKeyPair},
     encoder_committee::EncoderCommittee,
     error::SharedResult,
+    multiaddr::Multiaddr,
     parameters::{Parameters, TonicParameters},
     shard::{Input, InputV1, ShardAuthToken},
     shard_crypto::{
-        keys::{PeerKeyPair, PeerPublicKey},
+        keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey},
         scope::Scope,
         signed::Signed,
         verified::Verified,
@@ -68,13 +69,16 @@ impl EncoderClientService {
     /// Send shard input to all members of the shard
     pub async fn send_to_shard(
         &self,
+        encoders: Vec<EncoderPublicKey>,
         token: ShardAuthToken,
+        tls_key: PeerPublicKey,
+        address: Multiaddr,
         timeout: Duration,
     ) -> SharedResult<()> {
         // Create and sign the shard input
-        let input = Input::V1(InputV1::new(token.clone()));
+        let input = Input::V1(InputV1::new(token.clone(), tls_key, address));
         // Send to each shard member
-        for encoder_key in token.shard.encoders() {
+        for encoder_key in encoders {
             self.client
                 .send_input(&encoder_key, &input, timeout)
                 .await?;

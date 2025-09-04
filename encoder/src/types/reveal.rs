@@ -1,11 +1,10 @@
 use enum_dispatch::enum_dispatch;
-use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use types::evaluation::{EvaluationScore, EvaluationScoreAPI, ProbeSet, SummaryEmbedding};
+use types::evaluation::{EvaluationScore, ProbeSet, SummaryEmbedding};
 use types::{
     error::{SharedError, SharedResult},
     metadata::{verify_metadata, DownloadableMetadata, DownloadableMetadataAPI},
-    shard_crypto::{keys::EncoderPublicKey, scope::Scope, signed::Signed},
+    shard_crypto::keys::EncoderPublicKey,
 };
 
 use types::shard::Shard;
@@ -91,16 +90,7 @@ pub(crate) fn verify_reveal(
             "sending peer must be author".to_string(),
         ));
     }
-    if !shard.contains(&reveal.author()) {
-        return Err(types::error::SharedError::ValidationError(
-            "encoder is not in the shard".to_string(),
-        ));
-    }
-    if reveal.score().value() <= 0 {
-        return Err(types::error::SharedError::ValidationError(
-            "score value must be greater than zero".to_string(),
-        ));
-    }
+    // Do I want to gurantee that the downloadable metadata match the peer and address on chain?
 
     // TODO: verify the probe_set's validity
     // TODO: verify the summary embedding's length
