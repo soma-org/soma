@@ -18,7 +18,7 @@ use types::{
 
 #[async_trait]
 pub trait AuthorityAPI {
-    /// Initiate a new transaction to a Sui or Primary account.
+    /// Initiate a new transaction to a  Primary account.
     async fn handle_transaction(
         &self,
         transaction: Transaction,
@@ -72,7 +72,7 @@ impl NetworkAuthorityClient {
 
 #[async_trait]
 impl AuthorityAPI for NetworkAuthorityClient {
-    /// Initiate a new transfer to a Sui or Primary account.
+    /// Initiate a new transfer to a Primary account.
     async fn handle_transaction(
         &self,
         transaction: Transaction,

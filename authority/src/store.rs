@@ -885,7 +885,7 @@ impl AuthorityStore {
     }
 
     /// Initialize a lock to None (but exists) for a given list of ObjectRefs.
-    /// Returns SuiError::ObjectLockAlreadyInitialized if the lock already exists and is locked to a transaction
+    /// Returns SomaError::ObjectLockAlreadyInitialized if the lock already exists and is locked to a transaction
     fn initialize_object_transaction_locks_impl(
         &self,
         objects: &[ObjectRef],

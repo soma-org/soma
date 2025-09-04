@@ -1,15 +1,12 @@
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::{
-    crypto::keys::EncoderPublicKey,
-    digest::Digest,
+use types::{
     error::{SharedError, SharedResult},
-    scope::Scope,
-    signed::Signed,
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey, scope::Scope, signed::Signed},
 };
 
-use shared::shard::Shard;
+use types::shard::Shard;
 use types::shard::ShardAuthToken;
 
 use super::reveal::Reveal;
@@ -73,7 +70,7 @@ pub(crate) fn verify_commit_votes(
     }
     for (encoder, _commit_digest) in commit_votes.accepts() {
         if !shard.contains(encoder) {
-            return Err(shared::error::SharedError::ValidationError(
+            return Err(types::error::SharedError::ValidationError(
                 "encoder not in shard".to_string(),
             ));
         }

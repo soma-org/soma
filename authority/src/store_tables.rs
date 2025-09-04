@@ -137,7 +137,7 @@ impl AuthorityPerpetualTables {
         try_construct_object(store_object)
     }
 
-    // Constructs `sui_types::object::Object` from `StoreObjectWrapper`.
+    // Constructs `types::object::Object` from `StoreObjectWrapper`.
     // Returns `None` if object was deleted/wrapped
     pub fn object(
         &self,

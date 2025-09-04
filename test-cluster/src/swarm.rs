@@ -16,7 +16,7 @@ use types::{
     multiaddr::Multiaddr,
 };
 
-/// A handle to an in-memory Sui Network.
+/// A handle to an in-memory Soma Network.
 #[derive(Debug)]
 pub struct Swarm {
     network_config: NetworkConfig,

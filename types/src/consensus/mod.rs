@@ -33,9 +33,10 @@
 use crate::{
     accumulator::Accumulator,
     base::{AuthorityName, ConciseableName},
-    committee::{EncoderCommittee, NetworkingCommittee},
+    committee::NetworkingCommittee,
     crypto::AuthorityPublicKeyBytes,
     digests::{ConsensusCommitDigest, ECMHLiveObjectSetDigest, TransactionDigest},
+    encoder_committee::EncoderCommittee,
     state_sync::CommitTimestamp,
     transaction::CertifiedTransaction,
 };

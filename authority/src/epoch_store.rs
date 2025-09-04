@@ -54,7 +54,7 @@ use types::{
         AuthorityName, ConciseableName, ConsensusObjectSequenceKey, FullObjectID, Round,
         SomaAddress,
     },
-    committee::{Authority, Committee, EncoderCommittee, EpochId, NetworkingCommittee},
+    committee::{Authority, Committee, EpochId, NetworkingCommittee},
     consensus::{
         block::BlockRef, validator_set::ValidatorSet, ConsensusCommitPrologue,
         ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
@@ -66,6 +66,7 @@ use types::{
         object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut},
         ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind,
     },
+    encoder_committee::EncoderCommittee,
     envelope::TrustedEnvelope,
     error::{ExecutionError, SomaError, SomaResult},
     execution_indices::ExecutionIndices,
@@ -1499,7 +1500,7 @@ impl AuthorityPerEpochStore {
                     );
                     return Ok(ConsensusCertificateResult::Ignored);
                 }
-                // Safe because signatures are verified when consensus called into SuiTxValidator::validate_batch.
+                // Safe because signatures are verified when consensus called into TxValidator::validate_batch.
                 let certificate = VerifiedCertificate::new_unchecked(*certificate.clone());
                 let certificate = VerifiedExecutableTransaction::new_from_certificate(certificate);
 
@@ -1659,7 +1660,7 @@ impl AuthorityPerEpochStore {
             );
             return None;
         }
-        // Signatures are verified as part of the consensus payload verification in SuiTxValidator
+        // Signatures are verified as part of the consensus payload verification in TxValidator
         match &transaction.transaction {
             SequencedConsensusTransactionKind::External(ConsensusTransaction {
                 kind: ConsensusTransactionKind::UserTransaction(_certificate),

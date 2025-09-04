@@ -10,11 +10,15 @@ use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
 use inference::client::InferenceClient;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
-use shared::error::ShardResult;
-use shared::{actors::ActorHandle, crypto::keys::PeerPublicKey, shard::Shard, verified::Verified};
-use soma_network::multiaddr::Multiaddr;
 use tokio_util::sync::CancellationToken;
+use types::error::ShardResult;
+use types::multiaddr::Multiaddr;
 use types::shard::Input;
+use types::{
+    actors::ActorHandle,
+    shard::Shard,
+    shard_crypto::{keys::PeerPublicKey, verified::Verified},
+};
 
 #[async_trait]
 pub trait InternalDispatcher: Sync + Send + 'static {

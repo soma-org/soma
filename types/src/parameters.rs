@@ -203,6 +203,9 @@ pub struct TonicParameters {
 
     #[serde(default = "TonicParameters::default_channel_pool_capacity")]
     pub channel_pool_capacity: usize,
+
+    #[serde(default = "TonicParameters::default_connect_timeout")]
+    pub connect_timeout: Duration,
 }
 
 impl TonicParameters {
@@ -224,6 +227,10 @@ impl TonicParameters {
     fn default_channel_pool_capacity() -> usize {
         1 << 8
     }
+
+    fn default_connect_timeout() -> Duration {
+        Duration::from_secs(1)
+    }
 }
 
 impl Default for TonicParameters {
@@ -234,6 +241,57 @@ impl Default for TonicParameters {
             excessive_message_size: TonicParameters::default_excessive_message_size(),
             message_size_limit: TonicParameters::default_message_size_limit(),
             channel_pool_capacity: TonicParameters::default_channel_pool_capacity(),
+            connect_timeout: TonicParameters::default_connect_timeout(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Http2Parameters {
+    /// Keepalive interval and timeouts for both client and server.
+    ///
+    /// If unspecified, this will default to 5s.
+    #[serde(default = "Http2Parameters::default_keepalive_interval")]
+    pub keepalive_interval: Duration,
+
+    /// Set a timeout for only the connect phase of a `Client`.
+    ///
+    /// If unspecified, this will default to 5s.
+    #[serde(default = "Http2Parameters::default_connect_timeout")]
+    pub connect_timeout: Duration,
+
+    /// Size of various per-connection buffers.
+    ///
+    /// If unspecified, this will default to 32MiB.
+    #[serde(default = "Http2Parameters::default_connection_buffer_size")]
+    pub connection_buffer_size: usize,
+
+    #[serde(default = "Http2Parameters::default_channel_pool_capacity")]
+    pub client_pool_capacity: usize,
+}
+
+impl Http2Parameters {
+    fn default_keepalive_interval() -> Duration {
+        Duration::from_secs(5)
+    }
+    fn default_connect_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+    fn default_connection_buffer_size() -> usize {
+        32 << 20
+    }
+    fn default_channel_pool_capacity() -> usize {
+        1 << 8
+    }
+}
+
+impl Default for Http2Parameters {
+    fn default() -> Self {
+        Self {
+            keepalive_interval: Http2Parameters::default_keepalive_interval(),
+            connect_timeout: Http2Parameters::default_connect_timeout(),
+            connection_buffer_size: Http2Parameters::default_connection_buffer_size(),
+            client_pool_capacity: Http2Parameters::default_channel_pool_capacity(),
         }
     }
 }

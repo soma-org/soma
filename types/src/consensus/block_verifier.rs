@@ -8,13 +8,12 @@ use super::block::{
 use super::context::Context;
 use super::transaction::TransactionVerifier;
 use crate::accumulator::{self, AccumulatorStore};
-use crate::committee::{
-    to_encoder_committee_intent, to_networking_committee_intent, Committee, EpochId,
-};
+use crate::committee::{to_networking_committee_intent, Committee, EpochId};
 use crate::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use crate::consensus::validator_set::to_validator_set_intent;
 use crate::crypto::AuthorityPublicKey;
 use crate::digests::ECMHLiveObjectSetDigest;
+use crate::encoder_committee::to_encoder_committee_intent;
 use crate::storage::read_store::{ReadCommitteeStore, ReadStore};
 use fastcrypto::hash::MultisetHash;
 use fastcrypto::traits::AggregateAuthenticator;

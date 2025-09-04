@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
-use shared::checksum::Checksum;
+use types::checksum::Checksum;
 
-use shared::error::ObjectResult;
+use types::error::ObjectResult;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct ObjectPath {
@@ -35,7 +35,7 @@ impl ObjectPath {
 }
 
 impl FromStr for ObjectPath {
-    type Err = shared::error::ObjectError;
+    type Err = types::error::ObjectError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         ObjectPath::new(s.to_string())

@@ -226,7 +226,7 @@ impl<C> SafeClient<C>
 where
     C: AuthorityAPI + Send + Sync + Clone + 'static,
 {
-    /// Initiate a new transfer to a Sui or Primary account.
+    /// Initiate a new transfer to a Primary account.
     pub async fn handle_transaction(
         &self,
         transaction: Transaction,

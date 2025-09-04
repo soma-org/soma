@@ -3,7 +3,7 @@ use bytes::Bytes;
 use std::path::{Path, PathBuf};
 use tokio::{fs, io::BufReader};
 
-use shared::error::{ObjectError, ObjectResult};
+use types::error::{ObjectError, ObjectResult};
 
 use super::{ObjectPath, ObjectStorage};
 

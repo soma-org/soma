@@ -8,13 +8,11 @@ members = [
   "test-cluster",
   "e2e-tests",
   "p2p",
-  "shared",
   "cli",
   "encoder",
   "evaluation",
   "soma-http",
   "soma-tls",
-  "soma-network",
   "vdf",
   "objects",
   "test-encoder-cluster",
@@ -186,7 +184,6 @@ prost = "0.13.2" # prost = "0.13.1"
 
 # ENCODER-ONLY DEPENDENCIES
 encoder = { path = "encoder" }
-shared = { path = "shared" }
 evaluation = { path = "evaluation" }
 vdf = { path = "vdf" }
 soma-http = { path = "soma-http" }

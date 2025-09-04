@@ -3,22 +3,23 @@ mod generated {
 }
 use super::{EvaluationClient, EvaluationManager, EvaluationService};
 use crate::messaging::tonic::generated::evaluation_tonic_service_client::EvaluationTonicServiceClient;
-use crate::parameters::Parameters;
-use crate::{EvaluationInput, EvaluationOutput};
 use async_trait::async_trait;
 use bytes::Bytes;
 use generated::evaluation_tonic_service_server::{
     EvaluationTonicService, EvaluationTonicServiceServer,
 };
-use shared::error::{EvaluationError, EvaluationResult};
 use soma_http::ServerHandle;
-use soma_network::multiaddr::{to_host_port_str, to_socket_addr, Multiaddr};
 use std::{sync::Arc, time::Duration};
 use tokio::time::Instant;
 use tonic::codec::CompressionEncoding;
 use tonic::{Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, info, trace, warn};
+use types::error::{EvaluationError, EvaluationResult};
+use types::evaluation::{EvaluationInput, EvaluationOutput};
+use types::multiaddr::Multiaddr;
+use types::p2p::{to_host_port_str, to_socket_addr};
+use types::parameters::TonicParameters;
 
 pub(crate) type Channel = tower_http::trace::Trace<
     tonic::transport::Channel,
@@ -27,12 +28,15 @@ pub(crate) type Channel = tower_http::trace::Trace<
 
 pub struct EvaluationTonicClient {
     address: Multiaddr,
-    parameters: Arc<Parameters>,
+    parameters: Arc<TonicParameters>,
     channel: Channel,
 }
 impl EvaluationTonicClient {
-    pub async fn new(address: Multiaddr, parameters: Arc<Parameters>) -> EvaluationResult<Self> {
-        let config = parameters.tonic.clone();
+    pub async fn new(
+        address: Multiaddr,
+        parameters: Arc<TonicParameters>,
+    ) -> EvaluationResult<Self> {
+        let config = parameters.clone();
         let address_string = to_host_port_str(&address).map_err(|e| {
             EvaluationError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
@@ -82,7 +86,7 @@ impl EvaluationTonicClient {
     pub(crate) async fn get_client(
         &self,
     ) -> EvaluationResult<EvaluationTonicServiceClient<Channel>> {
-        let config = self.parameters.tonic.clone();
+        let config = self.parameters.clone();
         let client = EvaluationTonicServiceClient::new(self.channel.clone())
             .max_encoding_message_size(config.message_size_limit)
             .max_decoding_message_size(config.message_size_limit)
@@ -147,14 +151,14 @@ impl<S: EvaluationService> EvaluationTonicService for EvaluationTonicServiceProx
 }
 
 pub struct EvaluationTonicManager {
-    parameters: Arc<Parameters>,
+    parameters: Arc<TonicParameters>,
     address: Multiaddr,
     server: Option<ServerHandle>,
 }
 
 impl EvaluationTonicManager {
     /// Takes context, and network keypair and creates a new encoder tonic client
-    pub fn new(parameters: Arc<Parameters>, address: Multiaddr) -> Self {
+    pub fn new(parameters: Arc<TonicParameters>, address: Multiaddr) -> Self {
         Self {
             parameters,
             address,
@@ -164,7 +168,7 @@ impl EvaluationTonicManager {
 }
 
 impl<S: EvaluationService> EvaluationManager<S> for EvaluationTonicManager {
-    fn new(parameters: Arc<Parameters>, address: Multiaddr) -> Self {
+    fn new(parameters: Arc<TonicParameters>, address: Multiaddr) -> Self {
         Self::new(parameters, address)
     }
 
@@ -178,7 +182,7 @@ impl<S: EvaluationService> EvaluationManager<S> for EvaluationTonicManager {
         };
         let own_address = to_socket_addr(&own_address).unwrap();
 
-        let config = &self.parameters.tonic;
+        let config = &self.parameters;
 
         let service = EvaluationTonicServiceProxy::new(service);
 
@@ -188,7 +192,9 @@ impl<S: EvaluationService> EvaluationManager<S> for EvaluationTonicManager {
                     .make_span_with(DefaultMakeSpan::new().level(tracing::Level::TRACE))
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
-            .layer_fn(|service| soma_network::grpc_timeout::GrpcTimeout::new(service, None));
+            .layer_fn(|service| {
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(service, None)
+            });
         let encoder_external_service_server = EvaluationTonicServiceServer::new(service)
             .max_encoding_message_size(config.message_size_limit)
             .max_decoding_message_size(config.message_size_limit)

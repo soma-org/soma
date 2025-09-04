@@ -20,7 +20,7 @@ use tracing::{debug, info, warn};
 use types::{
     accumulator::AccumulatorStore,
     base::AuthorityName,
-    committee::{AuthorityIndex, EncoderCommittee, NetworkingCommittee, Stake},
+    committee::{AuthorityIndex, NetworkingCommittee, Stake},
     consensus::{
         block::EndOfEpochData, validator_set::ValidatorSet, EndOfEpochAPI, TestEpochStore,
     },
@@ -28,6 +28,7 @@ use types::{
         AggregateAuthenticator, AggregateAuthoritySignature, AuthorityKeyPair, AuthorityPublicKey,
         AuthorityPublicKeyBytes, AuthoritySignature, Signer,
     },
+    encoder_committee::EncoderCommittee,
     intent::IntentMessage,
     system_state::encoder,
 };

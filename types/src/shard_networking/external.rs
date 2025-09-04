@@ -1,18 +1,15 @@
 use std::{sync::Arc, time::Duration};
 
+use crate::{
+    error::{ShardError, ShardResult},
+    parameters::TonicParameters,
+    shard_crypto::keys::{EncoderPublicKey, PeerKeyPair},
+};
 use async_trait::async_trait;
 use bytes::Bytes;
-use fastcrypto::bls12381::min_sig;
-use shared::{
-    crypto::keys::{EncoderPublicKey, PeerKeyPair},
-    error::{ShardError, ShardResult},
-    signed::Signed,
-    verified::Verified,
-};
 use tonic::{codec::CompressionEncoding, Request};
 
 use crate::{
-    parameters::Parameters,
     shard::Input,
     shard_networking::{
         channel_pool::{Channel, ChannelPool},
@@ -35,7 +32,7 @@ pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
 pub struct EncoderExternalTonicClient {
     pub networking_info: EncoderNetworkingInfo,
     own_peer_keypair: PeerKeyPair,
-    parameters: Arc<Parameters>,
+    parameters: Arc<TonicParameters>,
     channel_pool: Arc<ChannelPool>,
 }
 
@@ -44,7 +41,7 @@ impl EncoderExternalTonicClient {
     pub fn new(
         networking_info: EncoderNetworkingInfo,
         own_peer_keypair: PeerKeyPair,
-        parameters: Arc<Parameters>,
+        parameters: Arc<TonicParameters>,
         capacity: usize,
     ) -> Self {
         Self {
@@ -62,14 +59,14 @@ impl EncoderExternalTonicClient {
         encoder: &EncoderPublicKey,
         timeout: Duration,
     ) -> ShardResult<EncoderExternalTonicServiceClient<Channel>> {
-        let config = &self.parameters.tonic;
+        let config = &self.parameters;
         if let Some((peer_public_key, address)) = self.networking_info.encoder_to_tls(encoder) {
             let channel = self
                 .channel_pool
                 .get_channel(
                     &address,
                     peer_public_key,
-                    &self.parameters.tonic,
+                    &self.parameters,
                     self.own_peer_keypair.clone(),
                     timeout,
                 )

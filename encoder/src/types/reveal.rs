@@ -1,16 +1,14 @@
 use enum_dispatch::enum_dispatch;
-use evaluation::{EvaluationScore, EvaluationScoreAPI, ProbeSet, SummaryEmbedding};
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::{
-    crypto::keys::EncoderPublicKey,
+use types::evaluation::{EvaluationScore, EvaluationScoreAPI, ProbeSet, SummaryEmbedding};
+use types::{
     error::{SharedError, SharedResult},
     metadata::{verify_metadata, DownloadableMetadata, DownloadableMetadataAPI},
-    scope::Scope,
-    signed::Signed,
+    shard_crypto::{keys::EncoderPublicKey, scope::Scope, signed::Signed},
 };
 
-use shared::shard::Shard;
+use types::shard::Shard;
 use types::shard::ShardAuthToken;
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
@@ -94,12 +92,12 @@ pub(crate) fn verify_reveal(
         ));
     }
     if !shard.contains(&reveal.author()) {
-        return Err(shared::error::SharedError::ValidationError(
+        return Err(types::error::SharedError::ValidationError(
             "encoder is not in the shard".to_string(),
         ));
     }
     if reveal.score().value() <= 0 {
-        return Err(shared::error::SharedError::ValidationError(
+        return Err(types::error::SharedError::ValidationError(
             "score value must be greater than zero".to_string(),
         ));
     }

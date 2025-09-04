@@ -16,23 +16,25 @@ mod tests {
     use bytes::Bytes;
     use fastcrypto::traits::KeyPair;
     use parking_lot::RwLock;
-    use shared::parameters::Parameters;
-    use shared::{
-        crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
-        error::ShardResult,
-        metadata::Metadata,
-        scope::Scope,
-        signed::Signed,
-        verified::Verified,
-    };
-    use soma_network::multiaddr::Multiaddr;
     use soma_tls::AllowPublicKeys;
     use std::{collections::BTreeMap, sync::Arc, time::Duration};
     use std::{
         collections::BTreeSet,
         net::{TcpListener, TcpStream},
     };
+    use types::multiaddr::Multiaddr;
+    use types::parameters::TonicParameters;
     use types::shard::ShardAuthToken;
+    use types::{
+        error::ShardResult,
+        metadata::Metadata,
+        shard_crypto::{
+            keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
+            scope::Scope,
+            signed::Signed,
+            verified::Verified,
+        },
+    };
 
     fn get_available_local_address() -> Multiaddr {
         let host = "127.0.0.1";

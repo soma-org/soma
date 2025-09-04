@@ -4,10 +4,10 @@ use std::{
     str::FromStr,
 };
 
+use crate::shard_crypto::keys::EncoderPublicKey;
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use shared::crypto::keys::EncoderPublicKey;
 use tracing::{error, info, warn};
 
 use crate::{

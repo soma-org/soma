@@ -1,7 +1,7 @@
+use crate::evaluation::{EvaluationScore, ProbeSet, SummaryEmbedding};
+use crate::{shard::Shard, shard_crypto::digest::Digest, shard_crypto::keys::EncoderPublicKey};
 use enum_dispatch::enum_dispatch;
-use evaluation::{EvaluationScore, ProbeSet, SummaryEmbedding};
 use serde::{Deserialize, Serialize};
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, shard::Shard};
 
 #[enum_dispatch]
 pub trait ScoreSetAPI {

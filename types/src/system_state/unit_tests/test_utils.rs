@@ -1,3 +1,4 @@
+use crate::shard_crypto::keys::EncoderKeyPair;
 use crate::{
     base::SomaAddress,
     committee::TOTAL_VOTING_POWER,
@@ -22,7 +23,6 @@ use fastcrypto::{
 };
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use shared::crypto::keys::EncoderKeyPair;
 use std::{
     collections::{BTreeMap, HashMap},
     str::FromStr,
@@ -291,7 +291,7 @@ pub fn assert_validator_non_self_stake_amounts(
     }
 }
 
-// Helper to get total SUI balance for a staker (this would be simpler in a real test environment)
+// Helper to get total SOMA balance for a staker (this would be simpler in a real test environment)
 pub fn total_soma_balance(
     staker_withdrawals: &BTreeMap<SomaAddress, u64>,
     staker: SomaAddress,

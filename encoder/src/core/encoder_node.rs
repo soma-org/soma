@@ -15,14 +15,11 @@ use objects::{
     },
     storage::{filesystem::FilesystemObjectStorage, memory::MemoryObjectStore},
 };
-use shared::{
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
-    entropy::EntropyVDF,
-};
-use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use tokio::sync::{Mutex, Semaphore};
 use tracing::{error, info, warn};
+use types::multiaddr::Multiaddr;
+use types::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey};
 use types::{
     committee::Committee, config::encoder_config::EncoderConfig, system_state::SystemStateTrait,
 };
@@ -57,7 +54,7 @@ use super::{
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
 };
-use shared::{actors::ActorManager, workers::vdf::VDFProcessor};
+use types::actors::ActorManager;
 use types::shard_verifier::ShardVerifier;
 
 #[cfg(msim)]
@@ -151,8 +148,7 @@ pub struct EncoderNode {
 }
 
 impl EncoderNode {
-    // TODO: Remove client_key after NetworkingCommittee is confirmed working
-    pub async fn start(config: EncoderConfig, client_key: Option<PeerPublicKey>) -> Self {
+    pub async fn start(config: EncoderConfig) -> Self {
         let encoder_keypair = config.encoder_keypair.encoder_keypair().clone();
         let peer_keypair = PeerKeyPair::new(config.peer_keypair.keypair().inner().copy());
         let parameters = Arc::new(types::parameters::Parameters::default());
@@ -178,7 +174,7 @@ impl EncoderNode {
             .expect("Valid multiaddr");
 
         let (context, networking_info, allower) =
-            create_context_from_genesis(&config, encoder_keypair.public(), client_key.clone());
+            create_context_from_genesis(&config, encoder_keypair.public());
 
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),
@@ -408,8 +404,6 @@ impl EncoderNode {
             config.genesis.system_object().epoch_start_timestamp_ms(),
             config.epoch_duration_ms,
             encoder_keypair.public(),
-            // TODO: Remove this after NetworkingCommittee is confirmed working
-            client_key.clone(),
         );
 
         let committee_sync_manager = committee_sync_manager.start().await;
@@ -498,13 +492,12 @@ impl EncoderNode {
 fn create_context_from_genesis(
     config: &EncoderConfig,
     own_encoder_key: EncoderPublicKey,
-    client_key: Option<PeerPublicKey>,
 ) -> (Context, EncoderNetworkingInfo, AllowPublicKeys) {
     let networking_info = EncoderNetworkingInfo::default();
     let allower = AllowPublicKeys::default();
 
     // Extract validator committee from genesis
-    let validator_committee = match config.genesis.committee() {
+    let authority_committee = match config.genesis.committee() {
         Ok(committee) => committee,
         Err(e) => {
             warn!("Failed to extract committee from genesis: {}", e);
@@ -512,14 +505,8 @@ fn create_context_from_genesis(
         }
     };
 
-    // Convert validator committee to AuthorityCommittee
-    let authority_committee = Committee::convert_to_authority_committee(&validator_committee);
-
     // Convert EncoderCommittee from genesis to our internal ShardCommittee format
-    let genesis_encoder_committee = types::committee::EncoderCommittee::convert_encoder_committee(
-        &config.genesis.encoder_committee(),
-        0,
-    );
+    let genesis_encoder_committee = config.genesis.encoder_committee();
 
     // Extract peer keys and network addresses for network info
     let (initial_networking_info, object_servers) =
@@ -556,10 +543,7 @@ fn create_context_from_genesis(
     for (encoder_public_key, (peer_key, address)) in initial_networking_info {
         allowed_keys.insert(peer_key.clone().into_inner());
     }
-    // TODO: Remove this after NetworkingCommittee is confirmed working
-    if let Some(client) = client_key {
-        allowed_keys.insert(client.into_inner());
-    }
+
     if !allowed_keys.is_empty() {
         info!(
             "Initializing allowed public keys with {} entries from genesis",

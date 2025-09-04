@@ -1,11 +1,14 @@
 pub mod service;
 pub mod tonic;
-use crate::{parameters::Parameters, EvaluationInput, EvaluationOutput};
 use async_trait::async_trait;
 use bytes::Bytes;
-use shared::error::EvaluationResult;
-use soma_network::multiaddr::Multiaddr;
 use std::{sync::Arc, time::Duration};
+use types::error::EvaluationResult;
+use types::multiaddr::Multiaddr;
+use types::{
+    evaluation::{EvaluationInput, EvaluationOutput},
+    parameters::TonicParameters,
+};
 
 #[async_trait]
 pub trait EvaluationClient: Send + Sync + Sized + 'static {
@@ -26,7 +29,7 @@ where
     P: EvaluationService,
 {
     /// Creates a new network manager
-    fn new(parameters: Arc<Parameters>, address: Multiaddr) -> Self;
+    fn new(parameters: Arc<TonicParameters>, address: Multiaddr) -> Self;
     /// Starts the network services
     async fn start(&mut self, service: Arc<P>);
     /// Stops the network services

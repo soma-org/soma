@@ -10,9 +10,10 @@ use std::{
 
 use super::context::Context;
 use super::{commit::CommitVote, validator_set::ValidatorSet};
+use crate::encoder_committee::EncoderCommittee;
 use crate::{
     accumulator::{Accumulator, CommitIndex},
-    committee::{AuthorityIndex, EncoderCommittee, Epoch, NetworkingCommittee},
+    committee::{AuthorityIndex, Epoch, NetworkingCommittee},
 };
 use crate::{
     committee::Committee,

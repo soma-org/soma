@@ -4,7 +4,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::parameters::Parameters;
 use async_trait::async_trait;
 use axum::{
     body::Body,
@@ -17,29 +16,29 @@ use axum::{
 use fastcrypto::hash::HashFunction;
 use quick_cache::sync::Cache;
 use reqwest::Client;
-use shared::error::{ObjectError, ObjectResult};
-use shared::{
-    checksum::Checksum,
-    crypto::{
-        keys::{PeerKeyPair, PeerPublicKey},
-        DefaultHashFunction,
-    },
-    metadata::{
-        DownloadableMetadata, DownloadableMetadataAPI, DownloadableMetadataV1, Metadata,
-        MetadataAPI,
-    },
-};
 use soma_http::{PeerCertificates, ServerHandle};
-use soma_network::{
-    multiaddr::{to_host_port_str, to_socket_addr, Multiaddr},
-    CERTIFICATE_NAME,
-};
 use soma_tls::{
     create_rustls_client_config, public_key_from_certificate, AllowPublicKeys, TlsConnectionInfo,
 };
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 use tracing::{info, warn};
+use types::error::{ObjectError, ObjectResult};
+use types::parameters::Http2Parameters;
+use types::{
+    checksum::Checksum,
+    crypto::DefaultHash as DefaultHashFunction,
+    metadata::{
+        DownloadableMetadata, DownloadableMetadataAPI, DownloadableMetadataV1, Metadata,
+        MetadataAPI,
+    },
+    shard_crypto::keys::{PeerKeyPair, PeerPublicKey},
+    shard_networking::CERTIFICATE_NAME,
+};
+use types::{
+    multiaddr::Multiaddr,
+    p2p::{to_host_port_str, to_socket_addr},
+};
 use url::Url;
 
 use super::{
@@ -57,14 +56,14 @@ fn calculate_timeout(bytes: usize) -> Duration {
 
 pub(crate) struct ClientPool {
     clients: Cache<PeerPublicKey, Client>,
-    parameters: Arc<Parameters>,
+    parameters: Arc<Http2Parameters>,
     own_key: PeerKeyPair,
 }
 
 impl ClientPool {
-    pub(crate) fn new(own_key: PeerKeyPair, parameters: Arc<Parameters>) -> Self {
+    pub(crate) fn new(own_key: PeerKeyPair, parameters: Arc<Http2Parameters>) -> Self {
         Self {
-            clients: Cache::new(parameters.http2.client_pool_capacity),
+            clients: Cache::new(parameters.client_pool_capacity),
             parameters,
             own_key,
         }
@@ -73,7 +72,7 @@ impl ClientPool {
         if let Some(client) = self.clients.get(peer) {
             return Ok(client);
         }
-        let buffer_size = self.parameters.http2.connection_buffer_size;
+        let buffer_size = self.parameters.connection_buffer_size;
 
         let tls_config = create_rustls_client_config(
             peer.clone().into_inner(),
@@ -86,9 +85,9 @@ impl ClientPool {
             .http2_initial_connection_window_size(Some(buffer_size as u32))
             .http2_initial_stream_window_size(Some(buffer_size as u32 / 2))
             .http2_keep_alive_while_idle(true)
-            .http2_keep_alive_interval(self.parameters.http2.keepalive_interval)
-            .http2_keep_alive_timeout(self.parameters.http2.keepalive_interval)
-            .connect_timeout(self.parameters.http2.connect_timeout)
+            .http2_keep_alive_interval(self.parameters.keepalive_interval)
+            .http2_keep_alive_timeout(self.parameters.keepalive_interval)
+            .connect_timeout(self.parameters.connect_timeout)
             .user_agent("SOMA (Object Client)")
             .build()
             .map_err(|e| ObjectError::ReqwestError(e.to_string()))?;
@@ -103,7 +102,7 @@ pub struct ObjectHttpClient {
 }
 
 impl ObjectHttpClient {
-    pub fn new(own_key: PeerKeyPair, parameters: Arc<Parameters>) -> ObjectResult<Self> {
+    pub fn new(own_key: PeerKeyPair, parameters: Arc<Http2Parameters>) -> ObjectResult<Self> {
         Ok(Self {
             clients: ClientPool::new(own_key, parameters),
         })
@@ -255,7 +254,7 @@ pub struct ObjectHttpManager {
     client: Arc<ObjectHttpClient>,
     own_key: PeerKeyPair,
     allower: AllowPublicKeys,
-    parameters: Arc<Parameters>,
+    parameters: Arc<Http2Parameters>,
     server: Option<ServerHandle>,
 }
 
@@ -264,7 +263,7 @@ impl<S: ObjectStorage + Clone> ObjectNetworkManager<S> for ObjectHttpManager {
 
     fn new(
         own_key: PeerKeyPair,
-        parameters: Arc<Parameters>,
+        parameters: Arc<Http2Parameters>,
         allower: AllowPublicKeys,
     ) -> ObjectResult<Self> {
         Ok(Self {
@@ -281,7 +280,7 @@ impl<S: ObjectStorage + Clone> ObjectNetworkManager<S> for ObjectHttpManager {
     }
 
     async fn start(&mut self, address: &Multiaddr, service: ObjectNetworkService<S>) {
-        let config = &self.parameters.http2;
+        let config = &self.parameters;
         let own_address = if address.is_localhost_ip() {
             address.clone()
         } else {
@@ -355,18 +354,18 @@ mod tests {
 
     use bytes::Bytes;
     use rand::{rngs::OsRng, RngCore};
-    use shared::{
-        checksum::Checksum,
-        crypto::keys::PeerKeyPair,
-        metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataV1},
-    };
-    use soma_network::multiaddr::Multiaddr;
     use soma_tls::AllowPublicKeys;
     use tracing::warn;
+    use types::multiaddr::Multiaddr;
+    use types::{
+        checksum::Checksum,
+        metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataV1},
+        parameters::Http2Parameters,
+        shard_crypto::keys::PeerKeyPair,
+    };
 
     use crate::{
         networking::{ObjectNetworkClient, ObjectNetworkManager, ObjectNetworkService},
-        parameters::Parameters,
         storage::{memory::MemoryObjectStore, ObjectPath, ObjectStorage},
     };
 
@@ -405,7 +404,7 @@ mod tests {
     #[tokio::test]
     async fn object_http_success() {
         tracing_subscriber::fmt::init();
-        let parameters = Arc::new(Parameters::default());
+        let parameters = Arc::new(Http2Parameters::default());
         let mut rng = rand::thread_rng();
         let mut buffer = vec![0u8; 1024 * 1024];
         OsRng.fill_bytes(&mut buffer);

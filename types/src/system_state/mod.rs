@@ -33,6 +33,11 @@ use std::{
     str::FromStr,
 };
 
+use crate::{
+    checksum::Checksum,
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
+};
+use crate::{encoder_committee::CountUnit, shard::Shard};
 use encoder::{Encoder, EncoderSet};
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
 use fastcrypto::{
@@ -42,7 +47,6 @@ use fastcrypto::{
 };
 use serde::{Deserialize, Serialize};
 use shard::ShardResult;
-use shared::{crypto::keys::EncoderPublicKey, digest::Digest, shard::Shard};
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
 use tracing::{error, info};
@@ -51,13 +55,14 @@ use validator::{Validator, ValidatorSet};
 use crate::{
     base::{AuthorityName, SomaAddress},
     committee::{
-        Authority, Committee, CommitteeWithNetworkMetadata, EncoderCommittee,
-        EncoderNetworkMetadata, EpochId, NetworkMetadata, NetworkingCommittee, VotingPower,
-        ENCODER_LOW_STAKE_GRACE_PERIOD, VALIDATOR_LOW_STAKE_GRACE_PERIOD,
+        Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata,
+        NetworkingCommittee, VotingPower, ENCODER_LOW_STAKE_GRACE_PERIOD,
+        VALIDATOR_LOW_STAKE_GRACE_PERIOD,
     },
     config::genesis_config::{TokenDistributionSchedule, SHANNONS_PER_SOMA},
     crypto::{self, NetworkPublicKey, ProtocolPublicKey},
     effects::ExecutionFailureStatus,
+    encoder_committee::{EncoderCommittee, EncoderNetworkMetadata},
     error::{ExecutionResult, SomaError, SomaResult},
     multiaddr::Multiaddr,
     object::ObjectID,
@@ -1007,13 +1012,16 @@ impl SystemStateTrait for SystemState {
             committees.build_encoder_committee()
         } else {
             // Fallback: build directly from current state
-            let encoders = self
+            let encoders: Vec<_> = self
                 .encoders
                 .active_encoders
                 .iter()
                 .map(|encoder| {
-                    let metadata = &encoder.metadata;
-                    (metadata.encoder_pubkey.clone(), encoder.voting_power)
+                    crate::encoder_committee::Encoder {
+                        voting_power: encoder.voting_power,
+                        encoder_key: encoder.metadata.encoder_pubkey.clone(),
+                        probe_checksum: Checksum::default(), // TODO: store and get actual probe checksum
+                    }
                 })
                 .collect();
 
@@ -1037,11 +1045,20 @@ impl SystemStateTrait for SystemState {
                 })
                 .collect();
 
-            EncoderCommittee {
-                epoch: self.epoch,
-                members: encoders,
+            // TODO: Calculate shard size based on number of encoders
+            let encoder_count = encoders.len() as CountUnit;
+            let shard_size = std::cmp::min(encoder_count, std::cmp::max(3, encoder_count / 2));
+
+            // TODO: Calculate quorum threshold (typically 2/3 rounded up)
+            let quorum_threshold = (shard_size * 2 + 2) / 3;
+
+            EncoderCommittee::new(
+                self.epoch,
+                encoders,
+                shard_size,
+                quorum_threshold,
                 network_metadata,
-            }
+            )
         }
     }
 
@@ -1213,13 +1230,16 @@ impl Committees {
 
     /// Build encoder committee from the stored encoder set
     pub fn build_encoder_committee(&self) -> EncoderCommittee {
-        let encoders = self
+        let encoders: Vec<_> = self
             .encoder_set
             .active_encoders
             .iter()
             .map(|encoder| {
-                let metadata = &encoder.metadata;
-                (metadata.encoder_pubkey.clone(), encoder.voting_power)
+                crate::encoder_committee::Encoder {
+                    voting_power: encoder.voting_power,
+                    encoder_key: encoder.metadata.encoder_pubkey.clone(),
+                    probe_checksum: Checksum::default(), // TODO: store and get actual probe checksum
+                }
             })
             .collect();
 
@@ -1243,11 +1263,20 @@ impl Committees {
             })
             .collect();
 
-        EncoderCommittee {
-            epoch: self.epoch,
-            members: encoders,
+        // TODO: Calculate shard size based on number of encoders
+        let encoder_count = encoders.len() as CountUnit;
+        let shard_size = std::cmp::min(encoder_count, std::cmp::max(3, encoder_count / 2));
+
+        // TODO: Calculate quorum threshold (typically 2/3 rounded up)
+        let quorum_threshold = (shard_size * 2 + 2) / 3;
+
+        EncoderCommittee::new(
+            self.epoch,
+            encoders,
+            shard_size,
+            quorum_threshold,
             network_metadata,
-        }
+        )
     }
 
     pub fn build_networking_committee(&self) -> NetworkingCommittee {

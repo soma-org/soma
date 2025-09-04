@@ -41,7 +41,7 @@ impl Display for KeyIdentity {
     }
 }
 
-/// Get the SuiAddress corresponding to this key identity.
+/// Get the SomaAddress corresponding to this key identity.
 /// If no string is provided, then the current active address is returned.
 pub fn get_identity_address(
     input: Option<KeyIdentity>,

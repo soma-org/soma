@@ -2,14 +2,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     committee::{
-        AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EncoderCommittee, EpochId,
-        NetworkingCommittee,
+        AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkingCommittee,
     },
     consensus::{
         block::{BlockDigest, BlockRef},
         commit::{CommitDigest, CommitRef, CommittedSubDag},
     },
     effects::{self, TransactionEffects},
+    encoder_committee::EncoderCommittee,
     error::SomaResult,
     object::{Object, ObjectID},
     system_state::{get_system_state, SystemState, SystemStateTrait},

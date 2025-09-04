@@ -35,18 +35,16 @@ tracing-subscriber.workspace = true
 tempfile.workspace = true
 prost.workspace = true
 bytes.workspace = true
-shared.workspace = true
 soma-tls.workspace = true
-evaluation.workspace = true
-objects.workspace = true
 strum_macros.workspace = true
 vdf.workspace = true
 strum.workspace = true
 tokio-util.workspace = true
 quick_cache.workspace = true
 arc-swap.workspace = true
-soma-network.workspace = true
 tonic-rustls.workspace = true
+http.workspace = true
+pin-project-lite.workspace = true
 serde_with = { version = "3.8", features = ["schemars_0_8"] }
 derive_more = "0.99.17"
 schemars = { version = "0.8.21", features = ["either"] }

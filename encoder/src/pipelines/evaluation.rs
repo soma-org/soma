@@ -11,28 +11,27 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use evaluation::{
-    messaging::EvaluationClient, EvaluationInput, EvaluationInputV1, EvaluationOutputAPI,
-    EvaluationScoreAPI, ProbeSetAPI, ProbeWeightAPI,
-};
+use evaluation::messaging::EvaluationClient;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::{
     networking::{downloader::Downloader, ObjectNetworkClient},
     storage::ObjectStorage,
 };
 use quick_cache::sync::{Cache, GuardResult};
-use shared::{
-    actors::{ActorHandle, ActorMessage, Processor},
-    crypto::keys::EncoderKeyPair,
-    digest::Digest,
-    error::{ShardError, ShardResult},
-    metadata::{DownloadableMetadataAPI, Metadata},
-    scope::Scope,
-    shard::Shard,
-    signed::Signed,
-    verified::Verified,
-};
 use tokio_util::sync::CancellationToken;
+use types::{
+    actors::{ActorHandle, ActorMessage, Processor},
+    error::{ShardError, ShardResult},
+    evaluation::{
+        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, EvaluationScoreAPI, ProbeSetAPI,
+        ProbeWeightAPI,
+    },
+    metadata::{DownloadableMetadataAPI, Metadata},
+    shard::Shard,
+    shard_crypto::{
+        digest::Digest, keys::EncoderKeyPair, scope::Scope, signed::Signed, verified::Verified,
+    },
+};
 use types::{
     score_set::{ScoreSet, ScoreSetV1},
     shard::ShardAuthToken,

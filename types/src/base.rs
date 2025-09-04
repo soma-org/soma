@@ -409,7 +409,7 @@ impl fmt::Debug for SomaAddress {
 
 impl TryFrom<&GenericSignature> for SomaAddress {
     type Error = SomaError;
-    /// Derive a SuiAddress from a serialized signature in Sui [GenericSignature].
+    /// Derive a SomaAddress from a serialized signature in Soma [GenericSignature].
     fn try_from(sig: &GenericSignature) -> SomaResult<Self> {
         match sig {
             GenericSignature::Signature(sig) => {

@@ -38,6 +38,7 @@ use crate::{
     error::{SomaError, SomaResult},
     system_state::{shard::ShardInput, staking::StakedSoma},
 };
+use crate::{metadata::MetadataCommitment, shard_crypto::digest::Digest};
 use anyhow::anyhow;
 use fastcrypto::{
     encoding::{decode_bytes_hex, Encoding, Hex},
@@ -48,7 +49,6 @@ use rand::{rngs::OsRng, Rng};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
-use shared::{digest::Digest, metadata::MetadataCommitment};
 use std::{
     cmp::max,
     fmt::{Display, Formatter},

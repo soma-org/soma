@@ -1,17 +1,17 @@
 use std::{collections::HashMap, sync::Arc};
 
 use arc_swap::ArcSwap;
-use shared::{
-    authority_committee::AuthorityCommittee,
+use types::multiaddr::Multiaddr;
+use types::{
     checksum::Checksum,
-    crypto::keys::{EncoderPublicKey, PeerPublicKey},
+    committee::Committee,
+    shard_crypto::keys::{EncoderPublicKey, PeerPublicKey},
 };
-use soma_network::multiaddr::Multiaddr;
 
-use shared::error::{ShardError, ShardResult};
+use types::error::{ShardError, ShardResult};
 
-use shared::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex, Epoch};
-use types::committee::NetworkingCommittee;
+use types::committee::{Epoch, NetworkingCommittee};
+use types::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex};
 
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -32,15 +32,7 @@ impl Context {
     pub fn own_encoder_key(&self) -> EncoderPublicKey {
         self.inner.load().own_encoder_public_key.clone()
     }
-    pub fn encoder(&self, epoch: Epoch, encoder: EncoderIndex) -> ShardResult<Encoder> {
-        Ok(self
-            .inner
-            .load()
-            .committees(epoch)?
-            .encoder_committee
-            .encoder(encoder)
-            .clone())
-    }
+
     pub fn inner(&self) -> Arc<InnerContext> {
         self.inner.load_full()
     }
@@ -122,7 +114,7 @@ impl InnerContext {
 #[derive(Clone, Debug)]
 pub struct Committees {
     pub epoch: Epoch,
-    pub authority_committee: AuthorityCommittee,
+    pub authority_committee: Committee,
     /// the committee of allowed network keys
     pub encoder_committee: EncoderCommittee,
     /// the committee of all validators with minimum stake for networking
@@ -134,7 +126,7 @@ pub struct Committees {
 impl Committees {
     pub fn new(
         epoch: Epoch,
-        authority_committee: AuthorityCommittee,
+        authority_committee: Committee,
         encoder_committee: EncoderCommittee,
         networking_committee: NetworkingCommittee,
         vdf_iterations: u64,

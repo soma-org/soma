@@ -1,35 +1,13 @@
-use std::fmt::format;
-
+use crate::committee::Committee;
+use crate::encoder_committee::EncoderCommittee;
 use crate::{entropy::SimpleVDF, shard::ShardAuthToken};
-use quick_cache::sync::Cache;
-use serde::{Deserialize, Serialize};
-use shared::{
-    authority_committee::{AuthorityBitSet, AuthorityCommittee, AuthorityIndex},
-    block::BlockRef,
-    crypto::{
-        address::Address,
-        keys::{
-            AuthorityAggregateSignature, AuthorityKeyPair, AuthoritySignature,
-            EncoderAggregateSignature, EncoderPublicKey, ProtocolKeySignature,
-        },
-    },
-    digest::Digest,
-    encoder_committee::Epoch,
+use crate::{
     error::{ShardError, ShardResult},
-    finality_proof::{BlockClaim, FinalityProof},
-    metadata::{Metadata, MetadataCommitment},
-    scope::{Scope, ScopedMessage},
     shard::{Shard, ShardEntropy},
-    transaction::{
-        ShardTransaction, SignedTransaction, TransactionData, TransactionExpiration,
-        TransactionKind,
-    },
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
+use quick_cache::sync::Cache;
 use tokio_util::sync::CancellationToken;
-
-use shared::{
-    actors::ActorHandle, encoder_committee::EncoderCommittee, workers::vdf::VDFProcessor,
-};
 
 /// Tracks the cached verification status for a given auth token
 #[derive(Clone)]
@@ -64,7 +42,7 @@ impl ShardVerifier {
 impl ShardVerifier {
     pub fn verify(
         &self,
-        authority_committee: AuthorityCommittee,
+        authority_committee: Committee,
         encoder_committee: EncoderCommittee,
         vdf_iterations: u64,
         token: &ShardAuthToken,

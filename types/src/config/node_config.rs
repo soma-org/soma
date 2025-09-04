@@ -111,7 +111,7 @@ impl NodeConfig {
     }
 }
 
-/// Wrapper struct for SuiKeyPair that can be deserialized from a file path. Used by network, worker, and account keypair.
+/// Wrapper struct for SomaKeyPair that can be deserialized from a file path. Used by network, worker, and account keypair.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPairWithPath {
     // #[serde(flatten)]
@@ -285,7 +285,7 @@ pub fn read_authority_keypair_from_file<P: AsRef<std::path::Path>>(
     AuthorityKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
 }
 
-/// Read from file as Base64 encoded `flag || privkey` and return a SuiKeypair.
+/// Read from file as Base64 encoded `flag || privkey` and return a SomaKeypair.
 pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Result<SomaKeyPair> {
     let contents = std::fs::read_to_string(path)?;
     SomaKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))

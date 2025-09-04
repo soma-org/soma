@@ -10,19 +10,21 @@ use evaluation::messaging::EvaluationClient;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use quick_cache::sync::{Cache, GuardResult};
-use shared::{
-    actors::{ActorHandle, ActorMessage, Processor},
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey},
-    digest::Digest,
-    error::{ShardError, ShardResult},
-    scope::Scope,
-    shard::Shard,
-    signed::Signed,
-    verified::Verified,
-};
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
 use tracing::{debug, info};
+use types::{
+    actors::{ActorHandle, ActorMessage, Processor},
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderKeyPair, EncoderPublicKey},
+        scope::Scope,
+        signed::Signed,
+        verified::Verified,
+    },
+};
 
 use super::evaluation::EvaluationProcessor;
 

@@ -1,3 +1,4 @@
+use crate::entropy::{BlockEntropy, BlockEntropyProof};
 use crate::{
     committee::Committee,
     consensus::block::BlockRef,
@@ -10,7 +11,6 @@ use crate::{
     transaction::Transaction,
 };
 use serde::{Deserialize, Serialize};
-use shared::entropy::{BlockEntropy, BlockEntropyProof};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConsensusFinality {

@@ -1,10 +1,5 @@
 use async_trait::async_trait;
-use shared::crypto::keys::{PeerKeyPair, PeerPublicKey};
 use soma_http::ServerHandle;
-use soma_network::{
-    multiaddr::{to_socket_addr, Multiaddr},
-    CERTIFICATE_NAME,
-};
 use soma_tls::AllowPublicKeys;
 use std::{
     sync::Arc,
@@ -12,6 +7,8 @@ use std::{
 };
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
+use types::shard_crypto::keys::{PeerKeyPair, PeerPublicKey};
+use types::{multiaddr::Multiaddr, p2p::to_socket_addr, shard_networking::CERTIFICATE_NAME};
 
 use crate::messaging::{EncoderExternalNetworkManager, EncoderExternalNetworkService};
 use tracing::{info, trace, warn};
@@ -147,7 +144,9 @@ impl<S: EncoderExternalNetworkService> EncoderExternalNetworkManager<S>
                     .make_span_with(DefaultMakeSpan::new().level(tracing::Level::TRACE))
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
-            .layer_fn(|service| soma_network::grpc_timeout::GrpcTimeout::new(service, None));
+            .layer_fn(|service| {
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(service, None)
+            });
         let encoder_external_service_server = EncoderExternalTonicServiceServer::new(service)
             .max_encoding_message_size(config.message_size_limit)
             .max_decoding_message_size(config.message_size_limit)

@@ -20,17 +20,16 @@ prost.workspace = true
 async-trait.workspace = true
 strum_macros.workspace = true
 thiserror.workspace = true
-soma-network.workspace = true
 tower-http.workspace = true
 tower.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 soma-http.workspace = true
-shared.workspace = true
 burn-import.workspace = true
 burn-ndarray.workspace = true
 safetensors.workspace = true
 memmap2.workspace = true
+types.workspace = true
 rand.workspace = true
 
 [dependencies.burn]

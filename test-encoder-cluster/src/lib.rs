@@ -4,10 +4,10 @@ use encoder::core::encoder_node::EncoderNodeHandle;
 
 use rand::{rngs::StdRng, SeedableRng};
 
-use shared::crypto::keys::{EncoderPublicKey, PeerKeyPair};
-use shared::parameters::Parameters;
 use swarm::EncoderSwarm;
 use tracing::info;
+use types::parameters::TonicParameters;
+use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair};
 use types::{base::SomaAddress, config::encoder_config::EncoderConfig};
 
 const NUM_ENCODERS: usize = 4;
@@ -24,7 +24,7 @@ mod swarm_node;
 pub struct TestEncoderCluster {
     pub swarm: EncoderSwarm,
     pub client_keypair: PeerKeyPair,
-    pub parameters: Arc<Parameters>,
+    pub parameters: Arc<TonicParameters>,
 }
 
 impl TestEncoderCluster {
@@ -123,7 +123,7 @@ impl TestEncoderClusterBuilder {
         TestEncoderCluster {
             swarm,
             client_keypair,
-            parameters: Arc::new(Parameters::default()),
+            parameters: Arc::new(TonicParameters::default()),
         }
     }
 }

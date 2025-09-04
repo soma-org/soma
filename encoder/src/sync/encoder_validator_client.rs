@@ -1,13 +1,5 @@
 use anyhow::{anyhow, Result};
 use encoder_validator_api::tonic_gen::encoder_validator_api_client::EncoderValidatorApiClient;
-use shared::encoder_committee::{Encoder, EncoderCommittee as ShardCommittee};
-use shared::{
-    authority_committee::AuthorityCommittee,
-    crypto::keys::{
-        AuthorityPublicKey as SharedAuthorityPublicKey, EncoderPublicKey, PeerPublicKey,
-        ProtocolPublicKey,
-    },
-};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -15,13 +7,11 @@ use std::{
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, info, warn};
 use types::committee::{to_networking_committee_intent, NetworkingCommittee};
+use types::encoder_committee::{to_encoder_committee_intent, Encoder, EncoderCommittee};
 use types::{
     base::AuthorityName,
     client::connect,
-    committee::{
-        to_encoder_committee_intent, Authority, AuthorityIndex, Committee, EncoderCommittee,
-        EpochId,
-    },
+    committee::{Authority, AuthorityIndex, Committee, EpochId},
     consensus::{
         stake_aggregator::{QuorumThreshold, StakeAggregator},
         validator_set::{to_validator_set_intent, ValidatorSet},
@@ -31,12 +21,13 @@ use types::{
         EpochCommittee, FetchCommitteesRequest, FetchCommitteesResponse, GetLatestEpochRequest,
     },
     multiaddr::Multiaddr,
+    shard_crypto::keys::{EncoderPublicKey, PeerPublicKey},
 };
 pub struct VerifiedCommittees {
     pub validator_committee: Committee,
-    pub encoder_committee: ShardCommittee,
+    pub encoder_committee: EncoderCommittee,
     pub networking_committee: NetworkingCommittee,
-    pub previous_encoder_committee: Option<ShardCommittee>,
+    pub previous_encoder_committee: Option<EncoderCommittee>,
     pub previous_networking_committee: Option<NetworkingCommittee>,
 }
 
@@ -44,19 +35,14 @@ pub struct VerifiedCommittees {
 pub struct EnrichedVerifiedCommittees {
     // Original verification data
     pub validator_committee: Committee,
-    pub encoder_committee: ShardCommittee,
+    pub encoder_committee: EncoderCommittee,
     pub networking_committee: NetworkingCommittee,
-    pub previous_encoder_committee: Option<ShardCommittee>,
+    pub previous_encoder_committee: Option<EncoderCommittee>,
     pub previous_networking_committee: Option<NetworkingCommittee>,
 
     // Additional data for CommitteeSyncManager
-    pub authority_committee: AuthorityCommittee,
-    pub networking_info: Vec<(
-        EncoderPublicKey,
-        (PeerPublicKey, soma_network::multiaddr::Multiaddr),
-    )>,
-    pub object_servers:
-        HashMap<EncoderPublicKey, (PeerPublicKey, soma_network::multiaddr::Multiaddr)>,
+    pub networking_info: Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>,
+    pub object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
     pub epoch_start_timestamp_ms: u64,
 }
 
@@ -65,9 +51,9 @@ pub struct EncoderValidatorClient {
     client: EncoderValidatorApiClient<Channel>,
 
     current_validator_committee: Committee,
-    current_encoder_committee: Option<ShardCommittee>,
+    current_encoder_committee: Option<EncoderCommittee>,
     current_networking_committee: Option<NetworkingCommittee>,
-    previous_encoder_committee: Option<ShardCommittee>,
+    previous_encoder_committee: Option<EncoderCommittee>,
     previous_networking_committee: Option<NetworkingCommittee>,
     current_epoch: EpochId,
 }
@@ -162,73 +148,56 @@ impl EncoderValidatorClient {
         Ok(Committee::new(epoch, voting_rights, authorities))
     }
 
-    /// Convert blockchain structures to our client structures
-    fn convert_committees(
-        &self,
-        validator_set: &ValidatorSet,
-        blockchain_committee: &EncoderCommittee,
-        epoch: EpochId,
-    ) -> Result<(Committee, ShardCommittee)> {
-        let validator_committee = self.validator_set_to_committee(validator_set, epoch)?;
-        let encoder_committee =
-            EncoderCommittee::convert_encoder_committee(blockchain_committee, epoch);
-        Ok((validator_committee, encoder_committee))
-    }
-
     pub fn extract_network_info(
-        encoder_committee: &types::committee::EncoderCommittee,
-        previous_encoder_committee: Option<&types::committee::EncoderCommittee>,
+        encoder_committee: &EncoderCommittee,
+        previous_encoder_committee: Option<&EncoderCommittee>,
     ) -> (
-        Vec<(
-            EncoderPublicKey,
-            (PeerPublicKey, soma_network::multiaddr::Multiaddr),
-        )>,
-        HashMap<EncoderPublicKey, (PeerPublicKey, soma_network::multiaddr::Multiaddr)>, // For object servers
+        Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>,
+        HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>, // For object servers
     ) {
         let mut networking_info = Vec::new();
         let mut object_servers = HashMap::new();
 
         // Helper function to process a single committee
-        let process_committee = |committee: &types::committee::EncoderCommittee,
-                                 networking_info: &mut Vec<(
-            EncoderPublicKey,
-            (PeerPublicKey, soma_network::multiaddr::Multiaddr),
-        )>,
-                                 objects: &mut HashMap<_, _>| {
-            // Process each encoder and its network metadata
-            for (encoder_key, _) in &committee.members {
-                if let Some(metadata) = committee.network_metadata.get(encoder_key) {
-                    // Convert NetworkPublicKey to PeerPublicKey (they have the same inner type)
-                    let peer_key = PeerPublicKey::new(metadata.network_key.clone().into_inner());
+        let process_committee =
+            |committee: &EncoderCommittee,
+             networking_info: &mut Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>,
+             objects: &mut HashMap<_, _>| {
+                // Process each encoder and its network metadata
+                for (encoder_key, _) in &committee.members() {
+                    if let Some(metadata) = committee.network_metadata.get(encoder_key) {
+                        // Convert NetworkPublicKey to PeerPublicKey (they have the same inner type)
+                        let peer_key =
+                            PeerPublicKey::new(metadata.network_key.clone().into_inner());
 
-                    networking_info.push((
-                        encoder_key.clone(),
-                        (
-                            peer_key.clone(),
-                            metadata
-                                .internal_network_address
-                                .clone()
-                                .to_string()
-                                .parse()
-                                .expect("Valid multiaddr"),
-                        ),
-                    ));
+                        networking_info.push((
+                            encoder_key.clone(),
+                            (
+                                peer_key.clone(),
+                                metadata
+                                    .internal_network_address
+                                    .clone()
+                                    .to_string()
+                                    .parse()
+                                    .expect("Valid multiaddr"),
+                            ),
+                        ));
 
-                    objects.insert(
-                        encoder_key.clone(),
-                        (
-                            peer_key,
-                            metadata
-                                .object_server_address
-                                .clone()
-                                .to_string()
-                                .parse()
-                                .expect("Valid multiaddr"),
-                        ),
-                    );
+                        objects.insert(
+                            encoder_key.clone(),
+                            (
+                                peer_key,
+                                metadata
+                                    .object_server_address
+                                    .clone()
+                                    .to_string()
+                                    .parse()
+                                    .expect("Valid multiaddr"),
+                            ),
+                        );
+                    }
                 }
-            }
-        };
+            };
 
         // First process previous committee (so current can override if needed)
         if let Some(prev) = previous_encoder_committee {
@@ -246,7 +215,7 @@ impl EncoderValidatorClient {
         &self,
         prev_committee: &Committee,
         committee_data: &EpochCommittee,
-    ) -> Result<(Committee, ShardCommittee, NetworkingCommittee)> {
+    ) -> Result<(Committee, EncoderCommittee, NetworkingCommittee)> {
         info!("Verifying committee for epoch {}", committee_data.epoch);
 
         // Deserialize validator set, encoder committee, and networking committee
@@ -366,8 +335,6 @@ impl EncoderValidatorClient {
         // If verification succeeded, convert to committees
         let validator_committee =
             self.validator_set_to_committee(&validator_set, committee_data.epoch)?;
-        let encoder_committee =
-            EncoderCommittee::convert_encoder_committee(&encoder_committee, committee_data.epoch);
 
         Ok((validator_committee, encoder_committee, networking_committee))
     }
@@ -376,16 +343,13 @@ impl EncoderValidatorClient {
     fn enrich_committee(
         &self,
         validator_committee: Committee,
-        encoder_committee: ShardCommittee,
+        encoder_committee: EncoderCommittee,
         networking_committee: NetworkingCommittee,
-        previous_encoder_committee: Option<ShardCommittee>,
+        previous_encoder_committee: Option<EncoderCommittee>,
         previous_networking_committee: Option<NetworkingCommittee>,
         committee_data: &EpochCommittee,
         previous_committee_data: Option<&EpochCommittee>,
     ) -> Result<EnrichedVerifiedCommittees> {
-        // Create authority committee
-        let authority_committee = Committee::convert_to_authority_committee(&validator_committee);
-
         // Extract timestamp
         let epoch_start_timestamp_ms = committee_data.next_epoch_start_timestamp_ms;
 
@@ -419,7 +383,6 @@ impl EncoderValidatorClient {
             networking_committee,
             previous_encoder_committee,
             previous_networking_committee,
-            authority_committee,
             networking_info,
             object_servers,
             epoch_start_timestamp_ms,
@@ -444,9 +407,6 @@ impl EncoderValidatorClient {
                 )?,
                 previous_encoder_committee: self.previous_encoder_committee.clone(),
                 previous_networking_committee: self.previous_networking_committee.clone(),
-                authority_committee: Committee::convert_to_authority_committee(
-                    &self.current_validator_committee,
-                ),
                 networking_info: Vec::new(),
                 object_servers: HashMap::new(),
                 epoch_start_timestamp_ms: 0, // No new epoch data

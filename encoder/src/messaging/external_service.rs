@@ -5,16 +5,16 @@ use crate::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use shared::{
-    crypto::keys::PeerPublicKey,
-    error::{ShardError, ShardResult},
-    shard::Shard,
-    signed::Signed,
-    verified::Verified,
-};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
+use types::{
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    shard_crypto::keys::PeerPublicKey,
+    shard_crypto::signed::Signed,
+    shard_crypto::verified::Verified,
+};
 use types::{
     shard::{verify_input, Input, InputAPI, ShardAuthToken},
     shard_verifier::ShardVerifier,

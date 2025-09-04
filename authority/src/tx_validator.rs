@@ -17,10 +17,7 @@ pub struct TxValidator {
 
 impl TxValidator {
     pub fn new(epoch_store: Arc<AuthorityPerEpochStore>) -> Self {
-        info!(
-            "SuiTxValidator constructed for epoch {}",
-            epoch_store.epoch()
-        );
+        info!("TxValidator constructed for epoch {}", epoch_store.epoch());
         Self { epoch_store }
     }
 

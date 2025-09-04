@@ -493,7 +493,7 @@ pub trait ExecutionCacheReconfigAPI: Send + Sync {
     // TODO: Implement other ReconfigAPI methods
     // fn set_epoch_start_configuration(&self, epoch_start_config: &EpochStartConfiguration);
     // fn revert_state_update(&self, digest: &TransactionDigest);
-    // fn checkpoint_db(&self, path: &Path) -> SuiResult;
+    // fn checkpoint_db(&self, path: &Path) -> SomaResult;
 }
 
 pub trait TestingAPI: Send + Sync {

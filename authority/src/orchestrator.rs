@@ -5,15 +5,6 @@ use futures::{
     future::{select, Either},
     FutureExt,
 };
-use shared::{
-    checksum::Checksum,
-    crypto::keys::PeerPublicKey,
-    digest::Digest,
-    metadata::{
-        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
-    },
-    shard::ShardEntropy,
-};
 use tokio::{
     sync::broadcast::{error::RecvError, Receiver},
     task::JoinHandle,
@@ -21,18 +12,24 @@ use tokio::{
 };
 use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
 use types::{
-    committee::EncoderCommittee,
+    checksum::Checksum,
     digests::TransactionDigest,
     effects::{TransactionEffectsAPI, VerifiedCertifiedTransactionEffects},
+    encoder_committee::EncoderCommittee,
     entropy::SimpleVDF,
     error::{SomaError, SomaResult},
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
+    metadata::{
+        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
+    },
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
         FinalizedEffects, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
         QuorumDriverError, QuorumDriverResponse, QuorumDriverResult,
     },
     shard::ShardAuthToken,
+    shard::ShardEntropy,
+    shard_crypto::{digest::Digest, keys::PeerPublicKey},
     system_state::{SystemState, SystemStateTrait},
     transaction::{
         Transaction, TransactionKind, VerifiedExecutableTransaction, VerifiedTransaction,
@@ -546,7 +543,9 @@ where
         let entropy_digest = Digest::new(&shard_entropy)
             .map_err(|e| SomaError::from(format!("Failed to compute shard entropy: {}", e)))?;
 
-        let shard = encoder_committee.sample_shard(entropy_digest)?;
+        let shard = encoder_committee
+            .sample_shard(entropy_digest)
+            .map_err(|e| SomaError::from(e.to_string()))?;
 
         // Create ShardAuthToken
         let shard_auth_token =

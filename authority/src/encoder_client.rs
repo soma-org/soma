@@ -1,18 +1,18 @@
 use fastcrypto::traits::KeyPair;
-use shared::{
-    crypto::keys::{PeerKeyPair, PeerPublicKey},
-    error::SharedResult,
-    scope::Scope,
-    signed::Signed,
-    verified::Verified,
-};
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use types::{
-    committee::EncoderCommittee,
     crypto::{AuthorityKeyPair, NetworkKeyPair},
-    parameters::Parameters,
+    encoder_committee::EncoderCommittee,
+    error::SharedResult,
+    parameters::{Parameters, TonicParameters},
     shard::{Input, InputV1, ShardAuthToken},
+    shard_crypto::{
+        keys::{PeerKeyPair, PeerPublicKey},
+        scope::Scope,
+        signed::Signed,
+        verified::Verified,
+    },
     shard_networking::{
         external::{EncoderExternalNetworkClient, EncoderExternalTonicClient},
         EncoderNetworkingInfo,
@@ -36,7 +36,7 @@ impl EncoderClientService {
         let client = Arc::new(EncoderExternalTonicClient::new(
             networking_info,
             peer_keypair,
-            Arc::new(Parameters::default()),
+            Arc::new(TonicParameters::default()),
             100, // channel pool capacity
         ));
 
@@ -50,18 +50,14 @@ impl EncoderClientService {
     pub fn update_encoder_committee(&self, committee: &EncoderCommittee) {
         let mut network_mapping = Vec::new();
 
-        for (encoder_key, _) in &committee.members {
+        for (encoder_key, _) in &committee.members() {
             if let Some(metadata) = committee.network_metadata.get(encoder_key) {
                 let peer_public_key = PeerPublicKey::new(metadata.network_key.clone().into_inner());
 
-                // TODO: Temporary conversion between Multiaddr types
-                // Convert types::multiaddr::Multiaddr to soma_network::multiaddr::Multiaddr
-                let network_addr_str = metadata.external_network_address.to_string();
-                let network_multiaddr =
-                    soma_network::multiaddr::Multiaddr::try_from(network_addr_str)
-                        .expect("Failed to convert multiaddr");
-
-                network_mapping.push((encoder_key.clone(), (peer_public_key, network_multiaddr)))
+                network_mapping.push((
+                    encoder_key.clone(),
+                    (peer_public_key, metadata.external_network_address.clone()),
+                ))
             }
         }
 

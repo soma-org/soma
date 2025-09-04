@@ -1,17 +1,16 @@
 use e2e_tests::integration_helpers::setup_integrated_encoder_validator_test;
 use rand::rngs::OsRng;
-use shared::checksum::Checksum;
-use shared::crypto::keys::PeerPublicKey;
-use shared::digest::Digest;
-use shared::metadata::{
-    DownloadableMetadata, DownloadableMetadataV1, MetadataCommitment, MetadataV1,
-};
 use std::time::Duration;
 use test_cluster::TestCluster;
 use tokio::time::sleep;
 use tracing::info;
+use types::checksum::Checksum;
 use types::crypto::KeypairTraits;
+use types::metadata::{
+    DownloadableMetadata, DownloadableMetadataV1, MetadataCommitment, MetadataV1,
+};
 use types::shard::ShardAuthToken;
+use types::shard_crypto::{digest::Digest, keys::PeerPublicKey};
 use types::{
     base::SomaAddress,
     config::encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},

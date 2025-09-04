@@ -1,14 +1,12 @@
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::shard::Shard;
-use shared::{
-    crypto::keys::EncoderPublicKey,
-    digest::Digest,
-    error::{SharedError, SharedResult},
-    signed::Signed,
-};
+use types::shard::Shard;
 use types::shard::ShardAuthToken;
+use types::{
+    error::{SharedError, SharedResult},
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey, signed::Signed},
+};
 
 use super::reveal::Reveal;
 

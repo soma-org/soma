@@ -6,9 +6,7 @@ publish = false
 
 [dependencies]
 serde.workspace = true
-shared.workspace = true
-multiaddr.workspace = true
-async-trait.workspace = true 
+async-trait.workspace = true
 bytes.workspace = true
 tokio.workspace = true
 axum.workspace = true
@@ -16,7 +14,6 @@ url.workspace = true
 reqwest.workspace = true
 thiserror.workspace = true
 strum_macros.workspace = true
-soma-network.workspace = true
 soma-tls.workspace = true
 soma-http.workspace = true
 fastcrypto.workspace = true
@@ -28,6 +25,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 arc-swap.workspace = true
+types.workspace = true
 
 [dev-dependencies]
 rand.workspace = true

@@ -5,17 +5,16 @@ use async_trait::async_trait;
 use soma_tls::AllowPublicKeys;
 use std::sync::Arc;
 use tokio::io::AsyncWrite;
+use types::multiaddr::Multiaddr;
 
-use crate::{
-    parameters::Parameters,
-    storage::{ObjectPath, ObjectStorage},
-};
-use shared::error::ObjectResult;
-use shared::{
-    crypto::keys::{PeerKeyPair, PeerPublicKey},
+use crate::storage::{ObjectPath, ObjectStorage};
+use types::error::ObjectResult;
+use types::{
     metadata::DownloadableMetadata,
+    parameters::Http2Parameters,
+    shard_crypto::keys::{PeerKeyPair, PeerPublicKey},
 };
-use soma_network::multiaddr::Multiaddr;
+// use soma_network::multiaddr::Multiaddr;
 
 #[async_trait]
 pub trait ObjectNetworkClient: Send + Sync + 'static {
@@ -56,7 +55,7 @@ where
 
     fn new(
         own_key: PeerKeyPair,
-        parameters: Arc<Parameters>,
+        parameters: Arc<Http2Parameters>,
         allower: AllowPublicKeys,
     ) -> ObjectResult<Self>;
     /// Returns a client

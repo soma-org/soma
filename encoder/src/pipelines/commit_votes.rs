@@ -15,16 +15,18 @@ use evaluation::messaging::EvaluationClient;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use quick_cache::sync::{Cache, GuardResult};
-use shared::{
+use tracing::{debug, info, warn};
+use types::{
     actors::{ActorHandle, ActorMessage, Processor},
-    crypto::keys::{EncoderKeyPair, EncoderPublicKey},
-    digest::Digest,
     error::{ShardError, ShardResult},
     shard::Shard,
-    signed::Signed,
-    verified::Verified,
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderKeyPair, EncoderPublicKey},
+        signed::Signed,
+        verified::Verified,
+    },
 };
-use tracing::{debug, info, warn};
 
 use super::reveal::RevealProcessor;
 

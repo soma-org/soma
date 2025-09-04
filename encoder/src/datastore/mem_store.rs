@@ -1,18 +1,20 @@
 use parking_lot::RwLock;
-use shared::{
-    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
-    digest::Digest,
-    encoder_committee::Epoch,
-    error::{ShardError, ShardResult},
-    shard::Shard,
-    verified::Verified,
-};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Deref,
     time::Instant,
 };
 use tracing::{info, warn};
+use types::{
+    committee::Epoch,
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderAggregateSignature, EncoderPublicKey},
+        verified::Verified,
+    },
+};
 
 use crate::types::{
     commit::{Commit, CommitAPI},

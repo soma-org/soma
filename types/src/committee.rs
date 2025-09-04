@@ -31,6 +31,7 @@
 //! - Deterministic stake-weighted authority selection
 
 use crate::base::{AuthorityName, ConciseableName};
+use crate::checksum::Checksum;
 use crate::consensus::committee::get_available_local_address;
 use crate::crypto::{
     get_key_pair_from_rng, random_committee_key_pairs_of_size, AuthorityKeyPair,
@@ -39,9 +40,13 @@ use crate::crypto::{
 };
 use crate::crypto::{AuthoritySignature, DefaultHash as DefaultHashFunction};
 use crate::digests::TransactionDigest;
+use crate::encoder_committee::Encoder;
 use crate::error::{ConsensusError, ConsensusResult, SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage, IntentScope};
 use crate::multiaddr::Multiaddr;
+use crate::shard::{Shard, ShardEntropy};
+use crate::shard_crypto::digest::Digest;
+use crate::shard_crypto::keys::EncoderPublicKey;
 use fastcrypto::ed25519::{Ed25519KeyPair, Ed25519PublicKey};
 use fastcrypto::hash::HashFunction;
 use fastcrypto::traits::{KeyPair, Signer, VerifyingKey};
@@ -49,12 +54,6 @@ use rand::rngs::{OsRng, StdRng, ThreadRng};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use shared::authority_committee::AuthorityCommittee;
-use shared::checksum::Checksum;
-use shared::crypto::keys::EncoderPublicKey;
-use shared::digest::Digest;
-use shared::encoder_committee::Encoder;
-use shared::shard::{Shard, ShardEntropy};
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{Display, Formatter, Write};
@@ -263,7 +262,7 @@ impl Committee {
 
         voting_rights_vec.sort_by_key(|(a, _)| *a);
         let total_votes: VotingPower = voting_rights_vec.iter().map(|(_, votes)| *votes).sum();
-        // assert_eq!(total_votes, TOTAL_VOTING_POWER);
+        // TODO: assert_eq!(total_votes, TOTAL_VOTING_POWER);
 
         let (expanded_keys, index_map) = Self::load_inner(&voting_rights_vec);
 
@@ -334,25 +333,6 @@ impl Committee {
         }
 
         Self::new(epoch, voting_weights, authorities)
-    }
-
-    pub fn convert_to_authority_committee(committee: &Committee) -> AuthorityCommittee {
-        // Extract authorities from the Committee
-        let authorities = committee
-            .authorities()
-            .map(|(_, auth)| shared::authority_committee::Authority {
-                stake: auth.stake,
-                authority_key: shared::crypto::keys::AuthorityPublicKey::new(
-                    auth.authority_key.clone(),
-                ),
-                protocol_key: shared::crypto::keys::ProtocolPublicKey::new(
-                    auth.protocol_key.inner(),
-                ),
-            })
-            .collect();
-
-        // Create new AuthorityCommittee with proper constructor
-        AuthorityCommittee::new(committee.epoch(), authorities)
     }
 
     // We call this if these have not yet been computed
@@ -800,134 +780,6 @@ impl<T> IndexMut<AuthorityIndex> for Vec<T> {
     fn index_mut(&mut self, index: AuthorityIndex) -> &mut Self::Output {
         self.get_mut(index.value()).unwrap()
     }
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub struct EncoderCommittee {
-    /// The epoch number
-    pub epoch: EpochId,
-
-    /// The active encoders with their voting power
-    pub members: BTreeMap<EncoderPublicKey, u64>,
-
-    /// Network metadata for encoders
-    pub network_metadata: BTreeMap<EncoderPublicKey, EncoderNetworkMetadata>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub struct EncoderNetworkMetadata {
-    pub internal_network_address: Multiaddr,
-    pub external_network_address: Multiaddr,
-    pub object_server_address: Multiaddr,
-    pub network_key: NetworkPublicKey,
-    pub hostname: String,
-}
-
-/// Digest of encoder committee, used for signing
-#[derive(Serialize, Deserialize)]
-pub struct EncoderCommitteeDigest([u8; DIGEST_LENGTH]);
-
-impl EncoderCommittee {
-    pub fn compute_digest(&self) -> ConsensusResult<EncoderCommitteeDigest> {
-        let mut hasher = DefaultHashFunction::new();
-        hasher.update(bcs::to_bytes(self).map_err(ConsensusError::SerializationFailure)?);
-        Ok(EncoderCommitteeDigest(hasher.finalize().into()))
-    }
-
-    pub fn sign(&self, keypair: &AuthorityKeyPair) -> ConsensusResult<AuthoritySignature> {
-        let digest = self.compute_digest()?;
-        let message = bcs::to_bytes(&to_encoder_committee_intent(digest))
-            .map_err(ConsensusError::SerializationFailure)?;
-        Ok(keypair.sign(&message))
-    }
-
-    pub fn verify_signature(
-        &self,
-        signature: &AuthoritySignature,
-        public_key: &AuthorityPublicKey,
-    ) -> ConsensusResult<()> {
-        let digest = self.compute_digest()?;
-        let message = bcs::to_bytes(&to_encoder_committee_intent(digest))
-            .map_err(ConsensusError::SerializationFailure)?;
-        public_key
-            .verify(&message, signature)
-            .map_err(ConsensusError::SignatureVerificationFailure)
-    }
-
-    pub fn convert_encoder_committee(
-        committee: &EncoderCommittee,
-        epoch: EpochId,
-    ) -> shared::encoder_committee::EncoderCommittee {
-        // Extract encoders with their voting powers
-        let encoders = committee
-            .members
-            .iter()
-            .map(|(key, voting_power)| {
-                // Calculate voting power as u16
-                let voting_power = (*voting_power as u16).min(10_000);
-
-                // TODO: Create a test probe metadata (will be replaced with real data in production)
-                let mut seed = [0u8; 32];
-                seed[0..8].copy_from_slice(&key.to_bytes()[0..8]); // Use part of the public key as seed
-                let probe_checksum = Checksum::new_from_bytes(&seed);
-
-                Encoder {
-                    voting_power,
-                    encoder_key: key.clone(),
-                    probe_checksum,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let shard_size = std::cmp::min(
-            encoders.len() as u32,
-            std::cmp::max(3, (encoders.len() / 2) as u32),
-        );
-
-        // Calculate quorum threshold - typically 2/3 rounded up
-        let quorum_threshold = (shard_size * 2 + 2) / 3;
-
-        // Create the encoder service EncoderCommittee
-        shared::encoder_committee::EncoderCommittee::new(
-            epoch,
-            shard_size,
-            quorum_threshold,
-            encoders,
-        )
-    }
-
-    pub fn sample_shard(&self, entropy: Digest<ShardEntropy>) -> Result<Shard, SomaError> {
-        let mut rng = StdRng::from_seed(entropy.into());
-
-        // TODO: change this shard size to be more dynamic
-        let shard_size = std::cmp::min(
-            self.members.len() as u32,
-            std::cmp::max(3, (self.members.len() / 2) as u32),
-        );
-
-        // Calculate quorum threshold - typically 2/3 rounded up
-        let quorum_threshold = (shard_size * 2 + 2) / 3;
-
-        // Collect encoders with their weights
-        let encoders_with_weights: Vec<(&EncoderPublicKey, u64)> =
-            self.members.iter().map(|(k, v)| (k, *v)).collect();
-
-        // Weighted sampling without replacement
-        let selected = encoders_with_weights
-            .choose_multiple_weighted(&mut rng, shard_size as usize, |item| item.1 as f64)
-            .map_err(|e| SomaError::ShardSamplingError(format!("Failed to sample shard: {}", e)))?
-            .map(|(key, _)| (*key).clone())
-            .collect::<Vec<_>>();
-
-        Ok(Shard::new(quorum_threshold, selected, entropy, self.epoch))
-    }
-}
-
-/// Wrap an EncoderCommitteeDigest in the intent message
-pub fn to_encoder_committee_intent(
-    digest: EncoderCommitteeDigest,
-) -> IntentMessage<EncoderCommitteeDigest> {
-    IntentMessage::new(Intent::consensus_app(IntentScope::EncoderCommittee), digest)
 }
 
 /// Represents a committee of networking validators for a specific epoch.

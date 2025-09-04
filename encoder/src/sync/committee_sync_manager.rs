@@ -2,8 +2,6 @@ use crate::{
     sync::encoder_validator_client::{EncoderValidatorClient, EnrichedVerifiedCommittees},
     types::context::{Committees, Context, InnerContext},
 };
-use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
-use shared::error::{ShardError, ShardResult};
 use soma_tls::AllowPublicKeys;
 use std::{
     collections::BTreeSet,
@@ -15,6 +13,8 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
+use types::error::{ShardError, ShardResult};
+use types::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use types::shard_networking::EncoderNetworkingInfo;
 
 /// Manager for committee synchronization with validator nodes
@@ -45,9 +45,6 @@ pub struct CommitteeSyncManager {
 
     /// Signal for shutdown
     shutdown: Arc<AtomicBool>,
-
-    // TODO: Remove this after NetworkingCommittee is confirmed working
-    client_key: Option<PeerPublicKey>,
 }
 
 impl CommitteeSyncManager {
@@ -60,8 +57,6 @@ impl CommitteeSyncManager {
         epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
         own_encoder_key: EncoderPublicKey,
-        // TODO: Remove this after NetworkingCommittee is confirmed working
-        client_key: Option<PeerPublicKey>,
     ) -> Self {
         let inner_context = context.inner();
         let current_epoch = inner_context.current_epoch;
@@ -76,7 +71,6 @@ impl CommitteeSyncManager {
             next_epoch_time_ms: AtomicU64::new(epoch_start_timestamp_ms + epoch_duration_ms),
             own_encoder_key,
             shutdown: Arc::new(AtomicBool::new(false)),
-            client_key,
         }
     }
 
@@ -241,7 +235,7 @@ impl CommitteeSyncManager {
         // Create new Committees struct for the upcoming epoch
         let new_committees = Committees::new(
             epoch,
-            committees.authority_committee.clone(),
+            committees.validator_committee.clone(),
             committees.encoder_committee.clone(),
             committees.networking_committee.clone(),
             self.context.inner().current_committees().vdf_iterations, // Keep the same VDF iterations
@@ -313,11 +307,6 @@ impl CommitteeSyncManager {
                 network_metadata.hostname
             );
             allowed_keys.insert(network_metadata.network_key.clone().into_inner());
-        }
-
-        // TODO: Remove this after NetworkingCommittee is fully integrated
-        if let Some(client_key) = self.client_key.clone() {
-            allowed_keys.insert(client_key.into_inner());
         }
 
         info!(

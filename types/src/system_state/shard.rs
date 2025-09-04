@@ -1,5 +1,6 @@
+use crate::metadata::MetadataCommitment;
+use crate::shard_crypto::digest::Digest;
 use serde::{Deserialize, Serialize};
-use shared::{digest::Digest, metadata::MetadataCommitment};
 
 use crate::{base::SomaAddress, committee::EpochId, score_set::ScoreSet};
 

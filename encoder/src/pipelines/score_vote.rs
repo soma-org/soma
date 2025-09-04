@@ -7,19 +7,22 @@ use crate::{
     types::score_vote::{ScoreVote, ScoreVoteAPI},
 };
 use async_trait::async_trait;
-use evaluation::EvaluationScore;
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use quick_cache::sync::{Cache, GuardResult};
-use shared::{
+use types::evaluation::EvaluationScore;
+use types::{
     actors::{ActorHandle, ActorMessage, Processor},
-    crypto::keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
-    digest::Digest,
     error::{ShardError, ShardResult},
-    scope::Scope,
     shard::Shard,
-    signed::Signed,
-    verified::Verified,
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
+        scope::Scope,
+        signed::Signed,
+        verified::Verified,
+    },
 };
+
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};

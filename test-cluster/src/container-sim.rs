@@ -79,7 +79,7 @@ impl Container {
         }
     }
 
-    /// Get a SuiNodeHandle to the node owned by the container.
+    /// Get a SomaNodeHandle to the node owned by the container.
     pub fn get_node_handle(&self) -> Option<SomaNodeHandle> {
         Some(SomaNodeHandle::new(self.node_watch.borrow().upgrade()?))
     }

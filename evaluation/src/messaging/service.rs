@@ -1,11 +1,11 @@
-use crate::{
+use types::evaluation::{
     EvaluationInput, EvaluationOutput, EvaluationOutputV1, EvaluationScoreV1, SummaryEmbeddingV1,
 };
 
 use super::EvaluationService;
 use async_trait::async_trait;
 use bytes::Bytes;
-use shared::error::{EvaluationError, EvaluationResult};
+use types::error::{EvaluationError, EvaluationResult};
 
 pub struct MockEvaluationService {}
 

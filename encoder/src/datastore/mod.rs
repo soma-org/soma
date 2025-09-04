@@ -6,12 +6,14 @@ use std::time::Instant;
 
 use crate::types::score_vote::ScoreVote;
 use crate::types::{commit::Commit, commit_votes::CommitVotes, reveal::Reveal};
-use shared::error::ShardResult;
-use shared::{
-    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
-    digest::Digest,
+use types::error::ShardResult;
+use types::{
     shard::Shard,
-    verified::Verified,
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderAggregateSignature, EncoderPublicKey},
+        verified::Verified,
+    },
 };
 
 pub(crate) struct CommitVoteCounts {

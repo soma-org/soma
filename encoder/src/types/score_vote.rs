@@ -1,14 +1,13 @@
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use shared::{
-    crypto::keys::EncoderPublicKey,
+use types::shard_crypto::{keys::EncoderPublicKey, scope::Scope, signed::Signed};
+use types::{
     error::{SharedError, SharedResult},
-    scope::Scope,
+    score_set::ScoreSet,
     shard::Shard,
-    signed::Signed,
+    shard::ShardAuthToken,
 };
-use types::{score_set::ScoreSet, shard::ShardAuthToken};
 
 /// Shard commit is the wrapper that contains the versioned shard commit. It
 /// represents the encoders response to a batch of data

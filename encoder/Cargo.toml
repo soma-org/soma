@@ -6,11 +6,9 @@ edition = "2021"
 [dependencies]
 objects.workspace = true
 inference.workspace = true
-shared.workspace = true
 evaluation.workspace = true
 soma-http.workspace = true
 soma-tls.workspace = true
-soma-network.workspace = true
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 serde.workspace = true
 fastcrypto.workspace = true

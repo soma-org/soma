@@ -20,8 +20,8 @@ use types::{
 };
 use utils::logging::init_tracing;
 
-const MAX_DELEGATION_AMOUNT: u64 = 1_000_000_000_000_000; // 1M SUI
-const MIN_DELEGATION_AMOUNT: u64 = 500_000_000_000_000; // 0.5M SUI
+const MAX_DELEGATION_AMOUNT: u64 = 1_000_000_000_000_000; // 1M SOMA
+const MIN_DELEGATION_AMOUNT: u64 = 500_000_000_000_000; // 0.5M SOMA
 
 trait GenStateChange {
     type StateChange: StatePredicate;
@@ -141,53 +141,6 @@ impl StressTestRunner {
         assert!(effects.status().is_ok());
         effects
     }
-
-    // Useful for debugging and the like
-    // pub fn display_effects(&self, effects: &TransactionEffects) {
-    //     println!("CREATED:");
-    //     let state = self.test_cluster.fullnode_handle.soma_node.state();
-
-    //     let epoch_store = state.load_epoch_store_one_call_per_task();
-    //     let backing_package_store = state.get_backing_package_store();
-    //     let mut layout_resolver = epoch_store
-    //         .executor()
-    //         .type_layout_resolver(Box::new(backing_package_store.as_ref()));
-    //     for (obj_ref, _) in effects.created() {
-    //         let object_opt = state
-    //             .get_object_store()
-    //             .get_object_by_key(&obj_ref.0, obj_ref.1);
-    //         let Some(object) = object_opt else { continue };
-    //         let struct_tag = object.struct_tag().unwrap();
-    //         let total_soma =
-    //             object.get_total_sui(layout_resolver.as_mut()).unwrap() - object.storage_rebate;
-    //         println!(">> {struct_tag} TOTAL_SOMA: {total_soma}");
-    //     }
-
-    //     println!("MUTATED:");
-    //     for (obj_ref, _) in effects.mutated() {
-    //         let object = state
-    //             .get_object_store()
-    //             .get_object_by_key(&obj_ref.0, obj_ref.1)
-    //             .unwrap();
-    //         let struct_tag = object.struct_tag().unwrap();
-    //         let total_soma =
-    //             object.get_total_sui(layout_resolver.as_mut()).unwrap() - object.storage_rebate;
-    //         println!(">> {struct_tag} TOTAL_SOMA: {total_soma}");
-    //     }
-
-    //     println!("SHARED:");
-    //     for kind in effects.input_shared_objects() {
-    //         let (obj_id, version) = kind.id_and_version();
-    //         let object = state
-    //             .get_object_store()
-    //             .get_object_by_key(&obj_id, version)
-    //             .unwrap();
-    //         let struct_tag = object.struct_tag().unwrap();
-    //         let total_soma =
-    //             object.get_total_sui(layout_resolver.as_mut()).unwrap() - object.storage_rebate;
-    //         println!(">> {struct_tag} TOTAL_SOMA: {total_soma}");
-    //     }
-    // }
 
     pub async fn change_epoch(&self) {
         let pre_state_summary = self.system_state();

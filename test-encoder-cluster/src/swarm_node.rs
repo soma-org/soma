@@ -3,9 +3,9 @@ use types::config::encoder_config::EncoderConfig;
 use super::container::Container;
 use anyhow::Result;
 use encoder::core::encoder_node::EncoderNodeHandle;
-use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use std::sync::{Mutex, MutexGuard};
 use tracing::info;
+use types::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
 
 /// A handle to an in-memory Soma Encoder.
 ///
@@ -42,8 +42,7 @@ impl Node {
     pub async fn spawn(&self) -> Result<()> {
         info!("starting in-memory node {:?}", self.name());
         let config = self.config().clone();
-        *self.container.lock().unwrap() =
-            Some(Container::spawn(config, self.client_key.clone()).await);
+        *self.container.lock().unwrap() = Some(Container::spawn(config).await);
         Ok(())
     }
 

@@ -1,23 +1,25 @@
 use std::{collections::HashSet, fmt::format, sync::Arc};
 
 use fastcrypto::bls12381::min_sig;
-use shared::{
-    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
-    digest::Digest,
-    metadata::{DownloadableMetadataAPI, MetadataAPI, MetadataCommitment},
-    scope::{Scope, ScopedMessage},
-    signed::Signed,
-    verified::Verified,
-};
+
 use tracing::{debug, error};
 use types::{
     base::SomaAddress,
-    committee::{Committee, EncoderCommittee, EpochId},
+    committee::{Committee, EpochId},
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
+    encoder_committee::EncoderCommittee,
     error::{ConsensusError, ExecutionResult, SomaError},
+    metadata::{DownloadableMetadataAPI, MetadataAPI, MetadataCommitment},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
     score_set::ScoreSetAPI,
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderAggregateSignature, EncoderPublicKey},
+        scope::{Scope, ScopedMessage},
+        signed::Signed,
+        verified::Verified,
+    },
     shard_verifier::ShardVerifier,
     system_state::{get_system_state, shard::ShardResult, SystemState, SystemStateTrait},
     temporary_store::TemporaryStore,

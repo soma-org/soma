@@ -1,7 +1,7 @@
 use enum_dispatch::enum_dispatch;
-use evaluation::ProbeSet;
 use serde::{Deserialize, Serialize};
-use shared::metadata::Metadata;
+use types::evaluation::ProbeSet;
+use types::metadata::Metadata;
 pub mod client;
 
 #[enum_dispatch]

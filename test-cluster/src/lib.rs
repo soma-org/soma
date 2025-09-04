@@ -7,7 +7,6 @@ use std::{
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
-use shared::crypto::keys::{EncoderKeyPair, PeerKeyPair};
 use swarm::{Swarm, SwarmBuilder};
 use tokio::time::timeout;
 use tracing::{error, info};
@@ -31,6 +30,7 @@ use types::{
     object::ObjectRef,
     peer_id::PeerId,
     shard::ShardAuthToken,
+    shard_crypto::keys::{EncoderKeyPair, PeerKeyPair},
     system_state::{SystemState, SystemStateTrait},
     transaction::Transaction,
 };
@@ -410,7 +410,7 @@ impl TestCluster {
             let system_state = node.state().get_system_state_object_for_testing();
             system_state
                 .get_current_epoch_encoder_committee()
-                .members
+                .members()
                 .len()
         })
     }

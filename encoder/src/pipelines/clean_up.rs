@@ -1,14 +1,14 @@
 use crate::datastore::Store;
 use async_trait::async_trait;
 use quick_cache::sync::{Cache, GuardResult};
-use shared::{
-    actors::{ActorMessage, Processor},
-    digest::Digest,
-    error::{ShardError, ShardResult},
-    shard::Shard,
-};
 use std::{sync::Arc, time::Duration};
 use tracing::info;
+use types::{
+    actors::{ActorMessage, Processor},
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    shard_crypto::digest::Digest,
+};
 
 pub(crate) struct CleanUpProcessor {
     store: Arc<dyn Store>,

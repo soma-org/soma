@@ -1,3 +1,5 @@
+use crate::parameters::{Http2Parameters, TonicParameters};
+use crate::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey};
 use crate::{
     crypto::{get_key_pair_from_rng, EncodeDecodeBase64, SomaKeyPair},
     genesis::Genesis,
@@ -7,7 +9,6 @@ use anyhow::anyhow;
 use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use shared::crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey};
 use std::{
     num::NonZeroUsize,
     path::PathBuf,
@@ -40,9 +41,9 @@ pub struct EncoderConfig {
     /// Parameters for the encoder system
     // TODO: pub parameters: Arc<Parameters>,
     /// Parameters for the object system
-    pub object_parameters: Arc<objects::parameters::Parameters>,
+    pub object_parameters: Arc<Http2Parameters>,
     /// Parameters for the evaluation system
-    pub evaluation_parameters: Arc<evaluation::parameters::Parameters>,
+    pub evaluation_parameters: Arc<TonicParameters>,
     /// Path to the project root for Python interpreter
     pub project_root: PathBuf,
     /// Path to the entry point for Python module
@@ -74,8 +75,8 @@ impl EncoderConfig {
     ) -> Self {
         // Create default parameters
         // TODO: let parameters = Arc::new(Parameters::default());
-        let object_parameters = Arc::new(objects::parameters::Parameters::default());
-        let evaluation_parameters = Arc::new(evaluation::parameters::Parameters::default());
+        let object_parameters = Arc::new(Http2Parameters::default());
+        let evaluation_parameters = Arc::new(TonicParameters::default());
 
         Self {
             account_keypair: KeyPairWithPath::new(soma_keypair),
@@ -221,7 +222,7 @@ pub fn read_encoder_keypair_from_file<P: AsRef<std::path::Path>>(
     Ok(EncoderKeyPair::new(kp))
 }
 
-/// Read from file as Base64 encoded `flag || privkey` and return a SuiKeypair.
+/// Read from file as Base64 encoded `flag || privkey` and return a SomaKeypair.
 pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Result<SomaKeyPair> {
     let contents = std::fs::read_to_string(path)?;
     SomaKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))

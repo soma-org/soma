@@ -5,20 +5,10 @@ use crate::{
     storage::{ObjectPath, ObjectStorage},
 };
 use async_trait::async_trait;
-use shared::{
-    actors::{ActorMessage, Processor},
-    metadata::DownloadableMetadata,
-};
-use shared::{
-    crypto::keys::PeerPublicKey,
-    metadata::{Metadata, MetadataAPI},
-};
-use shared::{
-    error::{ShardError, ShardResult},
-    metadata::DownloadableMetadataAPI,
-};
-use soma_network::multiaddr::Multiaddr;
 use tokio::sync::Semaphore;
+use types::actors::{ActorMessage, Processor};
+use types::error::{ShardError, ShardResult};
+use types::metadata::{DownloadableMetadata, DownloadableMetadataAPI, Metadata, MetadataAPI};
 
 pub struct Downloader<C: ObjectNetworkClient, S: ObjectStorage> {
     client: Arc<C>,

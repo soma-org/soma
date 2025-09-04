@@ -30,9 +30,9 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use crate::error::ShardError;
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
-use shared::error::ShardError;
 use thiserror::Error;
 
 use crate::{

@@ -2,7 +2,6 @@ use encoder::core::encoder_node::{EncoderNode, EncoderNodeHandle};
 use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::KeyPair;
 use msim::runtime::Handle;
-use shared::crypto::keys::PeerPublicKey;
 use std::{
     net::{IpAddr, SocketAddr},
     sync::{Arc, Weak},
@@ -35,7 +34,7 @@ impl Drop for Container {
 
 impl Container {
     /// Spawn a new Node.
-    pub async fn spawn(config: EncoderConfig, peer_key: Option<PeerPublicKey>) -> Self {
+    pub async fn spawn(config: EncoderConfig) -> Self {
         let (startup_sender, mut startup_receiver) = tokio::sync::watch::channel(Weak::new());
         let (cancel_sender, cancel_receiver) = tokio::sync::watch::channel(false);
 
@@ -63,11 +62,10 @@ impl Container {
             .init(move || {
                 info!("Node restarted");
                 let config = config.clone();
-                let peer_key = peer_key.clone();
                 let mut cancel_receiver = cancel_receiver.clone();
                 let startup_sender = startup_sender.clone();
                 async move {
-                    let server = Arc::new(EncoderNode::start(config, peer_key).await);
+                    let server = Arc::new(EncoderNode::start(config).await);
 
                     startup_sender.send(Arc::downgrade(&server)).ok();
 

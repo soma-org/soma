@@ -8,10 +8,8 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use evaluation::{
-    messaging::EvaluationClient, EvaluationInput, EvaluationInputV1, EvaluationOutputAPI,
-    EvaluationScore, EvaluationScoreV1, SummaryEmbedding, SummaryEmbeddingV1,
-};
+use evaluation::messaging::EvaluationClient;
+
 use fastcrypto::{bls12381::min_sig, traits::KeyPair};
 use inference::{
     client::InferenceClient, InferenceInput, InferenceInputV1, InferenceOutput, InferenceOutputAPI,
@@ -20,24 +18,30 @@ use objects::{
     networking::{downloader::Downloader, ObjectNetworkClient},
     storage::{ObjectPath, ObjectStorage},
 };
-use shared::{
+use std::{sync::Arc, time::Duration};
+use tracing::{error, info};
+use types::shard::{Input, InputAPI};
+use types::{
     actors::{ActorHandle, ActorMessage, Processor},
-    crypto::keys::{EncoderKeyPair, PeerPublicKey},
-    digest::Digest,
     error::{ShardError, ShardResult},
+    evaluation::{
+        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, EvaluationScore,
+        EvaluationScoreV1, SummaryEmbedding, SummaryEmbeddingV1,
+    },
     metadata::{
         DownloadableMetadata, DownloadableMetadataAPI, DownloadableMetadataV1, Metadata,
         MetadataAPI,
     },
-    scope::Scope,
+    multiaddr::Multiaddr,
     shard::Shard,
-    signed::Signed,
-    verified::Verified,
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderKeyPair, PeerPublicKey},
+        scope::Scope,
+        signed::Signed,
+        verified::Verified,
+    },
 };
-use soma_network::multiaddr::Multiaddr;
-use std::{sync::Arc, time::Duration};
-use tracing::{error, info};
-use types::shard::{Input, InputAPI};
 
 use super::commit::CommitProcessor;
 

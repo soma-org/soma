@@ -1,11 +1,14 @@
+use crate::multiaddr::Multiaddr;
 use arc_swap::ArcSwap;
-use soma_network::multiaddr::Multiaddr;
 use std::{collections::BTreeMap, sync::Arc};
 
-use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use crate::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
 
 pub mod channel_pool;
 pub mod external;
+pub mod grpc_timeout;
+
+pub const CERTIFICATE_NAME: &str = "soma";
 
 pub mod generated {
     include!(concat!(

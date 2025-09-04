@@ -33,6 +33,12 @@ use std::{
     iter,
 };
 
+use crate::{
+    metadata::MetadataCommitment,
+    shard::Shard,
+    shard_crypto::digest::Digest,
+    shard_crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
+};
 use fastcrypto::{
     hash::HashFunction,
     traits::{Signer, ToFromBytes},
@@ -40,12 +46,6 @@ use fastcrypto::{
 use itertools::{Either, Itertools};
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
-use shared::{
-    crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
-    digest::Digest,
-    metadata::MetadataCommitment,
-    shard::Shard,
-};
 use tracing::trace;
 
 use crate::{
@@ -1480,17 +1480,17 @@ impl std::fmt::Debug for InputObjects {
     }
 }
 
-// An InputObjects new-type that has been verified by sui-transaction-checks, and can be
+// An InputObjects new-type that has been verified by soma-transaction-checks, and can be
 // safely passed to execution.
 pub struct CheckedInputObjects(InputObjects);
 
-// DO NOT CALL outside of sui-transaction-checks, genesis, or replay.
+// DO NOT CALL outside of soma-transaction-checks, genesis, or replay.
 //
-// CheckedInputObjects should really be defined in sui-transaction-checks so that we can
+// CheckedInputObjects should really be defined in soma-transaction-checks so that we can
 // make public construction impossible. But we can't do that because it would result in circular
 // dependencies.
 impl CheckedInputObjects {
-    // Only called by sui-transaction-checks.
+    // Only called by soma-transaction-checks.
     pub fn new_with_checked_transaction_inputs(inputs: InputObjects) -> Self {
         Self(inputs)
     }

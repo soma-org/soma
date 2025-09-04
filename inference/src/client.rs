@@ -1,13 +1,13 @@
 use crate::{InferenceInput, InferenceOutput, InferenceOutputV1};
 use async_trait::async_trait;
-use evaluation::{ProbeSet, ProbeSetV1};
 use objects::storage::{ObjectPath, ObjectStorage};
-use shared::{
+use std::{sync::Arc, time::Duration};
+use types::evaluation::{ProbeSet, ProbeSetV1};
+use types::{
     checksum::Checksum,
     error::InferenceResult,
     metadata::{Metadata, MetadataV1},
 };
-use std::{sync::Arc, time::Duration};
 
 #[async_trait]
 pub trait InferenceClient: Send + Sync + Sized + 'static {

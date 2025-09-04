@@ -2,10 +2,10 @@ use crate::swarm_node::Node;
 use anyhow::Result;
 use encoder::core::encoder_node::EncoderNodeHandle;
 use futures::future::try_join_all;
-use shared::crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use std::collections::HashMap;
 use tracing::info;
 use types::config::encoder_config::EncoderConfig;
+use types::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
 
 #[derive(Debug)]
 pub struct EncoderSwarm {

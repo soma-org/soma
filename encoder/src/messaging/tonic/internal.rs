@@ -13,16 +13,7 @@ use crate::{
 use async_trait::async_trait;
 use axum::http;
 use bytes::Bytes;
-use shared::error::{ShardError, ShardResult};
-use shared::{
-    crypto::keys::{PeerKeyPair, PeerPublicKey},
-    verified::Verified,
-};
 use soma_http::ServerHandle;
-use soma_network::{
-    multiaddr::{to_socket_addr, Multiaddr},
-    CERTIFICATE_NAME,
-};
 use soma_tls::AllowPublicKeys;
 use std::{
     sync::Arc,
@@ -31,8 +22,14 @@ use std::{
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{error, info, trace, warn};
+use types::error::{ShardError, ShardResult};
 use types::parameters::Parameters;
+use types::shard_crypto::{
+    keys::{PeerKeyPair, PeerPublicKey},
+    verified::Verified,
+};
 use types::shard_networking::EncoderNetworkingInfo;
+use types::{multiaddr::Multiaddr, p2p::to_socket_addr, shard_networking::CERTIFICATE_NAME};
 
 use types::shard_networking::channel_pool::{Channel, ChannelPool};
 
@@ -378,7 +375,9 @@ impl<S: EncoderInternalNetworkService> EncoderInternalNetworkManager<S>
                     .make_span_with(DefaultMakeSpan::new().level(tracing::Level::TRACE))
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
-            .layer_fn(|service| soma_network::grpc_timeout::GrpcTimeout::new(service, None));
+            .layer_fn(|service| {
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(service, None)
+            });
 
         let encoder_internal_service_server = EncoderInternalTonicServiceServer::new(service)
             .max_encoding_message_size(config.message_size_limit)

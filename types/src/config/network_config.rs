@@ -6,6 +6,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
+use crate::shard_crypto::keys::EncoderKeyPair;
 use crate::{
     base::SomaAddress,
     committee::{Committee, CommitteeWithNetworkMetadata},
@@ -29,7 +30,6 @@ use crate::{
 use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use shared::crypto::keys::EncoderKeyPair;
 use tracing::info;
 
 use super::{

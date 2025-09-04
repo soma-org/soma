@@ -1,9 +1,10 @@
 //! `ChannelPool` stores tonic channels for re-use.
+use crate::error::{ShardError, ShardResult};
+use crate::multiaddr::Multiaddr;
+use crate::p2p::to_host_port_str;
+use crate::shard_crypto::keys::{PeerKeyPair, PeerPublicKey};
+use crate::shard_networking::CERTIFICATE_NAME;
 use quick_cache::sync::Cache;
-use shared::crypto::keys::{PeerKeyPair, PeerPublicKey};
-use shared::error::{ShardError, ShardResult};
-use soma_network::multiaddr::{to_host_port_str, Multiaddr};
-use soma_network::CERTIFICATE_NAME;
 use std::time::Duration;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, trace};

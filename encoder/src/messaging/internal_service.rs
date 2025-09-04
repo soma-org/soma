@@ -12,15 +12,15 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use shared::{
-    crypto::keys::EncoderPublicKey,
-    error::{ShardError, ShardResult},
-    shard::Shard,
-    verified::Verified,
-};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
+use types::{
+    error::{ShardError, ShardResult},
+    shard::Shard,
+    shard_crypto::keys::EncoderPublicKey,
+    shard_crypto::verified::Verified,
+};
 use types::{shard::ShardAuthToken, shard_verifier::ShardVerifier};
 
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {

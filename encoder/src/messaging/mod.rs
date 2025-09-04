@@ -12,14 +12,14 @@ use crate::types::score_vote::ScoreVote;
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::bls12381::min_sig;
-use shared::crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey};
-use shared::error::ShardResult;
-use shared::{signed::Signed, verified::Verified};
-use soma_network::multiaddr::Multiaddr;
 use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
+use types::error::ShardResult;
+use types::multiaddr::Multiaddr;
 use types::parameters::Parameters;
 use types::shard::Input;
+use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey};
+use types::shard_crypto::{signed::Signed, verified::Verified};
 use types::shard_networking::EncoderNetworkingInfo;
 
 /// Default message timeout for each request.
