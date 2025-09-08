@@ -67,7 +67,7 @@ use types::{
     peer_id::PeerId,
     protocol::ProtocolConfig,
     quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
-    shard::ShardAuthToken,
+    shard::{Shard, ShardAuthToken},
     storage::{
         committee_store::CommitteeStore,
         consensus::{mem_store::MemStore, ConsensusStore},
@@ -910,7 +910,7 @@ impl SomaNode {
     pub async fn execute_transaction(
         &self,
         transaction: Transaction,
-    ) -> SomaResult<(TransactionEffects, Option<ShardAuthToken>)> {
+    ) -> SomaResult<(TransactionEffects, Option<Shard>)> {
         let (response, _) = self
             .transaction_orchestrator
             .as_ref()
@@ -922,7 +922,7 @@ impl SomaNode {
             )
             .await
             .unwrap();
-        Ok((response.effects.effects, response.shard_auth_token))
+        Ok((response.effects.effects, response.shard))
     }
 
     pub async fn get_gas_objects_owned_by_address(

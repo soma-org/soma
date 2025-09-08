@@ -311,11 +311,16 @@ impl TransactionKind {
             || self.is_epoch_change()
             || self.is_staking_tx()
             || self.is_encoder_tx()
+            || self.is_embed_tx()
+    }
+
+    pub fn is_embed_tx(&self) -> bool {
+        matches!(self, TransactionKind::EmbedData { .. })
     }
 
     /// Returns true if this transaction requires consensus sequencing for finality proof
     pub fn requires_consensus_finality(&self) -> bool {
-        matches!(self, TransactionKind::EmbedData { .. })
+        self.is_embed_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {

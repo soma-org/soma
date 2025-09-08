@@ -11,7 +11,7 @@ use crate::{
     },
     error::SomaError,
     finality::{SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
-    shard::ShardAuthToken,
+    shard::{Shard, ShardAuthToken},
     transaction::{CertifiedTransaction, SignedTransaction, Transaction, VerifiedTransaction},
 };
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub struct ExecuteTransactionRequest {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecuteTransactionResponse {
     pub effects: FinalizedEffects,
-    pub shard_auth_token: Option<ShardAuthToken>,
+    pub shard: Option<Shard>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, schemars::JsonSchema)]

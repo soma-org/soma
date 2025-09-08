@@ -25,7 +25,7 @@ pub async fn setup_integrated_encoder_validator_test(
         .with_num_validators(num_validators)
         .with_num_encoders(num_encoders)
         .with_accounts(encoder_candidate_accounts)
-        .with_epoch_duration_ms(5 * 1000); // 5s
+        .with_epoch_duration_ms(10 * 1000); // 10s
 
     // Build and start TestCluster
     let test_cluster = test_cluster_builder.build().await;

@@ -1101,6 +1101,12 @@ impl ValidatorSet {
             return;
         }
 
+        let consensus_addresses: HashSet<SomaAddress> = self
+            .consensus_validators
+            .iter()
+            .map(|v| v.metadata.soma_address)
+            .collect();
+
         // Combine all validators for voting power calculation
         let mut all_validators: Vec<&mut Validator> = Vec::new();
         all_validators.extend(self.consensus_validators.iter_mut());
@@ -1137,34 +1143,47 @@ impl ValidatorSet {
             total_power += validator.voting_power;
         }
 
-        // Second pass: distribute remaining power proportionally
-        let mut remaining_power = TOTAL_VOTING_POWER.saturating_sub(total_power);
-        let mut i = 0;
-        while i < all_validators.len() && remaining_power > 0 {
-            // Calculate planned distribution (evenly among remaining validators)
-            let validators_left = all_validators.len() - i;
-            let planned = (remaining_power + validators_left as u64 - 1) / validators_left as u64; // divide_and_round_up
+        // Second pass: distribute remaining power ONLY to consensus validators
+        let remaining_power = TOTAL_VOTING_POWER.saturating_sub(total_power);
 
-            // Target power capped by threshold
-            let validator = &mut all_validators[i];
-            let target = std::cmp::min(threshold, validator.voting_power + planned);
+        if remaining_power > 0 && !consensus_addresses.is_empty() {
+            let per_consensus = remaining_power / consensus_addresses.len() as u64;
+            let leftover = remaining_power % consensus_addresses.len() as u64;
 
-            // Actual power to distribute to this validator
-            let actual = std::cmp::min(remaining_power, target - validator.voting_power);
-            validator.voting_power += actual;
-
-            // Update remaining power
-            remaining_power -= actual;
-
-            i += 1;
+            // Only update consensus validators
+            let mut consensus_count = 0;
+            for validator in &mut all_validators {
+                // Check if this validator is in consensus set
+                if consensus_addresses
+                    .iter()
+                    .any(|v| *v == validator.metadata.soma_address)
+                {
+                    validator.voting_power += per_consensus;
+                    if consensus_count < leftover as usize {
+                        validator.voting_power += 1;
+                    }
+                    consensus_count += 1;
+                }
+            }
         }
 
         // Verify all power was distributed
-        assert!(
-            remaining_power == 0,
-            "Failed to distribute all voting power"
+        let final_total: u64 = all_validators.iter().map(|v| v.voting_power).sum();
+        assert_eq!(
+            final_total, TOTAL_VOTING_POWER,
+            "Failed to distribute exactly {} voting power, got {}",
+            TOTAL_VOTING_POWER, final_total
         );
 
+        // Log final state
+        for validator in &all_validators {
+            info!(
+                "Final: Validator {} stake: {}, voting_power: {}",
+                validator.metadata.soma_address,
+                validator.staking_pool.soma_balance,
+                validator.voting_power,
+            );
+        }
         // Verify relative power ordering respects stake ordering
         self.verify_voting_power_ordering();
     }
@@ -1178,6 +1197,10 @@ impl ValidatorSet {
             .collect();
 
         for i in 0..all_validators.len() {
+            info!(
+                "Validator {} voting power is: {}",
+                i, all_validators[i].voting_power
+            );
             for j in i + 1..all_validators.len() {
                 let stake_i = all_validators[i].staking_pool.soma_balance;
                 let stake_j = all_validators[j].staking_pool.soma_balance;
@@ -1212,11 +1235,18 @@ impl ValidatorSet {
         let mut i = self.consensus_validators.len();
         while i > 0 {
             i -= 1;
+
             let validator = &self.consensus_validators[i];
+
             let validator_address = validator.metadata.soma_address;
             let voting_power = derive_raw_voting_power(
                 validator.staking_pool.soma_balance,
                 total_stake_for_thresholds,
+            );
+
+            info!(
+                "Checking networking validator {} for promotion: voting_power={}, threshold={}",
+                validator.metadata.soma_address, voting_power, VALIDATOR_CONSENSUS_MIN_POWER
             );
 
             if voting_power >= VALIDATOR_CONSENSUS_LOW_POWER {

@@ -29,7 +29,7 @@ use types::{
     genesis::Genesis,
     object::ObjectRef,
     peer_id::PeerId,
-    shard::ShardAuthToken,
+    shard::{Shard, ShardAuthToken},
     shard_crypto::keys::{EncoderKeyPair, PeerKeyPair},
     system_state::{SystemState, SystemStateTrait},
     transaction::Transaction,
@@ -293,7 +293,7 @@ impl TestCluster {
     pub async fn execute_transaction(
         &self,
         tx: Transaction,
-    ) -> SomaResult<(TransactionEffects, Option<ShardAuthToken>)> {
+    ) -> SomaResult<(TransactionEffects, Option<Shard>)> {
         self.fullnode_handle
             .soma_node
             .with_async(|node| async { node.execute_transaction(tx).await })

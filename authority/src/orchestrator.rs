@@ -19,9 +19,7 @@ use types::{
     entropy::SimpleVDF,
     error::{SomaError, SomaResult},
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
-    metadata::{
-        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
-    },
+    metadata::{Metadata, MetadataCommitment, MetadataV1},
     multiaddr::Multiaddr,
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
@@ -176,13 +174,13 @@ where
             finality_cert,
         } = response;
 
-        let shard_auth_token = self
+        let shard = self
             .process_finality_and_encoder_work(&transaction, finality_cert)
             .await;
 
         let response = ExecuteTransactionResponse {
             effects: FinalizedEffects::new_from_effects_cert(effects_cert.into()),
-            shard_auth_token,
+            shard,
         };
 
         Ok((response, executed_locally))
@@ -377,7 +375,7 @@ where
         &self,
         transaction: &VerifiedTransaction,
         finality_cert: Option<VerifiedCertifiedConsensusFinality>,
-    ) -> Option<ShardAuthToken> {
+    ) -> Option<Shard> {
         info!(
             "Processing finality and encoder work for tx: {}",
             transaction.digest()
@@ -396,20 +394,8 @@ where
         let finality_cert = finality_cert?;
 
         // Generate finality proof
-        let finality_proof = match self
-            .generate_finality_proof(transaction.inner().clone(), finality_cert.inner().clone())
-            .await
-        {
-            Ok(proof) => proof,
-            Err(e) => {
-                error!(
-                    tx_digest = ?transaction.digest(),
-                    error = ?e,
-                    "Failed to generate FinalityProof"
-                );
-                return None;
-            }
-        };
+        let finality_proof =
+            FinalityProof::new(transaction.inner().clone(), finality_cert.inner().clone());
 
         info!("Generated finality proof for tx: {}", transaction.digest());
 
@@ -426,15 +412,9 @@ where
                 .public()
                 .clone(),
         );
-        let address = self
-            .validator_state
-            .config
-            .network_address
-            .to_string()
-            .parse()
-            .unwrap();
+        let address = self.validator_state.config.network_address.clone();
 
-        if let Ok(shard_auth_token) = self
+        if let Ok(shard) = self
             .initiate_encoder_work_for_embed_data(
                 &finality_proof,
                 metadata_commitment.clone(),
@@ -444,7 +424,7 @@ where
             )
             .await
         {
-            Some(shard_auth_token)
+            Some(shard)
         } else {
             None
         }
@@ -458,7 +438,7 @@ where
         tls_key: PeerPublicKey,
         address: Multiaddr,
         tx_digest: &TransactionDigest,
-    ) -> SomaResult<ShardAuthToken> {
+    ) -> SomaResult<Shard> {
         let (shard, shard_auth_token) = self
             .generate_shard_selection(finality_proof, metadata_commitment)
             .await?;
@@ -472,6 +452,7 @@ where
             let client = encoder_client.clone();
             let token = shard_auth_token.clone();
             let digest = *tx_digest;
+            let shard = shard.clone();
 
             tokio::spawn(async move {
                 match client
@@ -494,17 +475,7 @@ where
             });
         }
 
-        return Ok(shard_auth_token);
-    }
-
-    /// Generate a FinalityProof for EmbedData transactions with consensus finality
-    async fn generate_finality_proof(
-        &self,
-        transaction: Transaction,
-        consensus_finality: CertifiedConsensusFinality,
-    ) -> SomaResult<FinalityProof> {
-        let finality_proof = FinalityProof::new(transaction, consensus_finality);
-        Ok(finality_proof)
+        return Ok(shard);
     }
 
     /// Generate shard selection for EmbedData transactions

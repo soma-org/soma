@@ -7,9 +7,9 @@ use tracing::info;
 use types::checksum::Checksum;
 use types::crypto::KeypairTraits;
 use types::metadata::{
-    DownloadableMetadata, DownloadableMetadataV1, MetadataCommitment, MetadataV1,
+    DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
 };
-use types::shard::ShardAuthToken;
+use types::shard::{Shard, ShardAuthToken};
 use types::shard_crypto::{digest::Digest, keys::PeerPublicKey};
 use types::{
     base::SomaAddress,
@@ -113,24 +113,23 @@ async fn test_integrated_encoder_validator_system() {
         .state()
         .config
         .clone();
-    let metadata = DownloadableMetadataV1::new(
-        PeerPublicKey::new(
-            fullnode_config
-                .network_key_pair()
-                .into_inner()
-                .public()
-                .clone(),
-        ),
-        fullnode_config.network_address.to_string().parse().unwrap(),
-        MetadataV1::new(Checksum::default(), size_in_bytes),
+
+    let tls_key = PeerPublicKey::new(
+        fullnode_config
+            .network_key_pair()
+            .into_inner()
+            .public()
+            .clone(),
     );
-    let metadata_commitment =
-        MetadataCommitment::new(DownloadableMetadata::V1(metadata), [0u8; 32]);
+    let address = fullnode_config.network_address;
 
-    let digest =
-        Digest::new(&metadata_commitment).expect("Failed to create digest for metadata_commitment");
+    let metadata = MetadataV1::new(Checksum::default(), size_in_bytes);
+    let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
+    let digest = metadata_commitment
+        .digest()
+        .expect("Could not create Digest for MetadataCommitment");
 
-    let shard_auth_token = execute_embed_data_transaction(
+    let shard = execute_embed_data_transaction(
         new_encoder_genesis.account_key_pair.copy(),
         &mut test_cluster,
         new_encoder_address,
@@ -141,8 +140,6 @@ async fn test_integrated_encoder_validator_system() {
     .expect("Could not get shard auth token from transaction execution");
 
     sleep(Duration::from_secs(5)).await;
-
-    let shard = shard_auth_token.shard;
 
     for handle in encoder_cluster.all_encoder_handles() {
         handle.with(|node| {
@@ -171,7 +168,7 @@ async fn execute_embed_data_transaction(
     address: SomaAddress,
     digest: Digest<MetadataCommitment>,
     data_size_bytes: usize,
-) -> Option<ShardAuthToken> {
+) -> Option<Shard> {
     // Get gas object for the transaction
     let gas_object = test_cluster
         .get_gas_objects_owned_by_address(address, Some(1))
@@ -193,8 +190,8 @@ async fn execute_embed_data_transaction(
     );
 
     tracing::info!(?tx, "Executing embed data tx for {}", address);
-    if let Ok((_, shard_auth_token)) = test_cluster.execute_transaction(tx).await {
-        shard_auth_token
+    if let Ok((_, shard)) = test_cluster.execute_transaction(tx).await {
+        shard
     } else {
         None
     }

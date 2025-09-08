@@ -290,6 +290,15 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             .into_iter()
             .partition(|v| v.is_networking_only);
 
+        // Calculate stake to ensure voting power stays below threshold
+        let total_consensus_stake: u64 = consensus_configs.iter().map(|v| v.stake).sum();
+        let networking_stake = {
+            // We want: (stake * 10000) / total_stake < 12
+            // So: stake < (12 * total_stake) / 10000
+            let max_stake = (11 * (total_consensus_stake + 1)) / 10000; // Use 11 for safety margin
+            max_stake
+        };
+
         let token_distribution_schedule = {
             let mut builder = TokenDistributionScheduleBuilder::new();
             for allocation in allocations {
@@ -326,10 +335,10 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     staked_with_validator: None,
                     staked_with_encoder: None,
                 };
-                // TODO: determine a cleaner way of making the starting fullnode have above min networking voting power but below min consensus power
+
                 let stake = TokenAllocation {
                     recipient_address: address,
-                    amount_shannons: validator.stake / 10,
+                    amount_shannons: std::cmp::min(networking_stake, validator.stake / 100),
                     staked_with_validator: Some(address),
                     staked_with_encoder: None,
                 };
