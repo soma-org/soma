@@ -1,5 +1,6 @@
-use types::evaluation::{
-    EvaluationInput, EvaluationOutput, EvaluationOutputV1, EvaluationScoreV1, SummaryEmbeddingV1,
+use types::{
+    evaluation::{EmbeddingDigest, EvaluationInput, EvaluationOutput, EvaluationOutputV1, ScoreV1},
+    shard_crypto::digest::Digest,
 };
 
 use super::EvaluationService;
@@ -23,8 +24,8 @@ impl EvaluationService for MockEvaluationService {
 
         // TODO: do something with the input
 
-        let score = EvaluationScoreV1::new(rand::random());
-        let summary_embedding = SummaryEmbeddingV1::new(vec![1, 1, 1]);
+        let score = ScoreV1::new(rand::random());
+        let summary_embedding: EmbeddingDigest = Digest::new(&vec![1, 1, 1]).unwrap();
 
         let output = EvaluationOutput::V1(EvaluationOutputV1::new(score, summary_embedding));
 

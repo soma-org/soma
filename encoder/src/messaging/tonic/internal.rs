@@ -1,5 +1,5 @@
 use crate::messaging::tonic::generated::encoder_internal_tonic_service_client::EncoderInternalTonicServiceClient;
-use crate::types::score_vote::ScoreVote;
+use crate::types::report_vote::ReportVote;
 use crate::{
     messaging::{
         tonic::generated::encoder_internal_tonic_service_server::{
@@ -151,19 +151,19 @@ impl EncoderInternalNetworkClient for EncoderInternalTonicClient {
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
     }
-    async fn send_score_vote(
+    async fn send_report_vote(
         &self,
         encoder: &EncoderPublicKey,
-        score_vote: &Verified<ScoreVote>,
+        report_vote: &Verified<ReportVote>,
         timeout: Duration,
     ) -> ShardResult<()> {
-        let mut request = Request::new(SendScoreVoteRequest {
-            score_vote: score_vote.bytes(),
+        let mut request = Request::new(SendReportVoteRequest {
+            report_vote: report_vote.bytes(),
         });
         request.set_timeout(timeout);
         self.get_client(encoder, timeout)
             .await?
-            .send_score_vote(request)
+            .send_report_vote(request)
             .await
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
@@ -254,10 +254,10 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
 
         Ok(Response::new(SendRevealResponse {}))
     }
-    async fn send_score_vote(
+    async fn send_report_vote(
         &self,
-        request: Request<SendScoreVoteRequest>,
-    ) -> Result<Response<SendScoreVoteResponse>, tonic::Status> {
+        request: Request<SendReportVoteRequest>,
+    ) -> Result<Response<SendReportVoteResponse>, tonic::Status> {
         let Some(peer) = request
             .extensions()
             .get::<EncoderInfo>()
@@ -265,14 +265,14 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
         else {
             return Err(tonic::Status::internal("PeerInfo not found"));
         };
-        let score_vote = request.into_inner().score_vote;
+        let report_vote = request.into_inner().report_vote;
 
         self.service
-            .handle_send_score_vote(&peer, score_vote)
+            .handle_send_report_vote(&peer, report_vote)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
-        Ok(Response::new(SendScoreVoteResponse {}))
+        Ok(Response::new(SendReportVoteResponse {}))
     }
 }
 
@@ -507,10 +507,10 @@ pub(crate) struct SendRevealResponse {}
 
 // ////////////////////////////////////////////////////////////////////
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendScoreVoteRequest {
+pub(crate) struct SendReportVoteRequest {
     #[prost(bytes = "bytes", tag = "1")]
-    score_vote: Bytes,
+    report_vote: Bytes,
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct SendScoreVoteResponse {}
+pub(crate) struct SendReportVoteResponse {}

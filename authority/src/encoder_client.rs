@@ -1,5 +1,3 @@
-use fastcrypto::traits::KeyPair;
-
 use std::{sync::Arc, time::Duration};
 use types::{
     crypto::{AuthorityKeyPair, NetworkKeyPair},

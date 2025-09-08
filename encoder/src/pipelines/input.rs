@@ -1,11 +1,8 @@
 use crate::{
     core::internal_broadcaster::Broadcaster,
-    datastore::Store,
+    datastore::{ShardStage, Store},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::{
-        commit::{Commit, CommitV1},
-        reveal::{Reveal, RevealV1},
-    },
+    types::commit::{Commit, CommitV1},
 };
 use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
@@ -18,22 +15,15 @@ use objects::{
 };
 use std::{sync::Arc, time::Duration};
 use tracing::error;
+use types::shard::{Input, InputAPI};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
     evaluation::{EvaluationInput, EvaluationInputV1, EvaluationOutputAPI},
-    metadata::{DownloadableMetadata, DownloadableMetadataAPI, DownloadableMetadataV1, Metadata},
-    multiaddr::Multiaddr,
+    metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata},
     shard::Shard,
-    shard_crypto::{
-        digest::Digest,
-        keys::{EncoderKeyPair, PeerPublicKey},
-        verified::Verified,
-    },
-};
-use types::{
-    metadata::MetadataV1,
-    shard::{Input, InputAPI},
+    shard_crypto::{digest::Digest, keys::EncoderKeyPair, verified::Verified},
+    submission::{Submission, SubmissionV1},
 };
 
 use super::commit::CommitProcessor;
@@ -96,14 +86,20 @@ impl<
         P: EvaluationClient,
     > Processor for InputProcessor<C, O, M, S, P>
 {
-    type Input = (Shard, Verified<Input>, PeerPublicKey, Multiaddr);
+    type Input = (Shard, Verified<Input>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let keypair = self.encoder_keypair.inner().copy();
         let result: ShardResult<()> = async {
-            let (shard, verified_input, peer, address) = msg.input;
-            let epoch = shard.epoch();
+            let (shard, verified_input) = msg.input;
+
+            // the add_external_stage function will fail if the encoder has already dispatched to input processing
+            // this stops redundant or conflicting messages from reaching the pipelines even on encoder restart
+            let _ = self
+                .store
+                .add_shard_stage_dispatch(&shard, ShardStage::Input)?;
+            let shard_digest = shard.digest()?;
             let metadata = verified_input.auth_token().metadata_commitment().metadata();
 
             if !cfg!(msim) {
@@ -111,7 +107,7 @@ impl<
                 let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
                     verified_input.tls_key().clone(),
                     verified_input.address().clone(),
-                    m,
+                    metadata.clone(),
                 ));
                 // TODO: Actually store input in fullnode for download
                 self.downloader
@@ -121,6 +117,7 @@ impl<
 
             let inference_input = InferenceInput::V1(InferenceInputV1::new(metadata.clone()));
 
+            // TODO: make this adjusted with size and coefficient configured by Parameters
             let inference_timeout = Duration::from_secs(1);
             let inference_output = self
                 .inference_client
@@ -133,6 +130,7 @@ impl<
                 inference_output.embeddings(),
                 inference_output.probe_set(),
             ));
+            // TODO: make this adjusted with size and coefficient configured by Parameters
             let evaluation_timeout = Duration::from_secs(1);
 
             let evaluation_output = self
@@ -149,38 +147,29 @@ impl<
             // store in datastore
             // use the digest of the reveal to create and sign a commit message
 
-            let embedding_metadata = match inference_output.embeddings() {
-                Metadata::V1(m) => m,
-            };
-
-            let tensors = DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                peer,
-                address,
-                embedding_metadata, // use the underlying MetadataV1 rather than wrapping in the Metadata enum
-            ));
-
-            let reveal = Reveal::V1(RevealV1::new(
-                verified_input.auth_token().clone(),
+            let submission = Submission::V1(SubmissionV1::new(
                 self.encoder_keypair.public(),
                 evaluation_output.score(),
+                evaluation_output.embedding_digest(),
                 inference_output.probe_set(),
-                tensors,
-                evaluation_output.summary_embedding(),
+                inference_output.embeddings(),
+                shard_digest,
             ));
 
-            let reveal_digest = Digest::new(&reveal).map_err(ShardError::DigestFailure)?;
-
-            let verified_reveal: Verified<Reveal> = Verified::from_trusted(reveal).unwrap();
-
-            self.store.add_reveal(&shard, &verified_reveal)?;
+            let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
+            let _ = self.store.add_submission(&shard, submission)?;
 
             let commit = Commit::V1(CommitV1::new(
                 verified_input.auth_token().clone(),
                 self.encoder_keypair.public(),
-                reveal_digest,
+                submission_digest,
             ));
 
             let verified_commit = Verified::from_trusted(commit).unwrap();
+
+            let _ = self
+                .store
+                .add_shard_stage_dispatch(&shard, ShardStage::Commit)?;
 
             self.commit_pipeline
                 .process(

@@ -21,10 +21,12 @@ pub struct Shard {
 impl Shard {
     pub fn new(
         quorum_threshold: CountUnit,
-        encoders: Vec<EncoderPublicKey>,
+        mut encoders: Vec<EncoderPublicKey>,
         seed: Digest<ShardEntropy>,
         epoch: Epoch,
     ) -> Self {
+        // ensure the same encoder order
+        encoders.sort();
         Self {
             quorum_threshold,
             encoders,

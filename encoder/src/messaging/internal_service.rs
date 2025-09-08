@@ -1,13 +1,12 @@
 use crate::{
     core::pipeline_dispatcher::InternalDispatcher,
-    datastore::Store,
     messaging::EncoderInternalNetworkService,
     types::{
         commit::{verify_commit, Commit, CommitAPI},
         commit_votes::{verify_commit_votes, CommitVotes, CommitVotesAPI},
         context::Context,
+        report_vote::{verify_report_vote, ReportVote, ReportVoteAPI},
         reveal::{verify_reveal, Reveal, RevealAPI},
-        score_vote::{verify_score_vote, ScoreVote, ScoreVoteAPI},
     },
 };
 use async_trait::async_trait;
@@ -25,21 +24,14 @@ use types::{shard::ShardAuthToken, shard_verifier::ShardVerifier};
 
 pub(crate) struct EncoderInternalService<D: InternalDispatcher> {
     context: Context,
-    store: Arc<dyn Store>,
     dispatcher: D,
     shard_verifier: Arc<ShardVerifier>,
 }
 
 impl<D: InternalDispatcher> EncoderInternalService<D> {
-    pub(crate) fn new(
-        context: Context,
-        store: Arc<dyn Store>,
-        dispatcher: D,
-        shard_verifier: Arc<ShardVerifier>,
-    ) -> Self {
+    pub(crate) fn new(context: Context, dispatcher: D, shard_verifier: Arc<ShardVerifier>) -> Self {
         Self {
             context,
-            store,
             dispatcher,
             shard_verifier,
         }
@@ -168,24 +160,25 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
         }
     }
 
-    async fn handle_send_score_vote(
+    async fn handle_send_report_vote(
         &self,
         peer: &EncoderPublicKey,
-        score_vote_bytes: Bytes,
+        report_vote_bytes: Bytes,
     ) -> ShardResult<()> {
         let result: ShardResult<()> = {
-            let score_vote: ScoreVote =
-                bcs::from_bytes(&score_vote_bytes).map_err(ShardError::MalformedType)?;
+            let report_vote: ReportVote =
+                bcs::from_bytes(&report_vote_bytes).map_err(ShardError::MalformedType)?;
 
-            let (shard, cancellation) = self.shard_verification(score_vote.auth_token(), peer)?;
+            let (shard, cancellation) = self.shard_verification(report_vote.auth_token(), peer)?;
 
-            let verified_score_vote = Verified::new(score_vote, score_vote_bytes, |score_vote| {
-                verify_score_vote(&score_vote, peer, &shard)
-            })
-            .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+            let verified_report_vote =
+                Verified::new(report_vote, report_vote_bytes, |report_vote| {
+                    verify_report_vote(&report_vote, peer, &shard)
+                })
+                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
             self.dispatcher
-                .dispatch_score_vote(shard, verified_score_vote, cancellation)
+                .dispatch_report_vote(shard, verified_report_vote, cancellation)
                 .await
         };
         match result {

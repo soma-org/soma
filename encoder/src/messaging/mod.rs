@@ -7,11 +7,10 @@ pub mod tonic;
 
 use crate::types::commit::Commit;
 use crate::types::commit_votes::CommitVotes;
+use crate::types::report_vote::ReportVote;
 use crate::types::reveal::Reveal;
-use crate::types::score_vote::ScoreVote;
 use async_trait::async_trait;
 use bytes::Bytes;
-use fastcrypto::bls12381::min_sig;
 use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
 use types::error::ShardResult;
@@ -19,7 +18,7 @@ use types::multiaddr::Multiaddr;
 use types::parameters::Parameters;
 use types::shard::Input;
 use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey};
-use types::shard_crypto::{signed::Signed, verified::Verified};
+use types::shard_crypto::verified::Verified;
 use types::shard_networking::EncoderNetworkingInfo;
 
 /// Default message timeout for each request.
@@ -49,10 +48,10 @@ pub(crate) trait EncoderInternalNetworkClient: Send + Sync + Sized + 'static {
         timeout: Duration,
     ) -> ShardResult<()>;
 
-    async fn send_score_vote(
+    async fn send_report_vote(
         &self,
         encoder: &EncoderPublicKey,
-        scores: &Verified<ScoreVote>,
+        scores: &Verified<ReportVote>,
         timeout: Duration,
     ) -> ShardResult<()>;
 }
@@ -84,10 +83,10 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
         encoder: &EncoderPublicKey,
         reveal_bytes: Bytes,
     ) -> ShardResult<()>;
-    async fn handle_send_score_vote(
+    async fn handle_send_report_vote(
         &self,
         encoder: &EncoderPublicKey,
-        score_vote_bytes: Bytes,
+        report_vote_bytes: Bytes,
     ) -> ShardResult<()>;
 }
 

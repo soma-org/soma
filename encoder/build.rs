@@ -53,10 +53,10 @@ fn build_tonic_services(out_dir: &Path) {
         )
         .method(
             tonic_build::manual::Method::builder()
-                .name("send_score_vote")
-                .route_name("SendScoreVote")
-                .input_type("crate::messaging::tonic::internal::SendScoreVoteRequest")
-                .output_type("crate::messaging::tonic::internal::SendScoreVoteResponse")
+                .name("send_report_vote")
+                .route_name("SendReportVote")
+                .input_type("crate::messaging::tonic::internal::SendReportVoteRequest")
+                .output_type("crate::messaging::tonic::internal::SendReportVoteResponse")
                 .codec_path(codec_path)
                 .build(),
         )

@@ -1,45 +1,45 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::{
-    // actors::workers::storage::StorageProcessor,
     core::internal_broadcaster::Broadcaster,
-    datastore::Store,
+    datastore::{ShardStage, Store},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
-        reveal::{verify_reveal_score_matches, Reveal, RevealAPI},
-        score_vote::{ScoreVote, ScoreVoteV1},
+        context::Context,
+        report_vote::{ReportVote, ReportVoteV1},
     },
 };
 use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
-use fastcrypto::{bls12381::min_sig, traits::KeyPair};
+use fastcrypto::traits::KeyPair;
 use objects::{
     networking::{downloader::Downloader, ObjectNetworkClient},
     storage::ObjectStorage,
 };
-use quick_cache::sync::{Cache, GuardResult};
 use tokio_util::sync::CancellationToken;
+use tracing::debug;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
     evaluation::{
-        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, EvaluationScoreAPI, ProbeSetAPI,
-        ProbeWeightAPI,
+        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, ProbeSetAPI, ProbeWeightAPI,
+        ScoreAPI,
     },
-    metadata::{DownloadableMetadataAPI, Metadata},
+    metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata},
+    report::{Report, ReportV1},
     shard::Shard,
     shard_crypto::{
-        digest::Digest, keys::EncoderKeyPair, scope::Scope, signed::Signed, verified::Verified,
+        digest::Digest,
+        keys::{EncoderKeyPair, EncoderPublicKey},
+        scope::Scope,
+        signed::Signed,
+        verified::Verified,
     },
+    submission::SubmissionAPI,
 };
-use types::{
-    score_set::{ScoreSet, ScoreSetV1},
-    shard::ShardAuthToken,
-};
+use types::{shard::ShardAuthToken, submission::Submission};
 
-use super::score_vote::ScoreVoteProcessor;
-
-// use super::broadcast::{BroadcastAction, BroadcastProcessor};
+use super::report_vote::ReportVoteProcessor;
 
 pub(crate) struct EvaluationProcessor<
     O: ObjectNetworkClient,
@@ -52,9 +52,9 @@ pub(crate) struct EvaluationProcessor<
     broadcaster: Arc<Broadcaster<E>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: Arc<S>,
-    score_pipeline: ActorHandle<ScoreVoteProcessor<E>>,
+    report_vote_pipeline: ActorHandle<ReportVoteProcessor<E>>,
     evaluation_client: Arc<P>,
-    recv_dedup: Cache<Digest<Shard>, ()>,
+    context: Context,
 }
 
 impl<
@@ -70,9 +70,9 @@ impl<
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: Arc<S>,
-        score_pipeline: ActorHandle<ScoreVoteProcessor<E>>,
+        report_vote_pipeline: ActorHandle<ReportVoteProcessor<E>>,
         evaluation_client: Arc<P>,
-        recv_cache_capacity: usize,
+        context: Context,
     ) -> Self {
         Self {
             store,
@@ -80,9 +80,9 @@ impl<
             broadcaster,
             encoder_keypair,
             storage,
-            score_pipeline,
+            report_vote_pipeline,
             evaluation_client,
-            recv_dedup: Cache::new(recv_cache_capacity),
+            context,
         }
     }
 }
@@ -101,58 +101,72 @@ impl<
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             let (auth_token, shard) = msg.input;
-            let shard_digest = shard.digest()?;
-            match self
-                .recv_dedup
-                .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
-            {
-                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
-                GuardResult::Guard(placeholder) => {
-                    placeholder.insert(());
-                }
-                GuardResult::Timeout => (),
-            }
 
-            let mut reveals = self.store.get_reveals(&shard)?;
-            reveals.sort_by(|a, b| {
+            let all_submissions = self.store.get_all_submissions(&shard)?;
+            let all_accepted_submissions = self.store.get_all_accepted_submissions(&shard)?;
+
+            let accepted_lookup: HashMap<EncoderPublicKey, Digest<Submission>> =
+                all_accepted_submissions
+                    .clone()
+                    .into_iter()
+                    .map(|(encoder, digest)| (encoder, digest))
+                    .collect();
+
+            let mut valid_submissions: Vec<Submission> = all_submissions
+                .into_iter()
+                .filter_map(|(submission, _instant)| {
+                    accepted_lookup
+                        .get(submission.encoder())
+                        .filter(|accepted_digest| {
+                            **accepted_digest == Digest::new(&submission).unwrap()
+                        })
+                        .map(|_| submission)
+                })
+                .collect();
+
+            // TODO: ANY ACCEPTED COMMITS THAT DO NOT REVEAL SHOULD BE TALLIED
+
+            valid_submissions.sort_by(|a, b| {
                 a.score()
                     .value()
                     .partial_cmp(&b.score().value())
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            let best_reveal = self
-                .process_reveals(
-                    reveals,
+            let best_score = self
+                .process_submissions(
+                    valid_submissions,
                     auth_token.metadata_commitment().metadata(),
+                    &self.context,
                     msg.cancellation.clone(),
                 )
                 .await?;
 
-            let score_set = ScoreSet::V1(ScoreSetV1::new(
-                best_reveal.author().clone(),
-                best_reveal.score().clone(),
-                best_reveal.summary_embedding(),
-                best_reveal.probe_set().clone(),
-                shard.digest()?,
-            ));
+            debug!("BEST SCORE: {:?}", best_score);
+
+            let report = Report::V1(ReportV1::new(best_score, all_accepted_submissions));
 
             let inner_keypair = self.encoder_keypair.inner().copy();
 
-            // Sign score set
-            let signed_score_set =
-                Signed::new(score_set, Scope::ScoreSet, &inner_keypair.copy().private()).unwrap();
+            let signed_report = Signed::new(
+                report,
+                Scope::ShardFinality,
+                &inner_keypair.copy().private(),
+            )
+            .unwrap();
 
-            // Create scores
-            let score_vote = ScoreVote::V1(ScoreVoteV1::new(
+            let report_vote = ReportVote::V1(ReportVoteV1::new(
                 auth_token,
                 self.encoder_keypair.public(),
-                signed_score_set,
+                signed_report,
             ));
 
-            let verified = Verified::from_trusted(score_vote).unwrap();
+            let verified = Verified::from_trusted(report_vote).unwrap();
+            let _ = self
+                .store
+                .add_shard_stage_dispatch(&shard, ShardStage::ReportVote)?;
 
-            self.score_pipeline
+            self.report_vote_pipeline
                 .process((shard.clone(), verified.clone()), msg.cancellation.clone())
                 .await?;
 
@@ -163,7 +177,7 @@ impl<
                     shard.encoders(),
                     |client, peer, verified_type| async move {
                         client
-                            .send_score_vote(&peer, &verified_type, MESSAGE_TIMEOUT)
+                            .send_report_vote(&peer, &verified_type, MESSAGE_TIMEOUT)
                             .await?;
                         Ok(())
                     },
@@ -185,51 +199,75 @@ impl<
         P: EvaluationClient,
     > EvaluationProcessor<O, E, S, P>
 {
-    async fn process_reveals(
+    async fn process_submissions(
         &self,
-        reveals: Vec<Reveal>,
+        submissions: Vec<Submission>,
         data_metadata: Metadata,
+        context: &Context,
         cancellation: CancellationToken,
-    ) -> ShardResult<Reveal> {
-        for reveal in reveals {
-            // TODO: skip early if your own representations
-            // download the representations
-            // TODO: actually store things in object storage
-            if !cfg!(msim) {
-                self.downloader
-                    .process(reveal.tensors().clone(), cancellation.clone())
-                    .await?;
-
-                for probe in reveal.probe_set().probe_weights() {
-                    // download probes
-                    self.downloader
-                        .process(probe.downloadable_metadata(), cancellation.clone())
-                        .await?;
+    ) -> ShardResult<Submission> {
+        for submission in submissions {
+            let result: ShardResult<()> = {
+                if submission.encoder().inner() == self.context.own_encoder_key().inner() {
+                    // skip early if your own representations
+                    return Ok(submission);
                 }
-            }
+                // TODO: actually store things in object storage
+                if !cfg!(msim) {
+                    let (peer, address) = context
+                        .object_server(submission.encoder())
+                        .ok_or(ShardError::MissingData)?;
 
-            let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
-                data_metadata.clone(),
-                reveal.tensors().metadata(),
-                reveal.probe_set().clone(),
-            ));
-            let evaluation_timeout = Duration::from_secs(1);
+                    let downloadable_metadata = DownloadableMetadata::V1(
+                        DownloadableMetadataV1::new(peer, address, submission.metadata().clone()),
+                    );
+                    self.downloader
+                        .process(downloadable_metadata, cancellation.clone())
+                        .await?;
 
-            // pass into the evaluation step
-            let evaluation_output = self
-                .evaluation_client
-                .evaluation(evaluation_input, evaluation_timeout)
-                .await
-                .map_err(ShardError::EvaluationError)?;
+                    for probe in submission.probe_set().probe_weights() {
+                        let (peer, address) = context
+                            .object_server(probe.encoder())
+                            .ok_or(ShardError::MissingData)?;
+                        let downloadable_metadata = DownloadableMetadata::V1(
+                            DownloadableMetadataV1::new(peer, address, probe.metadata().clone()),
+                        );
+                        self.downloader
+                            .process(downloadable_metadata, cancellation.clone())
+                            .await?;
+                    }
+                    // TODO: IF DOWNLOADING FAILS, TALLY
+                }
 
-            if verify_reveal_score_matches(
-                evaluation_output.score(),
-                evaluation_output.summary_embedding(),
-                &reveal,
-            )
-            .is_ok()
-            {
-                return Ok(reveal); // Short-circuit and return the first valid reveal
+                let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
+                    data_metadata.clone(),
+                    submission.metadata().clone(),
+                    submission.probe_set().clone(),
+                ));
+                let evaluation_timeout = Duration::from_secs(1);
+
+                // pass into the evaluation step
+                let evaluation_output = self
+                    .evaluation_client
+                    .evaluation(evaluation_input, evaluation_timeout)
+                    .await
+                    .map_err(ShardError::EvaluationError)?;
+
+                // TODO: this verification should be handled very differently allowing for an epsilon of error due to differences in
+                if true {
+                    // TODO: IF VERIFICATION FAILS, TALLY
+                    // floating point math on various accelerators
+                    return Ok(submission); // Short-circuit and return the first valid reveal
+                } else {
+                    Err(ShardError::FailedTypeVerification(
+                        "reveal scores did not match".to_string(),
+                    ))
+                }
+            };
+
+            match result {
+                Ok(_) => return Ok(submission),
+                Err(_) => continue,
             }
         }
 

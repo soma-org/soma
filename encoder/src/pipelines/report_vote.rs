@@ -1,60 +1,49 @@
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{future::Future, ops::Deref, sync::Arc, time::Duration};
 
 use crate::{
     core::internal_broadcaster::Broadcaster,
-    datastore::Store,
-    messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::score_vote::{ScoreVote, ScoreVoteAPI},
+    datastore::{ShardStage, Store},
+    messaging::EncoderInternalNetworkClient,
+    types::report_vote::{ReportVote, ReportVoteAPI},
 };
 use async_trait::async_trait;
-use fastcrypto::{bls12381::min_sig, traits::KeyPair};
-use quick_cache::sync::{Cache, GuardResult};
-use types::evaluation::EvaluationScore;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
+    report::ReportAPI,
     shard::Shard,
     shard_crypto::{
-        digest::Digest,
         keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
-        scope::Scope,
-        signed::Signed,
         verified::Verified,
     },
+    submission::SubmissionAPI,
 };
 
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
-use types::score_set::ScoreSetAPI;
 
 use super::clean_up::CleanUpProcessor;
 
-pub(crate) struct ScoreVoteProcessor<E: EncoderInternalNetworkClient> {
+pub(crate) struct ReportVoteProcessor<E: EncoderInternalNetworkClient> {
     store: Arc<dyn Store>,
     broadcaster: Arc<Broadcaster<E>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     clean_up_pipeline: ActorHandle<CleanUpProcessor>,
-    recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
-    send_dedup: Cache<Digest<Shard>, ()>,
 }
 
-impl<E: EncoderInternalNetworkClient> ScoreVoteProcessor<E> {
+impl<E: EncoderInternalNetworkClient> ReportVoteProcessor<E> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         clean_up_pipeline: ActorHandle<CleanUpProcessor>,
-        recv_cache_capacity: usize,
-        send_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
             broadcaster,
             encoder_keypair,
             clean_up_pipeline,
-            recv_dedup: Cache::new(recv_cache_capacity),
-            send_dedup: Cache::new(send_cache_capacity),
         }
     }
     pub async fn start_timer<F, Fut>(
@@ -80,84 +69,63 @@ impl<E: EncoderInternalNetworkClient> ScoreVoteProcessor<E> {
 }
 
 #[async_trait]
-impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
-    type Input = (Shard, Verified<ScoreVote>);
+impl<E: EncoderInternalNetworkClient> Processor for ReportVoteProcessor<E> {
+    type Input = (Shard, Verified<ReportVote>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
-            let (shard, score_vote) = msg.input;
-            let shard_digest = shard.digest()?;
+            let (shard, report_vote) = msg.input;
 
-            match self.recv_dedup.get_value_or_guard(
-                &(shard_digest, score_vote.author().clone()),
-                Some(Duration::from_secs(5)),
-            ) {
-                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
-                GuardResult::Guard(placeholder) => {
-                    placeholder.insert(());
-                }
-                GuardResult::Timeout => (),
-            }
-            self.store.add_score_vote(&shard, &score_vote)?;
+            let _ = self.store.add_shard_stage_message(
+                &shard,
+                ShardStage::ReportVote,
+                report_vote.author(),
+            )?;
+            self.store.add_report_vote(&shard, &report_vote)?;
             info!(
                 "Starting track_valid_scores for scorer: {:?}",
-                score_vote.author()
+                report_vote.author()
             );
 
-            let all_scores = self.store.get_score_vote(&shard)?;
+            let all_scores = self.store.get_all_report_votes(&shard)?;
             debug!(
                 "Current score count: {}, quorum_threshold: {}",
                 all_scores.len(),
                 shard.quorum_threshold()
             );
 
-            let matching_score_votes: Vec<ScoreVote> = all_scores
+            debug!("{:?}", all_scores);
+
+            let matching_report_votes: Vec<ReportVote> = all_scores
                 .iter()
                 .filter(|sv| {
-                    score_vote.signed_score_set().winner() == sv.signed_score_set().winner()
+                    report_vote.signed_report().deref() == sv.signed_report().deref()
                 })
                 .cloned()
                 .collect();
 
             info!(
                 "Found matching scores: {}, quorum_threshold: {}",
-                matching_score_votes.len(),
+                matching_report_votes.len(),
                 shard.quorum_threshold()
             );
 
-            info!(
-                "Matching scores: {:?}",
-                matching_score_votes
-                    .iter()
-                    .map(|s| s.clone().signed_score_set().into_inner().score().clone())
-                    .collect::<Vec<EvaluationScore>>()
-            );
 
-            if matching_score_votes.len() >= shard.quorum_threshold() as usize {
-                match self
-                    .send_dedup
-                    .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
-                {
-                    GuardResult::Value(_) => return Ok(()),
-                    GuardResult::Guard(placeholder) => {
-                        // TODO: replace this for all inserts? the error should be propogated or unwrapped
-                        placeholder.insert(()).unwrap();
-                    }
-                    GuardResult::Timeout => (),
-                };
+            if matching_report_votes.len() >= shard.quorum_threshold() as usize {
+                let _ = self.store.add_shard_stage_dispatch(&shard, ShardStage::Finalize)?;
                 info!("QUORUM OF MATCHING SCORES - Aggregating signatures");
 
                 let (signatures, evaluators): (Vec<EncoderSignature>, Vec<EncoderPublicKey>) = {
                     let mut sigs = Vec::new();
                     let mut evaluators = Vec::new();
-                    for score_vote in matching_score_votes.iter() {
+                    for report_vote in matching_report_votes.iter() {
                         let sig = EncoderSignature::from_bytes(
-                            &score_vote.signed_score_set().raw_signature(),
+                            &report_vote.signed_report().raw_signature(),
                         )
                         .map_err(ShardError::SignatureAggregationFailure)?;
                         sigs.push(sig);
-                        evaluators.push(score_vote.author().clone());
+                        evaluators.push(report_vote.author().clone());
                     }
                     (sigs, evaluators)
                 };
@@ -184,7 +152,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
                     agg
                 );
 
-                if score_vote.signed_score_set().winner() == &self.encoder_keypair.public() {
+                if report_vote.signed_report().winning_submission().encoder() == &self.encoder_keypair.public() {
                     // call on-chain
                     info!("MOCK SUBMIT ON CHAIN");
                 }
@@ -196,7 +164,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
                 debug!(
                     "Not enough matching scores yet - waiting for more scores. Matching scores: {}, \
                     quorum_threshold: {}",
-                    matching_score_votes.len(),
+                    matching_report_votes.len(),
                     shard.quorum_threshold()
                 );
             }
@@ -205,7 +173,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ScoreVoteProcessor<E> {
             Ok(())
         }
         .await;
-        msg.sender.send(result);
+        let _ = msg.sender.send(result);
     }
 
     fn shutdown(&mut self) {}

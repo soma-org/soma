@@ -11,7 +11,7 @@ use types::{
 use types::error::{ShardError, ShardResult};
 
 use types::committee::{Epoch, NetworkingCommittee};
-use types::encoder_committee::{Encoder, EncoderCommittee, EncoderIndex};
+use types::encoder_committee::{EncoderCommittee, EncoderNetworkMetadata};
 
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -56,6 +56,10 @@ impl Context {
         }
     }
 
+    pub fn object_server(&self, encoder: &EncoderPublicKey) -> Option<(PeerPublicKey, Multiaddr)> {
+        self.inner.load().object_server(encoder)
+    }
+
     // TODO add the top level handlers here
 }
 
@@ -66,7 +70,6 @@ pub struct InnerContext {
     committees: [Committees; 2],
     pub current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
-    pub encoder_object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
 }
 
 impl InnerContext {
@@ -74,12 +77,10 @@ impl InnerContext {
         committees: [Committees; 2],
         current_epoch: Epoch,
         own_encoder_public_key: EncoderPublicKey,
-        encoder_object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
     ) -> Self {
         Self {
             current_epoch,
             own_encoder_public_key,
-            encoder_object_servers,
             committees,
         }
     }
@@ -105,9 +106,16 @@ impl InnerContext {
         &self,
         encoder: &EncoderPublicKey,
     ) -> Option<(PeerPublicKey, Multiaddr)> {
-        self.encoder_object_servers
+        self.current_committees()
+            .encoder_committee
+            .network_metadata
             .get(encoder)
-            .map(|(peer_key, address)| (peer_key.clone(), address.clone()))
+            .map(|networking_details| {
+                (
+                    PeerPublicKey::new(networking_details.network_key.clone().into_inner()),
+                    networking_details.object_server_address.clone(),
+                )
+            })
     }
 }
 

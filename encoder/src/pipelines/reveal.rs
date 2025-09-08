@@ -1,6 +1,6 @@
 use crate::{
     core::internal_broadcaster::Broadcaster,
-    datastore::Store,
+    datastore::{ShardStage, Store},
     messaging::EncoderInternalNetworkClient,
     types::reveal::{Reveal, RevealAPI},
 };
@@ -8,19 +8,19 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use evaluation::messaging::EvaluationClient;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
-use quick_cache::sync::{Cache, GuardResult};
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
 use tracing::{debug, info};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
-    error::{ShardError, ShardResult},
+    error::ShardResult,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
         keys::{EncoderKeyPair, EncoderPublicKey},
         verified::Verified,
     },
+    submission::{Submission, SubmissionAPI},
 };
 
 use super::evaluation::EvaluationProcessor;
@@ -36,8 +36,6 @@ pub(crate) struct RevealProcessor<
     oneshots: Arc<DashMap<Digest<Shard>, oneshot::Sender<()>>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     evaluation_pipeline: ActorHandle<EvaluationProcessor<O, E, S, P>>,
-    recv_dedup: Cache<(Digest<Shard>, EncoderPublicKey), ()>,
-    send_dedup: Cache<Digest<Shard>, ()>,
 }
 
 impl<
@@ -52,8 +50,6 @@ impl<
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         evaluation_pipeline: ActorHandle<EvaluationProcessor<O, E, S, P>>,
-        recv_cache_capacity: usize,
-        send_cache_capacity: usize,
     ) -> Self {
         Self {
             store,
@@ -61,8 +57,6 @@ impl<
             oneshots: Arc::new(DashMap::new()),
             encoder_keypair,
             evaluation_pipeline,
-            recv_dedup: Cache::new(recv_cache_capacity),
-            send_dedup: Cache::new(send_cache_capacity),
         }
     }
     pub async fn start_timer<F, Fut>(
@@ -105,30 +99,40 @@ impl<
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<()> = async {
             let (shard, verified_reveal) = msg.input;
-            let shard_digest = shard.digest()?;
+            let _ = self.store.add_shard_stage_message(
+                &shard,
+                ShardStage::Reveal,
+                verified_reveal.author(),
+            )?;
 
-            match self.recv_dedup.get_value_or_guard(
-                &(shard_digest, verified_reveal.author().clone()),
-                Some(Duration::from_secs(5)),
-            ) {
-                GuardResult::Value(_) => return Err(ShardError::RecvDuplicate),
-                GuardResult::Guard(placeholder) => {
-                    placeholder.insert(());
-                }
-                GuardResult::Timeout => (),
-            }
-
-            self.store.add_reveal(&shard, &verified_reveal)?;
-
-            info!(
-                "Starting track_valid_reveal for revealer: {:?}",
-                verified_reveal.author()
-            );
+            let _ = self
+                .store
+                .add_submission(&shard, verified_reveal.submission().clone())?;
 
             let quorum_threshold = shard.quorum_threshold() as usize;
-            let max_size = shard.size();
-            let count = self.store.count_reveal(&shard)?;
             let shard_digest = shard.digest()?;
+
+            let all_submissions = self.store.get_all_submissions(&shard)?;
+            let all_accepted_submissions = self.store.get_all_accepted_submissions(&shard)?;
+
+            let max_size = all_accepted_submissions.len();
+
+            let accepted_lookup: HashMap<EncoderPublicKey, Digest<Submission>> =
+                all_accepted_submissions
+                    .into_iter()
+                    .map(|(encoder, digest)| (encoder, digest))
+                    .collect();
+
+            let count = all_submissions
+                .iter()
+                .filter(|(submission, _instant)| {
+                    accepted_lookup
+                        .get(submission.encoder())
+                        .map_or(false, |accepted_digest| {
+                            accepted_digest == &Digest::new(submission).unwrap()
+                        })
+                })
+                .count();
 
             info!(
             "Reveal count statistics - current_reveal_count: {}, quorum_threshold: {}, max_size: \
@@ -137,28 +141,13 @@ impl<
         );
 
             match count {
-                1 => {
-                    info!("First reveal received - recording timestamp");
-                    self.store.add_first_reveal_time(&shard)?;
-                }
                 count if count == quorum_threshold => {
-                    match self
-                        .send_dedup
-                        .get_value_or_guard(&(shard_digest), Some(Duration::from_secs(5)))
-                    {
-                        GuardResult::Value(_) => return Ok(()),
-                        GuardResult::Guard(placeholder) => {
-                            placeholder.insert(());
-                        }
-                        GuardResult::Timeout => (),
-                    };
-                    let mut duration = self
+                    let _ = self
                         .store
-                        .get_first_reveal_time(&shard)
-                        .map_or(Duration::from_secs(60), |first_reveal_time| {
-                            first_reveal_time.elapsed()
-                        });
-                    duration = std::cmp::max(duration, Duration::from_secs(5));
+                        .add_shard_stage_dispatch(&shard, ShardStage::Evaluation)?;
+                    let earliest = all_submissions.iter().map(|(_, t)| t).min().unwrap();
+
+                    let duration = std::cmp::max(earliest.elapsed(), Duration::from_secs(5));
 
                     info!(
                     "Quorum of reveals reached - starting vote timer. Duration since first (ms): \
@@ -166,9 +155,6 @@ impl<
                     duration.as_millis()
                     );
 
-                    let broadcaster = self.broadcaster.clone();
-                    let store = self.store.clone();
-                    let encoder_keypair = self.encoder_keypair.clone();
                     let evaluation_pipeline = self.evaluation_pipeline.clone();
                     debug!("Broadcasting reveal vote after timer");
                     let input = (verified_reveal.auth_token().to_owned(), shard.clone());

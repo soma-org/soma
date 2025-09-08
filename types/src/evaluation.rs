@@ -1,6 +1,6 @@
 use crate::{
-    metadata::{DownloadableMetadata, Metadata},
-    shard_crypto::keys::EncoderPublicKey,
+    metadata::Metadata,
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -49,8 +49,8 @@ impl EvaluationInputAPI for EvaluationInputV1 {
 
 #[enum_dispatch]
 pub trait EvaluationOutputAPI {
-    fn score(&self) -> EvaluationScore;
-    fn summary_embedding(&self) -> SummaryEmbedding;
+    fn score(&self) -> Score;
+    fn embedding_digest(&self) -> EmbeddingDigest;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -61,93 +61,71 @@ pub enum EvaluationOutput {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct EvaluationOutputV1 {
-    score: EvaluationScoreV1,
-    summary_embedding: SummaryEmbeddingV1,
+    score: ScoreV1,
+    embedding_digest: EmbeddingDigest,
 }
 
 impl EvaluationOutputV1 {
-    pub fn new(score: EvaluationScoreV1, summary_embedding: SummaryEmbeddingV1) -> Self {
+    pub fn new(score: ScoreV1, embedding_digest: EmbeddingDigest) -> Self {
         Self {
             score,
-            summary_embedding,
+            embedding_digest,
         }
     }
 }
 
 impl EvaluationOutputAPI for EvaluationOutputV1 {
-    fn score(&self) -> EvaluationScore {
-        EvaluationScore::V1(self.score.clone())
+    fn score(&self) -> Score {
+        Score::V1(self.score.clone())
     }
-    fn summary_embedding(&self) -> SummaryEmbedding {
-        SummaryEmbedding::V1(self.summary_embedding.clone())
+    fn embedding_digest(&self) -> EmbeddingDigest {
+        self.embedding_digest.clone()
     }
 }
 
 #[enum_dispatch]
-pub trait EvaluationScoreAPI {
+pub trait ScoreAPI {
     fn value(&self) -> u64;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[enum_dispatch(EvaluationScoreAPI)]
-pub enum EvaluationScore {
-    V1(EvaluationScoreV1),
+// TODO: convert this to use fixed point math directly!
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[enum_dispatch(ScoreAPI)]
+pub enum Score {
+    V1(ScoreV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd)]
-pub struct EvaluationScoreV1 {
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
+pub struct ScoreV1 {
     value: u64,
 }
-impl EvaluationScoreV1 {
+impl ScoreV1 {
     pub fn new(value: u64) -> Self {
         Self { value }
     }
 }
 
-impl EvaluationScoreAPI for EvaluationScoreV1 {
+impl ScoreAPI for ScoreV1 {
     fn value(&self) -> u64 {
         self.value
     }
 }
 
-#[enum_dispatch]
-pub trait SummaryEmbeddingAPI {
-    fn value(&self) -> Vec<u64>;
-}
+// TODO: change this to actually be accurate
+pub type EmbeddingDigest = Digest<Vec<u8>>;
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[enum_dispatch(SummaryEmbeddingAPI)]
-pub enum SummaryEmbedding {
-    V1(SummaryEmbeddingV1),
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd)]
-pub struct SummaryEmbeddingV1 {
-    value: Vec<u64>,
-}
-impl SummaryEmbeddingV1 {
-    pub fn new(value: Vec<u64>) -> Self {
-        Self { value }
-    }
-}
-
-impl SummaryEmbeddingAPI for SummaryEmbeddingV1 {
-    fn value(&self) -> Vec<u64> {
-        self.value.clone()
-    }
-}
 #[enum_dispatch]
 pub trait ProbeWeightAPI {
     fn encoder(&self) -> &EncoderPublicKey;
     fn weight(&self) -> u64;
-    fn downloadable_metadata(&self) -> DownloadableMetadata;
+    fn metadata(&self) -> Metadata;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ProbeWeightV1 {
     encoder: EncoderPublicKey,
     weight: u64,
-    downloadable_metadata: DownloadableMetadata,
+    metadata: Metadata,
 }
 
 impl ProbeWeightAPI for ProbeWeightV1 {
@@ -159,8 +137,8 @@ impl ProbeWeightAPI for ProbeWeightV1 {
         self.weight
     }
 
-    fn downloadable_metadata(&self) -> DownloadableMetadata {
-        self.downloadable_metadata.clone()
+    fn metadata(&self) -> Metadata {
+        self.metadata.clone()
     }
 }
 
@@ -175,13 +153,13 @@ pub trait ProbeSetAPI {
     fn probe_weights(&self) -> Vec<ProbeWeight>;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(ProbeSetAPI)]
 pub enum ProbeSet {
     V1(ProbeSetV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ProbeSetV1 {
     probe_weights: Vec<ProbeWeightV1>,
 }

@@ -2,37 +2,36 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use types::shard::Shard;
 use types::shard::ShardAuthToken;
+use types::submission::Submission;
 use types::{
     error::{SharedError, SharedResult},
-    shard_crypto::{digest::Digest, keys::EncoderPublicKey, signed::Signed},
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
-
-use super::reveal::Reveal;
 
 #[enum_dispatch]
 pub(crate) trait CommitAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
-    fn reveal_digest(&self) -> &Digest<Reveal>;
+    fn submission_digest(&self) -> &Digest<Submission>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct CommitV1 {
     auth_token: ShardAuthToken,
     author: EncoderPublicKey,
-    reveal_digest: Digest<Reveal>,
+    submission_digest: Digest<Submission>,
 }
 
 impl CommitV1 {
     pub(crate) fn new(
         auth_token: ShardAuthToken,
         author: EncoderPublicKey,
-        reveal_digest: Digest<Reveal>,
+        submission_digest: Digest<Submission>,
     ) -> Self {
         Self {
             auth_token,
             author,
-            reveal_digest,
+            submission_digest,
         }
     }
 }
@@ -44,8 +43,8 @@ impl CommitAPI for CommitV1 {
     fn author(&self) -> &EncoderPublicKey {
         &self.author
     }
-    fn reveal_digest(&self) -> &Digest<Reveal> {
-        &self.reveal_digest
+    fn submission_digest(&self) -> &Digest<Submission> {
+        &self.submission_digest
     }
 }
 

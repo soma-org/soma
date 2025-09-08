@@ -1,17 +1,14 @@
-use std::collections::HashSet;
-
 use enum_dispatch::enum_dispatch;
-use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use types::{
-    error::{SharedError, SharedResult},
-    shard_crypto::{digest::Digest, keys::EncoderPublicKey, scope::Scope, signed::Signed},
-};
-
+use std::collections::HashSet;
 use types::shard::Shard;
 use types::shard::ShardAuthToken;
+use types::{
+    error::{SharedError, SharedResult},
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
+    submission::Submission,
+};
 
-use super::reveal::Reveal;
 // reject votes are implicit
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[enum_dispatch(CommitVotesAPI)]
@@ -23,7 +20,7 @@ pub(crate) enum CommitVotes {
 pub(crate) trait CommitVotesAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
-    fn accepts(&self) -> &[(EncoderPublicKey, Digest<Reveal>)];
+    fn accepts(&self) -> &[(EncoderPublicKey, Digest<Submission>)];
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -31,14 +28,14 @@ pub(crate) struct CommitVotesV1 {
     /// stateless auth + stops replay attacks
     auth_token: ShardAuthToken,
     author: EncoderPublicKey,
-    accepts: Vec<(EncoderPublicKey, Digest<Reveal>)>,
+    accepts: Vec<(EncoderPublicKey, Digest<Submission>)>,
 }
 
 impl CommitVotesV1 {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
         author: EncoderPublicKey,
-        accepts: Vec<(EncoderPublicKey, Digest<Reveal>)>,
+        accepts: Vec<(EncoderPublicKey, Digest<Submission>)>,
     ) -> Self {
         Self {
             auth_token,
@@ -55,7 +52,7 @@ impl CommitVotesAPI for CommitVotesV1 {
     fn author(&self) -> &EncoderPublicKey {
         &self.author
     }
-    fn accepts(&self) -> &[(EncoderPublicKey, Digest<Reveal>)] {
+    fn accepts(&self) -> &[(EncoderPublicKey, Digest<Submission>)] {
         &self.accepts
     }
 }

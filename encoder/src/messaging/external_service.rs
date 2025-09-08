@@ -66,7 +66,11 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
 }
 #[async_trait]
 impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
-    async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()> {
+    async fn handle_send_input(
+        &self,
+        _peer: &PeerPublicKey,
+        input_bytes: Bytes,
+    ) -> ShardResult<()> {
         let result: ShardResult<()> = {
             let input: Input = bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
 
@@ -75,23 +79,10 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
             let verified_input = Verified::new(input, input_bytes, |i| verify_input(&i, &shard))
                 .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
-            let own_encoder_key = &self.context.own_encoder_key();
-
-            // TODO: this is clunky come back and fix perhaps just initializing the input pipeline with its own object peer and address?
-            if let Some((own_object_peer, own_object_address)) =
-                self.context.inner().object_server(own_encoder_key)
-            {
-                let _ = self
-                    .dispatcher
-                    .dispatch_input(
-                        shard,
-                        verified_input,
-                        own_object_peer,
-                        own_object_address,
-                        cancellation,
-                    )
-                    .await?;
-            };
+            let _ = self
+                .dispatcher
+                .dispatch_input(shard, verified_input, cancellation)
+                .await?;
             Ok(())
         };
 

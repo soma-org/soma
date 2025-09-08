@@ -69,11 +69,11 @@ pub trait DownloadableMetadataAPI {
 pub struct DownloadableMetadataV1 {
     peer: PeerPublicKey,
     address: Multiaddr,
-    metadata: MetadataV1,
+    metadata: Metadata,
 }
 
 impl DownloadableMetadataV1 {
-    pub fn new(peer: PeerPublicKey, address: Multiaddr, metadata: MetadataV1) -> Self {
+    pub fn new(peer: PeerPublicKey, address: Multiaddr, metadata: Metadata) -> Self {
         Self {
             peer,
             address,
@@ -90,7 +90,7 @@ impl DownloadableMetadataAPI for DownloadableMetadataV1 {
         self.address.clone()
     }
     fn metadata(&self) -> Metadata {
-        Metadata::V1(self.metadata.clone())
+        self.metadata.clone()
     }
 }
 

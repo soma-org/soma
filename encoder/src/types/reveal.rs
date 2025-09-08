@@ -1,9 +1,9 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use types::evaluation::{EvaluationScore, ProbeSet, SummaryEmbedding};
+use types::submission::{Submission, SubmissionAPI};
 use types::{
     error::{SharedError, SharedResult},
-    metadata::{verify_metadata, DownloadableMetadata, DownloadableMetadataAPI},
+    metadata::verify_metadata,
     shard_crypto::keys::EncoderPublicKey,
 };
 
@@ -23,38 +23,26 @@ pub enum Reveal {
 pub(crate) trait RevealAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
-    fn score(&self) -> &EvaluationScore;
-    fn probe_set(&self) -> &ProbeSet;
-    fn tensors(&self) -> &DownloadableMetadata;
-    fn summary_embedding(&self) -> SummaryEmbedding;
+    fn submission(&self) -> &Submission;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct RevealV1 {
     auth_token: ShardAuthToken,
     author: EncoderPublicKey,
-    score: EvaluationScore,
-    probe_set: ProbeSet,
-    tensors: DownloadableMetadata,
-    summary_embedding: SummaryEmbedding,
+    submission: Submission,
 }
 
 impl RevealV1 {
     pub(crate) const fn new(
         auth_token: ShardAuthToken,
         author: EncoderPublicKey,
-        score: EvaluationScore,
-        probe_set: ProbeSet,
-        tensors: DownloadableMetadata,
-        summary_embedding: SummaryEmbedding,
+        submission: Submission,
     ) -> Self {
         Self {
             auth_token,
             author,
-            score,
-            probe_set,
-            tensors,
-            summary_embedding,
+            submission,
         }
     }
 }
@@ -66,17 +54,8 @@ impl RevealAPI for RevealV1 {
     fn author(&self) -> &EncoderPublicKey {
         &self.author
     }
-    fn score(&self) -> &EvaluationScore {
-        &self.score
-    }
-    fn probe_set(&self) -> &ProbeSet {
-        &self.probe_set
-    }
-    fn tensors(&self) -> &DownloadableMetadata {
-        &self.tensors
-    }
-    fn summary_embedding(&self) -> SummaryEmbedding {
-        self.summary_embedding.clone()
+    fn submission(&self) -> &Submission {
+        &self.submission
     }
 }
 
@@ -96,14 +75,7 @@ pub(crate) fn verify_reveal(
     // TODO: verify the summary embedding's length
 
     let max_size = None;
-    verify_metadata(&reveal.tensors().metadata(), max_size)?;
+    verify_metadata(&reveal.submission().metadata(), max_size)?;
 
-    Ok(())
-}
-pub(crate) fn verify_reveal_score_matches(
-    score: EvaluationScore,
-    summary_embedding: SummaryEmbedding,
-    reveal: &Reveal,
-) -> SharedResult<()> {
     Ok(())
 }

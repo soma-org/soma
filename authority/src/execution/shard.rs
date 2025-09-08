@@ -12,7 +12,6 @@ use types::{
     error::{ConsensusError, ExecutionResult, SomaError},
     metadata::{DownloadableMetadataAPI, MetadataAPI, MetadataCommitment},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    score_set::ScoreSetAPI,
     shard_crypto::{
         digest::Digest,
         keys::{EncoderAggregateSignature, EncoderPublicKey},

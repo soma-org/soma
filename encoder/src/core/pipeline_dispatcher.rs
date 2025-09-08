@@ -2,9 +2,9 @@ use crate::{
     messaging::EncoderInternalNetworkClient,
     pipelines::{
         commit::CommitProcessor, commit_votes::CommitVotesProcessor, input::InputProcessor,
-        reveal::RevealProcessor, score_vote::ScoreVoteProcessor,
+        report_vote::ReportVoteProcessor, reveal::RevealProcessor,
     },
-    types::{commit::Commit, commit_votes::CommitVotes, reveal::Reveal, score_vote::ScoreVote},
+    types::{commit::Commit, commit_votes::CommitVotes, report_vote::ReportVote, reveal::Reveal},
 };
 use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
@@ -12,13 +12,8 @@ use inference::client::InferenceClient;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use tokio_util::sync::CancellationToken;
 use types::error::ShardResult;
-use types::multiaddr::Multiaddr;
 use types::shard::Input;
-use types::{
-    actors::ActorHandle,
-    shard::Shard,
-    shard_crypto::{keys::PeerPublicKey, verified::Verified},
-};
+use types::{actors::ActorHandle, shard::Shard, shard_crypto::verified::Verified};
 
 #[async_trait]
 pub trait InternalDispatcher: Sync + Send + 'static {
@@ -40,10 +35,10 @@ pub trait InternalDispatcher: Sync + Send + 'static {
         reveal: Verified<Reveal>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
-    async fn dispatch_score_vote(
+    async fn dispatch_report_vote(
         &self,
         shard: Shard,
-        scores: Verified<ScoreVote>,
+        report_vote: Verified<ReportVote>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
 }
@@ -58,7 +53,7 @@ pub(crate) struct InternalPipelineDispatcher<
     commit_handle: ActorHandle<CommitProcessor<O, E, S, P>>,
     commit_votes_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
     reveal_handle: ActorHandle<RevealProcessor<O, E, S, P>>,
-    score_vote_handle: ActorHandle<ScoreVoteProcessor<E>>,
+    report_vote_handle: ActorHandle<ReportVoteProcessor<E>>,
 }
 
 impl<
@@ -72,13 +67,13 @@ impl<
         commit_handle: ActorHandle<CommitProcessor<O, E, S, P>>,
         commit_votes_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
         reveal_handle: ActorHandle<RevealProcessor<O, E, S, P>>,
-        score_vote_handle: ActorHandle<ScoreVoteProcessor<E>>,
+        report_vote_handle: ActorHandle<ReportVoteProcessor<E>>,
     ) -> Self {
         Self {
             commit_handle,
             commit_votes_handle,
             reveal_handle,
-            score_vote_handle,
+            report_vote_handle,
         }
     }
 }
@@ -124,14 +119,14 @@ impl<
             .await?;
         Ok(())
     }
-    async fn dispatch_score_vote(
+    async fn dispatch_report_vote(
         &self,
         shard: Shard,
-        score_vote: Verified<ScoreVote>,
+        report_vote: Verified<ReportVote>,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
-        self.score_vote_handle
-            .background_process((shard, score_vote), cancellation)
+        self.report_vote_handle
+            .background_process((shard, report_vote), cancellation)
             .await?;
         Ok(())
     }
@@ -143,8 +138,6 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
         &self,
         shard: Shard,
         input: Verified<Input>,
-        peer: PeerPublicKey,
-        address: Multiaddr,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
 }
@@ -186,12 +179,10 @@ impl<
         &self,
         shard: Shard,
         input: Verified<Input>,
-        peer: PeerPublicKey,
-        address: Multiaddr,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         self.input_handle
-            .background_process((shard, input, peer, address), cancellation)
+            .background_process((shard, input), cancellation)
             .await?;
         Ok(())
     }

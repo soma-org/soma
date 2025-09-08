@@ -35,8 +35,8 @@ use crate::{
     },
     pipelines::{
         commit::CommitProcessor, commit_votes::CommitVotesProcessor,
-        evaluation::EvaluationProcessor, input::InputProcessor, reveal::RevealProcessor,
-        score_vote::ScoreVoteProcessor,
+        evaluation::EvaluationProcessor, input::InputProcessor, report_vote::ReportVoteProcessor,
+        reveal::RevealProcessor,
     },
     sync::{
         committee_sync_manager::CommitteeSyncManager,
@@ -91,7 +91,7 @@ pub struct EncoderNode {
     evaluation_network_manager: EvaluationTonicManager,
     downloader_manager: ActorManager<Downloader<ObjectHttpClient, MemoryObjectStore>>,
     clean_up_manager: ActorManager<CleanUpProcessor>,
-    score_vote_manager: ActorManager<ScoreVoteProcessor<EncoderInternalTonicClient>>,
+    report_vote_manager: ActorManager<ReportVoteProcessor<EncoderInternalTonicClient>>,
     evaluation_manager: ActorManager<
         EvaluationProcessor<
             ObjectHttpClient,
@@ -254,22 +254,18 @@ impl EncoderNode {
             encoder_keypair.public(),
         ));
 
-        let recv_dedup_cache_capacity: usize = 1000;
-        let send_dedup_cache_capacity: usize = 100;
-        let clean_up_processor = CleanUpProcessor::new(store.clone(), recv_dedup_cache_capacity);
+        let clean_up_processor = CleanUpProcessor::new(store.clone());
         let clean_up_manager = ActorManager::new(default_buffer, clean_up_processor);
         let clean_up_handle = clean_up_manager.handle();
 
-        let score_vote_processor = ScoreVoteProcessor::new(
+        let report_vote_processor = ReportVoteProcessor::new(
             store.clone(),
             broadcaster.clone(),
             encoder_keypair.clone(),
             clean_up_handle.clone(),
-            recv_dedup_cache_capacity,
-            send_dedup_cache_capacity,
         );
-        let score_vote_manager = ActorManager::new(default_buffer, score_vote_processor);
-        let score_vote_handle = score_vote_manager.handle();
+        let report_vote_manager = ActorManager::new(default_buffer, report_vote_processor);
+        let report_vote_handle = report_vote_manager.handle();
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
@@ -277,9 +273,9 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             object_storage.clone(),
-            score_vote_handle.clone(),
+            report_vote_handle.clone(),
             evaluation_client.clone(),
-            recv_dedup_cache_capacity,
+            context.clone(),
         );
         let evaluation_manager = ActorManager::new(default_buffer, evaluation_processor);
         let evaluation_handle = evaluation_manager.handle();
@@ -289,8 +285,6 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             evaluation_handle.clone(),
-            recv_dedup_cache_capacity,
-            send_dedup_cache_capacity,
         );
         let reveal_manager = ActorManager::new(default_buffer, reveal_processor);
         let reveal_handle = reveal_manager.handle();
@@ -300,8 +294,6 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             reveal_handle.clone(),
-            recv_dedup_cache_capacity,
-            send_dedup_cache_capacity,
         );
         let commit_votes_manager = ActorManager::new(default_buffer, commit_votes_processor);
         let commit_votes_handle = commit_votes_manager.handle();
@@ -311,8 +303,6 @@ impl EncoderNode {
             broadcaster.clone(),
             commit_votes_handle.clone(),
             encoder_keypair.clone(),
-            recv_dedup_cache_capacity,
-            send_dedup_cache_capacity,
         );
         let commit_manager = ActorManager::new(default_buffer, commit_processor);
         let commit_handle = commit_manager.handle();
@@ -336,13 +326,12 @@ impl EncoderNode {
             commit_handle,
             commit_votes_handle,
             reveal_handle,
-            score_vote_handle,
+            report_vote_handle,
         );
         let verifier = Arc::new(ShardVerifier::new(100));
 
         let internal_network_service = Arc::new(EncoderInternalService::new(
             context.clone(),
-            store.clone(),
             pipeline_dispatcher,
             verifier.clone(),
         ));
@@ -415,7 +404,7 @@ impl EncoderNode {
             committee_sync_manager,
             downloader_manager,
             clean_up_manager,
-            score_vote_manager,
+            report_vote_manager,
             evaluation_manager,
             reveal_manager,
             commit_votes_manager,
@@ -467,7 +456,7 @@ impl EncoderNode {
 
         self.downloader_manager.shutdown();
         self.clean_up_manager.shutdown();
-        self.score_vote_manager.shutdown();
+        self.report_vote_manager.shutdown();
         self.evaluation_manager.shutdown();
         self.reveal_manager.shutdown();
         self.commit_votes_manager.shutdown();
@@ -521,7 +510,6 @@ fn create_context_from_genesis(
         [committees.clone(), committees], // Same committee for current and previous in genesis
         0,                                // Genesis epoch
         own_encoder_key,
-        object_servers, // Initialize with object servers from genesis
     );
 
     // Update the NetworkingInfo

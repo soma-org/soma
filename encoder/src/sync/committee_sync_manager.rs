@@ -267,7 +267,6 @@ impl CommitteeSyncManager {
             ],
             epoch, // New current epoch
             self.own_encoder_key.clone(),
-            committees.object_servers, // Use the complete object servers directly
         );
 
         // Update the context with the new inner context

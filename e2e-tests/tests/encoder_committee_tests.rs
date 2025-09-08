@@ -147,7 +147,7 @@ async fn test_integrated_encoder_validator_system() {
             if shard.encoders().contains(&enc_key) {
                 let store = node.get_store_for_testing();
 
-                let result = store.get_agg_score(&shard);
+                let result = store.get_aggregate_score(&shard);
 
                 assert!(
                     result.is_ok(),

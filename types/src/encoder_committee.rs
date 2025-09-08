@@ -43,14 +43,9 @@ pub struct EncoderCommittee {
     shard_size: CountUnit,
     quorum_threshold: CountUnit,
 
+    pub network_metadata: BTreeMap<EncoderPublicKey, EncoderNetworkMetadata>,
     /// Quick lookup index
     index_map: BTreeMap<EncoderPublicKey, usize>,
-
-    /// Reverse mapping for index -> key lookup
-    // key_by_index: Vec<EncoderPublicKey>,
-
-    /// Network metadata for encoders
-    pub network_metadata: BTreeMap<EncoderPublicKey, EncoderNetworkMetadata>,
 }
 
 impl EncoderCommittee {
