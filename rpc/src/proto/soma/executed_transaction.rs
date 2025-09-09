@@ -9,8 +9,7 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
             transaction,
             signatures,
             effects,
-            events,
-            checkpoint,
+            commit,
             timestamp,
             balance_changes,
             input_objects,
@@ -40,14 +39,8 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
                 .map(|e| TransactionEffects::merge_from(e, &submask));
         }
 
-        if let Some(submask) = mask.subtree(Self::EVENTS_FIELD.name) {
-            self.events = events
-                .as_ref()
-                .map(|events| TransactionEvents::merge_from(events, &submask));
-        }
-
         if mask.contains(Self::CHECKPOINT_FIELD.name) {
-            self.checkpoint = *checkpoint;
+            self.commit = *commit;
         }
 
         if mask.contains(Self::TIMESTAMP_FIELD.name) {

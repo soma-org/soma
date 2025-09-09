@@ -21,14 +21,6 @@ pub enum SimpleSignature {
         signature: Ed25519Signature,
         public_key: Ed25519PublicKey,
     },
-    Secp256k1 {
-        signature: Secp256k1Signature,
-        public_key: Secp256k1PublicKey,
-    },
-    Secp256r1 {
-        signature: Secp256r1Signature,
-        public_key: Secp256r1PublicKey,
-    },
 }
 
 impl SimpleSignature {
@@ -36,8 +28,6 @@ impl SimpleSignature {
     pub fn scheme(&self) -> SignatureScheme {
         match self {
             SimpleSignature::Ed25519 { .. } => SignatureScheme::Ed25519,
-            SimpleSignature::Secp256k1 { .. } => SignatureScheme::Secp256k1,
-            SimpleSignature::Secp256r1 { .. } => SignatureScheme::Secp256r1,
         }
     }
 }
@@ -77,8 +67,6 @@ impl SimpleSignature {
         buf
     }
 
-    #[cfg(feature = "serde")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
     fn from_serialized_bytes<T: AsRef<[u8]>, E: serde::de::Error>(bytes: T) -> Result<Self, E> {
         let bytes = bytes.as_ref();
         let flag = SignatureScheme::from_byte(
@@ -106,52 +94,11 @@ impl SimpleSignature {
                     public_key: Ed25519PublicKey::new(public_key),
                 })
             }
-            SignatureScheme::Secp256k1 => {
-                let expected_length = 1 + Secp256k1Signature::LENGTH + Secp256k1PublicKey::LENGTH;
-
-                if bytes.len() != expected_length {
-                    return Err(serde::de::Error::custom("invalid secp25k1 signature"));
-                }
-
-                let mut signature = [0; Secp256k1Signature::LENGTH];
-                signature.copy_from_slice(&bytes[1..(1 + Secp256k1Signature::LENGTH)]);
-
-                let mut public_key = [0; Secp256k1PublicKey::LENGTH];
-                public_key.copy_from_slice(&bytes[(1 + Secp256k1Signature::LENGTH)..]);
-
-                Ok(SimpleSignature::Secp256k1 {
-                    signature: Secp256k1Signature::new(signature),
-                    public_key: Secp256k1PublicKey::new(public_key),
-                })
-            }
-            SignatureScheme::Secp256r1 => {
-                let expected_length = 1 + Secp256r1Signature::LENGTH + Secp256r1PublicKey::LENGTH;
-
-                if bytes.len() != expected_length {
-                    return Err(serde::de::Error::custom("invalid secp25r1 signature"));
-                }
-
-                let mut signature = [0; Secp256r1Signature::LENGTH];
-                signature.copy_from_slice(&bytes[1..(1 + Secp256r1Signature::LENGTH)]);
-
-                let mut public_key = [0; Secp256r1PublicKey::LENGTH];
-                public_key.copy_from_slice(&bytes[(1 + Secp256r1Signature::LENGTH)..]);
-
-                Ok(SimpleSignature::Secp256r1 {
-                    signature: Secp256r1Signature::new(signature),
-                    public_key: Secp256r1PublicKey::new(public_key),
-                })
-            }
-            SignatureScheme::Multisig
-            | SignatureScheme::Bls12381
-            | SignatureScheme::ZkLogin
-            | SignatureScheme::Passkey => Err(serde::de::Error::custom("invalid signature scheme")),
+            SignatureScheme::Bls12381 => Err(serde::de::Error::custom("invalid signature scheme")),
         }
     }
 }
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 impl serde::Serialize for SimpleSignature {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -165,14 +112,6 @@ impl serde::Serialize for SimpleSignature {
                 signature: &'a Ed25519Signature,
                 public_key: &'a Ed25519PublicKey,
             },
-            Secp256k1 {
-                signature: &'a Secp256k1Signature,
-                public_key: &'a Secp256k1PublicKey,
-            },
-            Secp256r1 {
-                signature: &'a Secp256r1Signature,
-                public_key: &'a Secp256r1PublicKey,
-            },
         }
 
         if serializer.is_human_readable() {
@@ -181,20 +120,6 @@ impl serde::Serialize for SimpleSignature {
                     signature,
                     public_key,
                 } => Sig::Ed25519 {
-                    signature,
-                    public_key,
-                },
-                SimpleSignature::Secp256k1 {
-                    signature,
-                    public_key,
-                } => Sig::Secp256k1 {
-                    signature,
-                    public_key,
-                },
-                SimpleSignature::Secp256r1 {
-                    signature,
-                    public_key,
-                } => Sig::Secp256r1 {
                     signature,
                     public_key,
                 },
@@ -214,35 +139,11 @@ impl serde::Serialize for SimpleSignature {
 
                     serializer.serialize_bytes(&buf)
                 }
-                SimpleSignature::Secp256k1 {
-                    signature,
-                    public_key,
-                } => {
-                    let mut buf = [0; 1 + Secp256k1Signature::LENGTH + Secp256k1PublicKey::LENGTH];
-                    buf[0] = SignatureScheme::Secp256k1 as u8;
-                    buf[1..(1 + Secp256k1Signature::LENGTH)].copy_from_slice(signature.as_ref());
-                    buf[(1 + Secp256k1Signature::LENGTH)..].copy_from_slice(public_key.as_ref());
-
-                    serializer.serialize_bytes(&buf)
-                }
-                SimpleSignature::Secp256r1 {
-                    signature,
-                    public_key,
-                } => {
-                    let mut buf = [0; 1 + Secp256r1Signature::LENGTH + Secp256r1PublicKey::LENGTH];
-                    buf[0] = SignatureScheme::Secp256r1 as u8;
-                    buf[1..(1 + Secp256r1Signature::LENGTH)].copy_from_slice(signature.as_ref());
-                    buf[(1 + Secp256r1Signature::LENGTH)..].copy_from_slice(public_key.as_ref());
-
-                    serializer.serialize_bytes(&buf)
-                }
             }
         }
     }
 }
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 impl<'de> serde::Deserialize<'de> for SimpleSignature {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -256,14 +157,6 @@ impl<'de> serde::Deserialize<'de> for SimpleSignature {
                 signature: Ed25519Signature,
                 public_key: Ed25519PublicKey,
             },
-            Secp256k1 {
-                signature: Secp256k1Signature,
-                public_key: Secp256k1PublicKey,
-            },
-            Secp256r1 {
-                signature: Secp256r1Signature,
-                public_key: Secp256r1PublicKey,
-            },
         }
 
         if deserializer.is_human_readable() {
@@ -273,20 +166,6 @@ impl<'de> serde::Deserialize<'de> for SimpleSignature {
                     signature,
                     public_key,
                 } => SimpleSignature::Ed25519 {
-                    signature,
-                    public_key,
-                },
-                Sig::Secp256k1 {
-                    signature,
-                    public_key,
-                } => SimpleSignature::Secp256k1 {
-                    signature,
-                    public_key,
-                },
-                Sig::Secp256r1 {
-                    signature,
-                    public_key,
-                } => SimpleSignature::Secp256r1 {
                     signature,
                     public_key,
                 },
@@ -321,12 +200,7 @@ impl<'de> serde::Deserialize<'de> for SimpleSignature {
 #[repr(u8)]
 pub enum SignatureScheme {
     Ed25519 = 0x00,
-    Secp256k1 = 0x01,
-    Secp256r1 = 0x02,
-    Multisig = 0x03,
-    Bls12381 = 0x04, // This is currently not supported for user addresses
-    ZkLogin = 0x05,
-    Passkey = 0x06,
+    Bls12381 = 0x01, // This is currently not supported for user addresses
 }
 
 impl SignatureScheme {
@@ -334,12 +208,7 @@ impl SignatureScheme {
     pub fn name(self) -> &'static str {
         match self {
             SignatureScheme::Ed25519 => "ed25519",
-            SignatureScheme::Secp256k1 => "secp256k1",
-            SignatureScheme::Secp256r1 => "secp256r1",
-            SignatureScheme::Multisig => "multisig",
             SignatureScheme::Bls12381 => "bls12381",
-            SignatureScheme::ZkLogin => "zklogin",
-            SignatureScheme::Passkey => "passkey",
         }
     }
 
@@ -347,12 +216,7 @@ impl SignatureScheme {
     pub fn from_byte(flag: u8) -> Result<Self, InvalidSignatureScheme> {
         match flag {
             0x00 => Ok(Self::Ed25519),
-            0x01 => Ok(Self::Secp256k1),
-            0x02 => Ok(Self::Secp256r1),
-            0x03 => Ok(Self::Multisig),
-            0x04 => Ok(Self::Bls12381),
-            0x05 => Ok(Self::ZkLogin),
-            0x06 => Ok(Self::Passkey),
+            0x01 => Ok(Self::Bls12381),
             invalid => Err(InvalidSignatureScheme(invalid)),
         }
     }
@@ -367,34 +231,6 @@ impl Ed25519PublicKey {
     /// Return the flag for this signature scheme
     pub fn scheme(&self) -> SignatureScheme {
         SignatureScheme::Ed25519
-    }
-}
-
-impl Secp256k1PublicKey {
-    /// Return the flag for this signature scheme
-    pub fn scheme(&self) -> SignatureScheme {
-        SignatureScheme::Secp256k1
-    }
-}
-
-impl Secp256r1PublicKey {
-    /// Return the flag for this signature scheme
-    pub fn scheme(&self) -> SignatureScheme {
-        SignatureScheme::Secp256r1
-    }
-}
-
-impl super::ZkLoginPublicIdentifier {
-    /// Return the flag for this signature scheme
-    pub fn scheme(&self) -> SignatureScheme {
-        SignatureScheme::ZkLogin
-    }
-}
-
-impl super::PasskeyPublicKey {
-    /// Return the flag for this signature scheme
-    pub fn scheme(&self) -> SignatureScheme {
-        SignatureScheme::Passkey
     }
 }
 

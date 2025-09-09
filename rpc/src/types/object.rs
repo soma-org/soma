@@ -81,8 +81,6 @@ impl ObjectReference {
 pub enum Owner {
     /// Object is exclusively owned by a single address, and is mutable.
     Address(Address),
-    /// Object is exclusively owned by a single object, and is mutable.
-    Object(Address),
     /// Object is shared, can be used by any address, and is mutable.
     Shared(
         /// The version at which the object became shared
@@ -90,17 +88,6 @@ pub enum Owner {
     ),
     /// Object is immutable, and hence ownership doesn't matter.
     Immutable,
-
-    /// Object is exclusively owned by a single address and sequenced via consensus.
-    ConsensusAddress {
-        /// The version at which the object most recently became a consensus object.
-        /// This serves the same function as `initial_shared_version`, except it may change
-        /// if the object's Owner type changes.
-        start_version: Version,
-
-        /// The owner of the object.
-        owner: Address,
-    },
 }
 
 /// Object data, either a package or struct
@@ -153,26 +140,15 @@ pub struct Object {
 
     /// The digest of the transaction that created or last mutated this object
     previous_transaction: Digest,
-
-    /// The amount of SUI we would rebate if this object gets deleted.
-    /// This number is re-calculated each time the object is mutated based on
-    /// the present storage gas price.
-    storage_rebate: u64,
 }
 
 impl Object {
     /// Build an object
-    pub fn new(
-        data: ObjectData,
-        owner: Owner,
-        previous_transaction: Digest,
-        storage_rebate: u64,
-    ) -> Self {
+    pub fn new(data: ObjectData, owner: Owner, previous_transaction: Digest) -> Self {
         Self {
             data,
             owner,
             previous_transaction,
-            storage_rebate,
         }
     }
 

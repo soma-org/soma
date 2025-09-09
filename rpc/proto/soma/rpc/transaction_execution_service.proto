@@ -42,12 +42,5 @@ message TransactionFinality {
     // A quorum certificate certifying that a transaction is final but might not
     // be included in a checkpoint yet.
     ValidatorAggregatedSignature certified = 1;
-
-    // Sequence number of the checkpoint that includes the transaction.
-    uint64 checkpointed = 2;
-
-    // Indicates that a quorum of validators has executed the transaction but
-    // that it might not be included in a checkpoint yet.
-    google.protobuf.Empty quorum_executed = 3;
   }
 }

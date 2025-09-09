@@ -5,7 +5,6 @@ package soma.rpc;
 import "google/protobuf/timestamp.proto";
 import "soma/rpc/balance_change.proto";
 import "soma/rpc/effects.proto";
-import "soma/rpc/event.proto";
 import "soma/rpc/object.proto";
 import "soma/rpc/signature.proto";
 import "soma/rpc/transaction.proto";
@@ -24,25 +23,17 @@ message ExecutedTransaction {
   // The `TransactionEffects` for this transaction.
   optional TransactionEffects effects = 4;
 
-  // The `TransactionEvents` for this transaction.
-  //
-  // This field might be empty, even if it was explicitly requested, if the
-  // transaction didn't produce any events.
-  // `sui.types.TransactionEffects.events_digest` is populated if the
-  // transaction produced any events.
-  optional TransactionEvents events = 5;
-
-  // The sequence number for the checkpoint that includes this transaction.
-  optional uint64 checkpoint = 6;
+  // The commit index that includes this transaction.
+  optional uint64 commit = 5;
 
   // The Unix timestamp of the checkpoint that includes this transaction.
-  optional google.protobuf.Timestamp timestamp = 7;
+  optional google.protobuf.Timestamp timestamp = 6;
 
-  repeated BalanceChange balance_changes = 8;
+  repeated BalanceChange balance_changes = 7;
 
   // Set of input objects used during the execution of this transaction.
-  repeated Object input_objects = 10;
+  repeated Object input_objects = 8;
 
   // Set of output objects produced from the execution of this transaction.
-  repeated Object output_objects = 11;
+  repeated Object output_objects = 9;
 }

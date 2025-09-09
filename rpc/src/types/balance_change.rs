@@ -8,9 +8,6 @@ pub struct BalanceChange {
     /// Owner of the balance change
     pub address: Address,
 
-    /// Type of the Coin
-    pub coin_type: TypeTag,
-
     /// The amount indicate the balance value changes.
     ///
     /// A negative amount means spending coin value and positive means receiving coin value.

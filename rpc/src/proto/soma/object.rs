@@ -25,11 +25,8 @@ impl Merge<&Object> for Object {
             digest,
             owner,
             object_type,
-            has_public_transfer,
             contents,
-            package,
             previous_transaction,
-            storage_rebate,
             json,
             balance,
         } = source;
@@ -58,16 +55,8 @@ impl Merge<&Object> for Object {
             self.previous_transaction = previous_transaction.clone();
         }
 
-        if mask.contains(Self::STORAGE_REBATE_FIELD.name) {
-            self.storage_rebate = *storage_rebate;
-        }
-
         if mask.contains(Self::OBJECT_TYPE_FIELD.name) {
             self.object_type = object_type.clone();
-        }
-
-        if mask.contains(Self::HAS_PUBLIC_TRANSFER_FIELD.name) {
-            self.has_public_transfer = *has_public_transfer;
         }
 
         if mask.contains(Self::CONTENTS_FIELD.name) {
@@ -114,10 +103,6 @@ impl Merge<crate::types::Object> for Object {
 
         if mask.contains(Self::PREVIOUS_TRANSACTION_FIELD.name) {
             self.previous_transaction = Some(source.previous_transaction().to_string());
-        }
-
-        if mask.contains(Self::STORAGE_REBATE_FIELD.name) {
-            self.storage_rebate = Some(source.storage_rebate());
         }
 
         match source.data() {
@@ -225,100 +210,6 @@ fn try_extract_struct(value: &Object) -> Result<crate::types::MoveStruct, TryFro
     )
 }
 
-#[allow(clippy::result_large_err)]
-fn try_extract_package(value: &Object) -> Result<crate::types::MovePackage, TryFromProtoError> {
-    if value.object_type() != PACKAGE_TYPE {
-        return Err(TryFromProtoError::invalid(
-            Object::OBJECT_TYPE_FIELD,
-            format!(
-                "expected type {}, found {}",
-                PACKAGE_TYPE,
-                value.object_type()
-            ),
-        ));
-    }
-
-    let version = value
-        .version
-        .ok_or_else(|| TryFromProtoError::missing("version"))?;
-    let id = value
-        .object_id
-        .as_ref()
-        .ok_or_else(|| TryFromProtoError::missing("object_id"))?
-        .parse()
-        .map_err(|e| TryFromProtoError::invalid(Object::OBJECT_ID_FIELD, e))?;
-
-    let package = value
-        .package
-        .as_ref()
-        .ok_or_else(|| TryFromProtoError::missing("package"))?;
-    let modules = package
-        .modules
-        .iter()
-        .map(|module| {
-            let name = module
-                .name
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("name"))?
-                .parse()
-                .map_err(|e| TryFromProtoError::invalid(Module::NAME_FIELD, e))?;
-
-            let contents = module
-                .contents
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("contents"))?
-                .to_vec();
-
-            Ok((name, contents))
-        })
-        .collect::<Result<_, TryFromProtoError>>()?;
-
-    let type_origin_table = package
-        .type_origins
-        .iter()
-        .map(TryInto::try_into)
-        .collect::<Result<_, _>>()?;
-
-    let linkage_table = package
-        .linkage
-        .iter()
-        .map(|upgrade_info| {
-            let original_id = upgrade_info
-                .original_id
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("original_id"))?
-                .parse()
-                .map_err(|e| TryFromProtoError::invalid(Linkage::ORIGINAL_ID_FIELD, e))?;
-
-            let upgraded_id = upgrade_info
-                .upgraded_id
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("upgraded_id"))?
-                .parse()
-                .map_err(|e| TryFromProtoError::invalid(Linkage::UPGRADED_ID_FIELD, e))?;
-            let upgraded_version = upgrade_info
-                .upgraded_version
-                .ok_or_else(|| TryFromProtoError::missing("upgraded_version"))?;
-
-            Ok((
-                original_id,
-                crate::types::UpgradeInfo {
-                    upgraded_id,
-                    upgraded_version,
-                },
-            ))
-        })
-        .collect::<Result<_, TryFromProtoError>>()?;
-
-    Ok(crate::types::MovePackage {
-        id,
-        version,
-        modules,
-        type_origin_table,
-        linkage_table,
-    })
-}
-
 impl TryFrom<&Object> for crate::types::Object {
     type Error = TryFromProtoError;
 
@@ -335,9 +226,6 @@ impl TryFrom<&Object> for crate::types::Object {
             .ok_or_else(|| TryFromProtoError::missing("previous_transaction"))?
             .parse()
             .map_err(|e| TryFromProtoError::invalid(Object::PREVIOUS_TRANSACTION_FIELD, e))?;
-        let storage_rebate = value
-            .storage_rebate
-            .ok_or_else(|| TryFromProtoError::missing("storage_rebate"))?;
 
         let object_data = if value.object_type() == PACKAGE_TYPE {
             // Package
@@ -347,59 +235,7 @@ impl TryFrom<&Object> for crate::types::Object {
             crate::types::ObjectData::Struct(try_extract_struct(value)?)
         };
 
-        Ok(Self::new(
-            object_data,
-            owner,
-            previous_transaction,
-            storage_rebate,
-        ))
-    }
-}
-
-//
-// TypeOrigin
-//
-
-impl From<crate::types::TypeOrigin> for TypeOrigin {
-    fn from(value: crate::types::TypeOrigin) -> Self {
-        Self {
-            module_name: Some(value.module_name.to_string()),
-            datatype_name: Some(value.struct_name.to_string()),
-            package_id: Some(value.package.to_string()),
-        }
-    }
-}
-
-impl TryFrom<&TypeOrigin> for crate::types::TypeOrigin {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &TypeOrigin) -> Result<Self, Self::Error> {
-        let module_name = value
-            .module_name
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("module_name"))?
-            .parse()
-            .map_err(|e| TryFromProtoError::invalid(TypeOrigin::MODULE_NAME_FIELD, e))?;
-
-        let struct_name = value
-            .datatype_name
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("datatype_name"))?
-            .parse()
-            .map_err(|e| TryFromProtoError::invalid(TypeOrigin::DATATYPE_NAME_FIELD, e))?;
-
-        let package = value
-            .package_id
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("package_id"))?
-            .parse()
-            .map_err(|e| TryFromProtoError::invalid(TypeOrigin::PACKAGE_ID_FIELD, e))?;
-
-        Ok(Self {
-            module_name,
-            struct_name,
-            package,
-        })
+        Ok(Self::new(object_data, owner, previous_transaction))
     }
 }
 
@@ -508,23 +344,11 @@ impl From<crate::types::Owner> for Owner {
                 message.address = Some(address.to_string());
                 OwnerKind::Address
             }
-            Object(object) => {
-                message.address = Some(object.to_string());
-                OwnerKind::Object
-            }
             Shared(version) => {
                 message.version = Some(version);
                 OwnerKind::Shared
             }
             Immutable => OwnerKind::Immutable,
-            ConsensusAddress {
-                start_version,
-                owner,
-            } => {
-                message.version = Some(start_version);
-                message.address = Some(owner.to_string());
-                OwnerKind::ConsensusAddress
-            }
             _ => OwnerKind::Unknown,
         };
 
@@ -552,21 +376,9 @@ impl TryFrom<&Owner> for crate::types::Owner {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid(Owner::ADDRESS_FIELD, e))?,
             ),
-            OwnerKind::Object => Self::Object(
-                value
-                    .address()
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid(Owner::ADDRESS_FIELD, e))?,
-            ),
+
             OwnerKind::Shared => Self::Shared(value.version()),
             OwnerKind::Immutable => Self::Immutable,
-            OwnerKind::ConsensusAddress => Self::ConsensusAddress {
-                start_version: value.version(),
-                owner: value
-                    .address()
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid(Owner::ADDRESS_FIELD, e))?,
-            },
         }
         .pipe(Ok)
     }

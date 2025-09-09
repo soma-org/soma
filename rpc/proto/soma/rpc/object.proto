@@ -4,7 +4,6 @@ package soma.rpc;
 
 import "google/protobuf/struct.proto";
 import "soma/rpc/bcs.proto";
-import "soma/rpc/move_package.proto";
 import "soma/rpc/owner.proto";
 
 // An object on the Sui blockchain.
@@ -25,35 +24,17 @@ message Object {
   optional Owner owner = 5;
 
   // The type of this object.
-  //
-  // This will be 'package' for packages and a StructTag for move structs.
   optional string object_type = 6;
 
-  // DEPRECATED this field is no longer used to determine whether a tx can transfer this
-  // object. Instead, it is always calculated from the objects type when loaded in execution.
-  //
-  // Only set for Move structs
-  optional bool has_public_transfer = 7;
-
-  // BCS bytes of a Move struct value.
-  //
-  // Only set for Move structs
-  optional Bcs contents = 8;
-
-  // Package information for Move Packages
-  optional Package package = 9;
+  // BCS bytes of a struct value.
+  optional Bcs contents = 7;
 
   // The digest of the transaction that created or last mutated this object
-  optional string previous_transaction = 10;
-
-  // The amount of SUI to rebate if this object gets deleted.
-  // This number is re-calculated each time the object is mutated based on
-  // the present storage gas price.
-  optional uint64 storage_rebate = 11;
+  optional string previous_transaction = 8;
 
   // JSON rendering of the object.
   optional google.protobuf.Value json = 100;
 
-  // Current balance if this object is a `0x2::coin::Coin<T>`
+  // Current balance if this object is a `Coin`
   optional uint64 balance = 101;
 }

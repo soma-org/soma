@@ -645,7 +645,7 @@ pub enum ExecutionFailureStatus {
         expected_owner: SomaAddress,
         actual_owner: Option<SomaAddress>,
     },
-    #[error("Insufficient coin balance for operation.")]
+    #[error("Object not found.")]
     ObjectNotFound { object_id: ObjectID },
     #[error(
         "Invalid object type for object {object_id}. Expected: {expected_type:?}, Actual: \
@@ -724,16 +724,9 @@ pub enum ExecutionFailureStatus {
     #[error("Report record cannot be undone if not reported.")]
     ReportRecordNotFound,
 
-    #[error("Cannot add validator with below minimum stake requirements")]
-    StakeBelowMinimum,
-
     //
     // Post-execution errors
     //
-    /// The effects produced by the transaction exceed the maximum allowed size
-    #[error("Effects of size {current_size} bytes too large. Limit is {max_size} bytes")]
-    EffectsTooLarge { current_size: u64, max_size: u64 },
-
     /// Generic Soma error that wraps other error types
     #[error("Soma Error {0}")]
     SomaError(SomaError),

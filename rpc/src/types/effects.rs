@@ -8,8 +8,8 @@ pub struct TransactionEffects {
     /// The epoch when this transaction was executed.
     pub epoch: EpochId,
 
-    /// The gas used by this transaction
-    pub gas_used: GasCostSummary,
+    /// The transaction fee
+    pub fee: TransactionFee,
 
     /// The transaction digest
     pub transaction_digest: Digest,
@@ -18,10 +18,6 @@ pub struct TransactionEffects {
     /// Having a dedicated field for convenient access.
     /// System transaction that don't require gas will leave this as None.
     pub gas_object_index: Option<u32>,
-
-    /// The digest of the events emitted during execution,
-    /// can be None if the transaction does not emit any event.
-    pub events_digest: Option<Digest>,
 
     /// The set of transaction digests this transaction depends on.
     pub dependencies: Vec<Digest>,
@@ -36,12 +32,7 @@ pub struct TransactionEffects {
     /// read-only consensus objects' version are not committed in the transaction,
     /// and in order for a node to catch up and execute it without consensus sequencing,
     /// the version needs to be committed in the effects.
-    pub unchanged_consensus_objects: Vec<UnchangedConsensusObject>,
-
-    /// Auxiliary data that are not protocol-critical, generated as part of the effects but are stored separately.
-    /// Storing it separately allows us to avoid bloating the effects with data that are not critical.
-    /// It also provides more flexibility on the format and type of the data.
-    pub auxiliary_data_digest: Option<Digest>,
+    pub unchanged_shared_objects: Vec<UnchangedSharedObject>,
 }
 
 /// Input/output state of an object that was changed during execution
@@ -80,9 +71,9 @@ pub struct ChangedObject {
 /// unchanged-consensus-object = address unchanged-consensus-object-kind
 /// ```
 #[derive(Eq, PartialEq, Clone, Debug, Deserialize, Serialize)]
-pub struct UnchangedConsensusObject {
+pub struct UnchangedSharedObject {
     pub object_id: Address,
-    pub kind: UnchangedConsensusKind,
+    pub kind: UnchangedSharedKind,
 }
 
 /// Type of unchanged consensus object
@@ -107,7 +98,7 @@ pub struct UnchangedConsensusObject {
 /// ```
 #[derive(Eq, PartialEq, Clone, Debug, Deserialize, Serialize)]
 #[non_exhaustive]
-pub enum UnchangedConsensusKind {
+pub enum UnchangedSharedKind {
     /// Read-only consensus objects from the input. We don't really need ObjectDigest
     /// for protocol correctness, but it will make it easier to verify untrusted read.
     ReadOnlyRoot { version: Version, digest: Digest },
@@ -120,13 +111,6 @@ pub enum UnchangedConsensusKind {
 
     /// Consensus objects in canceled transaction. The sequence number embed cancellation reason.
     Canceled { version: Version },
-
-    /// Read of a per-epoch config object that should remain the same during an epoch.
-    /// NOTE: Will be deprecated in the near future in favor of `PerEpochConfigWithSequenceNumber`.
-    PerEpochConfig,
-
-    /// Read of a per-epoch config and it's starting sequence number in the epoch.
-    PerEpochConfigWithSequenceNumber { version: Version },
 }
 
 /// State of an object prior to execution
@@ -182,10 +166,6 @@ pub enum ObjectOut {
 
     /// Any written object, including all of mutated, created, unwrapped today.
     ObjectWrite { digest: Digest, owner: Owner },
-
-    /// Packages writes need to be tracked separately with version because
-    /// we don't use lamport version for package publish and upgrades.
-    PackageWrite { version: Version, digest: Digest },
 }
 
 /// Defines what happened to an ObjectId during execution
@@ -223,7 +203,7 @@ impl TransactionEffects {
     }
 
     /// The gas used in this transaction.
-    pub fn gas_summary(&self) -> &GasCostSummary {
-        &self.gas_used
+    pub fn fee(&self) -> &TransactionFee {
+        &self.fee
     }
 }

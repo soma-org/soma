@@ -14,43 +14,21 @@ impl From<crate::types::TransactionEffects> for TransactionEffects {
     }
 }
 
-impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
-    fn merge(&mut self, source: &crate::types::TransactionEffects, mask: &FieldMaskTree) {
-        if mask.contains(Self::BCS_FIELD.name) {
-            let mut bcs = Bcs::serialize(&source).unwrap();
-            bcs.name = Some("TransactionEffects".to_owned());
-            self.bcs = Some(bcs);
-        }
-
-        if mask.contains(Self::DIGEST_FIELD.name) {
-            self.digest = Some(source.digest().to_string());
-        }
-
-        match source {
-            crate::types::TransactionEffects::V1(v1) => self.merge(v1.as_ref(), mask),
-            crate::types::TransactionEffects::V2(v2) => self.merge(v2.as_ref(), mask),
-        }
-    }
-}
-
 impl Merge<&TransactionEffects> for TransactionEffects {
     fn merge(
         &mut self,
         TransactionEffects {
             bcs,
             digest,
-            version,
             status,
             epoch,
-            gas_used,
+            fee,
             transaction_digest,
             gas_object,
-            events_digest,
             dependencies,
             lamport_version,
             changed_objects,
-            unchanged_consensus_objects,
-            auxiliary_data_digest,
+            unchanged_shared_objects,
         }: &TransactionEffects,
         mask: &FieldMaskTree,
     ) {
@@ -61,9 +39,6 @@ impl Merge<&TransactionEffects> for TransactionEffects {
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = digest.clone();
         }
-        if mask.contains(Self::VERSION_FIELD.name) {
-            self.version = *version;
-        }
 
         if mask.contains(Self::STATUS_FIELD.name) {
             self.status = status.clone();
@@ -73,8 +48,8 @@ impl Merge<&TransactionEffects> for TransactionEffects {
             self.epoch = *epoch;
         }
 
-        if mask.contains(Self::GAS_USED_FIELD.name) {
-            self.gas_used = *gas_used;
+        if mask.contains(Self::FEE_FIELD.name) {
+            self.fee = *fee;
         }
 
         if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
@@ -83,10 +58,6 @@ impl Merge<&TransactionEffects> for TransactionEffects {
 
         if mask.contains(Self::GAS_OBJECT_FIELD.name) {
             self.gas_object = gas_object.clone();
-        }
-
-        if mask.contains(Self::EVENTS_DIGEST_FIELD.name) {
-            self.events_digest = events_digest.clone();
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
@@ -101,12 +72,8 @@ impl Merge<&TransactionEffects> for TransactionEffects {
             self.changed_objects = changed_objects.clone();
         }
 
-        if mask.contains(Self::UNCHANGED_CONSENSUS_OBJECTS_FIELD.name) {
-            self.unchanged_consensus_objects = unchanged_consensus_objects.clone();
-        }
-
-        if mask.contains(Self::AUXILIARY_DATA_DIGEST_FIELD.name) {
-            self.auxiliary_data_digest = auxiliary_data_digest.clone();
+        if mask.contains(Self::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
+            self.unchanged_shared_objects = unchanged_shared_objects.clone();
         }
     }
 }
@@ -125,257 +92,25 @@ impl TryFrom<&TransactionEffects> for crate::types::TransactionEffects {
 }
 
 //
-// TransactionEffectsV1
+// TransactionEffects
 //
 
-impl Merge<&crate::types::TransactionEffectsV1> for TransactionEffects {
+impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
     fn merge(
         &mut self,
-        crate::types::TransactionEffectsV1 {
+        crate::types::TransactionEffects {
             status,
             epoch,
-            gas_used,
-            modified_at_versions,
-            consensus_objects,
-            transaction_digest,
-            created,
-            mutated,
-            unwrapped,
-            deleted,
-            unwrapped_then_deleted,
-            wrapped,
-            gas_object,
-            events_digest,
-            dependencies,
-        }: &crate::types::TransactionEffectsV1,
-        mask: &FieldMaskTree,
-    ) {
-        if mask.contains(Self::VERSION_FIELD.name) {
-            self.version = Some(1);
-        }
-
-        if mask.contains(Self::STATUS_FIELD.name) {
-            self.status = Some(status.clone().into());
-        }
-
-        if mask.contains(Self::EPOCH_FIELD.name) {
-            self.epoch = Some(*epoch);
-        }
-
-        if mask.contains(Self::GAS_USED_FIELD.name) {
-            self.gas_used = Some(gas_used.clone().into());
-        }
-
-        if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
-            self.transaction_digest = Some(transaction_digest.to_string());
-        }
-
-        if mask.contains(Self::EVENTS_DIGEST_FIELD.name) {
-            self.events_digest = events_digest.map(|d| d.to_string());
-        }
-
-        if mask.contains(Self::DEPENDENCIES_FIELD.name) {
-            self.dependencies = dependencies.iter().map(ToString::to_string).collect();
-        }
-
-        if mask.contains(Self::CHANGED_OBJECTS_FIELD.name)
-            || mask.contains(Self::UNCHANGED_CONSENSUS_OBJECTS_FIELD.name)
-            || mask.contains(Self::GAS_OBJECT_FIELD.name)
-        {
-            let mut changed_objects = Vec::new();
-            let mut unchanged_consensus_objects = Vec::new();
-
-            for object in created {
-                let change = ChangedObject {
-                    object_id: Some(object.reference.object_id().to_string()),
-                    input_state: Some(changed_object::InputObjectState::DoesNotExist.into()),
-                    input_version: None,
-                    input_digest: None,
-                    input_owner: None,
-                    output_state: Some(changed_object::OutputObjectState::ObjectWrite.into()),
-                    output_version: Some(object.reference.version()),
-                    output_digest: Some(object.reference.digest().to_string()),
-                    output_owner: Some(object.owner.into()),
-                    id_operation: Some(changed_object::IdOperation::Created.into()),
-                    object_type: None,
-                };
-
-                changed_objects.push(change);
-            }
-
-            for object in mutated {
-                let change = ChangedObject {
-                    object_id: Some(object.reference.object_id().to_string()),
-                    input_state: Some(changed_object::InputObjectState::Exists.into()),
-                    input_version: None,
-                    input_digest: None,
-                    input_owner: None,
-                    output_state: Some(changed_object::OutputObjectState::ObjectWrite.into()),
-                    output_version: Some(object.reference.version()),
-                    output_digest: Some(object.reference.digest().to_string()),
-                    output_owner: Some(object.owner.into()),
-                    id_operation: Some(changed_object::IdOperation::None.into()),
-                    object_type: None,
-                };
-
-                changed_objects.push(change);
-            }
-
-            for object in unwrapped {
-                let change = ChangedObject {
-                    object_id: Some(object.reference.object_id().to_string()),
-                    input_state: Some(changed_object::InputObjectState::DoesNotExist.into()),
-                    input_version: None,
-                    input_digest: None,
-                    input_owner: None,
-                    output_state: Some(changed_object::OutputObjectState::ObjectWrite.into()),
-                    output_version: Some(object.reference.version()),
-                    output_digest: Some(object.reference.digest().to_string()),
-                    output_owner: Some(object.owner.into()),
-                    id_operation: Some(changed_object::IdOperation::None.into()),
-                    object_type: None,
-                };
-
-                changed_objects.push(change);
-            }
-
-            for object in deleted {
-                let change = ChangedObject {
-                    object_id: Some(object.object_id().to_string()),
-                    input_state: Some(changed_object::InputObjectState::Exists.into()),
-                    input_version: None,
-                    input_digest: None,
-                    input_owner: None,
-                    output_state: Some(changed_object::OutputObjectState::DoesNotExist.into()),
-                    output_version: Some(object.version()),
-                    output_digest: Some(object.digest().to_string()),
-                    output_owner: None,
-                    id_operation: Some(changed_object::IdOperation::Deleted.into()),
-                    object_type: None,
-                };
-
-                changed_objects.push(change);
-            }
-
-            for object in unwrapped_then_deleted {
-                let change = ChangedObject {
-                    object_id: Some(object.object_id().to_string()),
-                    input_state: Some(changed_object::InputObjectState::DoesNotExist.into()),
-                    input_version: None,
-                    input_digest: None,
-                    input_owner: None,
-                    output_state: Some(changed_object::OutputObjectState::DoesNotExist.into()),
-                    output_version: Some(object.version()),
-                    output_digest: Some(object.digest().to_string()),
-                    output_owner: None,
-                    id_operation: Some(changed_object::IdOperation::Deleted.into()),
-                    object_type: None,
-                };
-
-                changed_objects.push(change);
-            }
-
-            for object in wrapped {
-                let change = ChangedObject {
-                    object_id: Some(object.object_id().to_string()),
-                    input_state: Some(changed_object::InputObjectState::Exists.into()),
-                    input_version: None,
-                    input_digest: None,
-                    input_owner: None,
-                    output_state: Some(changed_object::OutputObjectState::DoesNotExist.into()),
-                    output_version: Some(object.version()),
-                    output_digest: Some(object.digest().to_string()),
-                    output_owner: None,
-                    id_operation: Some(changed_object::IdOperation::Deleted.into()),
-                    object_type: None,
-                };
-
-                changed_objects.push(change);
-            }
-
-            for modified_at_version in modified_at_versions {
-                let object_id = modified_at_version.object_id.to_string();
-                let version = modified_at_version.version;
-                if let Some(changed_object) = changed_objects
-                    .iter_mut()
-                    .find(|object| object.object_id() == object_id)
-                {
-                    changed_object.input_version = Some(version);
-                }
-            }
-
-            for object in consensus_objects {
-                let object_id = object.object_id().to_string();
-                let version = object.version();
-                let digest = object.digest().to_string();
-
-                if let Some(changed_object) = changed_objects
-                    .iter_mut()
-                    .find(|object| object.object_id() == object_id)
-                {
-                    changed_object.input_version = Some(version);
-                    changed_object.input_digest = Some(digest);
-                } else {
-                    let unchanged_consensus_object = UnchangedConsensusObject {
-                        kind: Some(
-                            unchanged_consensus_object::UnchangedConsensusObjectKind::ReadOnlyRoot
-                                .into(),
-                        ),
-                        object_id: Some(object_id),
-                        version: Some(version),
-                        digest: Some(digest),
-                        object_type: None,
-                    };
-
-                    unchanged_consensus_objects.push(unchanged_consensus_object);
-                }
-            }
-
-            if mask.contains(Self::GAS_OBJECT_FIELD.name) {
-                let gas_object_id = gas_object.reference.object_id().to_string();
-                self.gas_object = changed_objects
-                    .iter()
-                    .find(|object| object.object_id() == gas_object_id)
-                    .cloned();
-            }
-
-            if mask.contains(Self::CHANGED_OBJECTS_FIELD.name) {
-                self.changed_objects = changed_objects;
-            }
-
-            if mask.contains(Self::UNCHANGED_CONSENSUS_OBJECTS_FIELD.name) {
-                self.unchanged_consensus_objects = unchanged_consensus_objects;
-            }
-        }
-    }
-}
-
-//
-// TransactionEffectsV2
-//
-
-impl Merge<&crate::types::TransactionEffectsV2> for TransactionEffects {
-    fn merge(
-        &mut self,
-        crate::types::TransactionEffectsV2 {
-            status,
-            epoch,
-            gas_used,
+            fee,
             transaction_digest,
             gas_object_index,
-            events_digest,
             dependencies,
             lamport_version,
             changed_objects,
-            unchanged_consensus_objects,
-            auxiliary_data_digest,
-        }: &crate::types::TransactionEffectsV2,
+            unchanged_shared_objects,
+        }: &crate::types::TransactionEffects,
         mask: &FieldMaskTree,
     ) {
-        if mask.contains(Self::VERSION_FIELD.name) {
-            self.version = Some(2);
-        }
-
         if mask.contains(Self::STATUS_FIELD.name) {
             self.status = Some(status.clone().into());
         }
@@ -384,8 +119,8 @@ impl Merge<&crate::types::TransactionEffectsV2> for TransactionEffects {
             self.epoch = Some(*epoch);
         }
 
-        if mask.contains(Self::GAS_USED_FIELD.name) {
-            self.gas_used = Some(gas_used.clone().into());
+        if mask.contains(Self::FEE_FIELD.name) {
+            self.fee = Some(fee.clone().into());
         }
 
         if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
@@ -396,10 +131,6 @@ impl Merge<&crate::types::TransactionEffectsV2> for TransactionEffects {
             self.gas_object = gas_object_index
                 .map(|index| changed_objects.get(index as usize).cloned().map(Into::into))
                 .flatten();
-        }
-
-        if mask.contains(Self::EVENTS_DIGEST_FIELD.name) {
-            self.events_digest = events_digest.map(|d| d.to_string());
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
@@ -424,16 +155,12 @@ impl Merge<&crate::types::TransactionEffectsV2> for TransactionEffects {
             }
         }
 
-        if mask.contains(Self::UNCHANGED_CONSENSUS_OBJECTS_FIELD.name) {
-            self.unchanged_consensus_objects = unchanged_consensus_objects
+        if mask.contains(Self::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
+            self.unchanged_shared_objects = unchanged_shared_objects
                 .clone()
                 .into_iter()
                 .map(Into::into)
                 .collect();
-        }
-
-        if mask.contains(Self::AUXILIARY_DATA_DIGEST_FIELD.name) {
-            self.auxiliary_data_digest = auxiliary_data_digest.map(|d| d.to_string());
         }
     }
 }
@@ -622,13 +349,13 @@ impl TryFrom<changed_object::IdOperation> for crate::types::IdOperation {
 }
 
 //
-// UnchangedConsensusObject
+// UnchangedSharedObject
 //
 
-impl From<crate::types::UnchangedConsensusObject> for UnchangedConsensusObject {
-    fn from(value: crate::types::UnchangedConsensusObject) -> Self {
-        use crate::types::UnchangedConsensusKind::*;
-        use unchanged_consensus_object::UnchangedConsensusObjectKind;
+impl From<crate::types::UnchangedSharedObject> for UnchangedSharedObject {
+    fn from(value: crate::types::UnchangedSharedObject) -> Self {
+        use crate::types::UnchangedSharedKind::*;
+        use unchanged_shared_object::UnchangedSharedObjectKind;
 
         let mut message = Self {
             object_id: Some(value.object_id.to_string()),
@@ -639,26 +366,22 @@ impl From<crate::types::UnchangedConsensusObject> for UnchangedConsensusObject {
             ReadOnlyRoot { version, digest } => {
                 message.version = Some(version);
                 message.digest = Some(digest.to_string());
-                UnchangedConsensusObjectKind::ReadOnlyRoot
+                UnchangedSharedObjectKind::ReadOnlyRoot
             }
             MutateDeleted { version } => {
                 message.version = Some(version);
-                UnchangedConsensusObjectKind::MutateConsensusStreamEnded
+                UnchangedSharedObjectKind::MutatedDeleted
             }
             ReadDeleted { version } => {
                 message.version = Some(version);
-                UnchangedConsensusObjectKind::ReadConsensusStreamEnded
+                UnchangedSharedObjectKind::ReadDeleted
             }
             Canceled { version } => {
                 message.version = Some(version);
-                UnchangedConsensusObjectKind::Canceled
+                UnchangedSharedObjectKind::Canceled
             }
-            PerEpochConfig => UnchangedConsensusObjectKind::PerEpochConfig,
-            PerEpochConfigWithSequenceNumber { version } => {
-                message.version = Some(version);
-                UnchangedConsensusObjectKind::PerEpochConfig
-            }
-            _ => UnchangedConsensusObjectKind::Unknown,
+            // PerEpochConfig => UnchangedSharedObjectKind::PerEpochConfig,
+            _ => UnchangedSharedObjectKind::Unknown,
         };
 
         message.set_kind(kind);
@@ -666,31 +389,29 @@ impl From<crate::types::UnchangedConsensusObject> for UnchangedConsensusObject {
     }
 }
 
-impl TryFrom<&UnchangedConsensusObject> for crate::types::UnchangedConsensusObject {
+impl TryFrom<&UnchangedSharedObject> for crate::types::UnchangedSharedObject {
     type Error = TryFromProtoError;
 
-    fn try_from(value: &UnchangedConsensusObject) -> Result<Self, Self::Error> {
-        use crate::types::UnchangedConsensusKind;
-        use unchanged_consensus_object::UnchangedConsensusObjectKind;
+    fn try_from(value: &UnchangedSharedObject) -> Result<Self, Self::Error> {
+        use crate::types::UnchangedSharedKind;
+        use unchanged_shared_object::UnchangedSharedObjectKind;
 
         let object_id = value
             .object_id
             .as_ref()
             .ok_or_else(|| TryFromProtoError::missing("object_id"))?
             .parse()
-            .map_err(|e| {
-                TryFromProtoError::invalid(UnchangedConsensusObject::OBJECT_ID_FIELD, e)
-            })?;
+            .map_err(|e| TryFromProtoError::invalid(UnchangedSharedObject::OBJECT_ID_FIELD, e))?;
 
         let kind = match value.kind() {
-            UnchangedConsensusObjectKind::Unknown => {
+            UnchangedSharedObjectKind::Unknown => {
                 return Err(TryFromProtoError::invalid(
-                    UnchangedConsensusObject::KIND_FIELD,
+                    UnchangedSharedObject::KIND_FIELD,
                     "unknown InputKind",
                 ));
             }
 
-            UnchangedConsensusObjectKind::ReadOnlyRoot => UnchangedConsensusKind::ReadOnlyRoot {
+            UnchangedSharedObjectKind::ReadOnlyRoot => UnchangedSharedKind::ReadOnlyRoot {
                 version: value
                     .version
                     .ok_or_else(|| TryFromProtoError::missing("version"))?,
@@ -701,35 +422,24 @@ impl TryFrom<&UnchangedConsensusObject> for crate::types::UnchangedConsensusObje
                     .ok_or_else(|| TryFromProtoError::missing("digest"))?
                     .parse()
                     .map_err(|e| {
-                        TryFromProtoError::invalid(UnchangedConsensusObject::DIGEST_FIELD, e)
+                        TryFromProtoError::invalid(UnchangedSharedObject::DIGEST_FIELD, e)
                     })?,
             },
-            UnchangedConsensusObjectKind::MutateConsensusStreamEnded => {
-                UnchangedConsensusKind::MutateDeleted {
-                    version: value
-                        .version
-                        .ok_or_else(|| TryFromProtoError::missing("version"))?,
-                }
-            }
-            UnchangedConsensusObjectKind::ReadConsensusStreamEnded => {
-                UnchangedConsensusKind::ReadDeleted {
-                    version: value
-                        .version
-                        .ok_or_else(|| TryFromProtoError::missing("version"))?,
-                }
-            }
-            UnchangedConsensusObjectKind::Canceled => UnchangedConsensusKind::Canceled {
+            UnchangedSharedObjectKind::MutatedDeleted => UnchangedSharedKind::MutateDeleted {
                 version: value
                     .version
                     .ok_or_else(|| TryFromProtoError::missing("version"))?,
             },
-            UnchangedConsensusObjectKind::PerEpochConfig => {
-                if let Some(version) = value.version {
-                    UnchangedConsensusKind::PerEpochConfigWithSequenceNumber { version }
-                } else {
-                    UnchangedConsensusKind::PerEpochConfig
-                }
-            }
+            UnchangedSharedObjectKind::ReadDeleted => UnchangedSharedKind::ReadDeleted {
+                version: value
+                    .version
+                    .ok_or_else(|| TryFromProtoError::missing("version"))?,
+            },
+            UnchangedSharedObjectKind::Canceled => UnchangedSharedKind::Canceled {
+                version: value
+                    .version
+                    .ok_or_else(|| TryFromProtoError::missing("version"))?,
+            },
         };
 
         Ok(Self { object_id, kind })
