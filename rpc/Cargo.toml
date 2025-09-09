@@ -1,0 +1,54 @@
+[package]
+name = "rpc"
+edition = "2024"
+version.workspace = true
+build = "build.rs"
+
+[dependencies]
+bcs.workspace = true
+serde.workspace = true
+bytes.workspace = true
+tonic = { version = "0.13", default-features = false, features = [
+    "channel",
+    "codegen",
+    "prost",
+    "tls-ring",
+    "tls-webpki-roots",
+    "zstd",
+] }
+prost = "0.13.4"
+prost-types = "0.13.3"
+types.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tap.workspace = true
+anyhow.workspace = true
+http.workspace = true
+itertools.workspace = true
+base64.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+bs58.workspace = true
+tonic-web = "0.13.1"
+serde_derive = { version = "1.0.210" }
+serde_with = { version = "3.9", default-features = false, features = ["alloc"] }
+
+
+[build-dependencies]
+tonic-build = "0.13"
+walkdir = "2.5.0"
+protox = "0.7"
+prost = "0.13.4"
+prost-types = "0.13.3"
+heck = { version = ">=0.4, <=0.5" }
+quote = "1.0.40"
+proc-macro2 = "1.0.95"
+syn = "2.0.104"
+prettyplease = "0.2.35"
+itertools.workspace = true
+
+
+[lints]
+workspace = true

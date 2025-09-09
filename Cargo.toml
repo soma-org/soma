@@ -21,6 +21,7 @@ members = [
   "bin-version",
   "soma-config",
   "soma-keys",
+  "rpc",
 ]
 
 

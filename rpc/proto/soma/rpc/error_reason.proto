@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+enum ErrorReason {
+  ERROR_REASON_UNKNOWN = 0;
+  FIELD_INVALID = 1;
+  FIELD_MISSING = 2;
+}
