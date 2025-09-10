@@ -42,7 +42,7 @@ message TransactionKind {
 
     UndoReportValidator undo_report_validator = 4;
 
-    UpdateValidatorMetadata undo_validator_metadata = 5;
+    UpdateValidatorMetadata update_validator_metadata = 5;
 
     SetCommissionRate set_commission_rate = 6;
 

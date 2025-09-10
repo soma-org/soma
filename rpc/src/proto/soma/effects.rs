@@ -204,11 +204,7 @@ impl From<crate::types::ChangedObject> for ChangedObject {
                 message.output_owner = Some(owner.into());
                 OutputObjectState::ObjectWrite
             }
-            crate::types::ObjectOut::PackageWrite { version, digest } => {
-                message.output_version = Some(version);
-                message.output_digest = Some(digest.to_string());
-                OutputObjectState::PackageWrite
-            }
+
             _ => OutputObjectState::Unknown,
         };
         message.set_output_state(output_state);
@@ -283,19 +279,6 @@ impl TryFrom<&ChangedObject> for crate::types::ChangedObject {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("owner"))?
                     .try_into()?,
-            },
-            OutputObjectState::PackageWrite => crate::types::ObjectOut::PackageWrite {
-                version: value
-                    .output_version
-                    .ok_or_else(|| TryFromProtoError::missing("version"))?,
-                digest: value
-                    .output_digest
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("digest"))?
-                    .parse()
-                    .map_err(|e| {
-                        TryFromProtoError::invalid(ChangedObject::OUTPUT_DIGEST_FIELD, e)
-                    })?,
             },
         };
 
@@ -443,5 +426,37 @@ impl TryFrom<&UnchangedSharedObject> for crate::types::UnchangedSharedObject {
         };
 
         Ok(Self { object_id, kind })
+    }
+}
+
+impl From<crate::types::TransactionFee> for TransactionFee {
+    fn from(value: crate::types::TransactionFee) -> Self {
+        Self {
+            base_fee: Some(value.base_fee),
+            operation_fee: Some(value.operation_fee),
+            value_fee: Some(value.value_fee),
+            total_fee: Some(value.total_fee),
+        }
+    }
+}
+
+impl TryFrom<&TransactionFee> for crate::types::TransactionFee {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &TransactionFee) -> Result<Self, Self::Error> {
+        Ok(Self {
+            base_fee: value
+                .base_fee
+                .ok_or_else(|| TryFromProtoError::missing("base_fee"))?,
+            operation_fee: value
+                .operation_fee
+                .ok_or_else(|| TryFromProtoError::missing("operation_fee"))?,
+            value_fee: value
+                .value_fee
+                .ok_or_else(|| TryFromProtoError::missing("value_fee"))?,
+            total_fee: value
+                .total_fee
+                .ok_or_else(|| TryFromProtoError::missing("total_fee"))?,
+        })
     }
 }

@@ -1,14 +1,18 @@
-#[derive(Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde_derive::Serialize, serde_derive::Deserialize)
+#[derive(
+    Clone,
+    Copy,
+    Default,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde_derive::Serialize,
+    serde_derive::Deserialize,
 )]
-#[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 #[doc(alias = "CheckpointDigest")]
 #[doc(alias = "TransactionDigest")]
-pub struct Digest(
-    #[cfg_attr(feature = "serde", serde(with = "DigestSerialization"))] [u8; Self::LENGTH],
-);
+pub struct Digest(#[serde(with = "DigestSerialization")] [u8; Self::LENGTH]);
 
 impl Digest {
     /// A constant representing the length of a digest in bytes.
@@ -22,8 +26,6 @@ impl Digest {
     }
 
     /// Generates a new digest from the provided random number generator.
-    #[cfg(feature = "rand")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
     pub fn generate<R>(mut rng: R) -> Self
     where
         R: rand_core::RngCore + rand_core::CryptoRng,
@@ -150,16 +152,12 @@ impl std::fmt::LowerHex for Digest {
 
 // Unfortunately sui's binary representation of digests is prefixed with its length meaning its
 // serialized binary form is 33 bytes long (in bcs) vs a more compact 32 bytes.
-#[cfg(feature = "serde")]
+
 type DigestSerialization =
     ::serde_with::As<::serde_with::IfIsHumanReadable<ReadableDigest, ::serde_with::Bytes>>;
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 struct ReadableDigest;
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 impl serde_with::SerializeAs<[u8; Digest::LENGTH]> for ReadableDigest {
     fn serialize_as<S>(source: &[u8; Digest::LENGTH], serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -170,8 +168,6 @@ impl serde_with::SerializeAs<[u8; Digest::LENGTH]> for ReadableDigest {
     }
 }
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 impl<'de> serde_with::DeserializeAs<'de, [u8; Digest::LENGTH]> for ReadableDigest {
     fn deserialize_as<D>(deserializer: D) -> Result<[u8; Digest::LENGTH], D::Error>
     where

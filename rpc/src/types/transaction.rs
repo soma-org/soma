@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::{Address, CommitTimestamp, EpochId, Object, ObjectReference, UserSignature};
+
 /// A transaction
 ///
 /// # BCS
@@ -11,7 +13,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// transaction-v1 = transaction-kind address gas-payment transaction-expiration
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transaction {
     pub kind: TransactionKind,
     pub sender: Address,
@@ -49,20 +51,6 @@ pub struct GasPayment {
 /// # BCS
 ///
 /// The BCS serialized form for this type is defined by the following ABNF:
-///
-/// ```text
-/// transaction-kind    =  %x00 ptb
-///                     =/ %x01 change-epoch
-///                     =/ %x02 genesis-transaction
-///                     =/ %x03 consensus-commit-prologue
-///                     =/ %x04 authenticator-state-update
-///                     =/ %x05 (vector end-of-epoch-transaction-kind)
-///                     =/ %x06 randomness-state-update
-///                     =/ %x07 consensus-commit-prologue-v2
-///                     =/ %x08 consensus-commit-prologue-v3
-///                     =/ %x09 consensus-commit-prologue-v4
-///                     =/ %x0A ptb
-/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[non_exhaustive]
 pub enum TransactionKind {
@@ -80,6 +68,136 @@ pub enum TransactionKind {
 
     /// Consensus commit update
     ConsensusCommitPrologue(ConsensusCommitPrologue),
+
+    // Validator management
+    AddValidator(AddValidatorArgs),
+    RemoveValidator(RemoveValidatorArgs),
+    ReportValidator {
+        reportee: Address,
+    },
+    UndoReportValidator {
+        reportee: Address,
+    },
+    UpdateValidatorMetadata(UpdateValidatorMetadataArgs),
+    SetCommissionRate {
+        new_rate: u64,
+    },
+
+    // Encoder management
+    AddEncoder(AddEncoderArgs),
+    RemoveEncoder(RemoveEncoderArgs),
+    ReportEncoder {
+        reportee: Address,
+    },
+    UndoReportEncoder {
+        reportee: Address,
+    },
+    UpdateEncoderMetadata(UpdateEncoderMetadataArgs),
+    SetEncoderCommissionRate {
+        new_rate: u64,
+    },
+    SetEncoderBytePrice {
+        new_price: u64,
+    },
+
+    // Transfers and payments
+    TransferCoin {
+        coin: ObjectReference,
+        amount: u64,
+        recipient: Address,
+    },
+    PayCoins {
+        coins: Vec<ObjectReference>,
+        amounts: Vec<u64>,
+        recipients: Vec<Address>,
+    },
+    TransferObjects {
+        objects: Vec<ObjectReference>,
+        recipient: Address,
+    },
+
+    // Staking
+    AddStake {
+        address: Address,
+        coin_ref: ObjectReference,
+        amount: u64,
+    },
+    AddStakeToEncoder {
+        encoder_address: Address,
+        coin_ref: ObjectReference,
+        amount: u64,
+    },
+    WithdrawStake {
+        staked_soma: ObjectReference,
+    },
+
+    // Shard operations
+    EmbedData {
+        digest: String,
+        data_size_bytes: usize,
+        coin_ref: ObjectReference,
+    },
+    ClaimEscrow {
+        shard_input_ref: ObjectReference,
+    },
+    ReportScores {
+        shard_input_ref: ObjectReference,
+        scores: Vec<u8>,
+        encoder_aggregate_signature: Vec<u8>,
+        signers: Vec<String>,
+    },
+}
+
+// Supporting types for validator management
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AddValidatorArgs {
+    pub pubkey_bytes: Vec<u8>,
+    pub network_pubkey_bytes: Vec<u8>,
+    pub worker_pubkey_bytes: Vec<u8>,
+    pub net_address: Vec<u8>,
+    pub p2p_address: Vec<u8>,
+    pub primary_address: Vec<u8>,
+    pub encoder_validator_address: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RemoveValidatorArgs {
+    pub pubkey_bytes: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct UpdateValidatorMetadataArgs {
+    pub next_epoch_network_address: Option<Vec<u8>>,
+    pub next_epoch_p2p_address: Option<Vec<u8>>,
+    pub next_epoch_primary_address: Option<Vec<u8>>,
+    pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
+    pub next_epoch_worker_pubkey: Option<Vec<u8>>,
+    pub next_epoch_network_pubkey: Option<Vec<u8>>,
+}
+
+// Supporting types for encoder management
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AddEncoderArgs {
+    pub encoder_pubkey_bytes: Vec<u8>,
+    pub network_pubkey_bytes: Vec<u8>,
+    pub internal_network_address: Vec<u8>,
+    pub external_network_address: Vec<u8>,
+    pub object_server_address: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RemoveEncoderArgs {
+    pub encoder_pubkey_bytes: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct UpdateEncoderMetadataArgs {
+    pub next_epoch_external_network_address: Option<Vec<u8>>,
+    pub next_epoch_internal_network_address: Option<Vec<u8>>,
+    pub next_epoch_network_pubkey: Option<Vec<u8>>,
+    pub next_epoch_object_server_address: Option<Vec<u8>>,
 }
 
 /// V1 of the consensus commit prologue system transaction
@@ -100,7 +218,7 @@ pub struct ConsensusCommitPrologue {
     pub round: u64,
 
     /// Unix timestamp from consensus
-    pub commit_timestamp_ms: CheckpointTimestamp,
+    pub commit_timestamp_ms: CommitTimestamp,
 }
 
 /// System transaction used to change the epoch
@@ -133,5 +251,5 @@ pub struct ChangeEpoch {
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct GenesisTransaction {
-    pub objects: Vec<GenesisObject>,
+    pub objects: Vec<Object>,
 }

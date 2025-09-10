@@ -34,7 +34,10 @@ bs58.workspace = true
 tonic-web = "0.13.1"
 serde_derive = { version = "1.0.210" }
 serde_with = { version = "3.9", default-features = false, features = ["alloc"] }
-
+rand_core = "0.6.4"
+base64ct = { version = "1.6.0", features = ["alloc"] }
+roaring = { version = "0.10.9", default-features = false }
+blake2 = "0.10.6"
 
 [build-dependencies]
 tonic-build = "0.13"

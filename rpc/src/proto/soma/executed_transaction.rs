@@ -39,7 +39,7 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
                 .map(|e| TransactionEffects::merge_from(e, &submask));
         }
 
-        if mask.contains(Self::CHECKPOINT_FIELD.name) {
+        if mask.contains(Self::COMMIT_FIELD.name) {
             self.commit = *commit;
         }
 
@@ -53,15 +53,23 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
 
         if let Some(submask) = mask.subtree(Self::INPUT_OBJECTS_FIELD.name) {
             self.input_objects = input_objects
-                .iter()
-                .map(|object| Object::merge_from(object, &submask))
+                .iter() // Changed from into_iter() to iter()
+                .map(|object| {
+                    let mut result = Object::default();
+                    result.merge(object, &submask); // Use merge instead of merge_from
+                    result
+                })
                 .collect();
         }
 
         if let Some(submask) = mask.subtree(Self::OUTPUT_OBJECTS_FIELD.name) {
             self.output_objects = output_objects
-                .iter()
-                .map(|object| Object::merge_from(object, &submask))
+                .iter() // Changed from into_iter() to iter()
+                .map(|object| {
+                    let mut result = Object::default();
+                    result.merge(object, &submask); // Use merge instead of merge_from
+                    result
+                })
                 .collect();
         }
     }

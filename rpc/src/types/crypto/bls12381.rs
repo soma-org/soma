@@ -1,14 +1,24 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Ed25519PublicKey(
-    #[serde(with = "::serde_with::As::<::serde_with::IfIsHumanReadable<super::Base64Array32>>")]
+#[derive(
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde_derive::Serialize,
+    serde_derive::Deserialize,
+)]
+pub struct Bls12381PublicKey(
+    #[serde(
+        with = "::serde_with::As::<::serde_with::IfIsHumanReadable<super::Base64Array96, ::serde_with::Bytes>>"
+    )]
     [u8; Self::LENGTH],
 );
 
-impl Ed25519PublicKey {
-    /// The length of an ed25519 public key in bytes.
-    pub const LENGTH: usize = 32;
+impl Bls12381PublicKey {
+    /// The length of an bls12381 public key in bytes.
+    pub const LENGTH: usize = 96;
 
     pub const fn new(bytes: [u8; Self::LENGTH]) -> Self {
         Self(bytes)
@@ -23,7 +33,7 @@ impl Ed25519PublicKey {
         Self::new(buf)
     }
 
-    /// Return the underlying byte array of an Ed25519PublicKey.
+    /// Return the underlying byte array of an Bls12381PublicKey.
     pub const fn into_inner(self) -> [u8; Self::LENGTH] {
         self.0
     }
@@ -41,72 +51,82 @@ impl Ed25519PublicKey {
     }
 }
 
-impl std::str::FromStr for Ed25519PublicKey {
+impl std::str::FromStr for Bls12381PublicKey {
     type Err = base64ct::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        super::Base64FromStr32::from_str(s).map(|a| Self::new(a.0))
+        super::Base64FromStr96::from_str(s).map(|a| Self(a.0))
     }
 }
 
-impl AsRef<[u8]> for Ed25519PublicKey {
+impl AsRef<[u8]> for Bls12381PublicKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl AsRef<[u8; Self::LENGTH]> for Ed25519PublicKey {
+impl AsRef<[u8; Self::LENGTH]> for Bls12381PublicKey {
     fn as_ref(&self) -> &[u8; Self::LENGTH] {
         &self.0
     }
 }
 
-impl From<Ed25519PublicKey> for [u8; Ed25519PublicKey::LENGTH] {
-    fn from(public_key: Ed25519PublicKey) -> Self {
+impl From<Bls12381PublicKey> for [u8; Bls12381PublicKey::LENGTH] {
+    fn from(public_key: Bls12381PublicKey) -> Self {
         public_key.into_inner()
     }
 }
 
-impl From<[u8; Self::LENGTH]> for Ed25519PublicKey {
+impl From<[u8; Self::LENGTH]> for Bls12381PublicKey {
     fn from(public_key: [u8; Self::LENGTH]) -> Self {
         Self::new(public_key)
     }
 }
 
-impl std::fmt::Display for Ed25519PublicKey {
+impl std::fmt::Display for Bls12381PublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&super::Base64Display32(&self.0), f)
+        std::fmt::Display::fmt(&super::Base64Display96(&self.0), f)
     }
 }
 
-impl std::fmt::Debug for Ed25519PublicKey {
+impl std::fmt::Debug for Bls12381PublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Ed25519PublicKey")
+        f.debug_tuple("Bls12381PublicKey")
             .field(&format_args!("\"{self}\""))
             .finish()
     }
 }
 
-/// An ed25519 signature.
+/// A bls12381 min-sig signature.
 ///
 /// # BCS
 ///
 /// The BCS serialized form for this type is defined by the following ABNF:
 ///
 /// ```text
-/// ed25519-signature = 64OCTECT
+/// bls-signature = 48OCTECT
 /// ```
-#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Ed25519Signature(
+#[derive(
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde_derive::Serialize,
+    serde_derive::Deserialize,
+)]
+pub struct Bls12381Signature(
     #[serde(
-        with = "::serde_with::As::<::serde_with::IfIsHumanReadable<super::Base64Array64, [::serde_with::Same; 64]>>"
+        with = "::serde_with::As::<::serde_with::IfIsHumanReadable<super::Base64Array48, [::serde_with::Same; 48]>>"
     )]
     [u8; Self::LENGTH],
 );
 
-impl Ed25519Signature {
-    /// The length of an ed25519 signature key in bytes.
-    pub const LENGTH: usize = 64;
+impl Bls12381Signature {
+    /// The length of an bls12381 signature key in bytes.
+    pub const LENGTH: usize = 48;
 
     pub const fn new(bytes: [u8; Self::LENGTH]) -> Self {
         Self(bytes)
@@ -121,7 +141,7 @@ impl Ed25519Signature {
         Self::new(buf)
     }
 
-    /// Return the underlying byte array of an Ed25519Signature.
+    /// Return the underlying byte array of an Bls12381Signature.
     pub const fn into_inner(self) -> [u8; Self::LENGTH] {
         self.0
     }
@@ -139,47 +159,47 @@ impl Ed25519Signature {
     }
 }
 
-impl std::str::FromStr for Ed25519Signature {
+impl std::str::FromStr for Bls12381Signature {
     type Err = base64ct::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        super::Base64FromStr64::from_str(s).map(|a| Self::new(a.0))
+        super::Base64FromStr48::from_str(s).map(|a| Self::new(a.0))
     }
 }
 
-impl AsRef<[u8]> for Ed25519Signature {
+impl AsRef<[u8]> for Bls12381Signature {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl AsRef<[u8; Self::LENGTH]> for Ed25519Signature {
+impl AsRef<[u8; Self::LENGTH]> for Bls12381Signature {
     fn as_ref(&self) -> &[u8; Self::LENGTH] {
         &self.0
     }
 }
 
-impl From<Ed25519Signature> for [u8; Ed25519Signature::LENGTH] {
-    fn from(signature: Ed25519Signature) -> Self {
+impl From<Bls12381Signature> for [u8; Bls12381Signature::LENGTH] {
+    fn from(signature: Bls12381Signature) -> Self {
         signature.into_inner()
     }
 }
 
-impl From<[u8; Self::LENGTH]> for Ed25519Signature {
+impl From<[u8; Self::LENGTH]> for Bls12381Signature {
     fn from(signature: [u8; Self::LENGTH]) -> Self {
         Self::new(signature)
     }
 }
 
-impl std::fmt::Display for Ed25519Signature {
+impl std::fmt::Display for Bls12381Signature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&super::Base64Display64(&self.0), f)
+        std::fmt::Display::fmt(&super::Base64Display48(&self.0), f)
     }
 }
 
-impl std::fmt::Debug for Ed25519Signature {
+impl std::fmt::Debug for Bls12381Signature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Ed25519Signature")
+        f.debug_tuple("Bls12381Signature")
             .field(&format_args!("\"{self}\""))
             .finish()
     }

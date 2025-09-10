@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::{
+    Address, EpochId, ExecutionStatus, Owner, TransactionFee, Version, digest::Digest,
+};
+
 #[derive(Eq, PartialEq, Clone, Debug, Deserialize, Serialize)]
 pub struct TransactionEffects {
     /// The status of the execution

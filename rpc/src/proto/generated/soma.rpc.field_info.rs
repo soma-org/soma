@@ -776,18 +776,6 @@ mod _field_impls {
             number: 8i32,
             message_fields: None,
         };
-        pub const JSON_FIELD: &'static MessageField = &MessageField {
-            name: "json",
-            json_name: "json",
-            number: 100i32,
-            message_fields: None,
-        };
-        pub const BALANCE_FIELD: &'static MessageField = &MessageField {
-            name: "balance",
-            json_name: "balance",
-            number: 101i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for Object {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -799,8 +787,6 @@ mod _field_impls {
             Self::OBJECT_TYPE_FIELD,
             Self::CONTENTS_FIELD,
             Self::PREVIOUS_TRANSACTION_FIELD,
-            Self::JSON_FIELD,
-            Self::BALANCE_FIELD,
         ];
     }
     impl Object {
@@ -853,14 +839,6 @@ mod _field_impls {
         }
         pub fn previous_transaction(mut self) -> String {
             self.path.push(Object::PREVIOUS_TRANSACTION_FIELD.name);
-            self.finish()
-        }
-        pub fn json(mut self) -> String {
-            self.path.push(Object::JSON_FIELD.name);
-            self.finish()
-        }
-        pub fn balance(mut self) -> String {
-            self.path.push(Object::BALANCE_FIELD.name);
             self.finish()
         }
     }
@@ -1418,9 +1396,9 @@ mod _field_impls {
             number: 4i32,
             message_fields: Some(UndoReportValidator::FIELDS),
         };
-        pub const UNDO_VALIDATOR_METADATA_FIELD: &'static MessageField = &MessageField {
-            name: "undo_validator_metadata",
-            json_name: "undoValidatorMetadata",
+        pub const UPDATE_VALIDATOR_METADATA_FIELD: &'static MessageField = &MessageField {
+            name: "update_validator_metadata",
+            json_name: "updateValidatorMetadata",
             number: 5i32,
             message_fields: Some(UpdateValidatorMetadata::FIELDS),
         };
@@ -1551,7 +1529,7 @@ mod _field_impls {
             Self::REMOVE_VALIDATOR_FIELD,
             Self::REPORT_VALIDATOR_FIELD,
             Self::UNDO_REPORT_VALIDATOR_FIELD,
-            Self::UNDO_VALIDATOR_METADATA_FIELD,
+            Self::UPDATE_VALIDATOR_METADATA_FIELD,
             Self::SET_COMMISSION_RATE_FIELD,
             Self::ADD_ENCODER_FIELD,
             Self::REMOVE_ENCODER_FIELD,
@@ -1610,10 +1588,10 @@ mod _field_impls {
             self.path.push(TransactionKind::UNDO_REPORT_VALIDATOR_FIELD.name);
             UndoReportValidatorFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn undo_validator_metadata(
+        pub fn update_validator_metadata(
             mut self,
         ) -> UpdateValidatorMetadataFieldPathBuilder {
-            self.path.push(TransactionKind::UNDO_VALIDATOR_METADATA_FIELD.name);
+            self.path.push(TransactionKind::UPDATE_VALIDATOR_METADATA_FIELD.name);
             UpdateValidatorMetadataFieldPathBuilder::new_with_base(self.path)
         }
         pub fn set_commission_rate(mut self) -> SetCommissionRateFieldPathBuilder {

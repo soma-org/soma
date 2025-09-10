@@ -33,8 +33,8 @@ message Object {
   optional string previous_transaction = 8;
 
   // JSON rendering of the object.
-  optional google.protobuf.Value json = 100;
+  // optional google.protobuf.Value json = 100;
 
   // Current balance if this object is a `Coin`
-  optional uint64 balance = 101;
+  // optional uint64 balance = 101;
 }

@@ -547,12 +547,6 @@ pub struct Object {
     /// The digest of the transaction that created or last mutated this object
     #[prost(string, optional, tag = "8")]
     pub previous_transaction: ::core::option::Option<::prost::alloc::string::String>,
-    /// JSON rendering of the object.
-    #[prost(message, optional, boxed, tag = "100")]
-    pub json: ::core::option::Option<::prost::alloc::boxed::Box<::prost_types::Value>>,
-    /// Current balance if this object is a `Coin`
-    #[prost(uint64, optional, tag = "101")]
-    pub balance: ::core::option::Option<u64>,
 }
 /// Reference to an object.
 #[non_exhaustive]
@@ -790,7 +784,7 @@ pub mod transaction_kind {
         #[prost(message, tag = "4")]
         UndoReportValidator(super::UndoReportValidator),
         #[prost(message, tag = "5")]
-        UndoValidatorMetadata(super::UpdateValidatorMetadata),
+        UpdateValidatorMetadata(super::UpdateValidatorMetadata),
         #[prost(message, tag = "6")]
         SetCommissionRate(super::SetCommissionRate),
         #[prost(message, tag = "7")]

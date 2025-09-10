@@ -1,9 +1,9 @@
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde_derive::Serialize, serde_derive::Deserialize)
+use crate::types::Address;
+
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde_derive::Serialize, serde_derive::Deserialize,
 )]
-#[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
+
 pub struct BalanceChange {
     /// Owner of the balance change
     pub address: Address,

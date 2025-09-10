@@ -3127,12 +3127,6 @@ impl serde::Serialize for Object {
         if self.previous_transaction.is_some() {
             len += 1;
         }
-        if self.json.is_some() {
-            len += 1;
-        }
-        if self.balance.is_some() {
-            len += 1;
-        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Object", len)?;
         if let Some(v) = self.bcs.as_ref() {
             struct_ser.serialize_field("bcs", v)?;
@@ -3160,14 +3154,6 @@ impl serde::Serialize for Object {
         if let Some(v) = self.previous_transaction.as_ref() {
             struct_ser.serialize_field("previousTransaction", v)?;
         }
-        if let Some(v) = self.json.as_ref() {
-            struct_ser.serialize_field("json", &crate::utils::_serde::ValueSerializer(v))?;
-        }
-        if let Some(v) = self.balance.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("balance", ToString::to_string(&v).as_str())?;
-        }
         struct_ser.end()
     }
 }
@@ -3189,8 +3175,6 @@ impl<'de> serde::Deserialize<'de> for Object {
             "contents",
             "previous_transaction",
             "previousTransaction",
-            "json",
-            "balance",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -3203,8 +3187,6 @@ impl<'de> serde::Deserialize<'de> for Object {
             ObjectType,
             Contents,
             PreviousTransaction,
-            Json,
-            Balance,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -3235,8 +3217,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                             "objectType" | "object_type" => Ok(GeneratedField::ObjectType),
                             "contents" => Ok(GeneratedField::Contents),
                             "previousTransaction" | "previous_transaction" => Ok(GeneratedField::PreviousTransaction),
-                            "json" => Ok(GeneratedField::Json),
-                            "balance" => Ok(GeneratedField::Balance),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -3266,8 +3246,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                 let mut object_type__ = None;
                 let mut contents__ = None;
                 let mut previous_transaction__ = None;
-                let mut json__ = None;
-                let mut balance__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Bcs => {
@@ -3320,20 +3298,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                             }
                             previous_transaction__ = map_.next_value()?;
                         }
-                        GeneratedField::Json => {
-                            if json__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("json"));
-                            }
-                            json__ = map_.next_value::<::std::option::Option<crate::utils::_serde::ValueDeserializer>>()?.map(|x| x.0.into());
-                        }
-                        GeneratedField::Balance => {
-                            if balance__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("balance"));
-                            }
-                            balance__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -3348,8 +3312,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                     object_type: object_type__,
                     contents: contents__,
                     previous_transaction: previous_transaction__,
-                    json: json__,
-                    balance: balance__,
                 })
             }
         }
@@ -5641,8 +5603,8 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::UndoReportValidator(v) => {
                     struct_ser.serialize_field("undoReportValidator", v)?;
                 }
-                transaction_kind::Kind::UndoValidatorMetadata(v) => {
-                    struct_ser.serialize_field("undoValidatorMetadata", v)?;
+                transaction_kind::Kind::UpdateValidatorMetadata(v) => {
+                    struct_ser.serialize_field("updateValidatorMetadata", v)?;
                 }
                 transaction_kind::Kind::SetCommissionRate(v) => {
                     struct_ser.serialize_field("setCommissionRate", v)?;
@@ -5724,8 +5686,8 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "reportValidator",
             "undo_report_validator",
             "undoReportValidator",
-            "undo_validator_metadata",
-            "undoValidatorMetadata",
+            "update_validator_metadata",
+            "updateValidatorMetadata",
             "set_commission_rate",
             "setCommissionRate",
             "add_encoder",
@@ -5773,7 +5735,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             RemoveValidator,
             ReportValidator,
             UndoReportValidator,
-            UndoValidatorMetadata,
+            UpdateValidatorMetadata,
             SetCommissionRate,
             AddEncoder,
             RemoveEncoder,
@@ -5820,7 +5782,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "removeValidator" | "remove_validator" => Ok(GeneratedField::RemoveValidator),
                             "reportValidator" | "report_validator" => Ok(GeneratedField::ReportValidator),
                             "undoReportValidator" | "undo_report_validator" => Ok(GeneratedField::UndoReportValidator),
-                            "undoValidatorMetadata" | "undo_validator_metadata" => Ok(GeneratedField::UndoValidatorMetadata),
+                            "updateValidatorMetadata" | "update_validator_metadata" => Ok(GeneratedField::UpdateValidatorMetadata),
                             "setCommissionRate" | "set_commission_rate" => Ok(GeneratedField::SetCommissionRate),
                             "addEncoder" | "add_encoder" => Ok(GeneratedField::AddEncoder),
                             "removeEncoder" | "remove_encoder" => Ok(GeneratedField::RemoveEncoder),
@@ -5893,11 +5855,11 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UndoReportValidator)
 ;
                         }
-                        GeneratedField::UndoValidatorMetadata => {
+                        GeneratedField::UpdateValidatorMetadata => {
                             if kind__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("undoValidatorMetadata"));
+                                return Err(serde::de::Error::duplicate_field("updateValidatorMetadata"));
                             }
-                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UndoValidatorMetadata)
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UpdateValidatorMetadata)
 ;
                         }
                         GeneratedField::SetCommissionRate => {

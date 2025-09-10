@@ -532,8 +532,6 @@ mod _getter_impls {
                 object_type: None,
                 contents: None,
                 previous_transaction: None,
-                json: None,
-                balance: None,
             }
         }
         #[doc(hidden)]
@@ -616,10 +614,6 @@ mod _getter_impls {
         }
         pub fn with_previous_transaction(mut self, field: String) -> Self {
             self.previous_transaction = Some(field.into());
-            self
-        }
-        pub fn with_balance(mut self, field: u64) -> Self {
-            self.balance = Some(field.into());
             self
         }
     }
@@ -1089,8 +1083,8 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::UndoReportValidator(field.into()));
             self
         }
-        pub fn undo_validator_metadata(&self) -> &UpdateValidatorMetadata {
-            if let Some(transaction_kind::Kind::UndoValidatorMetadata(field)) = &self
+        pub fn update_validator_metadata(&self) -> &UpdateValidatorMetadata {
+            if let Some(transaction_kind::Kind::UpdateValidatorMetadata(field)) = &self
                 .kind
             {
                 field as _
@@ -1098,8 +1092,8 @@ mod _getter_impls {
                 UpdateValidatorMetadata::default_instance() as _
             }
         }
-        pub fn undo_validator_metadata_opt(&self) -> Option<&UpdateValidatorMetadata> {
-            if let Some(transaction_kind::Kind::UndoValidatorMetadata(field)) = &self
+        pub fn update_validator_metadata_opt(&self) -> Option<&UpdateValidatorMetadata> {
+            if let Some(transaction_kind::Kind::UpdateValidatorMetadata(field)) = &self
                 .kind
             {
                 Some(field as _)
@@ -1107,10 +1101,10 @@ mod _getter_impls {
                 None
             }
         }
-        pub fn undo_validator_metadata_opt_mut(
+        pub fn update_validator_metadata_opt_mut(
             &mut self,
         ) -> Option<&mut UpdateValidatorMetadata> {
-            if let Some(transaction_kind::Kind::UndoValidatorMetadata(field)) = &mut self
+            if let Some(transaction_kind::Kind::UpdateValidatorMetadata(field)) = &mut self
                 .kind
             {
                 Some(field as _)
@@ -1118,22 +1112,22 @@ mod _getter_impls {
                 None
             }
         }
-        pub fn undo_validator_metadata_mut(&mut self) -> &mut UpdateValidatorMetadata {
-            if self.undo_validator_metadata_opt_mut().is_none() {
+        pub fn update_validator_metadata_mut(&mut self) -> &mut UpdateValidatorMetadata {
+            if self.update_validator_metadata_opt_mut().is_none() {
                 self.kind = Some(
-                    transaction_kind::Kind::UndoValidatorMetadata(
+                    transaction_kind::Kind::UpdateValidatorMetadata(
                         UpdateValidatorMetadata::default(),
                     ),
                 );
             }
-            self.undo_validator_metadata_opt_mut().unwrap()
+            self.update_validator_metadata_opt_mut().unwrap()
         }
-        pub fn with_undo_validator_metadata(
+        pub fn with_update_validator_metadata(
             mut self,
             field: UpdateValidatorMetadata,
         ) -> Self {
             self.kind = Some(
-                transaction_kind::Kind::UndoValidatorMetadata(field.into()),
+                transaction_kind::Kind::UpdateValidatorMetadata(field.into()),
             );
             self
         }
