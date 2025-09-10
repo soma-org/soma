@@ -31,6 +31,7 @@ base64.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 bs58.workspace = true
+hex.workspace = true
 tonic-web = "0.13.1"
 serde_derive = { version = "1.0.210" }
 serde_with = { version = "3.9", default-features = false, features = ["alloc"] }

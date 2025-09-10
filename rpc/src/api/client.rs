@@ -201,13 +201,6 @@ fn execute_transaction_response_try_from_proto(
         .ok_or_else(|| TryFromProtoError::missing("effects_bcs"))?
         .deserialize()
         .map_err(|e| TryFromProtoError::invalid("effects.bcs", e))?;
-    let events = executed_transaction
-        .events
-        .as_ref()
-        .and_then(|events| events.bcs.as_ref())
-        .map(|bcs| bcs.deserialize())
-        .transpose()
-        .map_err(|e| TryFromProtoError::invalid("events.bcs", e))?;
 
     let balance_changes = executed_transaction
         .balance_changes

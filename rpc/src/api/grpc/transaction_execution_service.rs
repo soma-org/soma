@@ -1,6 +1,6 @@
 use prost_types::FieldMask;
 use tap::Pipe;
-use types::transaction_executor::TransactionExecutor;
+use types::{balance_change::derive_balance_changes, transaction_executor::TransactionExecutor};
 
 use crate::{
     api::{RpcService, error::RpcError},
@@ -107,9 +107,9 @@ pub async fn execute_transaction(
                 finality_info,
             },
         shard, // TODO: add shard info here
-               // events,
-               // input_objects,
-               // output_objects,
+        // events,
+        input_objects,
+        output_objects,
     } = executor.execute_transaction(request, None).await?;
 
     let finality = {
@@ -126,25 +126,23 @@ pub async fn execute_transaction(
     let executed_transaction = if let Some(mask) =
         read_mask.subtree(ExecuteTransactionResponse::TRANSACTION_FIELD.name)
     {
-        // TODO: derive balance changes from input_objects and output_objects, which will need to be included in ExecuteTransactionResponse
-        // let balance_changes = mask
-        //     .contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
-        //     .then(|| {
-        //         derive_balance_changes(&effects, &input_objects, &output_objects)
-        //             .into_iter()
-        //             .map(Into::into)
-        //             .collect()
-        //     })
-        //     .unwrap_or_default();
-
-        // let input_objects = input_objects
-        //     .into_iter()
-        //     .map(crate::types::Object::try_from)
-        //     .collect::<Result<Vec<_>, _>>()?;
-        // let output_objects = output_objects
-        //     .into_iter()
-        //     .map(crate::types::Object::try_from)
-        //     .collect::<Result<Vec<_>, _>>()?;
+        let balance_changes = mask
+            .contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
+            .then(|| {
+                derive_balance_changes(&effects, &input_objects, &output_objects)
+                    .into_iter()
+                    .map(Into::into)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let input_objects = input_objects
+            .into_iter()
+            .map(crate::types::Object::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        let output_objects = output_objects
+            .into_iter()
+            .map(crate::types::Object::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
 
         let effects = crate::types::TransactionEffects::try_from(effects)?;
         let effects = mask
@@ -163,21 +161,14 @@ pub async fn execute_transaction(
                             .chain(&output_objects)
                             .find(|o| o.object_id() == object_id)
                         {
-                            changed_object.object_type = Some(match object.object_type() {
-                                crate::types::ObjectType::Package => "package".to_owned(),
-                                crate::types::ObjectType::Struct(struct_tag) => {
-                                    struct_tag.to_string()
-                                }
-                            });
+                            changed_object.object_type = Some(object.object_type);
                         }
                     }
                 }
 
-                if mask.contains(TransactionEffects::UNCHANGED_CONSENSUS_OBJECTS_FIELD.name) {
-                    for unchanged_consensus_object in effects.unchanged_consensus_objects.iter_mut()
-                    {
-                        let Ok(object_id) =
-                            unchanged_consensus_object.object_id().parse::<Address>()
+                if mask.contains(TransactionEffects::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
+                    for unchanged_shared_object in effects.unchanged_shared_objects.iter_mut() {
+                        let Ok(object_id) = unchanged_shared_object.object_id().parse::<Address>()
                         else {
                             continue;
                         };
@@ -185,13 +176,7 @@ pub async fn execute_transaction(
                         if let Some(object) =
                             input_objects.iter().find(|o| o.object_id() == object_id)
                         {
-                            unchanged_consensus_object.object_type =
-                                Some(match object.object_type() {
-                                    crate::types::ObjectType::Package => "package".to_owned(),
-                                    crate::types::ObjectType::Struct(struct_tag) => {
-                                        struct_tag.to_string()
-                                    }
-                                });
+                            unchanged_shared_object.object_type = Some(object.object_type);
                         }
                     }
                 }
@@ -216,7 +201,7 @@ pub async fn execute_transaction(
             })
             .unwrap_or_default();
         message.effects = effects;
-        // message.balance_changes = balance_changes;
+        message.balance_changes = balance_changes;
         message.input_objects = mask
             .subtree(ExecutedTransaction::INPUT_OBJECTS_FIELD.name)
             .map(|mask| {

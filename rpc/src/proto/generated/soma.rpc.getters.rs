@@ -910,10 +910,7 @@ mod _getter_impls {
     }
     impl GasPayment {
         pub const fn const_default() -> Self {
-            Self {
-                objects: Vec::new(),
-                owner: None,
-            }
+            Self { objects: Vec::new() }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
@@ -925,10 +922,6 @@ mod _getter_impls {
         }
         pub fn with_objects(mut self, field: Vec<ObjectReference>) -> Self {
             self.objects = field;
-            self
-        }
-        pub fn with_owner(mut self, field: String) -> Self {
-            self.owner = Some(field.into());
             self
         }
     }

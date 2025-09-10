@@ -26,9 +26,6 @@ message Transaction {
 message GasPayment {
   // Set of gas objects to use for payment.
   repeated ObjectReference objects = 1;
-
-  // Owner of the gas objects, either the transaction sender or a sponsor.
-  optional string owner = 2;
 }
 
 // Transaction type.

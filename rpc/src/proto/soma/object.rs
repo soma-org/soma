@@ -113,6 +113,12 @@ impl Object {
         result.merge(source, mask);
         result
     }
+
+    pub fn merge_from_types(source: types::object::Object, mask: &FieldMaskTree) -> Self {
+        let mut result = Self::default();
+        result.merge(source, mask);
+        result
+    }
 }
 
 // From protobuf to domain type

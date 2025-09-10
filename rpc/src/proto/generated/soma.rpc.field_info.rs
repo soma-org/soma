@@ -1329,18 +1329,9 @@ mod _field_impls {
             number: 1i32,
             message_fields: Some(ObjectReference::FIELDS),
         };
-        pub const OWNER_FIELD: &'static MessageField = &MessageField {
-            name: "owner",
-            json_name: "owner",
-            number: 2i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for GasPayment {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::OBJECTS_FIELD,
-            Self::OWNER_FIELD,
-        ];
+        const FIELDS: &'static [&'static MessageField] = &[Self::OBJECTS_FIELD];
     }
     impl GasPayment {
         pub fn path_builder() -> GasPaymentFieldPathBuilder {
@@ -1365,10 +1356,6 @@ mod _field_impls {
         pub fn objects(mut self) -> ObjectReferenceFieldPathBuilder {
             self.path.push(GasPayment::OBJECTS_FIELD.name);
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn owner(mut self) -> String {
-            self.path.push(GasPayment::OWNER_FIELD.name);
-            self.finish()
         }
     }
     impl TransactionKind {

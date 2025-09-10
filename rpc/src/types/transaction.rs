@@ -34,16 +34,10 @@ pub struct SignedTransaction {
 ///
 /// ```text
 /// gas-payment = (vector object-ref) ; gas coin objects
-///               address             ; owner
-///               u64                 ; price
-///               u64                 ; budget
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct GasPayment {
     pub objects: Vec<ObjectReference>,
-
-    /// Owner of the gas objects, either the transaction sender or a sponsor
-    pub owner: Address,
 }
 
 /// Transaction type

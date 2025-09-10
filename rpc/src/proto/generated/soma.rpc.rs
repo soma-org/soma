@@ -756,9 +756,6 @@ pub struct GasPayment {
     /// Set of gas objects to use for payment.
     #[prost(message, repeated, tag = "1")]
     pub objects: ::prost::alloc::vec::Vec<ObjectReference>,
-    /// Owner of the gas objects, either the transaction sender or a sponsor.
-    #[prost(string, optional, tag = "2")]
-    pub owner: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Transaction type.
 #[non_exhaustive]

@@ -117,7 +117,6 @@ impl From<crate::types::GasPayment> for GasPayment {
     fn from(value: crate::types::GasPayment) -> Self {
         Self {
             objects: value.objects.into_iter().map(Into::into).collect(),
-            owner: Some(value.owner.to_string()),
         }
     }
 }
@@ -132,14 +131,7 @@ impl TryFrom<&GasPayment> for crate::types::GasPayment {
             .map(TryInto::try_into)
             .collect::<Result<_, _>>()?;
 
-        let owner = value
-            .owner
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("owner"))?
-            .parse()
-            .map_err(|e| TryFromProtoError::invalid(GasPayment::OWNER_FIELD, e))?;
-
-        Ok(Self { objects, owner })
+        Ok(Self { objects })
     }
 }
 

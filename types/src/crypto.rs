@@ -876,6 +876,14 @@ pub enum GenericSignature {
     Signature(Signature),
 }
 
+impl AsRef<[u8]> for GenericSignature {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            GenericSignature::Signature(s) => s.as_ref(),
+        }
+    }
+}
+
 // impl From<Signature> for GenericSignature {
 //     fn from(sig: Signature) -> Self {
 //         GenericSignature::Signature(sig)

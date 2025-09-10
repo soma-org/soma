@@ -1,5 +1,6 @@
 pub mod accumulator;
 pub mod actors;
+pub mod balance_change;
 pub mod base;
 pub mod checksum;
 pub mod client;
