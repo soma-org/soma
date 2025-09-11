@@ -78,15 +78,15 @@ impl From<anyhow::Error> for RpcError {
     }
 }
 
-// impl From<types::sdk_types_conversions::SdkTypeConversionError> for RpcError {
-//     fn from(value: types::sdk_types_conversions::SdkTypeConversionError) -> Self {
-//         Self {
-//             code: Code::Internal,
-//             message: Some(value.to_string()),
-//             details: None,
-//         }
-//     }
-// }
+impl From<crate::utils::types_conversions::SdkTypeConversionError> for RpcError {
+    fn from(value: crate::utils::types_conversions::SdkTypeConversionError) -> Self {
+        Self {
+            code: Code::Internal,
+            message: Some(value.to_string()),
+            details: None,
+        }
+    }
+}
 
 impl From<bcs::Error> for RpcError {
     fn from(value: bcs::Error) -> Self {
@@ -100,122 +100,101 @@ impl From<bcs::Error> for RpcError {
 
 impl From<types::quorum_driver::QuorumDriverError> for RpcError {
     fn from(error: types::quorum_driver::QuorumDriverError) -> Self {
-        use itertools::Itertools;
-        use types::error::SomaError;
         use types::quorum_driver::QuorumDriverError::*;
 
         match error {
             InvalidUserSignature(err) => {
-                let message = {
-                    let err = match err {
-                        SomaError::UserInputError { error } => error.to_string(),
-                        _ => err.to_string(),
-                    };
-                    format!("Invalid user signature: {err}")
-                };
-
+                // Since you don't have UserInputError, just use the error directly
+                let message = format!("Invalid user signature: {}", err);
                 RpcError::new(Code::InvalidArgument, message)
             }
+
             QuorumDriverInternalError(err) => RpcError::new(Code::Internal, err.to_string()),
-            ObjectsDoubleUsed { conflicting_txes } => {
-                let new_map = conflicting_txes
-                    .into_iter()
-                    .map(|(digest, (pairs, _))| {
-                        (
-                            digest,
-                            pairs.into_iter().map(|(_, obj_ref)| obj_ref).collect(),
-                        )
-                    })
-                    .collect::<std::collections::BTreeMap<_, Vec<_>>>();
 
-                let message = format!(
-                    "Failed to sign transaction by a quorum of validators because of locked objects. Conflicting Transactions:\n{new_map:#?}",
-                );
-
-                RpcError::new(Code::FailedPrecondition, message)
-            }
-            TimeoutBeforeFinality | FailedWithTransientErrorAfterMaximumAttempts { .. } => {
-                // TODO add a Retry-After header
-                RpcError::new(
-                    Code::Unavailable,
-                    "timed-out before finality could be reached",
-                )
-            }
-            TimeoutBeforeFinalityWithErrors {
-                last_error,
-                attempts,
-                timeout,
+            ObjectsDoubleUsed {
+                conflicting_txes,
+                retried_tx,
+                retried_tx_success,
             } => {
-                // TODO add a Retry-After header
-                RpcError::new(
-                    Code::Unavailable,
-                    format!(
-                        "Transaction timed out before finality could be reached. Attempts: {attempts} & timeout: {timeout:?}. Last error: {last_error}"
-                    ),
-                )
-            }
-            NonRecoverableTransactionError { errors } => {
-                let new_errors: Vec<String> = errors
+                // Transform the conflicting_txes similar to reference, but include your additional fields
+                let conflicts: Vec<String> = conflicting_txes
                     .into_iter()
-                    // sort by total stake, descending, so users see the most prominent one first
-                    .sorted_by(|(_, a, _), (_, b, _)| b.cmp(a))
-                    .filter_map(|(err, _, _)| {
-                        match &err {
-                            // Special handling of UserInputError:
-                            // ObjectNotFound and DependentPackageNotFound are considered
-                            // retryable errors but they have different treatment
-                            // in AuthorityAggregator.
-                            // The optimal fix would be to examine if the total stake
-                            // of ObjectNotFound/DependentPackageNotFound exceeds the
-                            // quorum threshold, but it takes a Committee here.
-                            // So, we take an easier route and consider them non-retryable
-                            // at all. Combining this with the sorting above, clients will
-                            // see the dominant error first.
-                            SomaError::UserInputError { error } => Some(error.to_string()),
-                            _ => {
-                                if err.is_retryable().0 {
-                                    None
-                                } else {
-                                    Some(err.to_string())
-                                }
-                            }
-                        }
+                    .map(|(digest, (validators, stake))| {
+                        format!(
+                            "{}: {} validators (stake: {})",
+                            digest,
+                            validators.len(),
+                            stake
+                        )
                     })
                     .collect();
 
-                assert!(
-                    !new_errors.is_empty(),
-                    "NonRecoverableTransactionError should have at least one non-retryable error"
+                let mut message = format!(
+                    "Failed to sign transaction by a quorum of validators because of locked objects. \
+                     Conflicting Transactions: [{}]",
+                    conflicts.join(", ")
                 );
 
-                let error_list = new_errors.join(", ");
+                // Add retry information if available
+                if let Some(tx) = retried_tx {
+                    message.push_str(&format!(". Retried transaction: {}", tx));
+                    if let Some(success) = retried_tx_success {
+                        message.push_str(&format!(" (success: {})", success));
+                    }
+                }
+
+                RpcError::new(Code::FailedPrecondition, message)
+            }
+
+            TimeoutBeforeFinality => RpcError::new(
+                Code::Unavailable,
+                "Transaction timed out before finality could be reached",
+            ),
+
+            FailedWithTransientErrorAfterMaximumAttempts { total_attempts } => RpcError::new(
+                Code::Unavailable,
+                format!(
+                    "Failed with transient error after {} attempts",
+                    total_attempts
+                ),
+            ),
+
+            NonRecoverableTransactionError { errors } => {
+                // Since you don't have the same error handling as reference,
+                // just format the errors directly
                 let error_msg = format!(
-                    "Transaction execution failed due to issues with transaction inputs, please review the errors and try again: {}.",
-                    error_list
+                    "Transaction execution failed due to issues with transaction inputs: {:?}",
+                    errors
                 );
-
                 RpcError::new(Code::InvalidArgument, error_msg)
             }
+
+            SystemOverload {
+                overloaded_stake, ..
+            } => RpcError::new(
+                Code::Unavailable,
+                format!(
+                    "System is overloaded: {} validators by stake are overloaded",
+                    overloaded_stake
+                ),
+            ),
+
+            SystemOverloadRetryAfter {
+                retry_after_secs, ..
+            } => {
+                // TODO: Add Retry-After header when your RpcError supports it
+                RpcError::new(
+                    Code::Unavailable,
+                    format!(
+                        "System is overloaded, retry after {} seconds",
+                        retry_after_secs
+                    ),
+                )
+            }
+
             TxAlreadyFinalizedWithDifferentUserSignatures => RpcError::new(
                 Code::Aborted,
                 "The transaction is already finalized but with different user signatures",
-            ),
-            SystemOverload { .. } | SystemOverloadRetryAfter { .. } => {
-                // TODO add a Retry-After header
-                RpcError::new(Code::Unavailable, "system is overloaded")
-            }
-            TransactionFailed { retriable, details } => RpcError::new(
-                // TODO(fastpath): improve the error code precision. add a Retry-After header.
-                if retriable {
-                    Code::Aborted
-                } else {
-                    Code::InvalidArgument
-                },
-                format!("[MFP experimental]: {details}"),
-            ),
-            PendingExecutionInTransactionOrchestrator => RpcError::new(
-                Code::AlreadyExists,
-                "Transaction is already being processed in transaction orchestrator (most likely by quorum driver), wait for results",
             ),
         }
     }

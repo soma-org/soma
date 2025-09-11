@@ -27,6 +27,7 @@ pub use crypto::UserSignature;
 pub use crypto::ValidatorAggregatedSignature;
 pub use crypto::ValidatorCommittee;
 pub use crypto::ValidatorCommitteeMember;
+pub use crypto::ValidatorNetworkMetadata;
 pub use crypto::ValidatorSignature;
 pub use digest::Digest;
 pub use effects::ChangedObject;

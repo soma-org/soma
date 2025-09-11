@@ -4,35 +4,27 @@ use crate::types::{
 };
 
 /// The Validator Set for a particular epoch.
-///
-/// # BCS
-///
-/// The BCS serialized form for this type is defined by the following ABNF:
-///
-/// ```text
-/// validator-committee = u64 ; epoch
-///                       (vector validator-committee-member)
-/// ```
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct ValidatorCommittee {
     pub epoch: EpochId,
     pub members: Vec<ValidatorCommitteeMember>,
 }
 
-/// A member of a Validator Committee
-///
-/// # BCS
-///
-/// The BCS serialized form for this type is defined by the following ABNF:
-///
-/// ```text
-/// validator-committee-member = bls-public-key
-///                              u64 ; stake
-/// ```
+/// A member of a Validator Committee with full authority information
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct ValidatorCommitteeMember {
-    pub public_key: Bls12381PublicKey,
+    pub authority_key: Vec<u8>, // BLS12381 public key bytes (will become AuthorityName)
     pub stake: StakeUnit,
+    pub network_metadata: ValidatorNetworkMetadata,
+}
+
+/// Network and protocol information for a validator
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct ValidatorNetworkMetadata {
+    pub consensus_address: String, // Multiaddr string representation
+    pub hostname: String,
+    pub protocol_key: Vec<u8>, // Ed25519 protocol public key bytes
+    pub network_key: Vec<u8>,  // Ed25519 network public key bytes
 }
 
 /// An aggregated signature from multiple Validators.

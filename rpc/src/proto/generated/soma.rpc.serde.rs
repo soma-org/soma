@@ -7440,22 +7440,28 @@ impl serde::Serialize for ValidatorCommitteeMember {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.public_key.is_some() {
+        if self.authority_key.is_some() {
             len += 1;
         }
         if self.weight.is_some() {
             len += 1;
         }
+        if self.network_metadata.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.ValidatorCommitteeMember", len)?;
-        if let Some(v) = self.public_key.as_ref() {
+        if let Some(v) = self.authority_key.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("publicKey", crate::utils::_serde::base64::encode(&v).as_str())?;
+            struct_ser.serialize_field("authorityKey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.weight.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("weight", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.network_metadata.as_ref() {
+            struct_ser.serialize_field("networkMetadata", v)?;
         }
         struct_ser.end()
     }
@@ -7467,15 +7473,18 @@ impl<'de> serde::Deserialize<'de> for ValidatorCommitteeMember {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "public_key",
-            "publicKey",
+            "authority_key",
+            "authorityKey",
             "weight",
+            "network_metadata",
+            "networkMetadata",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            PublicKey,
+            AuthorityKey,
             Weight,
+            NetworkMetadata,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -7498,8 +7507,9 @@ impl<'de> serde::Deserialize<'de> for ValidatorCommitteeMember {
                         E: serde::de::Error,
                     {
                         match value {
-                            "publicKey" | "public_key" => Ok(GeneratedField::PublicKey),
+                            "authorityKey" | "authority_key" => Ok(GeneratedField::AuthorityKey),
                             "weight" => Ok(GeneratedField::Weight),
+                            "networkMetadata" | "network_metadata" => Ok(GeneratedField::NetworkMetadata),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -7521,15 +7531,16 @@ impl<'de> serde::Deserialize<'de> for ValidatorCommitteeMember {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut public_key__ = None;
+                let mut authority_key__ = None;
                 let mut weight__ = None;
+                let mut network_metadata__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::PublicKey => {
-                            if public_key__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("publicKey"));
+                        GeneratedField::AuthorityKey => {
+                            if authority_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("authorityKey"));
                             }
-                            public_key__ = 
+                            authority_key__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -7541,18 +7552,184 @@ impl<'de> serde::Deserialize<'de> for ValidatorCommitteeMember {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::NetworkMetadata => {
+                            if network_metadata__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("networkMetadata"));
+                            }
+                            network_metadata__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
                     }
                 }
                 Ok(ValidatorCommitteeMember {
-                    public_key: public_key__,
+                    authority_key: authority_key__,
                     weight: weight__,
+                    network_metadata: network_metadata__,
                 })
             }
         }
         deserializer.deserialize_struct("soma.rpc.ValidatorCommitteeMember", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ValidatorNetworkMetadata {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.consensus_address.is_some() {
+            len += 1;
+        }
+        if self.hostname.is_some() {
+            len += 1;
+        }
+        if self.protocol_key.is_some() {
+            len += 1;
+        }
+        if self.network_key.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ValidatorNetworkMetadata", len)?;
+        if let Some(v) = self.consensus_address.as_ref() {
+            struct_ser.serialize_field("consensusAddress", v)?;
+        }
+        if let Some(v) = self.hostname.as_ref() {
+            struct_ser.serialize_field("hostname", v)?;
+        }
+        if let Some(v) = self.protocol_key.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("protocolKey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.network_key.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("networkKey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ValidatorNetworkMetadata {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "consensus_address",
+            "consensusAddress",
+            "hostname",
+            "protocol_key",
+            "protocolKey",
+            "network_key",
+            "networkKey",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ConsensusAddress,
+            Hostname,
+            ProtocolKey,
+            NetworkKey,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "consensusAddress" | "consensus_address" => Ok(GeneratedField::ConsensusAddress),
+                            "hostname" => Ok(GeneratedField::Hostname),
+                            "protocolKey" | "protocol_key" => Ok(GeneratedField::ProtocolKey),
+                            "networkKey" | "network_key" => Ok(GeneratedField::NetworkKey),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ValidatorNetworkMetadata;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ValidatorNetworkMetadata")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ValidatorNetworkMetadata, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut consensus_address__ = None;
+                let mut hostname__ = None;
+                let mut protocol_key__ = None;
+                let mut network_key__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ConsensusAddress => {
+                            if consensus_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("consensusAddress"));
+                            }
+                            consensus_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::Hostname => {
+                            if hostname__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("hostname"));
+                            }
+                            hostname__ = map_.next_value()?;
+                        }
+                        GeneratedField::ProtocolKey => {
+                            if protocol_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("protocolKey"));
+                            }
+                            protocol_key__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NetworkKey => {
+                            if network_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("networkKey"));
+                            }
+                            network_key__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ValidatorNetworkMetadata {
+                    consensus_address: consensus_address__,
+                    hostname: hostname__,
+                    protocol_key: protocol_key__,
+                    network_key: network_key__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ValidatorNetworkMetadata", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for WithdrawStake {

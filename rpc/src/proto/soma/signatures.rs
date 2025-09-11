@@ -43,7 +43,6 @@ impl TryFrom<&ValidatorAggregatedSignature> for crate::types::ValidatorAggregate
         })
     }
 }
-
 //
 // ValidatorCommitteeMember
 //
@@ -51,8 +50,9 @@ impl TryFrom<&ValidatorAggregatedSignature> for crate::types::ValidatorAggregate
 impl From<crate::types::ValidatorCommitteeMember> for ValidatorCommitteeMember {
     fn from(value: crate::types::ValidatorCommitteeMember) -> Self {
         Self {
-            public_key: Some(value.public_key.as_bytes().to_vec().into()),
+            authority_key: Some(value.authority_key.into()),
             weight: Some(value.stake),
+            network_metadata: Some(value.network_metadata.into()),
         }
     }
 }
@@ -61,18 +61,87 @@ impl TryFrom<&ValidatorCommitteeMember> for crate::types::ValidatorCommitteeMemb
     type Error = TryFromProtoError;
 
     fn try_from(
-        ValidatorCommitteeMember { public_key, weight }: &ValidatorCommitteeMember,
+        ValidatorCommitteeMember {
+            authority_key,
+            weight,
+            network_metadata,
+        }: &ValidatorCommitteeMember,
     ) -> Result<Self, Self::Error> {
-        let public_key = public_key
+        let authority_key = authority_key
             .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("public_key"))?
+            .ok_or_else(|| TryFromProtoError::missing("authority_key"))?
             .as_ref()
-            .pipe(crate::types::Bls12381PublicKey::from_bytes)
-            .map_err(|e| {
-                TryFromProtoError::invalid(ValidatorCommitteeMember::PUBLIC_KEY_FIELD, e)
-            })?;
+            .to_vec();
+
         let stake = weight.ok_or_else(|| TryFromProtoError::missing("weight"))?;
-        Ok(Self { public_key, stake })
+
+        let network_metadata = network_metadata
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("network_metadata"))?
+            .try_into()?;
+
+        Ok(Self {
+            authority_key,
+            stake,
+            network_metadata,
+        })
+    }
+}
+
+//
+// ValidatorNetworkMetadata
+//
+
+impl From<crate::types::ValidatorNetworkMetadata> for ValidatorNetworkMetadata {
+    fn from(value: crate::types::ValidatorNetworkMetadata) -> Self {
+        Self {
+            consensus_address: Some(value.consensus_address),
+            hostname: Some(value.hostname),
+            protocol_key: Some(value.protocol_key.into()),
+            network_key: Some(value.network_key.into()),
+        }
+    }
+}
+
+impl TryFrom<&ValidatorNetworkMetadata> for crate::types::ValidatorNetworkMetadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(
+        ValidatorNetworkMetadata {
+            consensus_address,
+            hostname,
+            protocol_key,
+            network_key,
+        }: &ValidatorNetworkMetadata,
+    ) -> Result<Self, Self::Error> {
+        let consensus_address = consensus_address
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("consensus_address"))?
+            .clone();
+
+        let hostname = hostname
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("hostname"))?
+            .clone();
+
+        let protocol_key = protocol_key
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("protocol_key"))?
+            .as_ref()
+            .to_vec();
+
+        let network_key = network_key
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("network_key"))?
+            .as_ref()
+            .to_vec();
+
+        Ok(Self {
+            consensus_address,
+            hostname,
+            protocol_key,
+            network_key,
+        })
     }
 }
 

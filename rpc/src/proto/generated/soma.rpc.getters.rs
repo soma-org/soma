@@ -780,8 +780,9 @@ mod _getter_impls {
     impl ValidatorCommitteeMember {
         pub const fn const_default() -> Self {
             Self {
-                public_key: None,
+                authority_key: None,
                 weight: None,
+                network_metadata: None,
             }
         }
         #[doc(hidden)]
@@ -789,12 +790,64 @@ mod _getter_impls {
             static DEFAULT: ValidatorCommitteeMember = ValidatorCommitteeMember::const_default();
             &DEFAULT
         }
-        pub fn with_public_key(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.public_key = Some(field.into());
+        pub fn with_authority_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.authority_key = Some(field.into());
             self
         }
         pub fn with_weight(mut self, field: u64) -> Self {
             self.weight = Some(field.into());
+            self
+        }
+        pub fn network_metadata(&self) -> &ValidatorNetworkMetadata {
+            self.network_metadata
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ValidatorNetworkMetadata::default_instance() as _)
+        }
+        pub fn network_metadata_opt(&self) -> Option<&ValidatorNetworkMetadata> {
+            self.network_metadata.as_ref().map(|field| field as _)
+        }
+        pub fn network_metadata_opt_mut(
+            &mut self,
+        ) -> Option<&mut ValidatorNetworkMetadata> {
+            self.network_metadata.as_mut().map(|field| field as _)
+        }
+        pub fn network_metadata_mut(&mut self) -> &mut ValidatorNetworkMetadata {
+            self.network_metadata.get_or_insert_default()
+        }
+        pub fn with_network_metadata(mut self, field: ValidatorNetworkMetadata) -> Self {
+            self.network_metadata = Some(field.into());
+            self
+        }
+    }
+    impl ValidatorNetworkMetadata {
+        pub const fn const_default() -> Self {
+            Self {
+                consensus_address: None,
+                hostname: None,
+                protocol_key: None,
+                network_key: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ValidatorNetworkMetadata = ValidatorNetworkMetadata::const_default();
+            &DEFAULT
+        }
+        pub fn with_consensus_address(mut self, field: String) -> Self {
+            self.consensus_address = Some(field.into());
+            self
+        }
+        pub fn with_hostname(mut self, field: String) -> Self {
+            self.hostname = Some(field.into());
+            self
+        }
+        pub fn with_protocol_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.protocol_key = Some(field.into());
+            self
+        }
+        pub fn with_network_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.network_key = Some(field.into());
             self
         }
     }

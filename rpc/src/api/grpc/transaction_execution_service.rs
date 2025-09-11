@@ -1,6 +1,9 @@
 use prost_types::FieldMask;
 use tap::Pipe;
-use types::{balance_change::derive_balance_changes, transaction_executor::TransactionExecutor};
+use types::{
+    balance_change::derive_balance_changes, transaction::VerifiedSignedTransaction,
+    transaction_executor::TransactionExecutor,
+};
 
 use crate::{
     api::{RpcService, error::RpcError},
@@ -107,7 +110,6 @@ pub async fn execute_transaction(
                 finality_info,
             },
         shard, // TODO: add shard info here
-        // events,
         input_objects,
         output_objects,
     } = executor.execute_transaction(request, None).await?;

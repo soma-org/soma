@@ -1132,9 +1132,9 @@ mod _field_impls {
         }
     }
     impl ValidatorCommitteeMember {
-        pub const PUBLIC_KEY_FIELD: &'static MessageField = &MessageField {
-            name: "public_key",
-            json_name: "publicKey",
+        pub const AUTHORITY_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "authority_key",
+            json_name: "authorityKey",
             number: 1i32,
             message_fields: None,
         };
@@ -1144,11 +1144,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const NETWORK_METADATA_FIELD: &'static MessageField = &MessageField {
+            name: "network_metadata",
+            json_name: "networkMetadata",
+            number: 3i32,
+            message_fields: Some(ValidatorNetworkMetadata::FIELDS),
+        };
     }
     impl MessageFields for ValidatorCommitteeMember {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::PUBLIC_KEY_FIELD,
+            Self::AUTHORITY_KEY_FIELD,
             Self::WEIGHT_FIELD,
+            Self::NETWORK_METADATA_FIELD,
         ];
     }
     impl ValidatorCommitteeMember {
@@ -1171,12 +1178,87 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn public_key(mut self) -> String {
-            self.path.push(ValidatorCommitteeMember::PUBLIC_KEY_FIELD.name);
+        pub fn authority_key(mut self) -> String {
+            self.path.push(ValidatorCommitteeMember::AUTHORITY_KEY_FIELD.name);
             self.finish()
         }
         pub fn weight(mut self) -> String {
             self.path.push(ValidatorCommitteeMember::WEIGHT_FIELD.name);
+            self.finish()
+        }
+        pub fn network_metadata(mut self) -> ValidatorNetworkMetadataFieldPathBuilder {
+            self.path.push(ValidatorCommitteeMember::NETWORK_METADATA_FIELD.name);
+            ValidatorNetworkMetadataFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ValidatorNetworkMetadata {
+        pub const CONSENSUS_ADDRESS_FIELD: &'static MessageField = &MessageField {
+            name: "consensus_address",
+            json_name: "consensusAddress",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const HOSTNAME_FIELD: &'static MessageField = &MessageField {
+            name: "hostname",
+            json_name: "hostname",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const PROTOCOL_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "protocol_key",
+            json_name: "protocolKey",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const NETWORK_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "network_key",
+            json_name: "networkKey",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ValidatorNetworkMetadata {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CONSENSUS_ADDRESS_FIELD,
+            Self::HOSTNAME_FIELD,
+            Self::PROTOCOL_KEY_FIELD,
+            Self::NETWORK_KEY_FIELD,
+        ];
+    }
+    impl ValidatorNetworkMetadata {
+        pub fn path_builder() -> ValidatorNetworkMetadataFieldPathBuilder {
+            ValidatorNetworkMetadataFieldPathBuilder::new()
+        }
+    }
+    pub struct ValidatorNetworkMetadataFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ValidatorNetworkMetadataFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn consensus_address(mut self) -> String {
+            self.path.push(ValidatorNetworkMetadata::CONSENSUS_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn hostname(mut self) -> String {
+            self.path.push(ValidatorNetworkMetadata::HOSTNAME_FIELD.name);
+            self.finish()
+        }
+        pub fn protocol_key(mut self) -> String {
+            self.path.push(ValidatorNetworkMetadata::PROTOCOL_KEY_FIELD.name);
+            self.finish()
+        }
+        pub fn network_key(mut self) -> String {
+            self.path.push(ValidatorNetworkMetadata::NETWORK_KEY_FIELD.name);
             self.finish()
         }
     }

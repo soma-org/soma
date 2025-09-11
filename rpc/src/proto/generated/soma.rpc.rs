@@ -672,16 +672,36 @@ pub struct ValidatorCommittee {
     #[prost(message, repeated, tag = "2")]
     pub members: ::prost::alloc::vec::Vec<ValidatorCommitteeMember>,
 }
-/// A member of a validator committee.
+/// A member of a validator committee with full authority information.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorCommitteeMember {
-    /// The 96-byte Bls12381 public key for this validator.
+    /// The BLS12381 public key bytes (becomes AuthorityName)
     #[prost(bytes = "bytes", optional, tag = "1")]
-    pub public_key: ::core::option::Option<::prost::bytes::Bytes>,
-    /// voting weight this validator possesses.
+    pub authority_key: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Voting weight this validator possesses.
     #[prost(uint64, optional, tag = "2")]
     pub weight: ::core::option::Option<u64>,
+    /// Network metadata for this validator
+    #[prost(message, optional, tag = "3")]
+    pub network_metadata: ::core::option::Option<ValidatorNetworkMetadata>,
+}
+/// Network and protocol information for a validator
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ValidatorNetworkMetadata {
+    /// Multiaddr for consensus communication (as string)
+    #[prost(string, optional, tag = "1")]
+    pub consensus_address: ::core::option::Option<::prost::alloc::string::String>,
+    /// Hostname for metrics and logging
+    #[prost(string, optional, tag = "2")]
+    pub hostname: ::core::option::Option<::prost::alloc::string::String>,
+    /// Ed25519 protocol public key bytes
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub protocol_key: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Ed25519 network public key bytes
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub network_key: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// / An aggregated signature from multiple validators.
 #[non_exhaustive]

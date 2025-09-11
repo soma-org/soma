@@ -848,6 +848,10 @@ impl SenderSignedData {
         self.0.element()
     }
 
+    pub fn into_inner(self) -> SenderSignedTransaction {
+        self.0.into_inner()
+    }
+
     pub fn intent_message(&self) -> &IntentMessage<TransactionData> {
         self.inner().intent_message()
     }

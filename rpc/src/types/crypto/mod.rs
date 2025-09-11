@@ -14,6 +14,7 @@ pub use signature::UserSignature;
 pub use validator::ValidatorAggregatedSignature;
 pub use validator::ValidatorCommittee;
 pub use validator::ValidatorCommitteeMember;
+pub use validator::ValidatorNetworkMetadata;
 pub use validator::ValidatorSignature;
 
 //

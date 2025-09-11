@@ -39,6 +39,8 @@ rand_core = "0.6.4"
 base64ct = { version = "1.6.0", features = ["alloc"] }
 roaring = { version = "0.10.9", default-features = false }
 blake2 = "0.10.6"
+fastcrypto.workspace = true
+thiserror.workspace = true
 
 [build-dependencies]
 tonic-build = "0.13"

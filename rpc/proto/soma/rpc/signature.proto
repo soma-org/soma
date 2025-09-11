@@ -36,7 +36,6 @@ message SimpleSignature {
   // Public key bytes
   optional bytes public_key = 3;
 }
-
 // The validator set for a particular epoch.
 message ValidatorCommittee {
   // The epoch where this committee governs.
@@ -45,14 +44,31 @@ message ValidatorCommittee {
   // The committee members.
   repeated ValidatorCommitteeMember members = 2;
 }
-
-// A member of a validator committee.
+// A member of a validator committee with full authority information.
 message ValidatorCommitteeMember {
-  // The 96-byte Bls12381 public key for this validator.
-  optional bytes public_key = 1;
+  // The BLS12381 public key bytes (becomes AuthorityName)
+  optional bytes authority_key = 1;
 
-  // voting weight this validator possesses.
+  // Voting weight this validator possesses.
   optional uint64 weight = 2;
+
+  // Network metadata for this validator
+  optional ValidatorNetworkMetadata network_metadata = 3;
+}
+
+// Network and protocol information for a validator
+message ValidatorNetworkMetadata {
+  // Multiaddr for consensus communication (as string)
+  optional string consensus_address = 1;
+
+  // Hostname for metrics and logging
+  optional string hostname = 2;
+
+  // Ed25519 protocol public key bytes
+  optional bytes protocol_key = 3;
+
+  // Ed25519 network public key bytes
+  optional bytes network_key = 4;
 }
 
 /// An aggregated signature from multiple validators.

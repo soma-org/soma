@@ -123,7 +123,7 @@ impl From<types::committee::Committee> for ValidatorCommittee {
             .into_iter()
             .map(|(name, weight)| {
                 let mut member = ValidatorCommitteeMember::default();
-                member.public_key = Some(name.0.to_vec().into());
+                member.authority_key = Some(name.0.to_vec().into());
                 member.weight = Some(weight);
                 member
             })
