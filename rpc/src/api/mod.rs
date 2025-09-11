@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use types::transaction_executor::TransactionExecutor;
+use types::{config::rpc_config::RpcConfig, transaction_executor::TransactionExecutor};
 pub mod client;
-mod error;
+pub mod error;
 mod grpc;
 mod response;
 
@@ -10,7 +10,7 @@ mod response;
 pub struct RpcService {
     // reader: StateReader,
     // chain_id: types::digests::ChainIdentifier,
-    // config: Config,
+    config: RpcConfig,
     executor: Option<Arc<dyn TransactionExecutor>>,
 }
 
@@ -21,8 +21,16 @@ impl RpcService {
             // reader: StateReader::new(reader),
             executor: None,
             // chain_id,
-            // config: Config::default(),
+            config: RpcConfig::default(),
         }
+    }
+
+    pub fn with_executor(&mut self, executor: Arc<dyn TransactionExecutor + Send + Sync>) {
+        self.executor = Some(executor);
+    }
+
+    pub fn with_config(&mut self, config: RpcConfig) {
+        self.config = config;
     }
 
     pub async fn into_router(self) -> axum::Router {

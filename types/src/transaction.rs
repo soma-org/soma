@@ -774,7 +774,7 @@ impl TransactionData {
         &self.kind
     }
 
-    fn sender(&self) -> SomaAddress {
+    pub fn sender(&self) -> SomaAddress {
         self.sender
     }
 

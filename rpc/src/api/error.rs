@@ -1,6 +1,6 @@
-use tonic::Code;
-
 use crate::proto::google::rpc::{BadRequest, ErrorInfo, RetryInfo};
+use std::fmt;
+use tonic::Code;
 
 pub type Result<T, E = RpcError> = std::result::Result<T, E>;
 
@@ -322,5 +322,76 @@ impl std::error::Error for ObjectNotFoundError {}
 impl From<ObjectNotFoundError> for RpcError {
     fn from(value: ObjectNotFoundError) -> Self {
         Self::new(tonic::Code::NotFound, value.to_string())
+    }
+}
+
+impl fmt::Display for RpcError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Start with the gRPC status code
+        write!(f, "RpcError[{}]", self.code)?;
+
+        // Add the message if present
+        if let Some(ref message) = self.message {
+            write!(f, ": {}", message)?;
+        }
+
+        // Add details if present
+        if let Some(ref details) = self.details {
+            write!(f, " | Details: {}", details)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for ErrorDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut details = Vec::new();
+
+        // Add error_info if present
+        if let Some(ref error_info) = self.error_info {
+            details.push(format!(
+                "ErrorInfo(domain: {}, reason: {}, metadata: {:?})",
+                error_info.domain, error_info.reason, error_info.metadata
+            ));
+        }
+
+        // Add bad_request if present
+        if let Some(ref bad_request) = self.bad_request {
+            let violations: Vec<String> = bad_request
+                .field_violations
+                .iter()
+                .map(|v| format!("{}: {}", v.field, v.description))
+                .collect();
+
+            if !violations.is_empty() {
+                details.push(format!("BadRequest[{}]", violations.join(", ")));
+            }
+        }
+
+        // Add retry_info if present
+        if let Some(ref retry_info) = self.retry_info {
+            let retry_after = retry_info
+                .retry_delay
+                .as_ref()
+                .map(|d| format!("{}s", d.seconds))
+                .unwrap_or_else(|| "unspecified".to_string());
+
+            details.push(format!("RetryInfo(retry_after: {})", retry_after));
+        }
+
+        // Join all details or show "none" if empty
+        if details.is_empty() {
+            write!(f, "none")
+        } else {
+            write!(f, "{}", details.join(" | "))
+        }
+    }
+}
+
+// Also implement std::error::Error for RpcError if not already present
+impl std::error::Error for RpcError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
     }
 }

@@ -564,7 +564,15 @@ where
         request: ExecuteTransactionRequest,
         client_addr: Option<std::net::SocketAddr>,
     ) -> Result<ExecuteTransactionResponse, QuorumDriverError> {
-        self.execute_transaction(request, client_addr).await
+        let (response, _) = self
+            .execute_transaction_block(
+                request,
+                ExecuteTransactionRequestType::WaitForLocalExecution,
+                client_addr,
+            )
+            .await?;
+
+        Ok(response)
     }
 
     fn simulate_transaction(

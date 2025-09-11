@@ -62,6 +62,27 @@ impl Builder {
         self
     }
 
+    // Convenience method for configuring TLS with a single server cert
+    //
+    // Attempts to load PEM formatted files for the certificate chain and private key material from
+    // the provided file system paths.
+    pub fn tls_single_cert(
+        self,
+        cert_file: impl AsRef<std::path::Path>,
+        private_key_file: impl AsRef<std::path::Path>,
+    ) -> Result<Self, BoxError> {
+        use rustls::pki_types::pem::PemObject;
+        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+
+        let certs = CertificateDer::pem_file_iter(cert_file)?.collect::<Result<_, _>>()?;
+        let private_key = PrivateKeyDer::from_pem_file(private_key_file)?;
+        let tls_config = rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, private_key)?;
+
+        Ok(self.tls_config(tls_config))
+    }
+
     pub fn serve<A, S, ResponseBody>(
         self,
         addr: A,

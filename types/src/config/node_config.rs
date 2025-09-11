@@ -1,5 +1,6 @@
 use crate::{
     base::SomaAddress,
+    config::{local_ip_utils, rpc_config::RpcConfig},
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
     genesis::Genesis,
     multiaddr::Multiaddr,
@@ -14,6 +15,7 @@ use fastcrypto::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{
+    net::SocketAddr,
     ops::Mul,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
@@ -47,6 +49,8 @@ pub struct NodeConfig {
     // #[serde(skip_serializing_if = "Option::is_none")]
     pub consensus_config: Option<ConsensusConfig>,
 
+    pub rpc: Option<RpcConfig>,
+
     pub genesis: Genesis,
 
     pub end_of_epoch_broadcast_channel_capacity: usize, // 128
@@ -55,6 +59,9 @@ pub struct NodeConfig {
     pub p2p_config: P2pConfig,
 
     pub encoder_validator_address: Multiaddr,
+
+    #[serde(default = "default_rpc_address")]
+    pub rpc_address: SocketAddr,
 }
 
 impl NodeConfig {
@@ -108,6 +115,10 @@ impl NodeConfig {
 
     pub fn encoder_validator_address(&self) -> &Multiaddr {
         &self.encoder_validator_address
+    }
+
+    pub fn rpc(&self) -> Option<&crate::config::rpc_config::RpcConfig> {
+        self.rpc.as_ref()
     }
 }
 
@@ -273,6 +284,11 @@ impl ConsensusConfig {
 //     )
 // }
 
+pub fn default_rpc_address() -> SocketAddr {
+    use std::net::{IpAddr, Ipv4Addr};
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 9000)
+}
+
 fn default_grpc_address() -> Multiaddr {
     "/ip4/0.0.0.0/tcp/8080".parse().unwrap()
 }
@@ -363,6 +379,8 @@ impl ValidatorConfigBuilder {
             }
         };
 
+        let localhost = local_ip_utils::localhost_for_testing();
+
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
             network_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
@@ -376,6 +394,12 @@ impl ValidatorConfigBuilder {
             network_address,
             genesis: genesis,
             encoder_validator_address: validator.encoder_validator_address,
+            rpc_address: local_ip_utils::new_tcp_address_for_testing(&localhost)
+                .to_socket_addr()
+                .unwrap(),
+            rpc: Some(RpcConfig {
+                ..Default::default()
+            }),
             consensus_config,
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,

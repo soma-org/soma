@@ -37,6 +37,7 @@ use p2p::{
     tonic_gen::p2p_server::P2pServer,
 };
 use parking_lot::RwLock;
+use tower::ServiceBuilder;
 
 use std::{
     collections::HashMap,
@@ -119,6 +120,14 @@ pub struct P2pComponents {
     state_sync_handle: StateSyncHandle,
 }
 
+#[derive(Default)]
+struct HttpServers {
+    #[allow(unused)]
+    http: Option<soma_http::ServerHandle>,
+    #[allow(unused)]
+    https: Option<soma_http::ServerHandle>,
+}
+
 pub struct SomaNode {
     config: NodeConfig,
     validator_components: Mutex<Option<ValidatorComponents>>,
@@ -139,6 +148,7 @@ pub struct SomaNode {
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
     encoder_validator_server_handle: Mutex<Option<JoinHandle<Result<()>>>>,
     encoder_client_service: Option<Arc<EncoderClientService>>,
+    http_servers: HttpServers,
 
     #[cfg(msim)]
     sim_state: SimState,
@@ -365,6 +375,14 @@ impl SomaNode {
             None
         };
 
+        let http_servers = build_http_servers(
+            state.clone(),
+            state_sync_store,
+            &transaction_orchestrator.clone(),
+            &config,
+        )
+        .await?;
+
         let encoder_validator_server_handle = if is_full_node {
             info!("Starting encoder validator service for fullnode");
             Some(
@@ -388,6 +406,7 @@ impl SomaNode {
             consensus_store,
             encoder_validator_server_handle: Mutex::new(encoder_validator_server_handle),
             encoder_client_service,
+            http_servers,
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -943,4 +962,89 @@ impl SomaNode {
     pub fn get_config(&self) -> &NodeConfig {
         &self.config
     }
+}
+
+async fn build_http_servers(
+    state: Arc<AuthorityState>,
+    store: StateSyncStore, //RocksDbStore,
+    transaction_orchestrator: &Option<Arc<TransactionOrchestrator<NetworkAuthorityClient>>>,
+    config: &NodeConfig,
+) -> Result<HttpServers> {
+    // Validators do not expose these APIs
+    if config.consensus_config().is_some() {
+        return Ok(HttpServers::default());
+    }
+
+    let mut router = axum::Router::new();
+
+    let rpc_router = {
+        let mut rpc_service = rpc::api::RpcService::new(
+                    // Arc::new(RestReadStore::new(state.clone(), store))
+                );
+        // rpc_service.with_server_version(server_version);
+
+        if let Some(config) = config.rpc.clone() {
+            rpc_service.with_config(config);
+        }
+
+        if let Some(transaction_orchestrator) = transaction_orchestrator {
+            rpc_service.with_executor(transaction_orchestrator.clone())
+        }
+
+        rpc_service.into_router().await
+    };
+
+    let layers = ServiceBuilder::new()
+        .map_request(|mut request: axum::http::Request<_>| {
+            if let Some(connect_info) = request.extensions().get::<soma_http::ConnectInfo>() {
+                let axum_connect_info = axum::extract::ConnectInfo(connect_info.remote_addr);
+                request.extensions_mut().insert(axum_connect_info);
+            }
+            request
+        })
+        // .layer(axum::middleware::from_fn(server_timing_middleware))
+        // Setup a permissive CORS policy
+        .layer(
+            tower_http::cors::CorsLayer::new()
+                .allow_methods([http::Method::GET, http::Method::POST])
+                .allow_origin(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any),
+        );
+
+    router = router.merge(rpc_router).layer(layers);
+
+    let https = if let Some((tls_config, https_address)) = config
+        .rpc()
+        .and_then(|config| config.tls_config().map(|tls| (tls, config.https_address())))
+    {
+        let https = soma_http::Builder::new()
+            .tls_single_cert(tls_config.cert(), tls_config.key())
+            .and_then(|builder| builder.serve(https_address, router.clone()))
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        info!(
+            https_address =? https.local_addr(),
+            "HTTPS rpc server listening on {}",
+            https.local_addr()
+        );
+
+        Some(https)
+    } else {
+        None
+    };
+
+    let http = soma_http::Builder::new()
+        .serve(&config.rpc_address, router)
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    info!(
+        http_address =? http.local_addr(),
+        "HTTP rpc server listening on {}",
+        http.local_addr()
+    );
+
+    Ok(HttpServers {
+        http: Some(http),
+        https,
+    })
 }
