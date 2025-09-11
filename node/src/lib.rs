@@ -10,7 +10,7 @@ use authority::{
     epoch_store::AuthorityPerEpochStore,
     handler::ConsensusHandlerInitializer,
     manager::{ConsensusClient, ConsensusManager, ConsensusManagerTrait},
-    orchestrator::TransactiondOrchestrator,
+    orchestrator::TransactionOrchestrator,
     reconfiguration::ReconfigurationInitiator,
     server::ServerBuilder,
     service::ValidatorService,
@@ -129,7 +129,7 @@ pub struct SomaNode {
     // Broadcast channel to notify state-sync for new validator peers.
     // trusted_peer_change_tx: watch::Sender<TrustedPeerChangeEvent>,
     state: Arc<AuthorityState>,
-    transaction_orchestrator: Option<Arc<TransactiondOrchestrator<NetworkAuthorityClient>>>,
+    transaction_orchestrator: Option<Arc<TransactionOrchestrator<NetworkAuthorityClient>>>,
     state_sync_handle: StateSyncHandle,
     commit_store: Arc<CommitStore>,
     accumulator: Mutex<Option<Arc<StateAccumulator>>>,
@@ -355,7 +355,7 @@ impl SomaNode {
         };
 
         let transaction_orchestrator = if is_full_node {
-            Some(Arc::new(TransactiondOrchestrator::new_with_encoder_client(
+            Some(Arc::new(TransactionOrchestrator::new_with_encoder_client(
                 auth_agg.load_full(),
                 state.clone(),
                 end_of_epoch_receiver,
@@ -916,7 +916,11 @@ impl SomaNode {
             .as_ref()
             .expect("Node is not a fullnode")
             .execute_transaction_block(
-                ExecuteTransactionRequest { transaction },
+                ExecuteTransactionRequest {
+                    transaction,
+                    include_input_objects: true,
+                    include_output_objects: true,
+                },
                 ExecuteTransactionRequestType::WaitForLocalExecution,
                 None,
             )

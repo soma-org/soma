@@ -29,6 +29,7 @@ use types::{
     error::{SomaError, SomaResult},
     finality::{SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
     grpc::{HandleCertificateRequest, HandleCertificateResponse},
+    object::Object,
     quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse},
     system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
     transaction::{CertifiedTransaction, SignedTransaction, Transaction},
@@ -109,6 +110,8 @@ struct ProcessCertificateState {
     // Track achieved quorums
     effects_cert: Option<VerifiedCertifiedTransactionEffects>,
     finality_cert: Option<VerifiedCertifiedConsensusFinality>,
+    input_objects: Option<Vec<Object>>,
+    output_objects: Option<Vec<Object>>,
     // As long as none of the exit criteria are met we consider the state retryable
     // 1) >= 2f+1 signatures
     // 2) >= f+1 non-retryable errors
@@ -795,6 +798,8 @@ where
             non_retryable_errors: vec![],
             retryable_errors: vec![],
             retryable: true,
+            input_objects: None,
+            output_objects: None,
         };
 
         let tx_digest = *request.certificate.digest();
@@ -918,6 +923,8 @@ where
             Ok(HandleCertificateResponse {
                 signed_effects,
                 signed_finality,
+                input_objects,
+                output_objects,
             }) => {
                 debug!(
                     ?tx_digest,
@@ -925,6 +932,14 @@ where
                     has_finality = signed_finality.is_some(),
                     "Validator handled certificate successfully",
                 );
+
+                if input_objects.is_some() && state.input_objects.is_none() {
+                    state.input_objects = input_objects;
+                }
+
+                if output_objects.is_some() && state.output_objects.is_none() {
+                    state.output_objects = output_objects;
+                }
 
                 let effects_digest = *signed_effects.digest();
 
@@ -1058,6 +1073,8 @@ where
                         return Ok(Some(QuorumDriverResponse {
                             effects_cert: effects_cert.clone(),
                             finality_cert: state.finality_cert.clone(),
+                            input_objects: state.input_objects.take(),
+                            output_objects: state.output_objects.take(),
                         }));
                     } else {
                         debug!(

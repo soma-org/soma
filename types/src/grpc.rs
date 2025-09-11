@@ -4,6 +4,7 @@ use crate::{
     crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo},
     effects::SignedTransactionEffects,
     finality::SignedConsensusFinality,
+    object::Object,
     transaction::CertifiedTransaction,
 };
 
@@ -67,12 +68,26 @@ pub struct HandleTransactionResponse {
 pub struct HandleCertificateResponse {
     pub signed_effects: SignedTransactionEffects,
     pub signed_finality: Option<SignedConsensusFinality>,
+    /// If requested, will included all initial versions of objects modified in this transaction.
+    /// This includes owned objects included as input into the transaction as well as the assigned
+    /// versions of shared objects.
+    //
+    // TODO: In the future we may want to include shared objects or child objects which were read
+    // but not modified during execution.
+    pub input_objects: Option<Vec<Object>>,
+
+    /// If requested, will included all changed objects, including mutated, created and unwrapped
+    /// objects. In other words, all objects that still exist in the object state after this
+    /// transaction.
+    pub output_objects: Option<Vec<Object>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HandleCertificateRequest {
     pub certificate: CertifiedTransaction,
     pub wait_for_finality: bool,
+    pub include_input_objects: bool,
+    pub include_output_objects: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

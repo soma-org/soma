@@ -104,6 +104,8 @@ impl ValidatorService {
         &self,
         certificates: NonEmpty<CertifiedTransaction>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
+        include_input_objects: bool,
+        include_output_objects: bool,
         wait_for_effects: bool,
         wait_for_finality: bool,
     ) -> Result<Option<Vec<HandleCertificateResponse>>, tonic::Status> {
@@ -134,6 +136,8 @@ impl ValidatorService {
                 return Ok(Some(vec![HandleCertificateResponse {
                     signed_effects: signed_effects.into_inner(),
                     signed_finality,
+                    input_objects: None,
+                    output_objects: None,
                 }]));
             };
         }
@@ -221,6 +225,18 @@ impl ValidatorService {
                     .execute_certificate(&certificate, epoch_store)
                     .await?;
 
+                let input_objects = if include_input_objects {
+                    self.state.get_transaction_input_objects(&effects)?
+                } else {
+                    vec![]
+                };
+
+                let output_objects = if include_output_objects {
+                    self.state.get_transaction_output_objects(&effects)?
+                } else {
+                    vec![]
+                };
+
                 let execution_status = effects.status().clone();
 
                 debug!("Got effects: {:?}", effects);
@@ -252,6 +268,16 @@ impl ValidatorService {
                 Ok::<_, SomaError>(HandleCertificateResponse {
                     signed_effects: signed_effects.into_inner(),
                     signed_finality,
+                    input_objects: if input_objects.is_empty() {
+                        None
+                    } else {
+                        Some(input_objects)
+                    },
+                    output_objects: if output_objects.is_empty() {
+                        None
+                    } else {
+                        Some(output_objects)
+                    },
                 })
             },
         ))
@@ -273,14 +299,21 @@ impl ValidatorService {
         let certificate = request.into_inner();
 
         let span = error_span!("submit_certificate", tx_digest = ?certificate.digest());
-        self.handle_certificates(nonempty![certificate], &epoch_store, false, false)
-            .instrument(span)
-            .await
-            .map(|executed| {
-                tonic::Response::new(SubmitCertificateResponse {
-                    executed: executed.map(|mut x| x.remove(0)).map(Into::into),
-                })
+        self.handle_certificates(
+            nonempty![certificate],
+            &epoch_store,
+            false,
+            false,
+            true,
+            false,
+        )
+        .instrument(span)
+        .await
+        .map(|executed| {
+            tonic::Response::new(SubmitCertificateResponse {
+                executed: executed.map(|mut x| x.remove(0)).map(Into::into),
             })
+        })
     }
 
     async fn handle_certificate_impl(
@@ -294,6 +327,8 @@ impl ValidatorService {
         self.handle_certificates(
             nonempty![request.certificate],
             &epoch_store,
+            request.include_input_objects,
+            request.include_output_objects,
             true,
             request.wait_for_finality,
         )

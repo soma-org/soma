@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{net::SocketAddr, sync::Arc};
 
 use crate::client::AuthorityAPI;
@@ -5,6 +6,7 @@ use tracing::debug;
 use types::crypto::AuthoritySignInfoTrait;
 use types::finality::SignedConsensusFinality;
 use types::intent::Intent;
+use types::object::{Object, ObjectID, ObjectRef};
 use types::storage::committee_store::CommitteeStore;
 use types::{
     committee::{Committee, EpochId},
@@ -55,6 +57,29 @@ impl<C: Clone> SafeClient<C> {
         self.committee_store
             .get_committee(epoch_id)?
             .ok_or(SomaError::MissingCommitteeAtEpoch(*epoch_id))
+    }
+
+    fn verify_objects<I>(&self, objects: &Option<Vec<Object>>, expected_refs: I) -> SomaResult
+    where
+        I: IntoIterator<Item = (ObjectID, ObjectRef)>,
+    {
+        if let Some(objects) = objects {
+            let expected: HashMap<_, _> = expected_refs.into_iter().collect();
+
+            for object in objects {
+                let object_ref = object.compute_object_reference();
+                if expected
+                    .get(&object_ref.0)
+                    .is_none_or(|expect| &object_ref != expect)
+                {
+                    return Err(SomaError::ByzantineAuthoritySuspicion {
+                        authority: self.address,
+                        reason: "Returned object that wasn't present in effects".to_string(),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     fn check_signed_effects_plain(
@@ -201,6 +226,8 @@ impl<C: Clone> SafeClient<C> {
         HandleCertificateResponse {
             signed_effects,
             signed_finality,
+            input_objects,
+            output_objects,
         }: HandleCertificateResponse,
     ) -> SomaResult<HandleCertificateResponse> {
         let signed_effects = self.check_signed_effects_plain(digest, signed_effects, None)?;
@@ -215,9 +242,29 @@ impl<C: Clone> SafeClient<C> {
             signed_finality.is_some()
         );
 
+        // Check Input Objects
+        self.verify_objects(
+            &input_objects,
+            signed_effects
+                .old_object_metadata()
+                .into_iter()
+                .map(|(object_ref, _owner)| (object_ref.0, object_ref)),
+        )?;
+
+        // Check Output Objects
+        self.verify_objects(
+            &output_objects,
+            signed_effects
+                .all_changed_objects()
+                .into_iter()
+                .map(|(object_ref, _, _)| (object_ref.0, object_ref)),
+        )?;
+
         Ok(HandleCertificateResponse {
             signed_effects,
             signed_finality,
+            input_objects,
+            output_objects,
         })
     }
 }

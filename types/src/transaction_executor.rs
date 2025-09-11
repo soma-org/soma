@@ -27,7 +27,6 @@ pub trait TransactionExecutor: Send + Sync {
 
 pub struct SimulateTransactionResult {
     pub effects: TransactionEffects,
-    // pub events: Option<TransactionEvents>,
     pub input_objects: BTreeMap<ObjectID, Object>,
     pub output_objects: BTreeMap<ObjectID, Object>,
     pub execution_result: Result<Vec<ExecutionResult>, ExecutionError>,

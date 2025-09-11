@@ -156,8 +156,9 @@ impl Client {
         .with_read_mask(FieldMask::from_paths([
             "finality",
             "transaction.effects.bcs",
-            "transaction.events.bcs",
             "transaction.balance_changes",
+            "transaction.input_objects.bcs",
+            "transaction.output_objects.bcs",
         ]));
 
         let (metadata, response, _extentions) = self
@@ -177,6 +178,8 @@ pub struct TransactionExecutionResponse {
 
     pub effects: TransactionEffects,
     pub balance_changes: Vec<crate::types::BalanceChange>,
+    pub input_objects: Vec<types::object::Object>,
+    pub output_objects: Vec<types::object::Object>,
 }
 
 /// Attempts to parse `TransactionExecutionResponse` from the fields in `TransactionExecutionResponse`
@@ -208,10 +211,28 @@ fn execute_transaction_response_try_from_proto(
         .map(TryInto::try_into)
         .collect::<Result<_, _>>()?;
 
+    let input_objects = executed_transaction
+        .input_objects
+        .iter()
+        .filter_map(|obj| obj.bcs.as_ref())
+        .map(|bcs| bcs.deserialize())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| TryFromProtoError::invalid("input_objects.bcs", e))?;
+
+    let output_objects = executed_transaction
+        .output_objects
+        .iter()
+        .filter_map(|obj| obj.bcs.as_ref())
+        .map(|bcs| bcs.deserialize())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| TryFromProtoError::invalid("output_objects.bcs", e))?;
+
     TransactionExecutionResponse {
         finality,
         effects,
         balance_changes,
+        input_objects,
+        output_objects,
     }
     .pipe(Ok)
 }

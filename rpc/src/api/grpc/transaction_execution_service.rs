@@ -1,9 +1,6 @@
 use prost_types::FieldMask;
 use tap::Pipe;
-use types::{
-    balance_change::derive_balance_changes, transaction::VerifiedSignedTransaction,
-    transaction_executor::TransactionExecutor,
-};
+use types::{balance_change::derive_balance_changes, transaction_executor::TransactionExecutor};
 
 use crate::{
     api::{RpcService, error::RpcError},
@@ -100,6 +97,12 @@ pub async fn execute_transaction(
 
         types::quorum_driver::ExecuteTransactionRequest {
             transaction: signed_transaction.try_into()?,
+            include_input_objects: mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
+                || mask.contains(ExecutedTransaction::INPUT_OBJECTS_FIELD.name)
+                || mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
+            include_output_objects: mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
+                || mask.contains(ExecutedTransaction::OUTPUT_OBJECTS_FIELD.name)
+                || mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
         }
     };
 
@@ -128,6 +131,9 @@ pub async fn execute_transaction(
     let executed_transaction = if let Some(mask) =
         read_mask.subtree(ExecuteTransactionResponse::TRANSACTION_FIELD.name)
     {
+        let input_objects = input_objects.unwrap_or_default();
+        let output_objects = output_objects.unwrap_or_default();
+
         let balance_changes = mask
             .contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
             .then(|| {
@@ -163,7 +169,7 @@ pub async fn execute_transaction(
                             .chain(&output_objects)
                             .find(|o| o.object_id() == object_id)
                         {
-                            changed_object.object_type = Some(object.object_type);
+                            changed_object.object_type = Some(object.object_type.clone().into());
                         }
                     }
                 }
@@ -178,7 +184,8 @@ pub async fn execute_transaction(
                         if let Some(object) =
                             input_objects.iter().find(|o| o.object_id() == object_id)
                         {
-                            unchanged_shared_object.object_type = Some(object.object_type);
+                            unchanged_shared_object.object_type =
+                                Some(object.object_type.clone().into());
                         }
                     }
                 }

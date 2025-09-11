@@ -1650,6 +1650,22 @@ impl AuthorityState {
         Ok(None)
     }
 
+    pub fn get_transaction_input_objects(
+        &self,
+        effects: &TransactionEffects,
+    ) -> SomaResult<Vec<Object>> {
+        types::storage::get_transaction_input_objects(self.get_object_store().as_ref(), effects)
+            .map_err(Into::into)
+    }
+
+    pub fn get_transaction_output_objects(
+        &self,
+        effects: &TransactionEffects,
+    ) -> SomaResult<Vec<Object>> {
+        types::storage::get_transaction_output_objects(self.get_object_store().as_ref(), effects)
+            .map_err(Into::into)
+    }
+
     pub async fn get_root_state_digest(
         &self,
         commit_index: CommitIndex,
