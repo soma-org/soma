@@ -16,4 +16,7 @@ serde.workspace = true
 fastcrypto.workspace = true
 futures.workspace = true
 bcs.workspace = true
+sdk.workspace = true
+soma-keys.workspace = true
+rpc.workspace = true
 tempfile = "3.12.0"

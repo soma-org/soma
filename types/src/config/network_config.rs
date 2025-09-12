@@ -6,7 +6,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use crate::shard_crypto::keys::EncoderKeyPair;
 use crate::{
     base::SomaAddress,
     committee::{Committee, CommitteeWithNetworkMetadata},
@@ -27,6 +26,7 @@ use crate::{
     transaction::{InputObjects, VerifiedTransaction},
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
+use crate::{config::Config, shard_crypto::keys::EncoderKeyPair};
 use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -62,6 +62,8 @@ pub struct NetworkConfig {
     pub account_keys: Vec<SomaKeyPair>,
     pub genesis: genesis::Genesis,
 }
+
+impl Config for NetworkConfig {}
 
 impl NetworkConfig {
     pub fn validator_configs(&self) -> &[NodeConfig] {

@@ -5,7 +5,7 @@ use crate::error::{SomaKeyError, SomaKeyResult};
 use crate::key_derive::{derive_key_pair_from_path, generate_new_key};
 use crate::key_identity::KeyIdentity;
 use crate::random_names::{random_name, random_names};
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use bip32::DerivationPath;
 use bip39::{Language, Mnemonic, Seed};
@@ -19,12 +19,16 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use types::base::SomaAddress;
 use types::crypto::Signature;
 use types::crypto::get_key_pair_from_rng;
 use types::crypto::{EncodeDecodeBase64, PublicKey, SignatureScheme, SomaKeyPair};
 use types::intent::{Intent, IntentMessage};
+
+pub const ALIASES_FILE_EXTENSION: &str = "aliases";
 
 #[derive(Serialize, Deserialize)]
 #[enum_dispatch(AccountKeystore)]
@@ -182,6 +186,125 @@ pub struct FileBasedKeystore {
     keys: BTreeMap<SomaAddress, SomaKeyPair>,
     aliases: BTreeMap<SomaAddress, Alias>,
     path: Option<PathBuf>,
+}
+
+impl FileBasedKeystore {
+    pub fn load_or_create(path: &PathBuf) -> Result<Self, anyhow::Error> {
+        let keys = if path.exists() {
+            #[cfg(unix)]
+            let _ = set_reduced_file_permissions(path).inspect_err(|error| {
+                eprintln!(
+                    "[{}]: while attempting to ensure reduced file permissions on '{}'. Cannot set \
+                    permissions for keystore file. Error: {error}",
+                    "warning",
+                    path.display(),
+                );
+            });
+
+            let reader =
+                BufReader::new(std::fs::File::open(path).with_context(|| {
+                    format!("Cannot open the keystore file: {}", path.display())
+                })?);
+            let kp_strings: Vec<String> = serde_json::from_reader(reader).with_context(|| {
+                format!("Cannot deserialize the keystore file: {}", path.display(),)
+            })?;
+            kp_strings
+                .iter()
+                .map(|kpstr| {
+                    let key = SomaKeyPair::decode_base64(kpstr);
+                    key.map(|k| (SomaAddress::from(&k.public()), k))
+                })
+                .collect::<Result<BTreeMap<_, _>, _>>()
+                .map_err(|e| anyhow!("Invalid keystore file: {}. {}", path.display(), e))?
+        } else {
+            BTreeMap::new()
+        };
+
+        // check aliases
+        let mut aliases_path = path.clone();
+        aliases_path.set_extension(ALIASES_FILE_EXTENSION);
+
+        let aliases = if aliases_path.exists() {
+            let reader = BufReader::new(std::fs::File::open(&aliases_path).with_context(|| {
+                format!(
+                    "Cannot open aliases file in keystore: {}",
+                    aliases_path.display()
+                )
+            })?);
+
+            let aliases: Vec<Alias> = serde_json::from_reader(reader).with_context(|| {
+                format!(
+                    "Cannot deserialize aliases file in keystore: {}",
+                    aliases_path.display(),
+                )
+            })?;
+
+            aliases
+                .into_iter()
+                .map(|alias| {
+                    let key = PublicKey::decode_base64(&alias.public_key_base64);
+                    key.map(|k| (Into::<SomaAddress>::into(&k), alias))
+                })
+                .collect::<Result<BTreeMap<_, _>, _>>()
+                .map_err(|e| {
+                    anyhow!(
+                        "Invalid aliases file in keystore: {}. {}",
+                        aliases_path.display(),
+                        e
+                    )
+                })?
+        } else if keys.is_empty() {
+            BTreeMap::new()
+        } else {
+            let names: Vec<String> = random_names(HashSet::new(), keys.len());
+            let aliases = keys
+                .iter()
+                .zip(names)
+                .map(|((sui_address, skp), alias)| {
+                    let public_key_base64 = skp.public().encode_base64();
+                    (
+                        *sui_address,
+                        Alias {
+                            alias,
+                            public_key_base64,
+                        },
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            let aliases_store = serde_json::to_string_pretty(&aliases.values().collect::<Vec<_>>())
+                .with_context(|| {
+                    format!(
+                        "Cannot serialize aliases to file in keystore: {}",
+                        aliases_path.display()
+                    )
+                })?;
+
+            std::fs::write(aliases_path, aliases_store)?;
+            aliases
+        };
+
+        Ok(Self {
+            keys,
+            aliases,
+            path: Some(path.to_path_buf()),
+        })
+    }
+}
+
+#[cfg(unix)]
+fn set_reduced_file_permissions(path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
+    let path = path.as_ref();
+    let metadata = fs::metadata(path)?;
+    let mode = metadata.permissions().mode();
+    if mode & 0o177 != 0 {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).with_context(|| {
+            format!(
+                "Cannot set permissions for keystore file: {}.",
+                path.display(),
+            )
+        })?;
+    }
+    Ok(())
 }
 
 impl Serialize for FileBasedKeystore {
