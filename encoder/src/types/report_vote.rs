@@ -1,8 +1,13 @@
+use std::collections::HashSet;
+
 use enum_dispatch::enum_dispatch;
 use fastcrypto::bls12381::min_sig;
 use serde::{Deserialize, Serialize};
-use types::report::Report;
+use types::encoder_committee::EncoderCommittee;
+use types::report::{Report, ReportAPI};
+use types::shard_crypto::scope::Scope;
 use types::shard_crypto::{keys::EncoderPublicKey, signed::Signed};
+use types::submission::{verify_submission, SubmissionAPI};
 use types::{
     error::{SharedError, SharedResult},
     shard::Shard,
@@ -62,12 +67,40 @@ pub fn verify_report_vote(
     report_vote: &ReportVote,
     peer: &EncoderPublicKey,
     shard: &Shard,
+    encoder_committee: &EncoderCommittee,
 ) -> SharedResult<()> {
     if peer != report_vote.author() {
         return Err(SharedError::FailedTypeVerification(
             "sending peer must be author".to_string(),
         ));
     }
+
+    // perhaps redundant but we reverify the submission
+    let _ = verify_submission(
+        report_vote.signed_report().winning_submission(),
+        shard,
+        encoder_committee,
+    )?;
+
+    // redundant but we reverify the accepted commits
+    let mut unique_encoders = HashSet::new();
+    for (encoder, _commit_digest) in report_vote.signed_report().accepted_commits() {
+        if !unique_encoders.insert(encoder) {
+            return Err(SharedError::ValidationError(format!(
+                "redundant encoder detected: {:?}",
+                encoder
+            )));
+        }
+        if !shard.contains(encoder) {
+            return Err(types::error::SharedError::ValidationError(
+                "encoder not in shard".to_string(),
+            ));
+        }
+    }
+
+    let _ = report_vote
+        .signed_report()
+        .verify_signature(Scope::ShardReport, peer.inner())?;
 
     Ok(())
 }

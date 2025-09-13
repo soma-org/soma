@@ -194,7 +194,7 @@ impl Store for MemStore {
 
         Ok(commit_votes)
     }
-    fn add_accepted_submission(
+    fn add_accepted_commit(
         &self,
         shard: &Shard,
         encoder: &EncoderPublicKey,
@@ -217,7 +217,7 @@ impl Store for MemStore {
         }
     }
 
-    fn get_all_accepted_submissions(
+    fn get_all_accepted_commits(
         &self,
         shard: &Shard,
     ) -> ShardResult<Vec<(EncoderPublicKey, Digest<Submission>)>> {

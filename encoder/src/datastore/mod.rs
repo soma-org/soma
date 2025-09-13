@@ -61,14 +61,14 @@ pub trait Store: Send + Sync + 'static {
 
     fn get_all_commit_votes(&self, shard: &Shard) -> ShardResult<Vec<CommitVotes>>;
 
-    fn add_accepted_submission(
+    fn add_accepted_commit(
         &self,
         shard: &Shard,
         encoder: &EncoderPublicKey,
         submission_digest: Digest<Submission>,
     ) -> ShardResult<()>;
 
-    fn get_all_accepted_submissions(
+    fn get_all_accepted_commits(
         &self,
         shard: &Shard,
     ) -> ShardResult<Vec<(EncoderPublicKey, Digest<Submission>)>>;

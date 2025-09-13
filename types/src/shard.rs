@@ -1,7 +1,7 @@
 use crate::committee::Epoch;
 use crate::encoder_committee::CountUnit;
 use crate::entropy::{BlockEntropy, BlockEntropyProof};
-use crate::error::{ShardError, ShardResult};
+use crate::error::{ShardError, ShardResult, SharedError};
 use crate::finality::FinalityProof;
 use crate::metadata::MetadataCommitment;
 use crate::multiaddr::Multiaddr;
@@ -163,8 +163,11 @@ impl InputAPI for InputV1 {
     }
 }
 
-pub fn verify_input(input: &Input, shard: &Shard) -> SharedResult<()> {
-    // TODO: need to fix this to work with the correct signature
-    // input.verify_signature(Scope::Input, .author().inner())?;
+pub fn verify_input(input: &Input, shard: &Shard, peer: &PeerPublicKey) -> SharedResult<()> {
+    if input.tls_key() != peer {
+        return Err(SharedError::FailedTypeVerification(
+            "sending peer must match tls key in input".to_string(),
+        ));
+    }
     Ok(())
 }

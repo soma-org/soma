@@ -149,11 +149,11 @@ impl<
 
             let submission = Submission::V1(SubmissionV1::new(
                 self.encoder_keypair.public(),
+                shard_digest,
+                inference_output.embeddings(),
+                inference_output.probe_set(),
                 evaluation_output.score(),
                 evaluation_output.embedding_digest(),
-                inference_output.probe_set(),
-                inference_output.embeddings(),
-                shard_digest,
             ));
 
             let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;

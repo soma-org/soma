@@ -1,6 +1,5 @@
 use crate::committee::Committee;
 use crate::encoder_committee::EncoderCommittee;
-use crate::error::SomaResult;
 use crate::metadata::MetadataAPI;
 use crate::transaction::{verify_sender_signed_data_message_signatures, TransactionKind};
 use crate::{entropy::SimpleVDF, shard::ShardAuthToken};

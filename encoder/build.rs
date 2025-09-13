@@ -16,7 +16,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// builds the tonic services
+/// builds the internal tonic services
 #[allow(clippy::too_many_lines)]
 fn build_tonic_services(out_dir: &Path) {
     let codec_path = "tonic::codec::ProstCodec";

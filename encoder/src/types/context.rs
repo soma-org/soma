@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use types::multiaddr::Multiaddr;
@@ -11,7 +11,7 @@ use types::{
 use types::error::{ShardError, ShardResult};
 
 use types::committee::{Epoch, NetworkingCommittee};
-use types::encoder_committee::{EncoderCommittee, EncoderNetworkMetadata};
+use types::encoder_committee::EncoderCommittee;
 
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -59,8 +59,6 @@ impl Context {
     pub fn object_server(&self, encoder: &EncoderPublicKey) -> Option<(PeerPublicKey, Multiaddr)> {
         self.inner.load().object_server(encoder)
     }
-
-    // TODO add the top level handlers here
 }
 
 /// EncoderContext is updated each epoch and provides the various services running

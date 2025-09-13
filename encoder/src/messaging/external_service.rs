@@ -36,17 +36,14 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
             shard_verifier,
         }
     }
-    // - allowed communication: allower key in tonic service
-    //
-    // - shard auth token is valid: finality proof, vdf, transaction
-    // - own key is in the shard: shard_verification below
 
-    // - peer matches author (handled in corresponding type verification fn)
-    // - haven’t received a conflicting or redundant message (handled by pipelines)
     fn shard_verification(
         &self,
         auth_token: &ShardAuthToken,
     ) -> ShardResult<(Shard, CancellationToken)> {
+        // - allowed communication: allower key in tonic service
+        // - shard auth token is valid: finality proof, vdf, transaction
+        // - own encoder key is in the shard: shard_verification below
         let inner_context = self.context.inner();
         let committees = inner_context.committees(auth_token.epoch())?;
 
@@ -66,19 +63,18 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
 }
 #[async_trait]
 impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
-    async fn handle_send_input(
-        &self,
-        _peer: &PeerPublicKey,
-        input_bytes: Bytes,
-    ) -> ShardResult<()> {
+    async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()> {
         let result: ShardResult<()> = {
             let input: Input = bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
 
             let (shard, cancellation) = self.shard_verification(input.auth_token())?;
 
-            let verified_input = Verified::new(input, input_bytes, |i| verify_input(&i, &shard))
-                .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
+            // - tls key for data matches peer (handled in corresponding type verification fn)
+            let verified_input =
+                Verified::new(input, input_bytes, |i| verify_input(&i, &shard, peer))
+                    .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+            // dispatcher handles repeated/conflicting messages from peers
             let _ = self
                 .dispatcher
                 .dispatch_input(shard, verified_input, cancellation)

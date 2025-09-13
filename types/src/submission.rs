@@ -1,5 +1,7 @@
-use crate::evaluation::{EmbeddingDigest, ProbeSet, Score};
-use crate::metadata::Metadata;
+use crate::encoder_committee::{self, EncoderCommittee};
+use crate::error::SharedResult;
+use crate::evaluation::{verify_probe_set, EmbeddingDigest, ProbeSet, Score};
+use crate::metadata::{verify_metadata, Metadata};
 use crate::{shard::Shard, shard_crypto::digest::Digest, shard_crypto::keys::EncoderPublicKey};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -33,19 +35,19 @@ pub struct SubmissionV1 {
 impl SubmissionV1 {
     pub fn new(
         encoder: EncoderPublicKey,
+        shard_digest: Digest<Shard>,
+        metadata: Metadata,
+        probe_set: ProbeSet,
         score: Score,
         summary_digest: EmbeddingDigest,
-        probe_set: ProbeSet,
-        metadata: Metadata,
-        shard_digest: Digest<Shard>,
     ) -> Self {
         Self {
             encoder,
+            shard_digest,
+            metadata,
+            probe_set,
             score,
             summary_digest,
-            probe_set,
-            metadata,
-            shard_digest,
         }
     }
 }
@@ -69,4 +71,21 @@ impl SubmissionAPI for SubmissionV1 {
     fn shard_digest(&self) -> Digest<Shard> {
         self.shard_digest.clone()
     }
+}
+
+pub fn verify_submission(
+    submission: &Submission,
+    shard: &Shard,
+    encoder_committee: &EncoderCommittee,
+) -> SharedResult<()> {
+    if !shard.contains(submission.encoder()) {
+        // return error
+    }
+    if shard.digest()? != submission.shard_digest() {
+        // return error
+    }
+    let _ = verify_metadata(submission.metadata(), None)?;
+    let _ = verify_probe_set(submission.probe_set(), encoder_committee)?;
+
+    Ok(())
 }

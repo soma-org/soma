@@ -37,20 +37,16 @@ impl<D: InternalDispatcher> EncoderInternalService<D> {
         }
     }
 
-    // All internal shard requests
-    // - allowed communication (matches tls key associated with valid encoder)
-    // - shard auth token is valid
-    // - peer is in shard
-    // - own key is in shard
-    // ABOVE HANDLED BY SHARD VERIFICATION
-
-    // - peer matches author (handled in corresponding type verification fn)
-    // - haven’t received a conflicting or redundant message (handled by pipelines)
     fn shard_verification(
         &self,
         auth_token: &ShardAuthToken,
         peer: &EncoderPublicKey,
     ) -> ShardResult<(Shard, CancellationToken)> {
+        // All internal shard requests
+        // - allowed communication (matches tls key associated with valid encoder - handled in tonic service)
+        // - shard auth token is valid
+        // - peer is in shard
+        // - own key is in shard
         let inner_context = self.context.inner();
         let committees = inner_context.committees(auth_token.epoch())?;
 
@@ -83,11 +79,14 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
             let commit: Commit =
                 bcs::from_bytes(&commit_bytes).map_err(ShardError::MalformedType)?;
             let (shard, cancellation) = self.shard_verification(commit.auth_token(), peer)?;
+
+            // checks that message author matches peer inside type verification function
             let verified_commit = Verified::new(commit.clone(), commit_bytes, |signed_commit| {
                 verify_commit(signed_commit, peer, &shard)
             })
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+            // dispatcher handles repeated/conflicting messages from peers
             self.dispatcher
                 .dispatch_commit(shard, verified_commit, cancellation)
                 .await
@@ -113,11 +112,13 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
 
             let (shard, cancellation) = self.shard_verification(commit_votes.auth_token(), peer)?;
 
+            // checks that message author matches peer inside type verification function
             let verified_commit_votes = Verified::new(commit_votes, commit_votes_bytes, |votes| {
                 verify_commit_votes(votes, peer, &shard)
             })
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+            // dispatcher handles repeated/conflicting messages from peers
             self.dispatcher
                 .dispatch_commit_votes(shard, verified_commit_votes, cancellation)
                 .await
@@ -141,12 +142,21 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 bcs::from_bytes(&reveal_bytes).map_err(ShardError::MalformedType)?;
 
             let (shard, cancellation) = self.shard_verification(reveal.auth_token(), peer)?;
+            // TODO: should make this more efficient without needing to clone the encoder committee
+            let encoder_committee = self
+                .context
+                .inner()
+                .committees(shard.epoch())?
+                .encoder_committee
+                .clone();
 
+            // checks that message author matches peer inside type verification function
             let verified_reveal = Verified::new(reveal, reveal_bytes, |reveal| {
-                verify_reveal(reveal, peer, &shard)
+                verify_reveal(reveal, peer, &shard, &encoder_committee)
             })
             .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+            // dispatcher handles repeated/conflicting messages from peers
             self.dispatcher
                 .dispatch_reveal(shard, verified_reveal, cancellation)
                 .await
@@ -170,13 +180,22 @@ impl<D: InternalDispatcher> EncoderInternalNetworkService for EncoderInternalSer
                 bcs::from_bytes(&report_vote_bytes).map_err(ShardError::MalformedType)?;
 
             let (shard, cancellation) = self.shard_verification(report_vote.auth_token(), peer)?;
+            // TODO: should make this more efficient without needing to clone the encoder committee
+            let encoder_committee = self
+                .context
+                .inner()
+                .committees(shard.epoch())?
+                .encoder_committee
+                .clone();
 
+            // checks that message author matches peer inside type verification function
             let verified_report_vote =
                 Verified::new(report_vote, report_vote_bytes, |report_vote| {
-                    verify_report_vote(&report_vote, peer, &shard)
+                    verify_report_vote(&report_vote, peer, &shard, &encoder_committee)
                 })
                 .map_err(|e| ShardError::FailedTypeVerification(e.to_string()))?;
 
+            // dispatcher handles repeated/conflicting messages from peers
             self.dispatcher
                 .dispatch_report_vote(shard, verified_report_vote, cancellation)
                 .await

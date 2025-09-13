@@ -103,10 +103,10 @@ impl<
             let (auth_token, shard) = msg.input;
 
             let all_submissions = self.store.get_all_submissions(&shard)?;
-            let all_accepted_submissions = self.store.get_all_accepted_submissions(&shard)?;
+            let all_accepted_commits = self.store.get_all_accepted_commits(&shard)?;
 
             let accepted_lookup: HashMap<EncoderPublicKey, Digest<Submission>> =
-                all_accepted_submissions
+                all_accepted_commits
                     .clone()
                     .into_iter()
                     .map(|(encoder, digest)| (encoder, digest))
@@ -144,16 +144,12 @@ impl<
 
             debug!("BEST SCORE: {:?}", best_score);
 
-            let report = Report::V1(ReportV1::new(best_score, all_accepted_submissions));
+            let report = Report::V1(ReportV1::new(best_score, all_accepted_commits));
 
             let inner_keypair = self.encoder_keypair.inner().copy();
 
-            let signed_report = Signed::new(
-                report,
-                Scope::ShardFinality,
-                &inner_keypair.copy().private(),
-            )
-            .unwrap();
+            let signed_report =
+                Signed::new(report, Scope::ShardReport, &inner_keypair.copy().private()).unwrap();
 
             let report_vote = ReportVote::V1(ReportVoteV1::new(
                 auth_token,

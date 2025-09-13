@@ -163,7 +163,7 @@ impl<
                     // Log the accepted commits in the store
                     for (encoder, digest) in &finalized_encoders {
                         if let Some(digest) = digest {
-                            self.store.add_accepted_submission(&shard, encoder, digest.clone())?;
+                            self.store.add_accepted_commit(&shard, encoder, digest.clone())?;
                             info!("Logged accepted commit digest for encoder: {:?}", encoder);
                         }
                     }

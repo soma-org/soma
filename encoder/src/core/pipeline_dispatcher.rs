@@ -26,7 +26,7 @@ pub trait InternalDispatcher: Sync + Send + 'static {
     async fn dispatch_commit_votes(
         &self,
         shard: Shard,
-        votes: Verified<CommitVotes>,
+        commit_votes: Verified<CommitVotes>,
         cancellation: CancellationToken,
     ) -> ShardResult<()>;
     async fn dispatch_reveal(

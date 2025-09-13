@@ -113,12 +113,12 @@ impl<
             let shard_digest = shard.digest()?;
 
             let all_submissions = self.store.get_all_submissions(&shard)?;
-            let all_accepted_submissions = self.store.get_all_accepted_submissions(&shard)?;
+            let all_accepted_commits = self.store.get_all_accepted_commits(&shard)?;
 
-            let max_size = all_accepted_submissions.len();
+            let max_size = all_accepted_commits.len();
 
             let accepted_lookup: HashMap<EncoderPublicKey, Digest<Submission>> =
-                all_accepted_submissions
+                all_accepted_commits
                     .into_iter()
                     .map(|(encoder, digest)| (encoder, digest))
                     .collect();

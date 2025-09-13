@@ -1,9 +1,9 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use types::submission::{Submission, SubmissionAPI};
+use types::encoder_committee::EncoderCommittee;
+use types::submission::{verify_submission, Submission, SubmissionAPI};
 use types::{
     error::{SharedError, SharedResult},
-    metadata::verify_metadata,
     shard_crypto::keys::EncoderPublicKey,
 };
 
@@ -63,19 +63,20 @@ pub(crate) fn verify_reveal(
     reveal: &Reveal,
     peer: &EncoderPublicKey,
     shard: &Shard,
+    encoder_committee: &EncoderCommittee,
 ) -> SharedResult<()> {
     if peer != reveal.author() {
         return Err(SharedError::FailedTypeVerification(
             "sending peer must be author".to_string(),
         ));
     }
-    // Do I want to gurantee that the downloadable metadata match the peer and address on chain?
+    if peer != reveal.submission().encoder() {
+        return Err(SharedError::FailedTypeVerification(
+            "sending peer must be submission encoder".to_string(),
+        ));
+    }
 
-    // TODO: verify the probe_set's validity
-    // TODO: verify the summary embedding's length
-
-    let max_size = None;
-    verify_metadata(&reveal.submission().metadata(), max_size)?;
+    let _ = verify_submission(reveal.submission(), shard, encoder_committee)?;
 
     Ok(())
 }

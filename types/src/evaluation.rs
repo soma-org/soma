@@ -1,5 +1,7 @@
 use crate::{
-    metadata::Metadata,
+    encoder_committee::EncoderCommittee,
+    error::{SharedError, SharedResult},
+    metadata::{Metadata, MetadataAPI},
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use enum_dispatch::enum_dispatch;
@@ -176,4 +178,39 @@ impl ProbeSetAPI for ProbeSetV1 {
             .map(|pw| ProbeWeight::V1(pw.clone()))
             .collect()
     }
+}
+
+pub(crate) fn verify_probe_set(
+    probe_set: &ProbeSet,
+    encoder_committee: &EncoderCommittee,
+) -> SharedResult<()> {
+    // TODO: adjust the probe set verification to have a max number of probes as well
+    // TODO: fix the msim tests to actually construct valid probe sets
+    if !cfg!(msim) {
+        let mut voting_power = 0;
+        for pw in probe_set.probe_weights() {
+            match encoder_committee.encoder_by_key(pw.encoder()) {
+                Some(encoder) => {
+                    voting_power += encoder.voting_power;
+                    if encoder.probe_checksum != pw.metadata().checksum() {
+                        return Err(SharedError::FailedTypeVerification(
+                            "probe weight checksum does not match committee".to_string(),
+                        ));
+                    }
+                }
+                None => {
+                    return Err(SharedError::FailedTypeVerification(
+                        "probe weight encoder not found in committee".to_string(),
+                    ))
+                }
+            }
+        }
+        // TODO: CHANGE THIS TO BE THE CORRECT MINIMUM VOTING POWER
+        if voting_power < 1 {
+            return Err(SharedError::FailedTypeVerification(
+                "probe set did not meet minimum voting power".to_string(),
+            ));
+        }
+    }
+    Ok(())
 }

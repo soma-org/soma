@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[enum_dispatch]
 pub trait ReportAPI {
     fn winning_submission(&self) -> &Submission;
-    fn accepted_submissions(&self) -> &Vec<(EncoderPublicKey, Digest<Submission>)>;
+    fn accepted_commits(&self) -> &Vec<(EncoderPublicKey, Digest<Submission>)>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -18,18 +18,18 @@ pub enum Report {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ReportV1 {
     winning_submission: Submission,
-    accepted_submissions: Vec<(EncoderPublicKey, Digest<Submission>)>,
+    accepted_commits: Vec<(EncoderPublicKey, Digest<Submission>)>,
 }
 
 impl ReportV1 {
     pub fn new(
         winning_submission: Submission,
-        mut accepted_submissions: Vec<(EncoderPublicKey, Digest<Submission>)>,
+        mut accepted_commits: Vec<(EncoderPublicKey, Digest<Submission>)>,
     ) -> Self {
-        accepted_submissions.sort();
+        accepted_commits.sort();
         Self {
             winning_submission,
-            accepted_submissions,
+            accepted_commits,
         }
     }
 }
@@ -38,7 +38,7 @@ impl ReportAPI for ReportV1 {
     fn winning_submission(&self) -> &Submission {
         &self.winning_submission
     }
-    fn accepted_submissions(&self) -> &Vec<(EncoderPublicKey, Digest<Submission>)> {
-        &self.accepted_submissions
+    fn accepted_commits(&self) -> &Vec<(EncoderPublicKey, Digest<Submission>)> {
+        &self.accepted_commits
     }
 }

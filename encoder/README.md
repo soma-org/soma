@@ -1,7 +1,21 @@
 # Encoder
 
-The encoder module houses all the code pertaining to communicating, downloading
-data, and processing embeddings.
+The encoder crate contains most of the logic around participating in competitions to generate compressed representations.
+
+For each piece of data and corresponding competition, a group of encoders are selected by stake-weighted random sampling. These encoders then progress through stages (commit, commit votes, reveal, report votes) to finally come to consensus on which representations are the "best".
+
+The "best" representations are calculated using a fixed probe architecture that performs reconstruction on the original data in an unsupervised manner. The reconstruction loss is adjusted based on how many bytes are represented by each embedding (compression factor). Intelligence is ultimately how effective a model is at compressing the problem. The "best" representations have low loss and a high degree of compression.
+
+# Important Files
+
+The most important files are inside of the pipelines directory. The pipelines contain the systems core logic for progressing to handling messages and progressing the next stages.
+
+The encoder specific types are useful to understand the contents of the messages, along with message specific verification.
+
+The shard verifier contains code on authorizing work for generating an embedding using a transaction proof along with the random sampling.
+
+Finally the internal/external services along with tonic implementations serve as the entry point for external messages to enter the pipelines after verification.
+
 
 # Attack Resistance
 
@@ -9,11 +23,11 @@ Great care has been taken to secure the encoder network against attacks.
 
 ### Collusion Resistance
 
-Collusion occurs when the probability of detection is low, and the reward is high. To combat collusion economically, the key is to adjust the system until the payoff function until the expected value of colluding costs more than the epected value of acting honestly. 
+Collusion occurs when the probability of detection is low, and the reward is high. To combat collusion economically, the key is to adjust the system until the payoff function until the expected value of colluding costs more than the expected value of acting honestly. 
 
-Since the primary way of mining tokens is via submitting learnable data to a shard, and the shard reports back to the rest of the network, the potential for collusion is high. Especially when the mined tokens could be split with a shard that artificially reports a high learnability. 
+In the case of Soma, there are two ways to earn tokens: operating an encoder, and submitting data. One case of collusion is to make it profitable for encoders to fake the actual scores for a piece of data such that it is eligible for the data reward. We mitigate this paying out data reward from all the encoders in a shard except for the best encoder. This makes it unprofitable for a majority of the encoders to collude to create a specific data score.
 
-To tweak this system to make detection probabilty high and also the cost when caught high, we can make it so the entire network of encoders audits only the pieces of data that are eligible for rewards. This not only helps distribute the most learnable data across the network, but makes detection of incorrect probe values easy to detect since the network is recomputing the scores. As an encoder in the network reviews the scores, if a bad score is found, then that encoder tallies the responsible party. Furthermore if 2f+1 staked encoders tally that bad actor, they are slashed making the cost of lying very high. 
+Operating an encoder is not profitable unless the encoders are operating at a high stake efficiency. Win rates are tracked for encoders that participate in shards. 
 
 
 ### DDoS
@@ -24,7 +38,7 @@ Encoders reject all communication from computers that do not have stake in the
 network. In order to register as an accepted networking peer, the computer must
 have an established TLS key as well as meet a minimum stake.
 
-In the case of an abusive peer that meets the stake requirement, then the
+If an abusive peer meets the stake requirement, then the
 encoder can quickly blacklist that peer locally. The abusive peer would then
 need to unstake and restake funds to create a new identity which takes time.
 Alternatively, the peer would need to have a lot of staked identities which
@@ -42,81 +56,46 @@ causing an encoder shard to halt (more below on liveliness attacks), or
 attempting to take down the encoders responsible for processing the data.
 
 In the case of later, the shard members are hidden from the rest of the network.
-The seed for shard selection is a combination of a threshold signature for the
-block containing the transaction and a dataset digest (hash). Threshold BLS
-signatures offer extremely good randomness that is impossible to bias, but this
-signature is public to the network.
+The seed for shard selection is a combination of the block specific randomness combined with the raw metadata/nonce for a piece of data.
 
-The dataset hash is kept secret and just referenced to using a hash of the
+The metadata/nonce is kept secret and just referenced to using a hash of the
 secret data by the transaction.
 
-By combining both the threshold signature and dataset hash we get an excellent
-source of randomness, that selects a different shard for each dataset submitted,
-but is kept secret from the rest of the network.
+By combining both to create the seed for a shard, we are able to keep the selected shard a secret from the rest of the network yet still reveal to the shard members that the transaction and shard is valid. 
 
-The client then shares the dataset / transaction proof with encoders which can
-verify validity using the one way nature of hashing algorithms.
 
 ### Liveliness
 
 Another means of attacking the network or censoring is a liveliness attack.
-Shards are designed to make it probabilistically extremely unlikely for a shard
-to have a dishonest majority. However, while unlikely, it is possible to have a
-dishonest MINORITY. In the case of a dishonest minority that is GREATER than the
-shard size minus the number of nodes needed to meet quorum, it is possible to
-halt execution of a shard. The reason being that a quorum is required to remove
-faulty shard members.
+
+Shards are designed to make it probabilistically unlikely for a shard
+to have a dishonest majority. However, it is possible to have a
+dishonest MINORITY. If shard size minus the number of nodes needed to meet quorum are dishonest, it is possible to halt execution of a shard. 
 
 To combat this, every honest encoder starts a timeout that is sufficiently long
 e.g. waiting a full epoch. At this point, any encoders that have not submitted
-data to that encoder are tallied. Once 2f+1 stake has tallied that encoder, they
-are slashed.
+data to that encoder are tallied.
 
 Additionally, if a shard does not complete, the buyer is refunded allowing for a
 view change with an entirely different shard.
-
-In order to probabilistically have control over a dishonest majority would
-require controlling approximately 20% stake for a given modality. If the
-dishonest stake acted maliciously frequently, they would eventually be slashed
-due to tallies. If the dishonest stake was waiting to censor specific users,
-they would have to be competitive at encoding or risk being slashed due to
-performance. If the dishonest stake rotated identities, additional steps would
-need to be taken to track where the malicious money was moved but due to the
-transparency of the monetary system it would be possible to engineer a solution.
 
 Ultimately, the best way to protect against a 20% malicious stake is to
 distribute tokens in such a way that maximizes decentralization and meritocracy.
 
 ### Malicious Buyers
 
-To prove to an encoder that they are a member of a shard, the client or client's
-RPC must provide a cryptographic proof of transaction finality. As long as the
-encoder has a valid view of the authorities for a given epoch, the encoder can
-strongly verify that a transaction is valid, contains the funds, and that the
-dataset digest matches the reference digest in the transaction. In the case of a
-dataset that is larger than expected, ill formatted, or does not match checksums
-the encoder stops work immediately. While the buyer will be refunded since the
-shard could not complete, they do not receive the full amount but rather lose
-some of the value due to network fees. The network fees can be tuned to make
-this attack expensive.
+To prove to an encoder that they should work on a piece of data, the full node must provide a cryptographic proof of transaction finality.
 
-TODO: Shard members need a way of communicating with the rest of their shard
-that the input is bad and that is the reason why they are not submitting a
-commit/reveal/etc such that they do not receive a tally.
+As long as the encoder knows the authorities for the epoch, the encoder can strongly verify that a transaction is valid, has funds, and the dataset metadata matches the transaction.
 
-Buyers may also selectively send inputs to certain encoders and not others. As
-long as those encoders are honest, then when they commit, they will notify the
-other shard members of the shard's existence and provide the oblivious member
-with the input.
+In the case of a dataset that is larger than expected, ill formatted, or does not match checksums the encoder stops work immediately. While the buyer will be refunded since the shard could not complete, they do not receive the full amount but rather lose some of the value due to network fees. 
 
-TODO: reconsider using a certificate to prove delivery to the shard members
+Full nodes are expected to verify the validity of input data prior to submission to the encoders so any failure regarding the integrity of the data results in the full node being tallied and at worst blacklisted.
 
 ### Malicious Encoders
 
 As long as the malicious encoders in a shard do not control 20% of the nodes,
 then a shard can effectively remove the encoders from the shard that are faulty.
-To remove an encoder from a shard, the honest shard members must collect a
-quorum number of removal signatures to certify the removal.
 
 Another attack that encoders can use is to steal the embeddings generated by a
 peer. To protect against copying embeddings, or using a peers embeddings to fine
@@ -124,19 +103,3 @@ tune output, the shard goes through a commit reveal scheme. Before revealing
 their embeddings, an encoder verifies that their peers have also committed or
 they have been removed from the shard. This stops unwanted copying.
 
-### Encoder Collusion
-
-While unwanted copying is impossible using the commit reveal scheme, collusion
-is still possible if the colluding encoders opt-in. It is important to note that
-collusion and collaboration are different. In the case of a shard, we want to
-minimize encoders colluding to select a winner since that might result in
-sub-optimal embeddings. However, using other encoders that are not shard members
-to generate embeddings is encourage because it leads to better embeddings.
-
-The first defense is that probe weights are locked in at every epoch. The probes
-are what is used to evaluate the quality of embeddings, and there is no way to
-predict what the shard will be beforehand. This makes the evaluation of
-embeddings deterministic whether shard members collude or not.
-
-TODO: consider the economics of incentives to improve performance or hinder
-collusion
