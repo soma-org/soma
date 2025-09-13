@@ -330,13 +330,11 @@ impl Merge<types::transaction::TransactionData> for Transaction {
         }
 
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
-            self.gas_payment = Some(GasPayment {
-                objects: source
-                    .gas_payment
-                    .into_iter()
-                    .map(|g| object_ref_to_proto(g))
-                    .collect(),
-            });
+            self.gas_payment = source
+                .gas_payment
+                .into_iter()
+                .map(|g| object_ref_to_proto(g))
+                .collect();
         }
     }
 }
@@ -369,9 +367,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 new_rate: Some(new_rate),
             }),
             K::AddEncoder(args) => Kind::AddEncoder(args.into()),
-            K::RemoveEncoder => Kind::RemoveEncoder(RemoveEncoder {
-                encoder_pubkey_bytes: None, // TODO: Figure out how to deal with this
-            }),
+            K::RemoveEncoder(args) => Kind::RemoveEncoder(args.into()),
             K::ReportEncoder { reportee } => Kind::ReportEncoder(ReportEncoder {
                 reportee: Some(reportee.to_string()),
             }),
@@ -578,6 +574,17 @@ impl From<types::transaction::AddEncoderArgs> for AddEncoder {
             object_server_address: Some(Bcs {
                 name: Some("ObjectServerAddress".to_string()),
                 value: Some(args.object_server_address.into()),
+            }),
+        }
+    }
+}
+
+impl From<types::transaction::RemoveEncoderArgs> for RemoveEncoder {
+    fn from(args: types::transaction::RemoveEncoderArgs) -> Self {
+        Self {
+            encoder_pubkey_bytes: Some(Bcs {
+                name: Some("EncoderPublicKey".to_string()),
+                value: Some(args.encoder_pubkey_bytes.into()),
             }),
         }
     }

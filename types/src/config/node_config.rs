@@ -125,7 +125,7 @@ impl NodeConfig {
 /// Wrapper struct for SomaKeyPair that can be deserialized from a file path. Used by network, worker, and account keypair.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPairWithPath {
-    // #[serde(flatten)]
+    #[serde(flatten)]
     location: KeyPairLocation,
     #[serde(skip)]
     keypair: OnceLock<Arc<SomaKeyPair>>,
@@ -133,14 +133,14 @@ pub struct KeyPairWithPath {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde_as]
+#[serde(untagged)]
 enum KeyPairLocation {
-    #[serde(skip)]
     InPlace {
-        // #[serde_as(as = "Arc<KeyPairBase64>")]
+        #[serde_as(as = "Arc<KeyPairBase64>")]
         value: Arc<SomaKeyPair>,
     },
     File {
-        // #[serde(rename = "path")]
+        #[serde(rename = "path")]
         path: PathBuf,
     },
 }
@@ -379,8 +379,6 @@ impl ValidatorConfigBuilder {
             }
         };
 
-        let localhost = local_ip_utils::localhost_for_testing();
-
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
             network_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
@@ -394,9 +392,7 @@ impl ValidatorConfigBuilder {
             network_address,
             genesis: genesis,
             encoder_validator_address: validator.encoder_validator_address,
-            rpc_address: local_ip_utils::new_tcp_address_for_testing(&localhost)
-                .to_socket_addr()
-                .unwrap(),
+            rpc_address: validator.rpc_address.to_socket_addr().unwrap(),
             rpc: Some(RpcConfig {
                 ..Default::default()
             }),

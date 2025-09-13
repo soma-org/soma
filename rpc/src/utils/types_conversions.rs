@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::types::*;
 use fastcrypto::traits::ToFromBytes;
 use tap::Pipe;
+use tracing::info;
 use types::crypto::SomaSignature;
 
 #[derive(Debug)]
@@ -176,14 +177,21 @@ impl TryFrom<SignedTransaction> for types::transaction::SenderSignedData {
             signatures,
         } = value;
 
-        Self::new(
-            transaction.try_into()?,
-            signatures
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-        )
-        .pipe(Ok)
+        let tx_data = transaction.try_into().map_err(|e| {
+            info!("Failed to convert Transaction: {:?}", e);
+            e
+        });
+
+        let signatures = signatures
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()
+            .map_err(|e| {
+                info!("Failed to convert Sigs: {:?}", e);
+                e
+            });
+
+        Self::new(tx_data?, signatures?).pipe(Ok)
     }
 }
 

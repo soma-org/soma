@@ -1,5 +1,6 @@
 use prost_types::FieldMask;
 use tap::Pipe;
+use tracing::info;
 use types::{balance_change::derive_balance_changes, transaction_executor::TransactionExecutor};
 
 use crate::{
@@ -47,6 +48,10 @@ pub async fn execute_transaction(
     executor: &std::sync::Arc<dyn TransactionExecutor>,
     request: ExecuteTransactionRequest,
 ) -> Result<ExecuteTransactionResponse, RpcError> {
+    info!("Received ExecuteTransactionRequest");
+    info!("Request has transaction: {}", request.transaction.is_some());
+    info!("Number of signatures: {}", request.signatures.len());
+
     let transaction = request
         .transaction
         .as_ref()
@@ -57,6 +62,8 @@ pub async fn execute_transaction(
                 .with_description(format!("invalid transaction: {e}"))
                 .with_reason(ErrorReason::FieldInvalid)
         })?;
+
+    info!("Successfully converted Transaction");
 
     let signatures = request
         .signatures
@@ -71,32 +78,49 @@ pub async fn execute_transaction(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    info!("Successfully converted {} signatures", signatures.len());
+
     let signed_transaction = crate::types::SignedTransaction {
         transaction: transaction.clone(),
         signatures: signatures.clone(),
     };
-
     let read_mask = {
+        info!("Processing read_mask");
         let read_mask = request
             .read_mask
             .unwrap_or_else(|| FieldMask::from_str(EXECUTE_TRANSACTION_READ_MASK_DEFAULT));
+
+        info!("Validating read_mask: {:?}", read_mask);
         read_mask
             .validate::<ExecuteTransactionResponse>()
             .map_err(|path| {
+                info!("Read mask validation failed for path: {}", path);
                 FieldViolation::new("read_mask")
                     .with_description(format!("invalid read_mask path: {path}"))
                     .with_reason(ErrorReason::FieldInvalid)
             })?;
+
+        info!("Read mask validation succeeded");
         FieldMaskTree::from(read_mask)
     };
+
+    info!("About to convert SignedTransaction to executor request type");
 
     let request = {
         let mask = read_mask
             .subtree(ExecuteTransactionResponse::TRANSACTION_FIELD.name)
             .unwrap_or_default();
 
+        // THIS IS LIKELY WHERE THE ERROR OCCURS
+        info!("Converting signed_transaction with try_into()");
+        let executor_transaction = signed_transaction.try_into().map_err(|e| {
+            info!("Failed to convert SignedTransaction: {:?}", e);
+            e
+        })?;
+        info!("Successfully converted to executor transaction type");
+
         types::quorum_driver::ExecuteTransactionRequest {
-            transaction: signed_transaction.try_into()?,
+            transaction: executor_transaction,
             include_input_objects: mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
                 || mask.contains(ExecutedTransaction::INPUT_OBJECTS_FIELD.name)
                 || mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
@@ -105,6 +129,8 @@ pub async fn execute_transaction(
                 || mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
         }
     };
+
+    info!("About to call executor.execute_transaction");
 
     let types::quorum_driver::ExecuteTransactionResponse {
         effects:
@@ -118,7 +144,7 @@ pub async fn execute_transaction(
     } = executor.execute_transaction(request, None).await?;
 
     let finality = {
-        let finality = match finality_info {
+        let finality = match finality_info.clone() {
             types::quorum_driver::EffectsFinalityInfo::Certified(sig) => {
                 Finality::Certified(ValidatorAggregatedSignature::from(sig).into())
             }
@@ -239,5 +265,10 @@ pub async fn execute_transaction(
         .contains(ExecuteTransactionResponse::FINALITY_FIELD.name)
         .then_some(finality);
     message.transaction = executed_transaction;
+
+    // Add debug logging
+    info!("Finality type: {:?}", finality_info);
+    info!("Response finality: {:?}", message.finality);
+
     Ok(message)
 }

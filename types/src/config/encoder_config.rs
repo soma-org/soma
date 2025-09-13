@@ -118,7 +118,7 @@ impl EncoderConfig {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPairWithPath {
-    // #[serde(flatten)]
+    #[serde(flatten)]
     location: KeyPairLocation,
     #[serde(skip)]
     keypair: OnceLock<Arc<SomaKeyPair>>,
@@ -126,14 +126,14 @@ pub struct KeyPairWithPath {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde_as]
+#[serde(untagged)]
 enum KeyPairLocation {
-    #[serde(skip)]
     InPlace {
-        // #[serde_as(as = "Arc<KeyPairBase64>")]
+        #[serde_as(as = "Arc<KeyPairBase64>")]
         value: Arc<SomaKeyPair>,
     },
     File {
-        // #[serde(rename = "path")]
+        #[serde(rename = "path")]
         path: PathBuf,
     },
 }

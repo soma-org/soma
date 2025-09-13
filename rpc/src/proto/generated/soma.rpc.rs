@@ -766,16 +766,8 @@ pub struct Transaction {
     pub kind: ::core::option::Option<TransactionKind>,
     #[prost(string, optional, tag = "5")]
     pub sender: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "6")]
-    pub gas_payment: ::core::option::Option<GasPayment>,
-}
-/// Payment information for executing a transaction.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GasPayment {
-    /// Set of gas objects to use for payment.
-    #[prost(message, repeated, tag = "1")]
-    pub objects: ::prost::alloc::vec::Vec<ObjectReference>,
+    #[prost(message, repeated, tag = "6")]
+    pub gas_payment: ::prost::alloc::vec::Vec<ObjectReference>,
 }
 /// Transaction type.
 #[non_exhaustive]
@@ -783,7 +775,7 @@ pub struct GasPayment {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 100, 101, 102"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -792,62 +784,62 @@ pub mod transaction_kind {
     #[non_exhaustive]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Kind {
-        #[prost(message, tag = "1")]
-        AddValidator(super::AddValidator),
-        #[prost(message, tag = "2")]
-        RemoveValidator(super::RemoveValidator),
-        #[prost(message, tag = "3")]
-        ReportValidator(super::ReportValidator),
-        #[prost(message, tag = "4")]
-        UndoReportValidator(super::UndoReportValidator),
-        #[prost(message, tag = "5")]
-        UpdateValidatorMetadata(super::UpdateValidatorMetadata),
-        #[prost(message, tag = "6")]
-        SetCommissionRate(super::SetCommissionRate),
-        #[prost(message, tag = "7")]
-        AddEncoder(super::AddEncoder),
-        #[prost(message, tag = "8")]
-        RemoveEncoder(super::RemoveEncoder),
-        #[prost(message, tag = "9")]
-        ReportEncoder(super::ReportEncoder),
-        #[prost(message, tag = "10")]
-        UndoReportEncoder(super::UndoReportEncoder),
-        #[prost(message, tag = "11")]
-        UpdateEncoderMetadata(super::UpdateEncoderMetadata),
-        #[prost(message, tag = "12")]
-        SetEncoderCommissionRate(super::SetEncoderCommissionRate),
-        #[prost(message, tag = "13")]
-        SetEncoderBytePrice(super::SetEncoderBytePrice),
-        #[prost(message, tag = "14")]
-        TransferCoin(super::TransferCoin),
-        #[prost(message, tag = "15")]
-        PayCoins(super::PayCoins),
-        #[prost(message, tag = "16")]
-        TransferObjects(super::TransferObjects),
-        #[prost(message, tag = "17")]
-        AddStake(super::AddStake),
-        #[prost(message, tag = "18")]
-        AddStakeToEncoder(super::AddStakeToEncoder),
-        #[prost(message, tag = "19")]
-        WithdrawStake(super::WithdrawStake),
-        #[prost(message, tag = "20")]
-        EmbedData(super::EmbedData),
-        #[prost(message, tag = "21")]
-        ClaimEscrow(super::ClaimEscrow),
-        #[prost(message, tag = "22")]
-        ReportScores(super::ReportScores),
-        /// System transaction used to end an epoch..
-        #[prost(message, tag = "100")]
-        ChangeEpoch(super::ChangeEpoch),
         /// Transaction used to initialize the chain state.
         ///
         /// Only valid if in the genesis checkpoint (0) and if this is the very first transaction ever
         /// executed on the chain.
-        #[prost(message, tag = "101")]
+        #[prost(message, tag = "1")]
         Genesis(super::GenesisTransaction),
         /// Consensus commit update.
-        #[prost(message, tag = "102")]
+        #[prost(message, tag = "2")]
         ConsensusCommitPrologue(super::ConsensusCommitPrologue),
+        /// System transaction used to end an epoch..
+        #[prost(message, tag = "3")]
+        ChangeEpoch(super::ChangeEpoch),
+        #[prost(message, tag = "4")]
+        AddValidator(super::AddValidator),
+        #[prost(message, tag = "5")]
+        RemoveValidator(super::RemoveValidator),
+        #[prost(message, tag = "6")]
+        ReportValidator(super::ReportValidator),
+        #[prost(message, tag = "7")]
+        UndoReportValidator(super::UndoReportValidator),
+        #[prost(message, tag = "8")]
+        UpdateValidatorMetadata(super::UpdateValidatorMetadata),
+        #[prost(message, tag = "9")]
+        SetCommissionRate(super::SetCommissionRate),
+        #[prost(message, tag = "10")]
+        AddEncoder(super::AddEncoder),
+        #[prost(message, tag = "11")]
+        RemoveEncoder(super::RemoveEncoder),
+        #[prost(message, tag = "12")]
+        ReportEncoder(super::ReportEncoder),
+        #[prost(message, tag = "13")]
+        UndoReportEncoder(super::UndoReportEncoder),
+        #[prost(message, tag = "14")]
+        UpdateEncoderMetadata(super::UpdateEncoderMetadata),
+        #[prost(message, tag = "15")]
+        SetEncoderCommissionRate(super::SetEncoderCommissionRate),
+        #[prost(message, tag = "16")]
+        SetEncoderBytePrice(super::SetEncoderBytePrice),
+        #[prost(message, tag = "17")]
+        TransferCoin(super::TransferCoin),
+        #[prost(message, tag = "18")]
+        PayCoins(super::PayCoins),
+        #[prost(message, tag = "19")]
+        TransferObjects(super::TransferObjects),
+        #[prost(message, tag = "20")]
+        AddStake(super::AddStake),
+        #[prost(message, tag = "21")]
+        AddStakeToEncoder(super::AddStakeToEncoder),
+        #[prost(message, tag = "22")]
+        WithdrawStake(super::WithdrawStake),
+        #[prost(message, tag = "23")]
+        EmbedData(super::EmbedData),
+        #[prost(message, tag = "24")]
+        ClaimEscrow(super::ClaimEscrow),
+        #[prost(message, tag = "25")]
+        ReportScores(super::ReportScores),
     }
 }
 #[non_exhaustive]

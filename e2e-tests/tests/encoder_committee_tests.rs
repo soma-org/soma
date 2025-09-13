@@ -190,11 +190,16 @@ async fn execute_embed_data_transaction(
     );
 
     tracing::info!(?tx, "Executing embed data tx for {}", address);
-    if let Ok((_, shard)) = test_cluster.execute_transaction(tx).await {
-        shard
-    } else {
-        None
-    }
+    let response = test_cluster.execute_transaction(tx).await;
+
+    // TODO: Add Shard to TransactionExecutionResponse
+
+    None
+    // if let Ok((_, shard)) = response. {
+    //     shard
+    // } else {
+    //     None
+    // }
 }
 
 /// Execute AddEncoder transaction
@@ -232,7 +237,7 @@ async fn execute_add_encoder_transaction(
     );
 
     tracing::info!(?tx, "Executing add encoder tx for {}", encoder_address);
-    test_cluster.execute_transaction(tx).await;
+    let response = test_cluster.execute_transaction(tx).await;
 }
 
 /// Execute AddStake transaction for an encoder
@@ -263,5 +268,5 @@ async fn execute_add_stake_transaction(
     );
 
     tracing::info!(?tx, "Executing stake encoder tx for {}", address);
-    test_cluster.execute_transaction(tx).await;
+    let response = test_cluster.execute_transaction(tx).await;
 }

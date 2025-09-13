@@ -2884,103 +2884,6 @@ impl<'de> serde::Deserialize<'de> for ExecutionStatus {
         deserializer.deserialize_struct("soma.rpc.ExecutionStatus", FIELDS, GeneratedVisitor)
     }
 }
-impl serde::Serialize for GasPayment {
-    #[allow(deprecated)]
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut len = 0;
-        if !self.objects.is_empty() {
-            len += 1;
-        }
-        let mut struct_ser = serializer.serialize_struct("soma.rpc.GasPayment", len)?;
-        if !self.objects.is_empty() {
-            struct_ser.serialize_field("objects", &self.objects)?;
-        }
-        struct_ser.end()
-    }
-}
-impl<'de> serde::Deserialize<'de> for GasPayment {
-    #[allow(deprecated)]
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        const FIELDS: &[&str] = &[
-            "objects",
-        ];
-
-        #[allow(clippy::enum_variant_names)]
-        enum GeneratedField {
-            Objects,
-            __SkipField__,
-        }
-        impl<'de> serde::Deserialize<'de> for GeneratedField {
-            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                struct GeneratedVisitor;
-
-                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
-                    type Value = GeneratedField;
-
-                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        write!(formatter, "expected one of: {:?}", &FIELDS)
-                    }
-
-                    #[allow(unused_variables)]
-                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
-                    where
-                        E: serde::de::Error,
-                    {
-                        match value {
-                            "objects" => Ok(GeneratedField::Objects),
-                            _ => Ok(GeneratedField::__SkipField__),
-                        }
-                    }
-                }
-                deserializer.deserialize_identifier(GeneratedVisitor)
-            }
-        }
-        struct GeneratedVisitor;
-        #[allow(clippy::useless_conversion)]
-        #[allow(clippy::unit_arg)]
-        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
-            type Value = GasPayment;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct soma.rpc.GasPayment")
-            }
-
-            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GasPayment, V::Error>
-                where
-                    V: serde::de::MapAccess<'de>,
-            {
-                let mut objects__ = None;
-                while let Some(k) = map_.next_key()? {
-                    match k {
-                        GeneratedField::Objects => {
-                            if objects__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("objects"));
-                            }
-                            objects__ = Some(map_.next_value()?);
-                        }
-                        GeneratedField::__SkipField__ => {
-                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
-                        }
-                    }
-                }
-                Ok(GasPayment {
-                    objects: objects__.unwrap_or_default(),
-                })
-            }
-        }
-        deserializer.deserialize_struct("soma.rpc.GasPayment", FIELDS, GeneratedVisitor)
-    }
-}
 impl serde::Serialize for GenesisTransaction {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -4864,7 +4767,7 @@ impl serde::Serialize for Transaction {
         if self.sender.is_some() {
             len += 1;
         }
-        if self.gas_payment.is_some() {
+        if !self.gas_payment.is_empty() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Transaction", len)?;
@@ -4880,8 +4783,8 @@ impl serde::Serialize for Transaction {
         if let Some(v) = self.sender.as_ref() {
             struct_ser.serialize_field("sender", v)?;
         }
-        if let Some(v) = self.gas_payment.as_ref() {
-            struct_ser.serialize_field("gasPayment", v)?;
+        if !self.gas_payment.is_empty() {
+            struct_ser.serialize_field("gasPayment", &self.gas_payment)?;
         }
         struct_ser.end()
     }
@@ -4991,7 +4894,7 @@ impl<'de> serde::Deserialize<'de> for Transaction {
                             if gas_payment__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("gasPayment"));
                             }
-                            gas_payment__ = map_.next_value()?;
+                            gas_payment__ = Some(map_.next_value()?);
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -5003,7 +4906,7 @@ impl<'de> serde::Deserialize<'de> for Transaction {
                     digest: digest__,
                     kind: kind__,
                     sender: sender__,
-                    gas_payment: gas_payment__,
+                    gas_payment: gas_payment__.unwrap_or_default(),
                 })
             }
         }
@@ -5574,6 +5477,15 @@ impl serde::Serialize for TransactionKind {
         let mut struct_ser = serializer.serialize_struct("soma.rpc.TransactionKind", len)?;
         if let Some(v) = self.kind.as_ref() {
             match v {
+                transaction_kind::Kind::Genesis(v) => {
+                    struct_ser.serialize_field("genesis", v)?;
+                }
+                transaction_kind::Kind::ConsensusCommitPrologue(v) => {
+                    struct_ser.serialize_field("consensusCommitPrologue", v)?;
+                }
+                transaction_kind::Kind::ChangeEpoch(v) => {
+                    struct_ser.serialize_field("changeEpoch", v)?;
+                }
                 transaction_kind::Kind::AddValidator(v) => {
                     struct_ser.serialize_field("addValidator", v)?;
                 }
@@ -5640,15 +5552,6 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::ReportScores(v) => {
                     struct_ser.serialize_field("reportScores", v)?;
                 }
-                transaction_kind::Kind::ChangeEpoch(v) => {
-                    struct_ser.serialize_field("changeEpoch", v)?;
-                }
-                transaction_kind::Kind::Genesis(v) => {
-                    struct_ser.serialize_field("genesis", v)?;
-                }
-                transaction_kind::Kind::ConsensusCommitPrologue(v) => {
-                    struct_ser.serialize_field("consensusCommitPrologue", v)?;
-                }
             }
         }
         struct_ser.end()
@@ -5661,6 +5564,11 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
+            "genesis",
+            "consensus_commit_prologue",
+            "consensusCommitPrologue",
+            "change_epoch",
+            "changeEpoch",
             "add_validator",
             "addValidator",
             "remove_validator",
@@ -5705,15 +5613,13 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "claimEscrow",
             "report_scores",
             "reportScores",
-            "change_epoch",
-            "changeEpoch",
-            "genesis",
-            "consensus_commit_prologue",
-            "consensusCommitPrologue",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
+            Genesis,
+            ConsensusCommitPrologue,
+            ChangeEpoch,
             AddValidator,
             RemoveValidator,
             ReportValidator,
@@ -5736,9 +5642,6 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             EmbedData,
             ClaimEscrow,
             ReportScores,
-            ChangeEpoch,
-            Genesis,
-            ConsensusCommitPrologue,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -5761,6 +5664,9 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                         E: serde::de::Error,
                     {
                         match value {
+                            "genesis" => Ok(GeneratedField::Genesis),
+                            "consensusCommitPrologue" | "consensus_commit_prologue" => Ok(GeneratedField::ConsensusCommitPrologue),
+                            "changeEpoch" | "change_epoch" => Ok(GeneratedField::ChangeEpoch),
                             "addValidator" | "add_validator" => Ok(GeneratedField::AddValidator),
                             "removeValidator" | "remove_validator" => Ok(GeneratedField::RemoveValidator),
                             "reportValidator" | "report_validator" => Ok(GeneratedField::ReportValidator),
@@ -5783,9 +5689,6 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "embedData" | "embed_data" => Ok(GeneratedField::EmbedData),
                             "claimEscrow" | "claim_escrow" => Ok(GeneratedField::ClaimEscrow),
                             "reportScores" | "report_scores" => Ok(GeneratedField::ReportScores),
-                            "changeEpoch" | "change_epoch" => Ok(GeneratedField::ChangeEpoch),
-                            "genesis" => Ok(GeneratedField::Genesis),
-                            "consensusCommitPrologue" | "consensus_commit_prologue" => Ok(GeneratedField::ConsensusCommitPrologue),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -5810,6 +5713,27 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                 let mut kind__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
+                        GeneratedField::Genesis => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("genesis"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::Genesis)
+;
+                        }
+                        GeneratedField::ConsensusCommitPrologue => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("consensusCommitPrologue"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ConsensusCommitPrologue)
+;
+                        }
+                        GeneratedField::ChangeEpoch => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("changeEpoch"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ChangeEpoch)
+;
+                        }
                         GeneratedField::AddValidator => {
                             if kind__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("addValidator"));
@@ -5962,27 +5886,6 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                                 return Err(serde::de::Error::duplicate_field("reportScores"));
                             }
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ReportScores)
-;
-                        }
-                        GeneratedField::ChangeEpoch => {
-                            if kind__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("changeEpoch"));
-                            }
-                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ChangeEpoch)
-;
-                        }
-                        GeneratedField::Genesis => {
-                            if kind__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("genesis"));
-                            }
-                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::Genesis)
-;
-                        }
-                        GeneratedField::ConsensusCommitPrologue => {
-                            if kind__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("consensusCommitPrologue"));
-                            }
-                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ConsensusCommitPrologue)
 ;
                         }
                         GeneratedField::__SkipField__ => {

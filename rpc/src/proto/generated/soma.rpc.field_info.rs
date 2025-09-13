@@ -1351,7 +1351,7 @@ mod _field_impls {
             name: "gas_payment",
             json_name: "gasPayment",
             number: 6i32,
-            message_fields: Some(GasPayment::FIELDS),
+            message_fields: Some(ObjectReference::FIELDS),
         };
     }
     impl MessageFields for Transaction {
@@ -1399,201 +1399,168 @@ mod _field_impls {
             self.path.push(Transaction::SENDER_FIELD.name);
             self.finish()
         }
-        pub fn gas_payment(mut self) -> GasPaymentFieldPathBuilder {
+        pub fn gas_payment(mut self) -> ObjectReferenceFieldPathBuilder {
             self.path.push(Transaction::GAS_PAYMENT_FIELD.name);
-            GasPaymentFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl GasPayment {
-        pub const OBJECTS_FIELD: &'static MessageField = &MessageField {
-            name: "objects",
-            json_name: "objects",
-            number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-    }
-    impl MessageFields for GasPayment {
-        const FIELDS: &'static [&'static MessageField] = &[Self::OBJECTS_FIELD];
-    }
-    impl GasPayment {
-        pub fn path_builder() -> GasPaymentFieldPathBuilder {
-            GasPaymentFieldPathBuilder::new()
-        }
-    }
-    pub struct GasPaymentFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GasPaymentFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn objects(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(GasPayment::OBJECTS_FIELD.name);
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl TransactionKind {
-        pub const ADD_VALIDATOR_FIELD: &'static MessageField = &MessageField {
-            name: "add_validator",
-            json_name: "addValidator",
-            number: 1i32,
-            message_fields: Some(AddValidator::FIELDS),
-        };
-        pub const REMOVE_VALIDATOR_FIELD: &'static MessageField = &MessageField {
-            name: "remove_validator",
-            json_name: "removeValidator",
-            number: 2i32,
-            message_fields: Some(RemoveValidator::FIELDS),
-        };
-        pub const REPORT_VALIDATOR_FIELD: &'static MessageField = &MessageField {
-            name: "report_validator",
-            json_name: "reportValidator",
-            number: 3i32,
-            message_fields: Some(ReportValidator::FIELDS),
-        };
-        pub const UNDO_REPORT_VALIDATOR_FIELD: &'static MessageField = &MessageField {
-            name: "undo_report_validator",
-            json_name: "undoReportValidator",
-            number: 4i32,
-            message_fields: Some(UndoReportValidator::FIELDS),
-        };
-        pub const UPDATE_VALIDATOR_METADATA_FIELD: &'static MessageField = &MessageField {
-            name: "update_validator_metadata",
-            json_name: "updateValidatorMetadata",
-            number: 5i32,
-            message_fields: Some(UpdateValidatorMetadata::FIELDS),
-        };
-        pub const SET_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "set_commission_rate",
-            json_name: "setCommissionRate",
-            number: 6i32,
-            message_fields: Some(SetCommissionRate::FIELDS),
-        };
-        pub const ADD_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "add_encoder",
-            json_name: "addEncoder",
-            number: 7i32,
-            message_fields: Some(AddEncoder::FIELDS),
-        };
-        pub const REMOVE_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "remove_encoder",
-            json_name: "removeEncoder",
-            number: 8i32,
-            message_fields: Some(RemoveEncoder::FIELDS),
-        };
-        pub const REPORT_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "report_encoder",
-            json_name: "reportEncoder",
-            number: 9i32,
-            message_fields: Some(ReportEncoder::FIELDS),
-        };
-        pub const UNDO_REPORT_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "undo_report_encoder",
-            json_name: "undoReportEncoder",
-            number: 10i32,
-            message_fields: Some(UndoReportEncoder::FIELDS),
-        };
-        pub const UPDATE_ENCODER_METADATA_FIELD: &'static MessageField = &MessageField {
-            name: "update_encoder_metadata",
-            json_name: "updateEncoderMetadata",
-            number: 11i32,
-            message_fields: Some(UpdateEncoderMetadata::FIELDS),
-        };
-        pub const SET_ENCODER_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "set_encoder_commission_rate",
-            json_name: "setEncoderCommissionRate",
-            number: 12i32,
-            message_fields: Some(SetEncoderCommissionRate::FIELDS),
-        };
-        pub const SET_ENCODER_BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "set_encoder_byte_price",
-            json_name: "setEncoderBytePrice",
-            number: 13i32,
-            message_fields: Some(SetEncoderBytePrice::FIELDS),
-        };
-        pub const TRANSFER_COIN_FIELD: &'static MessageField = &MessageField {
-            name: "transfer_coin",
-            json_name: "transferCoin",
-            number: 14i32,
-            message_fields: Some(TransferCoin::FIELDS),
-        };
-        pub const PAY_COINS_FIELD: &'static MessageField = &MessageField {
-            name: "pay_coins",
-            json_name: "payCoins",
-            number: 15i32,
-            message_fields: Some(PayCoins::FIELDS),
-        };
-        pub const TRANSFER_OBJECTS_FIELD: &'static MessageField = &MessageField {
-            name: "transfer_objects",
-            json_name: "transferObjects",
-            number: 16i32,
-            message_fields: Some(TransferObjects::FIELDS),
-        };
-        pub const ADD_STAKE_FIELD: &'static MessageField = &MessageField {
-            name: "add_stake",
-            json_name: "addStake",
-            number: 17i32,
-            message_fields: Some(AddStake::FIELDS),
-        };
-        pub const ADD_STAKE_TO_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "add_stake_to_encoder",
-            json_name: "addStakeToEncoder",
-            number: 18i32,
-            message_fields: Some(AddStakeToEncoder::FIELDS),
-        };
-        pub const WITHDRAW_STAKE_FIELD: &'static MessageField = &MessageField {
-            name: "withdraw_stake",
-            json_name: "withdrawStake",
-            number: 19i32,
-            message_fields: Some(WithdrawStake::FIELDS),
-        };
-        pub const EMBED_DATA_FIELD: &'static MessageField = &MessageField {
-            name: "embed_data",
-            json_name: "embedData",
-            number: 20i32,
-            message_fields: Some(EmbedData::FIELDS),
-        };
-        pub const CLAIM_ESCROW_FIELD: &'static MessageField = &MessageField {
-            name: "claim_escrow",
-            json_name: "claimEscrow",
-            number: 21i32,
-            message_fields: Some(ClaimEscrow::FIELDS),
-        };
-        pub const REPORT_SCORES_FIELD: &'static MessageField = &MessageField {
-            name: "report_scores",
-            json_name: "reportScores",
-            number: 22i32,
-            message_fields: Some(ReportScores::FIELDS),
-        };
-        pub const CHANGE_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "change_epoch",
-            json_name: "changeEpoch",
-            number: 100i32,
-            message_fields: Some(ChangeEpoch::FIELDS),
-        };
         pub const GENESIS_FIELD: &'static MessageField = &MessageField {
             name: "genesis",
             json_name: "genesis",
-            number: 101i32,
+            number: 1i32,
             message_fields: Some(GenesisTransaction::FIELDS),
         };
         pub const CONSENSUS_COMMIT_PROLOGUE_FIELD: &'static MessageField = &MessageField {
             name: "consensus_commit_prologue",
             json_name: "consensusCommitPrologue",
-            number: 102i32,
+            number: 2i32,
             message_fields: Some(ConsensusCommitPrologue::FIELDS),
+        };
+        pub const CHANGE_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "change_epoch",
+            json_name: "changeEpoch",
+            number: 3i32,
+            message_fields: Some(ChangeEpoch::FIELDS),
+        };
+        pub const ADD_VALIDATOR_FIELD: &'static MessageField = &MessageField {
+            name: "add_validator",
+            json_name: "addValidator",
+            number: 4i32,
+            message_fields: Some(AddValidator::FIELDS),
+        };
+        pub const REMOVE_VALIDATOR_FIELD: &'static MessageField = &MessageField {
+            name: "remove_validator",
+            json_name: "removeValidator",
+            number: 5i32,
+            message_fields: Some(RemoveValidator::FIELDS),
+        };
+        pub const REPORT_VALIDATOR_FIELD: &'static MessageField = &MessageField {
+            name: "report_validator",
+            json_name: "reportValidator",
+            number: 6i32,
+            message_fields: Some(ReportValidator::FIELDS),
+        };
+        pub const UNDO_REPORT_VALIDATOR_FIELD: &'static MessageField = &MessageField {
+            name: "undo_report_validator",
+            json_name: "undoReportValidator",
+            number: 7i32,
+            message_fields: Some(UndoReportValidator::FIELDS),
+        };
+        pub const UPDATE_VALIDATOR_METADATA_FIELD: &'static MessageField = &MessageField {
+            name: "update_validator_metadata",
+            json_name: "updateValidatorMetadata",
+            number: 8i32,
+            message_fields: Some(UpdateValidatorMetadata::FIELDS),
+        };
+        pub const SET_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "set_commission_rate",
+            json_name: "setCommissionRate",
+            number: 9i32,
+            message_fields: Some(SetCommissionRate::FIELDS),
+        };
+        pub const ADD_ENCODER_FIELD: &'static MessageField = &MessageField {
+            name: "add_encoder",
+            json_name: "addEncoder",
+            number: 10i32,
+            message_fields: Some(AddEncoder::FIELDS),
+        };
+        pub const REMOVE_ENCODER_FIELD: &'static MessageField = &MessageField {
+            name: "remove_encoder",
+            json_name: "removeEncoder",
+            number: 11i32,
+            message_fields: Some(RemoveEncoder::FIELDS),
+        };
+        pub const REPORT_ENCODER_FIELD: &'static MessageField = &MessageField {
+            name: "report_encoder",
+            json_name: "reportEncoder",
+            number: 12i32,
+            message_fields: Some(ReportEncoder::FIELDS),
+        };
+        pub const UNDO_REPORT_ENCODER_FIELD: &'static MessageField = &MessageField {
+            name: "undo_report_encoder",
+            json_name: "undoReportEncoder",
+            number: 13i32,
+            message_fields: Some(UndoReportEncoder::FIELDS),
+        };
+        pub const UPDATE_ENCODER_METADATA_FIELD: &'static MessageField = &MessageField {
+            name: "update_encoder_metadata",
+            json_name: "updateEncoderMetadata",
+            number: 14i32,
+            message_fields: Some(UpdateEncoderMetadata::FIELDS),
+        };
+        pub const SET_ENCODER_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "set_encoder_commission_rate",
+            json_name: "setEncoderCommissionRate",
+            number: 15i32,
+            message_fields: Some(SetEncoderCommissionRate::FIELDS),
+        };
+        pub const SET_ENCODER_BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
+            name: "set_encoder_byte_price",
+            json_name: "setEncoderBytePrice",
+            number: 16i32,
+            message_fields: Some(SetEncoderBytePrice::FIELDS),
+        };
+        pub const TRANSFER_COIN_FIELD: &'static MessageField = &MessageField {
+            name: "transfer_coin",
+            json_name: "transferCoin",
+            number: 17i32,
+            message_fields: Some(TransferCoin::FIELDS),
+        };
+        pub const PAY_COINS_FIELD: &'static MessageField = &MessageField {
+            name: "pay_coins",
+            json_name: "payCoins",
+            number: 18i32,
+            message_fields: Some(PayCoins::FIELDS),
+        };
+        pub const TRANSFER_OBJECTS_FIELD: &'static MessageField = &MessageField {
+            name: "transfer_objects",
+            json_name: "transferObjects",
+            number: 19i32,
+            message_fields: Some(TransferObjects::FIELDS),
+        };
+        pub const ADD_STAKE_FIELD: &'static MessageField = &MessageField {
+            name: "add_stake",
+            json_name: "addStake",
+            number: 20i32,
+            message_fields: Some(AddStake::FIELDS),
+        };
+        pub const ADD_STAKE_TO_ENCODER_FIELD: &'static MessageField = &MessageField {
+            name: "add_stake_to_encoder",
+            json_name: "addStakeToEncoder",
+            number: 21i32,
+            message_fields: Some(AddStakeToEncoder::FIELDS),
+        };
+        pub const WITHDRAW_STAKE_FIELD: &'static MessageField = &MessageField {
+            name: "withdraw_stake",
+            json_name: "withdrawStake",
+            number: 22i32,
+            message_fields: Some(WithdrawStake::FIELDS),
+        };
+        pub const EMBED_DATA_FIELD: &'static MessageField = &MessageField {
+            name: "embed_data",
+            json_name: "embedData",
+            number: 23i32,
+            message_fields: Some(EmbedData::FIELDS),
+        };
+        pub const CLAIM_ESCROW_FIELD: &'static MessageField = &MessageField {
+            name: "claim_escrow",
+            json_name: "claimEscrow",
+            number: 24i32,
+            message_fields: Some(ClaimEscrow::FIELDS),
+        };
+        pub const REPORT_SCORES_FIELD: &'static MessageField = &MessageField {
+            name: "report_scores",
+            json_name: "reportScores",
+            number: 25i32,
+            message_fields: Some(ReportScores::FIELDS),
         };
     }
     impl MessageFields for TransactionKind {
         const FIELDS: &'static [&'static MessageField] = &[
+            Self::GENESIS_FIELD,
+            Self::CONSENSUS_COMMIT_PROLOGUE_FIELD,
+            Self::CHANGE_EPOCH_FIELD,
             Self::ADD_VALIDATOR_FIELD,
             Self::REMOVE_VALIDATOR_FIELD,
             Self::REPORT_VALIDATOR_FIELD,
@@ -1616,9 +1583,6 @@ mod _field_impls {
             Self::EMBED_DATA_FIELD,
             Self::CLAIM_ESCROW_FIELD,
             Self::REPORT_SCORES_FIELD,
-            Self::CHANGE_EPOCH_FIELD,
-            Self::GENESIS_FIELD,
-            Self::CONSENSUS_COMMIT_PROLOGUE_FIELD,
         ];
     }
     impl TransactionKind {
@@ -1640,6 +1604,20 @@ mod _field_impls {
         }
         pub fn finish(self) -> String {
             self.path.join(".")
+        }
+        pub fn genesis(mut self) -> GenesisTransactionFieldPathBuilder {
+            self.path.push(TransactionKind::GENESIS_FIELD.name);
+            GenesisTransactionFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn consensus_commit_prologue(
+            mut self,
+        ) -> ConsensusCommitPrologueFieldPathBuilder {
+            self.path.push(TransactionKind::CONSENSUS_COMMIT_PROLOGUE_FIELD.name);
+            ConsensusCommitPrologueFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn change_epoch(mut self) -> ChangeEpochFieldPathBuilder {
+            self.path.push(TransactionKind::CHANGE_EPOCH_FIELD.name);
+            ChangeEpochFieldPathBuilder::new_with_base(self.path)
         }
         pub fn add_validator(mut self) -> AddValidatorFieldPathBuilder {
             self.path.push(TransactionKind::ADD_VALIDATOR_FIELD.name);
@@ -1734,20 +1712,6 @@ mod _field_impls {
         pub fn report_scores(mut self) -> ReportScoresFieldPathBuilder {
             self.path.push(TransactionKind::REPORT_SCORES_FIELD.name);
             ReportScoresFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn change_epoch(mut self) -> ChangeEpochFieldPathBuilder {
-            self.path.push(TransactionKind::CHANGE_EPOCH_FIELD.name);
-            ChangeEpochFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn genesis(mut self) -> GenesisTransactionFieldPathBuilder {
-            self.path.push(TransactionKind::GENESIS_FIELD.name);
-            GenesisTransactionFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn consensus_commit_prologue(
-            mut self,
-        ) -> ConsensusCommitPrologueFieldPathBuilder {
-            self.path.push(TransactionKind::CONSENSUS_COMMIT_PROLOGUE_FIELD.name);
-            ConsensusCommitPrologueFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl AddValidator {

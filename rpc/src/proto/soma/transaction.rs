@@ -35,7 +35,7 @@ impl Merge<crate::types::Transaction> for Transaction {
         }
 
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
-            self.gas_payment = Some(source.gas_payment.into());
+            self.gas_payment = source.gas_payment.into_iter().map(Into::into).collect();
         }
     }
 }
@@ -97,41 +97,15 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
 
         let gas_payment = value
             .gas_payment
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("gas_payment"))?
-            .try_into()?;
+            .iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()?;
 
         Ok(Self {
             kind,
             sender,
             gas_payment,
         })
-    }
-}
-
-//
-// GasPayment
-//
-
-impl From<crate::types::GasPayment> for GasPayment {
-    fn from(value: crate::types::GasPayment) -> Self {
-        Self {
-            objects: value.objects.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl TryFrom<&GasPayment> for crate::types::GasPayment {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &GasPayment) -> Result<Self, Self::Error> {
-        let objects = value
-            .objects
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
-
-        Ok(Self { objects })
     }
 }
 
@@ -145,9 +119,9 @@ impl From<crate::types::TransactionKind> for TransactionKind {
         use transaction_kind::Kind;
 
         let kind = match value {
-            ChangeEpoch(change_epoch) => Kind::ChangeEpoch(change_epoch.into()),
             Genesis(genesis) => Kind::Genesis(genesis.into()),
             ConsensusCommitPrologue(prologue) => Kind::ConsensusCommitPrologue(prologue.into()),
+            ChangeEpoch(change_epoch) => Kind::ChangeEpoch(change_epoch.into()),
 
             // Validator management
             AddValidator(args) => Kind::AddValidator(args.into()),
@@ -176,7 +150,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             } => Kind::TransferCoin(
                 TransferCoinArgs {
                     coin,
-                    amount: Some(amount),
+                    amount,
                     recipient,
                 }
                 .into(),
@@ -188,7 +162,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             } => Kind::PayCoins(
                 PayCoinsArgs {
                     coins,
-                    amounts: Some(amounts),
+                    amounts,
                     recipients,
                 }
                 .into(),
@@ -206,7 +180,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 AddStakeArgs {
                     address,
                     coin_ref,
-                    amount: Some(amount),
+                    amount,
                 }
                 .into(),
             ),
@@ -218,7 +192,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 AddStakeToEncoderArgs {
                     encoder_address,
                     coin_ref,
-                    amount: Some(amount),
+                    amount,
                 }
                 .into(),
             ),
@@ -344,9 +318,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("coin"))?
                     .try_into()?,
-                amount: transfer
-                    .amount
-                    .ok_or_else(|| TryFromProtoError::missing("amount"))?, // Convert 0 back to None
+                amount: transfer.amount,
                 recipient: transfer
                     .recipient
                     .as_ref()
@@ -360,7 +332,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .iter()
                     .map(TryInto::try_into)
                     .collect::<Result<_, _>>()?,
-                amounts: pay.amounts.clone(),
+                amounts: Some(pay.amounts.clone()),
                 recipients: pay
                     .recipients
                     .iter()
@@ -397,9 +369,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
                     .try_into()?,
-                amount: stake
-                    .amount
-                    .ok_or_else(|| TryFromProtoError::missing("amount"))?,
+                amount: stake.amount,
             },
             Kind::AddStakeToEncoder(stake) => Self::AddStakeToEncoder {
                 encoder_address: stake
@@ -413,9 +383,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
                     .try_into()?,
-                amount: stake
-                    .amount
-                    .ok_or_else(|| TryFromProtoError::missing("amount"))?,
+                amount: stake.amount,
             },
             Kind::WithdrawStake(withdraw) => Self::WithdrawStake {
                 staked_soma: withdraw

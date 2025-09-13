@@ -218,7 +218,18 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "zstd",
 ] }
-axum = "0.7.9"
+axum = { version = "0.8", default-features = false, features = [
+  "macros",
+  "tokio",
+  "http1",
+  "http2",
+  "json",
+  "matched-path",
+  "original-uri",
+  "form",
+  "query",
+  "ws",
+] }
 zstd = "0.13.2"
 
 clap = { version = "4.5", features = ["derive"] }

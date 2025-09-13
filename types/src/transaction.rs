@@ -110,7 +110,7 @@ pub enum TransactionKind {
     },
     // Encoder management transactions
     AddEncoder(AddEncoderArgs),
-    RemoveEncoder,
+    RemoveEncoder(RemoveEncoderArgs),
 
     // Encoder reporting
     ReportEncoder {
@@ -251,6 +251,11 @@ pub struct AddEncoderArgs {
     pub internal_network_address: Vec<u8>,
     pub external_network_address: Vec<u8>,
     pub object_server_address: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RemoveEncoderArgs {
+    pub encoder_pubkey_bytes: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]

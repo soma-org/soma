@@ -49,7 +49,6 @@ pub use transaction::AddEncoderArgs;
 pub use transaction::AddValidatorArgs;
 pub use transaction::ChangeEpoch;
 pub use transaction::ConsensusCommitPrologue;
-pub use transaction::GasPayment;
 pub use transaction::GenesisTransaction;
 pub use transaction::RemoveEncoderArgs;
 pub use transaction::RemoveValidatorArgs;

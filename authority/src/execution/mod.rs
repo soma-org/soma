@@ -256,7 +256,7 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
 
         // Encoder management transactions
         TransactionKind::AddEncoder(_)
-        | TransactionKind::RemoveEncoder
+        | TransactionKind::RemoveEncoder { .. }
         | TransactionKind::ReportEncoder { .. }
         | TransactionKind::UndoReportEncoder { .. }
         | TransactionKind::SetEncoderCommissionRate { .. }

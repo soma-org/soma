@@ -887,7 +887,7 @@ mod _getter_impls {
                 digest: None,
                 kind: None,
                 sender: None,
-                gas_payment: None,
+                gas_payment: Vec::new(),
             }
         }
         #[doc(hidden)]
@@ -941,40 +941,11 @@ mod _getter_impls {
             self.sender = Some(field.into());
             self
         }
-        pub fn gas_payment(&self) -> &GasPayment {
-            self.gas_payment
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| GasPayment::default_instance() as _)
+        pub fn gas_payment(&self) -> &[ObjectReference] {
+            &self.gas_payment
         }
-        pub fn gas_payment_opt(&self) -> Option<&GasPayment> {
-            self.gas_payment.as_ref().map(|field| field as _)
-        }
-        pub fn gas_payment_opt_mut(&mut self) -> Option<&mut GasPayment> {
-            self.gas_payment.as_mut().map(|field| field as _)
-        }
-        pub fn gas_payment_mut(&mut self) -> &mut GasPayment {
-            self.gas_payment.get_or_insert_default()
-        }
-        pub fn with_gas_payment(mut self, field: GasPayment) -> Self {
-            self.gas_payment = Some(field.into());
-            self
-        }
-    }
-    impl GasPayment {
-        pub const fn const_default() -> Self {
-            Self { objects: Vec::new() }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GasPayment = GasPayment::const_default();
-            &DEFAULT
-        }
-        pub fn objects(&self) -> &[ObjectReference] {
-            &self.objects
-        }
-        pub fn with_objects(mut self, field: Vec<ObjectReference>) -> Self {
-            self.objects = field;
+        pub fn with_gas_payment(mut self, field: Vec<ObjectReference>) -> Self {
+            self.gas_payment = field;
             self
         }
     }
@@ -986,6 +957,120 @@ mod _getter_impls {
         pub fn default_instance() -> &'static Self {
             static DEFAULT: TransactionKind = TransactionKind::const_default();
             &DEFAULT
+        }
+        pub fn genesis(&self) -> &GenesisTransaction {
+            if let Some(transaction_kind::Kind::Genesis(field)) = &self.kind {
+                field as _
+            } else {
+                GenesisTransaction::default_instance() as _
+            }
+        }
+        pub fn genesis_opt(&self) -> Option<&GenesisTransaction> {
+            if let Some(transaction_kind::Kind::Genesis(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn genesis_opt_mut(&mut self) -> Option<&mut GenesisTransaction> {
+            if let Some(transaction_kind::Kind::Genesis(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn genesis_mut(&mut self) -> &mut GenesisTransaction {
+            if self.genesis_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::Genesis(GenesisTransaction::default()),
+                );
+            }
+            self.genesis_opt_mut().unwrap()
+        }
+        pub fn with_genesis(mut self, field: GenesisTransaction) -> Self {
+            self.kind = Some(transaction_kind::Kind::Genesis(field.into()));
+            self
+        }
+        pub fn consensus_commit_prologue(&self) -> &ConsensusCommitPrologue {
+            if let Some(transaction_kind::Kind::ConsensusCommitPrologue(field)) = &self
+                .kind
+            {
+                field as _
+            } else {
+                ConsensusCommitPrologue::default_instance() as _
+            }
+        }
+        pub fn consensus_commit_prologue_opt(&self) -> Option<&ConsensusCommitPrologue> {
+            if let Some(transaction_kind::Kind::ConsensusCommitPrologue(field)) = &self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn consensus_commit_prologue_opt_mut(
+            &mut self,
+        ) -> Option<&mut ConsensusCommitPrologue> {
+            if let Some(transaction_kind::Kind::ConsensusCommitPrologue(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn consensus_commit_prologue_mut(&mut self) -> &mut ConsensusCommitPrologue {
+            if self.consensus_commit_prologue_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::ConsensusCommitPrologue(
+                        ConsensusCommitPrologue::default(),
+                    ),
+                );
+            }
+            self.consensus_commit_prologue_opt_mut().unwrap()
+        }
+        pub fn with_consensus_commit_prologue(
+            mut self,
+            field: ConsensusCommitPrologue,
+        ) -> Self {
+            self.kind = Some(
+                transaction_kind::Kind::ConsensusCommitPrologue(field.into()),
+            );
+            self
+        }
+        pub fn change_epoch(&self) -> &ChangeEpoch {
+            if let Some(transaction_kind::Kind::ChangeEpoch(field)) = &self.kind {
+                field as _
+            } else {
+                ChangeEpoch::default_instance() as _
+            }
+        }
+        pub fn change_epoch_opt(&self) -> Option<&ChangeEpoch> {
+            if let Some(transaction_kind::Kind::ChangeEpoch(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn change_epoch_opt_mut(&mut self) -> Option<&mut ChangeEpoch> {
+            if let Some(transaction_kind::Kind::ChangeEpoch(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn change_epoch_mut(&mut self) -> &mut ChangeEpoch {
+            if self.change_epoch_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::ChangeEpoch(ChangeEpoch::default()),
+                );
+            }
+            self.change_epoch_opt_mut().unwrap()
+        }
+        pub fn with_change_epoch(mut self, field: ChangeEpoch) -> Self {
+            self.kind = Some(transaction_kind::Kind::ChangeEpoch(field.into()));
+            self
         }
         pub fn add_validator(&self) -> &AddValidator {
             if let Some(transaction_kind::Kind::AddValidator(field)) = &self.kind {
@@ -1792,120 +1877,6 @@ mod _getter_impls {
         }
         pub fn with_report_scores(mut self, field: ReportScores) -> Self {
             self.kind = Some(transaction_kind::Kind::ReportScores(field.into()));
-            self
-        }
-        pub fn change_epoch(&self) -> &ChangeEpoch {
-            if let Some(transaction_kind::Kind::ChangeEpoch(field)) = &self.kind {
-                field as _
-            } else {
-                ChangeEpoch::default_instance() as _
-            }
-        }
-        pub fn change_epoch_opt(&self) -> Option<&ChangeEpoch> {
-            if let Some(transaction_kind::Kind::ChangeEpoch(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn change_epoch_opt_mut(&mut self) -> Option<&mut ChangeEpoch> {
-            if let Some(transaction_kind::Kind::ChangeEpoch(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn change_epoch_mut(&mut self) -> &mut ChangeEpoch {
-            if self.change_epoch_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::ChangeEpoch(ChangeEpoch::default()),
-                );
-            }
-            self.change_epoch_opt_mut().unwrap()
-        }
-        pub fn with_change_epoch(mut self, field: ChangeEpoch) -> Self {
-            self.kind = Some(transaction_kind::Kind::ChangeEpoch(field.into()));
-            self
-        }
-        pub fn genesis(&self) -> &GenesisTransaction {
-            if let Some(transaction_kind::Kind::Genesis(field)) = &self.kind {
-                field as _
-            } else {
-                GenesisTransaction::default_instance() as _
-            }
-        }
-        pub fn genesis_opt(&self) -> Option<&GenesisTransaction> {
-            if let Some(transaction_kind::Kind::Genesis(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn genesis_opt_mut(&mut self) -> Option<&mut GenesisTransaction> {
-            if let Some(transaction_kind::Kind::Genesis(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn genesis_mut(&mut self) -> &mut GenesisTransaction {
-            if self.genesis_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::Genesis(GenesisTransaction::default()),
-                );
-            }
-            self.genesis_opt_mut().unwrap()
-        }
-        pub fn with_genesis(mut self, field: GenesisTransaction) -> Self {
-            self.kind = Some(transaction_kind::Kind::Genesis(field.into()));
-            self
-        }
-        pub fn consensus_commit_prologue(&self) -> &ConsensusCommitPrologue {
-            if let Some(transaction_kind::Kind::ConsensusCommitPrologue(field)) = &self
-                .kind
-            {
-                field as _
-            } else {
-                ConsensusCommitPrologue::default_instance() as _
-            }
-        }
-        pub fn consensus_commit_prologue_opt(&self) -> Option<&ConsensusCommitPrologue> {
-            if let Some(transaction_kind::Kind::ConsensusCommitPrologue(field)) = &self
-                .kind
-            {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn consensus_commit_prologue_opt_mut(
-            &mut self,
-        ) -> Option<&mut ConsensusCommitPrologue> {
-            if let Some(transaction_kind::Kind::ConsensusCommitPrologue(field)) = &mut self
-                .kind
-            {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn consensus_commit_prologue_mut(&mut self) -> &mut ConsensusCommitPrologue {
-            if self.consensus_commit_prologue_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::ConsensusCommitPrologue(
-                        ConsensusCommitPrologue::default(),
-                    ),
-                );
-            }
-            self.consensus_commit_prologue_opt_mut().unwrap()
-        }
-        pub fn with_consensus_commit_prologue(
-            mut self,
-            field: ConsensusCommitPrologue,
-        ) -> Self {
-            self.kind = Some(
-                transaction_kind::Kind::ConsensusCommitPrologue(field.into()),
-            );
             self
         }
     }

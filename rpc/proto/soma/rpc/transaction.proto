@@ -19,73 +19,67 @@ message Transaction {
 
   optional TransactionKind kind = 4;
   optional string sender = 5;
-  optional GasPayment gas_payment = 6;
-}
-
-// Payment information for executing a transaction.
-message GasPayment {
-  // Set of gas objects to use for payment.
-  repeated ObjectReference objects = 1;
+  repeated ObjectReference gas_payment = 6;
 }
 
 // Transaction type.
 message TransactionKind {
   oneof kind {
-    AddValidator add_validator = 1;
-
-    RemoveValidator remove_validator = 2;
-
-    ReportValidator report_validator = 3;
-
-    UndoReportValidator undo_report_validator = 4;
-
-    UpdateValidatorMetadata update_validator_metadata = 5;
-
-    SetCommissionRate set_commission_rate = 6;
-
-    AddEncoder add_encoder = 7;
-
-    RemoveEncoder remove_encoder = 8;
-
-    ReportEncoder report_encoder = 9;
-
-    UndoReportEncoder undo_report_encoder = 10;
-
-    UpdateEncoderMetadata update_encoder_metadata = 11;
-
-    SetEncoderCommissionRate set_encoder_commission_rate = 12;
-
-    SetEncoderBytePrice set_encoder_byte_price = 13;
-
-    TransferCoin transfer_coin = 14;
-
-    PayCoins pay_coins = 15;
-
-    TransferObjects transfer_objects = 16;
-
-    AddStake add_stake = 17;
-
-    AddStakeToEncoder add_stake_to_encoder = 18;
-
-    WithdrawStake withdraw_stake = 19;
-
-    EmbedData embed_data = 20;
-
-    ClaimEscrow claim_escrow = 21;
-
-    ReportScores report_scores = 22;
-
-    // System transaction used to end an epoch..
-    ChangeEpoch change_epoch = 100;
-
     // Transaction used to initialize the chain state.
     //
     // Only valid if in the genesis checkpoint (0) and if this is the very first transaction ever
     // executed on the chain.
-    GenesisTransaction genesis = 101;
+    GenesisTransaction genesis = 1;
 
     // Consensus commit update.
-    ConsensusCommitPrologue consensus_commit_prologue = 102;
+    ConsensusCommitPrologue consensus_commit_prologue = 2;
+
+    // System transaction used to end an epoch..
+    ChangeEpoch change_epoch = 3;
+
+    AddValidator add_validator = 4;
+
+    RemoveValidator remove_validator = 5;
+
+    ReportValidator report_validator = 6;
+
+    UndoReportValidator undo_report_validator = 7;
+
+    UpdateValidatorMetadata update_validator_metadata = 8;
+
+    SetCommissionRate set_commission_rate = 9;
+
+    AddEncoder add_encoder = 10;
+
+    RemoveEncoder remove_encoder = 11;
+
+    ReportEncoder report_encoder = 12;
+
+    UndoReportEncoder undo_report_encoder = 13;
+
+    UpdateEncoderMetadata update_encoder_metadata = 14;
+
+    SetEncoderCommissionRate set_encoder_commission_rate = 15;
+
+    SetEncoderBytePrice set_encoder_byte_price = 16;
+
+    TransferCoin transfer_coin = 17;
+
+    PayCoins pay_coins = 18;
+
+    TransferObjects transfer_objects = 19;
+
+    AddStake add_stake = 20;
+
+    AddStakeToEncoder add_stake_to_encoder = 21;
+
+    WithdrawStake withdraw_stake = 22;
+
+    EmbedData embed_data = 23;
+
+    ClaimEscrow claim_escrow = 24;
+
+    ReportScores report_scores = 25;
   }
 }
 
