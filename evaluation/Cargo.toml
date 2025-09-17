@@ -24,6 +24,7 @@ tower-http.workspace = true
 tower.workspace = true
 tracing.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 soma-http.workspace = true
 burn-import.workspace = true
 burn-ndarray.workspace = true
@@ -35,6 +36,9 @@ rand.workspace = true
 [dependencies.burn]
 workspace = true
 features = ["ndarray", "autodiff"]
+
+[dev-dependencies]
+tempdir = "0.3"
 
 [build-dependencies]
 tonic-build.workspace = true

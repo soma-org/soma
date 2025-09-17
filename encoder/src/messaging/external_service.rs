@@ -19,17 +19,13 @@ use types::{
 };
 
 pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
-    context: Arc<Context>,
+    context: Context,
     dispatcher: D,
     shard_verifier: Arc<ShardVerifier>,
 }
 
 impl<D: ExternalDispatcher> EncoderExternalService<D> {
-    pub(crate) fn new(
-        context: Arc<Context>,
-        dispatcher: D,
-        shard_verifier: Arc<ShardVerifier>,
-    ) -> Self {
+    pub(crate) fn new(context: Context, dispatcher: D, shard_verifier: Arc<ShardVerifier>) -> Self {
         Self {
             context,
             dispatcher,

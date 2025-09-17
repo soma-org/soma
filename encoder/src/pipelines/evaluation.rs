@@ -208,15 +208,17 @@ impl<
                     // skip early if your own representations
                     return Ok(submission);
                 }
+                let (peer, address) = context
+                    .object_server(submission.encoder())
+                    .ok_or(ShardError::MissingData)?;
                 // TODO: actually store things in object storage
                 if !cfg!(msim) {
-                    let (peer, address) = context
-                        .object_server(submission.encoder())
-                        .ok_or(ShardError::MissingData)?;
-
-                    let downloadable_metadata = DownloadableMetadata::V1(
-                        DownloadableMetadataV1::new(peer, address, submission.metadata().clone()),
-                    );
+                    let downloadable_metadata =
+                        DownloadableMetadata::V1(DownloadableMetadataV1::new(
+                            peer.clone(),
+                            address.clone(),
+                            submission.metadata().clone(),
+                        ));
                     self.downloader
                         .process(downloadable_metadata, cancellation.clone())
                         .await?;
@@ -239,6 +241,8 @@ impl<
                     data_metadata.clone(),
                     submission.metadata().clone(),
                     submission.probe_set().clone(),
+                    peer,
+                    address,
                 ));
                 let evaluation_timeout = Duration::from_secs(1);
 

@@ -2,7 +2,10 @@ use crate::{
     core::internal_broadcaster::Broadcaster,
     datastore::{ShardStage, Store},
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
-    types::commit::{Commit, CommitV1},
+    types::{
+        commit::{Commit, CommitV1},
+        context::Context,
+    },
 };
 use async_trait::async_trait;
 use evaluation::messaging::EvaluationClient;
@@ -43,6 +46,7 @@ pub(crate) struct InputProcessor<
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: Arc<S>,
     commit_pipeline: ActorHandle<CommitProcessor<O, C, S, P>>,
+    context: Context,
 }
 
 impl<
@@ -63,6 +67,7 @@ impl<
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: Arc<S>,
         commit_pipeline: ActorHandle<CommitProcessor<O, C, S, P>>,
+        context: Context,
     ) -> Self {
         Self {
             store,
@@ -73,6 +78,7 @@ impl<
             encoder_keypair,
             storage,
             commit_pipeline,
+            context,
         }
     }
 }
@@ -115,6 +121,11 @@ impl<
                     .await?;
             }
 
+            let (peer, address) = self
+                .context
+                .object_server(&self.encoder_keypair.public())
+                .ok_or(ShardError::MissingData)?;
+
             let inference_input = InferenceInput::V1(InferenceInputV1::new(metadata.clone()));
 
             // TODO: make this adjusted with size and coefficient configured by Parameters
@@ -129,6 +140,8 @@ impl<
                 metadata,
                 inference_output.embeddings(),
                 inference_output.probe_set(),
+                peer,
+                address,
             ));
             // TODO: make this adjusted with size and coefficient configured by Parameters
             let evaluation_timeout = Duration::from_secs(1);

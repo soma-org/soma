@@ -17,7 +17,7 @@ use super::{ObjectPath, ObjectStorage};
 
 #[derive(Clone)]
 pub struct MemoryObjectStore {
-    store: Arc<RwLock<HashMap<ObjectPath, Bytes>>>,
+    pub store: Arc<RwLock<HashMap<ObjectPath, Bytes>>>,
 }
 
 impl MemoryObjectStore {

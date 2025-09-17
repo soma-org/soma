@@ -318,6 +318,7 @@ impl EncoderNode {
             encoder_keypair.clone(),
             object_storage.clone(),
             commit_handle.clone(),
+            context.clone(),
         );
         let input_manager = ActorManager::new(default_buffer, input_processor);
         let input_handle = input_manager.handle();
@@ -349,7 +350,7 @@ impl EncoderNode {
 
         // Create the external service using the same context and verifier
         let external_network_service = Arc::new(EncoderExternalService::new(
-            Arc::new(context.clone()),
+            context.clone(),
             ExternalPipelineDispatcher::new(input_handle),
             verifier,
         ));

@@ -1,4 +1,4 @@
-use crate::error::{ShardError, ShardResult};
+use crate::error::{ShardError, ShardResult, SharedResult};
 use async_trait::async_trait;
 use tokio::{
     select,

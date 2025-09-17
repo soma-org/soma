@@ -19,7 +19,7 @@ impl FilesystemObjectStorage {
         }
     }
 
-    fn get_full_path(&self, blob_path: &ObjectPath) -> PathBuf {
+    pub fn get_full_path(&self, blob_path: &ObjectPath) -> PathBuf {
         self.base_path.join(&blob_path.path)
     }
 }

@@ -1430,6 +1430,10 @@ pub enum EvaluationError {
     NetworkRequest(String),
     #[error("Error deserializing type: {0}")]
     MalformedType(bcs::Error),
+    #[error("Error serializing: {0}")]
+    SerializationFailure(bcs::Error),
+    #[error("Storage failed: {0}")]
+    StorageFailure(String),
 }
 
 impl From<ShardError> for SharedError {
