@@ -52,132 +52,62 @@ mod _field_impls {
             self.finish()
         }
     }
-    impl Bcs {
-        pub const NAME_FIELD: &'static MessageField = &MessageField {
-            name: "name",
-            json_name: "name",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const VALUE_FIELD: &'static MessageField = &MessageField {
-            name: "value",
-            json_name: "value",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for Bcs {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::NAME_FIELD,
-            Self::VALUE_FIELD,
-        ];
-    }
-    impl Bcs {
-        pub fn path_builder() -> BcsFieldPathBuilder {
-            BcsFieldPathBuilder::new()
-        }
-    }
-    pub struct BcsFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl BcsFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn name(mut self) -> String {
-            self.path.push(Bcs::NAME_FIELD.name);
-            self.finish()
-        }
-        pub fn value(mut self) -> String {
-            self.path.push(Bcs::VALUE_FIELD.name);
-            self.finish()
-        }
-    }
     impl TransactionEffects {
-        pub const BCS_FIELD: &'static MessageField = &MessageField {
-            name: "bcs",
-            json_name: "bcs",
-            number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
-        };
-        pub const DIGEST_FIELD: &'static MessageField = &MessageField {
-            name: "digest",
-            json_name: "digest",
-            number: 2i32,
-            message_fields: None,
-        };
         pub const STATUS_FIELD: &'static MessageField = &MessageField {
             name: "status",
             json_name: "status",
-            number: 3i32,
+            number: 1i32,
             message_fields: Some(ExecutionStatus::FIELDS),
         };
         pub const EPOCH_FIELD: &'static MessageField = &MessageField {
             name: "epoch",
             json_name: "epoch",
-            number: 4i32,
+            number: 2i32,
             message_fields: None,
         };
         pub const FEE_FIELD: &'static MessageField = &MessageField {
             name: "fee",
             json_name: "fee",
-            number: 5i32,
+            number: 3i32,
             message_fields: Some(TransactionFee::FIELDS),
         };
         pub const TRANSACTION_DIGEST_FIELD: &'static MessageField = &MessageField {
             name: "transaction_digest",
             json_name: "transactionDigest",
-            number: 6i32,
+            number: 4i32,
             message_fields: None,
-        };
-        pub const GAS_OBJECT_FIELD: &'static MessageField = &MessageField {
-            name: "gas_object",
-            json_name: "gasObject",
-            number: 7i32,
-            message_fields: Some(ChangedObject::FIELDS),
         };
         pub const DEPENDENCIES_FIELD: &'static MessageField = &MessageField {
             name: "dependencies",
             json_name: "dependencies",
-            number: 8i32,
+            number: 5i32,
             message_fields: None,
         };
         pub const LAMPORT_VERSION_FIELD: &'static MessageField = &MessageField {
             name: "lamport_version",
             json_name: "lamportVersion",
-            number: 9i32,
+            number: 6i32,
             message_fields: None,
         };
         pub const CHANGED_OBJECTS_FIELD: &'static MessageField = &MessageField {
             name: "changed_objects",
             json_name: "changedObjects",
-            number: 10i32,
+            number: 7i32,
             message_fields: Some(ChangedObject::FIELDS),
         };
         pub const UNCHANGED_SHARED_OBJECTS_FIELD: &'static MessageField = &MessageField {
             name: "unchanged_shared_objects",
             json_name: "unchangedSharedObjects",
-            number: 11i32,
+            number: 8i32,
             message_fields: Some(UnchangedSharedObject::FIELDS),
         };
     }
     impl MessageFields for TransactionEffects {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::BCS_FIELD,
-            Self::DIGEST_FIELD,
             Self::STATUS_FIELD,
             Self::EPOCH_FIELD,
             Self::FEE_FIELD,
             Self::TRANSACTION_DIGEST_FIELD,
-            Self::GAS_OBJECT_FIELD,
             Self::DEPENDENCIES_FIELD,
             Self::LAMPORT_VERSION_FIELD,
             Self::CHANGED_OBJECTS_FIELD,
@@ -204,14 +134,6 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn bcs(mut self) -> BcsFieldPathBuilder {
-            self.path.push(TransactionEffects::BCS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn digest(mut self) -> String {
-            self.path.push(TransactionEffects::DIGEST_FIELD.name);
-            self.finish()
-        }
         pub fn status(mut self) -> ExecutionStatusFieldPathBuilder {
             self.path.push(TransactionEffects::STATUS_FIELD.name);
             ExecutionStatusFieldPathBuilder::new_with_base(self.path)
@@ -227,10 +149,6 @@ mod _field_impls {
         pub fn transaction_digest(mut self) -> String {
             self.path.push(TransactionEffects::TRANSACTION_DIGEST_FIELD.name);
             self.finish()
-        }
-        pub fn gas_object(mut self) -> ChangedObjectFieldPathBuilder {
-            self.path.push(TransactionEffects::GAS_OBJECT_FIELD.name);
-            ChangedObjectFieldPathBuilder::new_with_base(self.path)
         }
         pub fn dependencies(mut self) -> String {
             self.path.push(TransactionEffects::DEPENDENCIES_FIELD.name);
@@ -728,58 +646,51 @@ mod _field_impls {
         }
     }
     impl Object {
-        pub const BCS_FIELD: &'static MessageField = &MessageField {
-            name: "bcs",
-            json_name: "bcs",
-            number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
-        };
         pub const OBJECT_ID_FIELD: &'static MessageField = &MessageField {
             name: "object_id",
             json_name: "objectId",
-            number: 2i32,
+            number: 1i32,
             message_fields: None,
         };
         pub const VERSION_FIELD: &'static MessageField = &MessageField {
             name: "version",
             json_name: "version",
-            number: 3i32,
+            number: 2i32,
             message_fields: None,
         };
         pub const DIGEST_FIELD: &'static MessageField = &MessageField {
             name: "digest",
             json_name: "digest",
-            number: 4i32,
+            number: 3i32,
             message_fields: None,
         };
         pub const OWNER_FIELD: &'static MessageField = &MessageField {
             name: "owner",
             json_name: "owner",
-            number: 5i32,
+            number: 4i32,
             message_fields: Some(Owner::FIELDS),
         };
         pub const OBJECT_TYPE_FIELD: &'static MessageField = &MessageField {
             name: "object_type",
             json_name: "objectType",
-            number: 6i32,
+            number: 5i32,
             message_fields: None,
         };
         pub const CONTENTS_FIELD: &'static MessageField = &MessageField {
             name: "contents",
             json_name: "contents",
-            number: 7i32,
-            message_fields: Some(Bcs::FIELDS),
+            number: 6i32,
+            message_fields: None,
         };
         pub const PREVIOUS_TRANSACTION_FIELD: &'static MessageField = &MessageField {
             name: "previous_transaction",
             json_name: "previousTransaction",
-            number: 8i32,
+            number: 7i32,
             message_fields: None,
         };
     }
     impl MessageFields for Object {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::BCS_FIELD,
             Self::OBJECT_ID_FIELD,
             Self::VERSION_FIELD,
             Self::DIGEST_FIELD,
@@ -809,10 +720,6 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn bcs(mut self) -> BcsFieldPathBuilder {
-            self.path.push(Object::BCS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
-        }
         pub fn object_id(mut self) -> String {
             self.path.push(Object::OBJECT_ID_FIELD.name);
             self.finish()
@@ -833,9 +740,9 @@ mod _field_impls {
             self.path.push(Object::OBJECT_TYPE_FIELD.name);
             self.finish()
         }
-        pub fn contents(mut self) -> BcsFieldPathBuilder {
+        pub fn contents(mut self) -> String {
             self.path.push(Object::CONTENTS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
         pub fn previous_transaction(mut self) -> String {
             self.path.push(Object::PREVIOUS_TRANSACTION_FIELD.name);
@@ -963,28 +870,21 @@ mod _field_impls {
         }
     }
     impl UserSignature {
-        pub const BCS_FIELD: &'static MessageField = &MessageField {
-            name: "bcs",
-            json_name: "bcs",
-            number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
-        };
         pub const SCHEME_FIELD: &'static MessageField = &MessageField {
             name: "scheme",
             json_name: "scheme",
-            number: 2i32,
+            number: 1i32,
             message_fields: None,
         };
         pub const SIMPLE_FIELD: &'static MessageField = &MessageField {
             name: "simple",
             json_name: "simple",
-            number: 3i32,
+            number: 2i32,
             message_fields: Some(SimpleSignature::FIELDS),
         };
     }
     impl MessageFields for UserSignature {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::BCS_FIELD,
             Self::SCHEME_FIELD,
             Self::SIMPLE_FIELD,
         ];
@@ -1008,10 +908,6 @@ mod _field_impls {
         }
         pub fn finish(self) -> String {
             self.path.join(".")
-        }
-        pub fn bcs(mut self) -> BcsFieldPathBuilder {
-            self.path.push(UserSignature::BCS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
         }
         pub fn scheme(mut self) -> String {
             self.path.push(UserSignature::SCHEME_FIELD.name);
@@ -1323,40 +1219,33 @@ mod _field_impls {
         }
     }
     impl Transaction {
-        pub const BCS_FIELD: &'static MessageField = &MessageField {
-            name: "bcs",
-            json_name: "bcs",
-            number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
-        };
         pub const DIGEST_FIELD: &'static MessageField = &MessageField {
             name: "digest",
             json_name: "digest",
-            number: 2i32,
+            number: 1i32,
             message_fields: None,
         };
         pub const KIND_FIELD: &'static MessageField = &MessageField {
             name: "kind",
             json_name: "kind",
-            number: 4i32,
+            number: 2i32,
             message_fields: Some(TransactionKind::FIELDS),
         };
         pub const SENDER_FIELD: &'static MessageField = &MessageField {
             name: "sender",
             json_name: "sender",
-            number: 5i32,
+            number: 3i32,
             message_fields: None,
         };
         pub const GAS_PAYMENT_FIELD: &'static MessageField = &MessageField {
             name: "gas_payment",
             json_name: "gasPayment",
-            number: 6i32,
+            number: 4i32,
             message_fields: Some(ObjectReference::FIELDS),
         };
     }
     impl MessageFields for Transaction {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::BCS_FIELD,
             Self::DIGEST_FIELD,
             Self::KIND_FIELD,
             Self::SENDER_FIELD,
@@ -1382,10 +1271,6 @@ mod _field_impls {
         }
         pub fn finish(self) -> String {
             self.path.join(".")
-        }
-        pub fn bcs(mut self) -> BcsFieldPathBuilder {
-            self.path.push(Transaction::BCS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
         }
         pub fn digest(mut self) -> String {
             self.path.push(Transaction::DIGEST_FIELD.name);
@@ -1719,43 +1604,43 @@ mod _field_impls {
             name: "pubkey_bytes",
             json_name: "pubkeyBytes",
             number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NETWORK_PUBKEY_BYTES_FIELD: &'static MessageField = &MessageField {
             name: "network_pubkey_bytes",
             json_name: "networkPubkeyBytes",
             number: 2i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const WORKER_PUBKEY_BYTES_FIELD: &'static MessageField = &MessageField {
             name: "worker_pubkey_bytes",
             json_name: "workerPubkeyBytes",
             number: 3i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NET_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "net_address",
             json_name: "netAddress",
             number: 4i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const P2P_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "p2p_address",
             json_name: "p2pAddress",
             number: 5i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const PRIMARY_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "primary_address",
             json_name: "primaryAddress",
             number: 6i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const ENCODER_VALIDATOR_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "encoder_validator_address",
             json_name: "encoderValidatorAddress",
             number: 7i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
     }
     impl MessageFields for AddValidator {
@@ -1789,33 +1674,33 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn pubkey_bytes(mut self) -> BcsFieldPathBuilder {
+        pub fn pubkey_bytes(mut self) -> String {
             self.path.push(AddValidator::PUBKEY_BYTES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn network_pubkey_bytes(mut self) -> BcsFieldPathBuilder {
+        pub fn network_pubkey_bytes(mut self) -> String {
             self.path.push(AddValidator::NETWORK_PUBKEY_BYTES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn worker_pubkey_bytes(mut self) -> BcsFieldPathBuilder {
+        pub fn worker_pubkey_bytes(mut self) -> String {
             self.path.push(AddValidator::WORKER_PUBKEY_BYTES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn net_address(mut self) -> BcsFieldPathBuilder {
+        pub fn net_address(mut self) -> String {
             self.path.push(AddValidator::NET_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn p2p_address(mut self) -> BcsFieldPathBuilder {
+        pub fn p2p_address(mut self) -> String {
             self.path.push(AddValidator::P2P_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn primary_address(mut self) -> BcsFieldPathBuilder {
+        pub fn primary_address(mut self) -> String {
             self.path.push(AddValidator::PRIMARY_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn encoder_validator_address(mut self) -> BcsFieldPathBuilder {
+        pub fn encoder_validator_address(mut self) -> String {
             self.path.push(AddValidator::ENCODER_VALIDATOR_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
     }
     impl RemoveValidator {
@@ -1823,7 +1708,7 @@ mod _field_impls {
             name: "pubkey_bytes",
             json_name: "pubkeyBytes",
             number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
     }
     impl MessageFields for RemoveValidator {
@@ -1849,9 +1734,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn pubkey_bytes(mut self) -> BcsFieldPathBuilder {
+        pub fn pubkey_bytes(mut self) -> String {
             self.path.push(RemoveValidator::PUBKEY_BYTES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
     }
     impl ReportValidator {
@@ -1931,37 +1816,37 @@ mod _field_impls {
             name: "next_epoch_network_address",
             json_name: "nextEpochNetworkAddress",
             number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_P2P_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_p2p_address",
             json_name: "nextEpochP2pAddress",
             number: 2i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_PRIMARY_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_primary_address",
             json_name: "nextEpochPrimaryAddress",
             number: 3i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_protocol_pubkey",
             json_name: "nextEpochProtocolPubkey",
             number: 4i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_WORKER_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_worker_pubkey",
             json_name: "nextEpochWorkerPubkey",
             number: 5i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_NETWORK_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_network_pubkey",
             json_name: "nextEpochNetworkPubkey",
             number: 6i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
     }
     impl MessageFields for UpdateValidatorMetadata {
@@ -1994,33 +1879,33 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn next_epoch_network_address(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_network_address(mut self) -> String {
             self.path
                 .push(UpdateValidatorMetadata::NEXT_EPOCH_NETWORK_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_p2p_address(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_p2p_address(mut self) -> String {
             self.path.push(UpdateValidatorMetadata::NEXT_EPOCH_P2P_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_primary_address(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_primary_address(mut self) -> String {
             self.path
                 .push(UpdateValidatorMetadata::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_protocol_pubkey(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_protocol_pubkey(mut self) -> String {
             self.path
                 .push(UpdateValidatorMetadata::NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_worker_pubkey(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_worker_pubkey(mut self) -> String {
             self.path.push(UpdateValidatorMetadata::NEXT_EPOCH_WORKER_PUBKEY_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_network_pubkey(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_network_pubkey(mut self) -> String {
             self.path
                 .push(UpdateValidatorMetadata::NEXT_EPOCH_NETWORK_PUBKEY_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
     }
     impl SetCommissionRate {
@@ -2064,31 +1949,31 @@ mod _field_impls {
             name: "encoder_pubkey_bytes",
             json_name: "encoderPubkeyBytes",
             number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NETWORK_PUBKEY_BYTES_FIELD: &'static MessageField = &MessageField {
             name: "network_pubkey_bytes",
             json_name: "networkPubkeyBytes",
             number: 2i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "internal_network_address",
             json_name: "internalNetworkAddress",
             number: 3i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const EXTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "external_network_address",
             json_name: "externalNetworkAddress",
             number: 4i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "object_server_address",
             json_name: "objectServerAddress",
             number: 5i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
     }
     impl MessageFields for AddEncoder {
@@ -2120,25 +2005,25 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn encoder_pubkey_bytes(mut self) -> BcsFieldPathBuilder {
+        pub fn encoder_pubkey_bytes(mut self) -> String {
             self.path.push(AddEncoder::ENCODER_PUBKEY_BYTES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn network_pubkey_bytes(mut self) -> BcsFieldPathBuilder {
+        pub fn network_pubkey_bytes(mut self) -> String {
             self.path.push(AddEncoder::NETWORK_PUBKEY_BYTES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn internal_network_address(mut self) -> BcsFieldPathBuilder {
+        pub fn internal_network_address(mut self) -> String {
             self.path.push(AddEncoder::INTERNAL_NETWORK_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn external_network_address(mut self) -> BcsFieldPathBuilder {
+        pub fn external_network_address(mut self) -> String {
             self.path.push(AddEncoder::EXTERNAL_NETWORK_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn object_server_address(mut self) -> BcsFieldPathBuilder {
+        pub fn object_server_address(mut self) -> String {
             self.path.push(AddEncoder::OBJECT_SERVER_ADDRESS_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
     }
     impl RemoveEncoder {
@@ -2146,7 +2031,7 @@ mod _field_impls {
             name: "encoder_pubkey_bytes",
             json_name: "encoderPubkeyBytes",
             number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
     }
     impl MessageFields for RemoveEncoder {
@@ -2174,9 +2059,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn encoder_pubkey_bytes(mut self) -> BcsFieldPathBuilder {
+        pub fn encoder_pubkey_bytes(mut self) -> String {
             self.path.push(RemoveEncoder::ENCODER_PUBKEY_BYTES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
     }
     impl ReportEncoder {
@@ -2256,25 +2141,25 @@ mod _field_impls {
             name: "next_epoch_external_network_address",
             json_name: "nextEpochExternalNetworkAddress",
             number: 1i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_internal_network_address",
             json_name: "nextEpochInternalNetworkAddress",
             number: 2i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_NETWORK_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_network_pubkey",
             json_name: "nextEpochNetworkPubkey",
             number: 3i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_object_server_address",
             json_name: "nextEpochObjectServerAddress",
             number: 4i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
     }
     impl MessageFields for UpdateEncoderMetadata {
@@ -2305,30 +2190,30 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn next_epoch_external_network_address(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_external_network_address(mut self) -> String {
             self.path
                 .push(
                     UpdateEncoderMetadata::NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD.name,
                 );
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_internal_network_address(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_internal_network_address(mut self) -> String {
             self.path
                 .push(
                     UpdateEncoderMetadata::NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD.name,
                 );
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_network_pubkey(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_network_pubkey(mut self) -> String {
             self.path.push(UpdateEncoderMetadata::NEXT_EPOCH_NETWORK_PUBKEY_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn next_epoch_object_server_address(mut self) -> BcsFieldPathBuilder {
+        pub fn next_epoch_object_server_address(mut self) -> String {
             self.path
                 .push(
                     UpdateEncoderMetadata::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD.name,
                 );
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
     }
     impl SetEncoderCommissionRate {
@@ -2835,13 +2720,13 @@ mod _field_impls {
             name: "scores",
             json_name: "scores",
             number: 2i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const ENCODER_AGGREGATE_SIGNATURE_FIELD: &'static MessageField = &MessageField {
             name: "encoder_aggregate_signature",
             json_name: "encoderAggregateSignature",
             number: 3i32,
-            message_fields: Some(Bcs::FIELDS),
+            message_fields: None,
         };
         pub const SIGNERS_FIELD: &'static MessageField = &MessageField {
             name: "signers",
@@ -2882,13 +2767,13 @@ mod _field_impls {
             self.path.push(ReportScores::SHARD_INPUT_REF_FIELD.name);
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn scores(mut self) -> BcsFieldPathBuilder {
+        pub fn scores(mut self) -> String {
             self.path.push(ReportScores::SCORES_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
-        pub fn encoder_aggregate_signature(mut self) -> BcsFieldPathBuilder {
+        pub fn encoder_aggregate_signature(mut self) -> String {
             self.path.push(ReportScores::ENCODER_AGGREGATE_SIGNATURE_FIELD.name);
-            BcsFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
         pub fn signers(mut self) -> String {
             self.path.push(ReportScores::SIGNERS_FIELD.name);
@@ -3232,6 +3117,12 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
+        pub const GAS_OBJECT_REF_FIELD: &'static MessageField = &MessageField {
+            name: "gas_object_ref",
+            json_name: "gasObjectRef",
+            number: 5i32,
+            message_fields: Some(ObjectReference::FIELDS),
+        };
     }
     impl MessageFields for TransactionFee {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -3239,6 +3130,7 @@ mod _field_impls {
             Self::OPERATION_FEE_FIELD,
             Self::VALUE_FEE_FIELD,
             Self::TOTAL_FEE_FIELD,
+            Self::GAS_OBJECT_REF_FIELD,
         ];
     }
     impl TransactionFee {
@@ -3276,6 +3168,10 @@ mod _field_impls {
         pub fn total_fee(mut self) -> String {
             self.path.push(TransactionFee::TOTAL_FEE_FIELD.name);
             self.finish()
+        }
+        pub fn gas_object_ref(mut self) -> ObjectReferenceFieldPathBuilder {
+            self.path.push(TransactionFee::GAS_OBJECT_REF_FIELD.name);
+            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
     }
 }

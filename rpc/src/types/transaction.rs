@@ -119,7 +119,7 @@ pub enum TransactionKind {
 
     // Shard operations
     EmbedData {
-        digest: String,
+        digest: Vec<u8>,
         data_size_bytes: usize,
         coin_ref: ObjectReference,
     },

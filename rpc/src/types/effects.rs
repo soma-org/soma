@@ -9,33 +9,25 @@ pub struct TransactionEffects {
     /// The status of the execution
     pub status: ExecutionStatus,
 
-    /// The epoch when this transaction was executed.
+    /// The epoch when this transaction was executed
     pub epoch: EpochId,
 
-    /// The transaction fee
-    pub fee: TransactionFee,
+    /// The transaction fee (optional like in source)
+    pub fee: Option<TransactionFee>,
 
     /// The transaction digest
     pub transaction_digest: Digest,
 
-    /// The updated gas object reference, as an index into the `changed_objects` vector.
-    /// Having a dedicated field for convenient access.
-    /// System transaction that don't require gas will leave this as None.
-    pub gas_object_index: Option<u32>,
-
-    /// The set of transaction digests this transaction depends on.
+    /// The set of transaction digests this transaction depends on
     pub dependencies: Vec<Digest>,
 
-    /// The version number of all the written Move objects by this transaction.
+    /// The version number of all the written Move objects
     pub lamport_version: Version,
 
-    /// Objects whose state are changed in the object store.
+    /// Objects whose state are changed in the object store
     pub changed_objects: Vec<ChangedObject>,
 
-    /// Consensus objects that are not mutated in this transaction. Unlike owned objects,
-    /// read-only consensus objects' version are not committed in the transaction,
-    /// and in order for a node to catch up and execute it without consensus sequencing,
-    /// the version needs to be committed in the effects.
+    /// Consensus objects that are not mutated in this transaction
     pub unchanged_shared_objects: Vec<UnchangedSharedObject>,
 }
 
@@ -207,7 +199,7 @@ impl TransactionEffects {
     }
 
     /// The gas used in this transaction.
-    pub fn fee(&self) -> &TransactionFee {
+    pub fn fee(&self) -> &Option<TransactionFee> {
         &self.fee
     }
 }

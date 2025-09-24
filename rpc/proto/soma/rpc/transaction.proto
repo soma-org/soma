@@ -5,21 +5,18 @@ package soma.rpc;
 import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
-import "soma/rpc/bcs.proto";
 import "soma/rpc/object.proto";
 import "soma/rpc/object_reference.proto";
 
 // A transaction.
 message Transaction {
-  // This Transaction serialized as BCS.
-  optional Bcs bcs = 1;
 
   // The digest of this Transaction.
-  optional string digest = 2;
+  optional string digest = 1;
 
-  optional TransactionKind kind = 4;
-  optional string sender = 5;
-  repeated ObjectReference gas_payment = 6;
+  optional TransactionKind kind = 2;
+  optional string sender = 3;
+  repeated ObjectReference gas_payment = 4;
 }
 
 // Transaction type.
@@ -84,17 +81,17 @@ message TransactionKind {
 }
 
 message AddValidator {
-  optional Bcs pubkey_bytes = 1;
-  optional Bcs network_pubkey_bytes = 2;
-  optional Bcs worker_pubkey_bytes = 3;
-  optional Bcs net_address = 4;
-  optional Bcs p2p_address = 5;
-  optional Bcs primary_address = 6;
-  optional Bcs encoder_validator_address = 7;
+  optional bytes pubkey_bytes = 1;
+  optional bytes network_pubkey_bytes = 2;
+  optional bytes worker_pubkey_bytes = 3;
+  optional bytes net_address = 4;
+  optional bytes p2p_address = 5;
+  optional bytes primary_address = 6;
+  optional bytes encoder_validator_address = 7;
 }
 
 message RemoveValidator {
-  optional Bcs pubkey_bytes = 1;
+  optional bytes pubkey_bytes = 1;
 }
 
 message ReportValidator {
@@ -106,12 +103,12 @@ message UndoReportValidator {
 }
 
 message UpdateValidatorMetadata {
-  optional Bcs next_epoch_network_address = 1;
-  optional Bcs next_epoch_p2p_address = 2;
-  optional Bcs next_epoch_primary_address = 3;
-  optional Bcs next_epoch_protocol_pubkey = 4;
-  optional Bcs next_epoch_worker_pubkey = 5;
-  optional Bcs next_epoch_network_pubkey= 6;
+  optional bytes next_epoch_network_address = 1;
+  optional bytes next_epoch_p2p_address = 2;
+  optional bytes next_epoch_primary_address = 3;
+  optional bytes next_epoch_protocol_pubkey = 4;
+  optional bytes next_epoch_worker_pubkey = 5;
+  optional bytes next_epoch_network_pubkey= 6;
 }
 
 message SetCommissionRate {
@@ -119,15 +116,15 @@ message SetCommissionRate {
 }
 
 message AddEncoder {
-  optional Bcs encoder_pubkey_bytes = 1;
-  optional Bcs network_pubkey_bytes = 2;
-  optional Bcs internal_network_address = 3;
-  optional Bcs external_network_address = 4;
-  optional Bcs object_server_address = 5;
+  optional bytes encoder_pubkey_bytes = 1;
+  optional bytes network_pubkey_bytes = 2;
+  optional bytes internal_network_address = 3;
+  optional bytes external_network_address = 4;
+  optional bytes object_server_address = 5;
 }
 
 message RemoveEncoder {
-  optional Bcs encoder_pubkey_bytes = 1;
+  optional bytes encoder_pubkey_bytes = 1;
 }
 
 message ReportEncoder {
@@ -139,10 +136,10 @@ message UndoReportEncoder {
 }
 
 message UpdateEncoderMetadata {
-  optional Bcs next_epoch_external_network_address = 1;
-  optional Bcs next_epoch_internal_network_address = 2;
-  optional Bcs next_epoch_network_pubkey = 3;
-  optional Bcs next_epoch_object_server_address = 4;
+  optional bytes next_epoch_external_network_address = 1;
+  optional bytes next_epoch_internal_network_address = 2;
+  optional bytes next_epoch_network_pubkey = 3;
+  optional bytes next_epoch_object_server_address = 4;
 }
 
 message SetEncoderCommissionRate {
@@ -187,7 +184,7 @@ message WithdrawStake {
 }
 
 message EmbedData {
-  optional string digest = 1;
+  optional bytes digest = 1;
   optional uint32 data_size_bytes = 2;
   optional ObjectReference coin_ref = 3;
 }
@@ -198,8 +195,8 @@ message ClaimEscrow {
 
 message ReportScores {
   optional ObjectReference shard_input_ref = 1;
-  optional Bcs scores = 2;
-  optional Bcs encoder_aggregate_signature = 3;
+  optional bytes scores = 2;
+  optional bytes encoder_aggregate_signature = 3;
   repeated string signers = 4;
 }
 

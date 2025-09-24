@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+use crate::types::ObjectReference;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionFee {
     // Base transaction fee
     pub base_fee: u64,
@@ -10,6 +12,8 @@ pub struct TransactionFee {
     pub value_fee: u64,
     // Total fee deducted
     pub total_fee: u64,
+    // Gas object
+    pub gas_object_ref: ObjectReference,
 }
 
 impl TransactionFee {
@@ -18,12 +22,14 @@ impl TransactionFee {
         operation_fee: u64,
         value_fee: u64,
         total_fee: u64,
+        gas_object_ref: ObjectReference,
     ) -> TransactionFee {
         TransactionFee {
             base_fee,
             operation_fee,
             value_fee,
             total_fee,
+            gas_object_ref,
         }
     }
 }

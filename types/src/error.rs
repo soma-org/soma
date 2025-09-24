@@ -1184,6 +1184,9 @@ pub enum SharedError {
     #[error("Consensus has shut down!")]
     Shutdown,
 
+    #[error("Invalid digest length")]
+    InvalidDigestLength,
+
     #[error("Shard error: {0}")]
     Shard(String),
 }

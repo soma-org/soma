@@ -22,34 +22,13 @@ mod _getter_impls {
             self
         }
     }
-    impl Bcs {
-        pub const fn const_default() -> Self {
-            Self { name: None, value: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: Bcs = Bcs::const_default();
-            &DEFAULT
-        }
-        pub fn with_name(mut self, field: String) -> Self {
-            self.name = Some(field.into());
-            self
-        }
-        pub fn with_value(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.value = Some(field.into());
-            self
-        }
-    }
     impl TransactionEffects {
         pub const fn const_default() -> Self {
             Self {
-                bcs: None,
-                digest: None,
                 status: None,
                 epoch: None,
                 fee: None,
                 transaction_digest: None,
-                gas_object: None,
                 dependencies: Vec::new(),
                 lamport_version: None,
                 changed_objects: Vec::new(),
@@ -60,29 +39,6 @@ mod _getter_impls {
         pub fn default_instance() -> &'static Self {
             static DEFAULT: TransactionEffects = TransactionEffects::const_default();
             &DEFAULT
-        }
-        pub fn bcs(&self) -> &Bcs {
-            self.bcs
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn bcs_opt(&self) -> Option<&Bcs> {
-            self.bcs.as_ref().map(|field| field as _)
-        }
-        pub fn bcs_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.bcs.as_mut().map(|field| field as _)
-        }
-        pub fn bcs_mut(&mut self) -> &mut Bcs {
-            self.bcs.get_or_insert_default()
-        }
-        pub fn with_bcs(mut self, field: Bcs) -> Self {
-            self.bcs = Some(field.into());
-            self
-        }
-        pub fn with_digest(mut self, field: String) -> Self {
-            self.digest = Some(field.into());
-            self
         }
         pub fn status(&self) -> &ExecutionStatus {
             self.status
@@ -128,25 +84,6 @@ mod _getter_impls {
         }
         pub fn with_transaction_digest(mut self, field: String) -> Self {
             self.transaction_digest = Some(field.into());
-            self
-        }
-        pub fn gas_object(&self) -> &ChangedObject {
-            self.gas_object
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ChangedObject::default_instance() as _)
-        }
-        pub fn gas_object_opt(&self) -> Option<&ChangedObject> {
-            self.gas_object.as_ref().map(|field| field as _)
-        }
-        pub fn gas_object_opt_mut(&mut self) -> Option<&mut ChangedObject> {
-            self.gas_object.as_mut().map(|field| field as _)
-        }
-        pub fn gas_object_mut(&mut self) -> &mut ChangedObject {
-            self.gas_object.get_or_insert_default()
-        }
-        pub fn with_gas_object(mut self, field: ChangedObject) -> Self {
-            self.gas_object = Some(field.into());
             self
         }
         pub fn dependencies(&self) -> &[String] {
@@ -524,7 +461,6 @@ mod _getter_impls {
     impl Object {
         pub const fn const_default() -> Self {
             Self {
-                bcs: None,
                 object_id: None,
                 version: None,
                 digest: None,
@@ -538,25 +474,6 @@ mod _getter_impls {
         pub fn default_instance() -> &'static Self {
             static DEFAULT: Object = Object::const_default();
             &DEFAULT
-        }
-        pub fn bcs(&self) -> &Bcs {
-            self.bcs
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn bcs_opt(&self) -> Option<&Bcs> {
-            self.bcs.as_ref().map(|field| field as _)
-        }
-        pub fn bcs_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.bcs.as_mut().map(|field| field as _)
-        }
-        pub fn bcs_mut(&mut self) -> &mut Bcs {
-            self.bcs.get_or_insert_default()
-        }
-        pub fn with_bcs(mut self, field: Bcs) -> Self {
-            self.bcs = Some(field.into());
-            self
         }
         pub fn with_object_id(mut self, field: String) -> Self {
             self.object_id = Some(field.into());
@@ -593,22 +510,7 @@ mod _getter_impls {
             self.object_type = Some(field.into());
             self
         }
-        pub fn contents(&self) -> &Bcs {
-            self.contents
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn contents_opt(&self) -> Option<&Bcs> {
-            self.contents.as_ref().map(|field| field as _)
-        }
-        pub fn contents_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.contents.as_mut().map(|field| field as _)
-        }
-        pub fn contents_mut(&mut self) -> &mut Bcs {
-            self.contents.get_or_insert_default()
-        }
-        pub fn with_contents(mut self, field: Bcs) -> Self {
+        pub fn with_contents(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.contents = Some(field.into());
             self
         }
@@ -668,7 +570,6 @@ mod _getter_impls {
     impl UserSignature {
         pub const fn const_default() -> Self {
             Self {
-                bcs: None,
                 scheme: None,
                 signature: None,
             }
@@ -677,25 +578,6 @@ mod _getter_impls {
         pub fn default_instance() -> &'static Self {
             static DEFAULT: UserSignature = UserSignature::const_default();
             &DEFAULT
-        }
-        pub fn bcs(&self) -> &Bcs {
-            self.bcs
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn bcs_opt(&self) -> Option<&Bcs> {
-            self.bcs.as_ref().map(|field| field as _)
-        }
-        pub fn bcs_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.bcs.as_mut().map(|field| field as _)
-        }
-        pub fn bcs_mut(&mut self) -> &mut Bcs {
-            self.bcs.get_or_insert_default()
-        }
-        pub fn with_bcs(mut self, field: Bcs) -> Self {
-            self.bcs = Some(field.into());
-            self
         }
         pub fn simple(&self) -> &SimpleSignature {
             if let Some(user_signature::Signature::Simple(field)) = &self.signature {
@@ -883,7 +765,6 @@ mod _getter_impls {
     impl Transaction {
         pub const fn const_default() -> Self {
             Self {
-                bcs: None,
                 digest: None,
                 kind: None,
                 sender: None,
@@ -894,25 +775,6 @@ mod _getter_impls {
         pub fn default_instance() -> &'static Self {
             static DEFAULT: Transaction = Transaction::const_default();
             &DEFAULT
-        }
-        pub fn bcs(&self) -> &Bcs {
-            self.bcs
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn bcs_opt(&self) -> Option<&Bcs> {
-            self.bcs.as_ref().map(|field| field as _)
-        }
-        pub fn bcs_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.bcs.as_mut().map(|field| field as _)
-        }
-        pub fn bcs_mut(&mut self) -> &mut Bcs {
-            self.bcs.get_or_insert_default()
-        }
-        pub fn with_bcs(mut self, field: Bcs) -> Self {
-            self.bcs = Some(field.into());
-            self
         }
         pub fn with_digest(mut self, field: String) -> Self {
             self.digest = Some(field.into());
@@ -1897,136 +1759,37 @@ mod _getter_impls {
             static DEFAULT: AddValidator = AddValidator::const_default();
             &DEFAULT
         }
-        pub fn pubkey_bytes(&self) -> &Bcs {
-            self.pubkey_bytes
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn pubkey_bytes_opt(&self) -> Option<&Bcs> {
-            self.pubkey_bytes.as_ref().map(|field| field as _)
-        }
-        pub fn pubkey_bytes_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.pubkey_bytes.as_mut().map(|field| field as _)
-        }
-        pub fn pubkey_bytes_mut(&mut self) -> &mut Bcs {
-            self.pubkey_bytes.get_or_insert_default()
-        }
-        pub fn with_pubkey_bytes(mut self, field: Bcs) -> Self {
+        pub fn with_pubkey_bytes(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.pubkey_bytes = Some(field.into());
             self
         }
-        pub fn network_pubkey_bytes(&self) -> &Bcs {
-            self.network_pubkey_bytes
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn network_pubkey_bytes_opt(&self) -> Option<&Bcs> {
-            self.network_pubkey_bytes.as_ref().map(|field| field as _)
-        }
-        pub fn network_pubkey_bytes_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.network_pubkey_bytes.as_mut().map(|field| field as _)
-        }
-        pub fn network_pubkey_bytes_mut(&mut self) -> &mut Bcs {
-            self.network_pubkey_bytes.get_or_insert_default()
-        }
-        pub fn with_network_pubkey_bytes(mut self, field: Bcs) -> Self {
+        pub fn with_network_pubkey_bytes(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.network_pubkey_bytes = Some(field.into());
             self
         }
-        pub fn worker_pubkey_bytes(&self) -> &Bcs {
-            self.worker_pubkey_bytes
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn worker_pubkey_bytes_opt(&self) -> Option<&Bcs> {
-            self.worker_pubkey_bytes.as_ref().map(|field| field as _)
-        }
-        pub fn worker_pubkey_bytes_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.worker_pubkey_bytes.as_mut().map(|field| field as _)
-        }
-        pub fn worker_pubkey_bytes_mut(&mut self) -> &mut Bcs {
-            self.worker_pubkey_bytes.get_or_insert_default()
-        }
-        pub fn with_worker_pubkey_bytes(mut self, field: Bcs) -> Self {
+        pub fn with_worker_pubkey_bytes(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.worker_pubkey_bytes = Some(field.into());
             self
         }
-        pub fn net_address(&self) -> &Bcs {
-            self.net_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn net_address_opt(&self) -> Option<&Bcs> {
-            self.net_address.as_ref().map(|field| field as _)
-        }
-        pub fn net_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.net_address.as_mut().map(|field| field as _)
-        }
-        pub fn net_address_mut(&mut self) -> &mut Bcs {
-            self.net_address.get_or_insert_default()
-        }
-        pub fn with_net_address(mut self, field: Bcs) -> Self {
+        pub fn with_net_address(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.net_address = Some(field.into());
             self
         }
-        pub fn p2p_address(&self) -> &Bcs {
-            self.p2p_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn p2p_address_opt(&self) -> Option<&Bcs> {
-            self.p2p_address.as_ref().map(|field| field as _)
-        }
-        pub fn p2p_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.p2p_address.as_mut().map(|field| field as _)
-        }
-        pub fn p2p_address_mut(&mut self) -> &mut Bcs {
-            self.p2p_address.get_or_insert_default()
-        }
-        pub fn with_p2p_address(mut self, field: Bcs) -> Self {
+        pub fn with_p2p_address(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.p2p_address = Some(field.into());
             self
         }
-        pub fn primary_address(&self) -> &Bcs {
-            self.primary_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn primary_address_opt(&self) -> Option<&Bcs> {
-            self.primary_address.as_ref().map(|field| field as _)
-        }
-        pub fn primary_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.primary_address.as_mut().map(|field| field as _)
-        }
-        pub fn primary_address_mut(&mut self) -> &mut Bcs {
-            self.primary_address.get_or_insert_default()
-        }
-        pub fn with_primary_address(mut self, field: Bcs) -> Self {
+        pub fn with_primary_address(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.primary_address = Some(field.into());
             self
         }
-        pub fn encoder_validator_address(&self) -> &Bcs {
-            self.encoder_validator_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn encoder_validator_address_opt(&self) -> Option<&Bcs> {
-            self.encoder_validator_address.as_ref().map(|field| field as _)
-        }
-        pub fn encoder_validator_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.encoder_validator_address.as_mut().map(|field| field as _)
-        }
-        pub fn encoder_validator_address_mut(&mut self) -> &mut Bcs {
-            self.encoder_validator_address.get_or_insert_default()
-        }
-        pub fn with_encoder_validator_address(mut self, field: Bcs) -> Self {
+        pub fn with_encoder_validator_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.encoder_validator_address = Some(field.into());
             self
         }
@@ -2040,22 +1803,7 @@ mod _getter_impls {
             static DEFAULT: RemoveValidator = RemoveValidator::const_default();
             &DEFAULT
         }
-        pub fn pubkey_bytes(&self) -> &Bcs {
-            self.pubkey_bytes
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn pubkey_bytes_opt(&self) -> Option<&Bcs> {
-            self.pubkey_bytes.as_ref().map(|field| field as _)
-        }
-        pub fn pubkey_bytes_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.pubkey_bytes.as_mut().map(|field| field as _)
-        }
-        pub fn pubkey_bytes_mut(&mut self) -> &mut Bcs {
-            self.pubkey_bytes.get_or_insert_default()
-        }
-        pub fn with_pubkey_bytes(mut self, field: Bcs) -> Self {
+        pub fn with_pubkey_bytes(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.pubkey_bytes = Some(field.into());
             self
         }
@@ -2104,117 +1852,45 @@ mod _getter_impls {
             static DEFAULT: UpdateValidatorMetadata = UpdateValidatorMetadata::const_default();
             &DEFAULT
         }
-        pub fn next_epoch_network_address(&self) -> &Bcs {
-            self.next_epoch_network_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_network_address_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_network_address.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_network_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_network_address.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_network_address_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_network_address.get_or_insert_default()
-        }
-        pub fn with_next_epoch_network_address(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_network_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_network_address = Some(field.into());
             self
         }
-        pub fn next_epoch_p2p_address(&self) -> &Bcs {
-            self.next_epoch_p2p_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_p2p_address_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_p2p_address.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_p2p_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_p2p_address.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_p2p_address_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_p2p_address.get_or_insert_default()
-        }
-        pub fn with_next_epoch_p2p_address(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_p2p_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_p2p_address = Some(field.into());
             self
         }
-        pub fn next_epoch_primary_address(&self) -> &Bcs {
-            self.next_epoch_primary_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_primary_address_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_primary_address.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_primary_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_primary_address.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_primary_address_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_primary_address.get_or_insert_default()
-        }
-        pub fn with_next_epoch_primary_address(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_primary_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_primary_address = Some(field.into());
             self
         }
-        pub fn next_epoch_protocol_pubkey(&self) -> &Bcs {
-            self.next_epoch_protocol_pubkey
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_protocol_pubkey_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_protocol_pubkey.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_protocol_pubkey_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_protocol_pubkey.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_protocol_pubkey_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_protocol_pubkey.get_or_insert_default()
-        }
-        pub fn with_next_epoch_protocol_pubkey(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_protocol_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_protocol_pubkey = Some(field.into());
             self
         }
-        pub fn next_epoch_worker_pubkey(&self) -> &Bcs {
-            self.next_epoch_worker_pubkey
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_worker_pubkey_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_worker_pubkey.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_worker_pubkey_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_worker_pubkey.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_worker_pubkey_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_worker_pubkey.get_or_insert_default()
-        }
-        pub fn with_next_epoch_worker_pubkey(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_worker_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_worker_pubkey = Some(field.into());
             self
         }
-        pub fn next_epoch_network_pubkey(&self) -> &Bcs {
-            self.next_epoch_network_pubkey
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_network_pubkey_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_network_pubkey.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_network_pubkey_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_network_pubkey.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_network_pubkey_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_network_pubkey.get_or_insert_default()
-        }
-        pub fn with_next_epoch_network_pubkey(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_network_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_network_pubkey = Some(field.into());
             self
         }
@@ -2248,98 +1924,38 @@ mod _getter_impls {
             static DEFAULT: AddEncoder = AddEncoder::const_default();
             &DEFAULT
         }
-        pub fn encoder_pubkey_bytes(&self) -> &Bcs {
-            self.encoder_pubkey_bytes
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn encoder_pubkey_bytes_opt(&self) -> Option<&Bcs> {
-            self.encoder_pubkey_bytes.as_ref().map(|field| field as _)
-        }
-        pub fn encoder_pubkey_bytes_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.encoder_pubkey_bytes.as_mut().map(|field| field as _)
-        }
-        pub fn encoder_pubkey_bytes_mut(&mut self) -> &mut Bcs {
-            self.encoder_pubkey_bytes.get_or_insert_default()
-        }
-        pub fn with_encoder_pubkey_bytes(mut self, field: Bcs) -> Self {
+        pub fn with_encoder_pubkey_bytes(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.encoder_pubkey_bytes = Some(field.into());
             self
         }
-        pub fn network_pubkey_bytes(&self) -> &Bcs {
-            self.network_pubkey_bytes
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn network_pubkey_bytes_opt(&self) -> Option<&Bcs> {
-            self.network_pubkey_bytes.as_ref().map(|field| field as _)
-        }
-        pub fn network_pubkey_bytes_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.network_pubkey_bytes.as_mut().map(|field| field as _)
-        }
-        pub fn network_pubkey_bytes_mut(&mut self) -> &mut Bcs {
-            self.network_pubkey_bytes.get_or_insert_default()
-        }
-        pub fn with_network_pubkey_bytes(mut self, field: Bcs) -> Self {
+        pub fn with_network_pubkey_bytes(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.network_pubkey_bytes = Some(field.into());
             self
         }
-        pub fn internal_network_address(&self) -> &Bcs {
-            self.internal_network_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn internal_network_address_opt(&self) -> Option<&Bcs> {
-            self.internal_network_address.as_ref().map(|field| field as _)
-        }
-        pub fn internal_network_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.internal_network_address.as_mut().map(|field| field as _)
-        }
-        pub fn internal_network_address_mut(&mut self) -> &mut Bcs {
-            self.internal_network_address.get_or_insert_default()
-        }
-        pub fn with_internal_network_address(mut self, field: Bcs) -> Self {
+        pub fn with_internal_network_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.internal_network_address = Some(field.into());
             self
         }
-        pub fn external_network_address(&self) -> &Bcs {
-            self.external_network_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn external_network_address_opt(&self) -> Option<&Bcs> {
-            self.external_network_address.as_ref().map(|field| field as _)
-        }
-        pub fn external_network_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.external_network_address.as_mut().map(|field| field as _)
-        }
-        pub fn external_network_address_mut(&mut self) -> &mut Bcs {
-            self.external_network_address.get_or_insert_default()
-        }
-        pub fn with_external_network_address(mut self, field: Bcs) -> Self {
+        pub fn with_external_network_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.external_network_address = Some(field.into());
             self
         }
-        pub fn object_server_address(&self) -> &Bcs {
-            self.object_server_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn object_server_address_opt(&self) -> Option<&Bcs> {
-            self.object_server_address.as_ref().map(|field| field as _)
-        }
-        pub fn object_server_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.object_server_address.as_mut().map(|field| field as _)
-        }
-        pub fn object_server_address_mut(&mut self) -> &mut Bcs {
-            self.object_server_address.get_or_insert_default()
-        }
-        pub fn with_object_server_address(mut self, field: Bcs) -> Self {
+        pub fn with_object_server_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.object_server_address = Some(field.into());
             self
         }
@@ -2353,22 +1969,10 @@ mod _getter_impls {
             static DEFAULT: RemoveEncoder = RemoveEncoder::const_default();
             &DEFAULT
         }
-        pub fn encoder_pubkey_bytes(&self) -> &Bcs {
-            self.encoder_pubkey_bytes
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn encoder_pubkey_bytes_opt(&self) -> Option<&Bcs> {
-            self.encoder_pubkey_bytes.as_ref().map(|field| field as _)
-        }
-        pub fn encoder_pubkey_bytes_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.encoder_pubkey_bytes.as_mut().map(|field| field as _)
-        }
-        pub fn encoder_pubkey_bytes_mut(&mut self) -> &mut Bcs {
-            self.encoder_pubkey_bytes.get_or_insert_default()
-        }
-        pub fn with_encoder_pubkey_bytes(mut self, field: Bcs) -> Self {
+        pub fn with_encoder_pubkey_bytes(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.encoder_pubkey_bytes = Some(field.into());
             self
         }
@@ -2415,83 +2019,31 @@ mod _getter_impls {
             static DEFAULT: UpdateEncoderMetadata = UpdateEncoderMetadata::const_default();
             &DEFAULT
         }
-        pub fn next_epoch_external_network_address(&self) -> &Bcs {
-            self.next_epoch_external_network_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_external_network_address_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_external_network_address.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_external_network_address_opt_mut(
-            &mut self,
-        ) -> Option<&mut Bcs> {
-            self.next_epoch_external_network_address.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_external_network_address_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_external_network_address.get_or_insert_default()
-        }
-        pub fn with_next_epoch_external_network_address(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_external_network_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_external_network_address = Some(field.into());
             self
         }
-        pub fn next_epoch_internal_network_address(&self) -> &Bcs {
-            self.next_epoch_internal_network_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_internal_network_address_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_internal_network_address.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_internal_network_address_opt_mut(
-            &mut self,
-        ) -> Option<&mut Bcs> {
-            self.next_epoch_internal_network_address.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_internal_network_address_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_internal_network_address.get_or_insert_default()
-        }
-        pub fn with_next_epoch_internal_network_address(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_internal_network_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_internal_network_address = Some(field.into());
             self
         }
-        pub fn next_epoch_network_pubkey(&self) -> &Bcs {
-            self.next_epoch_network_pubkey
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_network_pubkey_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_network_pubkey.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_network_pubkey_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_network_pubkey.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_network_pubkey_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_network_pubkey.get_or_insert_default()
-        }
-        pub fn with_next_epoch_network_pubkey(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_network_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_network_pubkey = Some(field.into());
             self
         }
-        pub fn next_epoch_object_server_address(&self) -> &Bcs {
-            self.next_epoch_object_server_address
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn next_epoch_object_server_address_opt(&self) -> Option<&Bcs> {
-            self.next_epoch_object_server_address.as_ref().map(|field| field as _)
-        }
-        pub fn next_epoch_object_server_address_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.next_epoch_object_server_address.as_mut().map(|field| field as _)
-        }
-        pub fn next_epoch_object_server_address_mut(&mut self) -> &mut Bcs {
-            self.next_epoch_object_server_address.get_or_insert_default()
-        }
-        pub fn with_next_epoch_object_server_address(mut self, field: Bcs) -> Self {
+        pub fn with_next_epoch_object_server_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.next_epoch_object_server_address = Some(field.into());
             self
         }
@@ -2748,7 +2300,7 @@ mod _getter_impls {
             static DEFAULT: EmbedData = EmbedData::const_default();
             &DEFAULT
         }
-        pub fn with_digest(mut self, field: String) -> Self {
+        pub fn with_digest(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.digest = Some(field.into());
             self
         }
@@ -2838,41 +2390,14 @@ mod _getter_impls {
             self.shard_input_ref = Some(field.into());
             self
         }
-        pub fn scores(&self) -> &Bcs {
-            self.scores
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn scores_opt(&self) -> Option<&Bcs> {
-            self.scores.as_ref().map(|field| field as _)
-        }
-        pub fn scores_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.scores.as_mut().map(|field| field as _)
-        }
-        pub fn scores_mut(&mut self) -> &mut Bcs {
-            self.scores.get_or_insert_default()
-        }
-        pub fn with_scores(mut self, field: Bcs) -> Self {
+        pub fn with_scores(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.scores = Some(field.into());
             self
         }
-        pub fn encoder_aggregate_signature(&self) -> &Bcs {
-            self.encoder_aggregate_signature
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Bcs::default_instance() as _)
-        }
-        pub fn encoder_aggregate_signature_opt(&self) -> Option<&Bcs> {
-            self.encoder_aggregate_signature.as_ref().map(|field| field as _)
-        }
-        pub fn encoder_aggregate_signature_opt_mut(&mut self) -> Option<&mut Bcs> {
-            self.encoder_aggregate_signature.as_mut().map(|field| field as _)
-        }
-        pub fn encoder_aggregate_signature_mut(&mut self) -> &mut Bcs {
-            self.encoder_aggregate_signature.get_or_insert_default()
-        }
-        pub fn with_encoder_aggregate_signature(mut self, field: Bcs) -> Self {
+        pub fn with_encoder_aggregate_signature(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
             self.encoder_aggregate_signature = Some(field.into());
             self
         }
@@ -3103,6 +2628,7 @@ mod _getter_impls {
                 operation_fee: None,
                 value_fee: None,
                 total_fee: None,
+                gas_object_ref: None,
             }
         }
         #[doc(hidden)]
@@ -3124,6 +2650,25 @@ mod _getter_impls {
         }
         pub fn with_total_fee(mut self, field: u64) -> Self {
             self.total_fee = Some(field.into());
+            self
+        }
+        pub fn gas_object_ref(&self) -> &ObjectReference {
+            self.gas_object_ref
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn gas_object_ref_opt(&self) -> Option<&ObjectReference> {
+            self.gas_object_ref.as_ref().map(|field| field as _)
+        }
+        pub fn gas_object_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.gas_object_ref.as_mut().map(|field| field as _)
+        }
+        pub fn gas_object_ref_mut(&mut self) -> &mut ObjectReference {
+            self.gas_object_ref.get_or_insert_default()
+        }
+        pub fn with_gas_object_ref(mut self, field: ObjectReference) -> Self {
+            self.gas_object_ref = Some(field.into());
             self
         }
     }

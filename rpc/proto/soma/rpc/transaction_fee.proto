@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package soma.rpc;
 
+import "soma/rpc/object_reference.proto";
+
 // Summary of the fee for this transaction.
 message TransactionFee {
   // base transaction fee.
@@ -12,4 +14,6 @@ message TransactionFee {
   optional uint64 value_fee = 3;
   // Total fee deducted.
   optional uint64 total_fee = 4;
+
+  optional ObjectReference gas_object_ref = 5;
 }

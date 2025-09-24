@@ -25,9 +25,6 @@
 //! - Strong typing for blockchain addresses with validation
 //! - Comprehensive serialization/deserialization support for network operations
 
-use std::fmt;
-use std::str::FromStr;
-
 use crate::crypto::{DefaultHash, GenericSignature, PublicKey, SomaPublicKey, SomaSignature};
 use crate::digests::ObjectDigest;
 use crate::error::SomaResult;
@@ -37,11 +34,15 @@ use crate::{crypto::AuthorityPublicKeyBytes, error::SomaError};
 use anyhow::anyhow;
 use fastcrypto::encoding::{decode_bytes_hex, Encoding, Hex};
 use fastcrypto::hash::HashFunction;
+use hex::FromHex;
 use rand::rngs::OsRng;
 use rand::Rng;
 use schemars::JsonSchema;
+use serde::Deserializer;
 use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
-use serde_with::serde_as;
+use serde_with::{serde_as, DeserializeAs, SerializeAs};
+use std::fmt;
+use std::str::FromStr;
 
 /// Timestamp in milliseconds.
 ///
@@ -265,9 +266,7 @@ pub const SOMA_ADDRESS_LENGTH: usize = 32;
 /// // or parsed from hex strings in actual usage
 /// ```
 #[serde_as]
-#[derive(
-    Eq, Default, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Eq, Default, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, JsonSchema)]
 pub struct SomaAddress(
     /// The raw bytes of the address
     #[schemars(with = "Hex")]
@@ -368,10 +367,90 @@ impl SomaAddress {
     /// let vec_bytes = vec![1u8; 32];
     /// let addr = SomaAddress::from_bytes(&vec_bytes).unwrap();
     /// ```
-    pub fn from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, SomaError> {
-        <[u8; SOMA_ADDRESS_LENGTH]>::try_from(bytes.as_ref())
-            .map_err(|_| SomaError::InvalidAddress)
-            .map(SomaAddress)
+    pub fn from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, AccountAddressParseError> {
+        <[u8; Self::LENGTH]>::try_from(bytes.as_ref())
+            .map_err(|_| AccountAddressParseError)
+            .map(Self)
+    }
+
+    pub fn from_hex_literal(literal: &str) -> Result<Self, AccountAddressParseError> {
+        if !literal.starts_with("0x") {
+            return Err(AccountAddressParseError);
+        }
+
+        let hex_len = literal.len() - 2;
+
+        // If the string is too short, pad it
+        if hex_len < Self::LENGTH * 2 {
+            let mut hex_str = String::with_capacity(Self::LENGTH * 2);
+            for _ in 0..Self::LENGTH * 2 - hex_len {
+                hex_str.push('0');
+            }
+            hex_str.push_str(&literal[2..]);
+            SomaAddress::from_hex(hex_str)
+        } else {
+            SomaAddress::from_hex(&literal[2..])
+        }
+    }
+
+    /// Return a canonical string representation of the address
+    /// Addresses are hex-encoded lowercase values of length ADDRESS_LENGTH (16, 20, or 32 depending on the Move platform)
+    /// e.g., 0000000000000000000000000000000a, *not* 0x0000000000000000000000000000000a, 0xa, or 0xA
+    /// Note: this function is guaranteed to be stable, and this is suitable for use inside
+    /// Move native functions or the VM.
+    pub fn to_canonical_string(&self) -> String {
+        hex::encode(self.0)
+    }
+
+    pub fn short_str_lossless(&self) -> String {
+        let hex_str = hex::encode(self.0).trim_start_matches('0').to_string();
+        if hex_str.is_empty() {
+            "0".to_string()
+        } else {
+            hex_str
+        }
+    }
+
+    pub fn to_hex_literal(&self) -> String {
+        format!("0x{}", self.short_str_lossless())
+    }
+
+    pub fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, AccountAddressParseError> {
+        <[u8; Self::LENGTH]>::from_hex(hex)
+            .map_err(|_| AccountAddressParseError)
+            .map(Self)
+    }
+
+    pub fn to_hex(&self) -> String {
+        format!("{:x}", self)
+    }
+}
+
+impl fmt::LowerHex for SomaAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            write!(f, "0x")?;
+        }
+
+        for byte in &self.0 {
+            write!(f, "{:02x}", byte)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::UpperHex for SomaAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            write!(f, "0x")?;
+        }
+
+        for byte in &self.0 {
+            write!(f, "{:02X}", byte)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -392,18 +471,6 @@ impl From<&PublicKey> for SomaAddress {
         hasher.update(pk);
         let g_arr = hasher.finalize();
         SomaAddress(g_arr.digest)
-    }
-}
-
-impl fmt::Display for SomaAddress {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "0x{}", Hex::encode(self.0))
-    }
-}
-
-impl fmt::Debug for SomaAddress {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "0x{}", Hex::encode(self.0))
     }
 }
 
@@ -432,36 +499,183 @@ impl From<ObjectID> for SomaAddress {
     }
 }
 
-impl TryFrom<&[u8]> for SomaAddress {
-    type Error = SomaError;
+impl AsRef<[u8]> for SomaAddress {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
 
-    /// Tries to convert the provided byte array into a SomaAddress.
-    fn try_from(bytes: &[u8]) -> Result<Self, SomaError> {
+impl std::ops::Deref for SomaAddress {
+    type Target = [u8; Self::LENGTH];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Display for SomaAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:x}", self)
+    }
+}
+
+impl fmt::Debug for SomaAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:x}", self)
+    }
+}
+
+impl From<[u8; SomaAddress::LENGTH]> for SomaAddress {
+    fn from(bytes: [u8; SomaAddress::LENGTH]) -> Self {
+        Self::new(bytes)
+    }
+}
+
+/// Hex serde for AccountAddress
+pub(crate) struct HexAccountAddress;
+
+impl SerializeAs<SomaAddress> for HexAccountAddress {
+    fn serialize_as<S>(value: &SomaAddress, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        Hex::serialize_as(value, serializer)
+    }
+}
+
+impl<'de> DeserializeAs<'de, SomaAddress> for HexAccountAddress {
+    fn deserialize_as<D>(deserializer: D) -> Result<SomaAddress, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        if s.starts_with("0x") {
+            SomaAddress::from_hex_literal(&s).map_err(<D::Error as serde::de::Error>::custom)
+        } else {
+            SomaAddress::from_hex(&s).map_err(<D::Error as serde::de::Error>::custom)
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for SomaAddress {
+    type Error = AccountAddressParseError;
+
+    /// Tries to convert the provided byte array into Address.
+    fn try_from(bytes: &[u8]) -> Result<SomaAddress, AccountAddressParseError> {
         Self::from_bytes(bytes)
     }
 }
 
 impl TryFrom<Vec<u8>> for SomaAddress {
-    type Error = SomaError;
+    type Error = AccountAddressParseError;
 
-    /// Tries to convert the provided byte buffer into a SomaAddress.
-    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+    /// Tries to convert the provided byte buffer into Address.
+    fn try_from(bytes: Vec<u8>) -> Result<SomaAddress, AccountAddressParseError> {
         Self::from_bytes(bytes)
     }
 }
 
-impl AsRef<[u8]> for SomaAddress {
-    fn as_ref(&self) -> &[u8] {
-        &self.0[..]
+impl From<SomaAddress> for Vec<u8> {
+    fn from(addr: SomaAddress) -> Vec<u8> {
+        addr.0.to_vec()
+    }
+}
+
+impl From<&SomaAddress> for Vec<u8> {
+    fn from(addr: &SomaAddress) -> Vec<u8> {
+        addr.0.to_vec()
+    }
+}
+
+impl From<SomaAddress> for [u8; SomaAddress::LENGTH] {
+    fn from(addr: SomaAddress) -> Self {
+        addr.0
+    }
+}
+
+impl From<&SomaAddress> for [u8; SomaAddress::LENGTH] {
+    fn from(addr: &SomaAddress) -> Self {
+        addr.0
+    }
+}
+
+impl From<&SomaAddress> for String {
+    fn from(addr: &SomaAddress) -> String {
+        ::hex::encode(addr.as_ref())
+    }
+}
+
+impl TryFrom<String> for SomaAddress {
+    type Error = AccountAddressParseError;
+
+    fn try_from(s: String) -> Result<SomaAddress, AccountAddressParseError> {
+        Self::from_hex(s)
     }
 }
 
 impl FromStr for SomaAddress {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        decode_bytes_hex(s).map_err(|e| anyhow!(e))
+    type Err = AccountAddressParseError;
+
+    fn from_str(s: &str) -> Result<Self, AccountAddressParseError> {
+        // Accept 0xADDRESS or ADDRESS
+        if let Ok(address) = SomaAddress::from_hex_literal(s) {
+            Ok(address)
+        } else {
+            Self::from_hex(s)
+        }
     }
 }
+
+impl<'de> Deserialize<'de> for SomaAddress {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = <String>::deserialize(deserializer)?;
+            SomaAddress::from_str(&s).map_err(<D::Error as serde::de::Error>::custom)
+        } else {
+            // In order to preserve the Serde data model and help analysis tools,
+            // make sure to wrap our value in a container with the same name
+            // as the original type.
+            #[derive(::serde::Deserialize)]
+            #[serde(rename = "AccountAddress")]
+            struct Value([u8; SomaAddress::LENGTH]);
+
+            let value = Value::deserialize(deserializer)?;
+            Ok(SomaAddress::new(value.0))
+        }
+    }
+}
+
+impl Serialize for SomaAddress {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.to_hex().serialize(serializer)
+        } else {
+            // See comment in deserialize.
+            serializer.serialize_newtype_struct("AccountAddress", &self.0)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct AccountAddressParseError;
+
+impl fmt::Display for AccountAddressParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "Unable to parse AccountAddress (must be hex string of length {})",
+            SomaAddress::LENGTH
+        )
+    }
+}
+
+impl std::error::Error for AccountAddressParseError {}
 
 /// Generate a fake SomaAddress with repeated one byte.
 pub fn dbg_addr(name: u8) -> SomaAddress {

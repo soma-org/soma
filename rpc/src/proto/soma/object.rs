@@ -15,7 +15,6 @@ use tap::Pipe;
 impl Merge<&Object> for Object {
     fn merge(&mut self, source: &Object, mask: &FieldMaskTree) {
         let Object {
-            bcs,
             object_id,
             version,
             digest,
@@ -24,10 +23,6 @@ impl Merge<&Object> for Object {
             contents,
             previous_transaction,
         } = source;
-
-        if mask.contains(Self::BCS_FIELD.name) {
-            self.bcs = bcs.clone();
-        }
 
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = digest.clone();
@@ -61,12 +56,6 @@ impl Merge<&Object> for Object {
 
 impl Merge<crate::types::Object> for Object {
     fn merge(&mut self, source: crate::types::Object, mask: &FieldMaskTree) {
-        if mask.contains(Self::BCS_FIELD.name) {
-            let mut bcs = Bcs::serialize(&source).unwrap();
-            bcs.name = Some("Object".to_owned());
-            self.bcs = Some(bcs);
-        }
-
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = Some(source.digest().to_string());
         }
@@ -94,7 +83,7 @@ impl Merge<crate::types::Object> for Object {
         if mask.contains(Self::CONTENTS_FIELD.name) {
             // Get the contents without the ID prefix
             let contents = source.contents.to_vec();
-            self.contents = Some(Bcs::from(contents));
+            self.contents = Some(contents.into());
         }
     }
 }
@@ -126,13 +115,6 @@ impl TryFrom<&Object> for crate::types::Object {
     type Error = TryFromProtoError;
 
     fn try_from(value: &Object) -> Result<Self, Self::Error> {
-        // If BCS is present, deserialize from that
-        if let Some(bcs) = &value.bcs {
-            return bcs
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("bcs", e));
-        }
-
         // Otherwise construct from individual fields
         let object_id = value
             .object_id
@@ -168,10 +150,9 @@ impl TryFrom<&Object> for crate::types::Object {
 
         let contents = value
             .contents
-            .as_ref()
+            .clone()
             .ok_or_else(|| TryFromProtoError::missing("contents"))?
-            .value()
-            .to_vec();
+            .into();
 
         Ok(crate::types::Object::new(
             object_id,

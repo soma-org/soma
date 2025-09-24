@@ -23,19 +23,29 @@ impl serde::Serialize for AddEncoder {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.AddEncoder", len)?;
         if let Some(v) = self.encoder_pubkey_bytes.as_ref() {
-            struct_ser.serialize_field("encoderPubkeyBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("encoderPubkeyBytes", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.network_pubkey_bytes.as_ref() {
-            struct_ser.serialize_field("networkPubkeyBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("networkPubkeyBytes", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.internal_network_address.as_ref() {
-            struct_ser.serialize_field("internalNetworkAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("internalNetworkAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.external_network_address.as_ref() {
-            struct_ser.serialize_field("externalNetworkAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("externalNetworkAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.object_server_address.as_ref() {
-            struct_ser.serialize_field("objectServerAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("objectServerAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -125,31 +135,41 @@ impl<'de> serde::Deserialize<'de> for AddEncoder {
                             if encoder_pubkey_bytes__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("encoderPubkeyBytes"));
                             }
-                            encoder_pubkey_bytes__ = map_.next_value()?;
+                            encoder_pubkey_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NetworkPubkeyBytes => {
                             if network_pubkey_bytes__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("networkPubkeyBytes"));
                             }
-                            network_pubkey_bytes__ = map_.next_value()?;
+                            network_pubkey_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::InternalNetworkAddress => {
                             if internal_network_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("internalNetworkAddress"));
                             }
-                            internal_network_address__ = map_.next_value()?;
+                            internal_network_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::ExternalNetworkAddress => {
                             if external_network_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("externalNetworkAddress"));
                             }
-                            external_network_address__ = map_.next_value()?;
+                            external_network_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::ObjectServerAddress => {
                             if object_server_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("objectServerAddress"));
                             }
-                            object_server_address__ = map_.next_value()?;
+                            object_server_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -472,25 +492,39 @@ impl serde::Serialize for AddValidator {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.AddValidator", len)?;
         if let Some(v) = self.pubkey_bytes.as_ref() {
-            struct_ser.serialize_field("pubkeyBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("pubkeyBytes", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.network_pubkey_bytes.as_ref() {
-            struct_ser.serialize_field("networkPubkeyBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("networkPubkeyBytes", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.worker_pubkey_bytes.as_ref() {
-            struct_ser.serialize_field("workerPubkeyBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("workerPubkeyBytes", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.net_address.as_ref() {
-            struct_ser.serialize_field("netAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("netAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.p2p_address.as_ref() {
-            struct_ser.serialize_field("p2pAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("p2pAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.primary_address.as_ref() {
-            struct_ser.serialize_field("primaryAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("primaryAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.encoder_validator_address.as_ref() {
-            struct_ser.serialize_field("encoderValidatorAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("encoderValidatorAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -590,43 +624,57 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                             if pubkey_bytes__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("pubkeyBytes"));
                             }
-                            pubkey_bytes__ = map_.next_value()?;
+                            pubkey_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NetworkPubkeyBytes => {
                             if network_pubkey_bytes__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("networkPubkeyBytes"));
                             }
-                            network_pubkey_bytes__ = map_.next_value()?;
+                            network_pubkey_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::WorkerPubkeyBytes => {
                             if worker_pubkey_bytes__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("workerPubkeyBytes"));
                             }
-                            worker_pubkey_bytes__ = map_.next_value()?;
+                            worker_pubkey_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NetAddress => {
                             if net_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("netAddress"));
                             }
-                            net_address__ = map_.next_value()?;
+                            net_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::P2pAddress => {
                             if p2p_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("p2pAddress"));
                             }
-                            p2p_address__ = map_.next_value()?;
+                            p2p_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::PrimaryAddress => {
                             if primary_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("primaryAddress"));
                             }
-                            primary_address__ = map_.next_value()?;
+                            primary_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::EncoderValidatorAddress => {
                             if encoder_validator_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("encoderValidatorAddress"));
                             }
-                            encoder_validator_address__ = map_.next_value()?;
+                            encoder_validator_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -759,124 +807,6 @@ impl<'de> serde::Deserialize<'de> for BalanceChange {
             }
         }
         deserializer.deserialize_struct("soma.rpc.BalanceChange", FIELDS, GeneratedVisitor)
-    }
-}
-impl serde::Serialize for Bcs {
-    #[allow(deprecated)]
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut len = 0;
-        if self.name.is_some() {
-            len += 1;
-        }
-        if self.value.is_some() {
-            len += 1;
-        }
-        let mut struct_ser = serializer.serialize_struct("soma.rpc.Bcs", len)?;
-        if let Some(v) = self.name.as_ref() {
-            struct_ser.serialize_field("name", v)?;
-        }
-        if let Some(v) = self.value.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("value", crate::utils::_serde::base64::encode(&v).as_str())?;
-        }
-        struct_ser.end()
-    }
-}
-impl<'de> serde::Deserialize<'de> for Bcs {
-    #[allow(deprecated)]
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        const FIELDS: &[&str] = &[
-            "name",
-            "value",
-        ];
-
-        #[allow(clippy::enum_variant_names)]
-        enum GeneratedField {
-            Name,
-            Value,
-            __SkipField__,
-        }
-        impl<'de> serde::Deserialize<'de> for GeneratedField {
-            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                struct GeneratedVisitor;
-
-                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
-                    type Value = GeneratedField;
-
-                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        write!(formatter, "expected one of: {:?}", &FIELDS)
-                    }
-
-                    #[allow(unused_variables)]
-                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
-                    where
-                        E: serde::de::Error,
-                    {
-                        match value {
-                            "name" => Ok(GeneratedField::Name),
-                            "value" => Ok(GeneratedField::Value),
-                            _ => Ok(GeneratedField::__SkipField__),
-                        }
-                    }
-                }
-                deserializer.deserialize_identifier(GeneratedVisitor)
-            }
-        }
-        struct GeneratedVisitor;
-        #[allow(clippy::useless_conversion)]
-        #[allow(clippy::unit_arg)]
-        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
-            type Value = Bcs;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct soma.rpc.Bcs")
-            }
-
-            fn visit_map<V>(self, mut map_: V) -> std::result::Result<Bcs, V::Error>
-                where
-                    V: serde::de::MapAccess<'de>,
-            {
-                let mut name__ = None;
-                let mut value__ = None;
-                while let Some(k) = map_.next_key()? {
-                    match k {
-                        GeneratedField::Name => {
-                            if name__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("name"));
-                            }
-                            name__ = map_.next_value()?;
-                        }
-                        GeneratedField::Value => {
-                            if value__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("value"));
-                            }
-                            value__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::__SkipField__ => {
-                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
-                        }
-                    }
-                }
-                Ok(Bcs {
-                    name: name__,
-                    value: value__,
-                })
-            }
-        }
-        deserializer.deserialize_struct("soma.rpc.Bcs", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for ChangeEpoch {
@@ -1812,7 +1742,9 @@ impl serde::Serialize for EmbedData {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.EmbedData", len)?;
         if let Some(v) = self.digest.as_ref() {
-            struct_ser.serialize_field("digest", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("digest", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.data_size_bytes.as_ref() {
             struct_ser.serialize_field("dataSizeBytes", v)?;
@@ -1897,7 +1829,9 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
                             if digest__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("digest"));
                             }
-                            digest__ = map_.next_value()?;
+                            digest__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::DataSizeBytes => {
                             if data_size_bytes__.is_some() {
@@ -2989,9 +2923,6 @@ impl serde::Serialize for Object {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.bcs.is_some() {
-            len += 1;
-        }
         if self.object_id.is_some() {
             len += 1;
         }
@@ -3014,9 +2945,6 @@ impl serde::Serialize for Object {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Object", len)?;
-        if let Some(v) = self.bcs.as_ref() {
-            struct_ser.serialize_field("bcs", v)?;
-        }
         if let Some(v) = self.object_id.as_ref() {
             struct_ser.serialize_field("objectId", v)?;
         }
@@ -3035,7 +2963,9 @@ impl serde::Serialize for Object {
             struct_ser.serialize_field("objectType", v)?;
         }
         if let Some(v) = self.contents.as_ref() {
-            struct_ser.serialize_field("contents", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("contents", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.previous_transaction.as_ref() {
             struct_ser.serialize_field("previousTransaction", v)?;
@@ -3050,7 +2980,6 @@ impl<'de> serde::Deserialize<'de> for Object {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "bcs",
             "object_id",
             "objectId",
             "version",
@@ -3065,7 +2994,6 @@ impl<'de> serde::Deserialize<'de> for Object {
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Bcs,
             ObjectId,
             Version,
             Digest,
@@ -3095,7 +3023,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                         E: serde::de::Error,
                     {
                         match value {
-                            "bcs" => Ok(GeneratedField::Bcs),
                             "objectId" | "object_id" => Ok(GeneratedField::ObjectId),
                             "version" => Ok(GeneratedField::Version),
                             "digest" => Ok(GeneratedField::Digest),
@@ -3124,7 +3051,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut bcs__ = None;
                 let mut object_id__ = None;
                 let mut version__ = None;
                 let mut digest__ = None;
@@ -3134,12 +3060,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                 let mut previous_transaction__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Bcs => {
-                            if bcs__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("bcs"));
-                            }
-                            bcs__ = map_.next_value()?;
-                        }
                         GeneratedField::ObjectId => {
                             if object_id__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("objectId"));
@@ -3176,7 +3096,9 @@ impl<'de> serde::Deserialize<'de> for Object {
                             if contents__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("contents"));
                             }
-                            contents__ = map_.next_value()?;
+                            contents__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::PreviousTransaction => {
                             if previous_transaction__.is_some() {
@@ -3190,7 +3112,6 @@ impl<'de> serde::Deserialize<'de> for Object {
                     }
                 }
                 Ok(Object {
-                    bcs: bcs__,
                     object_id: object_id__,
                     version: version__,
                     digest: digest__,
@@ -3701,7 +3622,9 @@ impl serde::Serialize for RemoveEncoder {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.RemoveEncoder", len)?;
         if let Some(v) = self.encoder_pubkey_bytes.as_ref() {
-            struct_ser.serialize_field("encoderPubkeyBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("encoderPubkeyBytes", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -3771,7 +3694,9 @@ impl<'de> serde::Deserialize<'de> for RemoveEncoder {
                             if encoder_pubkey_bytes__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("encoderPubkeyBytes"));
                             }
-                            encoder_pubkey_bytes__ = map_.next_value()?;
+                            encoder_pubkey_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -3799,7 +3724,9 @@ impl serde::Serialize for RemoveValidator {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.RemoveValidator", len)?;
         if let Some(v) = self.pubkey_bytes.as_ref() {
-            struct_ser.serialize_field("pubkeyBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("pubkeyBytes", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -3869,7 +3796,9 @@ impl<'de> serde::Deserialize<'de> for RemoveValidator {
                             if pubkey_bytes__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("pubkeyBytes"));
                             }
-                            pubkey_bytes__ = map_.next_value()?;
+                            pubkey_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -4006,10 +3935,14 @@ impl serde::Serialize for ReportScores {
             struct_ser.serialize_field("shardInputRef", v)?;
         }
         if let Some(v) = self.scores.as_ref() {
-            struct_ser.serialize_field("scores", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("scores", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.encoder_aggregate_signature.as_ref() {
-            struct_ser.serialize_field("encoderAggregateSignature", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("encoderAggregateSignature", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if !self.signers.is_empty() {
             struct_ser.serialize_field("signers", &self.signers)?;
@@ -4101,13 +4034,17 @@ impl<'de> serde::Deserialize<'de> for ReportScores {
                             if scores__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("scores"));
                             }
-                            scores__ = map_.next_value()?;
+                            scores__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::EncoderAggregateSignature => {
                             if encoder_aggregate_signature__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("encoderAggregateSignature"));
                             }
-                            encoder_aggregate_signature__ = map_.next_value()?;
+                            encoder_aggregate_signature__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::Signers => {
                             if signers__.is_some() {
@@ -4755,9 +4692,6 @@ impl serde::Serialize for Transaction {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.bcs.is_some() {
-            len += 1;
-        }
         if self.digest.is_some() {
             len += 1;
         }
@@ -4771,9 +4705,6 @@ impl serde::Serialize for Transaction {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Transaction", len)?;
-        if let Some(v) = self.bcs.as_ref() {
-            struct_ser.serialize_field("bcs", v)?;
-        }
         if let Some(v) = self.digest.as_ref() {
             struct_ser.serialize_field("digest", v)?;
         }
@@ -4796,7 +4727,6 @@ impl<'de> serde::Deserialize<'de> for Transaction {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "bcs",
             "digest",
             "kind",
             "sender",
@@ -4806,7 +4736,6 @@ impl<'de> serde::Deserialize<'de> for Transaction {
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Bcs,
             Digest,
             Kind,
             Sender,
@@ -4833,7 +4762,6 @@ impl<'de> serde::Deserialize<'de> for Transaction {
                         E: serde::de::Error,
                     {
                         match value {
-                            "bcs" => Ok(GeneratedField::Bcs),
                             "digest" => Ok(GeneratedField::Digest),
                             "kind" => Ok(GeneratedField::Kind),
                             "sender" => Ok(GeneratedField::Sender),
@@ -4859,19 +4787,12 @@ impl<'de> serde::Deserialize<'de> for Transaction {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut bcs__ = None;
                 let mut digest__ = None;
                 let mut kind__ = None;
                 let mut sender__ = None;
                 let mut gas_payment__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Bcs => {
-                            if bcs__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("bcs"));
-                            }
-                            bcs__ = map_.next_value()?;
-                        }
                         GeneratedField::Digest => {
                             if digest__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("digest"));
@@ -4902,7 +4823,6 @@ impl<'de> serde::Deserialize<'de> for Transaction {
                     }
                 }
                 Ok(Transaction {
-                    bcs: bcs__,
                     digest: digest__,
                     kind: kind__,
                     sender: sender__,
@@ -4921,12 +4841,6 @@ impl serde::Serialize for TransactionEffects {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.bcs.is_some() {
-            len += 1;
-        }
-        if self.digest.is_some() {
-            len += 1;
-        }
         if self.status.is_some() {
             len += 1;
         }
@@ -4937,9 +4851,6 @@ impl serde::Serialize for TransactionEffects {
             len += 1;
         }
         if self.transaction_digest.is_some() {
-            len += 1;
-        }
-        if self.gas_object.is_some() {
             len += 1;
         }
         if !self.dependencies.is_empty() {
@@ -4955,12 +4866,6 @@ impl serde::Serialize for TransactionEffects {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.TransactionEffects", len)?;
-        if let Some(v) = self.bcs.as_ref() {
-            struct_ser.serialize_field("bcs", v)?;
-        }
-        if let Some(v) = self.digest.as_ref() {
-            struct_ser.serialize_field("digest", v)?;
-        }
         if let Some(v) = self.status.as_ref() {
             struct_ser.serialize_field("status", v)?;
         }
@@ -4974,9 +4879,6 @@ impl serde::Serialize for TransactionEffects {
         }
         if let Some(v) = self.transaction_digest.as_ref() {
             struct_ser.serialize_field("transactionDigest", v)?;
-        }
-        if let Some(v) = self.gas_object.as_ref() {
-            struct_ser.serialize_field("gasObject", v)?;
         }
         if !self.dependencies.is_empty() {
             struct_ser.serialize_field("dependencies", &self.dependencies)?;
@@ -5002,15 +4904,11 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "bcs",
-            "digest",
             "status",
             "epoch",
             "fee",
             "transaction_digest",
             "transactionDigest",
-            "gas_object",
-            "gasObject",
             "dependencies",
             "lamport_version",
             "lamportVersion",
@@ -5022,13 +4920,10 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Bcs,
-            Digest,
             Status,
             Epoch,
             Fee,
             TransactionDigest,
-            GasObject,
             Dependencies,
             LamportVersion,
             ChangedObjects,
@@ -5055,13 +4950,10 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                         E: serde::de::Error,
                     {
                         match value {
-                            "bcs" => Ok(GeneratedField::Bcs),
-                            "digest" => Ok(GeneratedField::Digest),
                             "status" => Ok(GeneratedField::Status),
                             "epoch" => Ok(GeneratedField::Epoch),
                             "fee" => Ok(GeneratedField::Fee),
                             "transactionDigest" | "transaction_digest" => Ok(GeneratedField::TransactionDigest),
-                            "gasObject" | "gas_object" => Ok(GeneratedField::GasObject),
                             "dependencies" => Ok(GeneratedField::Dependencies),
                             "lamportVersion" | "lamport_version" => Ok(GeneratedField::LamportVersion),
                             "changedObjects" | "changed_objects" => Ok(GeneratedField::ChangedObjects),
@@ -5087,31 +4979,16 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut bcs__ = None;
-                let mut digest__ = None;
                 let mut status__ = None;
                 let mut epoch__ = None;
                 let mut fee__ = None;
                 let mut transaction_digest__ = None;
-                let mut gas_object__ = None;
                 let mut dependencies__ = None;
                 let mut lamport_version__ = None;
                 let mut changed_objects__ = None;
                 let mut unchanged_shared_objects__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Bcs => {
-                            if bcs__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("bcs"));
-                            }
-                            bcs__ = map_.next_value()?;
-                        }
-                        GeneratedField::Digest => {
-                            if digest__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("digest"));
-                            }
-                            digest__ = map_.next_value()?;
-                        }
                         GeneratedField::Status => {
                             if status__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("status"));
@@ -5137,12 +5014,6 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                                 return Err(serde::de::Error::duplicate_field("transactionDigest"));
                             }
                             transaction_digest__ = map_.next_value()?;
-                        }
-                        GeneratedField::GasObject => {
-                            if gas_object__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("gasObject"));
-                            }
-                            gas_object__ = map_.next_value()?;
                         }
                         GeneratedField::Dependencies => {
                             if dependencies__.is_some() {
@@ -5176,13 +5047,10 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                     }
                 }
                 Ok(TransactionEffects {
-                    bcs: bcs__,
-                    digest: digest__,
                     status: status__,
                     epoch: epoch__,
                     fee: fee__,
                     transaction_digest: transaction_digest__,
-                    gas_object: gas_object__,
                     dependencies: dependencies__.unwrap_or_default(),
                     lamport_version: lamport_version__,
                     changed_objects: changed_objects__.unwrap_or_default(),
@@ -5213,6 +5081,9 @@ impl serde::Serialize for TransactionFee {
         if self.total_fee.is_some() {
             len += 1;
         }
+        if self.gas_object_ref.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.TransactionFee", len)?;
         if let Some(v) = self.base_fee.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -5234,6 +5105,9 @@ impl serde::Serialize for TransactionFee {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("totalFee", ToString::to_string(&v).as_str())?;
         }
+        if let Some(v) = self.gas_object_ref.as_ref() {
+            struct_ser.serialize_field("gasObjectRef", v)?;
+        }
         struct_ser.end()
     }
 }
@@ -5252,6 +5126,8 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
             "valueFee",
             "total_fee",
             "totalFee",
+            "gas_object_ref",
+            "gasObjectRef",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -5260,6 +5136,7 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
             OperationFee,
             ValueFee,
             TotalFee,
+            GasObjectRef,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -5286,6 +5163,7 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                             "operationFee" | "operation_fee" => Ok(GeneratedField::OperationFee),
                             "valueFee" | "value_fee" => Ok(GeneratedField::ValueFee),
                             "totalFee" | "total_fee" => Ok(GeneratedField::TotalFee),
+                            "gasObjectRef" | "gas_object_ref" => Ok(GeneratedField::GasObjectRef),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -5311,6 +5189,7 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                 let mut operation_fee__ = None;
                 let mut value_fee__ = None;
                 let mut total_fee__ = None;
+                let mut gas_object_ref__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::BaseFee => {
@@ -5345,6 +5224,12 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::GasObjectRef => {
+                            if gas_object_ref__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("gasObjectRef"));
+                            }
+                            gas_object_ref__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -5355,6 +5240,7 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                     operation_fee: operation_fee__,
                     value_fee: value_fee__,
                     total_fee: total_fee__,
+                    gas_object_ref: gas_object_ref__,
                 })
             }
         }
@@ -6619,16 +6505,24 @@ impl serde::Serialize for UpdateEncoderMetadata {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.UpdateEncoderMetadata", len)?;
         if let Some(v) = self.next_epoch_external_network_address.as_ref() {
-            struct_ser.serialize_field("nextEpochExternalNetworkAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochExternalNetworkAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_internal_network_address.as_ref() {
-            struct_ser.serialize_field("nextEpochInternalNetworkAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochInternalNetworkAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_network_pubkey.as_ref() {
-            struct_ser.serialize_field("nextEpochNetworkPubkey", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochNetworkPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_object_server_address.as_ref() {
-            struct_ser.serialize_field("nextEpochObjectServerAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochObjectServerAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -6713,25 +6607,33 @@ impl<'de> serde::Deserialize<'de> for UpdateEncoderMetadata {
                             if next_epoch_external_network_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochExternalNetworkAddress"));
                             }
-                            next_epoch_external_network_address__ = map_.next_value()?;
+                            next_epoch_external_network_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochInternalNetworkAddress => {
                             if next_epoch_internal_network_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochInternalNetworkAddress"));
                             }
-                            next_epoch_internal_network_address__ = map_.next_value()?;
+                            next_epoch_internal_network_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochNetworkPubkey => {
                             if next_epoch_network_pubkey__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochNetworkPubkey"));
                             }
-                            next_epoch_network_pubkey__ = map_.next_value()?;
+                            next_epoch_network_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochObjectServerAddress => {
                             if next_epoch_object_server_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochObjectServerAddress"));
                             }
-                            next_epoch_object_server_address__ = map_.next_value()?;
+                            next_epoch_object_server_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -6777,22 +6679,34 @@ impl serde::Serialize for UpdateValidatorMetadata {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.UpdateValidatorMetadata", len)?;
         if let Some(v) = self.next_epoch_network_address.as_ref() {
-            struct_ser.serialize_field("nextEpochNetworkAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochNetworkAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_p2p_address.as_ref() {
-            struct_ser.serialize_field("nextEpochP2pAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochP2pAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_primary_address.as_ref() {
-            struct_ser.serialize_field("nextEpochPrimaryAddress", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochPrimaryAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_protocol_pubkey.as_ref() {
-            struct_ser.serialize_field("nextEpochProtocolPubkey", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProtocolPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_worker_pubkey.as_ref() {
-            struct_ser.serialize_field("nextEpochWorkerPubkey", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochWorkerPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_network_pubkey.as_ref() {
-            struct_ser.serialize_field("nextEpochNetworkPubkey", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochNetworkPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -6887,37 +6801,49 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                             if next_epoch_network_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochNetworkAddress"));
                             }
-                            next_epoch_network_address__ = map_.next_value()?;
+                            next_epoch_network_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochP2pAddress => {
                             if next_epoch_p2p_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochP2pAddress"));
                             }
-                            next_epoch_p2p_address__ = map_.next_value()?;
+                            next_epoch_p2p_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochPrimaryAddress => {
                             if next_epoch_primary_address__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochPrimaryAddress"));
                             }
-                            next_epoch_primary_address__ = map_.next_value()?;
+                            next_epoch_primary_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochProtocolPubkey => {
                             if next_epoch_protocol_pubkey__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochProtocolPubkey"));
                             }
-                            next_epoch_protocol_pubkey__ = map_.next_value()?;
+                            next_epoch_protocol_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochWorkerPubkey => {
                             if next_epoch_worker_pubkey__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochWorkerPubkey"));
                             }
-                            next_epoch_worker_pubkey__ = map_.next_value()?;
+                            next_epoch_worker_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::NextEpochNetworkPubkey => {
                             if next_epoch_network_pubkey__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("nextEpochNetworkPubkey"));
                             }
-                            next_epoch_network_pubkey__ = map_.next_value()?;
+                            next_epoch_network_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -6945,9 +6871,6 @@ impl serde::Serialize for UserSignature {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.bcs.is_some() {
-            len += 1;
-        }
         if self.scheme.is_some() {
             len += 1;
         }
@@ -6955,9 +6878,6 @@ impl serde::Serialize for UserSignature {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.UserSignature", len)?;
-        if let Some(v) = self.bcs.as_ref() {
-            struct_ser.serialize_field("bcs", v)?;
-        }
         if let Some(v) = self.scheme.as_ref() {
             let v = SignatureScheme::try_from(*v)
                 .map_err(|_| serde::ser::Error::custom(format!("Invalid variant {}", *v)))?;
@@ -6980,14 +6900,12 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "bcs",
             "scheme",
             "simple",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Bcs,
             Scheme,
             Simple,
             __SkipField__,
@@ -7012,7 +6930,6 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
                         E: serde::de::Error,
                     {
                         match value {
-                            "bcs" => Ok(GeneratedField::Bcs),
                             "scheme" => Ok(GeneratedField::Scheme),
                             "simple" => Ok(GeneratedField::Simple),
                             _ => Ok(GeneratedField::__SkipField__),
@@ -7036,17 +6953,10 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut bcs__ = None;
                 let mut scheme__ = None;
                 let mut signature__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Bcs => {
-                            if bcs__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("bcs"));
-                            }
-                            bcs__ = map_.next_value()?;
-                        }
                         GeneratedField::Scheme => {
                             if scheme__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("scheme"));
@@ -7066,7 +6976,6 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
                     }
                 }
                 Ok(UserSignature {
-                    bcs: bcs__,
                     scheme: scheme__,
                     signature: signature__,
                 })

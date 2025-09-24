@@ -10,8 +10,8 @@ use std::{cmp::Ordering, marker::PhantomData};
 
 #[derive(Serialize, Deserialize)]
 pub struct Digest<T: Serialize> {
-    inner: [u8; DIGEST_LENGTH],
-    marker: PhantomData<T>,
+    pub inner: [u8; DIGEST_LENGTH],
+    pub marker: PhantomData<T>,
 }
 impl<T: Serialize> Clone for Digest<T> {
     fn clone(&self) -> Self {
@@ -57,6 +57,72 @@ impl<T: Serialize> Digest<T> {
             inner: hasher.finalize().into(),
             marker: PhantomData,
         }
+    }
+
+    pub fn from_raw(bytes: [u8; DIGEST_LENGTH]) -> Self {
+        Self {
+            inner: bytes,
+            marker: PhantomData,
+        }
+    }
+
+    /// Extract the inner bytes array
+    pub fn into_inner(self) -> [u8; DIGEST_LENGTH] {
+        self.inner
+    }
+}
+
+impl<T: Serialize> AsRef<[u8; DIGEST_LENGTH]> for Digest<T> {
+    fn as_ref(&self) -> &[u8; DIGEST_LENGTH] {
+        &self.inner
+    }
+}
+
+impl<T: Serialize> From<[u8; DIGEST_LENGTH]> for Digest<T> {
+    fn from(bytes: [u8; DIGEST_LENGTH]) -> Self {
+        Self::from_raw(bytes)
+    }
+}
+
+impl<T: Serialize> From<Digest<T>> for Vec<u8> {
+    fn from(digest: Digest<T>) -> Self {
+        digest.inner.to_vec()
+    }
+}
+
+impl<T: Serialize> From<Digest<T>> for Bytes {
+    fn from(digest: Digest<T>) -> Self {
+        Bytes::copy_from_slice(&digest.inner)
+    }
+}
+
+impl<T: Serialize> TryFrom<Vec<u8>> for Digest<T> {
+    type Error = SharedError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        let inner: [u8; DIGEST_LENGTH] = bytes
+            .try_into()
+            .map_err(|v: Vec<u8>| SharedError::InvalidDigestLength)?;
+        Ok(Self::from_raw(inner))
+    }
+}
+
+impl<T: Serialize> TryFrom<&[u8]> for Digest<T> {
+    type Error = SharedError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let inner: [u8; DIGEST_LENGTH] = bytes
+            .try_into()
+            .map_err(|_| SharedError::InvalidDigestLength)?;
+        Ok(Self::from_raw(inner))
+    }
+}
+
+impl<T: Serialize> TryFrom<Bytes> for Digest<T> {
+    type Error = SharedError;
+
+    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
+        Self::try_from(bytes.as_ref())
     }
 }
 
@@ -106,9 +172,8 @@ impl<T: Serialize> std::fmt::Display for Digest<T> {
         write!(
             f,
             "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.inner)
-                .get(0..4)
-                .ok_or(std::fmt::Error)?
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.inner) // .get(0..4)
+                                                                                           // .ok_or(std::fmt::Error)?
         )
     }
 }

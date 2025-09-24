@@ -16,12 +16,6 @@ impl From<crate::types::Transaction> for Transaction {
 
 impl Merge<crate::types::Transaction> for Transaction {
     fn merge(&mut self, source: crate::types::Transaction, mask: &FieldMaskTree) {
-        if mask.contains(Self::BCS_FIELD.name) {
-            let mut bcs = Bcs::serialize(&source).unwrap();
-            bcs.name = Some("TransactionData".to_owned());
-            self.bcs = Some(bcs);
-        }
-
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = Some(source.digest().to_string());
         }
@@ -43,16 +37,11 @@ impl Merge<crate::types::Transaction> for Transaction {
 impl Merge<&Transaction> for Transaction {
     fn merge(&mut self, source: &Transaction, mask: &FieldMaskTree) {
         let Transaction {
-            bcs,
             digest,
             kind,
             sender,
             gas_payment,
         } = source;
-
-        if mask.contains(Self::BCS_FIELD.name) {
-            self.bcs = bcs.clone();
-        }
 
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = digest.clone();
@@ -76,11 +65,11 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
     type Error = TryFromProtoError;
 
     fn try_from(value: &Transaction) -> Result<Self, Self::Error> {
-        if let Some(bcs) = &value.bcs {
-            return bcs
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid(Transaction::BCS_FIELD, e));
-        }
+        // if let Some(bcs) = &value.bcs {
+        //     return bcs
+        //         .deserialize()
+        //         .map_err(|e| TryFromProtoError::invalid(Transaction::BCS_FIELD, e));
+        // }
 
         let kind = value
             .kind
@@ -397,10 +386,9 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
             Kind::EmbedData(embed) => Self::EmbedData {
                 digest: embed
                     .digest
-                    .as_ref()
+                    .clone()
                     .ok_or_else(|| TryFromProtoError::missing("digest"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("digest", e))?,
+                    .into(),
                 data_size_bytes: embed
                     .data_size_bytes
                     .ok_or_else(|| TryFromProtoError::missing("data_size_bytes"))?
@@ -426,16 +414,14 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .try_into()?,
                 scores: report
                     .scores
-                    .as_ref()
+                    .clone()
                     .ok_or_else(|| TryFromProtoError::missing("scores"))?
-                    .deserialize()
-                    .map_err(|e| TryFromProtoError::invalid("scores", e))?,
+                    .into(),
                 encoder_aggregate_signature: report
                     .encoder_aggregate_signature
-                    .as_ref()
+                    .clone()
                     .ok_or_else(|| TryFromProtoError::missing("encoder_aggregate_signature"))?
-                    .deserialize()
-                    .map_err(|e| TryFromProtoError::invalid("encoder_aggregate_signature", e))?,
+                    .into(),
                 signers: report
                     .signers
                     .iter()
@@ -456,15 +442,13 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
 impl From<crate::types::AddValidatorArgs> for AddValidator {
     fn from(value: crate::types::AddValidatorArgs) -> Self {
         Self {
-            pubkey_bytes: Some(Bcs::serialize(&value.pubkey_bytes).unwrap()),
-            network_pubkey_bytes: Some(Bcs::serialize(&value.network_pubkey_bytes).unwrap()),
-            worker_pubkey_bytes: Some(Bcs::serialize(&value.worker_pubkey_bytes).unwrap()),
-            net_address: Some(Bcs::serialize(&value.net_address).unwrap()),
-            p2p_address: Some(Bcs::serialize(&value.p2p_address).unwrap()),
-            primary_address: Some(Bcs::serialize(&value.primary_address).unwrap()),
-            encoder_validator_address: Some(
-                Bcs::serialize(&value.encoder_validator_address).unwrap(),
-            ),
+            pubkey_bytes: Some(value.pubkey_bytes.into()),
+            network_pubkey_bytes: Some(value.network_pubkey_bytes.into()),
+            worker_pubkey_bytes: Some(value.worker_pubkey_bytes.into()),
+            net_address: Some(value.net_address.into()),
+            p2p_address: Some(value.p2p_address.into()),
+            primary_address: Some(value.primary_address.into()),
+            encoder_validator_address: Some(value.encoder_validator_address.into()),
         }
     }
 }
@@ -476,46 +460,39 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
         Ok(Self {
             pubkey_bytes: value
                 .pubkey_bytes
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("pubkey_bytes"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("pubkey_bytes", e))?,
+                .into(),
             network_pubkey_bytes: value
                 .network_pubkey_bytes
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("network_pubkey_bytes"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("network_pubkey_bytes", e))?,
+                .into(),
             worker_pubkey_bytes: value
                 .worker_pubkey_bytes
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("worker_pubkey_bytes"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("worker_pubkey_bytes", e))?,
+                .into(),
             net_address: value
                 .net_address
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("net_address"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("net_address", e))?,
+                .into(),
             p2p_address: value
                 .p2p_address
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("p2p_address"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("p2p_address", e))?,
+                .into(),
             primary_address: value
                 .primary_address
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("primary_address"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("primary_address", e))?,
+                .into(),
             encoder_validator_address: value
                 .encoder_validator_address
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("encoder_validator_address"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("encoder_validator_address", e))?,
+                .into(),
         })
     }
 }
@@ -524,7 +501,7 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
 impl From<crate::types::RemoveValidatorArgs> for RemoveValidator {
     fn from(value: crate::types::RemoveValidatorArgs) -> Self {
         Self {
-            pubkey_bytes: Some(Bcs::serialize(&value.pubkey_bytes).unwrap()),
+            pubkey_bytes: Some(value.pubkey_bytes.into()),
         }
     }
 }
@@ -536,10 +513,9 @@ impl TryFrom<&RemoveValidator> for crate::types::RemoveValidatorArgs {
         Ok(Self {
             pubkey_bytes: value
                 .pubkey_bytes
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("pubkey_bytes"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("pubkey_bytes", e))?,
+                .into(),
         })
     }
 }
@@ -548,24 +524,12 @@ impl TryFrom<&RemoveValidator> for crate::types::RemoveValidatorArgs {
 impl From<crate::types::UpdateValidatorMetadataArgs> for UpdateValidatorMetadata {
     fn from(value: crate::types::UpdateValidatorMetadataArgs) -> Self {
         Self {
-            next_epoch_network_address: value
-                .next_epoch_network_address
-                .map(|v| Bcs::serialize(&v).unwrap()),
-            next_epoch_p2p_address: value
-                .next_epoch_p2p_address
-                .map(|v| Bcs::serialize(&v).unwrap()),
-            next_epoch_primary_address: value
-                .next_epoch_primary_address
-                .map(|v| Bcs::serialize(&v).unwrap()),
-            next_epoch_protocol_pubkey: value
-                .next_epoch_protocol_pubkey
-                .map(|v| Bcs::serialize(&v).unwrap()),
-            next_epoch_worker_pubkey: value
-                .next_epoch_worker_pubkey
-                .map(|v| Bcs::serialize(&v).unwrap()),
-            next_epoch_network_pubkey: value
-                .next_epoch_network_pubkey
-                .map(|v| Bcs::serialize(&v).unwrap()),
+            next_epoch_network_address: value.next_epoch_network_address.map(|v| v.into()),
+            next_epoch_p2p_address: value.next_epoch_p2p_address.map(|v| v.into()),
+            next_epoch_primary_address: value.next_epoch_primary_address.map(|v| v.into()),
+            next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.map(|v| v.into()),
+            next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.map(|v| v.into()),
+            next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
         }
     }
 }
@@ -575,54 +539,12 @@ impl TryFrom<&UpdateValidatorMetadata> for crate::types::UpdateValidatorMetadata
 
     fn try_from(value: &UpdateValidatorMetadata) -> Result<Self, Self::Error> {
         Ok(Self {
-            next_epoch_network_address: value
-                .next_epoch_network_address
-                .as_ref()
-                .map(|v| {
-                    v.deserialize()
-                        .map_err(|e| TryFromProtoError::invalid("next_epoch_network_address", e))
-                })
-                .transpose()?,
-            next_epoch_p2p_address: value
-                .next_epoch_p2p_address
-                .as_ref()
-                .map(|v| {
-                    v.deserialize()
-                        .map_err(|e| TryFromProtoError::invalid("next_epoch_p2p_address", e))
-                })
-                .transpose()?,
-            next_epoch_primary_address: value
-                .next_epoch_primary_address
-                .as_ref()
-                .map(|v| {
-                    v.deserialize()
-                        .map_err(|e| TryFromProtoError::invalid("next_epoch_primary_address", e))
-                })
-                .transpose()?,
-            next_epoch_protocol_pubkey: value
-                .next_epoch_protocol_pubkey
-                .as_ref()
-                .map(|v| {
-                    v.deserialize()
-                        .map_err(|e| TryFromProtoError::invalid("next_epoch_protocol_pubkey", e))
-                })
-                .transpose()?,
-            next_epoch_worker_pubkey: value
-                .next_epoch_worker_pubkey
-                .as_ref()
-                .map(|v| {
-                    v.deserialize()
-                        .map_err(|e| TryFromProtoError::invalid("next_epoch_worker_pubkey", e))
-                })
-                .transpose()?,
-            next_epoch_network_pubkey: value
-                .next_epoch_network_pubkey
-                .as_ref()
-                .map(|v| {
-                    v.deserialize()
-                        .map_err(|e| TryFromProtoError::invalid("next_epoch_network_pubkey", e))
-                })
-                .transpose()?,
+            next_epoch_network_address: value.next_epoch_network_address.clone().map(|v| v.into()),
+            next_epoch_p2p_address: value.next_epoch_p2p_address.clone().map(|v| v.into()),
+            next_epoch_primary_address: value.next_epoch_primary_address.clone().map(|v| v.into()),
+            next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.clone().map(|v| v.into()),
+            next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.clone().map(|v| v.into()),
+            next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),
         })
     }
 }
@@ -631,15 +553,11 @@ impl TryFrom<&UpdateValidatorMetadata> for crate::types::UpdateValidatorMetadata
 impl From<crate::types::AddEncoderArgs> for AddEncoder {
     fn from(value: crate::types::AddEncoderArgs) -> Self {
         Self {
-            encoder_pubkey_bytes: Some(Bcs::serialize(&value.encoder_pubkey_bytes).unwrap()),
-            network_pubkey_bytes: Some(Bcs::serialize(&value.network_pubkey_bytes).unwrap()),
-            internal_network_address: Some(
-                Bcs::serialize(&value.internal_network_address).unwrap(),
-            ),
-            external_network_address: Some(
-                Bcs::serialize(&value.external_network_address).unwrap(),
-            ),
-            object_server_address: Some(Bcs::serialize(&value.object_server_address).unwrap()),
+            encoder_pubkey_bytes: Some(value.encoder_pubkey_bytes.into()),
+            network_pubkey_bytes: Some(value.network_pubkey_bytes.into()),
+            internal_network_address: Some(value.internal_network_address.into()),
+            external_network_address: Some(value.external_network_address.into()),
+            object_server_address: Some(value.object_server_address.into()),
         }
     }
 }
@@ -651,34 +569,29 @@ impl TryFrom<&AddEncoder> for crate::types::AddEncoderArgs {
         Ok(Self {
             encoder_pubkey_bytes: value
                 .encoder_pubkey_bytes
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("encoder_pubkey_bytes"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("encoder_pubkey_bytes", e))?,
+                .into(),
             network_pubkey_bytes: value
                 .network_pubkey_bytes
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("network_pubkey_bytes"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("network_pubkey_bytes", e))?,
+                .into(),
             internal_network_address: value
                 .internal_network_address
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("internal_network_address"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("internal_network_address", e))?,
+                .into(),
             external_network_address: value
                 .external_network_address
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("external_network_address"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("external_network_address", e))?,
+                .into(),
             object_server_address: value
                 .object_server_address
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("object_server_address"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("object_server_address", e))?,
+                .into(),
         })
     }
 }
@@ -687,7 +600,7 @@ impl TryFrom<&AddEncoder> for crate::types::AddEncoderArgs {
 impl From<crate::types::RemoveEncoderArgs> for RemoveEncoder {
     fn from(value: crate::types::RemoveEncoderArgs) -> Self {
         Self {
-            encoder_pubkey_bytes: Some(Bcs::serialize(&value.encoder_pubkey_bytes).unwrap()),
+            encoder_pubkey_bytes: Some(value.encoder_pubkey_bytes.into()),
         }
     }
 }
@@ -699,10 +612,9 @@ impl TryFrom<&RemoveEncoder> for crate::types::RemoveEncoderArgs {
         Ok(Self {
             encoder_pubkey_bytes: value
                 .encoder_pubkey_bytes
-                .as_ref()
+                .clone()
                 .ok_or_else(|| TryFromProtoError::missing("encoder_pubkey_bytes"))?
-                .deserialize()
-                .map_err(|e| TryFromProtoError::invalid("encoder_pubkey_bytes", e))?,
+                .into(),
         })
     }
 }
@@ -713,16 +625,14 @@ impl From<crate::types::UpdateEncoderMetadataArgs> for UpdateEncoderMetadata {
         Self {
             next_epoch_external_network_address: value
                 .next_epoch_external_network_address
-                .map(|v| Bcs::serialize(&v).unwrap()),
+                .map(|v| v.into()),
             next_epoch_internal_network_address: value
                 .next_epoch_internal_network_address
-                .map(|v| Bcs::serialize(&v).unwrap()),
-            next_epoch_network_pubkey: value
-                .next_epoch_network_pubkey
-                .map(|v| Bcs::serialize(&v).unwrap()),
+                .map(|v| v.into()),
+            next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
             next_epoch_object_server_address: value
                 .next_epoch_object_server_address
-                .map(|v| Bcs::serialize(&v).unwrap()),
+                .map(|v| v.into()),
         }
     }
 }
@@ -734,39 +644,17 @@ impl TryFrom<&UpdateEncoderMetadata> for crate::types::UpdateEncoderMetadataArgs
         Ok(Self {
             next_epoch_external_network_address: value
                 .next_epoch_external_network_address
-                .as_ref()
-                .map(|v| {
-                    v.deserialize().map_err(|e| {
-                        TryFromProtoError::invalid("next_epoch_external_network_address", e)
-                    })
-                })
-                .transpose()?,
+                .clone()
+                .map(|v| v.into()),
             next_epoch_internal_network_address: value
                 .next_epoch_internal_network_address
-                .as_ref()
-                .map(|v| {
-                    v.deserialize().map_err(|e| {
-                        TryFromProtoError::invalid("next_epoch_internal_network_address", e)
-                    })
-                })
-                .transpose()?,
-            next_epoch_network_pubkey: value
-                .next_epoch_network_pubkey
-                .as_ref()
-                .map(|v| {
-                    v.deserialize()
-                        .map_err(|e| TryFromProtoError::invalid("next_epoch_network_pubkey", e))
-                })
-                .transpose()?,
+                .clone()
+                .map(|v| v.into()),
+            next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),
             next_epoch_object_server_address: value
                 .next_epoch_object_server_address
-                .as_ref()
-                .map(|v| {
-                    v.deserialize().map_err(|e| {
-                        TryFromProtoError::invalid("next_epoch_object_server_address", e)
-                    })
-                })
-                .transpose()?,
+                .clone()
+                .map(|v| v.into()),
         })
     }
 }
@@ -1035,7 +923,7 @@ impl From<crate::types::ObjectReference> for WithdrawStake {
 
 // EmbedData conversions
 pub struct EmbedDataArgs {
-    pub digest: String, // Or whatever the digest type is
+    pub digest: Vec<u8>,
     pub data_size_bytes: usize,
     pub coin_ref: crate::types::ObjectReference,
 }
@@ -1043,7 +931,7 @@ pub struct EmbedDataArgs {
 impl From<EmbedDataArgs> for EmbedData {
     fn from(args: EmbedDataArgs) -> Self {
         Self {
-            digest: Some(args.digest),
+            digest: Some(args.digest.into()),
             data_size_bytes: Some(args.data_size_bytes as u32),
             coin_ref: Some(args.coin_ref.into()),
         }
@@ -1071,10 +959,8 @@ impl From<ReportScoresArgs> for ReportScores {
     fn from(args: ReportScoresArgs) -> Self {
         Self {
             shard_input_ref: Some(args.shard_input_ref.into()),
-            scores: Some(Bcs::serialize(&args.scores).unwrap()),
-            encoder_aggregate_signature: Some(
-                Bcs::serialize(&args.encoder_aggregate_signature).unwrap(),
-            ),
+            scores: Some(args.scores.into()),
+            encoder_aggregate_signature: Some(args.encoder_aggregate_signature.into()),
             signers: args.signers,
         }
     }

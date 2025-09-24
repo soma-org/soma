@@ -70,7 +70,7 @@ impl<C: Clone> SafeClient<C> {
                 let object_ref = object.compute_object_reference();
                 if expected
                     .get(&object_ref.0)
-                    .is_none_or(|expect| &object_ref != expect)
+                    .is_none_or(|expect| object_ref.0 != expect.0)
                 {
                     return Err(SomaError::ByzantineAuthoritySuspicion {
                         authority: self.address,

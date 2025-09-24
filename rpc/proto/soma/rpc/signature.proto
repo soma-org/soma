@@ -5,23 +5,18 @@ syntax = "proto3";
 
 package soma.rpc;
 
-import "soma/rpc/bcs.proto";
 import "soma/rpc/signature_scheme.proto";
 
 // A signature from a user.
 message UserSignature {
-  // This signature serialized as as BCS.
-  //
-  // When provided as input this will support both the form that is length
-  // prefixed as well as not length prefixed.
-  optional Bcs bcs = 1;
+
 
   // The signature scheme of this signature.
-  optional SignatureScheme scheme = 2;
+  optional SignatureScheme scheme = 1;
 
   oneof signature {
     // Simple signature if scheme is ed25519 | secp256k1 | secp256r1.
-    SimpleSignature simple = 3;
+    SimpleSignature simple = 2;
   }
 }
 

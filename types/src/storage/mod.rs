@@ -32,6 +32,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use tracing::info;
 
 use crate::{
     base::{ConsensusObjectSequenceKey, FullObjectID, FullObjectRef},
@@ -402,6 +403,8 @@ pub fn get_transaction_input_objects(
         .map(|(object_id, version)| ObjectKey(object_id, version))
         .collect::<Vec<_>>();
 
+    info!("Input object keys are : {:?}", input_object_keys);
+
     let input_objects = object_store
         .multi_get_objects_by_key(&input_object_keys)?
         .into_iter()
@@ -430,14 +433,16 @@ pub fn get_transaction_output_objects(
         .map(|(object_ref, _owner, _kind)| ObjectKey::from(object_ref))
         .collect::<Vec<_>>();
 
+    let ids: Vec<_> = output_object_keys.iter().map(|k| k.0).collect();
+
     let output_objects = object_store
-        .multi_get_objects_by_key(&output_object_keys)?
+        .multi_get_objects(&ids)?
         .into_iter()
         .enumerate()
         .map(|(idx, maybe_object)| {
             maybe_object.ok_or_else(|| {
                 storage_error::Error::custom(format!(
-                    "missing output object key {:?} from tx {} effects {}",
+                    "missing output objects {:?} from tx {} effects {}",
                     output_object_keys[idx],
                     effects.transaction_digest(),
                     effects.digest()
@@ -445,5 +450,21 @@ pub fn get_transaction_output_objects(
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
+
+    // let output_objects = object_store
+    //     .multi_get_objects_by_key(&output_object_keys)?
+    //     .into_iter()
+    //     .enumerate()
+    //     .map(|(idx, maybe_object)| {
+    //         maybe_object.ok_or_else(|| {
+    //             storage_error::Error::custom(format!(
+    //                 "missing output object key {:?} from tx {} effects {}",
+    //                 output_object_keys[idx],
+    //                 effects.transaction_digest(),
+    //                 effects.digest()
+    //             ))
+    //         })
+    //     })
+    //     .collect::<Result<Vec<_>, _>>()?;
     Ok(output_objects)
 }

@@ -272,13 +272,6 @@ impl Merge<crate::types::UserSignature> for UserSignature {
         use crate::types::UserSignature::*;
         use user_signature::Signature;
 
-        if mask.contains(Self::BCS_FIELD.name) {
-            self.bcs = Some(Bcs {
-                name: Some("UserSignatureBytes".to_owned()),
-                value: Some(source.to_bytes().into()),
-            });
-        }
-
         if mask.contains(Self::SCHEME_FIELD.name) {
             self.scheme = Some(source.scheme().to_u8().into());
         }
@@ -298,15 +291,7 @@ impl Merge<&UserSignature> for UserSignature {
     fn merge(&mut self, source: &UserSignature, mask: &FieldMaskTree) {
         use user_signature::Signature;
 
-        let UserSignature {
-            bcs,
-            scheme,
-            signature,
-        } = source;
-
-        if mask.contains(Self::BCS_FIELD.name) {
-            self.bcs = bcs.clone();
-        }
+        let UserSignature { scheme, signature } = source;
 
         if mask.contains(Self::SCHEME_FIELD.name) {
             self.scheme = *scheme;
@@ -324,16 +309,6 @@ impl TryFrom<&UserSignature> for crate::types::UserSignature {
 
     fn try_from(value: &UserSignature) -> Result<Self, Self::Error> {
         use user_signature::Signature;
-
-        if let Some(bcs) = &value.bcs {
-            if let Ok(sig) = Self::from_bytes(bcs.value()) {
-                return Ok(sig);
-            } else {
-                return bcs
-                    .deserialize()
-                    .map_err(|e| TryFromProtoError::invalid(UserSignature::BCS_FIELD, e));
-            }
-        }
 
         let _scheme = value
             .scheme

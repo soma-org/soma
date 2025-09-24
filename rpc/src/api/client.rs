@@ -5,11 +5,13 @@ use tonic::Status;
 use tonic::metadata::MetadataMap;
 use tonic::transport::channel::ClientTlsConfig;
 use types::effects::TransactionEffects;
+use types::shard::Shard;
 use types::transaction::Transaction;
 
 use crate::proto::TryFromProtoError;
 use crate::proto::soma::transaction_execution_service_client::TransactionExecutionServiceClient;
 use crate::utils::field::FieldMaskUtil;
+use crate::utils::types_conversions::SdkTypeConversionError;
 
 pub type Result<T, E = tonic::Status> = std::result::Result<T, E>;
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -138,27 +140,38 @@ impl Client {
             .tx_signatures
             .iter()
             .map(|signature| {
-                let mut message = crate::proto::soma::UserSignature::default();
-                message.bcs = Some(signature.as_ref().to_vec().into());
+                let message = signature.clone().into();
                 message
             })
             .collect();
 
         let request = crate::proto::soma::ExecuteTransactionRequest::new({
             let mut tx = crate::proto::soma::Transaction::default();
-            tx.bcs = Some(
-                crate::proto::soma::Bcs::serialize(&transaction.inner().intent_message.value)
-                    .map_err(|e| Status::from_error(e.into()))?,
-            );
+            // tx.bcs = Some(
+            //     crate::proto::soma::Bcs::serialize(&transaction.inner().intent_message.value)
+            //         .map_err(|e| Status::from_error(e.into()))?,
+            // );
+
+            tx.kind = Some(transaction.inner().intent_message.value.kind.clone().into());
+            tx.sender = Some((&transaction.inner().intent_message.value.sender()).into());
+            tx.gas_payment = transaction
+                .inner()
+                .intent_message
+                .value
+                .gas_payment
+                .iter()
+                .map(|o| o.clone().into())
+                .map(|o: crate::types::ObjectReference| o.into())
+                .collect();
             tx
         })
         .with_signatures(signatures)
         .with_read_mask(FieldMask::from_paths([
             "finality",
-            "transaction.effects.bcs",
+            "transaction.effects",
             "transaction.balance_changes",
-            "transaction.input_objects.bcs",
-            "transaction.output_objects.bcs",
+            "transaction.input_objects",
+            "transaction.output_objects",
         ]));
 
         let (metadata, response, _extentions) = self
@@ -180,6 +193,7 @@ pub struct TransactionExecutionResponse {
     pub balance_changes: Vec<crate::types::BalanceChange>,
     pub input_objects: Vec<types::object::Object>,
     pub output_objects: Vec<types::object::Object>,
+    pub shard: Option<Shard>,
 }
 
 /// Attempts to parse `TransactionExecutionResponse` from the fields in `TransactionExecutionResponse`
@@ -197,13 +211,24 @@ fn execute_transaction_response_try_from_proto(
         .as_ref()
         .ok_or_else(|| TryFromProtoError::missing("transaction"))?;
 
-    let effects = executed_transaction
-        .effects
-        .as_ref()
-        .and_then(|effects| effects.bcs.as_ref())
-        .ok_or_else(|| TryFromProtoError::missing("effects_bcs"))?
-        .deserialize()
-        .map_err(|e| TryFromProtoError::invalid("effects.bcs", e))?;
+    // First convert from proto to SDK type, then to domain type
+    let effects = {
+        let proto_effects = executed_transaction
+            .effects
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("effects"))?;
+
+        // Proto → SDK type
+        let sdk_effects: crate::types::TransactionEffects = proto_effects.try_into()?;
+
+        // SDK type → Domain type
+        let domain_effects: types::effects::TransactionEffects = sdk_effects
+            .try_into()
+            .map_err(|e| TryFromProtoError::invalid("effects", e))?;
+
+        domain_effects
+    };
+    // .map_err(|e| TryFromProtoError::invalid("effects", e))?;
 
     let balance_changes = executed_transaction
         .balance_changes
@@ -214,18 +239,24 @@ fn execute_transaction_response_try_from_proto(
     let input_objects = executed_transaction
         .input_objects
         .iter()
-        .filter_map(|obj| obj.bcs.as_ref())
-        .map(|bcs| bcs.deserialize())
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| TryFromProtoError::invalid("input_objects.bcs", e))?;
+        .map(|obj| {
+            let obj: crate::types::Object = obj.try_into()?;
+            obj.try_into()
+                .map_err(|e| TryFromProtoError::invalid("input_objects", e))
+        })
+        .collect::<Result<Vec<_>, TryFromProtoError>>()
+        .map_err(|e| TryFromProtoError::invalid("input_objects", e))?;
 
     let output_objects = executed_transaction
         .output_objects
         .iter()
-        .filter_map(|obj| obj.bcs.as_ref())
-        .map(|bcs| bcs.deserialize())
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| TryFromProtoError::invalid("output_objects.bcs", e))?;
+        .map(|obj| {
+            let obj: crate::types::Object = obj.try_into()?;
+            obj.try_into()
+                .map_err(|e| TryFromProtoError::invalid("output_objects", e))
+        })
+        .collect::<Result<Vec<_>, TryFromProtoError>>()
+        .map_err(|e| TryFromProtoError::invalid("output_objects", e))?;
 
     TransactionExecutionResponse {
         finality,

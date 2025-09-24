@@ -36,4 +36,6 @@ message ExecutedTransaction {
 
   // Set of output objects produced from the execution of this transaction.
   repeated Object output_objects = 9;
+
+  optional Shard shard = 10;
 }

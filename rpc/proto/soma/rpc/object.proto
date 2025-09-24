@@ -3,34 +3,30 @@ syntax = "proto3";
 package soma.rpc;
 
 import "google/protobuf/struct.proto";
-import "soma/rpc/bcs.proto";
 import "soma/rpc/owner.proto";
 
 // An object on the Sui blockchain.
 message Object {
-  // This Object serialized as BCS.
-  optional Bcs bcs = 1;
-
   // `ObjectId` for this object.
-  optional string object_id = 2;
+  optional string object_id = 1;
 
   // Version of the object.
-  optional uint64 version = 3;
+  optional uint64 version = 2;
 
   // The digest of this Object.
-  optional string digest = 4;
+  optional string digest = 3;
 
   // Owner of the object.
-  optional Owner owner = 5;
+  optional Owner owner = 4;
 
   // The type of this object.
-  optional string object_type = 6;
+  optional string object_type = 5;
 
   // BCS bytes of a struct value.
-  optional Bcs contents = 7;
+  optional bytes contents = 6;
 
   // The digest of the transaction that created or last mutated this object
-  optional string previous_transaction = 8;
+  optional string previous_transaction = 7;
 
   // JSON rendering of the object.
   // optional google.protobuf.Value json = 100;

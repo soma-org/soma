@@ -10,59 +10,36 @@ pub struct BalanceChange {
     #[prost(string, optional, tag = "2")]
     pub amount: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// `Bcs` contains an arbitrary type that is serialized using the BCS
-/// format as well as a name that identifies the type of the serialized value.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bcs {
-    /// Name that identifies the type of the serialized value.
-    #[prost(string, optional, tag = "1")]
-    pub name: ::core::option::Option<::prost::alloc::string::String>,
-    /// Bytes of a BCS serialized value.
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub value: ::core::option::Option<::prost::bytes::Bytes>,
-}
 /// The effects of executing a transaction.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TransactionEffects {
-    /// This TransactionEffects serialized as BCS.
-    #[prost(message, optional, tag = "1")]
-    pub bcs: ::core::option::Option<Bcs>,
-    /// The digest of this TransactionEffects.
-    #[prost(string, optional, tag = "2")]
-    pub digest: ::core::option::Option<::prost::alloc::string::String>,
     /// The status of the execution.
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag = "1")]
     pub status: ::core::option::Option<ExecutionStatus>,
     /// The epoch when this transaction was executed.
-    #[prost(uint64, optional, tag = "4")]
+    #[prost(uint64, optional, tag = "2")]
     pub epoch: ::core::option::Option<u64>,
     /// The transaction fee
-    #[prost(message, optional, tag = "5")]
+    #[prost(message, optional, tag = "3")]
     pub fee: ::core::option::Option<TransactionFee>,
     /// The transaction digest.
-    #[prost(string, optional, tag = "6")]
+    #[prost(string, optional, tag = "4")]
     pub transaction_digest: ::core::option::Option<::prost::alloc::string::String>,
-    /// Information about the gas object. Also present in the `changed_objects` vector.
-    ///
-    /// System transaction that don't require gas will leave this as `None`.
-    #[prost(message, optional, tag = "7")]
-    pub gas_object: ::core::option::Option<ChangedObject>,
     /// The set of transaction digests this transaction depends on.
-    #[prost(string, repeated, tag = "8")]
+    #[prost(string, repeated, tag = "5")]
     pub dependencies: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     /// The version number of all the written objects (excluding packages) by this transaction.
-    #[prost(uint64, optional, tag = "9")]
+    #[prost(uint64, optional, tag = "6")]
     pub lamport_version: ::core::option::Option<u64>,
     /// Objects whose state are changed by this transaction.
-    #[prost(message, repeated, tag = "10")]
+    #[prost(message, repeated, tag = "7")]
     pub changed_objects: ::prost::alloc::vec::Vec<ChangedObject>,
     /// Shared objects that are not mutated in this transaction. Unlike owned objects,
     /// read-only shared objects' version are not committed in the transaction,
     /// and in order for a node to catch up and execute it without consensus sequencing,
     /// the version needs to be committed in the effects.
-    #[prost(message, repeated, tag = "11")]
+    #[prost(message, repeated, tag = "8")]
     pub unchanged_shared_objects: ::prost::alloc::vec::Vec<UnchangedSharedObject>,
 }
 /// Input/output state of an object that was changed during execution.
@@ -523,29 +500,26 @@ pub mod execution_error {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Object {
-    /// This Object serialized as BCS.
-    #[prost(message, optional, tag = "1")]
-    pub bcs: ::core::option::Option<Bcs>,
     /// `ObjectId` for this object.
-    #[prost(string, optional, tag = "2")]
+    #[prost(string, optional, tag = "1")]
     pub object_id: ::core::option::Option<::prost::alloc::string::String>,
     /// Version of the object.
-    #[prost(uint64, optional, tag = "3")]
+    #[prost(uint64, optional, tag = "2")]
     pub version: ::core::option::Option<u64>,
     /// The digest of this Object.
-    #[prost(string, optional, tag = "4")]
+    #[prost(string, optional, tag = "3")]
     pub digest: ::core::option::Option<::prost::alloc::string::String>,
     /// Owner of the object.
-    #[prost(message, optional, tag = "5")]
+    #[prost(message, optional, tag = "4")]
     pub owner: ::core::option::Option<Owner>,
     /// The type of this object.
-    #[prost(string, optional, tag = "6")]
+    #[prost(string, optional, tag = "5")]
     pub object_type: ::core::option::Option<::prost::alloc::string::String>,
     /// BCS bytes of a struct value.
-    #[prost(message, optional, tag = "7")]
-    pub contents: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "6")]
+    pub contents: ::core::option::Option<::prost::bytes::Bytes>,
     /// The digest of the transaction that created or last mutated this object
-    #[prost(string, optional, tag = "8")]
+    #[prost(string, optional, tag = "7")]
     pub previous_transaction: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Reference to an object.
@@ -625,16 +599,10 @@ pub mod owner {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UserSignature {
-    /// This signature serialized as as BCS.
-    ///
-    /// When provided as input this will support both the form that is length
-    /// prefixed as well as not length prefixed.
-    #[prost(message, optional, tag = "1")]
-    pub bcs: ::core::option::Option<Bcs>,
     /// The signature scheme of this signature.
-    #[prost(enumeration = "SignatureScheme", optional, tag = "2")]
+    #[prost(enumeration = "SignatureScheme", optional, tag = "1")]
     pub scheme: ::core::option::Option<i32>,
-    #[prost(oneof = "user_signature::Signature", tags = "3")]
+    #[prost(oneof = "user_signature::Signature", tags = "2")]
     pub signature: ::core::option::Option<user_signature::Signature>,
 }
 /// Nested message and enum types in `UserSignature`.
@@ -643,7 +611,7 @@ pub mod user_signature {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Signature {
         /// Simple signature if scheme is ed25519 | secp256k1 | secp256r1.
-        #[prost(message, tag = "3")]
+        #[prost(message, tag = "2")]
         Simple(super::SimpleSignature),
     }
 }
@@ -756,17 +724,14 @@ impl SignatureScheme {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Transaction {
-    /// This Transaction serialized as BCS.
-    #[prost(message, optional, tag = "1")]
-    pub bcs: ::core::option::Option<Bcs>,
     /// The digest of this Transaction.
-    #[prost(string, optional, tag = "2")]
+    #[prost(string, optional, tag = "1")]
     pub digest: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "4")]
+    #[prost(message, optional, tag = "2")]
     pub kind: ::core::option::Option<TransactionKind>,
-    #[prost(string, optional, tag = "5")]
+    #[prost(string, optional, tag = "3")]
     pub sender: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag = "6")]
+    #[prost(message, repeated, tag = "4")]
     pub gas_payment: ::prost::alloc::vec::Vec<ObjectReference>,
 }
 /// Transaction type.
@@ -845,26 +810,26 @@ pub mod transaction_kind {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AddValidator {
-    #[prost(message, optional, tag = "1")]
-    pub pubkey_bytes: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "2")]
-    pub network_pubkey_bytes: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "3")]
-    pub worker_pubkey_bytes: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "4")]
-    pub net_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "5")]
-    pub p2p_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "6")]
-    pub primary_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "7")]
-    pub encoder_validator_address: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub pubkey_bytes: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub network_pubkey_bytes: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub worker_pubkey_bytes: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub net_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub p2p_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "6")]
+    pub primary_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "7")]
+    pub encoder_validator_address: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RemoveValidator {
-    #[prost(message, optional, tag = "1")]
-    pub pubkey_bytes: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub pubkey_bytes: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -881,18 +846,18 @@ pub struct UndoReportValidator {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UpdateValidatorMetadata {
-    #[prost(message, optional, tag = "1")]
-    pub next_epoch_network_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "2")]
-    pub next_epoch_p2p_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "3")]
-    pub next_epoch_primary_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "4")]
-    pub next_epoch_protocol_pubkey: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "5")]
-    pub next_epoch_worker_pubkey: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "6")]
-    pub next_epoch_network_pubkey: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub next_epoch_network_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_epoch_p2p_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub next_epoch_primary_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub next_epoch_protocol_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub next_epoch_worker_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "6")]
+    pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -903,22 +868,22 @@ pub struct SetCommissionRate {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AddEncoder {
-    #[prost(message, optional, tag = "1")]
-    pub encoder_pubkey_bytes: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "2")]
-    pub network_pubkey_bytes: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "3")]
-    pub internal_network_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "4")]
-    pub external_network_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "5")]
-    pub object_server_address: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub encoder_pubkey_bytes: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub network_pubkey_bytes: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub internal_network_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub external_network_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub object_server_address: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RemoveEncoder {
-    #[prost(message, optional, tag = "1")]
-    pub encoder_pubkey_bytes: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub encoder_pubkey_bytes: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -935,14 +900,18 @@ pub struct UndoReportEncoder {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UpdateEncoderMetadata {
-    #[prost(message, optional, tag = "1")]
-    pub next_epoch_external_network_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "2")]
-    pub next_epoch_internal_network_address: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "3")]
-    pub next_epoch_network_pubkey: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "4")]
-    pub next_epoch_object_server_address: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub next_epoch_external_network_address: ::core::option::Option<
+        ::prost::bytes::Bytes,
+    >,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_epoch_internal_network_address: ::core::option::Option<
+        ::prost::bytes::Bytes,
+    >,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub next_epoch_object_server_address: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -1013,8 +982,8 @@ pub struct WithdrawStake {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EmbedData {
-    #[prost(string, optional, tag = "1")]
-    pub digest: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub digest: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(uint32, optional, tag = "2")]
     pub data_size_bytes: ::core::option::Option<u32>,
     #[prost(message, optional, tag = "3")]
@@ -1031,10 +1000,10 @@ pub struct ClaimEscrow {
 pub struct ReportScores {
     #[prost(message, optional, tag = "1")]
     pub shard_input_ref: ::core::option::Option<ObjectReference>,
-    #[prost(message, optional, tag = "2")]
-    pub scores: ::core::option::Option<Bcs>,
-    #[prost(message, optional, tag = "3")]
-    pub encoder_aggregate_signature: ::core::option::Option<Bcs>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub scores: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub encoder_aggregate_signature: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(string, repeated, tag = "4")]
     pub signers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
@@ -1438,7 +1407,7 @@ pub mod transaction_execution_service_server {
 }
 /// Summary of the fee for this transaction.
 #[non_exhaustive]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TransactionFee {
     /// base transaction fee.
     #[prost(uint64, optional, tag = "1")]
@@ -1452,4 +1421,6 @@ pub struct TransactionFee {
     /// Total fee deducted.
     #[prost(uint64, optional, tag = "4")]
     pub total_fee: ::core::option::Option<u64>,
+    #[prost(message, optional, tag = "5")]
+    pub gas_object_ref: ::core::option::Option<ObjectReference>,
 }

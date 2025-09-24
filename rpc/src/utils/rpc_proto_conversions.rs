@@ -14,7 +14,7 @@ impl From<types::tx_fee::TransactionFee> for TransactionFee {
             operation_fee,
             value_fee,
             total_fee,
-            gas_object_ref,
+            gas_object_ref, // TODO: use gas_object_ref
         }: types::tx_fee::TransactionFee,
     ) -> Self {
         let mut message = Self::default();
@@ -60,15 +60,15 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::InsufficientGas => (ExecutionErrorKind::InsufficientGas, None),
             E::InvalidOwnership { object_id, .. } => (
                 ExecutionErrorKind::InvalidOwnership,
-                Some(object_id.to_string()),
+                Some(object_id.to_canonical_string()),
             ),
             E::ObjectNotFound { object_id } => (
                 ExecutionErrorKind::ObjectNotFound,
-                Some(object_id.to_string()),
+                Some(object_id.to_canonical_string()),
             ),
             E::InvalidObjectType { object_id, .. } => (
                 ExecutionErrorKind::InvalidObjectType,
-                Some(object_id.to_string()),
+                Some(object_id.to_canonical_string()),
             ),
             E::InvalidTransactionType => (ExecutionErrorKind::InvalidTransactionType, None),
             E::InvalidArguments { reason } => (ExecutionErrorKind::InvalidArguments, Some(reason)),
@@ -179,12 +179,6 @@ impl Merge<types::crypto::GenericSignature> for UserSignature {
     fn merge(&mut self, source: types::crypto::GenericSignature, mask: &FieldMaskTree) {
         use user_signature::Signature;
 
-        if mask.contains(Self::BCS_FIELD) {
-            let mut bcs = Bcs::from(source.as_ref().to_vec());
-            bcs.name = Some("UserSignatureBytes".to_owned());
-            self.bcs = Some(bcs);
-        }
-
         let scheme = match source {
             types::crypto::GenericSignature::Signature(signature) => {
                 let scheme = signature.scheme().into();
@@ -222,18 +216,12 @@ impl From<types::object::Object> for Object {
 
 impl Merge<types::object::Object> for Object {
     fn merge(&mut self, source: types::object::Object, mask: &FieldMaskTree) {
-        if mask.contains(Self::BCS_FIELD.name) {
-            let mut bcs = Bcs::serialize(&source).unwrap();
-            bcs.name = Some("Object".to_owned());
-            self.bcs = Some(bcs);
-        }
-
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = Some(source.digest().to_string());
         }
 
         if mask.contains(Self::OBJECT_ID_FIELD.name) {
-            self.object_id = Some(source.id().to_string());
+            self.object_id = Some(source.id().to_canonical_string());
         }
 
         if mask.contains(Self::VERSION_FIELD.name) {
@@ -263,7 +251,7 @@ impl Merge<types::object::Object> for Object {
 fn object_ref_to_proto(value: types::object::ObjectRef) -> ObjectReference {
     let (object_id, version, digest) = value;
     let mut message = ObjectReference::default();
-    message.object_id = Some(object_id.to_string());
+    message.object_id = Some(object_id.to_canonical_string());
     message.version = Some(version.value());
     message.digest = Some(digest.to_string());
     message
@@ -311,12 +299,6 @@ impl From<types::transaction::TransactionData> for Transaction {
 
 impl Merge<types::transaction::TransactionData> for Transaction {
     fn merge(&mut self, source: types::transaction::TransactionData, mask: &FieldMaskTree) {
-        if mask.contains(Self::BCS_FIELD.name) {
-            let mut bcs = Bcs::serialize(&source).unwrap();
-            bcs.name = Some("TransactionData".to_owned());
-            self.bcs = Some(bcs);
-        }
-
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = Some(source.digest().to_string());
         }
@@ -436,7 +418,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 data_size_bytes,
                 coin_ref,
             } => Kind::EmbedData(EmbedData {
-                digest: Some(digest.to_string()),
+                digest: Some(digest.into()),
                 data_size_bytes: Some(data_size_bytes as u32),
                 coin_ref: Some(object_ref_to_proto(coin_ref)),
             }),
@@ -450,14 +432,8 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 signers,
             } => Kind::ReportScores(ReportScores {
                 shard_input_ref: Some(object_ref_to_proto(shard_input_ref)),
-                scores: Some(Bcs {
-                    name: Some("ShardScores".to_string()),
-                    value: Some(scores.into()),
-                }),
-                encoder_aggregate_signature: Some(Bcs {
-                    name: Some("EncoderAggregateSignature".to_string()),
-                    value: Some(signature.into()),
-                }),
+                scores: Some(scores.into()),
+                encoder_aggregate_signature: Some(signature.into()),
                 signers: signers
                     .into_iter()
                     .map(|s| {
@@ -478,34 +454,13 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
 impl From<types::transaction::AddValidatorArgs> for AddValidator {
     fn from(args: types::transaction::AddValidatorArgs) -> Self {
         Self {
-            pubkey_bytes: Some(Bcs {
-                name: Some("PublicKey".to_string()),
-                value: Some(args.pubkey_bytes.into()),
-            }),
-            network_pubkey_bytes: Some(Bcs {
-                name: Some("NetworkPublicKey".to_string()),
-                value: Some(args.network_pubkey_bytes.into()),
-            }),
-            worker_pubkey_bytes: Some(Bcs {
-                name: Some("WorkerPublicKey".to_string()),
-                value: Some(args.worker_pubkey_bytes.into()),
-            }),
-            net_address: Some(Bcs {
-                name: Some("NetworkAddress".to_string()),
-                value: Some(args.net_address.into()),
-            }),
-            p2p_address: Some(Bcs {
-                name: Some("P2PAddress".to_string()),
-                value: Some(args.p2p_address.into()),
-            }),
-            primary_address: Some(Bcs {
-                name: Some("PrimaryAddress".to_string()),
-                value: Some(args.primary_address.into()),
-            }),
-            encoder_validator_address: Some(Bcs {
-                name: Some("EncoderValidatorAddress".to_string()),
-                value: Some(args.encoder_validator_address.into()),
-            }),
+            pubkey_bytes: Some(args.pubkey_bytes.into()),
+            network_pubkey_bytes: Some(args.network_pubkey_bytes.into()),
+            worker_pubkey_bytes: Some(args.worker_pubkey_bytes.into()),
+            net_address: Some(args.net_address.into()),
+            p2p_address: Some(args.p2p_address.into()),
+            primary_address: Some(args.primary_address.into()),
+            encoder_validator_address: Some(args.encoder_validator_address.into()),
         }
     }
 }
@@ -513,10 +468,7 @@ impl From<types::transaction::AddValidatorArgs> for AddValidator {
 impl From<types::transaction::RemoveValidatorArgs> for RemoveValidator {
     fn from(args: types::transaction::RemoveValidatorArgs) -> Self {
         Self {
-            pubkey_bytes: Some(Bcs {
-                name: Some("PublicKey".to_string()),
-                value: Some(args.pubkey_bytes.into()),
-            }),
+            pubkey_bytes: Some(args.pubkey_bytes.into()),
         }
     }
 }
@@ -524,30 +476,12 @@ impl From<types::transaction::RemoveValidatorArgs> for RemoveValidator {
 impl From<types::transaction::UpdateValidatorMetadataArgs> for UpdateValidatorMetadata {
     fn from(args: types::transaction::UpdateValidatorMetadataArgs) -> Self {
         Self {
-            next_epoch_network_address: args.next_epoch_network_address.map(|bytes| Bcs {
-                name: Some("NetworkAddress".to_string()),
-                value: Some(bytes.into()),
-            }),
-            next_epoch_p2p_address: args.next_epoch_p2p_address.map(|bytes| Bcs {
-                name: Some("P2PAddress".to_string()),
-                value: Some(bytes.into()),
-            }),
-            next_epoch_primary_address: args.next_epoch_primary_address.map(|bytes| Bcs {
-                name: Some("PrimaryAddress".to_string()),
-                value: Some(bytes.into()),
-            }),
-            next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey.map(|bytes| Bcs {
-                name: Some("ProtocolPublicKey".to_string()),
-                value: Some(bytes.into()),
-            }),
-            next_epoch_worker_pubkey: args.next_epoch_worker_pubkey.map(|bytes| Bcs {
-                name: Some("WorkerPublicKey".to_string()),
-                value: Some(bytes.into()),
-            }),
-            next_epoch_network_pubkey: args.next_epoch_network_pubkey.map(|bytes| Bcs {
-                name: Some("NetworkPublicKey".to_string()),
-                value: Some(bytes.into()),
-            }),
+            next_epoch_network_address: args.next_epoch_network_address.map(|bytes| bytes.into()),
+            next_epoch_p2p_address: args.next_epoch_p2p_address.map(|bytes| bytes.into()),
+            next_epoch_primary_address: args.next_epoch_primary_address.map(|bytes| bytes.into()),
+            next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey.map(|bytes| bytes.into()),
+            next_epoch_worker_pubkey: args.next_epoch_worker_pubkey.map(|bytes| bytes.into()),
+            next_epoch_network_pubkey: args.next_epoch_network_pubkey.map(|bytes| bytes.into()),
         }
     }
 }
@@ -555,26 +489,11 @@ impl From<types::transaction::UpdateValidatorMetadataArgs> for UpdateValidatorMe
 impl From<types::transaction::AddEncoderArgs> for AddEncoder {
     fn from(args: types::transaction::AddEncoderArgs) -> Self {
         Self {
-            encoder_pubkey_bytes: Some(Bcs {
-                name: Some("EncoderPublicKey".to_string()),
-                value: Some(args.encoder_pubkey_bytes.into()),
-            }),
-            network_pubkey_bytes: Some(Bcs {
-                name: Some("NetworkPublicKey".to_string()),
-                value: Some(args.network_pubkey_bytes.into()),
-            }),
-            internal_network_address: Some(Bcs {
-                name: Some("InternalNetworkAddress".to_string()),
-                value: Some(args.internal_network_address.into()),
-            }),
-            external_network_address: Some(Bcs {
-                name: Some("ExternalNetworkAddress".to_string()),
-                value: Some(args.external_network_address.into()),
-            }),
-            object_server_address: Some(Bcs {
-                name: Some("ObjectServerAddress".to_string()),
-                value: Some(args.object_server_address.into()),
-            }),
+            encoder_pubkey_bytes: Some(args.encoder_pubkey_bytes.into()),
+            network_pubkey_bytes: Some(args.network_pubkey_bytes.into()),
+            internal_network_address: Some(args.internal_network_address.into()),
+            external_network_address: Some(args.external_network_address.into()),
+            object_server_address: Some(args.object_server_address.into()),
         }
     }
 }
@@ -582,10 +501,7 @@ impl From<types::transaction::AddEncoderArgs> for AddEncoder {
 impl From<types::transaction::RemoveEncoderArgs> for RemoveEncoder {
     fn from(args: types::transaction::RemoveEncoderArgs) -> Self {
         Self {
-            encoder_pubkey_bytes: Some(Bcs {
-                name: Some("EncoderPublicKey".to_string()),
-                value: Some(args.encoder_pubkey_bytes.into()),
-            }),
+            encoder_pubkey_bytes: Some(args.encoder_pubkey_bytes.into()),
         }
     }
 }
@@ -593,28 +509,16 @@ impl From<types::transaction::RemoveEncoderArgs> for RemoveEncoder {
 impl From<types::transaction::UpdateEncoderMetadataArgs> for UpdateEncoderMetadata {
     fn from(args: types::transaction::UpdateEncoderMetadataArgs) -> Self {
         Self {
-            next_epoch_external_network_address: args.next_epoch_external_network_address.map(
-                |bytes| Bcs {
-                    name: Some("ExternalNetworkAddress".to_string()),
-                    value: Some(bytes.into()),
-                },
-            ),
-            next_epoch_internal_network_address: args.next_epoch_internal_network_address.map(
-                |bytes| Bcs {
-                    name: Some("InternalNetworkAddress".to_string()),
-                    value: Some(bytes.into()),
-                },
-            ),
-            next_epoch_network_pubkey: args.next_epoch_network_pubkey.map(|bytes| Bcs {
-                name: Some("NetworkPublicKey".to_string()),
-                value: Some(bytes.into()),
-            }),
-            next_epoch_object_server_address: args.next_epoch_object_server_address.map(|bytes| {
-                Bcs {
-                    name: Some("ObjectServerAddress".to_string()),
-                    value: Some(bytes.into()),
-                }
-            }),
+            next_epoch_external_network_address: args
+                .next_epoch_external_network_address
+                .map(|bytes| bytes.into()),
+            next_epoch_internal_network_address: args
+                .next_epoch_internal_network_address
+                .map(|bytes| bytes.into()),
+            next_epoch_network_pubkey: args.next_epoch_network_pubkey.map(|bytes| bytes.into()),
+            next_epoch_object_server_address: args
+                .next_epoch_object_server_address
+                .map(|bytes| bytes.into()),
         }
     }
 }
@@ -682,31 +586,11 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::FEE_FIELD.name) {
-            // Handle Option<TransactionFee>
-            if let Some(ref fee) = source.transaction_fee {
-                self.fee = Some(fee.clone().into());
-            }
+            self.fee = source.transaction_fee.clone().map(|f| f.into());
         }
 
         if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
             self.transaction_digest = Some(source.transaction_digest.to_string());
-        }
-
-        // Extract gas object from transaction_fee if present
-        if mask.contains(Self::GAS_OBJECT_FIELD.name) {
-            if let Some(ref fee) = source.transaction_fee {
-                // Find the gas object in changed_objects using the gas_object_ref from fee
-                let gas_object_id = fee.gas_object_ref.0;
-                self.gas_object = source
-                    .changed_objects
-                    .iter()
-                    .find(|(id, _)| *id == gas_object_id)
-                    .map(|(id, change)| {
-                        let mut message = ChangedObject::from(change.clone());
-                        message.object_id = Some(id.to_string());
-                        message
-                    });
-            }
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
@@ -727,14 +611,14 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
                 .iter()
                 .map(|(id, change)| {
                     let mut message = ChangedObject::from(change.clone());
-                    message.object_id = Some(id.to_string());
+                    message.object_id = Some(id.to_canonical_string());
                     message
                 })
                 .collect();
         }
 
         // Set version for all objects that have output_digest but no output_version
-        for object in self.changed_objects.iter_mut().chain(&mut self.gas_object) {
+        for object in self.changed_objects.iter_mut() {
             if object.output_digest.is_some() && object.output_version.is_none() {
                 object.output_version = Some(source.version.value());
             }
@@ -746,7 +630,7 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
                 .iter()
                 .map(|(id, unchanged)| {
                     let mut message = UnchangedSharedObject::from(unchanged.clone());
-                    message.object_id = Some(id.to_string());
+                    message.object_id = Some(id.to_canonical_string());
                     message
                 })
                 .collect();

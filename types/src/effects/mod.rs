@@ -84,6 +84,8 @@ pub struct TransactionEffects {
     /// The epoch when this transaction was executed
     pub executed_epoch: EpochId,
 
+    pub transaction_fee: Option<TransactionFee>,
+
     /// The transaction digest that uniquely identifies the transaction
     pub transaction_digest: TransactionDigest,
 
@@ -91,21 +93,19 @@ pub struct TransactionEffects {
     /// These are transactions that must be executed before this one
     pub dependencies: Vec<TransactionDigest>,
 
-    /// Shared objects that are not mutated in this transaction
-    /// Unlike owned objects, read-only shared objects' versions are not committed in the transaction,
-    /// and in order for a node to catch up and execute it without consensus sequencing,
-    /// the version needs to be committed in the effects.
-    pub unchanged_shared_objects: Vec<(ObjectID, UnchangedSharedKind)>,
+    /// The version number assigned to all written objects by this transaction
+    /// All objects modified by a transaction receive the same version number
+    pub version: Version,
 
     /// Objects whose state are changed in the object store
     /// This includes created, modified, and deleted objects
     pub changed_objects: Vec<(ObjectID, EffectsObjectChange)>,
 
-    pub transaction_fee: Option<TransactionFee>,
-
-    /// The version number assigned to all written objects by this transaction
-    /// All objects modified by a transaction receive the same version number
-    pub version: Version,
+    /// Shared objects that are not mutated in this transaction
+    /// Unlike owned objects, read-only shared objects' versions are not committed in the transaction,
+    /// and in order for a node to catch up and execute it without consensus sequencing,
+    /// the version needs to be committed in the effects.
+    pub unchanged_shared_objects: Vec<(ObjectID, UnchangedSharedKind)>,
 }
 
 impl TransactionEffectsAPI for TransactionEffects {

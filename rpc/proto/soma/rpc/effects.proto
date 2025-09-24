@@ -2,50 +2,38 @@ syntax = "proto3";
 
 package soma.rpc;
 
-import "soma/rpc/bcs.proto";
 import "soma/rpc/execution_status.proto";
 import "soma/rpc/transaction_fee.proto";
 import "soma/rpc/owner.proto";
 
 // The effects of executing a transaction.
 message TransactionEffects {
-  // This TransactionEffects serialized as BCS.
-  optional Bcs bcs = 1;
-
-  // The digest of this TransactionEffects.
-  optional string digest = 2;
-
   // The status of the execution.
-  optional ExecutionStatus status = 3;
+  optional ExecutionStatus status = 1;
 
   // The epoch when this transaction was executed.
-  optional uint64 epoch = 4;
+  optional uint64 epoch = 2;
 
   // The transaction fee
-  optional TransactionFee fee = 5;
+  optional TransactionFee fee = 3;
 
   // The transaction digest.
-  optional string transaction_digest = 6;
-
-  // Information about the gas object. Also present in the `changed_objects` vector.
-  //
-  // System transaction that don't require gas will leave this as `None`.
-  optional ChangedObject gas_object = 7;
+  optional string transaction_digest = 4;
 
   // The set of transaction digests this transaction depends on.
-  repeated string dependencies = 8;
+  repeated string dependencies = 5;
 
   // The version number of all the written objects (excluding packages) by this transaction.
-  optional uint64 lamport_version = 9;
+  optional uint64 lamport_version = 6;
 
   // Objects whose state are changed by this transaction.
-  repeated ChangedObject changed_objects = 10;
+  repeated ChangedObject changed_objects = 7;
 
   // Shared objects that are not mutated in this transaction. Unlike owned objects,
   // read-only shared objects' version are not committed in the transaction,
   // and in order for a node to catch up and execute it without consensus sequencing,
   // the version needs to be committed in the effects.
-  repeated UnchangedSharedObject unchanged_shared_objects = 11;
+  repeated UnchangedSharedObject unchanged_shared_objects = 8;
 }
 
 // Input/output state of an object that was changed during execution.

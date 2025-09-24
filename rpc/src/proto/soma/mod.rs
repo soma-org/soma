@@ -37,69 +37,6 @@ mod descriptor {
     }
 }
 
-impl Bcs {
-    pub fn serialize<T: serde::Serialize>(value: &T) -> Result<Self, bcs::Error> {
-        bcs::to_bytes(value).map(|bcs| Self {
-            name: None,
-            value: Some(bcs.into()),
-        })
-    }
-
-    pub fn deserialize<'de, T: serde::Deserialize<'de>>(&'de self) -> Result<T, bcs::Error> {
-        bcs::from_bytes(self.value.as_deref().unwrap_or(&[]))
-    }
-}
-
-impl From<Vec<u8>> for Bcs {
-    fn from(value: Vec<u8>) -> Self {
-        Self {
-            name: None,
-            value: Some(value.into()),
-        }
-    }
-}
-
-impl From<&Bcs> for Vec<u8> {
-    fn from(value: &Bcs) -> Self {
-        value
-            .value
-            .as_ref()
-            .map(|bytes| bytes.to_vec())
-            .unwrap_or_default()
-    }
-}
-
-impl From<Bcs> for Vec<u8> {
-    fn from(value: Bcs) -> Self {
-        value
-            .value
-            .as_ref()
-            .map(|bytes| bytes.to_vec())
-            .unwrap_or_default()
-    }
-}
-
-impl From<prost::bytes::Bytes> for Bcs {
-    fn from(value: prost::bytes::Bytes) -> Self {
-        Self {
-            name: None,
-            value: Some(value),
-        }
-    }
-}
-
-impl From<&Bcs> for prost::bytes::Bytes {
-    fn from(value: &Bcs) -> Self {
-        value.value.clone().unwrap_or_default()
-    }
-}
-
-impl From<Bcs> for prost::bytes::Bytes {
-    fn from(value: Bcs) -> Self {
-        value.value.unwrap_or_default()
-    }
-}
-
 impl AsRef<str> for ErrorReason {
     fn as_ref(&self) -> &str {
         self.as_str_name()
