@@ -18,7 +18,7 @@ tokio.workspace = true
 tokio-util.workspace = true
 tower.workspace = true
 tracing.workspace = true
-
+rustls.workspace = true
 # TLS support
 tokio-rustls.workspace = true
 

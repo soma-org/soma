@@ -11,6 +11,7 @@ use crate::{
     },
     error::SomaError,
     finality::{SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
+    object::Object,
     shard::{Shard, ShardAuthToken},
     transaction::{CertifiedTransaction, SignedTransaction, Transaction, VerifiedTransaction},
 };
@@ -20,12 +21,18 @@ use thiserror::Error;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecuteTransactionRequest {
     pub transaction: Transaction,
+    pub include_input_objects: bool,
+    pub include_output_objects: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExecuteTransactionResponse {
     pub effects: FinalizedEffects,
     pub shard: Option<Shard>,
+    // Input objects will only be populated in the happy path
+    pub input_objects: Option<Vec<Object>>,
+    // Output objects will only be populated in the happy path
+    pub output_objects: Option<Vec<Object>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, schemars::JsonSchema)]
@@ -55,6 +62,10 @@ pub struct QuorumDriverRequest {
 pub struct QuorumDriverResponse {
     pub effects_cert: VerifiedCertifiedTransactionEffects,
     pub finality_cert: Option<VerifiedCertifiedConsensusFinality>,
+    // Input objects will only be populated in the happy path
+    pub input_objects: Option<Vec<Object>>,
+    // Output objects will only be populated in the happy path
+    pub output_objects: Option<Vec<Object>>,
 }
 
 pub type QuorumDriverResult = Result<QuorumDriverResponse, QuorumDriverError>;

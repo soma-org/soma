@@ -576,6 +576,7 @@ impl EncoderSet {
             self.compute_unadjusted_reward_distribution(total_voting_power, *total_rewards);
 
         // Identify encoders to be slashed
+        // TODO: Base this off the shards that each encoder has been in rather than the whole EncoderCommittee's stake
         let slashed_encoders = self.compute_slashed_encoders(encoder_report_records);
 
         // Calculate total voting power of slashed encoders

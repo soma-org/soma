@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+import "soma/rpc/execution_status.proto";
+import "soma/rpc/transaction_fee.proto";
+import "soma/rpc/owner.proto";
+
+// The effects of executing a transaction.
+message TransactionEffects {
+  // The status of the execution.
+  optional ExecutionStatus status = 1;
+
+  // The epoch when this transaction was executed.
+  optional uint64 epoch = 2;
+
+  // The transaction fee
+  optional TransactionFee fee = 3;
+
+  // The transaction digest.
+  optional string transaction_digest = 4;
+
+  // The set of transaction digests this transaction depends on.
+  repeated string dependencies = 5;
+
+  // The version number of all the written objects (excluding packages) by this transaction.
+  optional uint64 lamport_version = 6;
+
+  // Objects whose state are changed by this transaction.
+  repeated ChangedObject changed_objects = 7;
+
+  // Shared objects that are not mutated in this transaction. Unlike owned objects,
+  // read-only shared objects' version are not committed in the transaction,
+  // and in order for a node to catch up and execute it without consensus sequencing,
+  // the version needs to be committed in the effects.
+  repeated UnchangedSharedObject unchanged_shared_objects = 8;
+}
+
+// Input/output state of an object that was changed during execution.
+message ChangedObject {
+  // ID of the object.
+  optional string object_id = 1;
+
+  enum InputObjectState {
+    INPUT_OBJECT_STATE_UNKNOWN = 0;
+    INPUT_OBJECT_STATE_DOES_NOT_EXIST = 1;
+    INPUT_OBJECT_STATE_EXISTS = 2;
+  }
+
+  optional InputObjectState input_state = 2;
+
+  // Version of the object before this transaction executed.
+  optional uint64 input_version = 3;
+  // Digest of the object before this transaction executed.
+  optional string input_digest = 4;
+  // Owner of the object before this transaction executed.
+  optional Owner input_owner = 5;
+
+  enum OutputObjectState {
+    OUTPUT_OBJECT_STATE_UNKNOWN = 0;
+    OUTPUT_OBJECT_STATE_DOES_NOT_EXIST = 1;
+    OUTPUT_OBJECT_STATE_OBJECT_WRITE = 2;
+  }
+
+  optional OutputObjectState output_state = 6;
+  // Version of the object after this transaction executed.
+  optional uint64 output_version = 7;
+  // Digest of the object after this transaction executed.
+  optional string output_digest = 8;
+  // Owner of the object after this transaction executed.
+  optional Owner output_owner = 9;
+
+  enum IdOperation {
+    ID_OPERATION_UNKNOWN = 0;
+    NONE = 1;
+    CREATED = 2;
+    DELETED = 3;
+  }
+
+  // What happened to an `ObjectId` during execution.
+  optional IdOperation id_operation = 10;
+
+  // Type information is not provided by the effects structure but is instead
+  // provided by an indexing layer
+  optional string object_type = 11;
+}
+
+// A shared object that wasn't changed during execution.
+message UnchangedSharedObject {
+  enum UnchangedSharedObjectKind {
+    UNCHANGED_SHARED_OBJECT_KIND_UNKNOWN = 0;
+
+    // Read-only shared object from the input.
+    READ_ONLY_ROOT = 1;
+
+    /// Deleted shared objects that appear mutably/owned in the input
+    MUTATED_DELETED = 2;
+
+    // Deleted shared objects that appear as read-only in the input.
+    READ_DELETED = 3;
+
+    // Consensus objects that were congested and resulted in this transaction being
+    // canceled.
+    CANCELED = 4;
+
+    // Read of a per-epoch config object that should remain the same during an
+    // epoch. This optionally will indicate the sequence number of the config
+    // object at the start of the epoch.
+    // PER_EPOCH_CONFIG = 5;
+  }
+
+  optional UnchangedSharedObjectKind kind = 1;
+
+  // ObjectId of the consensus object.
+  optional string object_id = 2;
+
+  // Version of the consensus object.
+  optional uint64 version = 3;
+
+  // Digest of the consensus object.
+  optional string digest = 4;
+
+  // Type information is not provided by the effects structure but is instead
+  // provided by an indexing layer
+  optional string object_type = 5;
+}

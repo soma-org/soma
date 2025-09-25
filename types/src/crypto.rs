@@ -871,16 +871,10 @@ pub fn random_committee_key_pairs_of_size(size: usize) -> Vec<AuthorityKeyPair> 
 }
 
 #[enum_dispatch(AuthenticatorTrait)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GenericSignature {
-    Signature(Signature),
+    Signature,
 }
-
-// impl From<Signature> for GenericSignature {
-//     fn from(sig: Signature) -> Self {
-//         GenericSignature::Signature(sig)
-//     }
-// }
 
 impl GenericSignature {
     pub fn verify_authenticator<T>(
@@ -894,6 +888,65 @@ impl GenericSignature {
     {
         self.verify_user_authenticator_epoch(epoch)?;
         self.verify_claims(value, author)
+    }
+}
+
+impl ToFromBytes for GenericSignature {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, FastCryptoError> {
+        match SignatureScheme::from_flag_byte(
+            bytes.first().ok_or(FastCryptoError::InputTooShort(0))?,
+        ) {
+            Ok(x) => match x {
+                SignatureScheme::ED25519 => Ok(GenericSignature::Signature(
+                    Signature::from_bytes(bytes).map_err(|_| FastCryptoError::InvalidSignature)?,
+                )),
+
+                _ => Err(FastCryptoError::InvalidInput),
+            },
+            Err(_) => Err(FastCryptoError::InvalidInput),
+        }
+    }
+}
+
+/// Trait useful to get the bytes reference for [enum GenericSignature].
+impl AsRef<[u8]> for GenericSignature {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            GenericSignature::Signature(s) => s.as_ref(),
+        }
+    }
+}
+
+impl ::serde::Serialize for GenericSignature {
+    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            #[derive(serde::Serialize)]
+            struct GenericSignature(String);
+            GenericSignature(self.encode_base64()).serialize(serializer)
+        } else {
+            #[derive(serde::Serialize)]
+            struct GenericSignature<'a>(&'a [u8]);
+            GenericSignature(self.as_ref()).serialize(serializer)
+        }
+    }
+}
+
+impl<'de> ::serde::Deserialize<'de> for GenericSignature {
+    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+
+        if deserializer.is_human_readable() {
+            #[derive(serde::Deserialize)]
+            struct GenericSignature(String);
+            let s = GenericSignature::deserialize(deserializer)?;
+            Self::decode_base64(&s.0).map_err(::serde::de::Error::custom)
+        } else {
+            #[derive(serde::Deserialize)]
+            struct GenericSignature(Vec<u8>);
+
+            let data = GenericSignature::deserialize(deserializer)?;
+            Self::from_bytes(&data.0).map_err(|e| Error::custom(e.to_string()))
+        }
     }
 }
 

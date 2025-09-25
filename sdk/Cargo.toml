@@ -1,0 +1,19 @@
+[package]
+name = "sdk"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+types.workspace = true
+soma-keys.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+serde_with = { version = "3.9", default-features = false, features = ["alloc"] }
+thiserror.workspace = true
+rpc.workspace = true
+bcs.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

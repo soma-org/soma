@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+// The delta, or change, in balance for an address for a particular `Coin` type.
+message BalanceChange {
+  // The account address that is affected by this balance change event.
+  optional string address = 1;
+
+  // The amount or change in balance.
+  optional string amount = 2;
+}

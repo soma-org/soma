@@ -30,12 +30,14 @@
 //! - Version-based state tracking for concurrency control
 //! - Lamport timestamps for causal ordering
 
+use crate::base::HexAccountAddress;
 use crate::{
     base::{FullObjectID, FullObjectRef, SomaAddress, SOMA_ADDRESS_LENGTH},
     committee::EpochId,
     crypto::{default_hash, DefaultHash},
     digests::{ObjectDigest, TransactionDigest},
     error::{SomaError, SomaResult},
+    serde::Readable,
     system_state::{shard::ShardInput, staking::StakedSoma},
 };
 use crate::{metadata::MetadataCommitment, shard_crypto::digest::Digest};
@@ -47,8 +49,8 @@ use fastcrypto::{
 };
 use rand::{rngs::OsRng, Rng};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, Bytes};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::{serde_as, Bytes, DeserializeAs, SerializeAs};
 use std::{
     cmp::max,
     fmt::{Display, Formatter},
@@ -642,7 +644,11 @@ pub enum ObjectType {
 /// ObjectID is Copy and can be safely shared across threads.
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
-pub struct ObjectID(SomaAddress);
+pub struct ObjectID(
+    #[schemars(with = "Hex")]
+    #[serde_as(as = "Readable<HexAccountAddress, _>")]
+    SomaAddress,
+);
 
 impl ObjectID {
     /// The number of bytes in an object ID

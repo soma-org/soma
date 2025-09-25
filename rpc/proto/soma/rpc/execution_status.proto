@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+// The status of an executed transaction.
+message ExecutionStatus {
+  // Indicates if the transaction was successful or not.
+  optional bool success = 1;
+
+  // The error if `success` is false.
+  optional ExecutionError error = 2;
+}
+
+// An error that can occur during the execution of a transaction.
+message ExecutionError {
+  // A human readable description of the error
+  optional string description = 1;
+
+  enum ExecutionErrorKind {
+    EXECUTION_ERROR_KIND_UNKNOWN = 0;
+
+    //
+    // General errors.
+    //
+
+    // Insufficient gas.
+    INSUFFICIENT_GAS = 1;
+
+    // Invalid owner for object.
+    INVALID_OWNERSHIP = 2;
+
+    // Object not found.
+    OBJECT_NOT_FOUND = 3;
+
+    // Invalid object type.
+    INVALID_OBJECT_TYPE = 4;
+
+    // Invalid transaction type
+    INVALID_TRANSACTION_TYPE = 5;
+
+    // Invalid arguments for transaction
+    INVALID_ARGUMENTS = 6;
+
+    //
+    // Validator errors.
+    //
+
+    // Adding avalidator that already exists
+    DUPLICATE_VALIDATOR = 7;
+
+    // Trying to remove a validator that doesn't exist
+    NOT_A_VALIDATOR = 8;
+
+    // Removing a validator that was already removed
+    VALIDATOR_ALREADY_REMOVED = 9;
+
+    // Advancing to unexpected epoch
+    ADVANCED_TO_WRONG_EPOCH = 10;
+
+    //
+    // Encoder errors.
+    //
+
+    // Adding an encoder that already exists
+    DUPLICATE_ENCODER = 11;
+
+    // Removing an encoder that doesn't exist
+    NOT_AN_ENCODER = 12;
+
+    // Removing an encoder already removed
+    ENCODER_ALREADY_REMOVED = 13;
+
+    //
+    // Coin errors.
+    //
+
+    // Insufficient coin balance for requested operation.
+    INSUFFICIENT_COIN_BALANCE = 14;
+
+    // Coin balance overflowed an u64.
+    COIN_BALANCE_OVERFLOW = 15;
+
+    //
+    // Staking errors.
+    //
+
+    // Validator not found
+    VALIDATOR_NOT_FOUND = 16;
+
+    // Encoder not found
+    ENCODER_NOT_FOUND = 17;
+
+    // Staking pool not found
+    STAKING_POOL_NOT_FOUND = 18;
+
+    // Validator cannot report oneself
+    CANNOT_REPORT_ONESELF = 19;
+
+    // Unreported record cannot be undone
+    REPORT_RECORD_NOT_FOUND = 20;
+
+    // Other error.
+    OTHER_ERROR = 21;
+  }
+
+  optional ExecutionErrorKind kind = 2;
+
+  oneof error_details {
+    string object_id = 3;
+    string other_error = 4;
+  }
+}

@@ -1,5 +1,6 @@
 pub mod accumulator;
 pub mod actors;
+pub mod balance_change;
 pub mod base;
 pub mod checksum;
 pub mod client;
@@ -44,6 +45,7 @@ pub mod system_state;
 pub mod temporary_store;
 pub mod tls;
 pub mod transaction;
+pub mod transaction_executor;
 pub mod tx_fee;
 pub mod tx_outputs;
 pub mod unit_tests;

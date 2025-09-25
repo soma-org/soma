@@ -1,5 +1,6 @@
 use crate::{
     base::SomaAddress,
+    config::{local_ip_utils, rpc_config::RpcConfig},
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
     genesis::Genesis,
     multiaddr::Multiaddr,
@@ -14,6 +15,7 @@ use fastcrypto::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{
+    net::SocketAddr,
     ops::Mul,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
@@ -47,6 +49,8 @@ pub struct NodeConfig {
     // #[serde(skip_serializing_if = "Option::is_none")]
     pub consensus_config: Option<ConsensusConfig>,
 
+    pub rpc: Option<RpcConfig>,
+
     pub genesis: Genesis,
 
     pub end_of_epoch_broadcast_channel_capacity: usize, // 128
@@ -55,6 +59,9 @@ pub struct NodeConfig {
     pub p2p_config: P2pConfig,
 
     pub encoder_validator_address: Multiaddr,
+
+    #[serde(default = "default_rpc_address")]
+    pub rpc_address: SocketAddr,
 }
 
 impl NodeConfig {
@@ -109,12 +116,16 @@ impl NodeConfig {
     pub fn encoder_validator_address(&self) -> &Multiaddr {
         &self.encoder_validator_address
     }
+
+    pub fn rpc(&self) -> Option<&crate::config::rpc_config::RpcConfig> {
+        self.rpc.as_ref()
+    }
 }
 
 /// Wrapper struct for SomaKeyPair that can be deserialized from a file path. Used by network, worker, and account keypair.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPairWithPath {
-    // #[serde(flatten)]
+    #[serde(flatten)]
     location: KeyPairLocation,
     #[serde(skip)]
     keypair: OnceLock<Arc<SomaKeyPair>>,
@@ -122,14 +133,14 @@ pub struct KeyPairWithPath {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde_as]
+#[serde(untagged)]
 enum KeyPairLocation {
-    #[serde(skip)]
     InPlace {
-        // #[serde_as(as = "Arc<KeyPairBase64>")]
+        #[serde_as(as = "Arc<KeyPairBase64>")]
         value: Arc<SomaKeyPair>,
     },
     File {
-        // #[serde(rename = "path")]
+        #[serde(rename = "path")]
         path: PathBuf,
     },
 }
@@ -273,6 +284,11 @@ impl ConsensusConfig {
 //     )
 // }
 
+pub fn default_rpc_address() -> SocketAddr {
+    use std::net::{IpAddr, Ipv4Addr};
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 9000)
+}
+
 fn default_grpc_address() -> Multiaddr {
     "/ip4/0.0.0.0/tcp/8080".parse().unwrap()
 }
@@ -376,6 +392,10 @@ impl ValidatorConfigBuilder {
             network_address,
             genesis: genesis,
             encoder_validator_address: validator.encoder_validator_address,
+            rpc_address: validator.rpc_address.to_socket_addr().unwrap(),
+            rpc: Some(RpcConfig {
+                ..Default::default()
+            }),
             consensus_config,
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,

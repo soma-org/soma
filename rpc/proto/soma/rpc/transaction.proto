@@ -1,0 +1,242 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "soma/rpc/object.proto";
+import "soma/rpc/object_reference.proto";
+
+// A transaction.
+message Transaction {
+
+  // The digest of this Transaction.
+  optional string digest = 1;
+
+  optional TransactionKind kind = 2;
+  optional string sender = 3;
+  repeated ObjectReference gas_payment = 4;
+}
+
+// Transaction type.
+message TransactionKind {
+  oneof kind {
+    // Transaction used to initialize the chain state.
+    //
+    // Only valid if in the genesis checkpoint (0) and if this is the very first transaction ever
+    // executed on the chain.
+    GenesisTransaction genesis = 1;
+
+    // Consensus commit update.
+    ConsensusCommitPrologue consensus_commit_prologue = 2;
+
+    // System transaction used to end an epoch..
+    ChangeEpoch change_epoch = 3;
+
+    AddValidator add_validator = 4;
+
+    RemoveValidator remove_validator = 5;
+
+    ReportValidator report_validator = 6;
+
+    UndoReportValidator undo_report_validator = 7;
+
+    UpdateValidatorMetadata update_validator_metadata = 8;
+
+    SetCommissionRate set_commission_rate = 9;
+
+    AddEncoder add_encoder = 10;
+
+    RemoveEncoder remove_encoder = 11;
+
+    ReportEncoder report_encoder = 12;
+
+    UndoReportEncoder undo_report_encoder = 13;
+
+    UpdateEncoderMetadata update_encoder_metadata = 14;
+
+    SetEncoderCommissionRate set_encoder_commission_rate = 15;
+
+    SetEncoderBytePrice set_encoder_byte_price = 16;
+
+    TransferCoin transfer_coin = 17;
+
+    PayCoins pay_coins = 18;
+
+    TransferObjects transfer_objects = 19;
+
+    AddStake add_stake = 20;
+
+    AddStakeToEncoder add_stake_to_encoder = 21;
+
+    WithdrawStake withdraw_stake = 22;
+
+    EmbedData embed_data = 23;
+
+    ClaimEscrow claim_escrow = 24;
+
+    ReportScores report_scores = 25;
+  }
+}
+
+message AddValidator {
+  optional bytes pubkey_bytes = 1;
+  optional bytes network_pubkey_bytes = 2;
+  optional bytes worker_pubkey_bytes = 3;
+  optional bytes net_address = 4;
+  optional bytes p2p_address = 5;
+  optional bytes primary_address = 6;
+  optional bytes encoder_validator_address = 7;
+}
+
+message RemoveValidator {
+  optional bytes pubkey_bytes = 1;
+}
+
+message ReportValidator {
+  optional string reportee = 1;
+}
+
+message UndoReportValidator {
+  optional string reportee = 1;
+}
+
+message UpdateValidatorMetadata {
+  optional bytes next_epoch_network_address = 1;
+  optional bytes next_epoch_p2p_address = 2;
+  optional bytes next_epoch_primary_address = 3;
+  optional bytes next_epoch_protocol_pubkey = 4;
+  optional bytes next_epoch_worker_pubkey = 5;
+  optional bytes next_epoch_network_pubkey= 6;
+}
+
+message SetCommissionRate {
+  optional uint64 new_rate = 1;
+}
+
+message AddEncoder {
+  optional bytes encoder_pubkey_bytes = 1;
+  optional bytes network_pubkey_bytes = 2;
+  optional bytes internal_network_address = 3;
+  optional bytes external_network_address = 4;
+  optional bytes object_server_address = 5;
+}
+
+message RemoveEncoder {
+  optional bytes encoder_pubkey_bytes = 1;
+}
+
+message ReportEncoder {
+  optional string reportee = 1;
+}
+
+message UndoReportEncoder {
+  optional string reportee = 1;
+}
+
+message UpdateEncoderMetadata {
+  optional bytes next_epoch_external_network_address = 1;
+  optional bytes next_epoch_internal_network_address = 2;
+  optional bytes next_epoch_network_pubkey = 3;
+  optional bytes next_epoch_object_server_address = 4;
+}
+
+message SetEncoderCommissionRate {
+  optional uint64 new_rate = 1;
+}
+
+message SetEncoderBytePrice {
+  optional uint64 new_price = 1;
+}
+
+message TransferCoin {
+  optional ObjectReference coin = 1;
+  optional uint64 amount = 2;
+  optional string recipient = 3;
+}
+
+message PayCoins {
+  repeated ObjectReference coins = 1;
+  repeated uint64 amounts = 2;
+  repeated string recipients = 3;
+}
+
+message TransferObjects {
+  repeated ObjectReference objects = 1;
+  optional string recipient = 2;
+}
+
+message AddStake {
+  optional string address = 1;
+  optional ObjectReference coin_ref = 2;
+  optional uint64 amount = 3;
+}
+
+message AddStakeToEncoder {
+  optional string encoder_address = 1;
+  optional ObjectReference coin_ref = 2;
+  optional uint64 amount = 3;
+}
+
+message WithdrawStake {
+  optional ObjectReference staked_soma = 1;
+}
+
+message EmbedData {
+  optional bytes digest = 1;
+  optional uint32 data_size_bytes = 2;
+  optional ObjectReference coin_ref = 3;
+}
+
+message ClaimEscrow {
+  optional ObjectReference shard_input_ref = 1;
+}
+
+message ReportScores {
+  optional ObjectReference shard_input_ref = 1;
+  optional bytes scores = 2;
+  optional bytes encoder_aggregate_signature = 3;
+  repeated string signers = 4;
+}
+
+
+// System transaction used to change the epoch.
+message ChangeEpoch {
+  // The next (to become) epoch ID.
+  optional uint64 epoch = 1;
+
+  // Unix timestamp when epoch started.
+  optional google.protobuf.Timestamp epoch_start_timestamp = 2;
+
+  // The protocol version in effect in the new epoch.
+  // optional uint64 protocol_version = 2;
+}
+
+
+// The genesis transaction.
+message GenesisTransaction {
+  // Set of genesis objects.
+  repeated Object objects = 1;
+}
+
+// Consensus commit prologue system transaction.
+//
+// This message can represent V1, V2, and V3 prologue types.
+message ConsensusCommitPrologue {
+  // Epoch of the commit prologue transaction.
+  optional uint64 epoch = 1;
+
+  // Consensus round of the commit.
+  optional uint64 round = 2;
+
+  // Unix timestamp from consensus.
+  optional google.protobuf.Timestamp commit_timestamp = 3;
+
+  // Digest of consensus output.
+  optional string consensus_commit_digest = 4;
+
+  // The sub DAG index of the consensus commit. This field is populated if there
+  // are multiple consensus commits per round.
+  optional uint64 sub_dag_index = 5;
+}

@@ -1,4 +1,5 @@
 use std::{
+    net::SocketAddr,
     num::NonZeroUsize,
     path::PathBuf,
     time::{Duration, Instant},
@@ -7,6 +8,13 @@ use std::{
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
+use rpc::api::client::TransactionExecutionResponse;
+use sdk::{
+    client_config::{SomaClientConfig, SomaEnv},
+    wallet_context::WalletContext,
+    SomaClient, SomaClientBuilder,
+};
+use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
 use swarm::{Swarm, SwarmBuilder};
 use tokio::time::timeout;
 use tracing::{error, info};
@@ -22,6 +30,7 @@ use types::{
         network_config::NetworkConfig,
         node_config::{NodeConfig, ValidatorConfigBuilder},
         p2p_config::SeedPeer,
+        Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
     },
     crypto::SomaKeyPair,
     effects::TransactionEffects,
@@ -32,7 +41,7 @@ use types::{
     shard::{Shard, ShardAuthToken},
     shard_crypto::keys::{EncoderKeyPair, PeerKeyPair},
     system_state::{SystemState, SystemStateTrait},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionData},
 };
 
 #[cfg(msim)]
@@ -50,21 +59,42 @@ const NUM_VALIDATORS: usize = 4;
 
 pub struct FullNodeHandle {
     pub soma_node: SomaNodeHandle,
+    pub soma_client: SomaClient,
+    pub rpc_url: String,
 }
 
 impl FullNodeHandle {
-    pub async fn new(soma_node: SomaNodeHandle) -> Self {
-        Self { soma_node }
+    pub async fn new(soma_node: SomaNodeHandle, rpc_address: SocketAddr) -> Self {
+        let rpc_url = format!("http://{}", rpc_address);
+        let soma_client = SomaClientBuilder::default().build(&rpc_url).await.unwrap();
+
+        Self {
+            soma_node,
+            soma_client,
+            rpc_url,
+        }
     }
 }
 
 pub struct TestCluster {
     pub swarm: Swarm,
-    // pub wallet: WalletContext,
+    pub wallet: WalletContext,
     pub fullnode_handle: FullNodeHandle,
 }
 
 impl TestCluster {
+    pub fn wallet(&mut self) -> &WalletContext {
+        &self.wallet
+    }
+
+    pub fn wallet_mut(&mut self) -> &mut WalletContext {
+        &mut self.wallet
+    }
+
+    pub fn get_addresses(&self) -> Vec<SomaAddress> {
+        self.wallet.get_addresses()
+    }
+
     pub fn all_node_handles(&self) -> Vec<SomaNodeHandle> {
         self.swarm
             .all_nodes()
@@ -141,19 +171,10 @@ impl TestCluster {
         self.swarm.spawn_new_node(node_config).await
     }
 
-    /// Convenience method to start a new fullnode in the test cluster.
-    // pub async fn spawn_new_fullnode(&mut self) -> FullNodeHandle {
-    //     self.start_fullnode_from_config(
-    //         self.fullnode_config_builder()
-    //             .build(&mut OsRng, self.swarm.config()),
-    //     )
-    //     .await
-    // }
-
     pub async fn start_fullnode_from_config(&mut self, config: NodeConfig) -> FullNodeHandle {
-        // let json_rpc_address = config.json_rpc_address;
+        let rpc_address = config.rpc_address;
         let node = self.swarm.spawn_new_node(config).await;
-        FullNodeHandle::new(node).await
+        FullNodeHandle::new(node, rpc_address).await
     }
 
     /// Ask 2f+1 validators to close epoch actively, and wait for the entire network to reach the next
@@ -290,16 +311,27 @@ impl TestCluster {
             .expect("timed out waiting for reconfiguration to complete");
     }
 
-    pub async fn execute_transaction(
-        &self,
-        tx: Transaction,
-    ) -> SomaResult<(TransactionEffects, Option<Shard>)> {
-        self.fullnode_handle
-            .soma_node
-            .with_async(|node| async { node.execute_transaction(tx).await })
-            .await
+    pub async fn sign_transaction(&self, tx_data: &TransactionData) -> Transaction {
+        self.wallet.sign_transaction(tx_data).await
     }
 
+    pub async fn sign_and_execute_transaction(
+        &self,
+        tx_data: &TransactionData,
+    ) -> TransactionExecutionResponse {
+        let tx = self.wallet.sign_transaction(tx_data).await;
+        self.execute_transaction(tx).await
+    }
+
+    /// Execute a transaction on the network and wait for it to be executed on the rpc fullnode.
+    /// Also expects the effects status to be ExecutionStatus::Success.
+    /// This function is recommended for transaction execution since it most resembles the
+    /// production path.
+    pub async fn execute_transaction(&self, tx: Transaction) -> TransactionExecutionResponse {
+        self.wallet.execute_transaction_must_succeed(tx).await
+    }
+
+    // TODO: change this when ledger service in RPC is implemented
     pub async fn get_gas_objects_owned_by_address(
         &self,
         address: SomaAddress,
@@ -484,6 +516,7 @@ impl TestClusterBuilder {
 
     pub async fn build(mut self) -> TestCluster {
         let swarm = self.start_swarm().await.unwrap();
+        let working_dir = swarm.dir();
 
         // Find a networking validator to use as the "fullnode"
         let fullnode = swarm
@@ -494,12 +527,32 @@ impl TestClusterBuilder {
             })
             .expect("No networking validator found to use as fullnode");
 
-        let fullnode_handle = fullnode.get_node_handle().unwrap();
+        let rpc_address = fullnode.config().rpc_address;
+        let fullnode_handle =
+            FullNodeHandle::new(fullnode.get_node_handle().unwrap(), rpc_address).await;
+
+        let rpc_url = fullnode_handle.rpc_url.clone();
+
+        let mut wallet_conf: SomaClientConfig =
+            PersistedConfig::read(&working_dir.join(SOMA_CLIENT_CONFIG)).unwrap();
+        wallet_conf.envs.push(SomaEnv {
+            alias: "localnet".to_string(),
+            rpc: rpc_url,
+            basic_auth: None,
+        });
+        wallet_conf.active_env = Some("localnet".to_string());
+
+        wallet_conf
+            .persisted(&working_dir.join(SOMA_CLIENT_CONFIG))
+            .save()
+            .unwrap();
+
+        let wallet_conf = swarm.dir().join(SOMA_CLIENT_CONFIG);
+        let wallet = WalletContext::new(&wallet_conf).unwrap();
 
         TestCluster {
-            fullnode_handle: FullNodeHandle {
-                soma_node: fullnode_handle,
-            },
+            wallet,
+            fullnode_handle,
             swarm,
         }
     }
@@ -533,6 +586,31 @@ impl TestClusterBuilder {
 
         let mut swarm = builder.build();
         swarm.launch().await?;
+
+        let dir = swarm.dir();
+
+        let network_path = dir.join(SOMA_NETWORK_CONFIG);
+        let wallet_path = dir.join(SOMA_CLIENT_CONFIG);
+        let keystore_path = dir.join(SOMA_KEYSTORE_FILENAME);
+
+        swarm.config().save(network_path)?;
+        let mut keystore = Keystore::from(FileBasedKeystore::load_or_create(&keystore_path)?);
+        for key in &swarm.config().account_keys {
+            keystore.import(None, key.copy()).await?;
+        }
+
+        let active_address = keystore.addresses().first().cloned();
+
+        // Create wallet config with stated authorities port
+        SomaClientConfig {
+            keystore: Keystore::from(FileBasedKeystore::load_or_create(&keystore_path)?),
+            external_keys: None,
+            envs: Default::default(),
+            active_address,
+            active_env: Default::default(),
+        }
+        .save(wallet_path)?;
+
         Ok(swarm)
     }
 

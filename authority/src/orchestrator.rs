@@ -30,8 +30,10 @@ use types::{
     shard_crypto::{digest::Digest, keys::PeerPublicKey},
     system_state::{SystemState, SystemStateTrait},
     transaction::{
-        Transaction, TransactionKind, VerifiedExecutableTransaction, VerifiedTransaction,
+        Transaction, TransactionData, TransactionKind, VerifiedExecutableTransaction,
+        VerifiedTransaction,
     },
+    transaction_executor::{SimulateTransactionResult, TransactionChecks},
 };
 use utils::notify_read::NotifyRead;
 
@@ -52,7 +54,7 @@ const LOCAL_EXECUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 const WAIT_FOR_FINALITY_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub struct TransactiondOrchestrator<A: Clone> {
+pub struct TransactionOrchestrator<A: Clone> {
     quorum_driver_handler: Arc<QuorumDriverHandler<A>>,
     validator_state: Arc<AuthorityState>,
     _local_executor_handle: JoinHandle<()>,
@@ -62,7 +64,7 @@ pub struct TransactiondOrchestrator<A: Clone> {
     encoder_client: Option<Arc<EncoderClientService>>,
 }
 
-impl TransactiondOrchestrator<NetworkAuthorityClient> {
+impl TransactionOrchestrator<NetworkAuthorityClient> {
     pub fn new_with_encoder_client(
         validators: Arc<AuthorityAggregator<NetworkAuthorityClient>>,
         validator_state: Arc<AuthorityState>,
@@ -71,7 +73,7 @@ impl TransactiondOrchestrator<NetworkAuthorityClient> {
     ) -> Self {
         let observer =
             OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
-        TransactiondOrchestrator::new(validators, validator_state, observer, encoder_client)
+        TransactionOrchestrator::new(validators, validator_state, observer, encoder_client)
     }
 
     pub fn new_with_auth_aggregator(
@@ -81,11 +83,11 @@ impl TransactiondOrchestrator<NetworkAuthorityClient> {
     ) -> Self {
         let observer =
             OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
-        TransactiondOrchestrator::new(validators, validator_state, observer, None)
+        TransactionOrchestrator::new(validators, validator_state, observer, None)
     }
 }
 
-impl<A> TransactiondOrchestrator<A>
+impl<A> TransactionOrchestrator<A>
 where
     A: AuthorityAPI + Send + Sync + 'static + Clone,
     OnsiteReconfigObserver: ReconfigObserver<A>,
@@ -127,7 +129,7 @@ where
     }
 }
 
-impl<A> TransactiondOrchestrator<A>
+impl<A> TransactionOrchestrator<A>
 where
     A: AuthorityAPI + Send + Sync + 'static + Clone,
 {
@@ -172,6 +174,8 @@ where
         let QuorumDriverResponse {
             effects_cert,
             finality_cert,
+            input_objects,
+            output_objects,
         } = response;
 
         let shard = self
@@ -181,6 +185,8 @@ where
         let response = ExecuteTransactionResponse {
             effects: FinalizedEffects::new_from_effects_cert(effects_cert.into()),
             shard,
+            input_objects,
+            output_objects,
         };
 
         Ok((response, executed_locally))
@@ -323,6 +329,8 @@ where
                     QuorumDriverResponse {
                         effects_cert,
                         finality_cert,
+                        input_objects,
+                        output_objects,
                     },
                 ))) => {
                     let tx_digest = transaction.digest();
@@ -543,5 +551,37 @@ where
 
     pub fn subscribe_to_effects_queue(&self) -> Receiver<QuorumDriverEffectsQueueResult> {
         self.quorum_driver_handler.subscribe_to_effects()
+    }
+}
+
+#[async_trait::async_trait]
+impl<A> types::transaction_executor::TransactionExecutor for TransactionOrchestrator<A>
+where
+    A: AuthorityAPI + Send + Sync + 'static + Clone,
+{
+    async fn execute_transaction(
+        &self,
+        request: ExecuteTransactionRequest,
+        client_addr: Option<std::net::SocketAddr>,
+    ) -> Result<ExecuteTransactionResponse, QuorumDriverError> {
+        let (response, _) = self
+            .execute_transaction_block(
+                request,
+                ExecuteTransactionRequestType::WaitForLocalExecution,
+                client_addr,
+            )
+            .await?;
+
+        Ok(response)
+    }
+
+    fn simulate_transaction(
+        &self,
+        transaction: TransactionData,
+        checks: TransactionChecks,
+    ) -> Result<SimulateTransactionResult, SomaError> {
+        todo!()
+        // self.validator_state
+        //     .simulate_transaction(transaction, checks)
     }
 }

@@ -212,7 +212,7 @@ impl<S: ObjectStorage + Clone> ObjectHttpServiceProxy<S> {
 
     fn router(self) -> Router {
         Router::new()
-            .route("/:path", get(Self::download_object))
+            .route("/path", get(Self::download_object))
             .with_state(self)
     }
 

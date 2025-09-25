@@ -574,6 +574,8 @@ where
                     let response = QuorumDriverResponse {
                         effects_cert: effects,
                         finality_cert: finality,
+                        input_objects: None,
+                        output_objects: None,
                     };
                     quorum_driver.notify(transaction, &Ok(response), old_retry_times + 1);
                     return;
@@ -604,6 +606,8 @@ where
                 HandleCertificateRequest {
                     certificate: tx_cert.clone(),
                     wait_for_finality,
+                    include_input_objects: request.include_input_objects,
+                    include_output_objects: request.include_output_objects,
                 },
                 client_addr,
             )

@@ -21,6 +21,8 @@ members = [
   "bin-version",
   "soma-config",
   "soma-keys",
+  "rpc",
+  "sdk",
 ]
 
 
@@ -96,6 +98,8 @@ encoder-validator-api = { path = "encoder-validator-api" }
 bin-version = { path = "bin-version" }
 soma-config = { path = "soma-config" }
 soma-keys = { path = "soma-keys" }
+rpc = { path = "rpc" }
+sdk = { path = "sdk" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim-macros" }
@@ -214,7 +218,18 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "zstd",
 ] }
-axum = "0.7.9"
+axum = { version = "0.8", default-features = false, features = [
+  "macros",
+  "tokio",
+  "http1",
+  "http2",
+  "json",
+  "matched-path",
+  "original-uri",
+  "form",
+  "query",
+  "ws",
+] }
 zstd = "0.13.2"
 
 clap = { version = "4.5", features = ["derive"] }

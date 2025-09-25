@@ -3,7 +3,10 @@
 
 use crate::error::{SomaKeyError, SomaKeyResult};
 use crate::key_derive::{derive_key_pair_from_path, generate_new_key};
+use crate::key_identity::KeyIdentity;
 use crate::random_names::{random_name, random_names};
+use anyhow::{Context, anyhow};
+use async_trait::async_trait;
 use bip32::DerivationPath;
 use bip39::{Language, Mnemonic, Seed};
 use enum_dispatch::enum_dispatch;
@@ -16,10 +19,16 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use types::base::SomaAddress;
+use types::crypto::Signature;
 use types::crypto::get_key_pair_from_rng;
 use types::crypto::{EncodeDecodeBase64, PublicKey, SignatureScheme, SomaKeyPair};
+use types::intent::{Intent, IntentMessage};
+
+pub const ALIASES_FILE_EXTENSION: &str = "aliases";
 
 #[derive(Serialize, Deserialize)]
 #[enum_dispatch(AccountKeystore)]
@@ -28,6 +37,7 @@ pub enum Keystore {
     InMem(InMemKeystore),
 }
 
+#[async_trait]
 #[enum_dispatch]
 pub trait AccountKeystore: Send + Sync {
     fn add_key(&mut self, alias: Option<String>, keypair: SomaKeyPair) -> SomaKeyResult<()>;
@@ -47,12 +57,44 @@ pub trait AccountKeystore: Send + Sync {
             .map(|a| a.alias.as_str())
             .collect()
     }
+    /// Return an array of `PublicKey`, consisting of every public key in the keystore.
+    fn entries(&self) -> Vec<PublicKey>;
     /// Get alias of address
     fn get_alias_by_address(&self, address: &SomaAddress) -> SomaKeyResult<String>;
     fn get_address_by_alias(&self, alias: String) -> SomaKeyResult<&SomaAddress>;
     /// Check if an alias exists by its name
     fn alias_exists(&self, alias: &str) -> bool {
         self.alias_names().contains(&alias)
+    }
+
+    /// Import a keypair into the keystore from a `SuiKeyPair` and optional alias.
+    async fn import(
+        &mut self,
+        alias: Option<String>,
+        keypair: SomaKeyPair,
+    ) -> Result<(), anyhow::Error>;
+
+    /// Sign a message with the keypair corresponding to the given address with the given intent.
+    async fn sign_secure<T>(
+        &self,
+        address: &SomaAddress,
+        msg: &T,
+        intent: Intent,
+    ) -> Result<Signature, signature::Error>
+    where
+        T: Serialize + Sync;
+
+    /// Get address by its identity: a type which is either an address or an alias.
+    fn get_by_identity(&self, key_identity: &KeyIdentity) -> Result<SomaAddress, anyhow::Error> {
+        match key_identity {
+            KeyIdentity::Address(addr) => Ok(*addr),
+            KeyIdentity::Alias(alias) => Ok(*self
+                .addresses_with_alias()
+                .iter()
+                .find(|(_, a)| a.alias == *alias)
+                .ok_or_else(|| anyhow!("Cannot resolve alias {alias} to an address"))?
+                .0),
+        }
     }
 
     fn create_alias(&self, alias: Option<String>) -> SomaKeyResult<String>;
@@ -146,6 +188,125 @@ pub struct FileBasedKeystore {
     path: Option<PathBuf>,
 }
 
+impl FileBasedKeystore {
+    pub fn load_or_create(path: &PathBuf) -> Result<Self, anyhow::Error> {
+        let keys = if path.exists() {
+            #[cfg(unix)]
+            let _ = set_reduced_file_permissions(path).inspect_err(|error| {
+                eprintln!(
+                    "[{}]: while attempting to ensure reduced file permissions on '{}'. Cannot set \
+                    permissions for keystore file. Error: {error}",
+                    "warning",
+                    path.display(),
+                );
+            });
+
+            let reader =
+                BufReader::new(std::fs::File::open(path).with_context(|| {
+                    format!("Cannot open the keystore file: {}", path.display())
+                })?);
+            let kp_strings: Vec<String> = serde_json::from_reader(reader).with_context(|| {
+                format!("Cannot deserialize the keystore file: {}", path.display(),)
+            })?;
+            kp_strings
+                .iter()
+                .map(|kpstr| {
+                    let key = SomaKeyPair::decode_base64(kpstr);
+                    key.map(|k| (SomaAddress::from(&k.public()), k))
+                })
+                .collect::<Result<BTreeMap<_, _>, _>>()
+                .map_err(|e| anyhow!("Invalid keystore file: {}. {}", path.display(), e))?
+        } else {
+            BTreeMap::new()
+        };
+
+        // check aliases
+        let mut aliases_path = path.clone();
+        aliases_path.set_extension(ALIASES_FILE_EXTENSION);
+
+        let aliases = if aliases_path.exists() {
+            let reader = BufReader::new(std::fs::File::open(&aliases_path).with_context(|| {
+                format!(
+                    "Cannot open aliases file in keystore: {}",
+                    aliases_path.display()
+                )
+            })?);
+
+            let aliases: Vec<Alias> = serde_json::from_reader(reader).with_context(|| {
+                format!(
+                    "Cannot deserialize aliases file in keystore: {}",
+                    aliases_path.display(),
+                )
+            })?;
+
+            aliases
+                .into_iter()
+                .map(|alias| {
+                    let key = PublicKey::decode_base64(&alias.public_key_base64);
+                    key.map(|k| (Into::<SomaAddress>::into(&k), alias))
+                })
+                .collect::<Result<BTreeMap<_, _>, _>>()
+                .map_err(|e| {
+                    anyhow!(
+                        "Invalid aliases file in keystore: {}. {}",
+                        aliases_path.display(),
+                        e
+                    )
+                })?
+        } else if keys.is_empty() {
+            BTreeMap::new()
+        } else {
+            let names: Vec<String> = random_names(HashSet::new(), keys.len());
+            let aliases = keys
+                .iter()
+                .zip(names)
+                .map(|((sui_address, skp), alias)| {
+                    let public_key_base64 = skp.public().encode_base64();
+                    (
+                        *sui_address,
+                        Alias {
+                            alias,
+                            public_key_base64,
+                        },
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            let aliases_store = serde_json::to_string_pretty(&aliases.values().collect::<Vec<_>>())
+                .with_context(|| {
+                    format!(
+                        "Cannot serialize aliases to file in keystore: {}",
+                        aliases_path.display()
+                    )
+                })?;
+
+            std::fs::write(aliases_path, aliases_store)?;
+            aliases
+        };
+
+        Ok(Self {
+            keys,
+            aliases,
+            path: Some(path.to_path_buf()),
+        })
+    }
+}
+
+#[cfg(unix)]
+fn set_reduced_file_permissions(path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
+    let path = path.as_ref();
+    let metadata = fs::metadata(path)?;
+    let mode = metadata.permissions().mode();
+    if mode & 0o177 != 0 {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).with_context(|| {
+            format!(
+                "Cannot set permissions for keystore file: {}.",
+                path.display(),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 impl Serialize for FileBasedKeystore {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -172,6 +333,7 @@ impl<'de> Deserialize<'de> for FileBasedKeystore {
     }
 }
 
+#[async_trait]
 impl AccountKeystore for FileBasedKeystore {
     fn add_key(&mut self, alias: Option<String>, keypair: SomaKeyPair) -> SomaKeyResult<()> {
         let address: SomaAddress = (&keypair.public()).into();
@@ -191,6 +353,29 @@ impl AccountKeystore for FileBasedKeystore {
     fn remove_key(&mut self, address: SomaAddress) -> SomaKeyResult<()> {
         self.aliases.remove(&address);
         self.keys.remove(&address);
+        self.save()?;
+        Ok(())
+    }
+
+    fn entries(&self) -> Vec<PublicKey> {
+        self.keys.values().map(|key| key.public()).collect()
+    }
+
+    async fn import(
+        &mut self,
+        alias: Option<String>,
+        keypair: SomaKeyPair,
+    ) -> Result<(), anyhow::Error> {
+        let address: SomaAddress = (&keypair.public()).into();
+        let alias = self.create_alias(alias)?;
+        self.aliases.insert(
+            address,
+            Alias {
+                alias,
+                public_key_base64: keypair.public().encode_base64(),
+            },
+        );
+        self.keys.insert(address, keypair);
         self.save()?;
         Ok(())
     }
@@ -268,6 +453,23 @@ impl AccountKeystore for FileBasedKeystore {
         let new_alias_name = self.update_alias_value(old_alias, new_alias)?;
         self.save_aliases()?;
         Ok(new_alias_name)
+    }
+
+    async fn sign_secure<T>(
+        &self,
+        address: &SomaAddress,
+        msg: &T,
+        intent: Intent,
+    ) -> Result<Signature, signature::Error>
+    where
+        T: Serialize + Sync,
+    {
+        Ok(Signature::new_secure(
+            &IntentMessage::new(intent, msg),
+            self.keys.get(address).ok_or_else(|| {
+                signature::Error::from_source(format!("Cannot find key for address: [{address}]"))
+            })?,
+        ))
     }
 }
 
@@ -438,6 +640,7 @@ pub struct InMemKeystore {
     keys: BTreeMap<SomaAddress, SomaKeyPair>,
 }
 
+#[async_trait]
 impl AccountKeystore for InMemKeystore {
     fn add_key(&mut self, alias: Option<String>, keypair: SomaKeyPair) -> SomaKeyResult<()> {
         let address: SomaAddress = (&keypair.public()).into();
@@ -459,6 +662,36 @@ impl AccountKeystore for InMemKeystore {
         self.aliases.insert(address, alias);
         self.keys.insert(address, keypair);
         Ok(())
+    }
+
+    async fn import(
+        &mut self,
+        alias: Option<String>,
+        keypair: SomaKeyPair,
+    ) -> Result<(), anyhow::Error> {
+        let address: SomaAddress = (&keypair.public()).into();
+        let alias = alias.unwrap_or_else(|| {
+            random_name(
+                &self
+                    .aliases()
+                    .iter()
+                    .map(|x| x.alias.clone())
+                    .collect::<HashSet<_>>(),
+            )
+        });
+
+        let public_key_base64 = keypair.public().encode_base64();
+        let alias = Alias {
+            alias,
+            public_key_base64,
+        };
+        self.aliases.insert(address, alias);
+        self.keys.insert(address, keypair);
+        Ok(())
+    }
+
+    fn entries(&self) -> Vec<PublicKey> {
+        self.keys.values().map(|key| key.public()).collect()
     }
 
     fn remove_key(&mut self, address: SomaAddress) -> SomaKeyResult<()> {
@@ -537,6 +770,23 @@ impl AccountKeystore for InMemKeystore {
     /// it will generate a new random alias.
     fn update_alias(&mut self, old_alias: &str, new_alias: Option<&str>) -> SomaKeyResult<String> {
         self.update_alias_value(old_alias, new_alias)
+    }
+
+    async fn sign_secure<T>(
+        &self,
+        address: &SomaAddress,
+        msg: &T,
+        intent: Intent,
+    ) -> Result<Signature, signature::Error>
+    where
+        T: Serialize + Sync,
+    {
+        Ok(Signature::new_secure(
+            &IntentMessage::new(intent, msg),
+            self.keys.get(address).ok_or_else(|| {
+                signature::Error::from_source(format!("Cannot find key for address: [{address}]"))
+            })?,
+        ))
     }
 }
 

@@ -132,14 +132,10 @@ impl StressTestRunner {
             )
         });
 
-        let (effects, _) = self
-            .test_cluster
-            .execute_transaction(transaction)
-            .await
-            .unwrap();
+        let response = self.test_cluster.execute_transaction(transaction).await;
 
-        assert!(effects.status().is_ok());
-        effects
+        assert!(response.effects.status().is_ok());
+        response.effects
     }
 
     pub async fn change_epoch(&self) {

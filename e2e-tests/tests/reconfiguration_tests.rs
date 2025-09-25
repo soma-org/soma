@@ -67,22 +67,6 @@ async fn basic_reconfig_end_to_end_test() {
 
 #[cfg(msim)]
 #[msim::sim_test]
-async fn test_state_sync() {
-    init_tracing();
-
-    let mut test_cluster = TestClusterBuilder::new().build().await;
-
-    // Make sure the validators are quiescent before bringing up the node.
-    sleep(Duration::from_millis(10000)).await;
-
-    // Start a new fullnode that is not on the write path
-    let fullnode = test_cluster.spawn_new_fullnode().await.soma_node;
-
-    sleep(Duration::from_millis(30000)).await;
-}
-
-#[cfg(msim)]
-#[msim::sim_test]
 async fn test_reconfig_with_committee_change_basic() {
     init_tracing();
     // This test exercise the full flow of a validator joining the network, catch up and then leave.
@@ -294,7 +278,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
                 system_state.validators.total_stake,
                 system_state
                     .validators
-                    .active_validators
+                    .consensus_validators
                     .iter()
                     .map(|v| v.metadata.soma_address)
                     .collect::<Vec<_>>(),
@@ -352,7 +336,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
             .validators;
 
         let candidate = system_state
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == address);
 
@@ -362,8 +346,8 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         // Check that the validator voting power has decreased just below the
         // "min" threshold but not below the "low" threshold.
         // Yet the candidate is not at risk.
-        assert!(candidate.voting_power < VALIDATOR_MIN_POWER);
-        assert!(candidate.voting_power > VALIDATOR_LOW_POWER);
+        assert!(candidate.voting_power < VALIDATOR_CONSENSUS_MIN_POWER);
+        assert!(candidate.voting_power > VALIDATOR_CONSENSUS_LOW_POWER);
         assert_eq!(system_state.at_risk_validators.len(), 0);
     });
 
@@ -393,7 +377,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
             .validators;
 
         let candidate = system_state
-            .active_validators
+            .consensus_validators
             .iter()
             .find(|v| v.metadata.soma_address == address)
             .unwrap()
@@ -402,9 +386,9 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         // Check that the validator voting power has decreased just below the
         // "min" threshold and also below the "low" threshold.
         // Yet the candidate is not at risk.
-        assert!(candidate.voting_power < VALIDATOR_MIN_POWER);
-        assert!(candidate.voting_power < VALIDATOR_LOW_POWER);
-        assert!(candidate.voting_power > VALIDATOR_VERY_LOW_POWER);
+        assert!(candidate.voting_power < VALIDATOR_CONSENSUS_MIN_POWER);
+        assert!(candidate.voting_power < VALIDATOR_CONSENSUS_LOW_POWER);
+        assert!(candidate.voting_power > VALIDATOR_CONSENSUS_VERY_LOW_POWER);
         assert_eq!(system_state.at_risk_validators.len(), 1);
     });
 
@@ -419,7 +403,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
             node.state()
                 .get_system_state_object_for_testing()
                 .validators
-                .active_validators
+                .consensus_validators
                 .len(),
             initial_num_validators
         )
@@ -468,7 +452,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
             (
                 system_state.total_stake,
                 system_state
-                    .active_validators
+                    .consensus_validators
                     .iter()
                     .map(|v| v.metadata.soma_address)
                     .collect::<Vec<_>>(),
@@ -529,7 +513,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
             .state()
             .get_system_state_object_for_testing()
             .validators
-            .active_validators
+            .consensus_validators
             .iter()
             .map(|v| v.metadata.soma_address)
             .collect::<Vec<_>>();
@@ -567,7 +551,7 @@ async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNo
 
     info!(?tx, "Executing remove validator tx: {}", address);
 
-    test_cluster.execute_transaction(tx).await;
+    let _response = test_cluster.execute_transaction(tx).await;
 }
 
 /// Execute a sequence of transactions to add a validator, including adding candidate, adding stake
@@ -617,7 +601,7 @@ async fn execute_add_validator_transactions(
         &new_validator.network_address.to_string()
     );
 
-    test_cluster.execute_transaction(tx).await;
+    let _response = test_cluster.execute_transaction(tx).await;
 
     execute_add_stake_transaction(
         new_validator.account_key_pair.copy(),
@@ -668,7 +652,7 @@ async fn execute_add_stake_transaction(
 
     info!(?tx, "Executing stake validator tx {}", address.to_string());
 
-    test_cluster.execute_transaction(tx).await;
+    let _response = test_cluster.execute_transaction(tx).await;
 }
 
 // TODO: async fn test_inactive_validator_pool_read()

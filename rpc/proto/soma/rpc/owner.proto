@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+// Enum of different types of ownership for an object.
+message Owner {
+  enum OwnerKind {
+    OWNER_KIND_UNKNOWN = 0;
+    ADDRESS = 1;
+    SHARED = 2;
+    IMMUTABLE = 3;
+  }
+  optional OwnerKind kind = 1;
+
+  // Address or ObjectId of the owner
+  optional string address = 2;
+
+  // The `initial_shared_version` if kind is `SHARED`.
+  optional uint64 version = 3;
+}

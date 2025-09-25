@@ -45,6 +45,7 @@ arc-swap.workspace = true
 tonic-rustls.workspace = true
 http.workspace = true
 pin-project-lite.workspace = true
+serde_yaml = "0.8.26"
 serde_with = { version = "3.8", features = ["schemars_0_8"] }
 derive_more = "0.99.17"
 schemars = { version = "0.8.21", features = ["either"] }

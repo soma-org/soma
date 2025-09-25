@@ -110,7 +110,7 @@ pub enum TransactionKind {
     },
     // Encoder management transactions
     AddEncoder(AddEncoderArgs),
-    RemoveEncoder,
+    RemoveEncoder(RemoveEncoderArgs),
 
     // Encoder reporting
     ReportEncoder {
@@ -251,6 +251,11 @@ pub struct AddEncoderArgs {
     pub internal_network_address: Vec<u8>,
     pub external_network_address: Vec<u8>,
     pub object_server_address: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RemoveEncoderArgs {
+    pub encoder_pubkey_bytes: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -774,7 +779,7 @@ impl TransactionData {
         &self.kind
     }
 
-    fn sender(&self) -> SomaAddress {
+    pub fn sender(&self) -> SomaAddress {
         self.sender
     }
 
@@ -846,6 +851,10 @@ pub struct SenderSignedData(SizeOneVec<SenderSignedTransaction>);
 impl SenderSignedData {
     pub fn inner(&self) -> &SenderSignedTransaction {
         self.0.element()
+    }
+
+    pub fn into_inner(self) -> SenderSignedTransaction {
+        self.0.into_inner()
     }
 
     pub fn intent_message(&self) -> &IntentMessage<TransactionData> {

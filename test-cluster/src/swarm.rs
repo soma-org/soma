@@ -3,7 +3,13 @@ use anyhow::Result;
 use futures::future::try_join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
-use std::{collections::HashMap, net::SocketAddr, num::NonZeroUsize};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+};
+use tempfile::TempDir;
 use tracing::info;
 use types::{
     base::AuthorityName,
@@ -16,9 +22,42 @@ use types::{
     multiaddr::Multiaddr,
 };
 
+#[derive(Debug)]
+enum SwarmDirectory {
+    Persistent(PathBuf),
+    Temporary(TempDir),
+}
+
+impl SwarmDirectory {
+    fn new_temporary() -> Self {
+        SwarmDirectory::Temporary(TempDir::new().unwrap())
+    }
+}
+
+impl std::ops::Deref for SwarmDirectory {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            SwarmDirectory::Persistent(dir) => dir.deref(),
+            SwarmDirectory::Temporary(dir) => dir.path(),
+        }
+    }
+}
+
+impl AsRef<Path> for SwarmDirectory {
+    fn as_ref(&self) -> &Path {
+        match self {
+            SwarmDirectory::Persistent(dir) => dir.as_ref(),
+            SwarmDirectory::Temporary(dir) => dir.as_ref(),
+        }
+    }
+}
+
 /// A handle to an in-memory Soma Network.
 #[derive(Debug)]
 pub struct Swarm {
+    dir: SwarmDirectory,
     network_config: NetworkConfig,
     nodes: HashMap<AuthorityName, Node>,
 }
@@ -68,6 +107,11 @@ impl Swarm {
         self.nodes.get(name)
     }
 
+    /// Return the path to the directory where this Swarm's on-disk data is kept.
+    pub fn dir(&self) -> &Path {
+        self.dir.as_ref()
+    }
+
     /// Return an iterator over shared references of all nodes that are set up as validators.
     /// This means that they have a consensus config. This however doesn't mean this validator is
     /// currently active (i.e. it's not necessarily in the validator set at the moment).
@@ -112,6 +156,7 @@ impl Swarm {
 
 pub struct SwarmBuilder<R = OsRng> {
     rng: R,
+    dir: Option<PathBuf>,
     committee: CommitteeConfig,
     encoder_committee: EncoderCommitteeConfig,
     genesis_config: Option<GenesisConfig>,
@@ -125,6 +170,7 @@ impl SwarmBuilder {
     pub fn new() -> Self {
         Self {
             rng: OsRng,
+            dir: None,
             committee: CommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             encoder_committee: EncoderCommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             genesis_config: None,
@@ -140,6 +186,7 @@ impl<R> SwarmBuilder<R> {
     pub fn rng<N: rand::RngCore + rand::CryptoRng>(self, rng: N) -> SwarmBuilder<N> {
         SwarmBuilder {
             rng,
+            dir: self.dir,
             committee: self.committee,
             encoder_committee: self.encoder_committee,
             genesis_config: self.genesis_config,
@@ -148,6 +195,16 @@ impl<R> SwarmBuilder<R> {
             fullnode_rpc_port: self.fullnode_rpc_port,
             fullnode_rpc_addr: self.fullnode_rpc_addr,
         }
+    }
+
+    /// Set the directory that should be used by the Swarm for any on-disk data.
+    ///
+    /// If a directory is provided, it will not be cleaned up when the Swarm is dropped.
+    ///
+    /// Defaults to using a temporary directory that will be cleaned up when the Swarm is dropped.
+    pub fn dir<P: Into<PathBuf>>(mut self, dir: P) -> Self {
+        self.dir = Some(dir.into());
+        self
     }
 
     /// Set the committee size (the number of validators in the validator set).
@@ -219,6 +276,12 @@ impl<R> SwarmBuilder<R> {
 impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
     /// Create the configured Swarm.
     pub fn build(self) -> Swarm {
+        let dir = if let Some(dir) = self.dir {
+            SwarmDirectory::Persistent(dir)
+        } else {
+            SwarmDirectory::new_temporary()
+        };
+
         let mut network_config = self.network_config.unwrap_or_else(|| {
             let mut config_builder = ConfigBuilder::new();
 
@@ -298,6 +361,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
         Swarm {
             network_config,
             nodes,
+            dir,
         }
     }
 }

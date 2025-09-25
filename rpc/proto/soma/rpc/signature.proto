@@ -1,0 +1,83 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package soma.rpc;
+
+import "soma/rpc/signature_scheme.proto";
+
+// A signature from a user.
+message UserSignature {
+
+
+  // The signature scheme of this signature.
+  optional SignatureScheme scheme = 1;
+
+  oneof signature {
+    // Simple signature if scheme is ed25519 | secp256k1 | secp256r1.
+    SimpleSignature simple = 2;
+  }
+}
+
+// Either an ed25519, secp256k1 or secp256r1 signature
+message SimpleSignature {
+  // The signature scheme of this signature.
+  optional SignatureScheme scheme = 1;
+
+  // Signature bytes
+  optional bytes signature = 2;
+
+  // Public key bytes
+  optional bytes public_key = 3;
+}
+// The validator set for a particular epoch.
+message ValidatorCommittee {
+  // The epoch where this committee governs.
+  optional uint64 epoch = 1;
+
+  // The committee members.
+  repeated ValidatorCommitteeMember members = 2;
+}
+// A member of a validator committee with full authority information.
+message ValidatorCommitteeMember {
+  // The BLS12381 public key bytes (becomes AuthorityName)
+  optional bytes authority_key = 1;
+
+  // Voting weight this validator possesses.
+  optional uint64 weight = 2;
+
+  // Network metadata for this validator
+  optional ValidatorNetworkMetadata network_metadata = 3;
+}
+
+// Network and protocol information for a validator
+message ValidatorNetworkMetadata {
+  // Multiaddr for consensus communication (as string)
+  optional string consensus_address = 1;
+
+  // Hostname for metrics and logging
+  optional string hostname = 2;
+
+  // Ed25519 protocol public key bytes
+  optional bytes protocol_key = 3;
+
+  // Ed25519 network public key bytes
+  optional bytes network_key = 4;
+}
+
+/// An aggregated signature from multiple validators.
+message ValidatorAggregatedSignature {
+  // The epoch when this signature was produced.
+  //
+  // This can be used to lookup the `ValidatorCommittee` from this epoch
+  // to verify this signature.
+  optional uint64 epoch = 1;
+
+  // The 48-byte Bls12381 aggregated signature.
+  optional bytes signature = 2;
+
+  // Bitmap indicating which members of the committee contributed to
+  // this signature.
+  repeated uint32 bitmap = 3;
+}

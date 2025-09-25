@@ -1,0 +1,13 @@
+
+syntax = "proto3";
+
+package soma.rpc;
+
+// Flag use to disambiguate the signature schemes supported by Soma.
+//
+// Note: the enum values defined by this proto message exactly match their
+// expected BCS serialized values when serialized as a u8.
+enum SignatureScheme {
+  ED25519 = 0;
+  BLS12381 = 1;
+}

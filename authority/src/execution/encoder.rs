@@ -38,7 +38,7 @@ impl EncoderExecutor {
                 args.object_server_address.clone(),
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
             ),
-            TransactionKind::RemoveEncoder => state.request_remove_encoder(signer),
+            TransactionKind::RemoveEncoder(args) => state.request_remove_encoder(signer),
             TransactionKind::ReportEncoder { reportee } => state.report_encoder(signer, *reportee),
             TransactionKind::UndoReportEncoder { reportee } => {
                 state.undo_report_encoder(signer, *reportee)

@@ -16,6 +16,9 @@ serde.workspace = true
 serde_json.workspace = true
 rand.workspace = true
 regex.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+signature = "1.6.0"
 
 [lints]
 workspace = true
