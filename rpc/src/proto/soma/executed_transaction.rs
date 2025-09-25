@@ -14,6 +14,7 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
             balance_changes,
             input_objects,
             output_objects,
+            shard,
         } = source;
 
         if mask.contains(Self::DIGEST_FIELD.name) {
@@ -49,6 +50,10 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
 
         if mask.contains(Self::BALANCE_CHANGES_FIELD.name) {
             self.balance_changes = balance_changes.clone();
+        }
+
+        if mask.contains(Self::SHARD_FIELD.name) {
+            self.shard = shard.clone();
         }
 
         if let Some(submask) = mask.subtree(Self::INPUT_OBJECTS_FIELD.name) {

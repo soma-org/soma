@@ -9,7 +9,10 @@ use fastcrypto::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    str::FromStr,
+};
 
 /// Peer key is used for Peer and as the network identity of the authority.
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -113,6 +116,32 @@ impl EncoderPublicKey {
     }
     pub fn MAX() -> Self {
         Self(BLS12381PublicKey::from_bytes(&[u8::MAX; BLS12381PublicKey::LENGTH]).unwrap())
+    }
+}
+
+impl FromStr for EncoderPublicKey {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Handle both with and without 0x prefix
+        let hex_str = s.trim_start_matches("0x");
+        let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid hex string: {}", e))?;
+
+        Self::from_bytes(&bytes)
+    }
+}
+
+impl EncoderPublicKey {
+    /// Create from bytes
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+        BLS12381PublicKey::from_bytes(bytes)
+            .map(Self::new)
+            .map_err(|e| format!("Invalid BLS public key: {}", e))
+    }
+
+    /// Convert to hex string with 0x prefix
+    pub fn to_hex_string(&self) -> String {
+        format!("0x{}", hex::encode(self.to_bytes()))
     }
 }
 

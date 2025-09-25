@@ -1,4 +1,6 @@
-use crate::proto::soma::*;
+use std::str::FromStr;
+
+use crate::proto::{TryFromProtoError, soma::*};
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
 use types::crypto::SomaSignature;
@@ -563,6 +565,70 @@ impl From<types::transaction::ChangeEpoch> for ChangeEpoch {
             value.epoch_start_timestamp_ms,
         ));
         message
+    }
+}
+
+//
+// Shard
+//
+// Proto to SDK
+impl TryFrom<&Shard> for crate::types::Shard {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &Shard) -> Result<Self, Self::Error> {
+        let quorum_threshold = value
+            .quorum_threshold
+            .ok_or_else(|| TryFromProtoError::missing("quorum_threshold"))?;
+
+        // Now much simpler!
+        let encoders = value
+            .encoders
+            .iter()
+            .enumerate()
+            .map(|(idx, encoder_str)| {
+                types::shard_crypto::keys::EncoderPublicKey::from_str(encoder_str)
+                    .map(|key| key.to_bytes().to_vec())
+                    .map_err(|e| TryFromProtoError::invalid(format!("encoders[{}]", idx), e))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let seed = value
+            .seed
+            .clone()
+            .ok_or_else(|| TryFromProtoError::missing("seed"))?
+            .to_vec();
+
+        let epoch = value
+            .epoch
+            .ok_or_else(|| TryFromProtoError::missing("epoch"))?;
+
+        Ok(crate::types::Shard::new(
+            quorum_threshold,
+            encoders,
+            seed,
+            epoch,
+        ))
+    }
+}
+
+// SDK to Proto
+impl From<crate::types::Shard> for Shard {
+    fn from(value: crate::types::Shard) -> Self {
+        Self {
+            quorum_threshold: Some(value.quorum_threshold),
+            // Create EncoderPublicKey from bytes, then convert to string
+            encoders: value
+                .encoders
+                .into_iter()
+                .filter_map(|bytes| {
+                    types::shard_crypto::keys::EncoderPublicKey::from_bytes(&bytes)
+                        .ok()
+                        .map(|key| key.to_hex_string())
+                })
+                .collect(),
+            seed: Some(value.seed.into()),
+            epoch: Some(value.epoch),
+        }
     }
 }
 

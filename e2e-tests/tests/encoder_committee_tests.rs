@@ -192,14 +192,7 @@ async fn execute_embed_data_transaction(
     tracing::info!(?tx, "Executing embed data tx for {}", address);
     let response = test_cluster.execute_transaction(tx).await;
 
-    // TODO: Add Shard to TransactionExecutionResponse
-
-    None
-    // if let Ok((_, shard)) = response. {
-    //     shard
-    // } else {
-    //     None
-    // }
+    response.shard
 }
 
 /// Execute AddEncoder transaction

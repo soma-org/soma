@@ -36,28 +36,6 @@ impl From<std::array::TryFromSliceError> for SdkTypeConversionError {
     }
 }
 
-// macro_rules! bcs_convert_impl {
-//     ($core:ty, $external:ty) => {
-//         impl TryFrom<$core> for $external {
-//             type Error = bcs::Error;
-
-//             fn try_from(value: $core) -> Result<Self, Self::Error> {
-//                 let bytes = bcs::to_bytes(&value)?;
-//                 bcs::from_bytes(&bytes)
-//             }
-//         }
-
-//         impl TryFrom<$external> for $core {
-//             type Error = bcs::Error;
-
-//             fn try_from(value: $external) -> Result<Self, Self::Error> {
-//                 let bytes = bcs::to_bytes(&value)?;
-//                 bcs::from_bytes(&bytes)
-//             }
-//         }
-//     };
-// }
-
 impl TryFrom<types::object::Object> for Object {
     type Error = SdkTypeConversionError;
 
@@ -621,11 +599,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
         })
     }
 }
-
-// bcs_convert_impl!(types::transaction::TransactionData, Transaction);
-// bcs_convert_impl!(types::crypto::GenericSignature, UserSignature);
-// bcs_convert_impl!(types::transaction::TransactionKind, TransactionKind);
-// bcs_convert_impl!(types::effects::TransactionEffects, TransactionEffects);
 
 impl TryFrom<types::effects::TransactionEffects> for crate::types::TransactionEffects {
     type Error = SdkTypeConversionError;
@@ -1323,5 +1296,62 @@ impl From<types::transaction::ChangeEpoch> for ChangeEpoch {
             epoch,
             epoch_start_timestamp_ms,
         }
+    }
+}
+
+// Domain to SDK
+impl TryFrom<types::shard::Shard> for Shard {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: types::shard::Shard) -> Result<Self, Self::Error> {
+        let encoders = value
+            .encoders()
+            .into_iter()
+            .map(|encoder| {
+                // EncoderPublicKey wraps BLS12381PublicKey, get the raw bytes
+                Ok(encoder.to_bytes().to_vec())
+            })
+            .collect::<Result<Vec<_>, SdkTypeConversionError>>()?;
+
+        // Get the raw bytes of the seed digest
+        let seed: &[u8] = value.seed.as_ref();
+
+        Ok(Shard::new(
+            value.quorum_threshold(),
+            encoders,
+            seed.to_vec(),
+            value.epoch(),
+        ))
+    }
+}
+
+// SDK to Domain
+impl TryFrom<Shard> for types::shard::Shard {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: Shard) -> Result<Self, Self::Error> {
+        // Convert encoder bytes back to EncoderPublicKey
+        let encoders = value
+            .encoders
+            .into_iter()
+            .map(|bytes| {
+                let pubkey = BLS12381PublicKey::from_bytes(&bytes).map_err(|e| {
+                    SdkTypeConversionError(format!("Invalid BLS public key: {}", e))
+                })?;
+                Ok(types::shard_crypto::keys::EncoderPublicKey::new(pubkey))
+            })
+            .collect::<Result<Vec<_>, SdkTypeConversionError>>()?;
+
+        // Convert seed bytes back to Digest<ShardEntropy>
+        let seed =
+            types::shard_crypto::digest::Digest::<types::shard::ShardEntropy>::try_from(value.seed)
+                .map_err(|e| SdkTypeConversionError(format!("Invalid seed digest: {}", e)))?;
+
+        Ok(types::shard::Shard::new(
+            value.quorum_threshold,
+            encoders,
+            seed,
+            value.epoch,
+        ))
     }
 }

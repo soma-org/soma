@@ -243,6 +243,7 @@ mod _getter_impls {
                 balance_changes: Vec::new(),
                 input_objects: Vec::new(),
                 output_objects: Vec::new(),
+                shard: None,
             }
         }
         #[doc(hidden)]
@@ -322,6 +323,25 @@ mod _getter_impls {
         }
         pub fn with_output_objects(mut self, field: Vec<Object>) -> Self {
             self.output_objects = field;
+            self
+        }
+        pub fn shard(&self) -> &Shard {
+            self.shard
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Shard::default_instance() as _)
+        }
+        pub fn shard_opt(&self) -> Option<&Shard> {
+            self.shard.as_ref().map(|field| field as _)
+        }
+        pub fn shard_opt_mut(&mut self) -> Option<&mut Shard> {
+            self.shard.as_mut().map(|field| field as _)
+        }
+        pub fn shard_mut(&mut self) -> &mut Shard {
+            self.shard.get_or_insert_default()
+        }
+        pub fn with_shard(mut self, field: Shard) -> Self {
+            self.shard = Some(field.into());
             self
         }
     }
@@ -564,6 +584,40 @@ mod _getter_impls {
         }
         pub fn with_version(mut self, field: u64) -> Self {
             self.version = Some(field.into());
+            self
+        }
+    }
+    impl Shard {
+        pub const fn const_default() -> Self {
+            Self {
+                quorum_threshold: None,
+                encoders: Vec::new(),
+                seed: None,
+                epoch: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Shard = Shard::const_default();
+            &DEFAULT
+        }
+        pub fn with_quorum_threshold(mut self, field: u32) -> Self {
+            self.quorum_threshold = Some(field.into());
+            self
+        }
+        pub fn encoders(&self) -> &[String] {
+            &self.encoders
+        }
+        pub fn with_encoders(mut self, field: Vec<String>) -> Self {
+            self.encoders = field;
+            self
+        }
+        pub fn with_seed(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.seed = Some(field.into());
+            self
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
             self
         }
     }

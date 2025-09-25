@@ -343,6 +343,8 @@ pub struct ExecutedTransaction {
     /// Set of output objects produced from the execution of this transaction.
     #[prost(message, repeated, tag = "9")]
     pub output_objects: ::prost::alloc::vec::Vec<Object>,
+    #[prost(message, optional, tag = "10")]
+    pub shard: ::core::option::Option<Shard>,
 }
 /// The status of an executed transaction.
 #[non_exhaustive]
@@ -594,6 +596,18 @@ pub mod owner {
             }
         }
     }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Shard {
+    #[prost(uint32, optional, tag = "1")]
+    pub quorum_threshold: ::core::option::Option<u32>,
+    #[prost(string, repeated, tag = "2")]
+    pub encoders: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub seed: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "4")]
+    pub epoch: ::core::option::Option<u64>,
 }
 /// A signature from a user.
 #[non_exhaustive]

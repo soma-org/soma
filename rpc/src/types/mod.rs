@@ -9,6 +9,7 @@ mod execution_status;
 mod fee;
 mod hash;
 mod object;
+mod shard;
 mod transaction;
 
 pub use address::Address;
@@ -45,6 +46,7 @@ pub use object::ObjectReference;
 pub use object::ObjectType;
 pub use object::Owner;
 pub use object::Version;
+pub use shard::Shard;
 pub use transaction::AddEncoderArgs;
 pub use transaction::AddValidatorArgs;
 pub use transaction::ChangeEpoch;

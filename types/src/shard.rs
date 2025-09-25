@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 pub struct Shard {
     quorum_threshold: CountUnit,
     encoders: Vec<EncoderPublicKey>,
-    seed: Digest<ShardEntropy>,
+    pub seed: Digest<ShardEntropy>,
     epoch: Epoch,
 }
 

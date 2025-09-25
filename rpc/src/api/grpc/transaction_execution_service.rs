@@ -116,7 +116,7 @@ pub async fn execute_transaction(
                 effects,
                 finality_info,
             },
-        shard, // TODO: add shard info here
+        shard,
         input_objects,
         output_objects,
     } = executor.execute_transaction(request, None).await?;
@@ -210,6 +210,18 @@ pub async fn execute_transaction(
                 effects
             });
 
+        let proto_shard = mask
+            .contains(ExecutedTransaction::SHARD_FIELD.name)
+            .then(|| {
+                shard.as_ref().and_then(|domain_shard| {
+                    // Domain → SDK → Proto
+                    let sdk_shard: crate::types::Shard = domain_shard.clone().try_into().ok()?; // Handle error gracefully
+                    let proto_shard: crate::proto::soma::Shard = sdk_shard.into();
+                    Some(proto_shard)
+                })
+            })
+            .flatten();
+
         let mut message = ExecutedTransaction::default();
         message.digest = mask
             .contains(ExecutedTransaction::DIGEST_FIELD.name)
@@ -246,6 +258,7 @@ pub async fn execute_transaction(
                     .collect()
             })
             .unwrap_or_default();
+        message.shard = proto_shard;
         Some(message)
     } else {
         None

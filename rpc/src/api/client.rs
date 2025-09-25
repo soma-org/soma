@@ -172,6 +172,7 @@ impl Client {
             "transaction.balance_changes",
             "transaction.input_objects",
             "transaction.output_objects",
+            "transaction.shard",
         ]));
 
         let (metadata, response, _extentions) = self
@@ -258,12 +259,27 @@ fn execute_transaction_response_try_from_proto(
         .collect::<Result<Vec<_>, TryFromProtoError>>()
         .map_err(|e| TryFromProtoError::invalid("output_objects", e))?;
 
+    let shard = executed_transaction
+        .shard
+        .as_ref()
+        .map(|proto_shard| {
+            // Proto → SDK
+            let sdk_shard: crate::types::Shard = proto_shard.try_into()?;
+            // SDK → Domain
+            let domain_shard: types::shard::Shard = sdk_shard
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("shard", e))?;
+            Ok(domain_shard)
+        })
+        .transpose()?;
+
     TransactionExecutionResponse {
         finality,
         effects,
         balance_changes,
         input_objects,
         output_objects,
+        shard,
     }
     .pipe(Ok)
 }

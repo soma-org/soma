@@ -454,6 +454,12 @@ mod _field_impls {
             number: 9i32,
             message_fields: Some(Object::FIELDS),
         };
+        pub const SHARD_FIELD: &'static MessageField = &MessageField {
+            name: "shard",
+            json_name: "shard",
+            number: 10i32,
+            message_fields: Some(Shard::FIELDS),
+        };
     }
     impl MessageFields for ExecutedTransaction {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -466,6 +472,7 @@ mod _field_impls {
             Self::BALANCE_CHANGES_FIELD,
             Self::INPUT_OBJECTS_FIELD,
             Self::OUTPUT_OBJECTS_FIELD,
+            Self::SHARD_FIELD,
         ];
     }
     impl ExecutedTransaction {
@@ -523,6 +530,10 @@ mod _field_impls {
         pub fn output_objects(mut self) -> ObjectFieldPathBuilder {
             self.path.push(ExecutedTransaction::OUTPUT_OBJECTS_FIELD.name);
             ObjectFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn shard(mut self) -> ShardFieldPathBuilder {
+            self.path.push(ExecutedTransaction::SHARD_FIELD.name);
+            ShardFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl ExecutionStatus {
@@ -866,6 +877,77 @@ mod _field_impls {
         }
         pub fn version(mut self) -> String {
             self.path.push(Owner::VERSION_FIELD.name);
+            self.finish()
+        }
+    }
+    impl Shard {
+        pub const QUORUM_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "quorum_threshold",
+            json_name: "quorumThreshold",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ENCODERS_FIELD: &'static MessageField = &MessageField {
+            name: "encoders",
+            json_name: "encoders",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const SEED_FIELD: &'static MessageField = &MessageField {
+            name: "seed",
+            json_name: "seed",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for Shard {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::QUORUM_THRESHOLD_FIELD,
+            Self::ENCODERS_FIELD,
+            Self::SEED_FIELD,
+            Self::EPOCH_FIELD,
+        ];
+    }
+    impl Shard {
+        pub fn path_builder() -> ShardFieldPathBuilder {
+            ShardFieldPathBuilder::new()
+        }
+    }
+    pub struct ShardFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ShardFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn quorum_threshold(mut self) -> String {
+            self.path.push(Shard::QUORUM_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn encoders(mut self) -> String {
+            self.path.push(Shard::ENCODERS_FIELD.name);
+            self.finish()
+        }
+        pub fn seed(mut self) -> String {
+            self.path.push(Shard::SEED_FIELD.name);
+            self.finish()
+        }
+        pub fn epoch(mut self) -> String {
+            self.path.push(Shard::EPOCH_FIELD.name);
             self.finish()
         }
     }
