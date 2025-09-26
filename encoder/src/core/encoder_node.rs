@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{collections::BTreeSet, future::Future, sync::Arc};
 
 use evaluation::messaging::service::MockEvaluationService;
@@ -13,14 +14,26 @@ use objects::{
     },
     storage::{filesystem::FilesystemObjectStorage, memory::MemoryObjectStore},
 };
+use sdk::client_config::{encoder_config_to_client_config, SomaClientConfig, SomaEnv};
+use sdk::wallet_context::WalletContext;
+use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
 use soma_tls::AllowPublicKeys;
 use tokio::sync::{Mutex, Semaphore};
 use tracing::{error, info, warn};
 use types::actors::ActorManager;
+use types::base::SomaAddress;
+use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
 use types::multiaddr::Multiaddr;
 use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair};
-use types::{config::encoder_config::EncoderConfig, system_state::SystemStateTrait};
+use types::{
+    config::{encoder_config::EncoderConfig, Config},
+    system_state::SystemStateTrait,
+};
 
+use super::{
+    internal_broadcaster::Broadcaster,
+    pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
+};
 use crate::pipelines::clean_up::CleanUpProcessor;
 use crate::{
     datastore::{mem_store::MemStore, Store},
@@ -44,12 +57,8 @@ use crate::{
     },
     types::context::{Committees, Context, InnerContext},
 };
+use tokio::sync::RwLock;
 use types::shard_networking::EncoderNetworkingInfo;
-
-use super::{
-    internal_broadcaster::Broadcaster,
-    pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
-};
 use types::shard_verifier::ShardVerifier;
 
 #[cfg(msim)]
@@ -137,13 +146,14 @@ pub struct EncoderNode {
     pub context: Context,
     object_storage: Arc<MemoryObjectStore>,
     committee_sync_manager: Arc<CommitteeSyncManager>,
+    wallet_context: Arc<RwLock<WalletContext>>,
 
     #[cfg(msim)]
     sim_state: SimState,
 }
 
 impl EncoderNode {
-    pub async fn start(config: EncoderConfig) -> Self {
+    pub async fn start(config: EncoderConfig, working_dir: PathBuf) -> Self {
         let encoder_keypair = config.encoder_keypair.encoder_keypair().clone();
         let peer_keypair = PeerKeyPair::new(config.peer_keypair.keypair().inner().copy());
         let parameters = Arc::new(types::parameters::Parameters::default());
@@ -231,6 +241,12 @@ impl EncoderNode {
 
         let encoder_keypair = Arc::new(encoder_keypair);
 
+        let wallet_context = Arc::new(RwLock::new(
+            init_wallet_context(&config, &working_dir)
+                .await
+                .expect("Failed to initialize wallet context"),
+        ));
+
         let default_buffer = 100_usize;
         let default_concurrency = 100_usize;
 
@@ -263,6 +279,7 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             clean_up_handle.clone(),
+            wallet_context.clone(),
         );
         let report_vote_manager = ActorManager::new(default_buffer, report_vote_processor);
         let report_vote_handle = report_vote_manager.handle();
@@ -361,11 +378,11 @@ impl EncoderNode {
             .await;
 
         info!(
-            "Creating validator client connecting to {}",
-            config.validator_rpc_address
+            "Creating validator sync client connecting to {}",
+            config.validator_sync_address
         );
         let validator_client = match EncoderValidatorClient::new(
-            &config.validator_rpc_address,
+            &config.validator_sync_address,
             config.genesis.committee().unwrap(),
         )
         .await
@@ -411,6 +428,7 @@ impl EncoderNode {
             commit_votes_manager,
             commit_manager,
             input_manager,
+            wallet_context,
             #[cfg(msim)]
             sim_state: Default::default(),
         }
@@ -472,6 +490,44 @@ impl EncoderNode {
     pub fn get_store_for_testing(&self) -> Arc<dyn Store> {
         self.store.clone()
     }
+}
+
+async fn init_wallet_context(
+    config: &EncoderConfig,
+    working_dir: &PathBuf,
+) -> Result<WalletContext, anyhow::Error> {
+    std::fs::create_dir_all(working_dir)?;
+
+    let client_config_path = working_dir.join(SOMA_CLIENT_CONFIG);
+    let keystore_path = working_dir.join(SOMA_KEYSTORE_FILENAME);
+
+    // Create keystore first
+    let mut keystore = FileBasedKeystore::load_or_create(&keystore_path)?;
+
+    // Import the account keypair from EncoderConfig
+    let account_kp = (*(config.account_keypair.keypair())).copy();
+    let address = SomaAddress::from(&account_kp.public());
+    keystore.add_key(Some("encoder-account".to_string()), account_kp)?;
+
+    // Create the client config
+    let env = SomaEnv {
+        alias: "localnet".to_string(),
+        rpc: config.rpc_address.to_string(),
+        basic_auth: None,
+    };
+
+    let soma_client_config = SomaClientConfig {
+        keystore: Keystore::File(keystore),
+        external_keys: None,
+        envs: vec![env],
+        active_env: Some("localnet".to_string()),
+        active_address: Some(address),
+    };
+
+    // Save the config
+    soma_client_config.save(&client_config_path)?;
+    // Create WalletContext from the saved config
+    WalletContext::new(&client_config_path)
 }
 
 fn create_context_from_genesis(

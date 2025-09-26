@@ -5,6 +5,7 @@ use crate::error::{ShardError, ShardResult, SharedError};
 use crate::finality::FinalityProof;
 use crate::metadata::MetadataCommitment;
 use crate::multiaddr::Multiaddr;
+use crate::object::ObjectRef;
 use crate::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
 use crate::{error::SharedResult, shard_crypto::digest::Digest};
 use enum_dispatch::enum_dispatch;
@@ -87,6 +88,7 @@ pub struct ShardAuthToken {
     pub block_entropy: BlockEntropy,
     pub block_entropy_proof: BlockEntropyProof,
     pub metadata_commitment: MetadataCommitment,
+    pub shard_input_ref: ObjectRef,
 }
 
 impl ShardAuthToken {
@@ -95,25 +97,35 @@ impl ShardAuthToken {
         block_entropy: BlockEntropy,
         block_entropy_proof: BlockEntropyProof,
         metadata_commitment: MetadataCommitment,
+        shard_input_ref: ObjectRef,
     ) -> Self {
         Self {
             finality_proof,
             block_entropy,
             block_entropy_proof,
             metadata_commitment,
+            shard_input_ref,
         }
     }
+
     pub fn finality_proof(&self) -> FinalityProof {
         self.finality_proof.clone()
     }
+
     pub fn block_entropy(&self) -> BlockEntropy {
         self.block_entropy.clone()
     }
+
     pub fn block_entropy_proof(&self) -> BlockEntropyProof {
         self.block_entropy_proof.clone()
     }
+
     pub fn metadata_commitment(&self) -> MetadataCommitment {
         self.metadata_commitment.clone()
+    }
+
+    pub fn shard_input_ref(&self) -> ObjectRef {
+        self.shard_input_ref.clone()
     }
 
     pub fn epoch(&self) -> u64 {

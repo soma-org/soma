@@ -321,7 +321,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
         {
             for (i, encoder_config) in network_config.encoder_configs.iter_mut().enumerate() {
                 let validator_index = i % networking_validator_addresses.len();
-                encoder_config.validator_rpc_address =
+                encoder_config.validator_sync_address =
                     networking_validator_addresses[validator_index].clone();
 
                 info!("Assigned encoder {} to networking validator", i);
@@ -334,7 +334,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                 .map(|c| c.encoder_validator_address.clone())
             {
                 for encoder_config in network_config.encoder_configs.iter_mut() {
-                    encoder_config.validator_rpc_address = first_validator_address.clone();
+                    encoder_config.validator_sync_address = first_validator_address.clone();
                 }
             }
         }

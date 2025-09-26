@@ -14,13 +14,14 @@ use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
 use types::{
     checksum::Checksum,
     digests::TransactionDigest,
-    effects::{TransactionEffectsAPI, VerifiedCertifiedTransactionEffects},
+    effects::{self, TransactionEffectsAPI, VerifiedCertifiedTransactionEffects},
     encoder_committee::EncoderCommittee,
     entropy::SimpleVDF,
     error::{SomaError, SomaResult},
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
     metadata::{Metadata, MetadataCommitment, MetadataV1},
     multiaddr::Multiaddr,
+    object::{Object, ObjectRef},
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
         FinalizedEffects, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
@@ -178,8 +179,10 @@ where
             output_objects,
         } = response;
 
+        let created = effects_cert.created().iter().map(|o| o.0).collect();
+
         let shard = self
-            .process_finality_and_encoder_work(&transaction, finality_cert)
+            .process_finality_and_encoder_work(&transaction, finality_cert, created)
             .await;
 
         let response = ExecuteTransactionResponse {
@@ -383,6 +386,7 @@ where
         &self,
         transaction: &VerifiedTransaction,
         finality_cert: Option<VerifiedCertifiedConsensusFinality>,
+        created: Vec<ObjectRef>,
     ) -> Option<Shard> {
         info!(
             "Processing finality and encoder work for tx: {}",
@@ -407,6 +411,24 @@ where
 
         info!("Generated finality proof for tx: {}", transaction.digest());
 
+        let shard_input_ref = if transaction
+            .data()
+            .inner()
+            .intent_message
+            .value
+            .kind()
+            .is_embed_tx()
+        {
+            if let Some(object) = created.first() {
+                *object
+            } else {
+                error!("Could not get created shard input ref from created objects of tx");
+                return None;
+            }
+        } else {
+            return None;
+        };
+
         // TODO: define real Metadata and commitment
         let size_in_bytes = 1;
         let metadata = MetadataV1::new(Checksum::default(), size_in_bytes);
@@ -426,6 +448,7 @@ where
             .initiate_encoder_work_for_embed_data(
                 &finality_proof,
                 metadata_commitment.clone(),
+                shard_input_ref,
                 tls_key,
                 address,
                 transaction.digest(),
@@ -443,12 +466,13 @@ where
         &self,
         finality_proof: &FinalityProof,
         metadata_commitment: MetadataCommitment,
+        shard_input_ref: ObjectRef,
         tls_key: PeerPublicKey,
         address: Multiaddr,
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Shard> {
         let (shard, shard_auth_token) = self
-            .generate_shard_selection(finality_proof, metadata_commitment)
+            .generate_shard_selection(finality_proof, metadata_commitment, shard_input_ref)
             .await?;
 
         if let Some(encoder_client) = &self.encoder_client {
@@ -491,6 +515,7 @@ where
         &self,
         finality_proof: &FinalityProof,
         metadata_commitment: MetadataCommitment,
+        shard_input_ref: ObjectRef,
     ) -> SomaResult<(Shard, ShardAuthToken)> {
         let block_ref = finality_proof.block_ref().clone();
         let vdf = self.vdf.clone();
@@ -520,6 +545,7 @@ where
             block_entropy,
             block_entropy_proof,
             metadata_commitment,
+            shard_input_ref,
         );
 
         Ok((shard, shard_auth_token))

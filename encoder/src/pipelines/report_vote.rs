@@ -7,6 +7,8 @@ use crate::{
     types::report_vote::{ReportVote, ReportVoteAPI},
 };
 use async_trait::async_trait;
+use tokio::sync::RwLock;
+use sdk::wallet_context::{self, WalletContext};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
@@ -17,11 +19,12 @@ use types::{
         verified::Verified,
     },
     submission::SubmissionAPI,
+    transaction::{TransactionData, TransactionKind},
 };
 
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use super::clean_up::CleanUpProcessor;
 
@@ -30,6 +33,7 @@ pub(crate) struct ReportVoteProcessor<E: EncoderInternalNetworkClient> {
     broadcaster: Arc<Broadcaster<E>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     clean_up_pipeline: ActorHandle<CleanUpProcessor>,
+    wallet_context: Arc<RwLock<WalletContext>>,
 }
 
 impl<E: EncoderInternalNetworkClient> ReportVoteProcessor<E> {
@@ -38,12 +42,14 @@ impl<E: EncoderInternalNetworkClient> ReportVoteProcessor<E> {
         broadcaster: Arc<Broadcaster<E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         clean_up_pipeline: ActorHandle<CleanUpProcessor>,
+        wallet_context: Arc<RwLock<WalletContext>>,
     ) -> Self {
         Self {
             store,
             broadcaster,
             encoder_keypair,
             clean_up_pipeline,
+            wallet_context,
         }
     }
     pub async fn start_timer<F, Fut>(
@@ -145,7 +151,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ReportVoteProcessor<E> {
                 );
 
                 self.store
-                    .add_aggregate_score(&shard, (agg.clone(), evaluators))?;
+                    .add_aggregate_score(&shard, (agg.clone(), evaluators.clone()))?;
 
                 info!(
                     "SHARD CONSENSUS COMPLETE - Aggregate score stored: {:?}",
@@ -153,9 +159,35 @@ impl<E: EncoderInternalNetworkClient> Processor for ReportVoteProcessor<E> {
                 );
 
                 if report_vote.signed_report().winning_submission().encoder() == &self.encoder_keypair.public() {
-                    // call on-chain
-                    info!("MOCK SUBMIT ON CHAIN");
+                    let sender_address = {
+                        let mut wallet_context = self.wallet_context.write().await;
+                        wallet_context.active_address().unwrap()
+                    };
+                    
+                    let tx_data = TransactionData::new(
+                        TransactionKind::ReportWinner {
+                            shard_auth_token: bcs::to_bytes(report_vote.auth_token()).unwrap(),
+                            shard_input_ref: report_vote.auth_token().shard_input_ref(),
+                            signed_report: bcs::to_bytes(&report_vote.signed_report()).unwrap(),
+                            signature: bcs::to_bytes(&agg.clone()).unwrap(),
+                            signers: evaluators
+                        },
+                        sender_address,
+                        vec![], //gas_object // TODO: get gas object
+                    );
+
+                    let wallet_context = self.wallet_context.read().await;
+                    let signed_tx = wallet_context.sign_transaction(&tx_data).await;
+                    match wallet_context.execute_transaction_may_fail(signed_tx).await {
+                        Ok(response) => {
+                            info!("{:?}", response);
+                        }
+                        Err(err) => {
+                            error!("Report winner tx failed: {}", err);
+                        }
+                    }
                 }
+                
 
                 self.clean_up_pipeline
                     .process(shard.clone(), msg.cancellation.clone())

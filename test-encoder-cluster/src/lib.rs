@@ -109,7 +109,7 @@ impl TestEncoderClusterBuilder {
             PeerKeyPair::generate(&mut rng)
         });
 
-        let mut builder = EncoderSwarm::builder().with_client_key(client_keypair.public());
+        let mut builder = EncoderSwarm::builder();
 
         if let Some(encoders) = self.encoders {
             builder = builder.with_encoders(encoders);

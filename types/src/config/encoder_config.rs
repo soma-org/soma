@@ -1,3 +1,5 @@
+use crate::base::SomaAddress;
+use crate::config::{PersistedConfig, SOMA_KEYSTORE_FILENAME};
 use crate::parameters::{Http2Parameters, TonicParameters};
 use crate::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey};
 use crate::{
@@ -9,7 +11,9 @@ use anyhow::anyhow;
 use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use std::path::Path;
 use std::{
+    net::SocketAddr,
     num::NonZeroUsize,
     path::PathBuf,
     sync::{Arc, OnceLock},
@@ -50,7 +54,9 @@ pub struct EncoderConfig {
     pub entry_point: PathBuf,
 
     /// Address of the validator node for fetching committees
-    pub validator_rpc_address: Multiaddr,
+    pub validator_sync_address: Multiaddr,
+
+    pub rpc_address: SocketAddr,
 
     /// Genesis for blockchain, including validator and encoder committees
     pub genesis: Genesis,
@@ -68,9 +74,10 @@ impl EncoderConfig {
         external_network_address: Multiaddr,
         object_address: Multiaddr,
         evaluation_address: Multiaddr,
+        rpc_address: SocketAddr,
         project_root: PathBuf,
         entry_point: PathBuf,
-        validator_rpc_address: Multiaddr,
+        validator_sync_address: Multiaddr,
         genesis: Genesis,
     ) -> Self {
         // Create default parameters
@@ -91,7 +98,8 @@ impl EncoderConfig {
             evaluation_parameters,
             project_root,
             entry_point,
-            validator_rpc_address,
+            validator_sync_address,
+            rpc_address,
             genesis,
             epoch_duration_ms: 1000, //TODO: Default epoch duration
         }

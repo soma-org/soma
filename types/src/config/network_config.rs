@@ -569,7 +569,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             })
             .collect();
 
-        let validator_rpc_address = all_validators[0].encoder_validator_address.clone(); // TODO: Temporarily using first validator as RPC address
+        let validator_sync_address = all_validators[0].encoder_validator_address.clone(); // TODO: Temporarily using first validator as RPC address
+        let rpc_address = all_validators[0].rpc_address.clone();
 
         let validator_configs = all_validators
             .into_iter()
@@ -591,9 +592,12 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     encoder.external_network_address,
                     encoder.object_address,
                     encoder.evaluation_address,
+                    rpc_address
+                        .to_socket_addr()
+                        .expect("Could not turn rpc address into socket address"),
                     PathBuf::from("/project/root"), // Default path, should be configurable
                     PathBuf::from("/entry/point.py"), // Default path, should be configurable
-                    validator_rpc_address.clone(),
+                    validator_sync_address.clone(),
                     genesis.clone(),
                 )
                 .with_epoch_duration(genesis_config.parameters.epoch_duration_ms)

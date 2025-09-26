@@ -357,7 +357,7 @@ impl TestCluster {
 
     // Get encoder configs for creating a TestEncoderCluster
     pub fn get_encoder_configs_for_encoder_cluster(&self) -> Vec<EncoderConfig> {
-        let validator_rpc_address = self
+        let validator_sync_address = self
             .fullnode_handle
             .soma_node
             .with(|node| node.get_config().encoder_validator_address.clone());
@@ -377,7 +377,7 @@ impl TestCluster {
             .map(|config| {
                 let mut config = config.clone();
                 // Update config to point to fullnode for validation
-                config.validator_rpc_address = validator_rpc_address.clone();
+                config.validator_sync_address = validator_sync_address.clone();
                 config.genesis = self.get_genesis();
                 // Set epoch duration to match the validator system
                 config.epoch_duration_ms = epoch_duration;
@@ -402,8 +402,12 @@ impl TestCluster {
         let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
         let probe_address = local_ip_utils::new_tcp_address_for_testing(&ip);
 
+        let rpc_address = self
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.get_config().rpc_address.clone());
         // Get validator address from fullnode
-        let validator_rpc_address = self
+        let validator_sync_address = self
             .fullnode_handle
             .soma_node
             .with(|node| node.get_config().encoder_validator_address.clone());
@@ -425,9 +429,10 @@ impl TestCluster {
             external_network_address,
             object_address,
             probe_address,
+            rpc_address,
             project_root,
             entry_point,
-            validator_rpc_address,
+            validator_sync_address,
             genesis,
         );
 

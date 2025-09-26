@@ -2,6 +2,7 @@ use encoder::core::encoder_node::{EncoderNode, EncoderNodeHandle};
 use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::KeyPair;
 use msim::runtime::Handle;
+use std::path::PathBuf;
 use std::{
     net::{IpAddr, SocketAddr},
     sync::{Arc, Weak},
@@ -34,7 +35,7 @@ impl Drop for Container {
 
 impl Container {
     /// Spawn a new Node.
-    pub async fn spawn(config: EncoderConfig) -> Self {
+    pub async fn spawn(config: EncoderConfig, working_dir: PathBuf) -> Self {
         let (startup_sender, mut startup_receiver) = tokio::sync::watch::channel(Weak::new());
         let (cancel_sender, cancel_receiver) = tokio::sync::watch::channel(false);
 
@@ -64,8 +65,9 @@ impl Container {
                 let config = config.clone();
                 let mut cancel_receiver = cancel_receiver.clone();
                 let startup_sender = startup_sender.clone();
+                let dir = working_dir.clone();
                 async move {
-                    let server = Arc::new(EncoderNode::start(config).await);
+                    let server = Arc::new(EncoderNode::start(config, dir).await);
 
                     startup_sender.send(Arc::downgrade(&server)).ok();
 

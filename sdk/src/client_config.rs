@@ -1,11 +1,20 @@
-use std::fmt::{Display, Formatter, Write};
+use std::{
+    fmt::{Display, Formatter, Write},
+    path::Path,
+};
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use soma_keys::keystore::{AccountKeystore, Keystore};
-use types::{base::*, config::Config};
+use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
+use types::{
+    base::*,
+    config::{
+        Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME,
+        encoder_config::EncoderConfig,
+    },
+};
 
 use crate::{
     SOMA_DEVNET_URL, SOMA_LOCAL_NETWORK_URL, SOMA_TESTNET_URL, SomaClient, SomaClientBuilder,
@@ -63,6 +72,38 @@ impl SomaClientConfig {
             self.envs.push(env)
         }
     }
+}
+
+pub fn encoder_config_to_client_config(
+    encoder_config: &EncoderConfig,
+    config_dir: &Path,
+) -> Result<PersistedConfig<SomaClientConfig>, anyhow::Error> {
+    let keystore_path = config_dir.join(SOMA_KEYSTORE_FILENAME);
+
+    // Create file-based keystore
+    let mut keystore = FileBasedKeystore::load_or_create(&keystore_path)?;
+
+    // Import the account keypair
+    let account_kp = encoder_config.account_keypair.keypair().copy();
+    let address = SomaAddress::from(&account_kp.public());
+    keystore.add_key(Some("encoder-account".to_string()), account_kp)?;
+
+    let env = SomaEnv {
+        alias: "encoder-env".to_string(),
+        rpc: format!("http://{}", encoder_config.rpc_address),
+        basic_auth: None,
+    };
+
+    let config = SomaClientConfig {
+        keystore: Keystore::File(keystore),
+        external_keys: None,
+        envs: vec![env],
+        active_env: Some("encoder-env".to_string()),
+        active_address: Some(address),
+    };
+
+    let client_config_path = config_dir.join(SOMA_CLIENT_CONFIG);
+    Ok(config.persisted(&client_config_path))
 }
 
 impl Config for SomaClientConfig {}

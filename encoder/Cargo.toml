@@ -51,6 +51,8 @@ msim.workspace = true
 types.workspace = true
 encoder-validator-api.workspace = true
 anyhow.workspace = true
+sdk.workspace = true
+soma-keys.workspace = true
 
 [dependencies.pyo3]
 workspace = true

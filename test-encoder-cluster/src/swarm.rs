@@ -7,10 +7,49 @@ use tracing::info;
 use types::config::encoder_config::EncoderConfig;
 use types::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
 
+use std::path::{Path, PathBuf};
+use tempfile::TempDir;
+
+#[derive(Debug)]
+enum SwarmDirectory {
+    Persistent(PathBuf),
+    Temporary(TempDir),
+}
+
+impl SwarmDirectory {
+    fn new_temporary() -> Self {
+        SwarmDirectory::Temporary(TempDir::new().unwrap())
+    }
+
+    fn encoder_dir(&self, encoder_index: usize) -> PathBuf {
+        self.join(format!("encoder_{}", encoder_index))
+    }
+}
+
+impl std::ops::Deref for SwarmDirectory {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            SwarmDirectory::Persistent(dir) => dir.deref(),
+            SwarmDirectory::Temporary(dir) => dir.path(),
+        }
+    }
+}
+
+impl AsRef<Path> for SwarmDirectory {
+    fn as_ref(&self) -> &Path {
+        match self {
+            SwarmDirectory::Persistent(dir) => dir.as_ref(),
+            SwarmDirectory::Temporary(dir) => dir.as_ref(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct EncoderSwarm {
+    dir: SwarmDirectory,
     nodes: HashMap<EncoderPublicKey, Node>,
-    client_key: Option<PeerPublicKey>,
 }
 
 impl Drop for EncoderSwarm {
@@ -27,6 +66,10 @@ impl EncoderSwarm {
     /// Return a new Builder
     pub fn builder() -> EncoderSwarmBuilder {
         EncoderSwarmBuilder::new()
+    }
+
+    pub fn dir(&self) -> &Path {
+        self.dir.as_ref()
     }
 
     /// Start all nodes associated with this Swarm
@@ -65,8 +108,8 @@ impl EncoderSwarm {
 
     pub async fn spawn_new_encoder(&mut self, config: EncoderConfig) -> EncoderNodeHandle {
         let name = config.protocol_public_key();
-
-        let node = Node::new(config, self.client_key.clone());
+        let working_dir = self.dir.encoder_dir(self.nodes.len());
+        let node = Node::new(config, working_dir);
         node.start().await.unwrap();
         let handle = node.get_node_handle().unwrap();
         self.nodes.insert(name, node);
@@ -77,6 +120,7 @@ impl EncoderSwarm {
 pub struct EncoderSwarmBuilder {
     encoders: Option<Vec<EncoderConfig>>,
     client_key: Option<PeerPublicKey>,
+    dir: Option<PathBuf>, // Add this field
 }
 
 impl EncoderSwarmBuilder {
@@ -84,6 +128,7 @@ impl EncoderSwarmBuilder {
         Self {
             encoders: None,
             client_key: None,
+            dir: None,
         }
     }
 
@@ -97,28 +142,40 @@ impl EncoderSwarmBuilder {
         self
     }
 
+    pub fn dir<P: Into<PathBuf>>(mut self, dir: P) -> Self {
+        self.dir = Some(dir.into());
+        self
+    }
+
     pub fn build(self) -> EncoderSwarm {
+        let dir = if let Some(dir) = self.dir {
+            SwarmDirectory::Persistent(dir)
+        } else {
+            SwarmDirectory::new_temporary()
+        };
+
         // We require configs to be provided
         let encoder_configs = self.encoders.expect("Encoder configs must be provided");
 
         // Create nodes from the configs
         let nodes = encoder_configs
             .iter()
-            .map(|config| {
+            .enumerate()
+            .map(|(idx, config)| {
+                let node_working_dir = dir.encoder_dir(idx);
                 info!(
-                    "Configuring encoder with name {:?}",
-                    config.protocol_public_key()
+                    "Configuring encoder with name {:?} and dir {:?}",
+                    config.protocol_public_key(),
+                    node_working_dir
                 );
+
                 (
                     config.protocol_public_key(),
-                    Node::new(config.clone(), self.client_key.clone()),
+                    Node::new(config.clone(), node_working_dir),
                 )
             })
             .collect();
 
-        EncoderSwarm {
-            nodes,
-            client_key: self.client_key,
-        }
+        EncoderSwarm { dir, nodes }
     }
 }
