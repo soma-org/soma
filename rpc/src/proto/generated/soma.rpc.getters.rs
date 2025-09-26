@@ -1762,37 +1762,37 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::ClaimEscrow(field.into()));
             self
         }
-        pub fn report_scores(&self) -> &ReportScores {
-            if let Some(transaction_kind::Kind::ReportScores(field)) = &self.kind {
+        pub fn report_winner(&self) -> &ReportWinner {
+            if let Some(transaction_kind::Kind::ReportWinner(field)) = &self.kind {
                 field as _
             } else {
-                ReportScores::default_instance() as _
+                ReportWinner::default_instance() as _
             }
         }
-        pub fn report_scores_opt(&self) -> Option<&ReportScores> {
-            if let Some(transaction_kind::Kind::ReportScores(field)) = &self.kind {
+        pub fn report_winner_opt(&self) -> Option<&ReportWinner> {
+            if let Some(transaction_kind::Kind::ReportWinner(field)) = &self.kind {
                 Some(field as _)
             } else {
                 None
             }
         }
-        pub fn report_scores_opt_mut(&mut self) -> Option<&mut ReportScores> {
-            if let Some(transaction_kind::Kind::ReportScores(field)) = &mut self.kind {
+        pub fn report_winner_opt_mut(&mut self) -> Option<&mut ReportWinner> {
+            if let Some(transaction_kind::Kind::ReportWinner(field)) = &mut self.kind {
                 Some(field as _)
             } else {
                 None
             }
         }
-        pub fn report_scores_mut(&mut self) -> &mut ReportScores {
-            if self.report_scores_opt_mut().is_none() {
+        pub fn report_winner_mut(&mut self) -> &mut ReportWinner {
+            if self.report_winner_opt_mut().is_none() {
                 self.kind = Some(
-                    transaction_kind::Kind::ReportScores(ReportScores::default()),
+                    transaction_kind::Kind::ReportWinner(ReportWinner::default()),
                 );
             }
-            self.report_scores_opt_mut().unwrap()
+            self.report_winner_opt_mut().unwrap()
         }
-        pub fn with_report_scores(mut self, field: ReportScores) -> Self {
-            self.kind = Some(transaction_kind::Kind::ReportScores(field.into()));
+        pub fn with_report_winner(mut self, field: ReportWinner) -> Self {
+            self.kind = Some(transaction_kind::Kind::ReportWinner(field.into()));
             self
         }
     }
@@ -2411,18 +2411,19 @@ mod _getter_impls {
             self
         }
     }
-    impl ReportScores {
+    impl ReportWinner {
         pub const fn const_default() -> Self {
             Self {
                 shard_input_ref: None,
-                scores: None,
+                signed_report: None,
                 encoder_aggregate_signature: None,
                 signers: Vec::new(),
+                shard_auth_token: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: ReportScores = ReportScores::const_default();
+            static DEFAULT: ReportWinner = ReportWinner::const_default();
             &DEFAULT
         }
         pub fn shard_input_ref(&self) -> &ObjectReference {
@@ -2444,8 +2445,8 @@ mod _getter_impls {
             self.shard_input_ref = Some(field.into());
             self
         }
-        pub fn with_scores(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.scores = Some(field.into());
+        pub fn with_signed_report(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.signed_report = Some(field.into());
             self
         }
         pub fn with_encoder_aggregate_signature(
@@ -2460,6 +2461,10 @@ mod _getter_impls {
         }
         pub fn with_signers(mut self, field: Vec<String>) -> Self {
             self.signers = field;
+            self
+        }
+        pub fn with_shard_auth_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.shard_auth_token = Some(field.into());
             self
         }
     }

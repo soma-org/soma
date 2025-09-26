@@ -374,19 +374,21 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 shard_input_ref: shard_input_ref.into(),
             },
 
-            TK::ReportScores {
+            TK::ReportWinner {
                 shard_input_ref,
-                scores,
+                signed_report,
                 signature,
                 signers,
-            } => TransactionKind::ReportScores {
+                shard_auth_token,
+            } => TransactionKind::ReportWinner {
                 shard_input_ref: shard_input_ref.into(),
-                scores,
+                signed_report,
                 encoder_aggregate_signature: signature,
                 signers: signers
                     .into_iter()
                     .map(|s| format!("0x{}", hex::encode(s.to_bytes())))
                     .collect(),
+                shard_auth_token,
             },
         })
     }
@@ -576,14 +578,15 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 shard_input_ref: shard_input_ref.into(),
             },
 
-            TransactionKind::ReportScores {
+            TransactionKind::ReportWinner {
                 shard_input_ref,
-                scores,
+                signed_report,
                 encoder_aggregate_signature,
                 signers,
-            } => TK::ReportScores {
+                shard_auth_token,
+            } => TK::ReportWinner {
                 shard_input_ref: shard_input_ref.into(),
-                scores,
+                signed_report,
                 signature: encoder_aggregate_signature,
                 signers: signers
                     .into_iter()
@@ -595,6 +598,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                         Ok(types::shard_crypto::keys::EncoderPublicKey::new(key))
                     })
                     .collect::<Result<Vec<_>, SdkTypeConversionError>>()?,
+                shard_auth_token,
             },
         })
     }

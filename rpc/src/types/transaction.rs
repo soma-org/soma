@@ -126,11 +126,12 @@ pub enum TransactionKind {
     ClaimEscrow {
         shard_input_ref: ObjectReference,
     },
-    ReportScores {
+    ReportWinner {
         shard_input_ref: ObjectReference,
-        scores: Vec<u8>,
+        signed_report: Vec<u8>,
         encoder_aggregate_signature: Vec<u8>,
         signers: Vec<String>,
+        shard_auth_token: Vec<u8>,
     },
 }
 

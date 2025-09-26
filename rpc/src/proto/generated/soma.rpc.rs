@@ -818,7 +818,7 @@ pub mod transaction_kind {
         #[prost(message, tag = "24")]
         ClaimEscrow(super::ClaimEscrow),
         #[prost(message, tag = "25")]
-        ReportScores(super::ReportScores),
+        ReportWinner(super::ReportWinner),
     }
 }
 #[non_exhaustive]
@@ -1011,15 +1011,17 @@ pub struct ClaimEscrow {
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ReportScores {
+pub struct ReportWinner {
     #[prost(message, optional, tag = "1")]
     pub shard_input_ref: ::core::option::Option<ObjectReference>,
     #[prost(bytes = "bytes", optional, tag = "2")]
-    pub scores: ::core::option::Option<::prost::bytes::Bytes>,
+    pub signed_report: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "3")]
     pub encoder_aggregate_signature: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(string, repeated, tag = "4")]
     pub signers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub shard_auth_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// System transaction used to change the epoch.
 #[non_exhaustive]

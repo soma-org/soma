@@ -1516,11 +1516,11 @@ mod _field_impls {
             number: 24i32,
             message_fields: Some(ClaimEscrow::FIELDS),
         };
-        pub const REPORT_SCORES_FIELD: &'static MessageField = &MessageField {
-            name: "report_scores",
-            json_name: "reportScores",
+        pub const REPORT_WINNER_FIELD: &'static MessageField = &MessageField {
+            name: "report_winner",
+            json_name: "reportWinner",
             number: 25i32,
-            message_fields: Some(ReportScores::FIELDS),
+            message_fields: Some(ReportWinner::FIELDS),
         };
     }
     impl MessageFields for TransactionKind {
@@ -1549,7 +1549,7 @@ mod _field_impls {
             Self::WITHDRAW_STAKE_FIELD,
             Self::EMBED_DATA_FIELD,
             Self::CLAIM_ESCROW_FIELD,
-            Self::REPORT_SCORES_FIELD,
+            Self::REPORT_WINNER_FIELD,
         ];
     }
     impl TransactionKind {
@@ -1676,9 +1676,9 @@ mod _field_impls {
             self.path.push(TransactionKind::CLAIM_ESCROW_FIELD.name);
             ClaimEscrowFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn report_scores(mut self) -> ReportScoresFieldPathBuilder {
-            self.path.push(TransactionKind::REPORT_SCORES_FIELD.name);
-            ReportScoresFieldPathBuilder::new_with_base(self.path)
+        pub fn report_winner(mut self) -> ReportWinnerFieldPathBuilder {
+            self.path.push(TransactionKind::REPORT_WINNER_FIELD.name);
+            ReportWinnerFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl AddValidator {
@@ -2791,16 +2791,16 @@ mod _field_impls {
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
     }
-    impl ReportScores {
+    impl ReportWinner {
         pub const SHARD_INPUT_REF_FIELD: &'static MessageField = &MessageField {
             name: "shard_input_ref",
             json_name: "shardInputRef",
             number: 1i32,
             message_fields: Some(ObjectReference::FIELDS),
         };
-        pub const SCORES_FIELD: &'static MessageField = &MessageField {
-            name: "scores",
-            json_name: "scores",
+        pub const SIGNED_REPORT_FIELD: &'static MessageField = &MessageField {
+            name: "signed_report",
+            json_name: "signedReport",
             number: 2i32,
             message_fields: None,
         };
@@ -2816,24 +2816,31 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
+        pub const SHARD_AUTH_TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "shard_auth_token",
+            json_name: "shardAuthToken",
+            number: 5i32,
+            message_fields: None,
+        };
     }
-    impl MessageFields for ReportScores {
+    impl MessageFields for ReportWinner {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::SHARD_INPUT_REF_FIELD,
-            Self::SCORES_FIELD,
+            Self::SIGNED_REPORT_FIELD,
             Self::ENCODER_AGGREGATE_SIGNATURE_FIELD,
             Self::SIGNERS_FIELD,
+            Self::SHARD_AUTH_TOKEN_FIELD,
         ];
     }
-    impl ReportScores {
-        pub fn path_builder() -> ReportScoresFieldPathBuilder {
-            ReportScoresFieldPathBuilder::new()
+    impl ReportWinner {
+        pub fn path_builder() -> ReportWinnerFieldPathBuilder {
+            ReportWinnerFieldPathBuilder::new()
         }
     }
-    pub struct ReportScoresFieldPathBuilder {
+    pub struct ReportWinnerFieldPathBuilder {
         path: Vec<&'static str>,
     }
-    impl ReportScoresFieldPathBuilder {
+    impl ReportWinnerFieldPathBuilder {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
             Self { path: Default::default() }
@@ -2846,19 +2853,23 @@ mod _field_impls {
             self.path.join(".")
         }
         pub fn shard_input_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(ReportScores::SHARD_INPUT_REF_FIELD.name);
+            self.path.push(ReportWinner::SHARD_INPUT_REF_FIELD.name);
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn scores(mut self) -> String {
-            self.path.push(ReportScores::SCORES_FIELD.name);
+        pub fn signed_report(mut self) -> String {
+            self.path.push(ReportWinner::SIGNED_REPORT_FIELD.name);
             self.finish()
         }
         pub fn encoder_aggregate_signature(mut self) -> String {
-            self.path.push(ReportScores::ENCODER_AGGREGATE_SIGNATURE_FIELD.name);
+            self.path.push(ReportWinner::ENCODER_AGGREGATE_SIGNATURE_FIELD.name);
             self.finish()
         }
         pub fn signers(mut self) -> String {
-            self.path.push(ReportScores::SIGNERS_FIELD.name);
+            self.path.push(ReportWinner::SIGNERS_FIELD.name);
+            self.finish()
+        }
+        pub fn shard_auth_token(mut self) -> String {
+            self.path.push(ReportWinner::SHARD_AUTH_TOKEN_FIELD.name);
             self.finish()
         }
     }

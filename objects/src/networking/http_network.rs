@@ -417,7 +417,7 @@ mod tests {
         let download_size = random_bytes.len();
         let object_path = ObjectPath::new(checksum.to_string()).unwrap();
 
-        let metadata = MetadataV1::new(checksum, download_size);
+        let metadata = Metadata::V1(MetadataV1::new(checksum, download_size));
 
         let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
             server_keypair.public(),

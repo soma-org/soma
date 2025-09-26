@@ -76,7 +76,7 @@ message TransactionKind {
 
     ClaimEscrow claim_escrow = 24;
 
-    ReportScores report_scores = 25;
+    ReportWinner report_winner = 25;
   }
 }
 
@@ -193,11 +193,12 @@ message ClaimEscrow {
   optional ObjectReference shard_input_ref = 1;
 }
 
-message ReportScores {
+message ReportWinner {
   optional ObjectReference shard_input_ref = 1;
-  optional bytes scores = 2;
+  optional bytes signed_report = 2;
   optional bytes encoder_aggregate_signature = 3;
   repeated string signers = 4;
+  optional bytes shard_auth_token = 5;
 }
 
 

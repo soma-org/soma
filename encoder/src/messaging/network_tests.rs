@@ -109,10 +109,11 @@ mod tests {
         ) -> ShardResult<()> {
             unimplemented!()
         }
-        async fn handle_send_score_vote(
+
+        async fn handle_send_report_vote(
             &self,
             encoder: &EncoderPublicKey,
-            score_vote_bytes: Bytes,
+            report_vote_bytes: Bytes,
         ) -> ShardResult<()> {
             unimplemented!()
         }

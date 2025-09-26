@@ -427,14 +427,15 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(ClaimEscrow {
                 shard_input_ref: Some(object_ref_to_proto(shard_input_ref)),
             }),
-            K::ReportScores {
+            K::ReportWinner {
                 shard_input_ref,
-                scores,
+                signed_report,
                 signature,
                 signers,
-            } => Kind::ReportScores(ReportScores {
+                shard_auth_token,
+            } => Kind::ReportWinner(ReportWinner {
                 shard_input_ref: Some(object_ref_to_proto(shard_input_ref)),
-                scores: Some(scores.into()),
+                signed_report: Some(signed_report.into()),
                 encoder_aggregate_signature: Some(signature.into()),
                 signers: signers
                     .into_iter()
@@ -443,6 +444,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                         format!("0x{}", hex::encode(s.to_bytes()))
                     })
                     .collect(),
+                shard_auth_token: Some(shard_auth_token.into()),
             }),
         };
 

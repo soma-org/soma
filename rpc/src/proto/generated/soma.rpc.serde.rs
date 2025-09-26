@@ -3927,164 +3927,6 @@ impl<'de> serde::Deserialize<'de> for ReportEncoder {
         deserializer.deserialize_struct("soma.rpc.ReportEncoder", FIELDS, GeneratedVisitor)
     }
 }
-impl serde::Serialize for ReportScores {
-    #[allow(deprecated)]
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut len = 0;
-        if self.shard_input_ref.is_some() {
-            len += 1;
-        }
-        if self.scores.is_some() {
-            len += 1;
-        }
-        if self.encoder_aggregate_signature.is_some() {
-            len += 1;
-        }
-        if !self.signers.is_empty() {
-            len += 1;
-        }
-        let mut struct_ser = serializer.serialize_struct("soma.rpc.ReportScores", len)?;
-        if let Some(v) = self.shard_input_ref.as_ref() {
-            struct_ser.serialize_field("shardInputRef", v)?;
-        }
-        if let Some(v) = self.scores.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("scores", crate::utils::_serde::base64::encode(&v).as_str())?;
-        }
-        if let Some(v) = self.encoder_aggregate_signature.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("encoderAggregateSignature", crate::utils::_serde::base64::encode(&v).as_str())?;
-        }
-        if !self.signers.is_empty() {
-            struct_ser.serialize_field("signers", &self.signers)?;
-        }
-        struct_ser.end()
-    }
-}
-impl<'de> serde::Deserialize<'de> for ReportScores {
-    #[allow(deprecated)]
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        const FIELDS: &[&str] = &[
-            "shard_input_ref",
-            "shardInputRef",
-            "scores",
-            "encoder_aggregate_signature",
-            "encoderAggregateSignature",
-            "signers",
-        ];
-
-        #[allow(clippy::enum_variant_names)]
-        enum GeneratedField {
-            ShardInputRef,
-            Scores,
-            EncoderAggregateSignature,
-            Signers,
-            __SkipField__,
-        }
-        impl<'de> serde::Deserialize<'de> for GeneratedField {
-            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                struct GeneratedVisitor;
-
-                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
-                    type Value = GeneratedField;
-
-                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        write!(formatter, "expected one of: {:?}", &FIELDS)
-                    }
-
-                    #[allow(unused_variables)]
-                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
-                    where
-                        E: serde::de::Error,
-                    {
-                        match value {
-                            "shardInputRef" | "shard_input_ref" => Ok(GeneratedField::ShardInputRef),
-                            "scores" => Ok(GeneratedField::Scores),
-                            "encoderAggregateSignature" | "encoder_aggregate_signature" => Ok(GeneratedField::EncoderAggregateSignature),
-                            "signers" => Ok(GeneratedField::Signers),
-                            _ => Ok(GeneratedField::__SkipField__),
-                        }
-                    }
-                }
-                deserializer.deserialize_identifier(GeneratedVisitor)
-            }
-        }
-        struct GeneratedVisitor;
-        #[allow(clippy::useless_conversion)]
-        #[allow(clippy::unit_arg)]
-        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
-            type Value = ReportScores;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct soma.rpc.ReportScores")
-            }
-
-            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ReportScores, V::Error>
-                where
-                    V: serde::de::MapAccess<'de>,
-            {
-                let mut shard_input_ref__ = None;
-                let mut scores__ = None;
-                let mut encoder_aggregate_signature__ = None;
-                let mut signers__ = None;
-                while let Some(k) = map_.next_key()? {
-                    match k {
-                        GeneratedField::ShardInputRef => {
-                            if shard_input_ref__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("shardInputRef"));
-                            }
-                            shard_input_ref__ = map_.next_value()?;
-                        }
-                        GeneratedField::Scores => {
-                            if scores__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("scores"));
-                            }
-                            scores__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::EncoderAggregateSignature => {
-                            if encoder_aggregate_signature__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("encoderAggregateSignature"));
-                            }
-                            encoder_aggregate_signature__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::Signers => {
-                            if signers__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("signers"));
-                            }
-                            signers__ = Some(map_.next_value()?);
-                        }
-                        GeneratedField::__SkipField__ => {
-                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
-                        }
-                    }
-                }
-                Ok(ReportScores {
-                    shard_input_ref: shard_input_ref__,
-                    scores: scores__,
-                    encoder_aggregate_signature: encoder_aggregate_signature__,
-                    signers: signers__.unwrap_or_default(),
-                })
-            }
-        }
-        deserializer.deserialize_struct("soma.rpc.ReportScores", FIELDS, GeneratedVisitor)
-    }
-}
 impl serde::Serialize for ReportValidator {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -4180,6 +4022,187 @@ impl<'de> serde::Deserialize<'de> for ReportValidator {
             }
         }
         deserializer.deserialize_struct("soma.rpc.ReportValidator", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ReportWinner {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.shard_input_ref.is_some() {
+            len += 1;
+        }
+        if self.signed_report.is_some() {
+            len += 1;
+        }
+        if self.encoder_aggregate_signature.is_some() {
+            len += 1;
+        }
+        if !self.signers.is_empty() {
+            len += 1;
+        }
+        if self.shard_auth_token.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ReportWinner", len)?;
+        if let Some(v) = self.shard_input_ref.as_ref() {
+            struct_ser.serialize_field("shardInputRef", v)?;
+        }
+        if let Some(v) = self.signed_report.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("signedReport", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.encoder_aggregate_signature.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("encoderAggregateSignature", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if !self.signers.is_empty() {
+            struct_ser.serialize_field("signers", &self.signers)?;
+        }
+        if let Some(v) = self.shard_auth_token.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("shardAuthToken", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ReportWinner {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "shard_input_ref",
+            "shardInputRef",
+            "signed_report",
+            "signedReport",
+            "encoder_aggregate_signature",
+            "encoderAggregateSignature",
+            "signers",
+            "shard_auth_token",
+            "shardAuthToken",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ShardInputRef,
+            SignedReport,
+            EncoderAggregateSignature,
+            Signers,
+            ShardAuthToken,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "shardInputRef" | "shard_input_ref" => Ok(GeneratedField::ShardInputRef),
+                            "signedReport" | "signed_report" => Ok(GeneratedField::SignedReport),
+                            "encoderAggregateSignature" | "encoder_aggregate_signature" => Ok(GeneratedField::EncoderAggregateSignature),
+                            "signers" => Ok(GeneratedField::Signers),
+                            "shardAuthToken" | "shard_auth_token" => Ok(GeneratedField::ShardAuthToken),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ReportWinner;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ReportWinner")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ReportWinner, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut shard_input_ref__ = None;
+                let mut signed_report__ = None;
+                let mut encoder_aggregate_signature__ = None;
+                let mut signers__ = None;
+                let mut shard_auth_token__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ShardInputRef => {
+                            if shard_input_ref__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("shardInputRef"));
+                            }
+                            shard_input_ref__ = map_.next_value()?;
+                        }
+                        GeneratedField::SignedReport => {
+                            if signed_report__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signedReport"));
+                            }
+                            signed_report__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::EncoderAggregateSignature => {
+                            if encoder_aggregate_signature__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("encoderAggregateSignature"));
+                            }
+                            encoder_aggregate_signature__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Signers => {
+                            if signers__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signers"));
+                            }
+                            signers__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::ShardAuthToken => {
+                            if shard_auth_token__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("shardAuthToken"));
+                            }
+                            shard_auth_token__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ReportWinner {
+                    shard_input_ref: shard_input_ref__,
+                    signed_report: signed_report__,
+                    encoder_aggregate_signature: encoder_aggregate_signature__,
+                    signers: signers__.unwrap_or_default(),
+                    shard_auth_token: shard_auth_token__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ReportWinner", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for SetCommissionRate {
@@ -5611,8 +5634,8 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::ClaimEscrow(v) => {
                     struct_ser.serialize_field("claimEscrow", v)?;
                 }
-                transaction_kind::Kind::ReportScores(v) => {
-                    struct_ser.serialize_field("reportScores", v)?;
+                transaction_kind::Kind::ReportWinner(v) => {
+                    struct_ser.serialize_field("reportWinner", v)?;
                 }
             }
         }
@@ -5673,8 +5696,8 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "embedData",
             "claim_escrow",
             "claimEscrow",
-            "report_scores",
-            "reportScores",
+            "report_winner",
+            "reportWinner",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -5703,7 +5726,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             WithdrawStake,
             EmbedData,
             ClaimEscrow,
-            ReportScores,
+            ReportWinner,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -5750,7 +5773,7 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "withdrawStake" | "withdraw_stake" => Ok(GeneratedField::WithdrawStake),
                             "embedData" | "embed_data" => Ok(GeneratedField::EmbedData),
                             "claimEscrow" | "claim_escrow" => Ok(GeneratedField::ClaimEscrow),
-                            "reportScores" | "report_scores" => Ok(GeneratedField::ReportScores),
+                            "reportWinner" | "report_winner" => Ok(GeneratedField::ReportWinner),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -5943,11 +5966,11 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ClaimEscrow)
 ;
                         }
-                        GeneratedField::ReportScores => {
+                        GeneratedField::ReportWinner => {
                             if kind__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("reportScores"));
+                                return Err(serde::de::Error::duplicate_field("reportWinner"));
                             }
-                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ReportScores)
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ReportWinner)
 ;
                         }
                         GeneratedField::__SkipField__ => {

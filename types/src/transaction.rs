@@ -167,11 +167,12 @@ pub enum TransactionKind {
     ClaimEscrow {
         shard_input_ref: ObjectRef,
     },
-    ReportScores {
+    ReportWinner {
         shard_input_ref: ObjectRef,
-        scores: Vec<u8>,    // BCS Serialized Signed<ShardScores, BLS>
-        signature: Vec<u8>, // BCS serialized EncoderAggregateSignature (BLS)
+        signed_report: Vec<u8>, // BCS Serialized Signed<Report, BLS>
+        signature: Vec<u8>,     // BCS serialized EncoderAggregateSignature (BLS)
         signers: Vec<EncoderPublicKey>,
+        shard_auth_token: Vec<u8>,
     },
 }
 
@@ -298,7 +299,7 @@ impl TransactionKind {
                 | TransactionKind::SetEncoderCommissionRate { .. }
                 | TransactionKind::UpdateEncoderMetadata(_)
                 | TransactionKind::SetEncoderBytePrice { .. }
-                | TransactionKind::ReportScores { .. }
+                | TransactionKind::ReportWinner { .. }
         )
     }
 
@@ -362,7 +363,7 @@ impl TransactionKind {
             }
             // Add ShardInput as shared object for ReportScores
             // (note: system state is already added above)
-            TransactionKind::ReportScores {
+            TransactionKind::ReportWinner {
                 shard_input_ref, ..
             } => {
                 objects.push(SharedInputObject {
@@ -427,7 +428,7 @@ impl TransactionKind {
                     mutable: true,
                 });
             }
-            TransactionKind::ReportScores {
+            TransactionKind::ReportWinner {
                 shard_input_ref, ..
             } => {
                 input_objects.push(InputObjectKind::SharedObject {

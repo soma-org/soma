@@ -1,8 +1,8 @@
-use crate::metadata::MetadataCommitment;
 use crate::shard_crypto::digest::Digest;
+use crate::{metadata::MetadataCommitment, report::Report};
 use serde::{Deserialize, Serialize};
 
-use crate::{base::SomaAddress, committee::EpochId, submission::Submission};
+use crate::{base::SomaAddress, committee::EpochId};
 
 /// ShardInput represents an escrowed amount for data encoding
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -28,6 +28,6 @@ pub struct ShardResult {
     pub data_size_bytes: usize,
     /// Escrowed amount for the shard
     pub amount: u64,
-    /// The winning submission
-    pub submission: Submission,
+    /// The submitted report
+    pub report: Report,
 }

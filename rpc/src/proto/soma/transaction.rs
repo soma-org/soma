@@ -201,17 +201,19 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 .into(),
             ),
             ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(shard_input_ref.into()),
-            ReportScores {
+            ReportWinner {
                 shard_input_ref,
-                scores,
+                signed_report,
                 encoder_aggregate_signature,
                 signers,
-            } => Kind::ReportScores(
-                ReportScoresArgs {
+                shard_auth_token,
+            } => Kind::ReportWinner(
+                ReportWinnerArgs {
                     shard_input_ref,
-                    scores,
+                    signed_report,
                     encoder_aggregate_signature,
                     signers,
+                    shard_auth_token,
                 }
                 .into(),
             ),
@@ -406,14 +408,14 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .ok_or_else(|| TryFromProtoError::missing("shard_input_ref"))?
                     .try_into()?,
             },
-            Kind::ReportScores(report) => Self::ReportScores {
+            Kind::ReportWinner(report) => Self::ReportWinner {
                 shard_input_ref: report
                     .shard_input_ref
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("shard_input_ref"))?
                     .try_into()?,
-                scores: report
-                    .scores
+                signed_report: report
+                    .signed_report
                     .clone()
                     .ok_or_else(|| TryFromProtoError::missing("scores"))?
                     .into(),
@@ -430,6 +432,11 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                             .map_err(|e| TryFromProtoError::invalid("signers", e))
                     })
                     .collect::<Result<_, _>>()?,
+                shard_auth_token: report
+                    .shard_auth_token
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("scores"))?
+                    .into(),
             },
         }
         .pipe(Ok)
@@ -948,20 +955,22 @@ impl From<crate::types::ObjectReference> for ClaimEscrow {
 }
 
 // ReportScores conversions
-pub struct ReportScoresArgs {
+pub struct ReportWinnerArgs {
     pub shard_input_ref: crate::types::ObjectReference,
-    pub scores: Vec<u8>,
+    pub signed_report: Vec<u8>,
     pub encoder_aggregate_signature: Vec<u8>,
     pub signers: Vec<String>,
+    pub shard_auth_token: Vec<u8>,
 }
 
-impl From<ReportScoresArgs> for ReportScores {
-    fn from(args: ReportScoresArgs) -> Self {
+impl From<ReportWinnerArgs> for ReportWinner {
+    fn from(args: ReportWinnerArgs) -> Self {
         Self {
             shard_input_ref: Some(args.shard_input_ref.into()),
-            scores: Some(args.scores.into()),
+            signed_report: Some(args.signed_report.into()),
             encoder_aggregate_signature: Some(args.encoder_aggregate_signature.into()),
             signers: args.signers,
+            shard_auth_token: Some(args.shard_auth_token.into()),
         }
     }
 }

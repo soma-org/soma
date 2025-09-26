@@ -12,6 +12,8 @@ use types::{
     error::{ConsensusError, ExecutionResult, SomaError},
     metadata::{DownloadableMetadataAPI, MetadataAPI, MetadataCommitment},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
+    report::Report,
+    shard::ShardAuthToken,
     shard_crypto::{
         digest::Digest,
         keys::{EncoderAggregateSignature, EncoderPublicKey},
@@ -20,7 +22,7 @@ use types::{
         verified::Verified,
     },
     shard_verifier::ShardVerifier,
-    system_state::SystemState,
+    system_state::{shard::ShardResult, SystemState},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
     SYSTEM_STATE_OBJECT_ID,
@@ -242,239 +244,230 @@ impl ShardExecutor {
     }
 
     /// Execute ReportScores transaction
-    fn execute_report_scores(
+    fn execute_report_winner(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         shard_input_ref: ObjectRef,
-        scores_bytes: Vec<u8>,
+        signed_report_bytes: Vec<u8>,
         signature: Vec<u8>,
         signers: Vec<EncoderPublicKey>,
+        shard_auth_token_bytes: Vec<u8>,
         tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
-        // let shard_input_id = shard_input_ref.0;
-        // // Try to get ShardInput object
-        // let shard_input_object = store.read_object(&shard_input_id).ok_or_else(|| {
-        //     ExecutionFailureStatus::ObjectNotFound {
-        //         object_id: shard_input_id,
-        //     }
-        // })?;
+        let shard_input_id = shard_input_ref.0;
+        // Try to get ShardInput object
+        let shard_input_object = store.read_object(&shard_input_id).ok_or_else(|| {
+            ExecutionFailureStatus::ObjectNotFound {
+                object_id: shard_input_id,
+            }
+        })?;
 
-        // let shard_input = shard_input_object.as_shard_input().ok_or_else(|| {
-        //     ExecutionFailureStatus::InvalidObjectType {
-        //         object_id: shard_input_id,
-        //         expected_type: ObjectType::ShardInput,
-        //         actual_type: shard_input_object.type_().clone(),
-        //     }
-        // })?;
+        let shard_input = shard_input_object.as_shard_input().ok_or_else(|| {
+            ExecutionFailureStatus::InvalidObjectType {
+                object_id: shard_input_id,
+                expected_type: ObjectType::ShardInput,
+                actual_type: shard_input_object.type_().clone(),
+            }
+        })?;
 
-        // // Get system state object
-        // let state_object = store
-        //     .read_object(&SYSTEM_STATE_OBJECT_ID)
-        //     .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
-        //         object_id: SYSTEM_STATE_OBJECT_ID,
-        //     })?
-        //     .clone();
+        // Get system state object
+        let state_object = store
+            .read_object(&SYSTEM_STATE_OBJECT_ID)
+            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
+                object_id: SYSTEM_STATE_OBJECT_ID,
+            })?
+            .clone();
 
-        // // Deserialize system state
-        // let mut state = bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents())
-        //     .map_err(|e| {
-        //         ExecutionFailureStatus::SomaError(SomaError::from(format!(
-        //             "Failed to deserialize system state: {}",
-        //             e
-        //         )))
-        //     })?;
+        // Deserialize system state
+        let mut state = bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents())
+            .map_err(|e| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize system state: {}",
+                    e
+                )))
+            })?;
 
-        // let current_epoch = state.epoch;
+        let current_epoch = state.epoch;
 
-        // // Check expiration epoch
-        // if current_epoch >= shard_input.expiration_epoch {
-        //     return Err(ExecutionFailureStatus::InvalidArguments {
-        //         reason: format!(
-        //             "Shard input has expired. Current epoch: {}, Expiration epoch: {}",
-        //             current_epoch, shard_input.expiration_epoch
-        //         ),
-        //     });
-        // }
+        // Check expiration epoch
+        if current_epoch >= shard_input.expiration_epoch {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Shard input has expired. Current epoch: {}, Expiration epoch: {}",
+                    current_epoch, shard_input.expiration_epoch
+                ),
+            });
+        }
 
-        // // Deserialize scores bytes
-        // tracing::debug!("Deserializing scores bytes");
-        // let scores: Signed<ShardScore, min_sig::BLS12381Signature> =
-        //     match bcs::from_bytes(&scores_bytes) {
-        //         Ok(s) => {
-        //             tracing::debug!("Successfully deserialized scores");
-        //             s
-        //         }
-        //         Err(e) => {
-        //             tracing::error!("Failed to deserialize scores: {:?}", e);
-        //             return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-        //                 "Failed to deserialize scores: {}",
-        //                 e
-        //             ))));
-        //         }
-        //     };
+        // Deserialize scores bytes
+        tracing::debug!("Deserializing signed report bytes");
+        let signed_report: Signed<Report, min_sig::BLS12381Signature> =
+            match bcs::from_bytes(&signed_report_bytes) {
+                Ok(s) => {
+                    tracing::debug!("Successfully deserialized report");
+                    s
+                }
+                Err(e) => {
+                    tracing::error!("Failed to deserialize report: {:?}", e);
+                    return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                        "Failed to deserialize scores: {}",
+                        e
+                    ))));
+                }
+            };
 
-        // let committees = state.committees(scores.auth_token().epoch())?;
-        // let authority_committee = Committee::convert_to_authority_committee(
-        //     committees.build_validator_committee().committee(),
-        // );
-        // let encoder_committee = EncoderCommittee::convert_encoder_committee(
-        //     &committees.build_encoder_committee(),
-        //     scores.auth_token().epoch(),
-        // );
-        // let vdf_iterations = state.parameters.vdf_iterations; // TODO: Revisit if this needs to be queried by the auth token epoch too
+        // Deserialize shard auth token bytes
+        tracing::debug!("Deserializing shard auth token bytes");
+        let shard_auth_token: ShardAuthToken = match bcs::from_bytes(&shard_auth_token_bytes) {
+            Ok(s) => {
+                tracing::debug!("Successfully deserialized shard auth token");
+                s
+            }
+            Err(e) => {
+                tracing::error!("Failed to deserialize shard auth token: {:?}", e);
+                return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize shard auth token: {}",
+                    e
+                ))));
+            }
+        };
 
-        // let (shard, _) = match self.shard_verifier.verify(
-        //     authority_committee,
-        //     encoder_committee,
-        //     vdf_iterations,
-        //     scores.auth_token(),
-        // ) {
-        //     Ok(s) => {
-        //         debug!("Shard verification succeeded");
-        //         s
-        //     }
-        //     Err(e) => {
-        //         error!("Shard verification failed: {:?}", e);
-        //         return Err(ExecutionFailureStatus::InvalidArguments {
-        //             reason: format!("Shard verification failed: {:?}", e),
-        //         });
-        //     }
-        // };
+        let epoch = shard_auth_token.epoch();
+        let committees = state.committees(epoch)?;
+        let authority_committee = committees.build_validator_committee().committee().clone();
+        let encoder_committee = committees.build_encoder_committee();
+        let vdf_iterations = state.parameters.vdf_iterations; // TODO: Revisit if this needs to be queried by the auth token epoch too
 
-        // // Create verified scores object
-        // let verified_scores = match Verified::new(scores, scores_bytes.into(), |scores| {
-        //     tracing::debug!("Verifying signed scores");
-        //     verify_signed_score(scores, &shard)
-        // }) {
-        //     Ok(v) => {
-        //         tracing::debug!("Verified scores created successfully");
-        //         v
-        //     }
-        //     Err(e) => {
-        //         tracing::error!("Failed to create verified scores: {:?}", e);
-        //         return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-        //             "Failed to create verified scores: {}",
-        //             e
-        //         ))));
-        //     }
-        // };
+        let (shard, _) = match self.shard_verifier.verify(
+            authority_committee,
+            encoder_committee,
+            vdf_iterations,
+            &shard_auth_token,
+        ) {
+            Ok(s) => {
+                debug!("Shard verification succeeded");
+                s
+            }
+            Err(e) => {
+                error!("Shard verification failed: {:?}", e);
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Shard verification failed: {:?}", e),
+                });
+            }
+        };
 
-        // // 2.1 Verify signers are in the shard
-        // let unique_signers: HashSet<&EncoderPublicKey> = signers.iter().collect();
+        // 2.1 Verify signers are in the shard
+        let unique_signers: HashSet<&EncoderPublicKey> = signers.iter().collect();
 
-        // for encoder in &unique_signers {
-        //     if !shard.encoders().contains(encoder) {
-        //         return Err(ExecutionFailureStatus::InvalidArguments {
-        //             reason: format!("Encoder {:?} is not in the shard", encoder),
-        //         });
-        //     }
-        // }
+        for encoder in &unique_signers {
+            if !shard.encoders().contains(encoder) {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Encoder {:?} is not in the shard", encoder),
+                });
+            }
+        }
 
-        // // 2.2 Verify the number of signers meets quorum requirement
-        // if (unique_signers.len() as u32) < shard.quorum_threshold() {
-        //     return Err(ExecutionFailureStatus::InvalidArguments {
-        //         reason: format!(
-        //             "Insufficient signers. Got: {}, Required: {}",
-        //             signers.len(),
-        //             shard.quorum_threshold()
-        //         ),
-        //     });
-        // }
+        // 2.2 Verify the number of signers meets quorum requirement
+        if (unique_signers.len() as u32) < shard.quorum_threshold() {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Insufficient signers. Got: {}, Required: {}",
+                    signers.len(),
+                    shard.quorum_threshold()
+                ),
+            });
+        }
 
-        // // Verify the aggregate signature
-        // let message = bcs::to_bytes(&ScopedMessage::new(Scope::Score, verified_scores.digest()))
-        //     .map_err(|e| {
-        //         ExecutionFailureStatus::SomaError(SomaError::from(format!(
-        //             "Failed to deserialize system state: {}",
-        //             e
-        //         )))
-        //     })?;
-        // let sig = match EncoderAggregateSignature::from_bytes(&signature) {
-        //     Ok(s) => {
-        //         tracing::debug!("Successfully deserialized scores");
-        //         s
-        //     }
-        //     Err(e) => {
-        //         tracing::error!("Failed to deserialize scores: {:?}", e);
-        //         return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-        //             "Failed to deserialize scores: {}",
-        //             e
-        //         ))));
-        //     }
-        // };
-        // sig.verify(&signers, &message).map_err(|e| {
-        //     ExecutionFailureStatus::SomaError(SomaError::from(
-        //         ConsensusError::SignatureVerificationFailure(e),
-        //     ))
-        // })?;
+        // Verify the aggregate signature
+        let message = bcs::to_bytes(&ScopedMessage::new(
+            Scope::ShardReport,
+            signed_report.clone().into_inner(),
+        ))
+        .map_err(|e| {
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "Failed to deserialize system state: {}",
+                e
+            )))
+        })?;
+        let sig = match EncoderAggregateSignature::from_bytes(&signature) {
+            Ok(s) => {
+                tracing::debug!("Successfully deserialized scores");
+                s
+            }
+            Err(e) => {
+                tracing::error!("Failed to deserialize scores: {:?}", e);
+                return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize scores: {}",
+                    e
+                ))));
+            }
+        };
+        sig.verify(&signers, &message).map_err(|e| {
+            ExecutionFailureStatus::SomaError(SomaError::from(
+                ConsensusError::SignatureVerificationFailure(e),
+            ))
+        })?;
 
-        // // 2.3 Verify the metadata commitment digests match
-        // let metadata_commitment_digest = verified_scores
-        //     .auth_token()
-        //     .metadata_commitment
-        //     .digest()
-        //     .map_err(|e| {
-        //         ExecutionFailureStatus::SomaError(SomaError::from(format!(
-        //             "Failed to get metadata commitment digest: {}",
-        //             e
-        //         )))
-        //     })?;
+        // 2.3 Verify the metadata commitment digests match
+        let metadata_commitment_digest =
+            shard_auth_token.metadata_commitment.digest().map_err(|e| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to get metadata commitment digest: {}",
+                    e
+                )))
+            })?;
 
-        // if shard_input.digest != metadata_commitment_digest {
-        //     return Err(ExecutionFailureStatus::InvalidArguments {
-        //         reason: "Metadata commitment digest mismatch".to_string(),
-        //     });
-        // }
+        if shard_input.digest != metadata_commitment_digest {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Metadata commitment digest mismatch".to_string(),
+            });
+        }
 
-        // // 2.4 Verify the data sizes match
-        // let data_size = verified_scores
-        //     .auth_token()
-        //     .metadata_commitment()
-        //     .downloadable_metadata()
-        //     .metadata()
-        //     .size();
+        // 2.4 Verify the data sizes match
+        let data_size = shard_auth_token.metadata_commitment().metadata().size();
 
-        // if shard_input.data_size_bytes != data_size {
-        //     return Err(ExecutionFailureStatus::InvalidArguments {
-        //         reason: format!(
-        //             "Data size mismatch. ShardInput: {}, Scores: {}",
-        //             shard_input.data_size_bytes, data_size
-        //         ),
-        //     });
-        // }
+        if shard_input.data_size_bytes != data_size {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Data size mismatch. ShardInput: {}, Scores: {}",
+                    shard_input.data_size_bytes, data_size
+                ),
+            });
+        }
 
-        // // Delete the ShardInput object
-        // store.delete_input_object(&shard_input_id);
+        // Delete the ShardInput object
+        store.delete_input_object(&shard_input_id);
 
-        // // Add ShardResult to the system state
-        // let shard_digest = verified_scores
-        //     .signed_score_set()
-        //     .into_inner()
-        //     .shard_digest();
-        // let score_set = verified_scores.signed_score_set().into_inner();
-        // state.add_shard_result(
-        //     shard_digest,
-        //     ShardResult {
-        //         digest: metadata_commitment_digest,
-        //         data_size_bytes: data_size,
-        //         amount: shard_input.amount,
-        //         score_set,
-        //     },
-        // );
+        // Add ShardResult to the system state
+        let shard_digest = shard.digest().map_err(|e| {
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "Failed to get digest from shard: {}",
+                e
+            )))
+        })?;
+        state.add_shard_result(
+            shard_digest,
+            ShardResult {
+                digest: metadata_commitment_digest,
+                data_size_bytes: data_size,
+                amount: shard_input.amount,
+                report: signed_report.into_inner(),
+            },
+        )?;
 
-        // // Serialize updated system state
-        // let state_bytes = bcs::to_bytes(&state).map_err(|e| {
-        //     ExecutionFailureStatus::SomaError(SomaError::from(format!(
-        //         "Failed to serialize updated system state: {}",
-        //         e
-        //     )))
-        // })?;
+        // Serialize updated system state
+        let state_bytes = bcs::to_bytes(&state).map_err(|e| {
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "Failed to serialize updated system state: {}",
+                e
+            )))
+        })?;
 
-        // // Update the system state object
-        // let mut updated_state_object = state_object;
-        // updated_state_object.data.update_contents(state_bytes);
-        // store.mutate_input_object(updated_state_object);
+        // Update the system state object
+        let mut updated_state_object = state_object;
+        updated_state_object.data.update_contents(state_bytes);
+        store.mutate_input_object(updated_state_object);
 
         Ok(())
     }
@@ -506,18 +499,20 @@ impl TransactionExecutor for ShardExecutor {
             TransactionKind::ClaimEscrow { shard_input_ref } => {
                 self.execute_claim_escrow(store, signer, shard_input_ref, tx_digest)
             }
-            TransactionKind::ReportScores {
+            TransactionKind::ReportWinner {
                 shard_input_ref,
-                scores,
+                signed_report,
                 signature,
                 signers,
-            } => self.execute_report_scores(
+                shard_auth_token,
+            } => self.execute_report_winner(
                 store,
                 signer,
                 shard_input_ref,
-                scores,
+                signed_report,
                 signature,
                 signers,
+                shard_auth_token,
                 tx_digest,
             ),
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
@@ -561,8 +556,8 @@ impl FeeCalculator for ShardExecutor {
                 // Default if we can't determine the value
                 self.base_fee()
             }
-            TransactionKind::ReportScores { .. } => {
-                // Standard base fee for reporting scores
+            TransactionKind::ReportWinner { .. } => {
+                // Standard base fee for reporting winners
                 self.base_fee()
             }
             _ => 0, // Default for non-matching types
