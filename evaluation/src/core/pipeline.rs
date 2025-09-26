@@ -89,6 +89,7 @@ impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> Processor
 
             let embedding_tensors = SafeTensors::deserialize(embedding_buffer.as_ref()).unwrap();
 
+            // load probe in burn (in safe tensor format)
             // ensure all of this data is downloaded to the connected storage
 
             unimplemented!();

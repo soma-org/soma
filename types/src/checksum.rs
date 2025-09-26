@@ -1,6 +1,7 @@
 use fastcrypto::hash::{Digest, HashFunction};
 use serde::{Deserialize, Serialize};
 use std::{
+    cmp::Ordering,
     fmt,
     hash::{Hash, Hasher},
 };
@@ -39,6 +40,22 @@ impl Hash for Checksum {
 impl From<Checksum> for Digest<{ DIGEST_LENGTH }> {
     fn from(hd: Checksum) -> Self {
         Digest::new(hd.0)
+    }
+}
+
+impl From<Checksum> for [u8; 32] {
+    fn from(checksum: Checksum) -> Self {
+        let mut seed = [0u8; 32];
+        match DIGEST_LENGTH.cmp(&32) {
+            Ordering::Equal => seed.copy_from_slice(&checksum.0),
+            Ordering::Greater => seed.copy_from_slice(&checksum.0[..32]),
+            Ordering::Less => {
+                for (i, byte) in checksum.0.iter().cycle().take(32).enumerate() {
+                    seed[i] = *byte;
+                }
+            }
+        }
+        seed
     }
 }
 

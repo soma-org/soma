@@ -1437,6 +1437,8 @@ pub enum EvaluationError {
     SerializationFailure(bcs::Error),
     #[error("Storage failed: {0}")]
     StorageFailure(String),
+    #[error("Safetensors failed: {0}")]
+    SafeTensorsFailure(String),
 }
 
 impl From<ShardError> for SharedError {

@@ -32,6 +32,7 @@ safetensors.workspace = true
 memmap2.workspace = true
 types.workspace = true
 rand.workspace = true
+ndarray-safetensors.workspace = true
 
 [dependencies.burn]
 workspace = true
