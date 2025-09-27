@@ -1,3 +1,5 @@
+import os
+from typing import Union
 from jax import Array
 import jax.numpy as jnp
 from flax import nnx
@@ -8,10 +10,11 @@ from soma_probes.config import (
     V1_VOCAB_SIZE,
 )
 from soma_probes.flax.v1.modules.encoder import Encoder
+from soma_probes.flax.serde import Serde
 
 
 class Probe(nnx.Module):
-    def __init__(self, dropout_rate: float, rngs: nnx.Rngs):
+    def __init__(self, dropout_rate: float, rngs: nnx.Rngs) -> None:
         self.mask_token = nnx.Param(
             # using the same init as nnx.Embed
             nnx.initializers.variance_scaling(1.0, "fan_in", "normal", out_axis=0)(
@@ -27,7 +30,9 @@ class Probe(nnx.Module):
         target_byte_index: Array,  # [batch]
         context_embeddings: Array,  # [batch, seq_len, embedding_dim]
         context_byte_indices: Array,  # [batch, seq_len]
-    ):
+    ) -> Array:
+        # TODO: need to check that context embeddings len matches the context byte indices
+        # TODO: need to check that len context embeddings + 1 is less than or equal to max seq len
         relative_positions = jnp.subtract(context_byte_indices, target_byte_index)
         x = jnp.concatenate([self.mask_token, context_embeddings], axis=1)
         relative_positions = jnp.concatenate([0, relative_positions], axis=1)
@@ -36,3 +41,15 @@ class Probe(nnx.Module):
         x = self.final_norm(x)
         mask_token = x[:, 0]  # Shape: [batch, embedding_dim]
         return self.predictor(mask_token)
+
+    def serialize(self) -> bytes:
+        return Serde(self).serialize()
+
+    def serialize_to_file(self, filename: Union[str, os.PathLike]) -> None:
+        return Serde(self).serialize_to_file(filename)
+
+    def deserialize(self, data: bytes):
+        self = Serde(self).deserialize(data)
+
+    def deserialize_from_file(self, filename: Union[str, os.PathLike]):
+        self = Serde(self).deserialize_from_file(filename)
