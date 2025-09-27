@@ -1,7 +1,7 @@
 [project]
 name = "soma"
 version = "0.1.0"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 [tool.uv.workspace]
 members = ["python-probes", "python-sdk"]
