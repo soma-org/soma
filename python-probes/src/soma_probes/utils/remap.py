@@ -1,9 +1,11 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 
-def remap(dict: Dict[str, Any], rename_map: Dict[str, str]) -> None:
+def remap(
+    dict: Dict[str, Any], rename_map: Dict[str, str], keys_to_delete: List[str]
+) -> None:
     pending_operations = []  # Stores tuples of (new_key_target, value_from_old_key)
-    keys_to_delete_from_original = set()
+    keys_to_delete_from_original = set(keys_to_delete)
 
     for old_key, new_key in rename_map.items():
         if old_key in dict:

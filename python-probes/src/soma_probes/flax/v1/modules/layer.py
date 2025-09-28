@@ -2,8 +2,11 @@ from jax import Array
 from flax import nnx
 from soma_probes.config import (
     V1_EMBEDDING_DIM,
+    V1_NUM_HEADS,
+    V1_MAX_WAVELENGTH,
 )
 from soma_probes.flax.v1.modules.pwff import PositionWiseFeedForward
+from soma_probes.flax.v1.modules.attention import MultiHeadAttention
 
 
 class Layer(nnx.Module):
@@ -13,6 +16,14 @@ class Layer(nnx.Module):
             rngs=rngs,
             epsilon=1e-5,
             use_fast_variance=False,
+        )
+        self.attention = MultiHeadAttention(
+            num_heads=V1_NUM_HEADS,
+            in_features=V1_EMBEDDING_DIM,
+            dropout_rate=dropout_rate,
+            decode=False,
+            max_wavelength=V1_MAX_WAVELENGTH,
+            rngs=rngs,
         )
         self.norm_2 = nnx.LayerNorm(
             num_features=V1_EMBEDDING_DIM,
@@ -30,7 +41,7 @@ class Layer(nnx.Module):
     ):
         x = representations
         residual_path = self.norm_1(x)
-        residual_path = self.attention(residual_path)
+        residual_path = self.attention(residual_path, positions)
         residual_path = self.dropout(residual_path)
         x = x + residual_path
         residual_path = self.norm_2(x)
