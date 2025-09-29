@@ -10,8 +10,8 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use evaluation::messaging::EvaluationClient;
 use fastcrypto::traits::KeyPair;
+use intelligence::evaluation::messaging::EvaluationClient;
 use objects::{
     networking::{downloader::Downloader, ObjectNetworkClient},
     storage::ObjectStorage,

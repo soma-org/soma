@@ -19,7 +19,7 @@ bcs.workspace = true
 tonic.workspace = true
 bytes.workspace = true
 vdf.workspace = true
-evaluation.workspace = true
+intelligence.workspace = true
 serde.workspace = true
 tempfile.workspace = true
 

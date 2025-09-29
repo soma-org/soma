@@ -10,20 +10,19 @@ members = [
   "p2p",
   "cli",
   "encoder",
-  "evaluation",
+  "intelligence",
   "soma-http",
   "soma-tls",
   "vdf",
   "objects",
   "test-encoder-cluster",
-  "inference",
   "encoder-validator-api",
   "bin-version",
   "soma-config",
   "soma-keys",
   "rpc",
   "sdk",
-  "python-sdk",
+  "python-sdk", "probes",
 ]
 
 
@@ -190,13 +189,12 @@ prost = "0.13.2" # prost = "0.13.1"
 
 # ENCODER-ONLY DEPENDENCIES
 encoder = { path = "encoder" }
-evaluation = { path = "evaluation" }
+intelligence = { path = "intelligence" }
 vdf = { path = "vdf" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
 objects = { path = "objects" }
-inference = { path = "inference" }
 test-encoder-cluster = { path = "test-encoder-cluster" }
 
 # external deps

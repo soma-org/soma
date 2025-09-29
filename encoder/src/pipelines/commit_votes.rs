@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use evaluation::messaging::EvaluationClient;
+use intelligence::evaluation::messaging::EvaluationClient;
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use tracing::{debug, info, warn};
 use types::{

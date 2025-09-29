@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 use std::{collections::BTreeSet, future::Future, sync::Arc};
 
-use evaluation::messaging::service::MockEvaluationService;
-use evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
-use evaluation::messaging::EvaluationManager;
 use fastcrypto::traits::KeyPair;
-use inference::client::MockInferenceClient;
+use intelligence::evaluation::messaging::service::MockEvaluationService;
+use intelligence::evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
+use intelligence::evaluation::messaging::EvaluationManager;
+use intelligence::inference::client::MockInferenceClient;
 use objects::networking::downloader::Downloader;
 use objects::{
     networking::{

@@ -2,7 +2,7 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/soma.EvaluationTonicService.rs"));
 }
 use super::{EvaluationClient, EvaluationManager, EvaluationService};
-use crate::messaging::tonic::generated::evaluation_tonic_service_client::EvaluationTonicServiceClient;
+use crate::evaluation::messaging::tonic::generated::evaluation_tonic_service_client::EvaluationTonicServiceClient;
 use async_trait::async_trait;
 use bytes::Bytes;
 use generated::evaluation_tonic_service_server::{

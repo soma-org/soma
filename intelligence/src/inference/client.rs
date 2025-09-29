@@ -1,6 +1,5 @@
-use crate::{InferenceInput, InferenceOutput, InferenceOutputV1};
 use async_trait::async_trait;
-use objects::storage::{ObjectPath, ObjectStorage};
+use objects::storage::ObjectStorage;
 use std::{sync::Arc, time::Duration};
 use types::evaluation::{ProbeSet, ProbeSetV1};
 use types::{
@@ -8,6 +7,8 @@ use types::{
     error::InferenceResult,
     metadata::{Metadata, MetadataV1},
 };
+
+use super::{InferenceInput, InferenceOutput, InferenceOutputV1};
 
 #[async_trait]
 pub trait InferenceClient: Send + Sync + Sized + 'static {

@@ -25,8 +25,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("evaluation")
                 .route_name("Evaluation")
-                .input_type("crate::messaging::tonic::EvaluationRequest")
-                .output_type("crate::messaging::tonic::EvaluationResponse")
+                .input_type("crate::evaluation::messaging::tonic::EvaluationRequest")
+                .output_type("crate::evaluation::messaging::tonic::EvaluationResponse")
                 .codec_path(codec_path)
                 .build(),
         )

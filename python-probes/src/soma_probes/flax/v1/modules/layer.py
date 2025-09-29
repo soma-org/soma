@@ -46,5 +46,6 @@ class Layer(nnx.Module):
         x = x + residual_path
         residual_path = self.norm_2(x)
         residual_path = self.pwff(residual_path)
+        residual_path = self.dropout(residual_path)
         x = x + residual_path
         return x

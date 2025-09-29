@@ -7,7 +7,7 @@ use types::{
     shard_crypto::digest::Digest,
 };
 
-use crate::core::{pipeline::CoreProcessor, safetensor_buffer::SafetensorBuffer};
+use crate::evaluation::core::{pipeline::CoreProcessor, safetensor_buffer::SafetensorBuffer};
 
 use super::EvaluationService;
 use bytes::Bytes;

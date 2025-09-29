@@ -8,12 +8,12 @@ from soma_probes.config import (
 
 class PositionWiseFeedForward(nnx.Module):
     def __init__(self, dropout_rate: float, rngs: nnx.Rngs):
-        self.linear_1 = nnx.Linear(
+        self.linear_inner = nnx.Linear(
             in_features=V1_EMBEDDING_DIM,
             out_features=V1_PWFF_HIDDEN_DIM,
             rngs=rngs,
         )
-        self.linear_2 = nnx.Linear(
+        self.linear_outer = nnx.Linear(
             in_features=V1_EMBEDDING_DIM,
             out_features=V1_PWFF_HIDDEN_DIM,
             rngs=rngs,
@@ -21,8 +21,8 @@ class PositionWiseFeedForward(nnx.Module):
         self.dropout = nnx.Dropout(dropout_rate, rngs=rngs)
 
     def __call__(self, x):
-        x = self.linear_1(x)
+        x = self.linear_inner(x)
         x = nnx.gelu(x, approximate=False)
         x = self.dropout(x)
-        output = self.linear_2(x)
+        output = self.linear_outer(x)
         return output
