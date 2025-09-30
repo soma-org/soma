@@ -1,4 +1,4 @@
-from arrgen import generate_array
+from arrgen import uniform_array
 
 
 def test_arrgen():
@@ -6,5 +6,5 @@ def test_arrgen():
     seed = 42
     min = 0.0
     max = 1.0
-    x = generate_array(shape, seed, min, max)
+    x = uniform_array(seed, shape, min, max)
     print(x)
