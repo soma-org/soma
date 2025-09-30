@@ -1,12 +1,16 @@
 [package]
-name = "soma-sdk"
+name = "arrgen"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "soma_sdk"
-crate-type = ["cdylib"]
+name = "arrgen"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3.workspace = true
+rand.workspace = true
+ndarray.workspace = true
+ndarray-rand.workspace = true
+numpy.workspace = true

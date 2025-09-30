@@ -10,5 +10,8 @@ num-traits.workspace = true
 workspace = true
 features = ["ndarray", "autodiff"]
 
+[dev-dependencies]
+arrgen.workspace = true
+
 [lints]
 workspace = true

@@ -23,6 +23,7 @@ members = [
   "rpc",
   "sdk",
   "python-sdk", "probes",
+  "arrgen"
 ]
 
 
@@ -196,6 +197,8 @@ soma-tls = { path = "soma-tls" }
 soma-network = { path = "soma-network" }
 objects = { path = "objects" }
 test-encoder-cluster = { path = "test-encoder-cluster" }
+arrgen = { path = "arrgen" }
+
 
 # external deps
 bs58 = "0.5.1"
@@ -211,6 +214,7 @@ pyo3 = "0.24"
 pyo3-build-config = "0.24"
 numpy = "0.24"
 ndarray = { version = "0.16", features = ["serde"] }
+ndarray-rand = "0.15.0"
 reqwest = { version = "0.12", default-features = false, features = [
   "stream",
   "http2",

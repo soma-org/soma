@@ -6,7 +6,6 @@ use burn::{
     tensor::{Int, Tensor, TensorData},
 };
 use burn_import::safetensors::{AdapterType, LoadArgs, SafetensorsFileRecorder};
-use evaluation::modules::v1::{decoder::DecoderV1, predictor::PredictorV1};
 use memmap2::MmapOptions;
 use safetensors::SafeTensors;
 use shared::tensors::to_burn_dtype;

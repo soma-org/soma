@@ -45,7 +45,7 @@ mod tests {
     use safetensors::{serialize, tensor::TensorView, Dtype, SafeTensors};
     use tempdir::TempDir;
 
-    use crate::core::safetensor_buffer::SafetensorBuffer;
+    use crate::evaluation::core::safetensor_buffer::SafetensorBuffer;
 
     // Basic async test
     #[tokio::test]

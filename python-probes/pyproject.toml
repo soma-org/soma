@@ -15,8 +15,13 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "arrgen",
     "pytest>=8.3.5",
 ]
+
+[tool.uv.sources]
+arrgen = { workspace = true }
+
 # [build-system]
 # requires = ["hatchling"]
 # build-backend = "hatchling.build"

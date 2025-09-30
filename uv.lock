@@ -9,9 +9,9 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "python-sdk",
-    "soma",
+    "arrgen",
     "soma-probes",
+    "soma-sdk",
 ]
 
 [[package]]
@@ -31,6 +31,10 @@ sdist = { url = "https://files.pythonhosted.org/packages/0b/03/a88171e277e8caa88
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a5/45/30bb92d442636f570cb5651bc661f52b610e2eec3f891a5dc3a4c3667db0/aiofiles-24.1.0-py3-none-any.whl", hash = "sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5", size = 15896 },
 ]
+
+[[package]]
+name = "arrgen"
+source = { editable = "arrgen" }
 
 [[package]]
 name = "chex"
@@ -698,10 +702,6 @@ wheels = [
 ]
 
 [[package]]
-name = "python-sdk"
-source = { editable = "python-sdk" }
-
-[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -997,11 +997,6 @@ wheels = [
 ]
 
 [[package]]
-name = "soma"
-version = "0.1.0"
-source = { virtual = "." }
-
-[[package]]
 name = "soma-probes"
 version = "0.1.0"
 source = { editable = "python-probes" }
@@ -1013,6 +1008,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "arrgen" },
     { name = "pytest" },
 ]
 
@@ -1023,7 +1019,14 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.3.5" }]
+dev = [
+    { name = "arrgen", editable = "arrgen" },
+    { name = "pytest", specifier = ">=8.3.5" },
+]
+
+[[package]]
+name = "soma-sdk"
+source = { editable = "python-sdk" }
 
 [[package]]
 name = "tensorstore"
