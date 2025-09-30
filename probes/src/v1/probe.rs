@@ -68,9 +68,9 @@ impl ProbeConfig {
 // impl<B: Backend> Probe<B> {
 //     pub fn forward(
 //         &self,
-//         target_byte_index: Tensor<B, 1, Int>,
-//         context_embeddings: Tensor<B, 3>,
-//         context_byte_indices: Tensor<B, 2, Int>,
+//         representations: Tensor<B, 3>,
+//         positions: Tensor<B, 2, Int>,
 //     ) -> Tensor<B, 3> {
+// TODO: only take in the context and pre-computed relative positions
 //     }
 // }

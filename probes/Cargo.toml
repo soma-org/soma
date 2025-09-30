@@ -12,6 +12,9 @@ features = ["ndarray", "autodiff"]
 
 [dev-dependencies]
 arrgen.workspace = true
+safetensors.workspace = true
+ndarray.workspace = true
+ndarray-safetensors.workspace = true
 
 [lints]
 workspace = true

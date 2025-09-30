@@ -1010,6 +1010,7 @@ dependencies = [
 dev = [
     { name = "arrgen" },
     { name = "pytest" },
+    { name = "safetensors" },
 ]
 
 [package.metadata]
@@ -1022,6 +1023,7 @@ requires-dist = [
 dev = [
     { name = "arrgen", editable = "arrgen" },
     { name = "pytest", specifier = ">=8.3.5" },
+    { name = "safetensors", specifier = ">=0.6.2" },
 ]
 
 [[package]]

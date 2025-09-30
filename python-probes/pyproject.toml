@@ -17,6 +17,7 @@ build-backend = "uv_build"
 dev = [
     "arrgen",
     "pytest>=8.3.5",
+    "safetensors>=0.6.2",
 ]
 
 [tool.uv.sources]
