@@ -39,7 +39,17 @@ class Probe(nnx.Module):
                 rngs.params(), (1, 1, config.embedding_dim)
             )
         )
-        self.encoder = Encoder(EncoderConfig(dropout_rate=config.dropout_rate), rngs)
+        self.encoder = Encoder(
+            EncoderConfig(
+                dropout_rate=config.dropout_rate,
+                embedding_dim=config.embedding_dim,
+                pwff_hidden_dim=config.pwff_hidden_dim,
+                num_layers=config.num_layers,
+                num_heads=config.num_heads,
+                max_wavelength=config.max_wavelength,
+            ),
+            rngs,
+        )
         self.final_norm = nnx.LayerNorm(config.embedding_dim, rngs=rngs)
         self.predictor = nnx.Linear(config.embedding_dim, config.vocab_size, rngs=rngs)
 

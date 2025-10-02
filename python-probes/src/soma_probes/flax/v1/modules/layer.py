@@ -1,16 +1,30 @@
 from jax import Array
 from flax import nnx
-
 from soma_probes.flax.v1.modules.pwff import (
     PositionWiseFeedForward,
     PositionWiseFeedForwardConfig,
 )
-from soma_probes.flax.v1.modules.encoder import EncoderConfig
 from soma_probes.flax.v1.modules.attention import MultiHeadAttention
+from dataclasses import dataclass
+from soma_probes.config import (
+    V1_EMBEDDING_DIM,
+    V1_PWFF_HIDDEN_DIM,
+    V1_NUM_HEADS,
+    V1_MAX_WAVELENGTH,
+)
+
+
+@dataclass
+class LayerConfig:
+    dropout_rate: float
+    embedding_dim: int = V1_EMBEDDING_DIM
+    pwff_hidden_dim: int = V1_PWFF_HIDDEN_DIM
+    num_heads: int = V1_NUM_HEADS
+    max_wavelength: int = V1_MAX_WAVELENGTH
 
 
 class Layer(nnx.Module):
-    def __init__(self, config: EncoderConfig, rngs: nnx.Rngs):
+    def __init__(self, config: LayerConfig, rngs: nnx.Rngs):
         self.norm_1 = nnx.LayerNorm(
             num_features=config.embedding_dim,
             rngs=rngs,
@@ -32,7 +46,12 @@ class Layer(nnx.Module):
             epsilon=1e-5,
         )
         self.pwff = PositionWiseFeedForward(
-            PositionWiseFeedForwardConfig(dropout_rate=config.dropout_rate), rngs
+            PositionWiseFeedForwardConfig(
+                dropout_rate=config.dropout_rate,
+                embedding_dim=config.embedding_dim,
+                pwff_hidden_dim=config.pwff_hidden_dim,
+            ),
+            rngs,
         )
         self.dropout = nnx.Dropout(config.dropout_rate, rngs=rngs)
 

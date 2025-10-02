@@ -1,2 +1,1 @@
-from .probe import Probe
-
+from .probe import Probe, ProbeConfig

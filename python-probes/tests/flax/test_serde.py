@@ -1,11 +1,10 @@
 from flax import nnx
-from soma_probes.flax.v1 import Probe
-from soma_probes.flax.v1.modules.pwff import PositionWiseFeedForward
+from soma_probes.flax.v1 import Probe, ProbeConfig
 from soma_probes.flax.serde import Serde
 
 
 def test_flax_serde():
-    original = Probe(dropout_rate=0.0, rngs=nnx.Rngs(0))
+    original = Probe(ProbeConfig(dropout_rate=0.0), rngs=nnx.Rngs(0))
     serde = Serde(original)
     serialized = serde.serialize()
     deserialized = serde.deserialize(serialized)
