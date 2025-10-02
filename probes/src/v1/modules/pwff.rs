@@ -50,7 +50,7 @@ impl PositionWiseFeedForwardConfig {
 }
 
 impl<B: Backend> PositionWiseFeedForward<B> {
-    pub fn forward(&self, input: Tensor<B, 3>) -> Tensor<B, 3> {
+    pub fn forward<const D: usize>(&self, input: Tensor<B, D>) -> Tensor<B, D> {
         let x = self.linear_inner.forward(input);
         let x = self.gelu.forward(x);
         let x = self.dropout.forward(x);

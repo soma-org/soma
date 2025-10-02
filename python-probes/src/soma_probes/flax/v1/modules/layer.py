@@ -33,9 +33,8 @@ class Layer(nnx.Module):
         )
         self.attention = MultiHeadAttention(
             num_heads=config.num_heads,
-            in_features=config.embedding_dim,
+            num_features=config.embedding_dim,
             dropout_rate=config.dropout_rate,
-            decode=False,
             max_wavelength=config.max_wavelength,
             rngs=rngs,
         )

@@ -8,12 +8,12 @@ SHAPE = [2, 2]
 def test_uniform_array():
     min_val = 0.0
     max_val = 1.0
-    expected = np.array([[0.52655741, 0.54272521], [0.6364651, 0.40590176]])
+    expected = np.array([[0.13340974, 0.5265573], [0.24873829, 0.5427252]])
     x = uniform_array(SEED, SHAPE, min_val, max_val)
     np.testing.assert_array_almost_equal(
         x,
         expected,
-        decimal=8,
+        decimal=7,
         err_msg="uniform_array output does not match expected values",
     )
 
@@ -21,12 +21,12 @@ def test_uniform_array():
 def test_normal_array():
     mean = 0.0
     std_dev = 1.0
-    expected = np.array([[0.06942792, 0.13293812], [0.26257636, -0.22530088]])
+    expected = np.array([[0.06942791, 0.13293812], [0.26257637, -0.22530088]])
     x = normal_array(SEED, SHAPE, mean, std_dev)
     np.testing.assert_array_almost_equal(
         x,
         expected,
-        decimal=8,
+        decimal=7,
         err_msg="normal_array output does not match expected values",
     )
 

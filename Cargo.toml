@@ -204,7 +204,7 @@ arrgen = { path = "arrgen" }
 bs58 = "0.5.1"
 enum_dispatch = "0.3.13"
 strum_macros = "0.27"
-strum = "0.27"
+strum = { version = "0.27", features = ["derive"] }
 url = { version = "2.5.2", features = ["serde"] }
 tonic-rustls = "0.1.0"
 aes = "0.8.4"
@@ -215,7 +215,7 @@ pyo3-build-config = "0.24"
 numpy = "0.24"
 ndarray = { version = "0.16", features = ["serde"] }
 ndarray-rand = "0.15.0"
-reqwest = { version = "0.12", default-features = false, features = [
+reqwest = { version = "0.12.23", default-features = false, features = [
   "stream",
   "http2",
   "json",
@@ -245,7 +245,7 @@ hex = "0.4.3"
 dashmap = "6.1.0"
 burn = { git = "https://github.com/tracel-ai/burn.git" }
 burn-ndarray = { git = "https://github.com/tracel-ai/burn.git" }
-burn-import = { git = "https://github.com/tracel-ai/burn.git", features = [
+burn-store = { git = "https://github.com/tracel-ai/burn.git", features = [
   "safetensors",
 ] }
 

@@ -1,5 +1,5 @@
 from flax import nnx
-from soma_probes.flax.v1 import Probe, ProbeConfig
+from soma_probes.flax.v1.probe import Probe, ProbeConfig
 from soma_probes.flax.serde import Serde
 
 
