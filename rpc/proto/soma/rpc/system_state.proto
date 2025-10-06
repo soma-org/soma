@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+message SystemState {
+  // Core epoch information
+  optional uint64 epoch = 1;
+  optional uint64 epoch_start_timestamp_ms = 2;
+  
+  // System parameters
+  optional SystemParameters parameters = 3;
+  
+  // Validator and encoder sets
+  optional ValidatorSet validators = 4;
+  optional EncoderSet encoders = 5;
+  
+  // Report records
+  map<string, ReporterSet> validator_report_records = 6;
+  map<string, ReporterSet> encoder_report_records = 7;
+  
+  // Stake subsidy
+  optional StakeSubsidy stake_subsidy = 8;
+  
+  // Shard results (digest -> result)
+  map<string, ShardResult> shard_results = 9;
+}
+
+message ReporterSet {
+  repeated string reporters = 1;
+}
+
+message SystemParameters {
+  optional uint64 epoch_duration_ms = 1;
+  optional uint64 vdf_iterations = 2;
+}
+
+message StakeSubsidy {
+  optional uint64 balance = 1;
+  optional uint64 distribution_counter = 2;
+  optional uint64 current_distribution_amount = 3;
+  optional uint64 period_length = 4;
+  optional uint32 decrease_rate = 5;
+}
+
+message ValidatorSet {
+  optional uint64 total_stake = 1;
+  repeated Validator consensus_validators = 2;
+  repeated Validator networking_validators = 3;
+  repeated Validator pending_validators = 4;
+  repeated PendingRemoval pending_removals = 5;
+  map<string, string> staking_pool_mappings = 6; // pool_id -> validator_address
+  map<string, Validator> inactive_validators = 7; // pool_id -> validator
+  map<string, uint64> at_risk_validators = 8; // address -> epochs_at_risk
+}
+
+message PendingRemoval {
+  optional bool is_consensus = 1;
+  optional uint32 index = 2;
+}
+
+message Validator {
+  optional string soma_address = 1;
+  optional bytes protocol_pubkey = 2;
+  optional bytes network_pubkey = 3;
+  optional bytes worker_pubkey = 4;
+  optional string net_address = 5;
+  optional string p2p_address = 6;
+  optional string primary_address = 7;
+  optional string encoder_validator_address = 8;
+  
+  optional uint64 voting_power = 9;
+  optional uint64 commission_rate = 10;
+  optional uint64 next_epoch_stake = 11;
+  optional uint64 next_epoch_commission_rate = 12;
+  
+  optional StakingPool staking_pool = 13;
+  
+  // Next epoch metadata (only if set)
+  optional bytes next_epoch_protocol_pubkey = 14;
+  optional bytes next_epoch_network_pubkey = 15;
+  optional bytes next_epoch_worker_pubkey = 16;
+  optional string next_epoch_net_address = 17;
+  optional string next_epoch_p2p_address = 18;
+  optional string next_epoch_primary_address = 19;
+  optional string next_epoch_encoder_validator_address = 20;
+}
+
+message StakingPool {
+  optional string id = 1;
+  optional uint64 activation_epoch = 2;
+  optional uint64 deactivation_epoch = 3;
+  optional uint64 soma_balance = 4;
+  optional uint64 rewards_pool = 5;
+  optional uint64 pool_token_balance = 6;
+  map<uint64, PoolTokenExchangeRate> exchange_rates = 7;
+  optional uint64 pending_stake = 8;
+  optional uint64 pending_total_soma_withdraw = 9;
+  optional uint64 pending_pool_token_withdraw = 10;
+}
+
+message PoolTokenExchangeRate {
+  optional uint64 soma_amount = 1;
+  optional uint64 pool_token_amount = 2;
+}
+
+message EncoderSet {
+  optional uint64 total_stake = 1;
+  repeated Encoder active_encoders = 2;
+  repeated Encoder pending_active_encoders = 3;
+  repeated uint32 pending_removals = 4;
+  map<string, string> staking_pool_mappings = 5; // pool_id -> encoder_address
+  map<string, Encoder> inactive_encoders = 6; // pool_id -> encoder
+  map<string, uint64> at_risk_encoders = 7; // address -> epochs_at_risk
+  optional uint64 reference_byte_price = 8;
+}
+
+message Encoder {
+  optional string soma_address = 1;
+  optional bytes encoder_pubkey = 2;
+  optional bytes network_pubkey = 3;
+  optional string internal_network_address = 4;
+  optional string external_network_address = 5;
+  optional string object_server_address = 6;
+  
+  optional uint64 voting_power = 7;
+  optional uint64 commission_rate = 8;
+  optional uint64 next_epoch_stake = 9;
+  optional uint64 next_epoch_commission_rate = 10;
+  optional uint64 byte_price = 11;
+  optional uint64 next_epoch_byte_price = 12;
+  
+  optional StakingPool staking_pool = 13;
+  
+  // Next epoch metadata (only if set)
+  optional bytes next_epoch_network_pubkey = 14;
+  optional string next_epoch_internal_network_address = 15;
+  optional string next_epoch_external_network_address = 16;
+  optional string next_epoch_object_server_address = 17;
+}
+
+message ShardResult {
+  optional bytes digest = 1;
+  optional uint64 data_size_bytes = 2;
+  optional uint64 amount = 3;
+  optional bytes report = 4; // Serialized Report
+}

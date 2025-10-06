@@ -15,6 +15,8 @@ pub mod orchestrator;
 pub mod output;
 pub mod quorum_driver;
 pub mod reconfiguration;
+pub mod rpc_index;
+pub mod rpc_store;
 pub mod safe_client;
 pub mod server;
 pub mod service;

@@ -23,13 +23,6 @@ pub trait ObjectStore {
             .map(|k| self.get_object_by_key(&k.0, k.1))
             .collect::<Result<Vec<_>, _>>()
     }
-
-    // TODO: Remove the following function after RPC + Indexer is implemented
-    fn get_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-        limit: Option<usize>,
-    ) -> Result<Vec<ObjectRef>>;
 }
 
 impl ObjectStore for &[Object] {
@@ -44,32 +37,32 @@ impl ObjectStore for &[Object] {
             .cloned())
     }
 
-    fn get_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-        limit: Option<usize>,
-    ) -> Result<Vec<ObjectRef>> {
-        let mut result = Vec::new();
+    // fn get_gas_objects_owned_by_address(
+    //     &self,
+    //     address: SomaAddress,
+    //     limit: Option<usize>,
+    // ) -> Result<Vec<ObjectRef>> {
+    //     let mut result = Vec::new();
 
-        for object in self.iter() {
-            // Check if this is a coin owned by the specified address
-            if let Some(owner_address) = object.get_single_owner() {
-                if owner_address == address && *object.data.object_type() == ObjectType::Coin {
-                    let obj_ref = object.compute_object_reference();
-                    result.push(obj_ref);
+    //     for object in self.iter() {
+    //         // Check if this is a coin owned by the specified address
+    //         if let Some(owner_address) = object.get_single_owner() {
+    //             if owner_address == address && *object.data.object_type() == ObjectType::Coin {
+    //                 let obj_ref = object.compute_object_reference();
+    //                 result.push(obj_ref);
 
-                    // Apply limit if specified
-                    if let Some(lim) = limit {
-                        if result.len() >= lim {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+    //                 // Apply limit if specified
+    //                 if let Some(lim) = limit {
+    //                     if result.len() >= lim {
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
 
-        Ok(result)
-    }
+    //     Ok(result)
+    // }
 }
 
 impl<T: ObjectStore + ?Sized> ObjectStore for &T {
@@ -87,14 +80,5 @@ impl<T: ObjectStore + ?Sized> ObjectStore for &T {
 
     fn multi_get_objects_by_key(&self, object_keys: &[ObjectKey]) -> Result<Vec<Option<Object>>> {
         (*self).multi_get_objects_by_key(object_keys)
-    }
-
-    fn get_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-        limit: Option<usize>,
-    ) -> Result<Vec<ObjectRef>> {
-        // Delegate to the inner implementation
-        (*self).get_gas_objects_owned_by_address(address, limit)
     }
 }

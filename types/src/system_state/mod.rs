@@ -191,7 +191,7 @@ pub trait SystemStateTrait {
 /// ## Thread Safety
 /// This struct is not thread-safe on its own and should be protected by
 /// appropriate synchronization mechanisms when accessed concurrently.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct SystemState {
     /// The current epoch number
     pub epoch: u64,
@@ -208,7 +208,7 @@ pub struct SystemState {
 
     pub validator_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
 
-    stake_subsidy: StakeSubsidy,
+    pub stake_subsidy: StakeSubsidy,
 
     pub encoders: EncoderSet,
     pub encoder_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,

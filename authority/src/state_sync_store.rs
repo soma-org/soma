@@ -141,16 +141,6 @@ impl ObjectStore for StateSyncStore {
             .object_store
             .get_object_by_key(object_id, version)
     }
-
-    fn get_gas_objects_owned_by_address(
-        &self,
-        address: types::base::SomaAddress,
-        limit: Option<usize>,
-    ) -> Result<Vec<types::object::ObjectRef>> {
-        self.cache_traits
-            .object_store
-            .get_gas_objects_owned_by_address(address, limit)
-    }
 }
 
 impl ReadCommitteeStore for StateSyncStore {

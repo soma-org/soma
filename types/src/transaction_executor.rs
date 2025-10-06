@@ -29,8 +29,6 @@ pub struct SimulateTransactionResult {
     pub effects: TransactionEffects,
     pub input_objects: BTreeMap<ObjectID, Object>,
     pub output_objects: BTreeMap<ObjectID, Object>,
-    pub execution_result: Result<Vec<ExecutionResult>, ExecutionError>,
-    pub mock_gas_id: Option<ObjectID>,
 }
 
 #[derive(Default, Debug, Copy, Clone)]

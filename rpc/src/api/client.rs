@@ -5,10 +5,13 @@ use tonic::Status;
 use tonic::metadata::MetadataMap;
 use tonic::transport::channel::ClientTlsConfig;
 use types::effects::TransactionEffects;
+use types::object::{Object, ObjectID, Version};
 use types::shard::Shard;
 use types::transaction::Transaction;
 
 use crate::proto::TryFromProtoError;
+use crate::proto::soma::ledger_service_client::LedgerServiceClient;
+use crate::proto::soma::live_data_service_client::LiveDataServiceClient;
 use crate::proto::soma::transaction_execution_service_client::TransactionExecutionServiceClient;
 use crate::utils::field::FieldMaskUtil;
 use crate::utils::types_conversions::SdkTypeConversionError;
@@ -58,13 +61,13 @@ impl Client {
         self
     }
 
-    // pub fn raw_client(
-    //     &self,
-    // ) -> LedgerServiceClient<
-    //     tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
-    // > {
-    //     LedgerServiceClient::with_interceptor(self.channel.clone(), self.auth.clone())
-    // }
+    pub fn raw_client(
+        &self,
+    ) -> LedgerServiceClient<
+        tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
+    > {
+        LedgerServiceClient::with_interceptor(self.channel.clone(), self.auth.clone())
+    }
 
     pub fn execution_client(
         &self,
@@ -72,6 +75,14 @@ impl Client {
         tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
     > {
         TransactionExecutionServiceClient::with_interceptor(self.channel.clone(), self.auth.clone())
+    }
+
+    pub fn live_data_client(
+        &self,
+    ) -> LiveDataServiceClient<
+        tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
+    > {
+        LiveDataServiceClient::with_interceptor(self.channel.clone(), self.auth.clone())
     }
 
     //      pub async fn get_latest_checkpoint(&self) -> Result<CertifiedCheckpointSummary> {
@@ -100,36 +111,46 @@ impl Client {
     //             .map_err(|e| status_from_error_with_metadata(e, metadata))
     //     }
 
-    //      pub async fn get_object(&self, object_id: ObjectID) -> Result<Object> {
-    //         self.get_object_internal(object_id, None).await
-    //     }
+    pub async fn get_object(&self, object_id: ObjectID) -> Result<Object> {
+        self.get_object_internal(object_id, None).await
+    }
 
-    //     pub async fn get_object_with_version(
-    //         &self,
-    //         object_id: ObjectID,
-    //         version: SequenceNumber,
-    //     ) -> Result<Object> {
-    //         self.get_object_internal(object_id, Some(version.value()))
-    //             .await
-    //     }
+    pub async fn get_object_with_version(
+        &self,
+        object_id: ObjectID,
+        version: Version,
+    ) -> Result<Object> {
+        self.get_object_internal(object_id, Some(version.value()))
+            .await
+    }
 
-    //     async fn get_object_internal(
-    //         &self,
-    //         object_id: ObjectID,
-    //         version: Option<u64>,
-    //     ) -> Result<Object> {
-    //         let mut request = proto::GetObjectRequest::new(&object_id.into())
-    //             .with_read_mask(FieldMask::from_paths(["bcs"]));
-    //         request.version = version;
+    async fn get_object_internal(
+        &self,
+        object_id: ObjectID,
+        version: Option<u64>,
+    ) -> Result<Object> {
+        let mut request = crate::proto::soma::GetObjectRequest::new(&object_id.into());
+        request.version = version;
 
-    //         let (metadata, object, _extentions) =
-    //             self.raw_client().get_object(request).await?.into_parts();
+        let (metadata, object, _extentions) =
+            self.raw_client().get_object(request).await?.into_parts();
 
-    //         let object = object
-    //             .object
-    //             .ok_or_else(|| tonic::Status::not_found("no object returned"))?;
-    //         object_try_from_proto(&object).map_err(|e| status_from_error_with_metadata(e, metadata))
-    //     }
+        let proto_object = object
+            .object
+            .ok_or_else(|| tonic::Status::not_found("no object returned"))?;
+
+        // Convert proto Object to SDK Object (crate::types::Object)
+        let sdk_object: crate::types::Object = (&proto_object).try_into().map_err(|e| {
+            tonic::Status::internal(format!("Failed to convert proto to SDK: {}", e))
+        })?;
+
+        // Convert SDK Object to types::object::Object
+        let types_object: types::object::Object = sdk_object.try_into().map_err(|e| {
+            tonic::Status::internal(format!("Failed to convert SDK to types: {}", e))
+        })?;
+
+        Ok(types_object)
+    }
 
     pub async fn execute_transaction(
         &self,

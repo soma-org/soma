@@ -231,6 +231,64 @@ mod _getter_impls {
             self
         }
     }
+    impl Epoch {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                committee: None,
+                system_state: None,
+                start: None,
+                end: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Epoch = Epoch::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn committee(&self) -> &ValidatorCommittee {
+            self.committee
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ValidatorCommittee::default_instance() as _)
+        }
+        pub fn committee_opt(&self) -> Option<&ValidatorCommittee> {
+            self.committee.as_ref().map(|field| field as _)
+        }
+        pub fn committee_opt_mut(&mut self) -> Option<&mut ValidatorCommittee> {
+            self.committee.as_mut().map(|field| field as _)
+        }
+        pub fn committee_mut(&mut self) -> &mut ValidatorCommittee {
+            self.committee.get_or_insert_default()
+        }
+        pub fn with_committee(mut self, field: ValidatorCommittee) -> Self {
+            self.committee = Some(field.into());
+            self
+        }
+        pub fn system_state(&self) -> &SystemState {
+            self.system_state
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| SystemState::default_instance() as _)
+        }
+        pub fn system_state_opt(&self) -> Option<&SystemState> {
+            self.system_state.as_ref().map(|field| field as _)
+        }
+        pub fn system_state_opt_mut(&mut self) -> Option<&mut SystemState> {
+            self.system_state.as_mut().map(|field| field as _)
+        }
+        pub fn system_state_mut(&mut self) -> &mut SystemState {
+            self.system_state.get_or_insert_default()
+        }
+        pub fn with_system_state(mut self, field: SystemState) -> Self {
+            self.system_state = Some(field.into());
+            self
+        }
+    }
     impl ExecutedTransaction {
         pub const fn const_default() -> Self {
             Self {
@@ -475,6 +533,463 @@ mod _getter_impls {
             self.error_details = Some(
                 execution_error::ErrorDetails::OtherError(field.into()),
             );
+            self
+        }
+    }
+    impl GetObjectRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                object_id: None,
+                version: None,
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetObjectRequest = GetObjectRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_object_id(mut self, field: String) -> Self {
+            self.object_id = Some(field.into());
+            self
+        }
+        pub fn with_version(mut self, field: u64) -> Self {
+            self.version = Some(field.into());
+            self
+        }
+    }
+    impl GetObjectResponse {
+        pub const fn const_default() -> Self {
+            Self { object: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetObjectResponse = GetObjectResponse::const_default();
+            &DEFAULT
+        }
+        pub fn object(&self) -> &Object {
+            self.object
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Object::default_instance() as _)
+        }
+        pub fn object_opt(&self) -> Option<&Object> {
+            self.object.as_ref().map(|field| field as _)
+        }
+        pub fn object_opt_mut(&mut self) -> Option<&mut Object> {
+            self.object.as_mut().map(|field| field as _)
+        }
+        pub fn object_mut(&mut self) -> &mut Object {
+            self.object.get_or_insert_default()
+        }
+        pub fn with_object(mut self, field: Object) -> Self {
+            self.object = Some(field.into());
+            self
+        }
+    }
+    impl BatchGetObjectsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                requests: Vec::new(),
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BatchGetObjectsRequest = BatchGetObjectsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn requests(&self) -> &[GetObjectRequest] {
+            &self.requests
+        }
+        pub fn with_requests(mut self, field: Vec<GetObjectRequest>) -> Self {
+            self.requests = field;
+            self
+        }
+    }
+    impl BatchGetObjectsResponse {
+        pub const fn const_default() -> Self {
+            Self { objects: Vec::new() }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BatchGetObjectsResponse = BatchGetObjectsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn objects(&self) -> &[GetObjectResult] {
+            &self.objects
+        }
+        pub fn with_objects(mut self, field: Vec<GetObjectResult>) -> Self {
+            self.objects = field;
+            self
+        }
+    }
+    impl GetObjectResult {
+        pub const fn const_default() -> Self {
+            Self { result: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetObjectResult = GetObjectResult::const_default();
+            &DEFAULT
+        }
+        pub fn object(&self) -> &Object {
+            if let Some(get_object_result::Result::Object(field)) = &self.result {
+                field as _
+            } else {
+                Object::default_instance() as _
+            }
+        }
+        pub fn object_opt(&self) -> Option<&Object> {
+            if let Some(get_object_result::Result::Object(field)) = &self.result {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn object_opt_mut(&mut self) -> Option<&mut Object> {
+            if let Some(get_object_result::Result::Object(field)) = &mut self.result {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn object_mut(&mut self) -> &mut Object {
+            if self.object_opt_mut().is_none() {
+                self.result = Some(get_object_result::Result::Object(Object::default()));
+            }
+            self.object_opt_mut().unwrap()
+        }
+        pub fn with_object(mut self, field: Object) -> Self {
+            self.result = Some(get_object_result::Result::Object(field.into()));
+            self
+        }
+    }
+    impl GetTransactionRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                digest: None,
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetTransactionRequest = GetTransactionRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_digest(mut self, field: String) -> Self {
+            self.digest = Some(field.into());
+            self
+        }
+    }
+    impl GetTransactionResponse {
+        pub const fn const_default() -> Self {
+            Self { transaction: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetTransactionResponse = GetTransactionResponse::const_default();
+            &DEFAULT
+        }
+        pub fn transaction(&self) -> &ExecutedTransaction {
+            self.transaction
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ExecutedTransaction::default_instance() as _)
+        }
+        pub fn transaction_opt(&self) -> Option<&ExecutedTransaction> {
+            self.transaction.as_ref().map(|field| field as _)
+        }
+        pub fn transaction_opt_mut(&mut self) -> Option<&mut ExecutedTransaction> {
+            self.transaction.as_mut().map(|field| field as _)
+        }
+        pub fn transaction_mut(&mut self) -> &mut ExecutedTransaction {
+            self.transaction.get_or_insert_default()
+        }
+        pub fn with_transaction(mut self, field: ExecutedTransaction) -> Self {
+            self.transaction = Some(field.into());
+            self
+        }
+    }
+    impl BatchGetTransactionsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                digests: Vec::new(),
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BatchGetTransactionsRequest = BatchGetTransactionsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn digests(&self) -> &[String] {
+            &self.digests
+        }
+        pub fn with_digests(mut self, field: Vec<String>) -> Self {
+            self.digests = field;
+            self
+        }
+    }
+    impl BatchGetTransactionsResponse {
+        pub const fn const_default() -> Self {
+            Self { transactions: Vec::new() }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: BatchGetTransactionsResponse = BatchGetTransactionsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn transactions(&self) -> &[GetTransactionResult] {
+            &self.transactions
+        }
+        pub fn with_transactions(mut self, field: Vec<GetTransactionResult>) -> Self {
+            self.transactions = field;
+            self
+        }
+    }
+    impl GetTransactionResult {
+        pub const fn const_default() -> Self {
+            Self { result: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetTransactionResult = GetTransactionResult::const_default();
+            &DEFAULT
+        }
+        pub fn transaction(&self) -> &ExecutedTransaction {
+            if let Some(get_transaction_result::Result::Transaction(field)) = &self
+                .result
+            {
+                field as _
+            } else {
+                ExecutedTransaction::default_instance() as _
+            }
+        }
+        pub fn transaction_opt(&self) -> Option<&ExecutedTransaction> {
+            if let Some(get_transaction_result::Result::Transaction(field)) = &self
+                .result
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn transaction_opt_mut(&mut self) -> Option<&mut ExecutedTransaction> {
+            if let Some(get_transaction_result::Result::Transaction(field)) = &mut self
+                .result
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn transaction_mut(&mut self) -> &mut ExecutedTransaction {
+            if self.transaction_opt_mut().is_none() {
+                self.result = Some(
+                    get_transaction_result::Result::Transaction(
+                        ExecutedTransaction::default(),
+                    ),
+                );
+            }
+            self.transaction_opt_mut().unwrap()
+        }
+        pub fn with_transaction(mut self, field: ExecutedTransaction) -> Self {
+            self.result = Some(
+                get_transaction_result::Result::Transaction(field.into()),
+            );
+            self
+        }
+    }
+    impl GetEpochRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetEpochRequest = GetEpochRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+    }
+    impl GetEpochResponse {
+        pub const fn const_default() -> Self {
+            Self { epoch: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetEpochResponse = GetEpochResponse::const_default();
+            &DEFAULT
+        }
+        pub fn epoch(&self) -> &Epoch {
+            self.epoch
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Epoch::default_instance() as _)
+        }
+        pub fn epoch_opt(&self) -> Option<&Epoch> {
+            self.epoch.as_ref().map(|field| field as _)
+        }
+        pub fn epoch_opt_mut(&mut self) -> Option<&mut Epoch> {
+            self.epoch.as_mut().map(|field| field as _)
+        }
+        pub fn epoch_mut(&mut self) -> &mut Epoch {
+            self.epoch.get_or_insert_default()
+        }
+        pub fn with_epoch(mut self, field: Epoch) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+    }
+    impl GetBalanceRequest {
+        pub const fn const_default() -> Self {
+            Self { owner: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetBalanceRequest = GetBalanceRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_owner(mut self, field: String) -> Self {
+            self.owner = Some(field.into());
+            self
+        }
+    }
+    impl GetBalanceResponse {
+        pub const fn const_default() -> Self {
+            Self { balance: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetBalanceResponse = GetBalanceResponse::const_default();
+            &DEFAULT
+        }
+        pub fn with_balance(mut self, field: u64) -> Self {
+            self.balance = Some(field.into());
+            self
+        }
+    }
+    impl SimulateTransactionRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                transaction: None,
+                read_mask: None,
+                checks: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SimulateTransactionRequest = SimulateTransactionRequest::const_default();
+            &DEFAULT
+        }
+        pub fn transaction(&self) -> &Transaction {
+            self.transaction
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Transaction::default_instance() as _)
+        }
+        pub fn transaction_opt(&self) -> Option<&Transaction> {
+            self.transaction.as_ref().map(|field| field as _)
+        }
+        pub fn transaction_opt_mut(&mut self) -> Option<&mut Transaction> {
+            self.transaction.as_mut().map(|field| field as _)
+        }
+        pub fn transaction_mut(&mut self) -> &mut Transaction {
+            self.transaction.get_or_insert_default()
+        }
+        pub fn with_transaction(mut self, field: Transaction) -> Self {
+            self.transaction = Some(field.into());
+            self
+        }
+    }
+    impl SimulateTransactionResponse {
+        pub const fn const_default() -> Self {
+            Self { transaction: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SimulateTransactionResponse = SimulateTransactionResponse::const_default();
+            &DEFAULT
+        }
+        pub fn transaction(&self) -> &ExecutedTransaction {
+            self.transaction
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ExecutedTransaction::default_instance() as _)
+        }
+        pub fn transaction_opt(&self) -> Option<&ExecutedTransaction> {
+            self.transaction.as_ref().map(|field| field as _)
+        }
+        pub fn transaction_opt_mut(&mut self) -> Option<&mut ExecutedTransaction> {
+            self.transaction.as_mut().map(|field| field as _)
+        }
+        pub fn transaction_mut(&mut self) -> &mut ExecutedTransaction {
+            self.transaction.get_or_insert_default()
+        }
+        pub fn with_transaction(mut self, field: ExecutedTransaction) -> Self {
+            self.transaction = Some(field.into());
+            self
+        }
+    }
+    impl ListOwnedObjectsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                owner: None,
+                page_size: None,
+                page_token: None,
+                read_mask: None,
+                object_type: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListOwnedObjectsRequest = ListOwnedObjectsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_owner(mut self, field: String) -> Self {
+            self.owner = Some(field.into());
+            self
+        }
+        pub fn with_page_size(mut self, field: u32) -> Self {
+            self.page_size = Some(field.into());
+            self
+        }
+        pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.page_token = Some(field.into());
+            self
+        }
+        pub fn with_object_type(mut self, field: String) -> Self {
+            self.object_type = Some(field.into());
+            self
+        }
+    }
+    impl ListOwnedObjectsResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                objects: Vec::new(),
+                next_page_token: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListOwnedObjectsResponse = ListOwnedObjectsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn objects(&self) -> &[Object] {
+            &self.objects
+        }
+        pub fn with_objects(mut self, field: Vec<Object>) -> Self {
+            self.objects = field;
+            self
+        }
+        pub fn with_next_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_page_token = Some(field.into());
             self
         }
     }
@@ -813,6 +1328,671 @@ mod _getter_impls {
         }
         pub fn with_bitmap(mut self, field: Vec<u32>) -> Self {
             self.bitmap = field;
+            self
+        }
+    }
+    impl SystemState {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                epoch_start_timestamp_ms: None,
+                parameters: None,
+                validators: None,
+                encoders: None,
+                validator_report_records: std::collections::BTreeMap::new(),
+                encoder_report_records: std::collections::BTreeMap::new(),
+                stake_subsidy: None,
+                shard_results: std::collections::BTreeMap::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SystemState = SystemState::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_epoch_start_timestamp_ms(mut self, field: u64) -> Self {
+            self.epoch_start_timestamp_ms = Some(field.into());
+            self
+        }
+        pub fn parameters(&self) -> &SystemParameters {
+            self.parameters
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| SystemParameters::default_instance() as _)
+        }
+        pub fn parameters_opt(&self) -> Option<&SystemParameters> {
+            self.parameters.as_ref().map(|field| field as _)
+        }
+        pub fn parameters_opt_mut(&mut self) -> Option<&mut SystemParameters> {
+            self.parameters.as_mut().map(|field| field as _)
+        }
+        pub fn parameters_mut(&mut self) -> &mut SystemParameters {
+            self.parameters.get_or_insert_default()
+        }
+        pub fn with_parameters(mut self, field: SystemParameters) -> Self {
+            self.parameters = Some(field.into());
+            self
+        }
+        pub fn validators(&self) -> &ValidatorSet {
+            self.validators
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ValidatorSet::default_instance() as _)
+        }
+        pub fn validators_opt(&self) -> Option<&ValidatorSet> {
+            self.validators.as_ref().map(|field| field as _)
+        }
+        pub fn validators_opt_mut(&mut self) -> Option<&mut ValidatorSet> {
+            self.validators.as_mut().map(|field| field as _)
+        }
+        pub fn validators_mut(&mut self) -> &mut ValidatorSet {
+            self.validators.get_or_insert_default()
+        }
+        pub fn with_validators(mut self, field: ValidatorSet) -> Self {
+            self.validators = Some(field.into());
+            self
+        }
+        pub fn encoders(&self) -> &EncoderSet {
+            self.encoders
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| EncoderSet::default_instance() as _)
+        }
+        pub fn encoders_opt(&self) -> Option<&EncoderSet> {
+            self.encoders.as_ref().map(|field| field as _)
+        }
+        pub fn encoders_opt_mut(&mut self) -> Option<&mut EncoderSet> {
+            self.encoders.as_mut().map(|field| field as _)
+        }
+        pub fn encoders_mut(&mut self) -> &mut EncoderSet {
+            self.encoders.get_or_insert_default()
+        }
+        pub fn with_encoders(mut self, field: EncoderSet) -> Self {
+            self.encoders = Some(field.into());
+            self
+        }
+        pub fn stake_subsidy(&self) -> &StakeSubsidy {
+            self.stake_subsidy
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| StakeSubsidy::default_instance() as _)
+        }
+        pub fn stake_subsidy_opt(&self) -> Option<&StakeSubsidy> {
+            self.stake_subsidy.as_ref().map(|field| field as _)
+        }
+        pub fn stake_subsidy_opt_mut(&mut self) -> Option<&mut StakeSubsidy> {
+            self.stake_subsidy.as_mut().map(|field| field as _)
+        }
+        pub fn stake_subsidy_mut(&mut self) -> &mut StakeSubsidy {
+            self.stake_subsidy.get_or_insert_default()
+        }
+        pub fn with_stake_subsidy(mut self, field: StakeSubsidy) -> Self {
+            self.stake_subsidy = Some(field.into());
+            self
+        }
+    }
+    impl ReporterSet {
+        pub const fn const_default() -> Self {
+            Self { reporters: Vec::new() }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ReporterSet = ReporterSet::const_default();
+            &DEFAULT
+        }
+        pub fn reporters(&self) -> &[String] {
+            &self.reporters
+        }
+        pub fn with_reporters(mut self, field: Vec<String>) -> Self {
+            self.reporters = field;
+            self
+        }
+    }
+    impl SystemParameters {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch_duration_ms: None,
+                vdf_iterations: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SystemParameters = SystemParameters::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch_duration_ms(mut self, field: u64) -> Self {
+            self.epoch_duration_ms = Some(field.into());
+            self
+        }
+        pub fn with_vdf_iterations(mut self, field: u64) -> Self {
+            self.vdf_iterations = Some(field.into());
+            self
+        }
+    }
+    impl StakeSubsidy {
+        pub const fn const_default() -> Self {
+            Self {
+                balance: None,
+                distribution_counter: None,
+                current_distribution_amount: None,
+                period_length: None,
+                decrease_rate: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: StakeSubsidy = StakeSubsidy::const_default();
+            &DEFAULT
+        }
+        pub fn with_balance(mut self, field: u64) -> Self {
+            self.balance = Some(field.into());
+            self
+        }
+        pub fn with_distribution_counter(mut self, field: u64) -> Self {
+            self.distribution_counter = Some(field.into());
+            self
+        }
+        pub fn with_current_distribution_amount(mut self, field: u64) -> Self {
+            self.current_distribution_amount = Some(field.into());
+            self
+        }
+        pub fn with_period_length(mut self, field: u64) -> Self {
+            self.period_length = Some(field.into());
+            self
+        }
+        pub fn with_decrease_rate(mut self, field: u32) -> Self {
+            self.decrease_rate = Some(field.into());
+            self
+        }
+    }
+    impl ValidatorSet {
+        pub const fn const_default() -> Self {
+            Self {
+                total_stake: None,
+                consensus_validators: Vec::new(),
+                networking_validators: Vec::new(),
+                pending_validators: Vec::new(),
+                pending_removals: Vec::new(),
+                staking_pool_mappings: std::collections::BTreeMap::new(),
+                inactive_validators: std::collections::BTreeMap::new(),
+                at_risk_validators: std::collections::BTreeMap::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ValidatorSet = ValidatorSet::const_default();
+            &DEFAULT
+        }
+        pub fn with_total_stake(mut self, field: u64) -> Self {
+            self.total_stake = Some(field.into());
+            self
+        }
+        pub fn consensus_validators(&self) -> &[Validator] {
+            &self.consensus_validators
+        }
+        pub fn with_consensus_validators(mut self, field: Vec<Validator>) -> Self {
+            self.consensus_validators = field;
+            self
+        }
+        pub fn networking_validators(&self) -> &[Validator] {
+            &self.networking_validators
+        }
+        pub fn with_networking_validators(mut self, field: Vec<Validator>) -> Self {
+            self.networking_validators = field;
+            self
+        }
+        pub fn pending_validators(&self) -> &[Validator] {
+            &self.pending_validators
+        }
+        pub fn with_pending_validators(mut self, field: Vec<Validator>) -> Self {
+            self.pending_validators = field;
+            self
+        }
+        pub fn pending_removals(&self) -> &[PendingRemoval] {
+            &self.pending_removals
+        }
+        pub fn with_pending_removals(mut self, field: Vec<PendingRemoval>) -> Self {
+            self.pending_removals = field;
+            self
+        }
+    }
+    impl PendingRemoval {
+        pub const fn const_default() -> Self {
+            Self {
+                is_consensus: None,
+                index: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: PendingRemoval = PendingRemoval::const_default();
+            &DEFAULT
+        }
+        pub fn with_is_consensus(mut self, field: bool) -> Self {
+            self.is_consensus = Some(field.into());
+            self
+        }
+        pub fn with_index(mut self, field: u32) -> Self {
+            self.index = Some(field.into());
+            self
+        }
+    }
+    impl Validator {
+        pub const fn const_default() -> Self {
+            Self {
+                soma_address: None,
+                protocol_pubkey: None,
+                network_pubkey: None,
+                worker_pubkey: None,
+                net_address: None,
+                p2p_address: None,
+                primary_address: None,
+                encoder_validator_address: None,
+                voting_power: None,
+                commission_rate: None,
+                next_epoch_stake: None,
+                next_epoch_commission_rate: None,
+                staking_pool: None,
+                next_epoch_protocol_pubkey: None,
+                next_epoch_network_pubkey: None,
+                next_epoch_worker_pubkey: None,
+                next_epoch_net_address: None,
+                next_epoch_p2p_address: None,
+                next_epoch_primary_address: None,
+                next_epoch_encoder_validator_address: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Validator = Validator::const_default();
+            &DEFAULT
+        }
+        pub fn with_soma_address(mut self, field: String) -> Self {
+            self.soma_address = Some(field.into());
+            self
+        }
+        pub fn with_protocol_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.protocol_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_network_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.network_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_worker_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.worker_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_net_address(mut self, field: String) -> Self {
+            self.net_address = Some(field.into());
+            self
+        }
+        pub fn with_p2p_address(mut self, field: String) -> Self {
+            self.p2p_address = Some(field.into());
+            self
+        }
+        pub fn with_primary_address(mut self, field: String) -> Self {
+            self.primary_address = Some(field.into());
+            self
+        }
+        pub fn with_encoder_validator_address(mut self, field: String) -> Self {
+            self.encoder_validator_address = Some(field.into());
+            self
+        }
+        pub fn with_voting_power(mut self, field: u64) -> Self {
+            self.voting_power = Some(field.into());
+            self
+        }
+        pub fn with_commission_rate(mut self, field: u64) -> Self {
+            self.commission_rate = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_stake(mut self, field: u64) -> Self {
+            self.next_epoch_stake = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_commission_rate(mut self, field: u64) -> Self {
+            self.next_epoch_commission_rate = Some(field.into());
+            self
+        }
+        pub fn staking_pool(&self) -> &StakingPool {
+            self.staking_pool
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| StakingPool::default_instance() as _)
+        }
+        pub fn staking_pool_opt(&self) -> Option<&StakingPool> {
+            self.staking_pool.as_ref().map(|field| field as _)
+        }
+        pub fn staking_pool_opt_mut(&mut self) -> Option<&mut StakingPool> {
+            self.staking_pool.as_mut().map(|field| field as _)
+        }
+        pub fn staking_pool_mut(&mut self) -> &mut StakingPool {
+            self.staking_pool.get_or_insert_default()
+        }
+        pub fn with_staking_pool(mut self, field: StakingPool) -> Self {
+            self.staking_pool = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_protocol_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.next_epoch_protocol_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_network_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.next_epoch_network_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_worker_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.next_epoch_worker_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_net_address(mut self, field: String) -> Self {
+            self.next_epoch_net_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_p2p_address(mut self, field: String) -> Self {
+            self.next_epoch_p2p_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_primary_address(mut self, field: String) -> Self {
+            self.next_epoch_primary_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_encoder_validator_address(
+            mut self,
+            field: String,
+        ) -> Self {
+            self.next_epoch_encoder_validator_address = Some(field.into());
+            self
+        }
+    }
+    impl StakingPool {
+        pub const fn const_default() -> Self {
+            Self {
+                id: None,
+                activation_epoch: None,
+                deactivation_epoch: None,
+                soma_balance: None,
+                rewards_pool: None,
+                pool_token_balance: None,
+                exchange_rates: std::collections::BTreeMap::new(),
+                pending_stake: None,
+                pending_total_soma_withdraw: None,
+                pending_pool_token_withdraw: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: StakingPool = StakingPool::const_default();
+            &DEFAULT
+        }
+        pub fn with_id(mut self, field: String) -> Self {
+            self.id = Some(field.into());
+            self
+        }
+        pub fn with_activation_epoch(mut self, field: u64) -> Self {
+            self.activation_epoch = Some(field.into());
+            self
+        }
+        pub fn with_deactivation_epoch(mut self, field: u64) -> Self {
+            self.deactivation_epoch = Some(field.into());
+            self
+        }
+        pub fn with_soma_balance(mut self, field: u64) -> Self {
+            self.soma_balance = Some(field.into());
+            self
+        }
+        pub fn with_rewards_pool(mut self, field: u64) -> Self {
+            self.rewards_pool = Some(field.into());
+            self
+        }
+        pub fn with_pool_token_balance(mut self, field: u64) -> Self {
+            self.pool_token_balance = Some(field.into());
+            self
+        }
+        pub fn with_pending_stake(mut self, field: u64) -> Self {
+            self.pending_stake = Some(field.into());
+            self
+        }
+        pub fn with_pending_total_soma_withdraw(mut self, field: u64) -> Self {
+            self.pending_total_soma_withdraw = Some(field.into());
+            self
+        }
+        pub fn with_pending_pool_token_withdraw(mut self, field: u64) -> Self {
+            self.pending_pool_token_withdraw = Some(field.into());
+            self
+        }
+    }
+    impl PoolTokenExchangeRate {
+        pub const fn const_default() -> Self {
+            Self {
+                soma_amount: None,
+                pool_token_amount: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: PoolTokenExchangeRate = PoolTokenExchangeRate::const_default();
+            &DEFAULT
+        }
+        pub fn with_soma_amount(mut self, field: u64) -> Self {
+            self.soma_amount = Some(field.into());
+            self
+        }
+        pub fn with_pool_token_amount(mut self, field: u64) -> Self {
+            self.pool_token_amount = Some(field.into());
+            self
+        }
+    }
+    impl EncoderSet {
+        pub const fn const_default() -> Self {
+            Self {
+                total_stake: None,
+                active_encoders: Vec::new(),
+                pending_active_encoders: Vec::new(),
+                pending_removals: Vec::new(),
+                staking_pool_mappings: std::collections::BTreeMap::new(),
+                inactive_encoders: std::collections::BTreeMap::new(),
+                at_risk_encoders: std::collections::BTreeMap::new(),
+                reference_byte_price: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: EncoderSet = EncoderSet::const_default();
+            &DEFAULT
+        }
+        pub fn with_total_stake(mut self, field: u64) -> Self {
+            self.total_stake = Some(field.into());
+            self
+        }
+        pub fn active_encoders(&self) -> &[Encoder] {
+            &self.active_encoders
+        }
+        pub fn with_active_encoders(mut self, field: Vec<Encoder>) -> Self {
+            self.active_encoders = field;
+            self
+        }
+        pub fn pending_active_encoders(&self) -> &[Encoder] {
+            &self.pending_active_encoders
+        }
+        pub fn with_pending_active_encoders(mut self, field: Vec<Encoder>) -> Self {
+            self.pending_active_encoders = field;
+            self
+        }
+        pub fn pending_removals(&self) -> &[u32] {
+            &self.pending_removals
+        }
+        pub fn with_pending_removals(mut self, field: Vec<u32>) -> Self {
+            self.pending_removals = field;
+            self
+        }
+        pub fn with_reference_byte_price(mut self, field: u64) -> Self {
+            self.reference_byte_price = Some(field.into());
+            self
+        }
+    }
+    impl Encoder {
+        pub const fn const_default() -> Self {
+            Self {
+                soma_address: None,
+                encoder_pubkey: None,
+                network_pubkey: None,
+                internal_network_address: None,
+                external_network_address: None,
+                object_server_address: None,
+                voting_power: None,
+                commission_rate: None,
+                next_epoch_stake: None,
+                next_epoch_commission_rate: None,
+                byte_price: None,
+                next_epoch_byte_price: None,
+                staking_pool: None,
+                next_epoch_network_pubkey: None,
+                next_epoch_internal_network_address: None,
+                next_epoch_external_network_address: None,
+                next_epoch_object_server_address: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Encoder = Encoder::const_default();
+            &DEFAULT
+        }
+        pub fn with_soma_address(mut self, field: String) -> Self {
+            self.soma_address = Some(field.into());
+            self
+        }
+        pub fn with_encoder_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.encoder_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_network_pubkey(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.network_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_internal_network_address(mut self, field: String) -> Self {
+            self.internal_network_address = Some(field.into());
+            self
+        }
+        pub fn with_external_network_address(mut self, field: String) -> Self {
+            self.external_network_address = Some(field.into());
+            self
+        }
+        pub fn with_object_server_address(mut self, field: String) -> Self {
+            self.object_server_address = Some(field.into());
+            self
+        }
+        pub fn with_voting_power(mut self, field: u64) -> Self {
+            self.voting_power = Some(field.into());
+            self
+        }
+        pub fn with_commission_rate(mut self, field: u64) -> Self {
+            self.commission_rate = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_stake(mut self, field: u64) -> Self {
+            self.next_epoch_stake = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_commission_rate(mut self, field: u64) -> Self {
+            self.next_epoch_commission_rate = Some(field.into());
+            self
+        }
+        pub fn with_byte_price(mut self, field: u64) -> Self {
+            self.byte_price = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_byte_price(mut self, field: u64) -> Self {
+            self.next_epoch_byte_price = Some(field.into());
+            self
+        }
+        pub fn staking_pool(&self) -> &StakingPool {
+            self.staking_pool
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| StakingPool::default_instance() as _)
+        }
+        pub fn staking_pool_opt(&self) -> Option<&StakingPool> {
+            self.staking_pool.as_ref().map(|field| field as _)
+        }
+        pub fn staking_pool_opt_mut(&mut self) -> Option<&mut StakingPool> {
+            self.staking_pool.as_mut().map(|field| field as _)
+        }
+        pub fn staking_pool_mut(&mut self) -> &mut StakingPool {
+            self.staking_pool.get_or_insert_default()
+        }
+        pub fn with_staking_pool(mut self, field: StakingPool) -> Self {
+            self.staking_pool = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_network_pubkey(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.next_epoch_network_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_internal_network_address(
+            mut self,
+            field: String,
+        ) -> Self {
+            self.next_epoch_internal_network_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_external_network_address(
+            mut self,
+            field: String,
+        ) -> Self {
+            self.next_epoch_external_network_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_object_server_address(mut self, field: String) -> Self {
+            self.next_epoch_object_server_address = Some(field.into());
+            self
+        }
+    }
+    impl ShardResult {
+        pub const fn const_default() -> Self {
+            Self {
+                digest: None,
+                data_size_bytes: None,
+                amount: None,
+                report: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ShardResult = ShardResult::const_default();
+            &DEFAULT
+        }
+        pub fn with_digest(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.digest = Some(field.into());
+            self
+        }
+        pub fn with_data_size_bytes(mut self, field: u64) -> Self {
+            self.data_size_bytes = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+        pub fn with_report(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.report = Some(field.into());
             self
         }
     }

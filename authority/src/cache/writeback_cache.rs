@@ -1079,15 +1079,6 @@ impl ObjectStore for WritebackCache {
         ObjectCacheRead::get_object_by_key(self, object_id, version)
             .map_err(types::storage::storage_error::Error::custom)
     }
-
-    fn get_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-        limit: Option<usize>,
-    ) -> types::storage::storage_error::Result<Vec<ObjectRef>> {
-        ObjectCacheRead::get_gas_objects_owned_by_address(self, address, limit)
-            .map_err(types::storage::storage_error::Error::custom)
-    }
 }
 
 impl ObjectCacheRead for WritebackCache {

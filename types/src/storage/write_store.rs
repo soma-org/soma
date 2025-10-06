@@ -110,14 +110,6 @@ impl ObjectStore for TestP2pStore {
     ) -> Result<Option<crate::object::Object>> {
         todo!()
     }
-
-    fn get_gas_objects_owned_by_address(
-        &self,
-        address: crate::base::SomaAddress,
-        limit: Option<usize>,
-    ) -> Result<Vec<crate::object::ObjectRef>> {
-        todo!()
-    }
 }
 
 impl ReadCommitteeStore for TestP2pStore {
