@@ -42,21 +42,28 @@ impl<B: Backend> LinearModule<B> {
 #[test]
 fn test_linear_ones() {
     let seed = 42u64;
+    let input_dim = 2;
+    let output_dim = 4;
     let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
     tensors.insert(
-        "linear.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed, vec![4], 0.0, 1.0)),
+        "linear.weight".to_string(),
+        TensorViewWithDataBuffer::new(&normal_array(
+            seed + 1,
+            vec![input_dim, output_dim],
+            0.0,
+            1.0,
+        )),
     );
     tensors.insert(
-        "linear.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed + 1, vec![2, 4], 0.0, 1.0)),
+        "linear.bias".to_string(),
+        TensorViewWithDataBuffer::new(&normal_array(seed, vec![output_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = LinearModule::<TestBackend>::new(&device);
     model.apply_from(&mut store).unwrap();
-    let input = constant_array(vec![2], 1.0);
+    let input = constant_array(vec![input_dim], 1.0);
     let nd_tensor = NdArrayTensor::from(input.into_shared());
     let primitive = TensorPrimitive::Float(nd_tensor);
     let input_tensor: Tensor<TestBackend, 1> = Tensor::from_primitive(primitive);
@@ -74,14 +81,21 @@ fn test_linear_ones() {
 #[test]
 fn test_linear_uniform() {
     let seed = 44u64;
+    let input_dim = 2;
+    let output_dim = 4;
     let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
     tensors.insert(
-        "linear.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed, vec![4], 0.0, 1.0)),
+        "linear.weight".to_string(),
+        TensorViewWithDataBuffer::new(&normal_array(
+            seed + 1,
+            vec![input_dim, output_dim],
+            0.0,
+            1.0,
+        )),
     );
     tensors.insert(
-        "linear.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed + 1, vec![2, 4], 0.0, 1.0)),
+        "linear.bias".to_string(),
+        TensorViewWithDataBuffer::new(&normal_array(seed, vec![output_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -89,7 +103,7 @@ fn test_linear_uniform() {
     let mut model = LinearModule::<TestBackend>::new(&device);
     model.apply_from(&mut store).unwrap();
 
-    let input = uniform_array(seed + 2, vec![2], 0.0, 1.0);
+    let input = uniform_array(seed + 2, vec![input_dim], 0.0, 1.0);
     let nd_tensor = NdArrayTensor::from(input.into_shared());
     let primitive = TensorPrimitive::Float(nd_tensor);
     let input_tensor: Tensor<TestBackend, 1> = Tensor::from_primitive(primitive);

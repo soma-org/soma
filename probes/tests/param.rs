@@ -56,10 +56,11 @@ impl<B: Backend> ParamModule3D<B> {
 #[test]
 fn test_1d_param() {
     let seed = 42u64;
+    let embedding_dim = 4;
     let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed, vec![4], 0.0, 1.0)),
+        TensorViewWithDataBuffer::new(&normal_array(seed, vec![embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -80,10 +81,11 @@ fn test_1d_param() {
 #[test]
 fn test_3d_param() {
     let seed = 42u64;
+    let embedding_dim = 4;
     let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed, vec![1, 1, 4], 0.0, 1.0)),
+        TensorViewWithDataBuffer::new(&normal_array(seed, vec![1, 1, embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();

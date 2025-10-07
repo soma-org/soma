@@ -1,3 +1,4 @@
+use crate::v1::{V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_SCALE_FACTOR};
 use burn::{
     config::Config,
     module::Module,
@@ -59,10 +60,13 @@ pub fn apply_rope<B: Backend>(
 /// Configuration to create a [Multi Head Attention](MultiHeadAttention) layer using the [init function](MultiHeadAttentionConfig::init).
 #[derive(Config, Debug)]
 pub struct MultiHeadAttentionConfig {
-    /// The size of each linear layer.
+    /// Feature size (same size for input, keys, query, out, etc.)
+    #[config(default = "V1_EMBEDDING_DIM")]
     pub num_features: usize,
     /// The number of heads.
+    #[config(default = "V1_NUM_HEADS")]
     pub num_heads: usize,
+    /// The probability that dropout occurs
     #[config(default = 0.0)]
     pub dropout_rate: f64,
     /// The minimum value a float can take. Default: -1.0e4
@@ -75,9 +79,11 @@ pub struct MultiHeadAttentionConfig {
         default = "Initializer::KaimingUniform{gain:1.0/num_traits::Float::sqrt(3.0), fan_out_only:false}"
     )]
     pub initializer: Initializer,
-    #[config(default = 10_000.0)]
+    /// The max wavelength for RoPE.
+    #[config(default = "V1_MAX_WAVELENGTH")]
     pub max_wavelength: f32,
-    #[config(default = 1.0)]
+    /// The RoPE scale factor.
+    #[config(default = "V1_SCALE_FACTOR")]
     pub scale_factor: f32,
 }
 

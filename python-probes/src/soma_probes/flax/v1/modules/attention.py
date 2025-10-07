@@ -63,7 +63,7 @@ class MultiHeadAttention(Module):
         out_bias_init: Initializer | None = None,
         use_bias: bool = True,
         attention_fn: Callable[..., Array] = dot_product_attention,
-        max_wavelength: int = 10_000,
+        max_wavelength: float = 10_000.0,
         scale_factor: float = 1.0,
         rngs: rnglib.Rngs,
         keep_rngs: bool = True,

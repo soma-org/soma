@@ -64,7 +64,9 @@ pub struct MhaModule<B: Backend> {
 impl<B: Backend> MhaModule<B> {
     pub fn new(head_dim: usize, num_heads: usize, device: &B::Device) -> Self {
         MhaModule {
-            mha: MultiHeadAttentionConfig::new(head_dim * num_heads, num_heads)
+            mha: MultiHeadAttentionConfig::new()
+                .with_num_features(head_dim * num_heads)
+                .with_num_heads(num_heads)
                 .with_dropout_rate(0.0)
                 .init(device),
         }

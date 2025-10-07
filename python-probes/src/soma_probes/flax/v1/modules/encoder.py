@@ -6,6 +6,7 @@ from soma_probes.config import (
     V1_PWFF_HIDDEN_DIM,
     V1_NUM_HEADS,
     V1_MAX_WAVELENGTH,
+    V1_SCALE_FACTOR,
 )
 from soma_probes.flax.v1.modules.layer import Layer, LayerConfig
 from dataclasses import dataclass
@@ -18,7 +19,8 @@ class EncoderConfig:
     pwff_hidden_dim: int = V1_PWFF_HIDDEN_DIM
     num_layers: int = V1_NUM_LAYERS
     num_heads: int = V1_NUM_HEADS
-    max_wavelength: int = V1_MAX_WAVELENGTH
+    max_wavelength: float = V1_MAX_WAVELENGTH
+    scale_factor: float = V1_SCALE_FACTOR
 
 
 class Encoder(nnx.Module):
@@ -41,10 +43,10 @@ class Encoder(nnx.Module):
 
     def __call__(
         self,
-        representations: Array,
+        context: Array,
         positions: Array,
     ):
-        x = representations
+        x = context
         for layer in self.layers:
             x = layer(x, positions)
         return x

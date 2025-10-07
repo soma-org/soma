@@ -13,6 +13,7 @@ from soma_probes.config import (
     V1_PWFF_HIDDEN_DIM,
     V1_NUM_HEADS,
     V1_MAX_WAVELENGTH,
+    V1_SCALE_FACTOR,
 )
 from soma_probes.flax.v1.modules.encoder import Encoder, EncoderConfig
 from soma_probes.flax.serde import Serde
@@ -26,7 +27,8 @@ class ProbeConfig:
     num_layers: int = V1_NUM_LAYERS
     num_heads: int = V1_NUM_HEADS
     vocab_size: int = V1_VOCAB_SIZE
-    max_wavelength: int = V1_MAX_WAVELENGTH
+    max_wavelength: float = V1_MAX_WAVELENGTH
+    scale_factor: float = V1_SCALE_FACTOR
     max_seq_len: int = V1_MAX_SEQ_LEN
 
 
@@ -47,40 +49,27 @@ class Probe(nnx.Module):
                 num_layers=config.num_layers,
                 num_heads=config.num_heads,
                 max_wavelength=config.max_wavelength,
+                scale_factor=config.scale_factor,
             ),
             rngs,
         )
-        self.final_norm = nnx.LayerNorm(config.embedding_dim, rngs=rngs)
+        self.final_norm = nnx.LayerNorm(
+            config.embedding_dim, epsilon=1e-5, use_fast_variance=False, rngs=rngs
+        )
         self.predictor = nnx.Linear(config.embedding_dim, config.vocab_size, rngs=rngs)
 
     def __call__(
         self,
-        representations: Array,  # [batch, seq_len, embedding_dim]
+        context: Array,  # [batch, seq_len, embedding_dim]
         positions: Array,  # [batch, seq_len]
     ) -> Array:
-        rep_shape = representations.shape
-        pos_shape = positions.shape
-        if not (
-            len(rep_shape) == 3
-            and len(pos_shape) == 2
-            and rep_shape[:2] == pos_shape[:2]  # Batch and seq_len match
-        ):
-            raise ValueError(
-                f"Shape mismatch: "
-                f"context_embeddings.shape={rep_shape}, "
-                f"context_byte_indices.shape={pos_shape}, "
-            )
-
-        if rep_shape[1] + 1 <= self.config.max_seq_len:
-            raise ValueError(
-                "seq len plus mask token is greater than the allowed sequence length"
-            )
-
-        x = jnp.concatenate([self.mask_token, representations], axis=1)
-        relative_positions = jnp.concatenate([0, positions], axis=1)
-        x = self.encoder(x, relative_positions)
+        batch_size = context.shape[0]
+        mask_token = jnp.repeat(self.mask_token, repeats=batch_size, axis=0)
+        x = jnp.concatenate([mask_token, context], axis=1)
+        positions = jnp.concatenate([jnp.zeros([batch_size, 1]), positions], axis=1)
+        x = self.encoder(x, positions)
         x = self.final_norm(x)
-        mask_token = x[:, 0]  # Shape: [batch, embedding_dim]
+        mask_token = x[:, 0]
         return self.predictor(mask_token)
 
     def serialize(self) -> bytes:

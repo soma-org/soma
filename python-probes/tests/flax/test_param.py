@@ -25,9 +25,10 @@ class ParamModule3D(nnx.Module):
 
 def test_1d_param():
     seed = 42
+    embedding_dim = 4
     serde = Serde(ParamModule1D(rngs=nnx.Rngs(0)))
     generated_tensors = {
-        "param": normal_array(seed, [4], mean=0.0, std_dev=1.0),
+        "param": normal_array(seed, [embedding_dim], mean=0.0, std_dev=1.0),
     }
     serialized_tensors = save(generated_tensors)
     module = serde.deserialize(serialized_tensors)
@@ -43,9 +44,10 @@ def test_1d_param():
 
 def test_3d_param():
     seed = 42
+    embedding_dim = 4
     serde = Serde(ParamModule1D(rngs=nnx.Rngs(0)))
     generated_tensors = {
-        "param": normal_array(seed, [1, 1, 4], mean=0.0, std_dev=1.0),
+        "param": normal_array(seed, [1, 1, embedding_dim], mean=0.0, std_dev=1.0),
     }
     serialized_tensors = save(generated_tensors)
     module = serde.deserialize(serialized_tensors)
