@@ -6,6 +6,7 @@ use soma_keys::keystore::{FileBasedKeystore, Keystore};
 
 use crate::{
     error::{CliError, CliResult},
+    inference::InferenceCommand,
     keytool::KeyToolCommand,
 };
 
@@ -20,6 +21,12 @@ pub enum SomaCommand {
         /// Subcommands.
         #[clap(subcommand)]
         cmd: KeyToolCommand,
+    },
+    #[clap(name = "inference")]
+    Inference {
+        /// Subcommands.
+        #[clap(subcommand)]
+        cmd: InferenceCommand,
     },
 }
 
@@ -36,6 +43,10 @@ impl SomaCommand {
                     FileBasedKeystore::new(&keystore_path).map_err(CliError::SomaKey)?,
                 );
                 cmd.execute(&mut keystore).await?.print(true);
+                Ok(())
+            }
+            SomaCommand::Inference { cmd } => {
+                cmd.execute().await?.print(true);
                 Ok(())
             }
         }

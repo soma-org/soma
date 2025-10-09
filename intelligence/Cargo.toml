@@ -32,6 +32,8 @@ memmap2.workspace = true
 types.workspace = true
 rand.workspace = true
 ndarray-safetensors.workspace = true
+reqwest.workspace = true
+base64.workspace = true
 
 [dependencies.burn]
 workspace = true

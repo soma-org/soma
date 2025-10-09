@@ -3,13 +3,14 @@
 
 mod commands;
 mod error;
+mod inference;
 mod key_identity;
 mod keytool;
 
 use clap::*;
 use colored::Colorize;
 use commands::SomaCommand;
-use tracing::debug;
+use tracing::{debug, Level};
 
 // Define the `GIT_REVISION` and `VERSION` consts
 bin_version::bin_version!();
@@ -50,7 +51,10 @@ async fn main() {
     let args = Args::parse();
     let _guard = match args.command {
         _ => {
-            // TODO: set up telemetry
+            tracing_subscriber::fmt()
+                .with_max_level(Level::ERROR)
+                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+                .init();
         }
     };
     debug!("Soma CLI version: {VERSION}");

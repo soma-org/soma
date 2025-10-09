@@ -142,14 +142,18 @@ pub type EmbeddingDigest = Digest<Vec<u8>>;
 pub trait ProbeWeightAPI {
     fn encoder(&self) -> &EncoderPublicKey;
     fn weight(&self) -> u64;
-    fn metadata(&self) -> Metadata;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ProbeWeightV1 {
     encoder: EncoderPublicKey,
     weight: u64,
-    metadata: Metadata,
+}
+
+impl ProbeWeightV1 {
+    pub fn new(encoder: EncoderPublicKey, weight: u64) -> Self {
+        Self { encoder, weight }
+    }
 }
 
 impl ProbeWeightAPI for ProbeWeightV1 {
@@ -159,10 +163,6 @@ impl ProbeWeightAPI for ProbeWeightV1 {
 
     fn weight(&self) -> u64 {
         self.weight
-    }
-
-    fn metadata(&self) -> Metadata {
-        self.metadata.clone()
     }
 }
 
@@ -214,11 +214,11 @@ pub(crate) fn verify_probe_set(
             match encoder_committee.encoder_by_key(pw.encoder()) {
                 Some(encoder) => {
                     voting_power += encoder.voting_power;
-                    if encoder.probe_checksum != pw.metadata().checksum() {
-                        return Err(SharedError::FailedTypeVerification(
-                            "probe weight checksum does not match committee".to_string(),
-                        ));
-                    }
+                    // if encoder.probe_checksum != pw.metadata().checksum() {
+                    //     return Err(SharedError::FailedTypeVerification(
+                    //         "probe weight checksum does not match committee".to_string(),
+                    //     ));
+                    // }
                 }
                 None => {
                     return Err(SharedError::FailedTypeVerification(

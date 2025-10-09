@@ -1194,7 +1194,7 @@ pub enum SharedError {
 pub type SharedResult<T> = Result<T, SharedError>;
 
 /// Errors that can occur when processing blocks, reading from storage, or encountering shutdown.
-#[derive(Clone, Debug, Error, IntoStaticStr)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum ShardError {
     #[error("Recv duplicate error")]
     RecvDuplicate,
@@ -1204,6 +1204,8 @@ pub enum ShardError {
     EvaluationError(EvaluationError),
     #[error("Model error: {0}")]
     InferenceError(InferenceError),
+    #[error("Intelligence error: {0}")]
+    IntelligenceError(IntelligenceError),
     #[error("Not a member of the shard")]
     InvalidShardMember,
     #[error("Cache error")]
@@ -1445,4 +1447,18 @@ impl From<ShardError> for SharedError {
     fn from(e: ShardError) -> Self {
         Self::Shard(e.to_string())
     }
+}
+
+pub type IntelligenceResult<T> = Result<T, IntelligenceError>;
+
+#[derive(Debug, Error, IntoStaticStr)]
+pub enum IntelligenceError {
+    #[error("Error deserializing type: {0}")]
+    MalformedType(bcs::Error),
+    #[error("Error serializing: {0}")]
+    SerializationFailure(bcs::Error),
+    #[error("Reqwest error: {0}")]
+    ReqwestError(reqwest::Error),
+    #[error("Parse error: {0}")]
+    ParseError(String),
 }

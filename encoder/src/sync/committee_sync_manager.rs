@@ -238,7 +238,7 @@ impl CommitteeSyncManager {
             committees.validator_committee.clone(),
             committees.encoder_committee.clone(),
             committees.networking_committee.clone(),
-            self.context.inner().current_committees().vdf_iterations, // Keep the same VDF iterations
+            self.context.inner().current_committees().vdf_iterations, //TODO: should make this a upgradable parameter
         );
 
         // Update AllowPublicKeys with all peer keys from both current and previous epochs

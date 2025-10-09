@@ -66,28 +66,27 @@ impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> Processor
                 )
                 .await?;
 
-            for p in evaluation_input.probe_set().probe_weights() {
-                let _ = self
-                    .downloader
-                    .process(
-                        DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                            evaluation_input.tls_key(),
-                            evaluation_input.address(),
-                            p.metadata(),
-                        )),
-                        msg.cancellation.clone(),
-                    )
-                    .await?;
-            }
+            // for p in evaluation_input.probe_set().probe_weights() {
+            //     let _ = self
+            //         .downloader
+            //         .process(
+            //             DownloadableMetadata::V1(DownloadableMetadataV1::new(
+            //                 evaluation_input.tls_key(),
+            //                 evaluation_input.address(),
+            //             )),
+            //             msg.cancellation.clone(),
+            //         )
+            //         .await?;
+            // }
 
-            let embedding_buffer = self
-                .storage
-                .safetensor_buffer(ObjectPath::from_checksum(
-                    evaluation_input.embeddings().checksum(),
-                ))
-                .unwrap();
+            // let embedding_buffer = self
+            //     .storage
+            //     .safetensor_buffer(ObjectPath::from_checksum(
+            //         evaluation_input.embeddings().checksum(),
+            //     ))
+            //     .unwrap();
 
-            let embedding_tensors = SafeTensors::deserialize(embedding_buffer.as_ref()).unwrap();
+            // let embedding_tensors = SafeTensors::deserialize(embedding_buffer.as_ref()).unwrap();
 
             // load probe in burn (in safe tensor format)
             // ensure all of this data is downloaded to the connected storage

@@ -7,8 +7,7 @@ use crate::{
     types::{commit::Commit, commit_votes::CommitVotes, report_vote::ReportVote, reveal::Reveal},
 };
 use async_trait::async_trait;
-use intelligence::evaluation::messaging::EvaluationClient;
-use intelligence::inference::client::InferenceClient;
+use intelligence::{evaluation::messaging::EvaluationClient, inference::InferenceClient};
 use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
 use tokio_util::sync::CancellationToken;
 use types::error::ShardResult;

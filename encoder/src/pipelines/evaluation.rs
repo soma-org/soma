@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
+    committee::Epoch,
     error::{ShardError, ShardResult},
     evaluation::{
         EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, ProbeSetAPI, ProbeWeightAPI,
@@ -135,6 +136,7 @@ impl<
 
             let best_score = self
                 .process_submissions(
+                    auth_token.epoch(),
                     valid_submissions,
                     auth_token.metadata_commitment().metadata(),
                     &self.context,
@@ -197,6 +199,7 @@ impl<
 {
     async fn process_submissions(
         &self,
+        epoch: Epoch,
         submissions: Vec<Submission>,
         data_metadata: Metadata,
         context: &Context,
@@ -224,12 +227,13 @@ impl<
                         .await?;
 
                     for probe in submission.probe_set().probe_weights() {
-                        let (peer, address) = context
-                            .object_server(probe.encoder())
-                            .ok_or(ShardError::MissingData)?;
-                        let downloadable_metadata = DownloadableMetadata::V1(
-                            DownloadableMetadataV1::new(peer, address, probe.metadata().clone()),
-                        );
+                        let probe_metadata = context.probe(epoch, probe.encoder())?;
+                        let downloadable_metadata =
+                            DownloadableMetadata::V1(DownloadableMetadataV1::new(
+                                peer.clone(),
+                                address.clone(),
+                                probe_metadata,
+                            ));
                         self.downloader
                             .process(downloadable_metadata, cancellation.clone())
                             .await?;

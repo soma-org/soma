@@ -19,6 +19,9 @@ pub enum CliError {
     ErrorReadingKeyPair,
     #[error("Error decoding key pair")]
     ErrorDecodingKeyPair,
+
+    #[error("Inference error: {0}")]
+    InferenceError(String),
 }
 
 pub type CliResult<T> = Result<T, CliError>;

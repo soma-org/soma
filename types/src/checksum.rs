@@ -1,5 +1,9 @@
-use fastcrypto::hash::{Digest, HashFunction};
-use serde::{Deserialize, Serialize};
+use fastcrypto::{
+    error::FastCryptoError,
+    hash::{Digest, HashFunction},
+    serialize_deserialize_with_to_from_bytes,
+    traits::{EncodeDecodeBase64, ToFromBytes},
+};
 use std::{
     cmp::Ordering,
     fmt,
@@ -10,7 +14,7 @@ use crate::crypto::{DefaultHash as DefaultHashFunction, DIGEST_LENGTH};
 
 /// Checksum is a bytes checksum for data. We use the same default hash function
 /// as the rest of the network. There are associated functions for new from bytes
-#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Checksum(pub [u8; DIGEST_LENGTH]);
 
 impl Checksum {
@@ -84,3 +88,20 @@ impl AsRef<[u8]> for Checksum {
         &self.0
     }
 }
+
+impl ToFromBytes for Checksum {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, FastCryptoError> {
+        if bytes.len() != DIGEST_LENGTH {
+            return Err(FastCryptoError::InvalidInput);
+        }
+        let mut arr = [0u8; DIGEST_LENGTH];
+        arr.copy_from_slice(bytes);
+        Ok(Self(arr))
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+serialize_deserialize_with_to_from_bytes!(Checksum, DIGEST_LENGTH);

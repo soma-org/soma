@@ -5,8 +5,9 @@ use fastcrypto::traits::KeyPair;
 use intelligence::evaluation::messaging::service::MockEvaluationService;
 use intelligence::evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
 use intelligence::evaluation::messaging::EvaluationManager;
-use intelligence::inference::client::MockInferenceClient;
+use intelligence::inference::mock_client::MockInferenceClient;
 use objects::networking::downloader::Downloader;
+use objects::networking::proxy::LocalObjectServerManager;
 use objects::{
     networking::{
         http_network::{ObjectHttpClient, ObjectHttpManager},
@@ -96,7 +97,7 @@ pub struct EncoderNode {
     config: EncoderConfig,
     internal_network_manager: EncoderInternalTonicManager,
     external_network_manager: EncoderExternalTonicManager,
-    object_network_manager: ObjectHttpManager,
+    object_network_manager: ObjectHttpManager<AllowPublicKeys>,
     evaluation_network_manager: EvaluationTonicManager,
     downloader_manager: ActorManager<Downloader<ObjectHttpClient, MemoryObjectStore>>,
     clean_up_manager: ActorManager<CleanUpProcessor>,
@@ -172,6 +173,11 @@ impl EncoderNode {
             .to_string()
             .parse()
             .expect("Valid multiaddr");
+        let local_object_address: Multiaddr = config
+            .object_address
+            .to_string()
+            .parse()
+            .expect("Valid multiaddr");
         let evaluation_address: Multiaddr = config
             .evaluation_address
             .to_string()
@@ -205,7 +211,10 @@ impl EncoderNode {
             ObjectNetworkService::new(object_storage.clone());
 
         let mut object_network_manager =
-            <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::new(
+            <ObjectHttpManager<AllowPublicKeys> as ObjectNetworkManager<
+                MemoryObjectStore,
+                AllowPublicKeys,
+            >>::new(
                 peer_keypair.clone(),
                 config.object_parameters.clone(),
                 allower.clone(),
@@ -213,12 +222,19 @@ impl EncoderNode {
             .unwrap();
 
         object_network_manager
-            .start(&object_address, object_network_service)
+            .start(&object_address, object_network_service.clone())
             .await;
 
-        let object_client = <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::client(
-            &object_network_manager,
-        );
+        let object_client = <ObjectHttpManager<AllowPublicKeys> as ObjectNetworkManager<
+            MemoryObjectStore,
+            AllowPublicKeys,
+        >>::client(&object_network_manager);
+
+        let mut local_object_server_manager = LocalObjectServerManager::new();
+
+        local_object_server_manager
+            .start(&local_object_address, object_network_service)
+            .await;
 
         ///////////////////////////
         let mut evaluation_network_manager = EvaluationTonicManager::new(
@@ -335,6 +351,7 @@ impl EncoderNode {
             encoder_keypair.clone(),
             object_storage.clone(),
             commit_handle.clone(),
+            local_object_address,
             context.clone(),
         );
         let input_manager = ActorManager::new(default_buffer, input_processor);
@@ -462,9 +479,10 @@ impl EncoderNode {
 
         self.committee_sync_manager.stop();
 
-        <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::stop(
-            &mut self.object_network_manager,
-        )
+        <ObjectHttpManager<AllowPublicKeys> as ObjectNetworkManager<
+            MemoryObjectStore,
+            AllowPublicKeys,
+        >>::stop(&mut self.object_network_manager)
         .await;
 
         // TODO: Replace mock with real service

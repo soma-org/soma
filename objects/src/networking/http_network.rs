@@ -18,7 +18,8 @@ use quick_cache::sync::Cache;
 use reqwest::Client;
 use soma_http::{PeerCertificates, ServerHandle};
 use soma_tls::{
-    create_rustls_client_config, public_key_from_certificate, AllowPublicKeys, TlsConnectionInfo,
+    create_rustls_client_config, public_key_from_certificate, AllowPublicKeys, Allower,
+    TlsConnectionInfo,
 };
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
@@ -131,7 +132,7 @@ impl ObjectNetworkClient for ObjectHttpClient {
             "https://{address}/{}",
             downloadable_metadata.metadata().checksum()
         );
-        // warn!("address: {}", address);
+        warn!("address: {}", address);
         let url = Url::from_str(&address).map_err(|e| ObjectError::UrlParseError(e.to_string()))?;
 
         let timeout = calculate_timeout(downloadable_metadata.metadata().size());
@@ -146,7 +147,7 @@ impl ObjectNetworkClient for ObjectHttpClient {
             .await
             .map_err(|e| ObjectError::NetworkRequest(e.to_string()))?;
 
-        // warn!("response: {:?}", response);
+        warn!("response: {:?}", response);
 
         if !response.status().is_success() {
             return Err(ObjectError::NetworkRequest(format!(
@@ -212,7 +213,7 @@ impl<S: ObjectStorage + Clone> ObjectHttpServiceProxy<S> {
 
     fn router(self) -> Router {
         Router::new()
-            .route("/path", get(Self::download_object))
+            .route("/{path}", get(Self::download_object))
             .with_state(self)
     }
 
@@ -225,13 +226,13 @@ impl<S: ObjectStorage + Clone> ObjectHttpServiceProxy<S> {
             .ok()
             .unwrap();
         let path = ObjectPath::new(path).map_err(|_| StatusCode::BAD_REQUEST)?;
-        // warn!("path: {:?}", path);
+
         // instead handle this as unauthorized!
         let peer = PeerPublicKey::new(pk.clone());
         // warn!("peer public key: {:?}", peer);
 
         let reader = service
-            .handle_download_object(&peer, &path)
+            .handle_download_object(&path)
             .await
             .map_err(|_| StatusCode::NOT_FOUND)?;
         // Convert BufReader<fs::File> to a Stream of Bytes
@@ -250,21 +251,23 @@ impl<S: ObjectStorage + Clone> ObjectHttpServiceProxy<S> {
     }
 }
 
-pub struct ObjectHttpManager {
+pub struct ObjectHttpManager<A: Allower> {
     client: Arc<ObjectHttpClient>,
     own_key: PeerKeyPair,
-    allower: AllowPublicKeys,
+    allower: A,
     parameters: Arc<Http2Parameters>,
     server: Option<ServerHandle>,
 }
 
-impl<S: ObjectStorage + Clone> ObjectNetworkManager<S> for ObjectHttpManager {
+impl<S: ObjectStorage + Clone, A: Allower + Clone + 'static> ObjectNetworkManager<S, A>
+    for ObjectHttpManager<A>
+{
     type Client = ObjectHttpClient;
 
     fn new(
         own_key: PeerKeyPair,
         parameters: Arc<Http2Parameters>,
-        allower: AllowPublicKeys,
+        allower: A,
     ) -> ObjectResult<Self> {
         Ok(Self {
             client: Arc::new(ObjectHttpClient::new(own_key.clone(), parameters.clone())?),
@@ -334,7 +337,7 @@ impl<S: ObjectStorage + Clone> ObjectNetworkManager<S> for ObjectHttpManager {
     }
 }
 
-impl Drop for ObjectHttpManager {
+impl<A: Allower> Drop for ObjectHttpManager<A> {
     fn drop(&mut self) {
         if let Some(server) = self.server.as_ref() {
             server.trigger_shutdown();
@@ -442,11 +445,10 @@ mod tests {
             .clone()]));
         // allower.update(BTreeSet::from([client_public_key.clone()]));
         let mut server_object_network_manager =
-            <ObjectHttpManager as ObjectNetworkManager<MemoryObjectStore>>::new(
-                server_keypair.clone(),
-                parameters.clone(),
-                allower,
-            )
+            <ObjectHttpManager<AllowPublicKeys> as ObjectNetworkManager<
+                MemoryObjectStore,
+                AllowPublicKeys,
+            >>::new(server_keypair.clone(), parameters.clone(), allower)
             .unwrap();
 
         server_object_network_manager

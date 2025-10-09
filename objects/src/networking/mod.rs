@@ -1,8 +1,9 @@
 pub mod downloader;
 pub mod http_network;
+pub mod proxy;
 
 use async_trait::async_trait;
-use soma_tls::AllowPublicKeys;
+use soma_tls::{AllowPublicKeys, Allower};
 use std::sync::Arc;
 use tokio::io::AsyncWrite;
 use types::multiaddr::Multiaddr;
@@ -38,7 +39,6 @@ impl<S: ObjectStorage> ObjectNetworkService<S> {
     }
     pub(crate) async fn handle_download_object(
         &self,
-        _peer: &PeerPublicKey,
         path: &ObjectPath,
     ) -> ObjectResult<S::Reader> {
         // perform any additional verification, rate limiting, etc.
@@ -46,9 +46,10 @@ impl<S: ObjectStorage> ObjectNetworkService<S> {
     }
 }
 
-pub trait ObjectNetworkManager<S>: Send + Sync + Sized
+pub trait ObjectNetworkManager<S, A>: Send + Sync + Sized
 where
     S: ObjectStorage,
+    A: Allower,
 {
     /// type alias
     type Client: ObjectNetworkClient;
@@ -56,7 +57,7 @@ where
     fn new(
         own_key: PeerKeyPair,
         parameters: Arc<Http2Parameters>,
-        allower: AllowPublicKeys,
+        allower: A,
     ) -> ObjectResult<Self>;
     /// Returns a client
     fn client(&self) -> Arc<Self::Client>;

@@ -12,7 +12,7 @@ use intelligence::evaluation::messaging::EvaluationClient;
 
 use fastcrypto::traits::KeyPair;
 use intelligence::inference::{
-    client::InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI,
+    InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI,
 };
 use objects::{
     networking::{downloader::Downloader, ObjectNetworkClient},
@@ -20,7 +20,6 @@ use objects::{
 };
 use std::{sync::Arc, time::Duration};
 use tracing::error;
-use types::shard::{Input, InputAPI};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
@@ -29,6 +28,10 @@ use types::{
     shard::Shard,
     shard_crypto::{digest::Digest, keys::EncoderKeyPair, verified::Verified},
     submission::{Submission, SubmissionV1},
+};
+use types::{
+    multiaddr::Multiaddr,
+    shard::{Input, InputAPI},
 };
 
 use super::commit::CommitProcessor;
@@ -48,6 +51,7 @@ pub(crate) struct InputProcessor<
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: Arc<S>,
     commit_pipeline: ActorHandle<CommitProcessor<O, C, S, P>>,
+    local_object_server: Multiaddr,
     context: Context,
 }
 
@@ -69,6 +73,7 @@ impl<
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: Arc<S>,
         commit_pipeline: ActorHandle<CommitProcessor<O, C, S, P>>,
+        local_object_server: Multiaddr,
         context: Context,
     ) -> Self {
         Self {
@@ -80,6 +85,7 @@ impl<
             encoder_keypair,
             storage,
             commit_pipeline,
+            local_object_server,
             context,
         }
     }
@@ -123,12 +129,8 @@ impl<
                     .await?;
             }
 
-            let (peer, address) = self
-                .context
-                .object_server(&self.encoder_keypair.public())
-                .ok_or(ShardError::MissingData)?;
-
-            let inference_input = InferenceInput::V1(InferenceInputV1::new(metadata.clone()));
+            let inference_input =
+                InferenceInput::V1(InferenceInputV1::new(shard.epoch(), metadata.clone()));
 
             // TODO: make this adjusted with size and coefficient configured by Parameters
             let inference_timeout = Duration::from_secs(1);
@@ -136,11 +138,15 @@ impl<
                 .inference_client
                 .call(inference_input, inference_timeout)
                 .await
-                .map_err(ShardError::InferenceError)?;
+                .map_err(ShardError::IntelligenceError)?;
 
+            let (peer, address) = self
+                .context
+                .object_server(&self.encoder_keypair.public())
+                .ok_or(ShardError::MissingData)?;
             let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
                 metadata,
-                inference_output.embeddings(),
+                inference_output.metadata(),
                 inference_output.probe_set(),
                 peer,
                 address,
@@ -165,7 +171,7 @@ impl<
             let submission = Submission::V1(SubmissionV1::new(
                 self.encoder_keypair.public(),
                 shard_digest,
-                inference_output.embeddings(),
+                inference_output.metadata(),
                 inference_output.probe_set(),
                 evaluation_output.score(),
                 evaluation_output.embedding_digest(),

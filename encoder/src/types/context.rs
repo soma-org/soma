@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use types::metadata::Metadata;
 use types::multiaddr::Multiaddr;
 use types::{
     checksum::Checksum,
@@ -37,11 +38,7 @@ impl Context {
         self.inner.load_full()
     }
 
-    pub fn probe_checksum(
-        &self,
-        epoch: Epoch,
-        encoder: &EncoderPublicKey,
-    ) -> ShardResult<Checksum> {
+    pub fn probe(&self, epoch: Epoch, encoder: &EncoderPublicKey) -> ShardResult<Metadata> {
         match self
             .inner
             .load()
@@ -49,7 +46,7 @@ impl Context {
             .encoder_committee
             .encoder_by_key(&encoder)
         {
-            Some(e) => Ok(e.probe_checksum.clone()),
+            Some(e) => Ok(e.probe.clone()),
             None => Err(ShardError::NotFound(
                 "probe metadata not found for encoder".to_string(),
             )),
