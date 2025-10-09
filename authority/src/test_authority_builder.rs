@@ -18,7 +18,7 @@ use types::{
 
 use crate::{
     cache::build_execution_cache, commit::CommitStore, epoch_store::AuthorityPerEpochStore,
-    start_epoch::EpochStartConfiguration, state::AuthorityState,
+    rpc_index::RpcIndexStore, start_epoch::EpochStartConfiguration, state::AuthorityState,
     state_accumulator::StateAccumulator, store::AuthorityStore,
     store_tables::AuthorityPerpetualTables,
 };
@@ -212,6 +212,10 @@ impl<'a> TestAuthorityBuilder<'a> {
             commit_store.insert_genesis_commit(genesis.commit());
         }
 
+        let rpc_index = Some(Arc::new(
+            RpcIndexStore::new(&path, &authority_store, &commit_store).await,
+        ));
+
         // let chain_identifier = ChainIdentifier::from(*genesis.commit().digest());
 
         let state = AuthorityState::new(
@@ -223,6 +227,7 @@ impl<'a> TestAuthorityBuilder<'a> {
             config.clone(),
             cache_traits,
             accumulator,
+            rpc_index,
         )
         .await;
 

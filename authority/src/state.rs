@@ -86,6 +86,7 @@ use crate::consensus_quarantine;
 use crate::epoch_store::{CertLockGuard, CertTxGuard};
 use crate::execution::execute_transaction;
 use crate::execution_driver::execution_process;
+use crate::rpc_index::RpcIndexStore;
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::state_accumulator::StateAccumulator;
 use crate::store::{AuthorityStore, ObjectLockStatus};
@@ -184,6 +185,8 @@ pub struct AuthorityState {
 
     /// The state accumulator for verifying state consistency.
     accumulator: Arc<StateAccumulator>,
+
+    pub rpc_index: Option<Arc<RpcIndexStore>>,
 }
 
 impl AuthorityState {
@@ -216,6 +219,7 @@ impl AuthorityState {
         config: NodeConfig,
         execution_cache_trait_pointers: ExecutionCacheTraitPointers,
         accumulator: Arc<StateAccumulator>,
+        rpc_index: Option<Arc<RpcIndexStore>>,
     ) -> Arc<Self> {
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
         let transaction_manager = Arc::new(TransactionManager::new(
@@ -244,6 +248,7 @@ impl AuthorityState {
             input_loader,
             execution_cache_trait_pointers,
             accumulator,
+            rpc_index,
         });
 
         // Start a task to execute ready certificates.
