@@ -267,7 +267,7 @@ pub async fn execute_certificate_with_execution_error(
 
 pub async fn send_consensus(authority: &AuthorityState, cert: &VerifiedCertificate) {
     let transaction = SequencedConsensusTransaction::new_test(
-        ConsensusTransaction::new_certificate_message(&authority.name, cert.clone().into_inner()),
+        ConsensusTransaction::new_certificate_message(cert.clone().into_inner()),
     );
 
     let (certs, _) = authority

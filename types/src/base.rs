@@ -396,8 +396,6 @@ impl SomaAddress {
     /// Return a canonical string representation of the address
     /// Addresses are hex-encoded lowercase values of length ADDRESS_LENGTH (16, 20, or 32 depending on the Move platform)
     /// e.g., 0000000000000000000000000000000a, *not* 0x0000000000000000000000000000000a, 0xa, or 0xA
-    /// Note: this function is guaranteed to be stable, and this is suitable for use inside
-    /// Move native functions or the VM.
     pub fn to_canonical_string(&self) -> String {
         hex::encode(self.0)
     }

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+import "google/protobuf/timestamp.proto";
+import "soma/rpc/signature.proto";
+import "soma/rpc/system_state.proto";
+
+message Epoch {
+  optional uint64 epoch = 1;
+
+  // The committee governing this epoch.
+  optional ValidatorCommittee committee = 2;
+
+  // Snapshot of SystemState at the
+  // beginning of the epoch, for past epochs, or the current state for the
+  // current epoch.
+  optional SystemState system_state = 3;
+
+  optional google.protobuf.Timestamp start = 6;
+  optional google.protobuf.Timestamp end = 7;
+
+  // Reference byte price
+//   optional uint64 reference_byte_price = 8;
+
+//   optional ProtocolConfig protocol_config = 9;
+}

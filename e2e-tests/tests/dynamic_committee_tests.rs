@@ -117,8 +117,10 @@ impl StressTestRunner {
         let address = sender.with(|node| node.get_config().soma_address());
         let gas_object = self
             .test_cluster
-            .get_gas_objects_owned_by_address(address, Some(1))
+            .wallet
+            .get_one_gas_object_owned_by_address(address)
             .await
+            .unwrap()
             .unwrap();
 
         let transaction = sender.with(|node| {
@@ -126,7 +128,7 @@ impl StressTestRunner {
                 TransactionData::new(
                     kind,
                     (&node.get_config().account_key_pair.keypair().public()).into(),
-                    gas_object,
+                    vec![gas_object],
                 ),
                 vec![node.get_config().account_key_pair.keypair()],
             )
@@ -233,13 +235,15 @@ mod add_stake {
             let address = self.sender.with(|node| node.get_config().soma_address());
             let gas_object = runner
                 .test_cluster
-                .get_gas_objects_owned_by_address(address, Some(1))
+                .wallet
+                .get_one_gas_object_owned_by_address(address)
                 .await
+                .unwrap()
                 .unwrap();
 
             let kind = TransactionKind::AddStake {
                 address: self.staked_with,
-                coin_ref: gas_object[0],
+                coin_ref: gas_object,
                 amount: Some(self.stake_amount),
             };
 

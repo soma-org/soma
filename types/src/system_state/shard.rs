@@ -20,7 +20,7 @@ pub struct ShardInput {
 }
 
 /// Scores associated with a particular metadata commitment
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ShardResult {
     /// Metadata commitment digest the scores are for
     pub digest: Digest<MetadataCommitment>,

@@ -12,6 +12,8 @@ use authority::{
     manager::{ConsensusClient, ConsensusManager, ConsensusManagerTrait},
     orchestrator::TransactionOrchestrator,
     reconfiguration::ReconfigurationInitiator,
+    rpc_index::RpcIndexStore,
+    rpc_store::RestReadStore,
     server::ServerBuilder,
     service::ValidatorService,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
@@ -230,6 +232,14 @@ impl SomaNode {
             consensus_store.clone(),
         );
 
+        let rpc_index = if is_full_node && config.rpc().is_some_and(|rpc| rpc.enable_indexing()) {
+            Some(Arc::new(
+                RpcIndexStore::new(&config.db_path(), &store, &commit_store).await,
+            ))
+        } else {
+            None
+        };
+
         // let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
         let P2pComponents {
             channel_manager_tx,
@@ -270,6 +280,7 @@ impl SomaNode {
             config.clone(),
             cache_traits.clone(),
             accumulator.clone(),
+            rpc_index,
         )
         .await;
 
@@ -948,17 +959,6 @@ impl SomaNode {
         Ok((response.effects.effects, response.shard))
     }
 
-    pub async fn get_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-        limit: Option<usize>,
-    ) -> SomaResult<Vec<ObjectRef>> {
-        self.state
-            .get_object_store()
-            .get_gas_objects_owned_by_address(address, limit)
-            .map_err(|err| SomaError::Storage(err.to_string()))
-    }
-
     pub fn get_config(&self) -> &NodeConfig {
         &self.config
     }
@@ -978,9 +978,8 @@ async fn build_http_servers(
     let mut router = axum::Router::new();
 
     let rpc_router = {
-        let mut rpc_service = rpc::api::RpcService::new(
-                    // Arc::new(RestReadStore::new(state.clone(), store))
-                );
+        let mut rpc_service =
+            rpc::api::RpcService::new(Arc::new(RestReadStore::new(state.clone(), store)));
         // rpc_service.with_server_version(server_version);
 
         if let Some(config) = config.rpc.clone() {

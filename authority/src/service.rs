@@ -181,10 +181,7 @@ impl ValidatorService {
                 let transactions = verified_certificates
                     .iter()
                     .map(|certificate| {
-                        ConsensusTransaction::new_certificate_message(
-                            &self.state.name,
-                            certificate.clone().into(),
-                        )
+                        ConsensusTransaction::new_certificate_message(certificate.clone().into())
                     })
                     .collect::<Vec<_>>();
                 self.consensus_adapter.submit_batch(

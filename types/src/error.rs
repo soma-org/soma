@@ -1378,6 +1378,15 @@ pub enum ShardError {
     #[error("Consensus has shut down!")]
     Shutdown,
 
+    #[error("Serialization error: {0:?}")]
+    SerializationError(String),
+
+    #[error("Wallet error: {0:?}")]
+    WalletError(String),
+
+    #[error("Transaction failed: {0:?}")]
+    TransactionFailed(String),
+
     #[error("Other: {0:?}")]
     Other(String),
 }

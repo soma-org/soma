@@ -63,6 +63,7 @@ fn main() {
         .build_client(true)
         .build_server(true)
         .bytes(["."])
+        .extern_path(".google.rpc", "crate::proto::google::rpc")
         .boxed(".soma.rpc.Input.literal")
         .boxed(".soma.rpc.Epoch.system_state")
         .boxed("json")

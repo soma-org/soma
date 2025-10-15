@@ -809,6 +809,430 @@ impl<'de> serde::Deserialize<'de> for BalanceChange {
         deserializer.deserialize_struct("soma.rpc.BalanceChange", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for BatchGetObjectsRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.requests.is_empty() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BatchGetObjectsRequest", len)?;
+        if !self.requests.is_empty() {
+            struct_ser.serialize_field("requests", &self.requests)?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BatchGetObjectsRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "requests",
+            "read_mask",
+            "readMask",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Requests,
+            ReadMask,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "requests" => Ok(GeneratedField::Requests),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BatchGetObjectsRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BatchGetObjectsRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BatchGetObjectsRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut requests__ = None;
+                let mut read_mask__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Requests => {
+                            if requests__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("requests"));
+                            }
+                            requests__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BatchGetObjectsRequest {
+                    requests: requests__.unwrap_or_default(),
+                    read_mask: read_mask__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BatchGetObjectsRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for BatchGetObjectsResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.objects.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BatchGetObjectsResponse", len)?;
+        if !self.objects.is_empty() {
+            struct_ser.serialize_field("objects", &self.objects)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BatchGetObjectsResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "objects",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Objects,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "objects" => Ok(GeneratedField::Objects),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BatchGetObjectsResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BatchGetObjectsResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BatchGetObjectsResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut objects__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Objects => {
+                            if objects__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("objects"));
+                            }
+                            objects__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BatchGetObjectsResponse {
+                    objects: objects__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BatchGetObjectsResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for BatchGetTransactionsRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.digests.is_empty() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BatchGetTransactionsRequest", len)?;
+        if !self.digests.is_empty() {
+            struct_ser.serialize_field("digests", &self.digests)?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BatchGetTransactionsRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "digests",
+            "read_mask",
+            "readMask",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Digests,
+            ReadMask,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "digests" => Ok(GeneratedField::Digests),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BatchGetTransactionsRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BatchGetTransactionsRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BatchGetTransactionsRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut digests__ = None;
+                let mut read_mask__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Digests => {
+                            if digests__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("digests"));
+                            }
+                            digests__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BatchGetTransactionsRequest {
+                    digests: digests__.unwrap_or_default(),
+                    read_mask: read_mask__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BatchGetTransactionsRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for BatchGetTransactionsResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.transactions.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.BatchGetTransactionsResponse", len)?;
+        if !self.transactions.is_empty() {
+            struct_ser.serialize_field("transactions", &self.transactions)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for BatchGetTransactionsResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "transactions",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Transactions,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "transactions" => Ok(GeneratedField::Transactions),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = BatchGetTransactionsResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.BatchGetTransactionsResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<BatchGetTransactionsResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut transactions__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Transactions => {
+                            if transactions__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transactions"));
+                            }
+                            transactions__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(BatchGetTransactionsResponse {
+                    transactions: transactions__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.BatchGetTransactionsResponse", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for ChangeEpoch {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -1860,6 +2284,842 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
             }
         }
         deserializer.deserialize_struct("soma.rpc.EmbedData", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for Encoder {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.soma_address.is_some() {
+            len += 1;
+        }
+        if self.encoder_pubkey.is_some() {
+            len += 1;
+        }
+        if self.network_pubkey.is_some() {
+            len += 1;
+        }
+        if self.internal_network_address.is_some() {
+            len += 1;
+        }
+        if self.external_network_address.is_some() {
+            len += 1;
+        }
+        if self.object_server_address.is_some() {
+            len += 1;
+        }
+        if self.voting_power.is_some() {
+            len += 1;
+        }
+        if self.commission_rate.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_stake.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_commission_rate.is_some() {
+            len += 1;
+        }
+        if self.byte_price.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_byte_price.is_some() {
+            len += 1;
+        }
+        if self.staking_pool.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_network_pubkey.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_internal_network_address.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_external_network_address.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_object_server_address.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.Encoder", len)?;
+        if let Some(v) = self.soma_address.as_ref() {
+            struct_ser.serialize_field("somaAddress", v)?;
+        }
+        if let Some(v) = self.encoder_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("encoderPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.network_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("networkPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.internal_network_address.as_ref() {
+            struct_ser.serialize_field("internalNetworkAddress", v)?;
+        }
+        if let Some(v) = self.external_network_address.as_ref() {
+            struct_ser.serialize_field("externalNetworkAddress", v)?;
+        }
+        if let Some(v) = self.object_server_address.as_ref() {
+            struct_ser.serialize_field("objectServerAddress", v)?;
+        }
+        if let Some(v) = self.voting_power.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("votingPower", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.commission_rate.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("commissionRate", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_stake.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochStake", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_commission_rate.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochCommissionRate", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.byte_price.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("bytePrice", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_byte_price.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochBytePrice", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.staking_pool.as_ref() {
+            struct_ser.serialize_field("stakingPool", v)?;
+        }
+        if let Some(v) = self.next_epoch_network_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochNetworkPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_internal_network_address.as_ref() {
+            struct_ser.serialize_field("nextEpochInternalNetworkAddress", v)?;
+        }
+        if let Some(v) = self.next_epoch_external_network_address.as_ref() {
+            struct_ser.serialize_field("nextEpochExternalNetworkAddress", v)?;
+        }
+        if let Some(v) = self.next_epoch_object_server_address.as_ref() {
+            struct_ser.serialize_field("nextEpochObjectServerAddress", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for Encoder {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "soma_address",
+            "somaAddress",
+            "encoder_pubkey",
+            "encoderPubkey",
+            "network_pubkey",
+            "networkPubkey",
+            "internal_network_address",
+            "internalNetworkAddress",
+            "external_network_address",
+            "externalNetworkAddress",
+            "object_server_address",
+            "objectServerAddress",
+            "voting_power",
+            "votingPower",
+            "commission_rate",
+            "commissionRate",
+            "next_epoch_stake",
+            "nextEpochStake",
+            "next_epoch_commission_rate",
+            "nextEpochCommissionRate",
+            "byte_price",
+            "bytePrice",
+            "next_epoch_byte_price",
+            "nextEpochBytePrice",
+            "staking_pool",
+            "stakingPool",
+            "next_epoch_network_pubkey",
+            "nextEpochNetworkPubkey",
+            "next_epoch_internal_network_address",
+            "nextEpochInternalNetworkAddress",
+            "next_epoch_external_network_address",
+            "nextEpochExternalNetworkAddress",
+            "next_epoch_object_server_address",
+            "nextEpochObjectServerAddress",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            SomaAddress,
+            EncoderPubkey,
+            NetworkPubkey,
+            InternalNetworkAddress,
+            ExternalNetworkAddress,
+            ObjectServerAddress,
+            VotingPower,
+            CommissionRate,
+            NextEpochStake,
+            NextEpochCommissionRate,
+            BytePrice,
+            NextEpochBytePrice,
+            StakingPool,
+            NextEpochNetworkPubkey,
+            NextEpochInternalNetworkAddress,
+            NextEpochExternalNetworkAddress,
+            NextEpochObjectServerAddress,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "somaAddress" | "soma_address" => Ok(GeneratedField::SomaAddress),
+                            "encoderPubkey" | "encoder_pubkey" => Ok(GeneratedField::EncoderPubkey),
+                            "networkPubkey" | "network_pubkey" => Ok(GeneratedField::NetworkPubkey),
+                            "internalNetworkAddress" | "internal_network_address" => Ok(GeneratedField::InternalNetworkAddress),
+                            "externalNetworkAddress" | "external_network_address" => Ok(GeneratedField::ExternalNetworkAddress),
+                            "objectServerAddress" | "object_server_address" => Ok(GeneratedField::ObjectServerAddress),
+                            "votingPower" | "voting_power" => Ok(GeneratedField::VotingPower),
+                            "commissionRate" | "commission_rate" => Ok(GeneratedField::CommissionRate),
+                            "nextEpochStake" | "next_epoch_stake" => Ok(GeneratedField::NextEpochStake),
+                            "nextEpochCommissionRate" | "next_epoch_commission_rate" => Ok(GeneratedField::NextEpochCommissionRate),
+                            "bytePrice" | "byte_price" => Ok(GeneratedField::BytePrice),
+                            "nextEpochBytePrice" | "next_epoch_byte_price" => Ok(GeneratedField::NextEpochBytePrice),
+                            "stakingPool" | "staking_pool" => Ok(GeneratedField::StakingPool),
+                            "nextEpochNetworkPubkey" | "next_epoch_network_pubkey" => Ok(GeneratedField::NextEpochNetworkPubkey),
+                            "nextEpochInternalNetworkAddress" | "next_epoch_internal_network_address" => Ok(GeneratedField::NextEpochInternalNetworkAddress),
+                            "nextEpochExternalNetworkAddress" | "next_epoch_external_network_address" => Ok(GeneratedField::NextEpochExternalNetworkAddress),
+                            "nextEpochObjectServerAddress" | "next_epoch_object_server_address" => Ok(GeneratedField::NextEpochObjectServerAddress),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = Encoder;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.Encoder")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<Encoder, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut soma_address__ = None;
+                let mut encoder_pubkey__ = None;
+                let mut network_pubkey__ = None;
+                let mut internal_network_address__ = None;
+                let mut external_network_address__ = None;
+                let mut object_server_address__ = None;
+                let mut voting_power__ = None;
+                let mut commission_rate__ = None;
+                let mut next_epoch_stake__ = None;
+                let mut next_epoch_commission_rate__ = None;
+                let mut byte_price__ = None;
+                let mut next_epoch_byte_price__ = None;
+                let mut staking_pool__ = None;
+                let mut next_epoch_network_pubkey__ = None;
+                let mut next_epoch_internal_network_address__ = None;
+                let mut next_epoch_external_network_address__ = None;
+                let mut next_epoch_object_server_address__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::SomaAddress => {
+                            if soma_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("somaAddress"));
+                            }
+                            soma_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::EncoderPubkey => {
+                            if encoder_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("encoderPubkey"));
+                            }
+                            encoder_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NetworkPubkey => {
+                            if network_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("networkPubkey"));
+                            }
+                            network_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::InternalNetworkAddress => {
+                            if internal_network_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("internalNetworkAddress"));
+                            }
+                            internal_network_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::ExternalNetworkAddress => {
+                            if external_network_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("externalNetworkAddress"));
+                            }
+                            external_network_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::ObjectServerAddress => {
+                            if object_server_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("objectServerAddress"));
+                            }
+                            object_server_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::VotingPower => {
+                            if voting_power__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("votingPower"));
+                            }
+                            voting_power__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CommissionRate => {
+                            if commission_rate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("commissionRate"));
+                            }
+                            commission_rate__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochStake => {
+                            if next_epoch_stake__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochStake"));
+                            }
+                            next_epoch_stake__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochCommissionRate => {
+                            if next_epoch_commission_rate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochCommissionRate"));
+                            }
+                            next_epoch_commission_rate__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::BytePrice => {
+                            if byte_price__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bytePrice"));
+                            }
+                            byte_price__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochBytePrice => {
+                            if next_epoch_byte_price__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochBytePrice"));
+                            }
+                            next_epoch_byte_price__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::StakingPool => {
+                            if staking_pool__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("stakingPool"));
+                            }
+                            staking_pool__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochNetworkPubkey => {
+                            if next_epoch_network_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochNetworkPubkey"));
+                            }
+                            next_epoch_network_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochInternalNetworkAddress => {
+                            if next_epoch_internal_network_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochInternalNetworkAddress"));
+                            }
+                            next_epoch_internal_network_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochExternalNetworkAddress => {
+                            if next_epoch_external_network_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochExternalNetworkAddress"));
+                            }
+                            next_epoch_external_network_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochObjectServerAddress => {
+                            if next_epoch_object_server_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochObjectServerAddress"));
+                            }
+                            next_epoch_object_server_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(Encoder {
+                    soma_address: soma_address__,
+                    encoder_pubkey: encoder_pubkey__,
+                    network_pubkey: network_pubkey__,
+                    internal_network_address: internal_network_address__,
+                    external_network_address: external_network_address__,
+                    object_server_address: object_server_address__,
+                    voting_power: voting_power__,
+                    commission_rate: commission_rate__,
+                    next_epoch_stake: next_epoch_stake__,
+                    next_epoch_commission_rate: next_epoch_commission_rate__,
+                    byte_price: byte_price__,
+                    next_epoch_byte_price: next_epoch_byte_price__,
+                    staking_pool: staking_pool__,
+                    next_epoch_network_pubkey: next_epoch_network_pubkey__,
+                    next_epoch_internal_network_address: next_epoch_internal_network_address__,
+                    next_epoch_external_network_address: next_epoch_external_network_address__,
+                    next_epoch_object_server_address: next_epoch_object_server_address__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.Encoder", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for EncoderSet {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.total_stake.is_some() {
+            len += 1;
+        }
+        if !self.active_encoders.is_empty() {
+            len += 1;
+        }
+        if !self.pending_active_encoders.is_empty() {
+            len += 1;
+        }
+        if !self.pending_removals.is_empty() {
+            len += 1;
+        }
+        if !self.staking_pool_mappings.is_empty() {
+            len += 1;
+        }
+        if !self.inactive_encoders.is_empty() {
+            len += 1;
+        }
+        if !self.at_risk_encoders.is_empty() {
+            len += 1;
+        }
+        if self.reference_byte_price.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.EncoderSet", len)?;
+        if let Some(v) = self.total_stake.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("totalStake", ToString::to_string(&v).as_str())?;
+        }
+        if !self.active_encoders.is_empty() {
+            struct_ser.serialize_field("activeEncoders", &self.active_encoders)?;
+        }
+        if !self.pending_active_encoders.is_empty() {
+            struct_ser.serialize_field("pendingActiveEncoders", &self.pending_active_encoders)?;
+        }
+        if !self.pending_removals.is_empty() {
+            struct_ser.serialize_field("pendingRemovals", &self.pending_removals)?;
+        }
+        if !self.staking_pool_mappings.is_empty() {
+            struct_ser.serialize_field("stakingPoolMappings", &self.staking_pool_mappings)?;
+        }
+        if !self.inactive_encoders.is_empty() {
+            struct_ser.serialize_field("inactiveEncoders", &self.inactive_encoders)?;
+        }
+        if !self.at_risk_encoders.is_empty() {
+            let v: std::collections::BTreeMap<_, _> = self.at_risk_encoders.iter()
+                .map(|(k, v)| (k, v.to_string())).collect();
+            struct_ser.serialize_field("atRiskEncoders", &v)?;
+        }
+        if let Some(v) = self.reference_byte_price.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("referenceBytePrice", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for EncoderSet {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "total_stake",
+            "totalStake",
+            "active_encoders",
+            "activeEncoders",
+            "pending_active_encoders",
+            "pendingActiveEncoders",
+            "pending_removals",
+            "pendingRemovals",
+            "staking_pool_mappings",
+            "stakingPoolMappings",
+            "inactive_encoders",
+            "inactiveEncoders",
+            "at_risk_encoders",
+            "atRiskEncoders",
+            "reference_byte_price",
+            "referenceBytePrice",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            TotalStake,
+            ActiveEncoders,
+            PendingActiveEncoders,
+            PendingRemovals,
+            StakingPoolMappings,
+            InactiveEncoders,
+            AtRiskEncoders,
+            ReferenceBytePrice,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "totalStake" | "total_stake" => Ok(GeneratedField::TotalStake),
+                            "activeEncoders" | "active_encoders" => Ok(GeneratedField::ActiveEncoders),
+                            "pendingActiveEncoders" | "pending_active_encoders" => Ok(GeneratedField::PendingActiveEncoders),
+                            "pendingRemovals" | "pending_removals" => Ok(GeneratedField::PendingRemovals),
+                            "stakingPoolMappings" | "staking_pool_mappings" => Ok(GeneratedField::StakingPoolMappings),
+                            "inactiveEncoders" | "inactive_encoders" => Ok(GeneratedField::InactiveEncoders),
+                            "atRiskEncoders" | "at_risk_encoders" => Ok(GeneratedField::AtRiskEncoders),
+                            "referenceBytePrice" | "reference_byte_price" => Ok(GeneratedField::ReferenceBytePrice),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = EncoderSet;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.EncoderSet")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<EncoderSet, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut total_stake__ = None;
+                let mut active_encoders__ = None;
+                let mut pending_active_encoders__ = None;
+                let mut pending_removals__ = None;
+                let mut staking_pool_mappings__ = None;
+                let mut inactive_encoders__ = None;
+                let mut at_risk_encoders__ = None;
+                let mut reference_byte_price__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::TotalStake => {
+                            if total_stake__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("totalStake"));
+                            }
+                            total_stake__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ActiveEncoders => {
+                            if active_encoders__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("activeEncoders"));
+                            }
+                            active_encoders__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::PendingActiveEncoders => {
+                            if pending_active_encoders__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pendingActiveEncoders"));
+                            }
+                            pending_active_encoders__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::PendingRemovals => {
+                            if pending_removals__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pendingRemovals"));
+                            }
+                            pending_removals__ = 
+                                Some(map_.next_value::<Vec<crate::utils::_serde::NumberDeserialize<_>>>()?
+                                    .into_iter().map(|x| x.0).collect())
+                            ;
+                        }
+                        GeneratedField::StakingPoolMappings => {
+                            if staking_pool_mappings__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("stakingPoolMappings"));
+                            }
+                            staking_pool_mappings__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::InactiveEncoders => {
+                            if inactive_encoders__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("inactiveEncoders"));
+                            }
+                            inactive_encoders__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::AtRiskEncoders => {
+                            if at_risk_encoders__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("atRiskEncoders"));
+                            }
+                            at_risk_encoders__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, crate::utils::_serde::NumberDeserialize<u64>>>()?
+                                    .into_iter().map(|(k,v)| (k, v.0)).collect()
+                            );
+                        }
+                        GeneratedField::ReferenceBytePrice => {
+                            if reference_byte_price__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("referenceBytePrice"));
+                            }
+                            reference_byte_price__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(EncoderSet {
+                    total_stake: total_stake__,
+                    active_encoders: active_encoders__.unwrap_or_default(),
+                    pending_active_encoders: pending_active_encoders__.unwrap_or_default(),
+                    pending_removals: pending_removals__.unwrap_or_default(),
+                    staking_pool_mappings: staking_pool_mappings__.unwrap_or_default(),
+                    inactive_encoders: inactive_encoders__.unwrap_or_default(),
+                    at_risk_encoders: at_risk_encoders__.unwrap_or_default(),
+                    reference_byte_price: reference_byte_price__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.EncoderSet", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for Epoch {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.epoch.is_some() {
+            len += 1;
+        }
+        if self.committee.is_some() {
+            len += 1;
+        }
+        if self.system_state.is_some() {
+            len += 1;
+        }
+        if self.start.is_some() {
+            len += 1;
+        }
+        if self.end.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.Epoch", len)?;
+        if let Some(v) = self.epoch.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("epoch", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.committee.as_ref() {
+            struct_ser.serialize_field("committee", v)?;
+        }
+        if let Some(v) = self.system_state.as_ref() {
+            struct_ser.serialize_field("systemState", v)?;
+        }
+        if let Some(v) = self.start.as_ref() {
+            struct_ser.serialize_field("start", &crate::utils::_serde::TimestampSerializer(v))?;
+        }
+        if let Some(v) = self.end.as_ref() {
+            struct_ser.serialize_field("end", &crate::utils::_serde::TimestampSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for Epoch {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "epoch",
+            "committee",
+            "system_state",
+            "systemState",
+            "start",
+            "end",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Epoch,
+            Committee,
+            SystemState,
+            Start,
+            End,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "epoch" => Ok(GeneratedField::Epoch),
+                            "committee" => Ok(GeneratedField::Committee),
+                            "systemState" | "system_state" => Ok(GeneratedField::SystemState),
+                            "start" => Ok(GeneratedField::Start),
+                            "end" => Ok(GeneratedField::End),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = Epoch;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.Epoch")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<Epoch, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut epoch__ = None;
+                let mut committee__ = None;
+                let mut system_state__ = None;
+                let mut start__ = None;
+                let mut end__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Epoch => {
+                            if epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epoch"));
+                            }
+                            epoch__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Committee => {
+                            if committee__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("committee"));
+                            }
+                            committee__ = map_.next_value()?;
+                        }
+                        GeneratedField::SystemState => {
+                            if system_state__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("systemState"));
+                            }
+                            system_state__ = map_.next_value()?;
+                        }
+                        GeneratedField::Start => {
+                            if start__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("start"));
+                            }
+                            start__ = map_.next_value::<::std::option::Option<crate::utils::_serde::TimestampDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::End => {
+                            if end__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("end"));
+                            }
+                            end__ = map_.next_value::<::std::option::Option<crate::utils::_serde::TimestampDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(Epoch {
+                    epoch: epoch__,
+                    committee: committee__,
+                    system_state: system_state__,
+                    start: start__,
+                    end: end__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.Epoch", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for ErrorReason {
@@ -2932,6 +4192,1390 @@ impl<'de> serde::Deserialize<'de> for GenesisTransaction {
         deserializer.deserialize_struct("soma.rpc.GenesisTransaction", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for GetBalanceRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.owner.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetBalanceRequest", len)?;
+        if let Some(v) = self.owner.as_ref() {
+            struct_ser.serialize_field("owner", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetBalanceRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "owner",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Owner,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "owner" => Ok(GeneratedField::Owner),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetBalanceRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetBalanceRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetBalanceRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut owner__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Owner => {
+                            if owner__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("owner"));
+                            }
+                            owner__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetBalanceRequest {
+                    owner: owner__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetBalanceRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetBalanceResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.balance.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetBalanceResponse", len)?;
+        if let Some(v) = self.balance.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("balance", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetBalanceResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "balance",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Balance,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "balance" => Ok(GeneratedField::Balance),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetBalanceResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetBalanceResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetBalanceResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut balance__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Balance => {
+                            if balance__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("balance"));
+                            }
+                            balance__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetBalanceResponse {
+                    balance: balance__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetBalanceResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetEpochRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.epoch.is_some() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetEpochRequest", len)?;
+        if let Some(v) = self.epoch.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("epoch", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetEpochRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "epoch",
+            "read_mask",
+            "readMask",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Epoch,
+            ReadMask,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "epoch" => Ok(GeneratedField::Epoch),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetEpochRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetEpochRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetEpochRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut epoch__ = None;
+                let mut read_mask__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Epoch => {
+                            if epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epoch"));
+                            }
+                            epoch__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetEpochRequest {
+                    epoch: epoch__,
+                    read_mask: read_mask__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetEpochRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetEpochResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.epoch.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetEpochResponse", len)?;
+        if let Some(v) = self.epoch.as_ref() {
+            struct_ser.serialize_field("epoch", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetEpochResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "epoch",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Epoch,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "epoch" => Ok(GeneratedField::Epoch),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetEpochResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetEpochResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetEpochResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut epoch__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Epoch => {
+                            if epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epoch"));
+                            }
+                            epoch__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetEpochResponse {
+                    epoch: epoch__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetEpochResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetObjectRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.object_id.is_some() {
+            len += 1;
+        }
+        if self.version.is_some() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetObjectRequest", len)?;
+        if let Some(v) = self.object_id.as_ref() {
+            struct_ser.serialize_field("objectId", v)?;
+        }
+        if let Some(v) = self.version.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("version", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetObjectRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "object_id",
+            "objectId",
+            "version",
+            "read_mask",
+            "readMask",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ObjectId,
+            Version,
+            ReadMask,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "objectId" | "object_id" => Ok(GeneratedField::ObjectId),
+                            "version" => Ok(GeneratedField::Version),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetObjectRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetObjectRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetObjectRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut object_id__ = None;
+                let mut version__ = None;
+                let mut read_mask__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ObjectId => {
+                            if object_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("objectId"));
+                            }
+                            object_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::Version => {
+                            if version__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("version"));
+                            }
+                            version__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetObjectRequest {
+                    object_id: object_id__,
+                    version: version__,
+                    read_mask: read_mask__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetObjectRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetObjectResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.object.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetObjectResponse", len)?;
+        if let Some(v) = self.object.as_ref() {
+            struct_ser.serialize_field("object", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetObjectResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "object",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Object,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "object" => Ok(GeneratedField::Object),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetObjectResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetObjectResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetObjectResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut object__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Object => {
+                            if object__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("object"));
+                            }
+                            object__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetObjectResponse {
+                    object: object__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetObjectResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetObjectResult {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.result.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetObjectResult", len)?;
+        if let Some(v) = self.result.as_ref() {
+            match v {
+                get_object_result::Result::Object(v) => {
+                    struct_ser.serialize_field("object", v)?;
+                }
+                get_object_result::Result::Error(v) => {
+                    struct_ser.serialize_field("error", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetObjectResult {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "object",
+            "error",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Object,
+            Error,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "object" => Ok(GeneratedField::Object),
+                            "error" => Ok(GeneratedField::Error),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetObjectResult;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetObjectResult")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetObjectResult, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut result__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Object => {
+                            if result__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("object"));
+                            }
+                            result__ = map_.next_value::<::std::option::Option<_>>()?.map(get_object_result::Result::Object)
+;
+                        }
+                        GeneratedField::Error => {
+                            if result__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("error"));
+                            }
+                            result__ = map_.next_value::<::std::option::Option<_>>()?.map(get_object_result::Result::Error)
+;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetObjectResult {
+                    result: result__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetObjectResult", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetTransactionRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.digest.is_some() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetTransactionRequest", len)?;
+        if let Some(v) = self.digest.as_ref() {
+            struct_ser.serialize_field("digest", v)?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetTransactionRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "digest",
+            "read_mask",
+            "readMask",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Digest,
+            ReadMask,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "digest" => Ok(GeneratedField::Digest),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetTransactionRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetTransactionRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetTransactionRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut digest__ = None;
+                let mut read_mask__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Digest => {
+                            if digest__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("digest"));
+                            }
+                            digest__ = map_.next_value()?;
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetTransactionRequest {
+                    digest: digest__,
+                    read_mask: read_mask__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetTransactionRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetTransactionResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.transaction.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetTransactionResponse", len)?;
+        if let Some(v) = self.transaction.as_ref() {
+            struct_ser.serialize_field("transaction", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetTransactionResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "transaction",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Transaction,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "transaction" => Ok(GeneratedField::Transaction),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetTransactionResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetTransactionResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetTransactionResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut transaction__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Transaction => {
+                            if transaction__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transaction"));
+                            }
+                            transaction__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetTransactionResponse {
+                    transaction: transaction__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetTransactionResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetTransactionResult {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.result.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetTransactionResult", len)?;
+        if let Some(v) = self.result.as_ref() {
+            match v {
+                get_transaction_result::Result::Transaction(v) => {
+                    struct_ser.serialize_field("transaction", v)?;
+                }
+                get_transaction_result::Result::Error(v) => {
+                    struct_ser.serialize_field("error", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetTransactionResult {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "transaction",
+            "error",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Transaction,
+            Error,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "transaction" => Ok(GeneratedField::Transaction),
+                            "error" => Ok(GeneratedField::Error),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetTransactionResult;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetTransactionResult")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetTransactionResult, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut result__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Transaction => {
+                            if result__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transaction"));
+                            }
+                            result__ = map_.next_value::<::std::option::Option<_>>()?.map(get_transaction_result::Result::Transaction)
+;
+                        }
+                        GeneratedField::Error => {
+                            if result__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("error"));
+                            }
+                            result__ = map_.next_value::<::std::option::Option<_>>()?.map(get_transaction_result::Result::Error)
+;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetTransactionResult {
+                    result: result__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetTransactionResult", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ListOwnedObjectsRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.owner.is_some() {
+            len += 1;
+        }
+        if self.page_size.is_some() {
+            len += 1;
+        }
+        if self.page_token.is_some() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        if self.object_type.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ListOwnedObjectsRequest", len)?;
+        if let Some(v) = self.owner.as_ref() {
+            struct_ser.serialize_field("owner", v)?;
+        }
+        if let Some(v) = self.page_size.as_ref() {
+            struct_ser.serialize_field("pageSize", v)?;
+        }
+        if let Some(v) = self.page_token.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("pageToken", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        if let Some(v) = self.object_type.as_ref() {
+            struct_ser.serialize_field("objectType", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ListOwnedObjectsRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "owner",
+            "page_size",
+            "pageSize",
+            "page_token",
+            "pageToken",
+            "read_mask",
+            "readMask",
+            "object_type",
+            "objectType",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Owner,
+            PageSize,
+            PageToken,
+            ReadMask,
+            ObjectType,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "owner" => Ok(GeneratedField::Owner),
+                            "pageSize" | "page_size" => Ok(GeneratedField::PageSize),
+                            "pageToken" | "page_token" => Ok(GeneratedField::PageToken),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            "objectType" | "object_type" => Ok(GeneratedField::ObjectType),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ListOwnedObjectsRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ListOwnedObjectsRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ListOwnedObjectsRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut owner__ = None;
+                let mut page_size__ = None;
+                let mut page_token__ = None;
+                let mut read_mask__ = None;
+                let mut object_type__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Owner => {
+                            if owner__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("owner"));
+                            }
+                            owner__ = map_.next_value()?;
+                        }
+                        GeneratedField::PageSize => {
+                            if page_size__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pageSize"));
+                            }
+                            page_size__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PageToken => {
+                            if page_token__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pageToken"));
+                            }
+                            page_token__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::ObjectType => {
+                            if object_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("objectType"));
+                            }
+                            object_type__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ListOwnedObjectsRequest {
+                    owner: owner__,
+                    page_size: page_size__,
+                    page_token: page_token__,
+                    read_mask: read_mask__,
+                    object_type: object_type__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ListOwnedObjectsRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ListOwnedObjectsResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.objects.is_empty() {
+            len += 1;
+        }
+        if self.next_page_token.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ListOwnedObjectsResponse", len)?;
+        if !self.objects.is_empty() {
+            struct_ser.serialize_field("objects", &self.objects)?;
+        }
+        if let Some(v) = self.next_page_token.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextPageToken", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ListOwnedObjectsResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "objects",
+            "next_page_token",
+            "nextPageToken",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Objects,
+            NextPageToken,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "objects" => Ok(GeneratedField::Objects),
+                            "nextPageToken" | "next_page_token" => Ok(GeneratedField::NextPageToken),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ListOwnedObjectsResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ListOwnedObjectsResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ListOwnedObjectsResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut objects__ = None;
+                let mut next_page_token__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Objects => {
+                            if objects__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("objects"));
+                            }
+                            objects__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::NextPageToken => {
+                            if next_page_token__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextPageToken"));
+                            }
+                            next_page_token__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ListOwnedObjectsResponse {
+                    objects: objects__.unwrap_or_default(),
+                    next_page_token: next_page_token__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ListOwnedObjectsResponse", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for Object {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -3626,6 +6270,247 @@ impl<'de> serde::Deserialize<'de> for PayCoins {
         deserializer.deserialize_struct("soma.rpc.PayCoins", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for PendingRemoval {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.is_consensus.is_some() {
+            len += 1;
+        }
+        if self.index.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.PendingRemoval", len)?;
+        if let Some(v) = self.is_consensus.as_ref() {
+            struct_ser.serialize_field("isConsensus", v)?;
+        }
+        if let Some(v) = self.index.as_ref() {
+            struct_ser.serialize_field("index", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for PendingRemoval {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "is_consensus",
+            "isConsensus",
+            "index",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            IsConsensus,
+            Index,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "isConsensus" | "is_consensus" => Ok(GeneratedField::IsConsensus),
+                            "index" => Ok(GeneratedField::Index),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = PendingRemoval;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.PendingRemoval")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<PendingRemoval, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut is_consensus__ = None;
+                let mut index__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::IsConsensus => {
+                            if is_consensus__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("isConsensus"));
+                            }
+                            is_consensus__ = map_.next_value()?;
+                        }
+                        GeneratedField::Index => {
+                            if index__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("index"));
+                            }
+                            index__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(PendingRemoval {
+                    is_consensus: is_consensus__,
+                    index: index__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.PendingRemoval", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for PoolTokenExchangeRate {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.soma_amount.is_some() {
+            len += 1;
+        }
+        if self.pool_token_amount.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.PoolTokenExchangeRate", len)?;
+        if let Some(v) = self.soma_amount.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("somaAmount", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.pool_token_amount.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("poolTokenAmount", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for PoolTokenExchangeRate {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "soma_amount",
+            "somaAmount",
+            "pool_token_amount",
+            "poolTokenAmount",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            SomaAmount,
+            PoolTokenAmount,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "somaAmount" | "soma_amount" => Ok(GeneratedField::SomaAmount),
+                            "poolTokenAmount" | "pool_token_amount" => Ok(GeneratedField::PoolTokenAmount),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = PoolTokenExchangeRate;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.PoolTokenExchangeRate")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<PoolTokenExchangeRate, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut soma_amount__ = None;
+                let mut pool_token_amount__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::SomaAmount => {
+                            if soma_amount__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("somaAmount"));
+                            }
+                            soma_amount__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PoolTokenAmount => {
+                            if pool_token_amount__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("poolTokenAmount"));
+                            }
+                            pool_token_amount__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(PoolTokenExchangeRate {
+                    soma_amount: soma_amount__,
+                    pool_token_amount: pool_token_amount__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.PoolTokenExchangeRate", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for RemoveEncoder {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -4205,6 +7090,103 @@ impl<'de> serde::Deserialize<'de> for ReportWinner {
         deserializer.deserialize_struct("soma.rpc.ReportWinner", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for ReporterSet {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.reporters.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ReporterSet", len)?;
+        if !self.reporters.is_empty() {
+            struct_ser.serialize_field("reporters", &self.reporters)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ReporterSet {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "reporters",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Reporters,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "reporters" => Ok(GeneratedField::Reporters),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ReporterSet;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ReporterSet")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ReporterSet, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut reporters__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Reporters => {
+                            if reporters__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("reporters"));
+                            }
+                            reporters__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ReporterSet {
+                    reporters: reporters__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ReporterSet", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for SetCommissionRate {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -4670,6 +7652,171 @@ impl<'de> serde::Deserialize<'de> for Shard {
         deserializer.deserialize_struct("soma.rpc.Shard", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for ShardResult {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.digest.is_some() {
+            len += 1;
+        }
+        if self.data_size_bytes.is_some() {
+            len += 1;
+        }
+        if self.amount.is_some() {
+            len += 1;
+        }
+        if self.report.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ShardResult", len)?;
+        if let Some(v) = self.digest.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("digest", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.data_size_bytes.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("dataSizeBytes", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.amount.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("amount", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.report.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("report", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ShardResult {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "digest",
+            "data_size_bytes",
+            "dataSizeBytes",
+            "amount",
+            "report",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Digest,
+            DataSizeBytes,
+            Amount,
+            Report,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "digest" => Ok(GeneratedField::Digest),
+                            "dataSizeBytes" | "data_size_bytes" => Ok(GeneratedField::DataSizeBytes),
+                            "amount" => Ok(GeneratedField::Amount),
+                            "report" => Ok(GeneratedField::Report),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ShardResult;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ShardResult")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ShardResult, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut digest__ = None;
+                let mut data_size_bytes__ = None;
+                let mut amount__ = None;
+                let mut report__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Digest => {
+                            if digest__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("digest"));
+                            }
+                            digest__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DataSizeBytes => {
+                            if data_size_bytes__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("dataSizeBytes"));
+                            }
+                            data_size_bytes__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Amount => {
+                            if amount__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("amount"));
+                            }
+                            amount__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Report => {
+                            if report__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("report"));
+                            }
+                            report__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ShardResult {
+                    digest: digest__,
+                    data_size_bytes: data_size_bytes__,
+                    amount: amount__,
+                    report: report__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ShardResult", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for SignatureScheme {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -4881,6 +8028,1165 @@ impl<'de> serde::Deserialize<'de> for SimpleSignature {
             }
         }
         deserializer.deserialize_struct("soma.rpc.SimpleSignature", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for SimulateTransactionRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.transaction.is_some() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        if self.checks.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.SimulateTransactionRequest", len)?;
+        if let Some(v) = self.transaction.as_ref() {
+            struct_ser.serialize_field("transaction", v)?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        if let Some(v) = self.checks.as_ref() {
+            let v = simulate_transaction_request::TransactionChecks::try_from(*v)
+                .map_err(|_| serde::ser::Error::custom(format!("Invalid variant {}", *v)))?;
+            struct_ser.serialize_field("checks", &v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for SimulateTransactionRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "transaction",
+            "read_mask",
+            "readMask",
+            "checks",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Transaction,
+            ReadMask,
+            Checks,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "transaction" => Ok(GeneratedField::Transaction),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            "checks" => Ok(GeneratedField::Checks),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = SimulateTransactionRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.SimulateTransactionRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<SimulateTransactionRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut transaction__ = None;
+                let mut read_mask__ = None;
+                let mut checks__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Transaction => {
+                            if transaction__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transaction"));
+                            }
+                            transaction__ = map_.next_value()?;
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::Checks => {
+                            if checks__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("checks"));
+                            }
+                            checks__ = map_.next_value::<::std::option::Option<simulate_transaction_request::TransactionChecks>>()?.map(|x| x as i32);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(SimulateTransactionRequest {
+                    transaction: transaction__,
+                    read_mask: read_mask__,
+                    checks: checks__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.SimulateTransactionRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for simulate_transaction_request::TransactionChecks {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let variant = match self {
+            Self::Enabled => "ENABLED",
+            Self::Disabled => "DISABLED",
+        };
+        serializer.serialize_str(variant)
+    }
+}
+impl<'de> serde::Deserialize<'de> for simulate_transaction_request::TransactionChecks {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "ENABLED",
+            "DISABLED",
+        ];
+
+        struct GeneratedVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = simulate_transaction_request::TransactionChecks;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(formatter, "expected one of: {:?}", &FIELDS)
+            }
+
+            fn visit_i64<E>(self, v: i64) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                i32::try_from(v)
+                    .ok()
+                    .and_then(|x| x.try_into().ok())
+                    .ok_or_else(|| {
+                        serde::de::Error::invalid_value(serde::de::Unexpected::Signed(v), &self)
+                    })
+            }
+
+            fn visit_u64<E>(self, v: u64) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                i32::try_from(v)
+                    .ok()
+                    .and_then(|x| x.try_into().ok())
+                    .ok_or_else(|| {
+                        serde::de::Error::invalid_value(serde::de::Unexpected::Unsigned(v), &self)
+                    })
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    "ENABLED" => Ok(simulate_transaction_request::TransactionChecks::Enabled),
+                    "DISABLED" => Ok(simulate_transaction_request::TransactionChecks::Disabled),
+                    _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
+                }
+            }
+        }
+        deserializer.deserialize_any(GeneratedVisitor)
+    }
+}
+impl serde::Serialize for SimulateTransactionResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.transaction.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.SimulateTransactionResponse", len)?;
+        if let Some(v) = self.transaction.as_ref() {
+            struct_ser.serialize_field("transaction", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for SimulateTransactionResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "transaction",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Transaction,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "transaction" => Ok(GeneratedField::Transaction),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = SimulateTransactionResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.SimulateTransactionResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<SimulateTransactionResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut transaction__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Transaction => {
+                            if transaction__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transaction"));
+                            }
+                            transaction__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(SimulateTransactionResponse {
+                    transaction: transaction__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.SimulateTransactionResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for StakeSubsidy {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.balance.is_some() {
+            len += 1;
+        }
+        if self.distribution_counter.is_some() {
+            len += 1;
+        }
+        if self.current_distribution_amount.is_some() {
+            len += 1;
+        }
+        if self.period_length.is_some() {
+            len += 1;
+        }
+        if self.decrease_rate.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.StakeSubsidy", len)?;
+        if let Some(v) = self.balance.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("balance", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.distribution_counter.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("distributionCounter", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.current_distribution_amount.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("currentDistributionAmount", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.period_length.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("periodLength", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.decrease_rate.as_ref() {
+            struct_ser.serialize_field("decreaseRate", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for StakeSubsidy {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "balance",
+            "distribution_counter",
+            "distributionCounter",
+            "current_distribution_amount",
+            "currentDistributionAmount",
+            "period_length",
+            "periodLength",
+            "decrease_rate",
+            "decreaseRate",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Balance,
+            DistributionCounter,
+            CurrentDistributionAmount,
+            PeriodLength,
+            DecreaseRate,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "balance" => Ok(GeneratedField::Balance),
+                            "distributionCounter" | "distribution_counter" => Ok(GeneratedField::DistributionCounter),
+                            "currentDistributionAmount" | "current_distribution_amount" => Ok(GeneratedField::CurrentDistributionAmount),
+                            "periodLength" | "period_length" => Ok(GeneratedField::PeriodLength),
+                            "decreaseRate" | "decrease_rate" => Ok(GeneratedField::DecreaseRate),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = StakeSubsidy;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.StakeSubsidy")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<StakeSubsidy, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut balance__ = None;
+                let mut distribution_counter__ = None;
+                let mut current_distribution_amount__ = None;
+                let mut period_length__ = None;
+                let mut decrease_rate__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Balance => {
+                            if balance__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("balance"));
+                            }
+                            balance__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DistributionCounter => {
+                            if distribution_counter__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("distributionCounter"));
+                            }
+                            distribution_counter__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CurrentDistributionAmount => {
+                            if current_distribution_amount__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("currentDistributionAmount"));
+                            }
+                            current_distribution_amount__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PeriodLength => {
+                            if period_length__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("periodLength"));
+                            }
+                            period_length__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DecreaseRate => {
+                            if decrease_rate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decreaseRate"));
+                            }
+                            decrease_rate__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(StakeSubsidy {
+                    balance: balance__,
+                    distribution_counter: distribution_counter__,
+                    current_distribution_amount: current_distribution_amount__,
+                    period_length: period_length__,
+                    decrease_rate: decrease_rate__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.StakeSubsidy", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for StakingPool {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.id.is_some() {
+            len += 1;
+        }
+        if self.activation_epoch.is_some() {
+            len += 1;
+        }
+        if self.deactivation_epoch.is_some() {
+            len += 1;
+        }
+        if self.soma_balance.is_some() {
+            len += 1;
+        }
+        if self.rewards_pool.is_some() {
+            len += 1;
+        }
+        if self.pool_token_balance.is_some() {
+            len += 1;
+        }
+        if !self.exchange_rates.is_empty() {
+            len += 1;
+        }
+        if self.pending_stake.is_some() {
+            len += 1;
+        }
+        if self.pending_total_soma_withdraw.is_some() {
+            len += 1;
+        }
+        if self.pending_pool_token_withdraw.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.StakingPool", len)?;
+        if let Some(v) = self.id.as_ref() {
+            struct_ser.serialize_field("id", v)?;
+        }
+        if let Some(v) = self.activation_epoch.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("activationEpoch", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.deactivation_epoch.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("deactivationEpoch", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.soma_balance.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("somaBalance", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.rewards_pool.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("rewardsPool", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.pool_token_balance.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("poolTokenBalance", ToString::to_string(&v).as_str())?;
+        }
+        if !self.exchange_rates.is_empty() {
+            struct_ser.serialize_field("exchangeRates", &self.exchange_rates)?;
+        }
+        if let Some(v) = self.pending_stake.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("pendingStake", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.pending_total_soma_withdraw.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("pendingTotalSomaWithdraw", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.pending_pool_token_withdraw.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("pendingPoolTokenWithdraw", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for StakingPool {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "id",
+            "activation_epoch",
+            "activationEpoch",
+            "deactivation_epoch",
+            "deactivationEpoch",
+            "soma_balance",
+            "somaBalance",
+            "rewards_pool",
+            "rewardsPool",
+            "pool_token_balance",
+            "poolTokenBalance",
+            "exchange_rates",
+            "exchangeRates",
+            "pending_stake",
+            "pendingStake",
+            "pending_total_soma_withdraw",
+            "pendingTotalSomaWithdraw",
+            "pending_pool_token_withdraw",
+            "pendingPoolTokenWithdraw",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Id,
+            ActivationEpoch,
+            DeactivationEpoch,
+            SomaBalance,
+            RewardsPool,
+            PoolTokenBalance,
+            ExchangeRates,
+            PendingStake,
+            PendingTotalSomaWithdraw,
+            PendingPoolTokenWithdraw,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "id" => Ok(GeneratedField::Id),
+                            "activationEpoch" | "activation_epoch" => Ok(GeneratedField::ActivationEpoch),
+                            "deactivationEpoch" | "deactivation_epoch" => Ok(GeneratedField::DeactivationEpoch),
+                            "somaBalance" | "soma_balance" => Ok(GeneratedField::SomaBalance),
+                            "rewardsPool" | "rewards_pool" => Ok(GeneratedField::RewardsPool),
+                            "poolTokenBalance" | "pool_token_balance" => Ok(GeneratedField::PoolTokenBalance),
+                            "exchangeRates" | "exchange_rates" => Ok(GeneratedField::ExchangeRates),
+                            "pendingStake" | "pending_stake" => Ok(GeneratedField::PendingStake),
+                            "pendingTotalSomaWithdraw" | "pending_total_soma_withdraw" => Ok(GeneratedField::PendingTotalSomaWithdraw),
+                            "pendingPoolTokenWithdraw" | "pending_pool_token_withdraw" => Ok(GeneratedField::PendingPoolTokenWithdraw),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = StakingPool;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.StakingPool")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<StakingPool, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut id__ = None;
+                let mut activation_epoch__ = None;
+                let mut deactivation_epoch__ = None;
+                let mut soma_balance__ = None;
+                let mut rewards_pool__ = None;
+                let mut pool_token_balance__ = None;
+                let mut exchange_rates__ = None;
+                let mut pending_stake__ = None;
+                let mut pending_total_soma_withdraw__ = None;
+                let mut pending_pool_token_withdraw__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Id => {
+                            if id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("id"));
+                            }
+                            id__ = map_.next_value()?;
+                        }
+                        GeneratedField::ActivationEpoch => {
+                            if activation_epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("activationEpoch"));
+                            }
+                            activation_epoch__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DeactivationEpoch => {
+                            if deactivation_epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("deactivationEpoch"));
+                            }
+                            deactivation_epoch__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::SomaBalance => {
+                            if soma_balance__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("somaBalance"));
+                            }
+                            soma_balance__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::RewardsPool => {
+                            if rewards_pool__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("rewardsPool"));
+                            }
+                            rewards_pool__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PoolTokenBalance => {
+                            if pool_token_balance__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("poolTokenBalance"));
+                            }
+                            pool_token_balance__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ExchangeRates => {
+                            if exchange_rates__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("exchangeRates"));
+                            }
+                            exchange_rates__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<crate::utils::_serde::NumberDeserialize<u64>, _>>()?
+                                    .into_iter().map(|(k,v)| (k.0, v)).collect()
+                            );
+                        }
+                        GeneratedField::PendingStake => {
+                            if pending_stake__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pendingStake"));
+                            }
+                            pending_stake__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PendingTotalSomaWithdraw => {
+                            if pending_total_soma_withdraw__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pendingTotalSomaWithdraw"));
+                            }
+                            pending_total_soma_withdraw__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PendingPoolTokenWithdraw => {
+                            if pending_pool_token_withdraw__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pendingPoolTokenWithdraw"));
+                            }
+                            pending_pool_token_withdraw__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(StakingPool {
+                    id: id__,
+                    activation_epoch: activation_epoch__,
+                    deactivation_epoch: deactivation_epoch__,
+                    soma_balance: soma_balance__,
+                    rewards_pool: rewards_pool__,
+                    pool_token_balance: pool_token_balance__,
+                    exchange_rates: exchange_rates__.unwrap_or_default(),
+                    pending_stake: pending_stake__,
+                    pending_total_soma_withdraw: pending_total_soma_withdraw__,
+                    pending_pool_token_withdraw: pending_pool_token_withdraw__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.StakingPool", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for SystemParameters {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.epoch_duration_ms.is_some() {
+            len += 1;
+        }
+        if self.vdf_iterations.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemParameters", len)?;
+        if let Some(v) = self.epoch_duration_ms.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("epochDurationMs", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.vdf_iterations.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("vdfIterations", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for SystemParameters {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "epoch_duration_ms",
+            "epochDurationMs",
+            "vdf_iterations",
+            "vdfIterations",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            EpochDurationMs,
+            VdfIterations,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "epochDurationMs" | "epoch_duration_ms" => Ok(GeneratedField::EpochDurationMs),
+                            "vdfIterations" | "vdf_iterations" => Ok(GeneratedField::VdfIterations),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = SystemParameters;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.SystemParameters")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<SystemParameters, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut epoch_duration_ms__ = None;
+                let mut vdf_iterations__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::EpochDurationMs => {
+                            if epoch_duration_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epochDurationMs"));
+                            }
+                            epoch_duration_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::VdfIterations => {
+                            if vdf_iterations__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("vdfIterations"));
+                            }
+                            vdf_iterations__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(SystemParameters {
+                    epoch_duration_ms: epoch_duration_ms__,
+                    vdf_iterations: vdf_iterations__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.SystemParameters", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for SystemState {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.epoch.is_some() {
+            len += 1;
+        }
+        if self.epoch_start_timestamp_ms.is_some() {
+            len += 1;
+        }
+        if self.parameters.is_some() {
+            len += 1;
+        }
+        if self.validators.is_some() {
+            len += 1;
+        }
+        if self.encoders.is_some() {
+            len += 1;
+        }
+        if !self.validator_report_records.is_empty() {
+            len += 1;
+        }
+        if !self.encoder_report_records.is_empty() {
+            len += 1;
+        }
+        if self.stake_subsidy.is_some() {
+            len += 1;
+        }
+        if !self.shard_results.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemState", len)?;
+        if let Some(v) = self.epoch.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("epoch", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.epoch_start_timestamp_ms.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("epochStartTimestampMs", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.parameters.as_ref() {
+            struct_ser.serialize_field("parameters", v)?;
+        }
+        if let Some(v) = self.validators.as_ref() {
+            struct_ser.serialize_field("validators", v)?;
+        }
+        if let Some(v) = self.encoders.as_ref() {
+            struct_ser.serialize_field("encoders", v)?;
+        }
+        if !self.validator_report_records.is_empty() {
+            struct_ser.serialize_field("validatorReportRecords", &self.validator_report_records)?;
+        }
+        if !self.encoder_report_records.is_empty() {
+            struct_ser.serialize_field("encoderReportRecords", &self.encoder_report_records)?;
+        }
+        if let Some(v) = self.stake_subsidy.as_ref() {
+            struct_ser.serialize_field("stakeSubsidy", v)?;
+        }
+        if !self.shard_results.is_empty() {
+            struct_ser.serialize_field("shardResults", &self.shard_results)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for SystemState {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "epoch",
+            "epoch_start_timestamp_ms",
+            "epochStartTimestampMs",
+            "parameters",
+            "validators",
+            "encoders",
+            "validator_report_records",
+            "validatorReportRecords",
+            "encoder_report_records",
+            "encoderReportRecords",
+            "stake_subsidy",
+            "stakeSubsidy",
+            "shard_results",
+            "shardResults",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Epoch,
+            EpochStartTimestampMs,
+            Parameters,
+            Validators,
+            Encoders,
+            ValidatorReportRecords,
+            EncoderReportRecords,
+            StakeSubsidy,
+            ShardResults,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "epoch" => Ok(GeneratedField::Epoch),
+                            "epochStartTimestampMs" | "epoch_start_timestamp_ms" => Ok(GeneratedField::EpochStartTimestampMs),
+                            "parameters" => Ok(GeneratedField::Parameters),
+                            "validators" => Ok(GeneratedField::Validators),
+                            "encoders" => Ok(GeneratedField::Encoders),
+                            "validatorReportRecords" | "validator_report_records" => Ok(GeneratedField::ValidatorReportRecords),
+                            "encoderReportRecords" | "encoder_report_records" => Ok(GeneratedField::EncoderReportRecords),
+                            "stakeSubsidy" | "stake_subsidy" => Ok(GeneratedField::StakeSubsidy),
+                            "shardResults" | "shard_results" => Ok(GeneratedField::ShardResults),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = SystemState;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.SystemState")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<SystemState, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut epoch__ = None;
+                let mut epoch_start_timestamp_ms__ = None;
+                let mut parameters__ = None;
+                let mut validators__ = None;
+                let mut encoders__ = None;
+                let mut validator_report_records__ = None;
+                let mut encoder_report_records__ = None;
+                let mut stake_subsidy__ = None;
+                let mut shard_results__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Epoch => {
+                            if epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epoch"));
+                            }
+                            epoch__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::EpochStartTimestampMs => {
+                            if epoch_start_timestamp_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epochStartTimestampMs"));
+                            }
+                            epoch_start_timestamp_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Parameters => {
+                            if parameters__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("parameters"));
+                            }
+                            parameters__ = map_.next_value()?;
+                        }
+                        GeneratedField::Validators => {
+                            if validators__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("validators"));
+                            }
+                            validators__ = map_.next_value()?;
+                        }
+                        GeneratedField::Encoders => {
+                            if encoders__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("encoders"));
+                            }
+                            encoders__ = map_.next_value()?;
+                        }
+                        GeneratedField::ValidatorReportRecords => {
+                            if validator_report_records__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("validatorReportRecords"));
+                            }
+                            validator_report_records__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::EncoderReportRecords => {
+                            if encoder_report_records__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("encoderReportRecords"));
+                            }
+                            encoder_report_records__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::StakeSubsidy => {
+                            if stake_subsidy__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("stakeSubsidy"));
+                            }
+                            stake_subsidy__ = map_.next_value()?;
+                        }
+                        GeneratedField::ShardResults => {
+                            if shard_results__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("shardResults"));
+                            }
+                            shard_results__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(SystemState {
+                    epoch: epoch__,
+                    epoch_start_timestamp_ms: epoch_start_timestamp_ms__,
+                    parameters: parameters__,
+                    validators: validators__,
+                    encoders: encoders__,
+                    validator_report_records: validator_report_records__.unwrap_or_default(),
+                    encoder_report_records: encoder_report_records__.unwrap_or_default(),
+                    stake_subsidy: stake_subsidy__,
+                    shard_results: shard_results__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.SystemState", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for Transaction {
@@ -7183,6 +11489,486 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
         deserializer.deserialize_struct("soma.rpc.UserSignature", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for Validator {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.soma_address.is_some() {
+            len += 1;
+        }
+        if self.protocol_pubkey.is_some() {
+            len += 1;
+        }
+        if self.network_pubkey.is_some() {
+            len += 1;
+        }
+        if self.worker_pubkey.is_some() {
+            len += 1;
+        }
+        if self.net_address.is_some() {
+            len += 1;
+        }
+        if self.p2p_address.is_some() {
+            len += 1;
+        }
+        if self.primary_address.is_some() {
+            len += 1;
+        }
+        if self.encoder_validator_address.is_some() {
+            len += 1;
+        }
+        if self.voting_power.is_some() {
+            len += 1;
+        }
+        if self.commission_rate.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_stake.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_commission_rate.is_some() {
+            len += 1;
+        }
+        if self.staking_pool.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_protocol_pubkey.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_network_pubkey.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_worker_pubkey.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_net_address.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_p2p_address.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_primary_address.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_encoder_validator_address.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.Validator", len)?;
+        if let Some(v) = self.soma_address.as_ref() {
+            struct_ser.serialize_field("somaAddress", v)?;
+        }
+        if let Some(v) = self.protocol_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("protocolPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.network_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("networkPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.worker_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("workerPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.net_address.as_ref() {
+            struct_ser.serialize_field("netAddress", v)?;
+        }
+        if let Some(v) = self.p2p_address.as_ref() {
+            struct_ser.serialize_field("p2pAddress", v)?;
+        }
+        if let Some(v) = self.primary_address.as_ref() {
+            struct_ser.serialize_field("primaryAddress", v)?;
+        }
+        if let Some(v) = self.encoder_validator_address.as_ref() {
+            struct_ser.serialize_field("encoderValidatorAddress", v)?;
+        }
+        if let Some(v) = self.voting_power.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("votingPower", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.commission_rate.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("commissionRate", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_stake.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochStake", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_commission_rate.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochCommissionRate", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.staking_pool.as_ref() {
+            struct_ser.serialize_field("stakingPool", v)?;
+        }
+        if let Some(v) = self.next_epoch_protocol_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProtocolPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_network_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochNetworkPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_worker_pubkey.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochWorkerPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_net_address.as_ref() {
+            struct_ser.serialize_field("nextEpochNetAddress", v)?;
+        }
+        if let Some(v) = self.next_epoch_p2p_address.as_ref() {
+            struct_ser.serialize_field("nextEpochP2pAddress", v)?;
+        }
+        if let Some(v) = self.next_epoch_primary_address.as_ref() {
+            struct_ser.serialize_field("nextEpochPrimaryAddress", v)?;
+        }
+        if let Some(v) = self.next_epoch_encoder_validator_address.as_ref() {
+            struct_ser.serialize_field("nextEpochEncoderValidatorAddress", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for Validator {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "soma_address",
+            "somaAddress",
+            "protocol_pubkey",
+            "protocolPubkey",
+            "network_pubkey",
+            "networkPubkey",
+            "worker_pubkey",
+            "workerPubkey",
+            "net_address",
+            "netAddress",
+            "p2p_address",
+            "p2pAddress",
+            "primary_address",
+            "primaryAddress",
+            "encoder_validator_address",
+            "encoderValidatorAddress",
+            "voting_power",
+            "votingPower",
+            "commission_rate",
+            "commissionRate",
+            "next_epoch_stake",
+            "nextEpochStake",
+            "next_epoch_commission_rate",
+            "nextEpochCommissionRate",
+            "staking_pool",
+            "stakingPool",
+            "next_epoch_protocol_pubkey",
+            "nextEpochProtocolPubkey",
+            "next_epoch_network_pubkey",
+            "nextEpochNetworkPubkey",
+            "next_epoch_worker_pubkey",
+            "nextEpochWorkerPubkey",
+            "next_epoch_net_address",
+            "nextEpochNetAddress",
+            "next_epoch_p2p_address",
+            "nextEpochP2pAddress",
+            "next_epoch_primary_address",
+            "nextEpochPrimaryAddress",
+            "next_epoch_encoder_validator_address",
+            "nextEpochEncoderValidatorAddress",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            SomaAddress,
+            ProtocolPubkey,
+            NetworkPubkey,
+            WorkerPubkey,
+            NetAddress,
+            P2pAddress,
+            PrimaryAddress,
+            EncoderValidatorAddress,
+            VotingPower,
+            CommissionRate,
+            NextEpochStake,
+            NextEpochCommissionRate,
+            StakingPool,
+            NextEpochProtocolPubkey,
+            NextEpochNetworkPubkey,
+            NextEpochWorkerPubkey,
+            NextEpochNetAddress,
+            NextEpochP2pAddress,
+            NextEpochPrimaryAddress,
+            NextEpochEncoderValidatorAddress,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "somaAddress" | "soma_address" => Ok(GeneratedField::SomaAddress),
+                            "protocolPubkey" | "protocol_pubkey" => Ok(GeneratedField::ProtocolPubkey),
+                            "networkPubkey" | "network_pubkey" => Ok(GeneratedField::NetworkPubkey),
+                            "workerPubkey" | "worker_pubkey" => Ok(GeneratedField::WorkerPubkey),
+                            "netAddress" | "net_address" => Ok(GeneratedField::NetAddress),
+                            "p2pAddress" | "p2p_address" => Ok(GeneratedField::P2pAddress),
+                            "primaryAddress" | "primary_address" => Ok(GeneratedField::PrimaryAddress),
+                            "encoderValidatorAddress" | "encoder_validator_address" => Ok(GeneratedField::EncoderValidatorAddress),
+                            "votingPower" | "voting_power" => Ok(GeneratedField::VotingPower),
+                            "commissionRate" | "commission_rate" => Ok(GeneratedField::CommissionRate),
+                            "nextEpochStake" | "next_epoch_stake" => Ok(GeneratedField::NextEpochStake),
+                            "nextEpochCommissionRate" | "next_epoch_commission_rate" => Ok(GeneratedField::NextEpochCommissionRate),
+                            "stakingPool" | "staking_pool" => Ok(GeneratedField::StakingPool),
+                            "nextEpochProtocolPubkey" | "next_epoch_protocol_pubkey" => Ok(GeneratedField::NextEpochProtocolPubkey),
+                            "nextEpochNetworkPubkey" | "next_epoch_network_pubkey" => Ok(GeneratedField::NextEpochNetworkPubkey),
+                            "nextEpochWorkerPubkey" | "next_epoch_worker_pubkey" => Ok(GeneratedField::NextEpochWorkerPubkey),
+                            "nextEpochNetAddress" | "next_epoch_net_address" => Ok(GeneratedField::NextEpochNetAddress),
+                            "nextEpochP2pAddress" | "next_epoch_p2p_address" => Ok(GeneratedField::NextEpochP2pAddress),
+                            "nextEpochPrimaryAddress" | "next_epoch_primary_address" => Ok(GeneratedField::NextEpochPrimaryAddress),
+                            "nextEpochEncoderValidatorAddress" | "next_epoch_encoder_validator_address" => Ok(GeneratedField::NextEpochEncoderValidatorAddress),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = Validator;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.Validator")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<Validator, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut soma_address__ = None;
+                let mut protocol_pubkey__ = None;
+                let mut network_pubkey__ = None;
+                let mut worker_pubkey__ = None;
+                let mut net_address__ = None;
+                let mut p2p_address__ = None;
+                let mut primary_address__ = None;
+                let mut encoder_validator_address__ = None;
+                let mut voting_power__ = None;
+                let mut commission_rate__ = None;
+                let mut next_epoch_stake__ = None;
+                let mut next_epoch_commission_rate__ = None;
+                let mut staking_pool__ = None;
+                let mut next_epoch_protocol_pubkey__ = None;
+                let mut next_epoch_network_pubkey__ = None;
+                let mut next_epoch_worker_pubkey__ = None;
+                let mut next_epoch_net_address__ = None;
+                let mut next_epoch_p2p_address__ = None;
+                let mut next_epoch_primary_address__ = None;
+                let mut next_epoch_encoder_validator_address__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::SomaAddress => {
+                            if soma_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("somaAddress"));
+                            }
+                            soma_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::ProtocolPubkey => {
+                            if protocol_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("protocolPubkey"));
+                            }
+                            protocol_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NetworkPubkey => {
+                            if network_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("networkPubkey"));
+                            }
+                            network_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::WorkerPubkey => {
+                            if worker_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("workerPubkey"));
+                            }
+                            worker_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NetAddress => {
+                            if net_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("netAddress"));
+                            }
+                            net_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::P2pAddress => {
+                            if p2p_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("p2pAddress"));
+                            }
+                            p2p_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::PrimaryAddress => {
+                            if primary_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("primaryAddress"));
+                            }
+                            primary_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::EncoderValidatorAddress => {
+                            if encoder_validator_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("encoderValidatorAddress"));
+                            }
+                            encoder_validator_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::VotingPower => {
+                            if voting_power__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("votingPower"));
+                            }
+                            voting_power__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::CommissionRate => {
+                            if commission_rate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("commissionRate"));
+                            }
+                            commission_rate__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochStake => {
+                            if next_epoch_stake__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochStake"));
+                            }
+                            next_epoch_stake__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochCommissionRate => {
+                            if next_epoch_commission_rate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochCommissionRate"));
+                            }
+                            next_epoch_commission_rate__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::StakingPool => {
+                            if staking_pool__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("stakingPool"));
+                            }
+                            staking_pool__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochProtocolPubkey => {
+                            if next_epoch_protocol_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProtocolPubkey"));
+                            }
+                            next_epoch_protocol_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochNetworkPubkey => {
+                            if next_epoch_network_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochNetworkPubkey"));
+                            }
+                            next_epoch_network_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochWorkerPubkey => {
+                            if next_epoch_worker_pubkey__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochWorkerPubkey"));
+                            }
+                            next_epoch_worker_pubkey__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochNetAddress => {
+                            if next_epoch_net_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochNetAddress"));
+                            }
+                            next_epoch_net_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochP2pAddress => {
+                            if next_epoch_p2p_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochP2pAddress"));
+                            }
+                            next_epoch_p2p_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochPrimaryAddress => {
+                            if next_epoch_primary_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochPrimaryAddress"));
+                            }
+                            next_epoch_primary_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochEncoderValidatorAddress => {
+                            if next_epoch_encoder_validator_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochEncoderValidatorAddress"));
+                            }
+                            next_epoch_encoder_validator_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(Validator {
+                    soma_address: soma_address__,
+                    protocol_pubkey: protocol_pubkey__,
+                    network_pubkey: network_pubkey__,
+                    worker_pubkey: worker_pubkey__,
+                    net_address: net_address__,
+                    p2p_address: p2p_address__,
+                    primary_address: primary_address__,
+                    encoder_validator_address: encoder_validator_address__,
+                    voting_power: voting_power__,
+                    commission_rate: commission_rate__,
+                    next_epoch_stake: next_epoch_stake__,
+                    next_epoch_commission_rate: next_epoch_commission_rate__,
+                    staking_pool: staking_pool__,
+                    next_epoch_protocol_pubkey: next_epoch_protocol_pubkey__,
+                    next_epoch_network_pubkey: next_epoch_network_pubkey__,
+                    next_epoch_worker_pubkey: next_epoch_worker_pubkey__,
+                    next_epoch_net_address: next_epoch_net_address__,
+                    next_epoch_p2p_address: next_epoch_p2p_address__,
+                    next_epoch_primary_address: next_epoch_primary_address__,
+                    next_epoch_encoder_validator_address: next_epoch_encoder_validator_address__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.Validator", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for ValidatorAggregatedSignature {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -7741,6 +12527,243 @@ impl<'de> serde::Deserialize<'de> for ValidatorNetworkMetadata {
             }
         }
         deserializer.deserialize_struct("soma.rpc.ValidatorNetworkMetadata", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ValidatorSet {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.total_stake.is_some() {
+            len += 1;
+        }
+        if !self.consensus_validators.is_empty() {
+            len += 1;
+        }
+        if !self.networking_validators.is_empty() {
+            len += 1;
+        }
+        if !self.pending_validators.is_empty() {
+            len += 1;
+        }
+        if !self.pending_removals.is_empty() {
+            len += 1;
+        }
+        if !self.staking_pool_mappings.is_empty() {
+            len += 1;
+        }
+        if !self.inactive_validators.is_empty() {
+            len += 1;
+        }
+        if !self.at_risk_validators.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ValidatorSet", len)?;
+        if let Some(v) = self.total_stake.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("totalStake", ToString::to_string(&v).as_str())?;
+        }
+        if !self.consensus_validators.is_empty() {
+            struct_ser.serialize_field("consensusValidators", &self.consensus_validators)?;
+        }
+        if !self.networking_validators.is_empty() {
+            struct_ser.serialize_field("networkingValidators", &self.networking_validators)?;
+        }
+        if !self.pending_validators.is_empty() {
+            struct_ser.serialize_field("pendingValidators", &self.pending_validators)?;
+        }
+        if !self.pending_removals.is_empty() {
+            struct_ser.serialize_field("pendingRemovals", &self.pending_removals)?;
+        }
+        if !self.staking_pool_mappings.is_empty() {
+            struct_ser.serialize_field("stakingPoolMappings", &self.staking_pool_mappings)?;
+        }
+        if !self.inactive_validators.is_empty() {
+            struct_ser.serialize_field("inactiveValidators", &self.inactive_validators)?;
+        }
+        if !self.at_risk_validators.is_empty() {
+            let v: std::collections::BTreeMap<_, _> = self.at_risk_validators.iter()
+                .map(|(k, v)| (k, v.to_string())).collect();
+            struct_ser.serialize_field("atRiskValidators", &v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ValidatorSet {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "total_stake",
+            "totalStake",
+            "consensus_validators",
+            "consensusValidators",
+            "networking_validators",
+            "networkingValidators",
+            "pending_validators",
+            "pendingValidators",
+            "pending_removals",
+            "pendingRemovals",
+            "staking_pool_mappings",
+            "stakingPoolMappings",
+            "inactive_validators",
+            "inactiveValidators",
+            "at_risk_validators",
+            "atRiskValidators",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            TotalStake,
+            ConsensusValidators,
+            NetworkingValidators,
+            PendingValidators,
+            PendingRemovals,
+            StakingPoolMappings,
+            InactiveValidators,
+            AtRiskValidators,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "totalStake" | "total_stake" => Ok(GeneratedField::TotalStake),
+                            "consensusValidators" | "consensus_validators" => Ok(GeneratedField::ConsensusValidators),
+                            "networkingValidators" | "networking_validators" => Ok(GeneratedField::NetworkingValidators),
+                            "pendingValidators" | "pending_validators" => Ok(GeneratedField::PendingValidators),
+                            "pendingRemovals" | "pending_removals" => Ok(GeneratedField::PendingRemovals),
+                            "stakingPoolMappings" | "staking_pool_mappings" => Ok(GeneratedField::StakingPoolMappings),
+                            "inactiveValidators" | "inactive_validators" => Ok(GeneratedField::InactiveValidators),
+                            "atRiskValidators" | "at_risk_validators" => Ok(GeneratedField::AtRiskValidators),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ValidatorSet;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ValidatorSet")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ValidatorSet, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut total_stake__ = None;
+                let mut consensus_validators__ = None;
+                let mut networking_validators__ = None;
+                let mut pending_validators__ = None;
+                let mut pending_removals__ = None;
+                let mut staking_pool_mappings__ = None;
+                let mut inactive_validators__ = None;
+                let mut at_risk_validators__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::TotalStake => {
+                            if total_stake__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("totalStake"));
+                            }
+                            total_stake__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ConsensusValidators => {
+                            if consensus_validators__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("consensusValidators"));
+                            }
+                            consensus_validators__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::NetworkingValidators => {
+                            if networking_validators__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("networkingValidators"));
+                            }
+                            networking_validators__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::PendingValidators => {
+                            if pending_validators__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pendingValidators"));
+                            }
+                            pending_validators__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::PendingRemovals => {
+                            if pending_removals__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pendingRemovals"));
+                            }
+                            pending_removals__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::StakingPoolMappings => {
+                            if staking_pool_mappings__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("stakingPoolMappings"));
+                            }
+                            staking_pool_mappings__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::InactiveValidators => {
+                            if inactive_validators__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("inactiveValidators"));
+                            }
+                            inactive_validators__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
+                        GeneratedField::AtRiskValidators => {
+                            if at_risk_validators__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("atRiskValidators"));
+                            }
+                            at_risk_validators__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, crate::utils::_serde::NumberDeserialize<u64>>>()?
+                                    .into_iter().map(|(k,v)| (k, v.0)).collect()
+                            );
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ValidatorSet {
+                    total_stake: total_stake__,
+                    consensus_validators: consensus_validators__.unwrap_or_default(),
+                    networking_validators: networking_validators__.unwrap_or_default(),
+                    pending_validators: pending_validators__.unwrap_or_default(),
+                    pending_removals: pending_removals__.unwrap_or_default(),
+                    staking_pool_mappings: staking_pool_mappings__.unwrap_or_default(),
+                    inactive_validators: inactive_validators__.unwrap_or_default(),
+                    at_risk_validators: at_risk_validators__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ValidatorSet", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for WithdrawStake {

@@ -10,15 +10,15 @@ include!("../generated/soma.rpc.field_info.rs");
 include!("../generated/soma.rpc.serde.rs");
 include!("..//generated/soma.rpc.getters.rs");
 
+mod balance_change;
+mod effects;
 mod executed_transaction;
 mod execution_status;
+mod ledger_service;
 mod object;
 mod signatures;
 mod transaction;
 mod transaction_execution_service;
-// mod ledger_service;
-mod balance_change;
-mod effects;
 
 pub use descriptor::FILE_DESCRIPTOR_SET;
 mod descriptor {

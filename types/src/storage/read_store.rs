@@ -1,12 +1,17 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+
+use serde::{Deserialize, Serialize};
 
 use crate::{
     accumulator::CommitIndex,
+    balance_change::{derive_balance_changes, BalanceChange},
+    base::SomaAddress,
     committee::{Committee, EpochId},
     consensus::commit::{CommitDigest, CommittedSubDag},
     digests::TransactionDigest,
     effects::TransactionEffects,
-    transaction::VerifiedTransaction,
+    object::{Object, ObjectID, ObjectType, Version},
+    transaction::{TransactionData, VerifiedTransaction},
 };
 
 use super::{object_store::ObjectStore, storage_error::Result};
@@ -122,4 +127,88 @@ impl<T: ReadCommitteeStore + ?Sized> ReadCommitteeStore for &T {
     fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>> {
         (*self).get_committee(epoch)
     }
+}
+
+/// Trait used to provide functionality to the REST API service.
+///
+/// It extends both ObjectStore and ReadStore by adding functionality that may require more
+/// detailed underlying databases or indexes to support.
+pub trait RpcStateReader: ObjectStore + ReadStore + Send + Sync {
+    // fn get_chain_identifier(&self) -> Result<ChainIdentifier>;
+
+    // Get a handle to an instance of the RpcIndexes
+    fn indexes(&self) -> Option<&dyn RpcIndexes>;
+}
+
+pub trait RpcIndexes: Send + Sync {
+    fn get_epoch_info(&self, epoch: EpochId) -> Result<Option<EpochInfo>>;
+
+    fn get_transaction_info(&self, digest: &TransactionDigest) -> Result<Option<TransactionInfo>>;
+
+    fn owned_objects_iter(
+        &self,
+        owner: SomaAddress,
+        object_type: Option<ObjectType>,
+        cursor: Option<OwnedObjectInfo>,
+    ) -> Result<
+        Box<
+            dyn Iterator<Item = Result<OwnedObjectInfo, crate::storage::storage_error::Error>> + '_,
+        >,
+    >;
+
+    fn get_balance(&self, owner: &SomaAddress) -> Result<Option<u64>>;
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct OwnedObjectInfo {
+    pub owner: SomaAddress,
+    pub object_type: ObjectType,
+    pub balance: Option<u64>,
+    pub object_id: ObjectID,
+    pub version: Version,
+}
+
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
+pub struct TransactionInfo {
+    pub commit: u64,
+    pub balance_changes: Vec<BalanceChange>,
+    pub object_types: HashMap<ObjectID, ObjectType>,
+}
+
+impl TransactionInfo {
+    pub fn new(
+        effects: &TransactionEffects,
+        input_objects: &[Object],
+        output_objects: &[Object],
+        commit: u64,
+    ) -> TransactionInfo {
+        let balance_changes = derive_balance_changes(effects, input_objects, output_objects);
+
+        let object_types = input_objects
+            .iter()
+            .chain(output_objects)
+            .map(|object| (object.id(), ObjectType::from(object)))
+            .collect();
+
+        TransactionInfo {
+            commit,
+            balance_changes,
+            object_types,
+        }
+    }
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, Eq, PartialEq, Debug)]
+pub struct EpochInfo {
+    pub epoch: u64,
+    // pub protocol_version: Option<u64>,
+    pub start_timestamp_ms: Option<u64>,
+    pub end_timestamp_ms: Option<u64>,
+    // TODO: pub reference_byte_price: Option<u64>,
+    pub system_state: Option<crate::system_state::SystemState>,
+}
+
+#[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
+pub struct BalanceInfo {
+    pub balance: u64,
 }

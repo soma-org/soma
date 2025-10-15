@@ -1,24 +1,30 @@
 use std::sync::Arc;
 
-use types::{config::rpc_config::RpcConfig, transaction_executor::TransactionExecutor};
+use types::{
+    config::rpc_config::RpcConfig, storage::read_store::RpcStateReader,
+    transaction_executor::TransactionExecutor,
+};
+
+use crate::api::reader::StateReader;
 pub mod client;
 pub mod error;
 mod grpc;
+mod reader;
 mod response;
 
 #[derive(Clone)]
 pub struct RpcService {
-    // reader: StateReader,
+    reader: StateReader,
     // chain_id: types::digests::ChainIdentifier,
     config: RpcConfig,
     executor: Option<Arc<dyn TransactionExecutor>>,
 }
 
 impl RpcService {
-    pub fn new() -> Self {
+    pub fn new(reader: Arc<dyn RpcStateReader>) -> Self {
         // let chain_id = reader.get_chain_identifier().unwrap();
         Self {
-            // reader: StateReader::new(reader),
+            reader: StateReader::new(reader),
             executor: None,
             // chain_id,
             config: RpcConfig::default(),
@@ -35,15 +41,14 @@ impl RpcService {
 
     pub async fn into_router(self) -> axum::Router {
         let router = {
-            // let ledger_service2 =
-            //     sui_rpc::proto::sui::rpc::v2beta2::ledger_service_server::LedgerServiceServer::new(
-            //         self.clone(),
-            //     );
+            let ledger_service =
+                crate::proto::soma::ledger_service_server::LedgerServiceServer::new(self.clone());
             let transaction_execution_service = crate::proto::soma::transaction_execution_service_server::TransactionExecutionServiceServer::new(self.clone());
-            // let live_data_service2 =
-            //     sui_rpc::proto::sui::rpc::v2beta2::live_data_service_server::LiveDataServiceServer::new(
-            //         self.clone(),
-            //     ).send_compressed(tonic::codec::CompressionEncoding::Zstd);
+            let live_data_service =
+                crate::proto::soma::live_data_service_server::LiveDataServiceServer::new(
+                    self.clone(),
+                )
+                .send_compressed(tonic::codec::CompressionEncoding::Zstd);
 
             // let reflection_v1alpha = tonic_reflection::server::Builder::configure()
             //     .register_encoded_file_descriptor_set(
@@ -64,9 +69,9 @@ impl RpcService {
             }
 
             grpc::Services::new()
-                // .add_service(ledger_service2)
+                .add_service(ledger_service)
                 .add_service(transaction_execution_service)
-                // .add_service(live_data_service2)
+                .add_service(live_data_service)
                 // .add_service(reflection_v1alpha)
                 .into_router()
         };

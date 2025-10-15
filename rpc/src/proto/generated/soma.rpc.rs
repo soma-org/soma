@@ -284,6 +284,24 @@ pub mod unchanged_shared_object {
     }
 }
 #[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Epoch {
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    /// The committee governing this epoch.
+    #[prost(message, optional, tag = "2")]
+    pub committee: ::core::option::Option<ValidatorCommittee>,
+    /// Snapshot of SystemState at the
+    /// beginning of the epoch, for past epochs, or the current state for the
+    /// current epoch.
+    #[prost(message, optional, boxed, tag = "3")]
+    pub system_state: ::core::option::Option<::prost::alloc::boxed::Box<SystemState>>,
+    #[prost(message, optional, tag = "6")]
+    pub start: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(message, optional, tag = "7")]
+    pub end: ::core::option::Option<::prost_types::Timestamp>,
+}
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ErrorReason {
@@ -496,6 +514,1317 @@ pub mod execution_error {
         ObjectId(::prost::alloc::string::String),
         #[prost(string, tag = "4")]
         OtherError(::prost::alloc::string::String),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetObjectRequest {
+    /// Required. The `ObjectId` of the requested object.
+    #[prost(string, optional, tag = "1")]
+    pub object_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Request a specific version of the object.
+    /// If no version is specified, and the object is live, then the latest
+    /// version of the object is returned.
+    #[prost(uint64, optional, tag = "2")]
+    pub version: ::core::option::Option<u64>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, defaults to `object_id,version,digest`.
+    #[prost(message, optional, tag = "3")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetObjectResponse {
+    #[prost(message, optional, tag = "1")]
+    pub object: ::core::option::Option<Object>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchGetObjectsRequest {
+    #[prost(message, repeated, tag = "1")]
+    pub requests: ::prost::alloc::vec::Vec<GetObjectRequest>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, defaults to `object_id,version,digest`.
+    #[prost(message, optional, tag = "2")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchGetObjectsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub objects: ::prost::alloc::vec::Vec<GetObjectResult>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetObjectResult {
+    #[prost(oneof = "get_object_result::Result", tags = "1, 2")]
+    pub result: ::core::option::Option<get_object_result::Result>,
+}
+/// Nested message and enum types in `GetObjectResult`.
+pub mod get_object_result {
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(message, tag = "1")]
+        Object(super::Object),
+        #[prost(message, tag = "2")]
+        Error(crate::proto::google::rpc::Status),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTransactionRequest {
+    /// Required. The digest of the requested transaction.
+    #[prost(string, optional, tag = "1")]
+    pub digest: ::core::option::Option<::prost::alloc::string::String>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, defaults to `digest`.
+    #[prost(message, optional, tag = "2")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTransactionResponse {
+    #[prost(message, optional, tag = "1")]
+    pub transaction: ::core::option::Option<ExecutedTransaction>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchGetTransactionsRequest {
+    /// Required. The digests of the requested transactions.
+    #[prost(string, repeated, tag = "1")]
+    pub digests: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, defaults to `digest`.
+    #[prost(message, optional, tag = "2")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchGetTransactionsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub transactions: ::prost::alloc::vec::Vec<GetTransactionResult>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTransactionResult {
+    #[prost(oneof = "get_transaction_result::Result", tags = "1, 2")]
+    pub result: ::core::option::Option<get_transaction_result::Result>,
+}
+/// Nested message and enum types in `GetTransactionResult`.
+pub mod get_transaction_result {
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(message, tag = "1")]
+        Transaction(super::ExecutedTransaction),
+        #[prost(message, tag = "2")]
+        Error(crate::proto::google::rpc::Status),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetEpochRequest {
+    /// The requested epoch.
+    /// If no epoch is provided the current epoch will be returned.
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, defaults to `epoch`.
+    #[prost(message, optional, tag = "2")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetEpochResponse {
+    #[prost(message, optional, tag = "1")]
+    pub epoch: ::core::option::Option<Epoch>,
+}
+/// Generated client implementations.
+pub mod ledger_service_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    #[derive(Debug, Clone)]
+    pub struct LedgerServiceClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl LedgerServiceClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> LedgerServiceClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::Body>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> LedgerServiceClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            LedgerServiceClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        pub async fn get_object(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetObjectRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetObjectResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetObject",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetObject"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn batch_get_objects(
+            &mut self,
+            request: impl tonic::IntoRequest<super::BatchGetObjectsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::BatchGetObjectsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/BatchGetObjects",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "BatchGetObjects"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_transaction(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetTransactionRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetTransactionResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetTransaction",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetTransaction"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn batch_get_transactions(
+            &mut self,
+            request: impl tonic::IntoRequest<super::BatchGetTransactionsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::BatchGetTransactionsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/BatchGetTransactions",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("soma.rpc.LedgerService", "BatchGetTransactions"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_epoch(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetEpochRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetEpochResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetEpoch",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetEpoch"));
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod ledger_service_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with LedgerServiceServer.
+    #[async_trait]
+    pub trait LedgerService: std::marker::Send + std::marker::Sync + 'static {
+        async fn get_object(
+            &self,
+            request: tonic::Request<super::GetObjectRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetObjectResponse>,
+            tonic::Status,
+        >;
+        async fn batch_get_objects(
+            &self,
+            request: tonic::Request<super::BatchGetObjectsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::BatchGetObjectsResponse>,
+            tonic::Status,
+        >;
+        async fn get_transaction(
+            &self,
+            request: tonic::Request<super::GetTransactionRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetTransactionResponse>,
+            tonic::Status,
+        >;
+        async fn batch_get_transactions(
+            &self,
+            request: tonic::Request<super::BatchGetTransactionsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::BatchGetTransactionsResponse>,
+            tonic::Status,
+        >;
+        async fn get_epoch(
+            &self,
+            request: tonic::Request<super::GetEpochRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetEpochResponse>,
+            tonic::Status,
+        >;
+    }
+    #[derive(Debug)]
+    pub struct LedgerServiceServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> LedgerServiceServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for LedgerServiceServer<T>
+    where
+        T: LedgerService,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::Body>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/soma.rpc.LedgerService/GetObject" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetObjectSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetObjectRequest>
+                    for GetObjectSvc<T> {
+                        type Response = super::GetObjectResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetObjectRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_object(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetObjectSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/BatchGetObjects" => {
+                    #[allow(non_camel_case_types)]
+                    struct BatchGetObjectsSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::BatchGetObjectsRequest>
+                    for BatchGetObjectsSvc<T> {
+                        type Response = super::BatchGetObjectsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::BatchGetObjectsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::batch_get_objects(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = BatchGetObjectsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetTransaction" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetTransactionSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetTransactionRequest>
+                    for GetTransactionSvc<T> {
+                        type Response = super::GetTransactionResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetTransactionRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_transaction(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetTransactionSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/BatchGetTransactions" => {
+                    #[allow(non_camel_case_types)]
+                    struct BatchGetTransactionsSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::BatchGetTransactionsRequest>
+                    for BatchGetTransactionsSvc<T> {
+                        type Response = super::BatchGetTransactionsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::BatchGetTransactionsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::batch_get_transactions(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = BatchGetTransactionsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetEpoch" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetEpochSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetEpochRequest>
+                    for GetEpochSvc<T> {
+                        type Response = super::GetEpochResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetEpochRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_epoch(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetEpochSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for LedgerServiceServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "soma.rpc.LedgerService";
+    impl<T> tonic::server::NamedService for LedgerServiceServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
+/// Request message for `LiveDataService.GetBalance`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetBalanceRequest {
+    /// Required. The owner's Sui address.
+    #[prost(string, optional, tag = "1")]
+    pub owner: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response message for `LiveDataService.GetBalance`.
+/// Return the total coin balance for coin, owned by the address owner.
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct GetBalanceResponse {
+    #[prost(uint64, optional, tag = "1")]
+    pub balance: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SimulateTransactionRequest {
+    #[prost(message, optional, tag = "1")]
+    pub transaction: ::core::option::Option<Transaction>,
+    /// Mask specifying which fields to read.
+    #[prost(message, optional, tag = "2")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+    /// Specify whether checks should be ENABLED (default) or DISABLED while executing the transaction
+    #[prost(
+        enumeration = "simulate_transaction_request::TransactionChecks",
+        optional,
+        tag = "3"
+    )]
+    pub checks: ::core::option::Option<i32>,
+}
+/// Nested message and enum types in `SimulateTransactionRequest`.
+pub mod simulate_transaction_request {
+    /// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+    #[non_exhaustive]
+    #[derive(
+        Clone,
+        Copy,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        PartialOrd,
+        Ord,
+        ::prost::Enumeration
+    )]
+    #[repr(i32)]
+    pub enum TransactionChecks {
+        Enabled = 0,
+        Disabled = 1,
+    }
+    impl TransactionChecks {
+        /// String value of the enum field names used in the ProtoBuf definition.
+        ///
+        /// The values are not transformed in any way and thus are considered stable
+        /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+        pub fn as_str_name(&self) -> &'static str {
+            match self {
+                Self::Enabled => "ENABLED",
+                Self::Disabled => "DISABLED",
+            }
+        }
+        /// Creates an enum from field names used in the ProtoBuf definition.
+        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+            match value {
+                "ENABLED" => Some(Self::Enabled),
+                "DISABLED" => Some(Self::Disabled),
+                _ => None,
+            }
+        }
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SimulateTransactionResponse {
+    #[prost(message, optional, tag = "1")]
+    pub transaction: ::core::option::Option<ExecutedTransaction>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListOwnedObjectsRequest {
+    /// Required. The address of the account that owns the objects.
+    #[prost(string, optional, tag = "1")]
+    pub owner: ::core::option::Option<::prost::alloc::string::String>,
+    /// The maximum number of entries return. The service may return fewer than this value.
+    /// If unspecified, at most `50` entries will be returned.
+    /// The maximum value is `1000`; values above `1000` will be coerced to `1000`.
+    #[prost(uint32, optional, tag = "2")]
+    pub page_size: ::core::option::Option<u32>,
+    /// A page token, received from a previous `ListOwnedObjects` call.
+    /// Provide this to retrieve the subsequent page.
+    ///
+    /// When paginating, all other parameters provided to `ListOwnedObjects` must
+    /// match the call that provided the page token.
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub page_token: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, defaults to `object_id,version,object_type`.
+    #[prost(message, optional, tag = "4")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+    /// Optional type filter to limit the types of objects listed.
+    ///
+    /// Providing an object type with no type params will return objects of that
+    /// type with any type parameter.
+    #[prost(string, optional, tag = "5")]
+    pub object_type: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListOwnedObjectsResponse {
+    /// Page of dynamic fields owned by the specified parent.
+    #[prost(message, repeated, tag = "1")]
+    pub objects: ::prost::alloc::vec::Vec<Object>,
+    /// A token, which can be sent as `page_token` to retrieve the next page.
+    /// If this field is omitted, there are no subsequent pages.
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
+}
+/// Generated client implementations.
+pub mod live_data_service_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    #[derive(Debug, Clone)]
+    pub struct LiveDataServiceClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl LiveDataServiceClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> LiveDataServiceClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::Body>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> LiveDataServiceClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            LiveDataServiceClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        pub async fn list_owned_objects(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListOwnedObjectsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListOwnedObjectsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LiveDataService/ListOwnedObjects",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LiveDataService", "ListOwnedObjects"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_balance(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetBalanceRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetBalanceResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LiveDataService/GetBalance",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LiveDataService", "GetBalance"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn simulate_transaction(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SimulateTransactionRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SimulateTransactionResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LiveDataService/SimulateTransaction",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("soma.rpc.LiveDataService", "SimulateTransaction"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod live_data_service_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with LiveDataServiceServer.
+    #[async_trait]
+    pub trait LiveDataService: std::marker::Send + std::marker::Sync + 'static {
+        async fn list_owned_objects(
+            &self,
+            request: tonic::Request<super::ListOwnedObjectsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListOwnedObjectsResponse>,
+            tonic::Status,
+        >;
+        async fn get_balance(
+            &self,
+            request: tonic::Request<super::GetBalanceRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetBalanceResponse>,
+            tonic::Status,
+        >;
+        async fn simulate_transaction(
+            &self,
+            request: tonic::Request<super::SimulateTransactionRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SimulateTransactionResponse>,
+            tonic::Status,
+        >;
+    }
+    #[derive(Debug)]
+    pub struct LiveDataServiceServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> LiveDataServiceServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for LiveDataServiceServer<T>
+    where
+        T: LiveDataService,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::Body>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/soma.rpc.LiveDataService/ListOwnedObjects" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListOwnedObjectsSvc<T: LiveDataService>(pub Arc<T>);
+                    impl<
+                        T: LiveDataService,
+                    > tonic::server::UnaryService<super::ListOwnedObjectsRequest>
+                    for ListOwnedObjectsSvc<T> {
+                        type Response = super::ListOwnedObjectsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListOwnedObjectsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LiveDataService>::list_owned_objects(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListOwnedObjectsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LiveDataService/GetBalance" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetBalanceSvc<T: LiveDataService>(pub Arc<T>);
+                    impl<
+                        T: LiveDataService,
+                    > tonic::server::UnaryService<super::GetBalanceRequest>
+                    for GetBalanceSvc<T> {
+                        type Response = super::GetBalanceResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetBalanceRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LiveDataService>::get_balance(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetBalanceSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LiveDataService/SimulateTransaction" => {
+                    #[allow(non_camel_case_types)]
+                    struct SimulateTransactionSvc<T: LiveDataService>(pub Arc<T>);
+                    impl<
+                        T: LiveDataService,
+                    > tonic::server::UnaryService<super::SimulateTransactionRequest>
+                    for SimulateTransactionSvc<T> {
+                        type Response = super::SimulateTransactionResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SimulateTransactionRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LiveDataService>::simulate_transaction(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SimulateTransactionSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for LiveDataServiceServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "soma.rpc.LiveDataService";
+    impl<T> tonic::server::NamedService for LiveDataServiceServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
     }
 }
 /// An object on the Sui blockchain.
@@ -733,6 +2062,287 @@ impl SignatureScheme {
             _ => None,
         }
     }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SystemState {
+    /// Core epoch information
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub epoch_start_timestamp_ms: ::core::option::Option<u64>,
+    /// System parameters
+    #[prost(message, optional, tag = "3")]
+    pub parameters: ::core::option::Option<SystemParameters>,
+    /// Validator and encoder sets
+    #[prost(message, optional, tag = "4")]
+    pub validators: ::core::option::Option<ValidatorSet>,
+    #[prost(message, optional, tag = "5")]
+    pub encoders: ::core::option::Option<EncoderSet>,
+    /// Report records
+    #[prost(btree_map = "string, message", tag = "6")]
+    pub validator_report_records: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ReporterSet,
+    >,
+    #[prost(btree_map = "string, message", tag = "7")]
+    pub encoder_report_records: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ReporterSet,
+    >,
+    /// Stake subsidy
+    #[prost(message, optional, tag = "8")]
+    pub stake_subsidy: ::core::option::Option<StakeSubsidy>,
+    /// Shard results (digest -> result)
+    #[prost(btree_map = "string, message", tag = "9")]
+    pub shard_results: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ShardResult,
+    >,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReporterSet {
+    #[prost(string, repeated, tag = "1")]
+    pub reporters: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct SystemParameters {
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch_duration_ms: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub vdf_iterations: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct StakeSubsidy {
+    #[prost(uint64, optional, tag = "1")]
+    pub balance: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub distribution_counter: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "3")]
+    pub current_distribution_amount: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "4")]
+    pub period_length: ::core::option::Option<u64>,
+    #[prost(uint32, optional, tag = "5")]
+    pub decrease_rate: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ValidatorSet {
+    #[prost(uint64, optional, tag = "1")]
+    pub total_stake: ::core::option::Option<u64>,
+    #[prost(message, repeated, tag = "2")]
+    pub consensus_validators: ::prost::alloc::vec::Vec<Validator>,
+    #[prost(message, repeated, tag = "3")]
+    pub networking_validators: ::prost::alloc::vec::Vec<Validator>,
+    #[prost(message, repeated, tag = "4")]
+    pub pending_validators: ::prost::alloc::vec::Vec<Validator>,
+    #[prost(message, repeated, tag = "5")]
+    pub pending_removals: ::prost::alloc::vec::Vec<PendingRemoval>,
+    /// pool_id -> validator_address
+    #[prost(btree_map = "string, string", tag = "6")]
+    pub staking_pool_mappings: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+    /// pool_id -> validator
+    #[prost(btree_map = "string, message", tag = "7")]
+    pub inactive_validators: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        Validator,
+    >,
+    /// address -> epochs_at_risk
+    #[prost(btree_map = "string, uint64", tag = "8")]
+    pub at_risk_validators: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        u64,
+    >,
+}
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PendingRemoval {
+    #[prost(bool, optional, tag = "1")]
+    pub is_consensus: ::core::option::Option<bool>,
+    #[prost(uint32, optional, tag = "2")]
+    pub index: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Validator {
+    #[prost(string, optional, tag = "1")]
+    pub soma_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub protocol_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub worker_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(string, optional, tag = "5")]
+    pub net_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "6")]
+    pub p2p_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "7")]
+    pub primary_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "8")]
+    pub encoder_validator_address: ::core::option::Option<
+        ::prost::alloc::string::String,
+    >,
+    #[prost(uint64, optional, tag = "9")]
+    pub voting_power: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "10")]
+    pub commission_rate: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "11")]
+    pub next_epoch_stake: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "12")]
+    pub next_epoch_commission_rate: ::core::option::Option<u64>,
+    #[prost(message, optional, tag = "13")]
+    pub staking_pool: ::core::option::Option<StakingPool>,
+    /// Next epoch metadata (only if set)
+    #[prost(bytes = "bytes", optional, tag = "14")]
+    pub next_epoch_protocol_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "15")]
+    pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "16")]
+    pub next_epoch_worker_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(string, optional, tag = "17")]
+    pub next_epoch_net_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "18")]
+    pub next_epoch_p2p_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "19")]
+    pub next_epoch_primary_address: ::core::option::Option<
+        ::prost::alloc::string::String,
+    >,
+    #[prost(string, optional, tag = "20")]
+    pub next_epoch_encoder_validator_address: ::core::option::Option<
+        ::prost::alloc::string::String,
+    >,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StakingPool {
+    #[prost(string, optional, tag = "1")]
+    pub id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "2")]
+    pub activation_epoch: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "3")]
+    pub deactivation_epoch: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "4")]
+    pub soma_balance: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub rewards_pool: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "6")]
+    pub pool_token_balance: ::core::option::Option<u64>,
+    #[prost(btree_map = "uint64, message", tag = "7")]
+    pub exchange_rates: ::prost::alloc::collections::BTreeMap<
+        u64,
+        PoolTokenExchangeRate,
+    >,
+    #[prost(uint64, optional, tag = "8")]
+    pub pending_stake: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "9")]
+    pub pending_total_soma_withdraw: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "10")]
+    pub pending_pool_token_withdraw: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PoolTokenExchangeRate {
+    #[prost(uint64, optional, tag = "1")]
+    pub soma_amount: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub pool_token_amount: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EncoderSet {
+    #[prost(uint64, optional, tag = "1")]
+    pub total_stake: ::core::option::Option<u64>,
+    #[prost(message, repeated, tag = "2")]
+    pub active_encoders: ::prost::alloc::vec::Vec<Encoder>,
+    #[prost(message, repeated, tag = "3")]
+    pub pending_active_encoders: ::prost::alloc::vec::Vec<Encoder>,
+    #[prost(uint32, repeated, tag = "4")]
+    pub pending_removals: ::prost::alloc::vec::Vec<u32>,
+    /// pool_id -> encoder_address
+    #[prost(btree_map = "string, string", tag = "5")]
+    pub staking_pool_mappings: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+    /// pool_id -> encoder
+    #[prost(btree_map = "string, message", tag = "6")]
+    pub inactive_encoders: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        Encoder,
+    >,
+    /// address -> epochs_at_risk
+    #[prost(btree_map = "string, uint64", tag = "7")]
+    pub at_risk_encoders: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        u64,
+    >,
+    #[prost(uint64, optional, tag = "8")]
+    pub reference_byte_price: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Encoder {
+    #[prost(string, optional, tag = "1")]
+    pub soma_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub encoder_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(string, optional, tag = "4")]
+    pub internal_network_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub external_network_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "6")]
+    pub object_server_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "7")]
+    pub voting_power: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "8")]
+    pub commission_rate: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "9")]
+    pub next_epoch_stake: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "10")]
+    pub next_epoch_commission_rate: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "11")]
+    pub byte_price: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "12")]
+    pub next_epoch_byte_price: ::core::option::Option<u64>,
+    #[prost(message, optional, tag = "13")]
+    pub staking_pool: ::core::option::Option<StakingPool>,
+    /// Next epoch metadata (only if set)
+    #[prost(bytes = "bytes", optional, tag = "14")]
+    pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(string, optional, tag = "15")]
+    pub next_epoch_internal_network_address: ::core::option::Option<
+        ::prost::alloc::string::String,
+    >,
+    #[prost(string, optional, tag = "16")]
+    pub next_epoch_external_network_address: ::core::option::Option<
+        ::prost::alloc::string::String,
+    >,
+    #[prost(string, optional, tag = "17")]
+    pub next_epoch_object_server_address: ::core::option::Option<
+        ::prost::alloc::string::String,
+    >,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShardResult {
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub digest: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "2")]
+    pub data_size_bytes: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "3")]
+    pub amount: ::core::option::Option<u64>,
+    /// Serialized Report
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub report: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// A transaction.
 #[non_exhaustive]

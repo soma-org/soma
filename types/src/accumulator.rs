@@ -46,14 +46,6 @@ impl ObjectStore for TestAccumulatorStore {
     ) -> storage_error::Result<Option<Object>> {
         Ok(None)
     }
-
-    fn get_gas_objects_owned_by_address(
-        &self,
-        address: crate::base::SomaAddress,
-        limit: Option<usize>,
-    ) -> storage_error::Result<Vec<crate::object::ObjectRef>> {
-        Ok(vec![])
-    }
 }
 
 impl AccumulatorStore for TestAccumulatorStore {

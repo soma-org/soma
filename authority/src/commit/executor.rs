@@ -16,6 +16,7 @@ use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, CommitIndex},
+    checkpoint::{CheckpointData, CheckpointTransaction},
     consensus::{block::BlockAPI, commit::CommittedSubDag, ConsensusTransactionKind},
     digests::TransactionDigest,
     effects::TransactionEffects,
@@ -31,6 +32,7 @@ use crate::{
     state_accumulator::StateAccumulator,
     tx_manager::TransactionManager,
 };
+use types::storage::storage_error::Error as StorageError;
 
 use super::CommitStore;
 
@@ -311,6 +313,28 @@ impl CommitExecutor {
                     .await
                     .expect("Finalizing checkpoint cannot fail");
 
+                    // Index the end-of-epoch checkpoint
+                    if let Some(rpc_index) = &self.state.rpc_index {
+                        // Include change_epoch_tx_digest with all_tx_digests
+                        let mut all_digests_with_change_epoch = all_tx_digests;
+                        all_digests_with_change_epoch.push(change_epoch_tx_digest);
+
+                        match self
+                            .form_checkpoint_data(commit, &all_digests_with_change_epoch)
+                            .await
+                        {
+                            Ok(checkpoint_data) => {
+                                rpc_index.index_checkpoint(&checkpoint_data);
+                            }
+                            Err(e) => {
+                                error!(
+                                    "Failed to index end-of-epoch checkpoint {}: {:?}",
+                                    commit.commit_ref.index, e
+                                );
+                            }
+                        }
+                    }
+
                     self.commit_store
                         .insert_epoch_last_commit(cur_epoch, commit)
                         .expect("Failed to insert epoch last checkpoint");
@@ -527,6 +551,21 @@ impl CommitExecutor {
             .await
             .expect("commit_transaction_outputs cannot fail");
 
+        // Index the checkpoint for RPC after effects are committed
+        if let Some(rpc_index) = &self.state.rpc_index {
+            match self.form_checkpoint_data(commit, all_tx_digests).await {
+                Ok(checkpoint_data) => {
+                    rpc_index.index_checkpoint(&checkpoint_data);
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to index checkpoint {}: {:?}",
+                        commit.commit_ref.index, e
+                    );
+                }
+            }
+        }
+
         epoch_store
             .handle_committed_transactions(commit.commit_ref.index, all_tx_digests)
             .expect("cannot fail");
@@ -584,6 +623,54 @@ impl CommitExecutor {
         self.commit_store
             .update_highest_executed_commit(commit)
             .unwrap();
+    }
+
+    async fn form_checkpoint_data(
+        &self,
+        commit: &CommittedSubDag,
+        tx_digests: &[TransactionDigest],
+    ) -> Result<CheckpointData, StorageError> {
+        // Get all transaction blocks
+        let transactions = self
+            .transaction_cache_reader
+            .multi_get_transaction_blocks(tx_digests)?
+            .into_iter()
+            .map(|maybe_tx| maybe_tx.ok_or_else(|| StorageError::custom("missing transaction")))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Get all effects
+        let effects = self
+            .transaction_cache_reader
+            .multi_get_executed_effects(tx_digests)?
+            .into_iter()
+            .map(|maybe_fx| maybe_fx.ok_or_else(|| StorageError::custom("missing effects")))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Build CheckpointTransaction for each tx
+        let mut checkpoint_transactions = Vec::with_capacity(transactions.len());
+        for (tx, fx) in transactions.into_iter().zip(effects) {
+            // Get input and output objects
+            let input_objects = types::storage::get_transaction_input_objects(
+                self.state.get_object_store().as_ref(),
+                &fx,
+            )?;
+            let output_objects = types::storage::get_transaction_output_objects(
+                self.state.get_object_store().as_ref(),
+                &fx,
+            )?;
+
+            checkpoint_transactions.push(CheckpointTransaction {
+                transaction: tx.inner().clone(),
+                effects: fx,
+                input_objects,
+                output_objects,
+            });
+        }
+
+        Ok(CheckpointData {
+            committed_subdag: commit.clone(),
+            transactions: checkpoint_transactions,
+        })
     }
 }
 

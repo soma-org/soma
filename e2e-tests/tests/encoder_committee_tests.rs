@@ -171,8 +171,10 @@ async fn execute_embed_data_transaction(
 ) -> Option<Shard> {
     // Get gas object for the transaction
     let gas_object = test_cluster
-        .get_gas_objects_owned_by_address(address, Some(1))
+        .wallet
+        .get_one_gas_object_owned_by_address(address)
         .await
+        .unwrap()
         .expect("Can't get gas object for encoder address");
 
     // Create and execute AddEncoder transaction
@@ -181,10 +183,10 @@ async fn execute_embed_data_transaction(
             TransactionKind::EmbedData {
                 digest: digest,
                 data_size_bytes,
-                coin_ref: gas_object[0],
+                coin_ref: gas_object,
             },
             address,
-            gas_object,
+            vec![gas_object],
         ),
         vec![&signer], // Sign with keypair
     );
@@ -203,8 +205,10 @@ async fn execute_add_encoder_transaction(
 ) {
     // Get gas object for the transaction
     let gas_object = test_cluster
-        .get_gas_objects_owned_by_address(encoder_address, Some(1))
+        .wallet
+        .get_one_gas_object_owned_by_address(encoder_address)
         .await
+        .unwrap()
         .expect("Can't get gas object for encoder address");
 
     // Create and execute AddEncoder transaction
@@ -224,7 +228,7 @@ async fn execute_add_encoder_transaction(
                 // probe_address: bcs::to_bytes(&encoder_config.probe_address).unwrap(),
             }),
             encoder_address,
-            gas_object,
+            vec![gas_object],
         ),
         vec![encoder_config.account_keypair.keypair()], // Sign with keypair
     );
@@ -242,8 +246,10 @@ async fn execute_add_stake_transaction(
 ) {
     // Get gas object for the transaction
     let gas_object = test_cluster
-        .get_gas_objects_owned_by_address(address, Some(1))
+        .wallet
+        .get_one_gas_object_owned_by_address(address)
         .await
+        .unwrap()
         .expect("Can't get gas object for address");
 
     // Create and execute AddStake transaction
@@ -251,11 +257,11 @@ async fn execute_add_stake_transaction(
         TransactionData::new(
             TransactionKind::AddStakeToEncoder {
                 encoder_address: address,
-                coin_ref: gas_object[0],
+                coin_ref: gas_object,
                 amount: Some(stake_amount),
             },
             address,
-            gas_object,
+            vec![gas_object],
         ),
         vec![&signer],
     );

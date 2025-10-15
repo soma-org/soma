@@ -626,6 +626,31 @@ pub enum ObjectType {
     ShardInput,
 }
 
+impl fmt::Display for ObjectType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ObjectType::SystemState => write!(f, "SystemState"),
+            ObjectType::Coin => write!(f, "Coin"),
+            ObjectType::StakedSoma => write!(f, "StakedSoma"),
+            ObjectType::ShardInput => write!(f, "ShardInput"),
+        }
+    }
+}
+
+impl FromStr for ObjectType {
+    type Err = String; // Or use a custom error type
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "SystemState" => Ok(ObjectType::SystemState),
+            "Coin" => Ok(ObjectType::Coin),
+            "StakedSoma" => Ok(ObjectType::StakedSoma),
+            "ShardInput" => Ok(ObjectType::ShardInput),
+            _ => Err(format!("Unknown ObjectType: {}", s)),
+        }
+    }
+}
+
 /// # ObjectID
 ///
 /// A unique identifier for objects in the Soma blockchain.
