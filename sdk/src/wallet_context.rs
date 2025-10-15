@@ -2,15 +2,22 @@ use crate::SomaClient;
 use crate::client_config::{SomaClientConfig, SomaEnv};
 use anyhow::anyhow;
 use rpc::api::client::TransactionExecutionResponse;
+use rpc::proto::soma::owner::OwnerKind;
+use rpc::types::ObjectType;
+use rpc::utils::field::{FieldMask, FieldMaskUtil};
 use soma_keys::key_identity::KeyIdentity;
 use soma_keys::keystore::{AccountKeystore, Keystore};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::info;
 use types::base::SomaAddress;
 use types::config::{Config, PersistedConfig};
 use types::crypto::{Signature, SomaKeyPair};
+use types::digests::ObjectDigest;
 use types::intent::Intent;
+use types::object::{ObjectID, ObjectRef, Version};
 use types::transaction::{Transaction, TransactionData};
 
 pub struct WalletContext {
@@ -153,33 +160,171 @@ impl WalletContext {
         Ok(self.config.active_address.unwrap())
     }
 
-    // TODO: Implement these when ReadAPI is available
-    /*
-    /// Get the latest object reference given an object id
-    pub async fn get_object_ref(&self, object_id: ObjectID) -> Result<ObjectRef, anyhow::Error> {
-        // Will be implemented when ReadAPI is available
-        todo!("ReadAPI not yet implemented")
-    }
-
-    /// Get all the gas objects for the address
-    pub async fn gas_objects(
+    pub async fn get_gas_objects_owned_by_address(
         &self,
         address: SomaAddress,
-    ) -> Result<Vec<(u64, SomaObjectData)>, anyhow::Error> {
-        // Will be implemented when ReadAPI is available
-        todo!("ReadAPI not yet implemented")
+        limit: Option<usize>,
+    ) -> anyhow::Result<Vec<ObjectRef>> {
+        let client = self.get_client().await?;
+
+        // Create the request for listing owned objects
+        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
+        request.owner = Some(address.to_string());
+
+        // Set page size based on limit
+        let page_size = limit.unwrap_or(100).min(1000) as u32;
+        request.page_size = Some(page_size);
+
+        request.object_type = Some((ObjectType::Coin).into());
+        request.read_mask = Some(FieldMask::from_paths([
+            "object_id",
+            "version",
+            "digest",
+            "object_type",
+        ]));
+
+        // Call the live data service
+        let response = client
+            .inner()
+            .live_data_client()
+            .list_owned_objects(request)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list owned objects: {}", e))?;
+
+        let response = response.into_inner();
+
+        // Convert the objects to ObjectRef
+        let mut object_refs = Vec::new();
+        for proto_object in response.objects {
+            // Convert proto Object to ObjectRef
+            let object_id = proto_object
+                .object_id
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Object missing ID"))?;
+
+            let object_id = ObjectID::from_str(object_id)
+                .map_err(|e| anyhow::anyhow!("Invalid object ID: {}", e))?;
+
+            let version = proto_object
+                .version
+                .ok_or_else(|| anyhow::anyhow!("Object missing version"))?;
+
+            let digest = proto_object
+                .digest
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Object missing digest"))?;
+
+            // Create ObjectDigest from the digest string
+            let object_digest = ObjectDigest::from_str(digest)
+                .map_err(|e| anyhow::anyhow!("Invalid object digest: {}", e))?;
+
+            let object_ref = (object_id, Version::from_u64(version), object_digest);
+
+            object_refs.push(object_ref);
+
+            // Stop if we've reached the limit
+            if let Some(limit) = limit {
+                if object_refs.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        Ok(object_refs)
     }
 
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {
-        // Will be implemented when ReadAPI is available
-        todo!("ReadAPI not yet implemented")
+        let client = self.get_client().await?;
+
+        // Create request to get the object
+        let mut request = rpc::proto::soma::GetObjectRequest::default();
+        request.object_id = Some(id.to_hex_literal());
+        request.read_mask = Some(FieldMask::from_paths(["owner", "object_id", "version"]));
+
+        // Call the ledger service
+        let response = client
+            .inner()
+            .raw_client() // This is the LedgerServiceClient
+            .get_object(request)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get object: {}", e))?;
+
+        let response = response.into_inner();
+
+        let object = response
+            .object
+            .ok_or_else(|| anyhow::anyhow!("No object returned"))?;
+
+        // Extract owner from the proto object
+        let owner = object
+            .owner
+            .ok_or_else(|| anyhow::anyhow!("Object has no owner"))?;
+
+        let owner_address = SomaAddress::from_bytes(owner.address().to_string().as_bytes())?;
+
+        Ok(owner_address)
     }
 
-    pub async fn get_reference_gas_price(&self) -> Result<u64, anyhow::Error> {
-        // Will be implemented when governance API is available
-        todo!("Governance API not yet implemented")
+    /// Returns all the account addresses managed by the wallet and their owned gas objects.
+    pub async fn get_all_accounts_and_gas_objects(
+        &self,
+    ) -> anyhow::Result<Vec<(SomaAddress, Vec<ObjectRef>)>> {
+        let mut result = vec![];
+        for address in self.get_addresses() {
+            let objects = self.get_all_gas_objects_owned_by_address(address).await?;
+            result.push((address, objects));
+        }
+        Ok(result)
     }
-    */
+
+    pub async fn try_get_object_owner(
+        &self,
+        id: &Option<ObjectID>,
+    ) -> Result<Option<SomaAddress>, anyhow::Error> {
+        if let Some(id) = id {
+            Ok(Some(self.get_object_owner(id).await?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn get_all_gas_objects_owned_by_address(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Vec<ObjectRef>> {
+        self.get_gas_objects_owned_by_address(address, None).await
+    }
+
+    /// Given an address, return one gas object owned by this address.
+    /// The actual implementation just returns the first one returned by the read api.
+    pub async fn get_one_gas_object_owned_by_address(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Option<ObjectRef>> {
+        Ok(self
+            .get_gas_objects_owned_by_address(address, Some(1))
+            .await?
+            .pop())
+    }
+
+    /// Returns one address and all gas objects owned by that address.
+    pub async fn get_one_account(&self) -> anyhow::Result<(SomaAddress, Vec<ObjectRef>)> {
+        let address = self.get_addresses().pop().unwrap();
+        Ok((
+            address,
+            self.get_all_gas_objects_owned_by_address(address).await?,
+        ))
+    }
+
+    /// Return a gas object owned by an arbitrary address managed by the wallet.
+    pub async fn get_one_gas_object(&self) -> anyhow::Result<Option<(SomaAddress, ObjectRef)>> {
+        for address in self.get_addresses() {
+            if let Some(gas_object) = self.get_one_gas_object_owned_by_address(address).await? {
+                return Ok(Some((address, gas_object)));
+            }
+        }
+        Ok(None)
+    }
 
     /// Add an account to the wallet
     pub async fn add_account(&mut self, alias: Option<String>, keypair: SomaKeyPair) {

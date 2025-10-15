@@ -65,15 +65,14 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::InsufficientGas => (ExecutionErrorKind::InsufficientGas, None),
             E::InvalidOwnership { object_id, .. } => (
                 ExecutionErrorKind::InvalidOwnership,
-                Some(object_id.to_canonical_string()),
+                Some(object_id.to_hex()),
             ),
-            E::ObjectNotFound { object_id } => (
-                ExecutionErrorKind::ObjectNotFound,
-                Some(object_id.to_canonical_string()),
-            ),
+            E::ObjectNotFound { object_id } => {
+                (ExecutionErrorKind::ObjectNotFound, Some(object_id.to_hex()))
+            }
             E::InvalidObjectType { object_id, .. } => (
                 ExecutionErrorKind::InvalidObjectType,
-                Some(object_id.to_canonical_string()),
+                Some(object_id.to_hex()),
             ),
             E::InvalidTransactionType => (ExecutionErrorKind::InvalidTransactionType, None),
             E::InvalidArguments { reason } => (ExecutionErrorKind::InvalidArguments, Some(reason)),
@@ -226,7 +225,7 @@ impl Merge<types::object::Object> for Object {
         }
 
         if mask.contains(Self::OBJECT_ID_FIELD.name) {
-            self.object_id = Some(source.id().to_canonical_string());
+            self.object_id = Some(source.id().to_hex());
         }
 
         if mask.contains(Self::VERSION_FIELD.name) {
@@ -244,8 +243,6 @@ impl Merge<types::object::Object> for Object {
         // if mask.contains(Self::BALANCE_FIELD) {
         //     self.balance = source.as_coin_maybe().map(|coin| coin.balance.value());
         // }
-
-        self.merge(source, mask);
     }
 }
 
@@ -256,7 +253,7 @@ impl Merge<types::object::Object> for Object {
 fn object_ref_to_proto(value: types::object::ObjectRef) -> ObjectReference {
     let (object_id, version, digest) = value;
     let mut message = ObjectReference::default();
-    message.object_id = Some(object_id.to_canonical_string());
+    message.object_id = Some(object_id.to_hex());
     message.version = Some(version.value());
     message.digest = Some(digest.to_string());
     message
@@ -682,7 +679,7 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
                 .iter()
                 .map(|(id, change)| {
                     let mut message = ChangedObject::from(change.clone());
-                    message.object_id = Some(id.to_canonical_string());
+                    message.object_id = Some(id.to_hex());
                     message
                 })
                 .collect();
@@ -701,7 +698,7 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
                 .iter()
                 .map(|(id, unchanged)| {
                     let mut message = UnchangedSharedObject::from(unchanged.clone());
-                    message.object_id = Some(id.to_canonical_string());
+                    message.object_id = Some(id.to_hex());
                     message
                 })
                 .collect();
@@ -1725,9 +1722,6 @@ impl TryFrom<types::system_state::encoder::Encoder> for Encoder {
     type Error = String;
 
     fn try_from(domain_enc: types::system_state::encoder::Encoder) -> Result<Self, Self::Error> {
-        use bytes::Bytes;
-        use fastcrypto::traits::ToFromBytes;
-
         let metadata = domain_enc.metadata;
 
         // Convert optional next epoch fields

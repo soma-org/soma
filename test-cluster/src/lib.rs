@@ -331,20 +331,6 @@ impl TestCluster {
         self.wallet.execute_transaction_must_succeed(tx).await
     }
 
-    // TODO: change this when ledger service in RPC is implemented
-    pub async fn get_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-        limit: Option<usize>,
-    ) -> SomaResult<Vec<ObjectRef>> {
-        self.fullnode_handle
-            .soma_node
-            .with_async(|node| async {
-                node.get_gas_objects_owned_by_address(address, limit).await
-            })
-            .await
-    }
-
     // Get all encoder configs
     pub fn encoder_configs(&self) -> &[EncoderConfig] {
         &self.swarm.config().encoder_configs

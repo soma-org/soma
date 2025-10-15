@@ -72,6 +72,54 @@ impl<E: EncoderInternalNetworkClient> ReportVoteProcessor<E> {
             }
         });
     }
+
+    async fn submit_winner_transaction(
+        &self,
+        report_vote: &ReportVote,
+        agg: &EncoderAggregateSignature,
+        evaluators: Vec<EncoderPublicKey>,
+    ) -> ShardResult<()> {
+        if report_vote.signed_report().winning_submission().encoder() != &self.encoder_keypair.public() {
+            return Ok(());
+        }
+        
+        let wallet_context = self.wallet_context.read().await;
+        
+        let (sender_address, gas_objects) = wallet_context
+            .get_one_account()
+            .await
+            .map_err(|e| {
+                error!("Could not get account from wallet: {}", e);
+                ShardError::WalletError(e.to_string())
+            })?;
+        
+        let tx_data = TransactionData::new(
+            TransactionKind::ReportWinner {
+                shard_auth_token: bcs::to_bytes(report_vote.auth_token())
+                    .map_err(|e| ShardError::SerializationError(e.to_string()))?,
+                shard_input_ref: report_vote.auth_token().shard_input_ref(),
+                signed_report: bcs::to_bytes(&report_vote.signed_report())
+                    .map_err(|e| ShardError::SerializationError(e.to_string()))?,
+                signature: bcs::to_bytes(agg)
+                    .map_err(|e| ShardError::SerializationError(e.to_string()))?,
+                signers: evaluators,
+            },
+            sender_address,
+            gas_objects,
+        );
+        
+        let signed_tx = wallet_context.sign_transaction(&tx_data).await;
+        
+        wallet_context
+            .execute_transaction_may_fail(signed_tx)
+            .await
+            .map_err(|e| {
+                error!("Report winner tx failed: {}", e);
+                ShardError::TransactionFailed(e.to_string())
+            })?;
+        
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -158,35 +206,7 @@ impl<E: EncoderInternalNetworkClient> Processor for ReportVoteProcessor<E> {
                     agg
                 );
 
-                if report_vote.signed_report().winning_submission().encoder() == &self.encoder_keypair.public() {
-                    let sender_address = {
-                        let mut wallet_context = self.wallet_context.write().await;
-                        wallet_context.active_address().unwrap()
-                    };
-                    
-                    let tx_data = TransactionData::new(
-                        TransactionKind::ReportWinner {
-                            shard_auth_token: bcs::to_bytes(report_vote.auth_token()).unwrap(),
-                            shard_input_ref: report_vote.auth_token().shard_input_ref(),
-                            signed_report: bcs::to_bytes(&report_vote.signed_report()).unwrap(),
-                            signature: bcs::to_bytes(&agg.clone()).unwrap(),
-                            signers: evaluators
-                        },
-                        sender_address,
-                        vec![], //gas_object // TODO: get gas object
-                    );
-
-                    let wallet_context = self.wallet_context.read().await;
-                    let signed_tx = wallet_context.sign_transaction(&tx_data).await;
-                    match wallet_context.execute_transaction_may_fail(signed_tx).await {
-                        Ok(response) => {
-                            info!("{:?}", response);
-                        }
-                        Err(err) => {
-                            error!("Report winner tx failed: {}", err);
-                        }
-                    }
-                }
+                self.submit_winner_transaction(&report_vote, &agg, evaluators).await?;
                 
 
                 self.clean_up_pipeline

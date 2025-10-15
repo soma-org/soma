@@ -3,6 +3,7 @@ use std::{
     num::NonZeroUsize,
     ops::Div,
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 
@@ -10,20 +11,30 @@ use crate::{
     base::SomaAddress,
     committee::{Committee, CommitteeWithNetworkMetadata},
     config::{node_config::NodeConfig, p2p_config::SeedPeer},
-    crypto::{get_key_pair_from_rng, NetworkPublicKey, PublicKey, SomaKeyPair},
+    consensus::stake_aggregator::StakeAggregator,
+    crypto::{
+        get_key_pair_from_rng, AuthorityPublicKeyBytes, AuthoritySignInfo,
+        AuthorityStrongQuorumSignInfo, NetworkPublicKey, PublicKey, SomaKeyPair,
+    },
     digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
+    error::{SomaError, SomaResult},
     genesis::{self, Genesis},
+    intent::Intent,
     multiaddr::Multiaddr,
     object::{self, Object, ObjectData, ObjectID, ObjectType, Owner, Version},
     peer_id::PeerId,
     system_state::{
         encoder::Encoder,
+        epoch_start::EpochStartSystemStateTrait,
         validator::{self, Validator},
-        SystemParameters, SystemState,
+        SystemParameters, SystemState, SystemStateTrait,
     },
     temporary_store::TemporaryStore,
-    transaction::{InputObjects, VerifiedTransaction},
+    transaction::{
+        CertifiedTransaction, InputObjects, SignedTransaction, Transaction, TransactionData,
+        VerifiedTransaction,
+    },
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
 use crate::{config::Config, shard_crypto::keys::EncoderKeyPair};
@@ -517,8 +528,39 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         objects.push(state_object);
 
-        let tx = VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
-        let digest = *tx.digest();
+        let committee = system_state.into_epoch_start_state().get_committee();
+        let unsigned_tx =
+            VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
+
+        // Collect all signatures directly
+        let mut signatures = Vec::new();
+        for validator in &consensus_configs {
+            let authority_name = AuthorityPublicKeyBytes::from(validator.key_pair.public());
+
+            let sig_info = AuthoritySignInfo::new(
+                committee.epoch(),
+                unsigned_tx.data(),
+                Intent::soma_transaction(),
+                authority_name,
+                &validator.key_pair,
+            );
+            signatures.push(sig_info);
+        }
+
+        // Create the quorum signature directly
+        let cert_sig =
+            AuthorityStrongQuorumSignInfo::new_from_auth_sign_infos(signatures, &committee)
+                .unwrap();
+
+        let certified_tx =
+            CertifiedTransaction::new_from_data_and_sig(unsigned_tx.into_data(), cert_sig);
+
+        // Verify the certificate
+        certified_tx
+            .verify_committee_sigs_only(&committee)
+            .expect("Genesis certificate should verify");
+
+        let digest = *certified_tx.digest();
 
         // Create the input objects map for TemporaryStore
         let input_objects = InputObjects::new(Vec::new());
@@ -548,8 +590,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             None,
         );
 
-        let genesis = Genesis::new(
-            tx.clone(),
+        let genesis = Genesis::new_with_certified_tx(
+            certified_tx.clone(),
             effects,
             inner.written.iter().map(|(_, o)| o.clone()).collect(),
         );

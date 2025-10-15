@@ -43,7 +43,7 @@ pub struct RpcConfig {
 
 impl RpcConfig {
     pub fn enable_indexing(&self) -> bool {
-        self.enable_indexing.unwrap_or(false)
+        self.enable_indexing.unwrap_or(true)
     }
 
     pub fn https_address(&self) -> SocketAddr {

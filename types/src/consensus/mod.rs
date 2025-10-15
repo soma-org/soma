@@ -120,7 +120,7 @@ impl Debug for ConsensusTransactionKey {
 
 impl ConsensusTransaction {
     pub fn new_certificate_message(
-        authority: &AuthorityName,
+        // authority: &AuthorityName,
         certificate: CertifiedTransaction,
     ) -> Self {
         Self {

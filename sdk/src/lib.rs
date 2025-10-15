@@ -1,6 +1,11 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use rpc::api::client::{AuthInterceptor, Client, Result, TransactionExecutionResponse};
+use rpc::{
+    api::client::{AuthInterceptor, Client, Result, TransactionExecutionResponse},
+    proto::soma::{
+        ledger_service_client::LedgerServiceClient, live_data_service_client::LiveDataServiceClient,
+    },
+};
 use types::transaction::Transaction;
 
 pub mod client_config;
@@ -107,5 +112,23 @@ impl SomaClient {
         transaction: &Transaction,
     ) -> Result<TransactionExecutionResponse> {
         self.inner.execute_transaction(transaction).await
+    }
+
+    /// Get the live data service client
+    pub fn live_data_client(
+        &self,
+    ) -> LiveDataServiceClient<
+        tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
+    > {
+        self.inner.live_data_client()
+    }
+
+    /// Get the ledger service client
+    pub fn ledger_client(
+        &self,
+    ) -> LedgerServiceClient<
+        tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
+    > {
+        self.inner.raw_client()
     }
 }

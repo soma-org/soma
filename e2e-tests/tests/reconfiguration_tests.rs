@@ -529,8 +529,10 @@ async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNo
     let address = handle.with(|node| node.get_config().soma_address());
 
     let gas_object = test_cluster
-        .get_gas_objects_owned_by_address(address, Some(1))
+        .wallet
+        .get_one_gas_object_owned_by_address(address)
         .await
+        .unwrap()
         .expect("Can't get gas object for address");
 
     let tx = handle.with(|node| {
@@ -543,7 +545,7 @@ async fn execute_remove_validator_tx(test_cluster: &TestCluster, handle: &SomaNo
                     .unwrap(),
                 }),
                 (&node.get_config().account_key_pair.keypair().public()).into(),
-                gas_object,
+                vec![gas_object],
             ),
             vec![node.get_config().account_key_pair.keypair()],
         )
@@ -568,11 +570,10 @@ async fn execute_add_validator_transactions(
     });
 
     let gas_object = test_cluster
-        .get_gas_objects_owned_by_address(
-            (&new_validator.account_key_pair.public()).into(),
-            Some(1),
-        )
+        .wallet
+        .get_one_gas_object_owned_by_address((&new_validator.account_key_pair.public()).into())
         .await
+        .unwrap()
         .expect("Can't get gas object for address");
 
     let tx = Transaction::from_data_and_signer(
@@ -590,7 +591,7 @@ async fn execute_add_validator_transactions(
                     .unwrap(),
             }),
             (&new_validator.account_key_pair.public()).into(),
-            gas_object,
+            vec![gas_object],
         ),
         vec![&new_validator.account_key_pair],
     );
@@ -633,19 +634,21 @@ async fn execute_add_stake_transaction(
     stake: u64,
 ) {
     let gas_object = test_cluster
-        .get_gas_objects_owned_by_address((&signer.public()).into(), Some(1))
+        .wallet
+        .get_one_gas_object_owned_by_address((&signer.public()).into())
         .await
+        .unwrap()
         .expect("Can't get gas object for address");
 
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
             TransactionKind::AddStake {
                 address: address,
-                coin_ref: gas_object[0],
+                coin_ref: gas_object,
                 amount: Some(stake),
             },
             (&signer.public()).into(),
-            gas_object,
+            vec![gas_object],
         ),
         vec![&signer],
     );
