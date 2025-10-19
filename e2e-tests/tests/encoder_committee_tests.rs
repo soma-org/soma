@@ -10,7 +10,7 @@ use types::metadata::{
     DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
 };
 use types::shard::{Shard, ShardAuthToken};
-use types::shard_crypto::{digest::Digest, keys::PeerPublicKey};
+use types::shard_crypto::digest::Digest;
 use types::{
     base::SomaAddress,
     config::encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},
@@ -167,7 +167,7 @@ async fn execute_embed_data_transaction(
     test_cluster: &mut TestCluster,
     address: SomaAddress,
     digest: Digest<MetadataCommitment>,
-    data_size_bytes: usize,
+    data_size_bytes: u64,
 ) -> Option<Shard> {
     // Get gas object for the transaction
     let gas_object = test_cluster
@@ -219,12 +219,13 @@ async fn execute_add_encoder_transaction(
                     &encoder_config.encoder_keypair.encoder_keypair().public(),
                 )
                 .unwrap(),
-                network_pubkey_bytes: bcs::to_bytes(&encoder_config.peer_public_key()).unwrap(),
+                network_pubkey_bytes: bcs::to_bytes(&encoder_config.network_public_key()).unwrap(),
                 external_network_address: bcs::to_bytes(&encoder_config.external_network_address)
                     .unwrap(),
                 internal_network_address: bcs::to_bytes(&encoder_config.internal_network_address)
                     .unwrap(),
-                object_server_address: bcs::to_bytes(&encoder_config.object_address).unwrap(),
+                object_server_address: bcs::to_bytes(&encoder_config.external_object_address)
+                    .unwrap(),
                 // probe_address: bcs::to_bytes(&encoder_config.probe_address).unwrap(),
             }),
             encoder_address,

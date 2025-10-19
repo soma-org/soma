@@ -1,12 +1,12 @@
 use crate::committee::Epoch;
+use crate::crypto::NetworkPublicKey;
 use crate::encoder_committee::CountUnit;
 use crate::entropy::{BlockEntropy, BlockEntropyProof};
 use crate::error::{ShardError, ShardResult, SharedError};
 use crate::finality::FinalityProof;
-use crate::metadata::MetadataCommitment;
-use crate::multiaddr::Multiaddr;
+use crate::metadata::{DownloadableMetadata, DownloadableMetadataAPI, MetadataCommitment};
 use crate::object::ObjectRef;
-use crate::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use crate::shard_crypto::keys::EncoderPublicKey;
 use crate::{error::SharedResult, shard_crypto::digest::Digest};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -142,23 +142,20 @@ pub enum Input {
 #[enum_dispatch]
 pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn tls_key(&self) -> &PeerPublicKey;
-    fn address(&self) -> &Multiaddr;
+    fn downloadable_metadata(&self) -> &DownloadableMetadata;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InputV1 {
     auth_token: ShardAuthToken,
-    tls_key: PeerPublicKey,
-    address: Multiaddr,
+    downloadable_metadata: DownloadableMetadata,
 }
 
 impl InputV1 {
-    pub fn new(auth_token: ShardAuthToken, tls_key: PeerPublicKey, address: Multiaddr) -> Self {
+    pub fn new(auth_token: ShardAuthToken, downloadable_metadata: DownloadableMetadata) -> Self {
         Self {
             auth_token,
-            tls_key,
-            address,
+            downloadable_metadata,
         }
     }
 }
@@ -167,16 +164,19 @@ impl InputAPI for InputV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn tls_key(&self) -> &PeerPublicKey {
-        &self.tls_key
-    }
-    fn address(&self) -> &Multiaddr {
-        &self.address
+    fn downloadable_metadata(&self) -> &DownloadableMetadata {
+        &self.downloadable_metadata
     }
 }
 
-pub fn verify_input(input: &Input, shard: &Shard, peer: &PeerPublicKey) -> SharedResult<()> {
-    if input.tls_key() != peer {
+pub fn verify_input(input: &Input, shard: &Shard, peer: &NetworkPublicKey) -> SharedResult<()> {
+    if let Some(input_peer) = input.downloadable_metadata().peer() {
+        if input_peer != *peer {
+            return Err(SharedError::FailedTypeVerification(
+                "sending peer must match tls key in input".to_string(),
+            ));
+        }
+    } else {
         return Err(SharedError::FailedTypeVerification(
             "sending peer must match tls key in input".to_string(),
         ));

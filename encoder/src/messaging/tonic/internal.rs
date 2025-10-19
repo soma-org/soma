@@ -22,12 +22,10 @@ use std::{
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{error, info, trace, warn};
+use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use types::error::{ShardError, ShardResult};
 use types::parameters::Parameters;
-use types::shard_crypto::{
-    keys::{PeerKeyPair, PeerPublicKey},
-    verified::Verified,
-};
+use types::shard_crypto::verified::Verified;
 use types::shard_networking::EncoderNetworkingInfo;
 use types::{multiaddr::Multiaddr, p2p::to_socket_addr, shard_networking::CERTIFICATE_NAME};
 
@@ -36,7 +34,7 @@ use types::shard_networking::channel_pool::{Channel, ChannelPool};
 // Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderInternalTonicClient {
     networking_info: EncoderNetworkingInfo,
-    own_peer_keypair: PeerKeyPair,
+    own_peer_keypair: NetworkKeyPair,
     parameters: Arc<Parameters>,
     channel_pool: Arc<ChannelPool>,
 }
@@ -46,7 +44,7 @@ impl EncoderInternalTonicClient {
     /// Creates a new encoder tonic client and establishes an arc'd channel pool
     pub(crate) fn new(
         networking_info: EncoderNetworkingInfo,
-        own_peer_keypair: PeerKeyPair,
+        own_peer_keypair: NetworkKeyPair,
         parameters: Arc<Parameters>,
         capacity: usize,
     ) -> Self {
@@ -280,7 +278,7 @@ impl<S: EncoderInternalNetworkService> EncoderInternalTonicService
 /// the oneshot tokio channel to trigger service shutdown.
 pub struct EncoderInternalTonicManager {
     parameters: Arc<Parameters>,
-    peer_keypair: PeerKeyPair,
+    peer_keypair: NetworkKeyPair,
     address: Multiaddr,
     allower: AllowPublicKeys,
     networking_info: EncoderNetworkingInfo,
@@ -295,7 +293,7 @@ impl EncoderInternalTonicManager {
     pub fn new(
         networking_info: EncoderNetworkingInfo,
         parameters: Arc<Parameters>,
-        peer_keypair: PeerKeyPair,
+        peer_keypair: NetworkKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
     ) -> Self {
@@ -325,7 +323,7 @@ impl<S: EncoderInternalNetworkService> EncoderInternalNetworkManager<S>
     fn new(
         networking_info: EncoderNetworkingInfo,
         parameters: Arc<Parameters>,
-        peer_keypair: PeerKeyPair,
+        peer_keypair: NetworkKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
     ) -> Self {
@@ -466,7 +464,7 @@ fn encoder_info_from_certs(
             e
         })
         .ok()?;
-    let client_public_key = PeerPublicKey::new(public_key);
+    let client_public_key = NetworkPublicKey::new(public_key);
     let Some(peer) = networking_info.tls_to_encoder(&client_public_key) else {
         error!("Failed to find the authority with public key {client_public_key:?}");
         return None;

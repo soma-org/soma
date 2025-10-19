@@ -7,15 +7,11 @@ use intelligence::evaluation::messaging::tonic::{EvaluationTonicClient, Evaluati
 use intelligence::evaluation::messaging::EvaluationManager;
 use intelligence::inference::mock_client::MockInferenceClient;
 use objects::networking::downloader::Downloader;
-use objects::networking::proxy::LocalObjectServerManager;
-use objects::{
-    networking::{
-        http_network::{ObjectHttpClient, ObjectHttpManager},
-        ObjectNetworkManager, ObjectNetworkService,
-    },
-    storage::{filesystem::FilesystemObjectStorage, memory::MemoryObjectStore},
-};
-use sdk::client_config::{encoder_config_to_client_config, SomaClientConfig, SomaEnv};
+use objects::networking::external_service::{ExternalClientPool, ExternalObjectServiceManager};
+use objects::networking::internal_service::InternalObjectServiceManager;
+use objects::networking::{ObjectClient, ObjectService, ObjectServiceManager};
+use objects::storage::memory::MemoryObjectStore;
+use sdk::client_config::{SomaClientConfig, SomaEnv};
 use sdk::wallet_context::WalletContext;
 use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
 use soma_tls::AllowPublicKeys;
@@ -24,8 +20,9 @@ use tracing::{error, info, warn};
 use types::actors::ActorManager;
 use types::base::SomaAddress;
 use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
+use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use types::multiaddr::Multiaddr;
-use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair};
+use types::shard_crypto::keys::EncoderPublicKey;
 use types::{
     config::{encoder_config::EncoderConfig, Config},
     system_state::SystemStateTrait,
@@ -67,80 +64,34 @@ use msim::task::NodeId;
 #[cfg(msim)]
 use simulator::SimState;
 
-// pub struct Encoder(EncoderNode<ActorInternalPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager>);
-
-// impl Encoder {
-//     pub async fn start(
-//         context: Arc<Context>,
-//         network_keypair: NetworkKeyPair,
-//         protocol_keypair: ProtocolKeyPair,
-//         project_root: &Path,
-//         entry_point: &Path,
-//     ) -> Self {
-//         let encoder_node: EncoderNode<ActorInternalPipelineDispatcher<EncoderTonicClient, PythonModule, FilesystemObjectStorage, ObjectHttpClient>, EncoderTonicManager> =
-//             EncoderNode::start(
-//                 context,
-//                 network_keypair,
-//                 protocol_keypair,
-//                 project_root,
-//                 entry_point,
-//             )
-//             .await;
-//         Self(encoder_node)
-//     }
-//     pub async fn stop(self) {
-//         self.0.stop().await;
-//     }
-// }
-
 pub struct EncoderNode {
     config: EncoderConfig,
     internal_network_manager: EncoderInternalTonicManager,
     external_network_manager: EncoderExternalTonicManager,
-    object_network_manager: ObjectHttpManager<AllowPublicKeys>,
+    internal_object_service_manager: InternalObjectServiceManager,
+    external_object_service_manager: ExternalObjectServiceManager,
     evaluation_network_manager: EvaluationTonicManager,
-    downloader_manager: ActorManager<Downloader<ObjectHttpClient, MemoryObjectStore>>,
+    external_downloader_manager: ActorManager<Downloader<ExternalClientPool, MemoryObjectStore>>,
     clean_up_manager: ActorManager<CleanUpProcessor>,
     report_vote_manager: ActorManager<ReportVoteProcessor<EncoderInternalTonicClient>>,
     evaluation_manager: ActorManager<
-        EvaluationProcessor<
-            ObjectHttpClient,
-            EncoderInternalTonicClient,
-            MemoryObjectStore,
-            EvaluationTonicClient,
-        >,
+        EvaluationProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
     >,
     reveal_manager: ActorManager<
-        RevealProcessor<
-            ObjectHttpClient,
-            EncoderInternalTonicClient,
-            MemoryObjectStore,
-            EvaluationTonicClient,
-        >,
+        RevealProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
     >,
     commit_votes_manager: ActorManager<
-        CommitVotesProcessor<
-            ObjectHttpClient,
-            EncoderInternalTonicClient,
-            MemoryObjectStore,
-            EvaluationTonicClient,
-        >,
+        CommitVotesProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
     >,
     commit_manager: ActorManager<
-        CommitProcessor<
-            ObjectHttpClient,
-            EncoderInternalTonicClient,
-            MemoryObjectStore,
-            EvaluationTonicClient,
-        >,
+        CommitProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
     >,
     input_manager: ActorManager<
         InputProcessor<
             EncoderInternalTonicClient,
-            ObjectHttpClient,
-            MockInferenceClient<MemoryObjectStore>,
             MemoryObjectStore,
             EvaluationTonicClient,
+            MockInferenceClient<MemoryObjectStore>,
         >,
     >,
     store: Arc<dyn Store>,
@@ -156,7 +107,7 @@ pub struct EncoderNode {
 impl EncoderNode {
     pub async fn start(config: EncoderConfig, working_dir: PathBuf) -> Self {
         let encoder_keypair = config.encoder_keypair.encoder_keypair().clone();
-        let peer_keypair = PeerKeyPair::new(config.peer_keypair.keypair().inner().copy());
+        let network_keypair = NetworkKeyPair::new(config.network_keypair.keypair().inner().copy());
         let parameters = Arc::new(types::parameters::Parameters::default());
         let internal_address: Multiaddr = config
             .internal_network_address
@@ -168,13 +119,13 @@ impl EncoderNode {
             .to_string()
             .parse()
             .expect("Valid multiaddr");
-        let object_address: Multiaddr = config
-            .object_address
+        let internal_object_address: Multiaddr = config
+            .internal_object_address
             .to_string()
             .parse()
             .expect("Valid multiaddr");
-        let local_object_address: Multiaddr = config
-            .object_address
+        let external_object_address: Multiaddr = config
+            .external_object_address
             .to_string()
             .parse()
             .expect("Valid multiaddr");
@@ -184,13 +135,17 @@ impl EncoderNode {
             .parse()
             .expect("Valid multiaddr");
 
-        let (context, networking_info, allower) =
-            create_context_from_genesis(&config, encoder_keypair.public());
+        let (context, networking_info, allower) = create_context_from_genesis(
+            &config,
+            encoder_keypair.public(),
+            network_keypair.clone(),
+            internal_object_address.clone(),
+        );
 
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),
             parameters.clone(),
-            peer_keypair.clone(),
+            network_keypair.clone(),
             internal_address.clone(),
             allower.clone(),
         );
@@ -199,41 +154,35 @@ impl EncoderNode {
             EncoderInternalService<
                 InternalPipelineDispatcher<
                     EncoderInternalTonicClient,
-                    ObjectHttpClient,
-                    FilesystemObjectStorage,
+                    MemoryObjectStore,
                     EvaluationTonicClient,
                 >,
             >,
         >>::client(&internal_network_manager);
 
-        let object_storage = Arc::new(MemoryObjectStore::new_for_test());
-        let object_network_service: ObjectNetworkService<MemoryObjectStore> =
-            ObjectNetworkService::new(object_storage.clone());
+        let object_storage = Arc::new(MemoryObjectStore::new());
+        let object_service: ObjectService<MemoryObjectStore> =
+            ObjectService::new(object_storage.clone(), network_keypair.public());
 
-        let mut object_network_manager =
-            <ObjectHttpManager<AllowPublicKeys> as ObjectNetworkManager<
-                MemoryObjectStore,
-                AllowPublicKeys,
-            >>::new(
-                peer_keypair.clone(),
-                config.object_parameters.clone(),
-                allower.clone(),
-            )
-            .unwrap();
+        let mut external_object_service_manager = ExternalObjectServiceManager::new(
+            network_keypair.clone(),
+            config.object_parameters.clone(),
+            allower.clone(),
+        )
+        .unwrap();
 
-        object_network_manager
-            .start(&object_address, object_network_service.clone())
+        external_object_service_manager
+            .start(&external_object_address, object_service.clone())
             .await;
 
-        let object_client = <ObjectHttpManager<AllowPublicKeys> as ObjectNetworkManager<
-            MemoryObjectStore,
-            AllowPublicKeys,
-        >>::client(&object_network_manager);
+        let mut internal_object_service_manager = InternalObjectServiceManager::new(
+            network_keypair.clone(),
+            config.object_parameters.clone(),
+        )
+        .unwrap();
 
-        let mut local_object_server_manager = LocalObjectServerManager::new();
-
-        local_object_server_manager
-            .start(&local_object_address, object_network_service)
+        internal_object_service_manager
+            .start(&internal_object_address, object_service.clone())
             .await;
 
         ///////////////////////////
@@ -266,18 +215,20 @@ impl EncoderNode {
         let default_buffer = 100_usize;
         let default_concurrency = 100_usize;
 
-        let download_processor = Downloader::new(
+        let external_object_client: Arc<ObjectClient<ExternalClientPool>> =
+            <ExternalObjectServiceManager as ObjectServiceManager<MemoryObjectStore>>::client(
+                &external_object_service_manager,
+            );
+
+        let external_download_processor = Downloader::new(
             default_concurrency,
-            object_client.clone(),
+            external_object_client,
             object_storage.clone(),
         );
-        let downloader_manager = ActorManager::new(default_buffer, download_processor);
-        let downloader_handle = downloader_manager.handle();
+        let external_downloader_manager =
+            ActorManager::new(default_buffer, external_download_processor);
+        let external_downloader_handle = external_downloader_manager.handle();
 
-        // TODO: Remove - VDF handle is created in ShardVerifier
-        // let vdf = EntropyVDF::new(1);
-        // let vdf_processor = VDFProcessor::new(vdf, 1);
-        // let vdf_handle = ActorManager::new(1, vdf_processor).handle();
         let store = Arc::new(MemStore::new());
 
         let broadcaster = Arc::new(Broadcaster::new(
@@ -302,7 +253,7 @@ impl EncoderNode {
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
-            downloader_handle.clone(),
+            external_downloader_handle.clone(),
             broadcaster.clone(),
             encoder_keypair.clone(),
             object_storage.clone(),
@@ -327,6 +278,7 @@ impl EncoderNode {
             broadcaster.clone(),
             encoder_keypair.clone(),
             reveal_handle.clone(),
+            context.clone(),
         );
         let commit_votes_manager = ActorManager::new(default_buffer, commit_votes_processor);
         let commit_votes_handle = commit_votes_manager.handle();
@@ -344,14 +296,14 @@ impl EncoderNode {
 
         let input_processor = InputProcessor::new(
             store.clone(),
-            downloader_handle.clone(),
+            external_downloader_handle.clone(),
             broadcaster.clone(),
             inference_client,
             evaluation_client,
             encoder_keypair.clone(),
             object_storage.clone(),
             commit_handle.clone(),
-            local_object_address,
+            internal_object_address,
             context.clone(),
         );
         let input_manager = ActorManager::new(default_buffer, input_processor);
@@ -377,7 +329,7 @@ impl EncoderNode {
         // Now create the external manager and service
         let mut external_network_manager = EncoderExternalTonicManager::new(
             parameters.clone(),
-            peer_keypair.clone(),
+            network_keypair.clone(),
             external_address.clone(),
             allower.clone(),
         );
@@ -431,13 +383,14 @@ impl EncoderNode {
             config,
             internal_network_manager,
             external_network_manager,
-            object_network_manager,
+            internal_object_service_manager,
+            external_object_service_manager,
             store,
             object_storage,
             context,
             evaluation_network_manager,
             committee_sync_manager,
-            downloader_manager,
+            external_downloader_manager,
             clean_up_manager,
             report_vote_manager,
             evaluation_manager,
@@ -456,7 +409,6 @@ impl EncoderNode {
             EncoderInternalService<
                 InternalPipelineDispatcher<
                     EncoderInternalTonicClient,
-                    ObjectHttpClient,
                     MemoryObjectStore,
                     EvaluationTonicClient,
                 >,
@@ -468,10 +420,9 @@ impl EncoderNode {
             EncoderExternalService<
                 ExternalPipelineDispatcher<
                     EncoderInternalTonicClient,
-                    ObjectHttpClient,
-                    MockInferenceClient<MemoryObjectStore>,
                     MemoryObjectStore,
                     EvaluationTonicClient,
+                    MockInferenceClient<MemoryObjectStore>,
                 >,
             >,
         >>::stop(&mut self.external_network_manager)
@@ -479,10 +430,13 @@ impl EncoderNode {
 
         self.committee_sync_manager.stop();
 
-        <ObjectHttpManager<AllowPublicKeys> as ObjectNetworkManager<
-            MemoryObjectStore,
-            AllowPublicKeys,
-        >>::stop(&mut self.object_network_manager)
+        <InternalObjectServiceManager as ObjectServiceManager<MemoryObjectStore>>::stop(
+            &mut self.internal_object_service_manager,
+        )
+        .await;
+        <ExternalObjectServiceManager as ObjectServiceManager<MemoryObjectStore>>::stop(
+            &mut self.external_object_service_manager,
+        )
         .await;
 
         // TODO: Replace mock with real service
@@ -491,7 +445,7 @@ impl EncoderNode {
         )
         .await;
 
-        self.downloader_manager.shutdown();
+        self.external_downloader_manager.shutdown();
         self.clean_up_manager.shutdown();
         self.report_vote_manager.shutdown();
         self.evaluation_manager.shutdown();
@@ -551,6 +505,8 @@ async fn init_wallet_context(
 fn create_context_from_genesis(
     config: &EncoderConfig,
     own_encoder_key: EncoderPublicKey,
+    own_network_keypair: NetworkKeyPair,
+    internal_object_service_address: Multiaddr,
 ) -> (Context, EncoderNetworkingInfo, AllowPublicKeys) {
     let networking_info = EncoderNetworkingInfo::default();
     let allower = AllowPublicKeys::default();
@@ -585,6 +541,8 @@ fn create_context_from_genesis(
         [committees.clone(), committees], // Same committee for current and previous in genesis
         0,                                // Genesis epoch
         own_encoder_key,
+        own_network_keypair,
+        internal_object_service_address,
     );
 
     // Update the NetworkingInfo

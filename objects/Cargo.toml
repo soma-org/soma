@@ -27,6 +27,9 @@ tracing-subscriber.workspace = true
 arc-swap.workspace = true
 types.workspace = true
 base64.workspace = true
+uuid.workspace = true
+futures.workspace = true
+bcs.workspace = true
 
 [dev-dependencies]
 rand.workspace = true

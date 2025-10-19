@@ -13,11 +13,12 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use soma_tls::AllowPublicKeys;
 use std::{sync::Arc, time::Duration};
+use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use types::error::ShardResult;
 use types::multiaddr::Multiaddr;
 use types::parameters::Parameters;
 use types::shard::Input;
-use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey};
+use types::shard_crypto::keys::EncoderPublicKey;
 use types::shard_crypto::verified::Verified;
 use types::shard_networking::EncoderNetworkingInfo;
 
@@ -92,7 +93,11 @@ pub(crate) trait EncoderInternalNetworkService: Send + Sync + Sized + 'static {
 
 #[async_trait]
 pub(crate) trait EncoderExternalNetworkService: Send + Sync + Sized + 'static {
-    async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()>;
+    async fn handle_send_input(
+        &self,
+        peer: &NetworkPublicKey,
+        input_bytes: Bytes,
+    ) -> ShardResult<()>;
 }
 
 /// `EncoderNetworkManager` handles starting and stopping the network related services
@@ -108,7 +113,7 @@ where
     fn new(
         networking_info: EncoderNetworkingInfo,
         parameters: Arc<Parameters>,
-        peer_keypair: PeerKeyPair,
+        peer_keypair: NetworkKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
     ) -> Self;
@@ -128,7 +133,7 @@ where
     /// The network keypair is used for TLS authentication.
     fn new(
         parameters: Arc<Parameters>,
-        peer_keypair: PeerKeyPair,
+        peer_keypair: NetworkKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
     ) -> Self;

@@ -1,32 +1,28 @@
+use super::EvaluationService;
+use crate::evaluation::core::{pipeline::CoreProcessor, safetensor_buffer::SafetensorBuffer};
 use async_trait::async_trait;
-use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
+use bytes::Bytes;
+use objects::storage::ObjectStorage;
 use tokio_util::sync::CancellationToken;
+use types::error::{EvaluationError, EvaluationResult};
 use types::{
     actors::ActorHandle,
     evaluation::{EmbeddingDigest, EvaluationInput, EvaluationOutput, EvaluationOutputV1, ScoreV1},
     shard_crypto::digest::Digest,
 };
 
-use crate::evaluation::core::{pipeline::CoreProcessor, safetensor_buffer::SafetensorBuffer};
-
-use super::EvaluationService;
-use bytes::Bytes;
-use types::error::{EvaluationError, EvaluationResult};
-
-pub struct Evaluator<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> {
-    core_processor: ActorHandle<CoreProcessor<O, S>>,
+pub struct Evaluator<S: ObjectStorage + SafetensorBuffer> {
+    core_processor: ActorHandle<CoreProcessor<S>>,
 }
 
-impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> Evaluator<O, S> {
-    pub fn new(core_processor: ActorHandle<CoreProcessor<O, S>>) -> Self {
+impl<S: ObjectStorage + SafetensorBuffer> Evaluator<S> {
+    pub fn new(core_processor: ActorHandle<CoreProcessor<S>>) -> Self {
         Self { core_processor }
     }
 }
 
 #[async_trait]
-impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> EvaluationService
-    for Evaluator<O, S>
-{
+impl<S: ObjectStorage + SafetensorBuffer> EvaluationService for Evaluator<S> {
     async fn handle_evaluation(&self, input_bytes: Bytes) -> EvaluationResult<Bytes> {
         let evaluation_input: EvaluationInput =
             bcs::from_bytes(&input_bytes).map_err(EvaluationError::MalformedType)?;

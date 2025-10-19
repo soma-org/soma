@@ -1,7 +1,8 @@
 use crate::base::SomaAddress;
 use crate::config::{PersistedConfig, SOMA_KEYSTORE_FILENAME};
-use crate::parameters::{Http2Parameters, TonicParameters};
-use crate::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey};
+use crate::crypto::{NetworkKeyPair, NetworkPublicKey};
+use crate::parameters::{HttpParameters, TonicParameters};
+use crate::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey};
 use crate::{
     crypto::{get_key_pair_from_rng, EncodeDecodeBase64, SomaKeyPair},
     genesis::Genesis,
@@ -35,19 +36,19 @@ pub struct EncoderConfig {
     /// Keys for the encoder protocol
     pub encoder_keypair: EncoderKeyPairWithPath,
     /// Keys for network peer identification
-    pub peer_keypair: KeyPairWithPath,
+    pub network_keypair: KeyPairWithPath,
     pub internal_network_address: Multiaddr,
     pub external_network_address: Multiaddr,
-    /// The network address for object storage
-    pub object_address: Multiaddr,
     /// The network address for the unencrypted object storage
-    pub local_object_address: Multiaddr,
+    pub internal_object_address: Multiaddr,
+    /// The network address for object storage
+    pub external_object_address: Multiaddr,
     /// The network address for evaluation service
     pub evaluation_address: Multiaddr,
     /// Parameters for the encoder system
     // TODO: pub parameters: Arc<Parameters>,
     /// Parameters for the object system
-    pub object_parameters: Arc<Http2Parameters>,
+    pub object_parameters: Arc<HttpParameters>,
     /// Parameters for the evaluation system
     pub evaluation_parameters: Arc<TonicParameters>,
     /// Path to the project root for Python interpreter
@@ -71,11 +72,11 @@ impl EncoderConfig {
     pub fn new(
         soma_keypair: SomaKeyPair,
         encoder_keypair: EncoderKeyPair,
-        peer_keypair: PeerKeyPair,
+        network_keypair: NetworkKeyPair,
         internal_network_address: Multiaddr,
         external_network_address: Multiaddr,
-        object_address: Multiaddr,
-        local_object_address: Multiaddr,
+        internal_object_address: Multiaddr,
+        external_object_address: Multiaddr,
         evaluation_address: Multiaddr,
         rpc_address: SocketAddr,
         project_root: PathBuf,
@@ -85,17 +86,19 @@ impl EncoderConfig {
     ) -> Self {
         // Create default parameters
         // TODO: let parameters = Arc::new(Parameters::default());
-        let object_parameters = Arc::new(Http2Parameters::default());
+        let object_parameters = Arc::new(HttpParameters::default());
         let evaluation_parameters = Arc::new(TonicParameters::default());
 
         Self {
             account_keypair: KeyPairWithPath::new(soma_keypair),
             encoder_keypair: EncoderKeyPairWithPath::new(encoder_keypair),
-            peer_keypair: KeyPairWithPath::new(SomaKeyPair::Ed25519(peer_keypair.inner().copy())),
+            network_keypair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
+                network_keypair.into_inner().copy(),
+            )),
             internal_network_address,
             external_network_address,
-            object_address,
-            local_object_address,
+            internal_object_address,
+            external_object_address,
             evaluation_address,
             // parameters,
             object_parameters,
@@ -117,8 +120,15 @@ impl EncoderConfig {
         self.encoder_keypair.encoder_keypair()
     }
 
-    pub fn peer_public_key(&self) -> PeerPublicKey {
-        PeerPublicKey::new(self.peer_keypair.keypair().inner().copy().public().clone())
+    pub fn network_public_key(&self) -> NetworkPublicKey {
+        NetworkPublicKey::new(
+            self.network_keypair
+                .keypair()
+                .inner()
+                .copy()
+                .public()
+                .clone(),
+        )
     }
 
     /// Sets the epoch duration in milliseconds
@@ -245,7 +255,7 @@ pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Res
 pub struct EncoderGenesisConfig {
     pub encoder_key_pair: EncoderKeyPair,
     pub account_key_pair: SomaKeyPair,
-    pub peer_key_pair: PeerKeyPair,
+    pub network_key_pair: NetworkKeyPair,
     pub internal_network_address: Multiaddr,
     pub external_network_address: Multiaddr,
     pub object_address: Multiaddr,
@@ -261,7 +271,7 @@ pub struct EncoderGenesisConfig {
 pub struct EncoderGenesisConfigBuilder {
     encoder_key_pair: Option<EncoderKeyPair>,
     account_key_pair: Option<SomaKeyPair>,
-    peer_key_pair: Option<PeerKeyPair>,
+    network_key_pair: Option<NetworkKeyPair>,
     ip: Option<String>,
     port_offset: Option<u16>,
     stake: Option<u64>,
@@ -282,8 +292,8 @@ impl EncoderGenesisConfigBuilder {
         self
     }
 
-    pub fn with_peer_key_pair(mut self, key_pair: PeerKeyPair) -> Self {
-        self.peer_key_pair = Some(key_pair);
+    pub fn with_network_key_pair(mut self, key_pair: NetworkKeyPair) -> Self {
+        self.network_key_pair = Some(key_pair);
         self
     }
 
@@ -315,9 +325,9 @@ impl EncoderGenesisConfigBuilder {
             .account_key_pair
             .unwrap_or_else(|| SomaKeyPair::Ed25519(get_key_pair_from_rng(rng).1));
 
-        let peer_key_pair = self
-            .peer_key_pair
-            .unwrap_or_else(|| PeerKeyPair::new(get_key_pair_from_rng(rng).1));
+        let network_key_pair = self
+            .network_key_pair
+            .unwrap_or_else(|| NetworkKeyPair::new(get_key_pair_from_rng(rng).1));
 
         // Generate network addresses
         let (
@@ -347,7 +357,7 @@ impl EncoderGenesisConfigBuilder {
         EncoderGenesisConfig {
             encoder_key_pair,
             account_key_pair,
-            peer_key_pair,
+            network_key_pair,
             internal_network_address,
             external_network_address,
             object_address,

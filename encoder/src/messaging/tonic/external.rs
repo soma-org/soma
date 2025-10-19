@@ -7,8 +7,12 @@ use std::{
 };
 use tonic::{codec::CompressionEncoding, Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
-use types::shard_crypto::keys::{PeerKeyPair, PeerPublicKey};
-use types::{multiaddr::Multiaddr, p2p::to_socket_addr, shard_networking::CERTIFICATE_NAME};
+use types::{
+    crypto::{NetworkKeyPair, NetworkPublicKey},
+    multiaddr::Multiaddr,
+    p2p::to_socket_addr,
+    shard_networking::CERTIFICATE_NAME,
+};
 
 use crate::messaging::{EncoderExternalNetworkManager, EncoderExternalNetworkService};
 use tracing::{info, trace, warn};
@@ -38,7 +42,7 @@ impl<S: EncoderExternalNetworkService> EncoderExternalTonicServiceProxy<S> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct PeerInfo {
-    pub(crate) peer: PeerPublicKey,
+    pub(crate) peer: NetworkPublicKey,
 }
 
 #[async_trait]
@@ -71,7 +75,7 @@ impl<S: EncoderExternalNetworkService> EncoderExternalTonicService
 /// the oneshot tokio channel to trigger service shutdown.
 pub struct EncoderExternalTonicManager {
     parameters: Arc<Parameters>,
-    peer_keypair: PeerKeyPair,
+    peer_keypair: NetworkKeyPair,
     address: Multiaddr,
     allower: AllowPublicKeys,
     server: Option<ServerHandle>,
@@ -83,7 +87,7 @@ impl EncoderExternalTonicManager {
     /// Takes context, and network keypair and creates a new encoder tonic client
     pub fn new(
         parameters: Arc<Parameters>,
-        peer_keypair: PeerKeyPair,
+        peer_keypair: NetworkKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
     ) -> Self {
@@ -102,7 +106,7 @@ impl<S: EncoderExternalNetworkService> EncoderExternalNetworkManager<S>
 {
     fn new(
         parameters: Arc<Parameters>,
-        peer_keypair: PeerKeyPair,
+        peer_keypair: NetworkKeyPair,
         address: Multiaddr,
         allower: AllowPublicKeys,
     ) -> Self {
@@ -223,6 +227,6 @@ fn peer_info_from_certs(peer_certificates: &soma_http::PeerCertificates) -> Opti
             e
         })
         .ok()?;
-    let peer = PeerPublicKey::new(public_key);
+    let peer = NetworkPublicKey::new(public_key);
     Some(PeerInfo { peer })
 }

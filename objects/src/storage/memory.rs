@@ -1,144 +1,159 @@
-use std::{
-    collections::HashMap,
-    io::Cursor,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-};
-
+use super::{ObjectResult, ObjectStorage};
+use crate::storage::memory_file::MemoryFile;
 use async_trait::async_trait;
 use bytes::Bytes;
-use parking_lot::RwLock;
-use tokio::io::{AsyncWrite, BufReader};
+use std::{collections::HashMap, sync::Arc};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
+use tokio::sync::RwLock;
+use types::error::ObjectError;
+use types::metadata::ObjectPath;
 
-use types::error::{ObjectError, ObjectResult};
-
-use super::{ObjectPath, ObjectStorage};
-
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct MemoryObjectStore {
-    pub store: Arc<RwLock<HashMap<ObjectPath, Bytes>>>,
+    // The store now holds MemoryFile instances, which perfectly mimic Tokio Files.
+    pub store: Arc<RwLock<HashMap<ObjectPath, MemoryFile>>>,
 }
 
 impl MemoryObjectStore {
-    pub fn new_for_test() -> Self {
-        Self {
-            store: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-}
-
-pub struct MemoryObjectWriter {
-    store: Arc<RwLock<HashMap<ObjectPath, Bytes>>>,
-    path: ObjectPath,
-    buffer: Vec<u8>,
-    committed: bool,
-}
-
-impl MemoryObjectWriter {
-    fn new(store: Arc<RwLock<HashMap<ObjectPath, Bytes>>>, path: ObjectPath) -> Self {
-        Self {
-            store,
-            path,
-            buffer: Vec::new(),
-            committed: false,
-        }
-    }
-
-    fn commit(&mut self) {
-        if !self.committed {
-            let data = std::mem::take(&mut self.buffer);
-            self.store
-                .write()
-                .insert(self.path.clone(), Bytes::from(data));
-            self.committed = true;
-        }
-    }
-}
-
-impl AsyncWrite for MemoryObjectWriter {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<std::io::Result<usize>> {
-        self.buffer.extend_from_slice(buf);
-        Poll::Ready(Ok(buf.len()))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        self.commit();
-        Poll::Ready(Ok(()))
-    }
-}
-
-impl Drop for MemoryObjectWriter {
-    fn drop(&mut self) {
-        self.commit();
+    /// Creates a new, empty in-memory object store.
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
 #[async_trait]
 impl ObjectStorage for MemoryObjectStore {
-    type Reader = BufReader<Cursor<Bytes>>;
-    type Writer = MemoryObjectWriter;
+    type Writer = MemoryFile;
+    type Reader = BufReader<MemoryFile>;
 
     async fn get_object_writer(&self, path: &ObjectPath) -> ObjectResult<Self::Writer> {
-        Ok(MemoryObjectWriter::new(self.store.clone(), path.clone()))
+        // Corrected: Await the write lock before using it.
+        let mut store_lock = self.store.write().await;
+        let file = store_lock
+            .entry(path.clone())
+            .or_insert_with(MemoryFile::default);
+        Ok(file.clone())
     }
 
+    /// Replaces the entire content of an object with the provided `Bytes`.
     async fn put_object(&self, path: &ObjectPath, contents: Bytes) -> ObjectResult<()> {
-        self.store.write().insert(path.clone(), contents);
+        let mut new_file = MemoryFile::default();
+        new_file
+            .write_all(&contents)
+            .await
+            .map_err(|e| ObjectError::Io(e.to_string(), path.to_string()))?;
+        self.store.write().await.insert(path.clone(), new_file);
         Ok(())
     }
 
+    /// Retrieves the full content of an object as `Bytes`.
     async fn get_object(&self, path: &ObjectPath) -> ObjectResult<Bytes> {
-        self.store
-            .read()
+        let mut file = self.stream_object(path).await?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .await
+            .map_err(|e| ObjectError::Io(e.to_string(), path.to_string()))?;
+        Ok(Bytes::from(buffer))
+    }
+
+    /// Removes an object from the store.
+    async fn delete_object(&self, path: &ObjectPath) -> ObjectResult<()> {
+        // Corrected: Await the write lock before calling remove.
+        self.store.write().await.remove(path);
+        Ok(())
+    }
+
+    /// Returns a readable and seekable stream for an object.
+    async fn stream_object(&self, path: &ObjectPath) -> ObjectResult<Self::Reader> {
+        // Corrected: Await the read lock before calling get.
+        let store_lock = self.store.read().await;
+        let file = store_lock
             .get(path)
             .cloned()
-            .ok_or_else(|| ObjectError::ObjectStorage("object not found".to_string()))
+            .ok_or_else(|| ObjectError::NotFound(path.to_string()))?;
+        // Reset the file cursor to the beginning for the new reader.
+        let mut handle = file.clone();
+        handle
+            .seek(std::io::SeekFrom::Start(0))
+            .await
+            .map_err(|e| ObjectError::Io(e.to_string(), path.to_string()))?;
+        Ok(BufReader::new(handle))
     }
 
-    async fn delete_object(&self, path: &ObjectPath) -> ObjectResult<()> {
-        self.store.write().remove(path);
-        Ok(())
-    }
-
-    async fn stream_object(&self, path: &ObjectPath) -> ObjectResult<Self::Reader> {
-        let bytes = self.get_object(path).await?;
-        Ok(BufReader::new(Cursor::new(bytes)))
-    }
-
+    /// Checks for the existence of an object.
     async fn exists(&self, path: &ObjectPath) -> ObjectResult<()> {
-        if self.store.read().contains_key(path) {
+        // Corrected: Await the read lock before calling contains_key.
+        if self.store.read().await.contains_key(path) {
             Ok(())
         } else {
-            Err(ObjectError::NotFound(path.path.clone()))
+            Err(ObjectError::NotFound(path.to_string()))
         }
     }
 }
 
+// ===== Tests =====
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use types::checksum::Checksum;
 
+    /// Tests the fundamental put, get, and delete operations.
     #[tokio::test]
-    async fn test_memory_storage() -> ObjectResult<()> {
-        let path = ObjectPath::new("test".to_string())?;
-        let contents = Bytes::from("test");
-        let store = MemoryObjectStore::new_for_test();
+    async fn test_basic_storage_operations() -> ObjectResult<()> {
+        let store = MemoryObjectStore::new();
+        let path = ObjectPath::Tmp(0, Checksum::default());
+        let contents = Bytes::from("hello, memory store!");
 
+        // 1. Put an object and verify its contents
         store.put_object(&path, contents.clone()).await?;
         let retrieved = store.get_object(&path).await?;
         assert_eq!(contents, retrieved);
-        store.delete_object(&path).await?;
 
+        // 2. Overwrite the object and verify again
+        let new_contents = Bytes::from("new data");
+        store.put_object(&path, new_contents.clone()).await?;
+        let retrieved_again = store.get_object(&path).await?;
+        assert_eq!(new_contents, retrieved_again);
+
+        // 3. Delete the object and confirm it's gone
+        store.delete_object(&path).await?;
         assert!(store.get_object(&path).await.is_err());
+        assert!(matches!(
+            store.exists(&path).await,
+            Err(ObjectError::NotFound(_))
+        ));
+
+        Ok(())
+    }
+
+    /// Tests the streaming writer and reader functionality.
+    #[tokio::test]
+    async fn test_streaming_write_and_read() -> ObjectResult<()> {
+        let store = MemoryObjectStore::new();
+        let path = ObjectPath::Tmp(0, Checksum::default());
+
+        // Get a writer and write data in chunks
+        let mut writer = store.get_object_writer(&path).await?;
+        writer.write_all(b"part 1, ").await.unwrap();
+        writer.write_all(b"part 2.").await.unwrap();
+        // The writer (MemoryFile) automatically handles flushing on drop or shutdown.
+
+        // Get a reader and read back the content
+        let mut reader = store.stream_object(&path).await?;
+        let mut buffer = String::new();
+        reader.read_to_string(&mut buffer).await.unwrap();
+
+        assert_eq!(buffer, "part 1, part 2.");
+
+        // Test seeking within the reader
+        reader
+            .seek(std::io::SeekFrom::Start("part 1, ".len() as u64))
+            .await
+            .unwrap();
+        let mut part2_buffer = String::new();
+        reader.read_to_string(&mut part2_buffer).await.unwrap();
+        assert_eq!(part2_buffer, "part 2.");
 
         Ok(())
     }

@@ -1501,18 +1501,14 @@ impl<S: SomaSignatureInner + Sized> SomaSignature for S {
     }
 }
 
-/// Network key is used for TLS and as the network identity of the authority.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct NetworkPublicKey(ed25519::Ed25519PublicKey);
 pub struct NetworkPrivateKey(ed25519::Ed25519PrivateKey);
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct NetworkKeyPair(ed25519::Ed25519KeyPair);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkSignature(ed25519::Ed25519Signature);
 
-impl NetworkKeyPair {
-    pub fn into_inner(self) -> ed25519::Ed25519KeyPair {
-        self.0
-    }
-}
+#[derive(Serialize, Debug, Deserialize)]
+pub struct NetworkKeyPair(ed25519::Ed25519KeyPair);
 
 impl NetworkPublicKey {
     pub fn new(key: ed25519::Ed25519PublicKey) -> Self {
@@ -1525,6 +1521,9 @@ impl NetworkPublicKey {
 
     pub fn to_bytes(&self) -> [u8; 32] {
         self.0 .0.to_bytes()
+    }
+    pub fn verify(&self, msg: &[u8], signature: &NetworkSignature) -> Result<(), FastCryptoError> {
+        self.0.verify(msg, &signature.0)
     }
 }
 
@@ -1553,6 +1552,13 @@ impl NetworkKeyPair {
 
     pub fn private_key_bytes(self) -> [u8; 32] {
         self.0.private().0.to_bytes()
+    }
+    pub fn into_inner(self) -> ed25519::Ed25519KeyPair {
+        self.0
+    }
+
+    pub fn sign(&self, msg: &[u8]) -> NetworkSignature {
+        NetworkSignature(self.0.sign(msg))
     }
 }
 

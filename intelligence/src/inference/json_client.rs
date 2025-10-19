@@ -6,7 +6,7 @@ use types::{
     checksum::Checksum,
     error::{IntelligenceError, IntelligenceResult},
     evaluation::{ProbeSet, ProbeSetV1, ProbeWeightV1},
-    metadata::{Metadata, MetadataAPI, MetadataV1},
+    metadata::{Metadata, MetadataAPI, MetadataV1, ObjectPath},
     shard_crypto::keys::EncoderPublicKey,
 };
 
@@ -38,14 +38,14 @@ struct JsonCallRequest {
     download_url: String,
     upload_url: String,
     checksum: Checksum,
-    size: usize,
+    size: u64,
     epoch: u64,
 }
 
 #[derive(Deserialize)]
 struct JsonCallResponse {
     checksum: Checksum,
-    size: usize,
+    size: u64,
     probe_set: Vec<JsonProbeWeight>,
 }
 
@@ -107,7 +107,10 @@ impl InferenceClient for JSONClient {
             .collect();
 
         Ok(InferenceOutput::V1(InferenceOutputV1::new(
-            Metadata::V1(MetadataV1::new(response_data.checksum, response_data.size)),
+            Metadata::V1(MetadataV1::new(
+                ObjectPath::Tmp(input.epoch(), response_data.checksum),
+                response_data.size,
+            )),
             ProbeSet::V1(ProbeSetV1::new(probe_weights)),
         )))
     }

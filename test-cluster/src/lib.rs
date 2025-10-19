@@ -32,14 +32,14 @@ use types::{
         p2p_config::SeedPeer,
         Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
     },
-    crypto::SomaKeyPair,
+    crypto::{NetworkKeyPair, SomaKeyPair},
     effects::TransactionEffects,
     error::SomaResult,
     genesis::Genesis,
     object::ObjectRef,
     peer_id::PeerId,
     shard::{Shard, ShardAuthToken},
-    shard_crypto::keys::{EncoderKeyPair, PeerKeyPair},
+    shard_crypto::keys::EncoderKeyPair,
     system_state::{SystemState, SystemStateTrait},
     transaction::{Transaction, TransactionData},
 };
@@ -377,7 +377,7 @@ impl TestCluster {
         &self,
         encoder_keypair: EncoderKeyPair,
         account_keypair: SomaKeyPair,
-        peer_keypair: PeerKeyPair,
+        network_keypair: NetworkKeyPair,
     ) -> EncoderConfig {
         // Get a unique IP for this encoder
         let ip = local_ip_utils::get_new_ip();
@@ -411,7 +411,7 @@ impl TestCluster {
         let mut config = EncoderConfig::new(
             account_keypair,
             encoder_keypair,
-            peer_keypair,
+            network_keypair,
             internal_network_address,
             external_network_address,
             object_address,

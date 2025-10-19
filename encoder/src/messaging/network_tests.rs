@@ -22,14 +22,14 @@ mod tests {
         collections::BTreeSet,
         net::{TcpListener, TcpStream},
     };
-    use types::multiaddr::Multiaddr;
     use types::parameters::TonicParameters;
     use types::shard::ShardAuthToken;
+    use types::{crypto::NetworkPublicKey, multiaddr::Multiaddr};
     use types::{
         error::ShardResult,
         metadata::Metadata,
         shard_crypto::{
-            keys::{EncoderKeyPair, EncoderPublicKey, PeerKeyPair, PeerPublicKey},
+            keys::{EncoderKeyPair, EncoderPublicKey},
             scope::Scope,
             signed::Signed,
             verified::Verified,
@@ -120,7 +120,7 @@ mod tests {
     }
 
     struct MockExternalService {
-        pub handle_send_inputs: RwLock<Vec<(PeerPublicKey, Bytes)>>,
+        pub handle_send_inputs: RwLock<Vec<(NetworkPublicKey, Bytes)>>,
     }
 
     impl MockExternalService {
@@ -135,7 +135,7 @@ mod tests {
     impl EncoderExternalNetworkService for MockExternalService {
         async fn handle_send_input(
             &self,
-            peer: &PeerPublicKey,
+            peer: &NetworkPublicKey,
             input_bytes: Bytes,
         ) -> ShardResult<()> {
             self.handle_send_inputs

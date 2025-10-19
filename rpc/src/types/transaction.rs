@@ -120,7 +120,7 @@ pub enum TransactionKind {
     // Shard operations
     EmbedData {
         digest: Vec<u8>,
-        data_size_bytes: usize,
+        data_size_bytes: u64,
         coin_ref: ObjectReference,
     },
     ClaimEscrow {

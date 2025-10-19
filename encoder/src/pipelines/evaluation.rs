@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
 use intelligence::evaluation::messaging::EvaluationClient;
 use objects::{
-    networking::{downloader::Downloader, ObjectNetworkClient},
+    networking::{downloader::Downloader, external_service::ExternalClientPool},
     storage::ObjectStorage,
 };
 use tokio_util::sync::CancellationToken;
@@ -43,36 +43,31 @@ use types::{shard::ShardAuthToken, submission::Submission};
 use super::report_vote::ReportVoteProcessor;
 
 pub(crate) struct EvaluationProcessor<
-    O: ObjectNetworkClient,
-    E: EncoderInternalNetworkClient,
+    C: EncoderInternalNetworkClient,
     S: ObjectStorage,
-    P: EvaluationClient,
+    E: EvaluationClient,
 > {
     store: Arc<dyn Store>,
-    downloader: ActorHandle<Downloader<O, S>>,
-    broadcaster: Arc<Broadcaster<E>>,
+    downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
+    broadcaster: Arc<Broadcaster<C>>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: Arc<S>,
-    report_vote_pipeline: ActorHandle<ReportVoteProcessor<E>>,
-    evaluation_client: Arc<P>,
+    report_vote_pipeline: ActorHandle<ReportVoteProcessor<C>>,
+    evaluation_client: Arc<E>,
     context: Context,
 }
 
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > EvaluationProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
+    EvaluationProcessor<C, S, E>
 {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        downloader: ActorHandle<Downloader<O, S>>,
-        broadcaster: Arc<Broadcaster<E>>,
+        downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
+        broadcaster: Arc<Broadcaster<C>>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: Arc<S>,
-        report_vote_pipeline: ActorHandle<ReportVoteProcessor<E>>,
-        evaluation_client: Arc<P>,
+        report_vote_pipeline: ActorHandle<ReportVoteProcessor<C>>,
+        evaluation_client: Arc<E>,
         context: Context,
     ) -> Self {
         Self {
@@ -89,12 +84,8 @@ impl<
 }
 
 #[async_trait]
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > Processor for EvaluationProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Processor
+    for EvaluationProcessor<C, S, E>
 {
     type Input = (ShardAuthToken, Shard);
     type Output = ();
@@ -113,24 +104,24 @@ impl<
                     .map(|(encoder, digest)| (encoder, digest))
                     .collect();
 
-            let mut valid_submissions: Vec<Submission> = all_submissions
+            let mut valid_submissions: Vec<(Submission, DownloadableMetadata)> = all_submissions
                 .into_iter()
-                .filter_map(|(submission, _instant)| {
+                .filter_map(|(submission, _instant, downloadable_metadata)| {
                     accepted_lookup
                         .get(submission.encoder())
                         .filter(|accepted_digest| {
                             **accepted_digest == Digest::new(&submission).unwrap()
                         })
-                        .map(|_| submission)
+                        .map(|_| (submission, downloadable_metadata))
                 })
                 .collect();
 
             // TODO: ANY ACCEPTED COMMITS THAT DO NOT REVEAL SHOULD BE TALLIED
 
             valid_submissions.sort_by(|a, b| {
-                a.score()
+                a.0.score()
                     .value()
-                    .partial_cmp(&b.score().value())
+                    .partial_cmp(&b.0.score().value())
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
@@ -190,64 +181,52 @@ impl<
     fn shutdown(&mut self) {}
 }
 
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > EvaluationProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
+    EvaluationProcessor<C, S, E>
 {
     async fn process_submissions(
         &self,
         epoch: Epoch,
-        submissions: Vec<Submission>,
+        submissions: Vec<(Submission, DownloadableMetadata)>,
         data_metadata: Metadata,
         context: &Context,
         cancellation: CancellationToken,
     ) -> ShardResult<Submission> {
-        for submission in submissions {
+        for (submission, downloadable_metadata) in submissions {
             let result: ShardResult<()> = {
                 if submission.encoder().inner() == self.context.own_encoder_key().inner() {
                     // skip early if your own representations
                     return Ok(submission);
                 }
+                self.downloader
+                    .process(downloadable_metadata, cancellation.clone())
+                    .await?;
+
                 let (peer, address) = context
                     .object_server(submission.encoder())
                     .ok_or(ShardError::MissingData)?;
-                // TODO: actually store things in object storage
-                if !cfg!(msim) {
+                for probe in submission.probe_set().probe_weights() {
+                    let probe_metadata = context.probe(epoch, probe.encoder())?;
                     let downloadable_metadata =
                         DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                            peer.clone(),
+                            Some(peer.clone()),
+                            None,
                             address.clone(),
-                            submission.metadata().clone(),
+                            probe_metadata,
                         ));
                     self.downloader
                         .process(downloadable_metadata, cancellation.clone())
                         .await?;
-
-                    for probe in submission.probe_set().probe_weights() {
-                        let probe_metadata = context.probe(epoch, probe.encoder())?;
-                        let downloadable_metadata =
-                            DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                                peer.clone(),
-                                address.clone(),
-                                probe_metadata,
-                            ));
-                        self.downloader
-                            .process(downloadable_metadata, cancellation.clone())
-                            .await?;
-                    }
-                    // TODO: IF DOWNLOADING FAILS, TALLY
                 }
+                // TODO: IF DOWNLOADING FAILS, TALLY
 
                 let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
                     data_metadata.clone(),
                     submission.metadata().clone(),
                     submission.probe_set().clone(),
-                    peer,
-                    address,
+                    context.internal_object_service_address(),
                 ));
+
                 let evaluation_timeout = Duration::from_secs(1);
 
                 // pass into the evaluation step

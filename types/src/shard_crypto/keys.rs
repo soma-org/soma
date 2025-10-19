@@ -14,66 +14,6 @@ use std::{
     str::FromStr,
 };
 
-/// Peer key is used for Peer and as the network identity of the authority.
-#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct PeerPublicKey(ed25519::Ed25519PublicKey);
-pub struct PeerPrivateKey(ed25519::Ed25519PrivateKey);
-
-#[derive(Serialize, Debug, Deserialize)]
-pub struct PeerKeyPair(ed25519::Ed25519KeyPair);
-
-impl PeerPublicKey {
-    pub fn new(key: ed25519::Ed25519PublicKey) -> Self {
-        Self(key)
-    }
-
-    pub fn into_inner(self) -> ed25519::Ed25519PublicKey {
-        self.0
-    }
-
-    pub fn to_bytes(&self) -> [u8; 32] {
-        self.0 .0.to_bytes()
-    }
-}
-
-impl PeerPrivateKey {
-    pub fn into_inner(self) -> ed25519::Ed25519PrivateKey {
-        self.0
-    }
-}
-
-impl PeerKeyPair {
-    pub fn new(keypair: ed25519::Ed25519KeyPair) -> Self {
-        Self(keypair)
-    }
-
-    pub fn generate<R: rand::Rng + fastcrypto::traits::AllowedRng>(rng: &mut R) -> Self {
-        Self(ed25519::Ed25519KeyPair::generate(rng))
-    }
-
-    pub fn public(&self) -> PeerPublicKey {
-        PeerPublicKey(self.0.public().clone())
-    }
-
-    pub fn private_key(self) -> PeerPrivateKey {
-        PeerPrivateKey(self.0.copy().private())
-    }
-
-    pub fn private_key_bytes(self) -> [u8; 32] {
-        self.0.private().0.to_bytes()
-    }
-
-    pub fn inner(&self) -> &Ed25519KeyPair {
-        &self.0
-    }
-}
-
-impl Clone for PeerKeyPair {
-    fn clone(&self) -> Self {
-        Self(self.0.copy())
-    }
-}
-
 /// A BLS public key wrapper for encoding operations
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct EncoderPublicKey(bls12381::min_sig::BLS12381PublicKey);

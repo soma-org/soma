@@ -1088,8 +1088,8 @@ pub enum SharedError {
     #[error("Failed building reqwest client")]
     FailedBuildingHttpClient,
 
-    #[error("Failed to parse URL: {0}")]
-    UrlParseError(String),
+    #[error("URL failed: {0}")]
+    UrlError(String),
 
     // #[error("Synchronizer for fetching blocks directly from {0} is saturated")]
     // SynchronizerSaturated(AuthorityIndex),
@@ -1429,6 +1429,10 @@ pub enum ObjectError {
     NotFound(String),
     #[error("Verification error: {0}")]
     VerificationError(String),
+    #[error("tus error: {0}")]
+    TusError(String),
+    #[error("Io error: {0}, {1}")]
+    Io(String, String),
 }
 pub type ObjectResult<T> = Result<T, ObjectError>;
 

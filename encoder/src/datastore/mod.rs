@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::types::commit_votes::CommitVotes;
 use crate::types::report_vote::ReportVote;
 use types::error::ShardResult;
+use types::metadata::DownloadableMetadata;
 use types::submission::Submission;
 use types::{
     shard::Shard,
@@ -73,15 +74,23 @@ pub trait Store: Send + Sync + 'static {
         shard: &Shard,
     ) -> ShardResult<Vec<(EncoderPublicKey, Digest<Submission>)>>;
 
-    fn add_submission(&self, shard: &Shard, submission: Submission) -> ShardResult<()>;
+    fn add_submission(
+        &self,
+        shard: &Shard,
+        submission: Submission,
+        downloadable_metadata: DownloadableMetadata,
+    ) -> ShardResult<()>;
 
     fn get_submission(
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(Submission, Instant)>;
+    ) -> ShardResult<(Submission, Instant, DownloadableMetadata)>;
 
-    fn get_all_submissions(&self, shard: &Shard) -> ShardResult<Vec<(Submission, Instant)>>;
+    fn get_all_submissions(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<(Submission, Instant, DownloadableMetadata)>>;
 
     fn add_report_vote(&self, shard: &Shard, report_vote: &Verified<ReportVote>)
         -> ShardResult<()>;

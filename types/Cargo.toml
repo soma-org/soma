@@ -45,6 +45,8 @@ arc-swap.workspace = true
 tonic-rustls.workspace = true
 http.workspace = true
 pin-project-lite.workspace = true
+serde_urlencoded.workspace = true
+url.workspace = true
 store.workspace = true
 serde_yaml = "0.8.26"
 serde_with = { version = "3.8", features = ["schemars_0_8"] }
@@ -56,35 +58,35 @@ serde-name = "0.2.1"
 enum_dispatch = "^0.3"
 roaring = "0.10.6"
 rustls = { version = "0.23.12", default-features = false, features = [
-    "std",
-    "tls12",
-    "ring",
+  "std",
+  "tls12",
+  "ring",
 ] }
 futures-util = { version = "0.3" }
 tokio-retry = "0.3"
 webpki = { version = "0.102", package = "rustls-webpki", features = [
-    "alloc",
-    "std",
+  "alloc",
+  "std",
 ] }
 x509-parser = "0.16.0"
 reqwest = { version = "0.12", default_features = false, features = [
-    "http2",
-    "json",
-    "rustls-tls",
+  "http2",
+  "json",
+  "rustls-tls",
 ] }
 axum = { version = "0.7.5", default-features = false, features = [
-    "tokio",
-    "http1",
-    "http2",
-    "json",
-    "matched-path",
-    "original-uri",
-    "form",
-    "query",
-    "ws",
+  "tokio",
+  "http1",
+  "http2",
+  "json",
+  "matched-path",
+  "original-uri",
+  "form",
+  "query",
+  "ws",
 ] }
 axum-server = { git = "https://github.com/bmwill/axum-server.git", rev = "f44323e271afdd1365fd0c8b0a4c0bbdf4956cb7", version = "0.6", default-features = false, features = [
-    "tls-rustls",
+  "tls-rustls",
 ] }
 rcgen = "0.13.1"
 tower-layer = "0.3.2"

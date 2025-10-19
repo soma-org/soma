@@ -241,30 +241,33 @@ impl Default for TonicParameters {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Http2Parameters {
+pub struct HttpParameters {
     /// Keepalive interval and timeouts for both client and server.
     ///
     /// If unspecified, this will default to 5s.
-    #[serde(default = "Http2Parameters::default_keepalive_interval")]
+    #[serde(default = "HttpParameters::default_keepalive_interval")]
     pub keepalive_interval: Duration,
 
     /// Set a timeout for only the connect phase of a `Client`.
     ///
     /// If unspecified, this will default to 5s.
-    #[serde(default = "Http2Parameters::default_connect_timeout")]
+    #[serde(default = "HttpParameters::default_connect_timeout")]
     pub connect_timeout: Duration,
 
     /// Size of various per-connection buffers.
     ///
     /// If unspecified, this will default to 32MiB.
-    #[serde(default = "Http2Parameters::default_connection_buffer_size")]
+    #[serde(default = "HttpParameters::default_connection_buffer_size")]
     pub connection_buffer_size: usize,
 
-    #[serde(default = "Http2Parameters::default_channel_pool_capacity")]
+    #[serde(default = "HttpParameters::default_channel_pool_capacity")]
     pub client_pool_capacity: usize,
+
+    #[serde(default = "HttpParameters::default_nanoseconds_per_byte")]
+    pub nanoseconds_per_byte: u64,
 }
 
-impl Http2Parameters {
+impl HttpParameters {
     fn default_keepalive_interval() -> Duration {
         Duration::from_secs(5)
     }
@@ -277,15 +280,19 @@ impl Http2Parameters {
     fn default_channel_pool_capacity() -> usize {
         1 << 8
     }
+    fn default_nanoseconds_per_byte() -> u64 {
+        50
+    }
 }
 
-impl Default for Http2Parameters {
+impl Default for HttpParameters {
     fn default() -> Self {
         Self {
-            keepalive_interval: Http2Parameters::default_keepalive_interval(),
-            connect_timeout: Http2Parameters::default_connect_timeout(),
-            connection_buffer_size: Http2Parameters::default_connection_buffer_size(),
-            client_pool_capacity: Http2Parameters::default_channel_pool_capacity(),
+            keepalive_interval: HttpParameters::default_keepalive_interval(),
+            connect_timeout: HttpParameters::default_connect_timeout(),
+            connection_buffer_size: HttpParameters::default_connection_buffer_size(),
+            client_pool_capacity: HttpParameters::default_channel_pool_capacity(),
+            nanoseconds_per_byte: HttpParameters::default_nanoseconds_per_byte(),
         }
     }
 }

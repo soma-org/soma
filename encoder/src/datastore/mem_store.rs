@@ -7,6 +7,7 @@ use std::{
 use types::{
     committee::Epoch,
     error::{ShardError, ShardResult},
+    metadata::DownloadableMetadata,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
@@ -37,7 +38,10 @@ pub(crate) struct Inner {
     shard_stage_dispatches: BTreeMap<(Epoch, Digest<Shard>, ShardStage), ()>,
 
     submission_digests: BTreeMap<(Epoch, Digest<Shard>, Encoder), (Digest<Submission>, Instant)>,
-    submissions: BTreeMap<(Epoch, Digest<Shard>, Digest<Submission>), (Submission, Instant)>,
+    submissions: BTreeMap<
+        (Epoch, Digest<Shard>, Digest<Submission>),
+        (Submission, Instant, DownloadableMetadata),
+    >,
 
     commit_votes: BTreeMap<(Epoch, Digest<Shard>, Encoder), CommitVotes>,
     accepted_commits: BTreeMap<(Epoch, Digest<Shard>, Encoder), Digest<Submission>>,
@@ -238,7 +242,12 @@ impl Store for MemStore {
         Ok(accepted_commits)
     }
 
-    fn add_submission(&self, shard: &Shard, submission: Submission) -> ShardResult<()> {
+    fn add_submission(
+        &self,
+        shard: &Shard,
+        submission: Submission,
+        downloadable_metadata: DownloadableMetadata,
+    ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = submission.shard_digest();
         let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
@@ -249,7 +258,9 @@ impl Store for MemStore {
         match guard.submissions.get(&key) {
             Some(_) => {}
             None => {
-                guard.submissions.insert(key, (submission, Instant::now()));
+                guard
+                    .submissions
+                    .insert(key, (submission, Instant::now(), downloadable_metadata));
             }
         };
         Ok(())
@@ -259,7 +270,7 @@ impl Store for MemStore {
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(Submission, Instant)> {
+    ) -> ShardResult<(Submission, Instant, DownloadableMetadata)> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest, submission_digest);
@@ -271,7 +282,10 @@ impl Store for MemStore {
         }
     }
 
-    fn get_all_submissions(&self, shard: &Shard) -> ShardResult<Vec<(Submission, Instant)>> {
+    fn get_all_submissions(
+        &self,
+        shard: &Shard,
+    ) -> ShardResult<Vec<(Submission, Instant, DownloadableMetadata)>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -281,7 +295,13 @@ impl Store for MemStore {
             .submissions
             .iter()
             .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
-            .map(|(_, (submission, instant))| (submission.clone(), instant.clone()))
+            .map(|(_, (submission, instant, downloadable_metadata))| {
+                (
+                    submission.clone(),
+                    instant.clone(),
+                    downloadable_metadata.clone(),
+                )
+            })
             .collect();
 
         Ok(submissions)

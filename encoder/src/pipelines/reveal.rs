@@ -7,7 +7,7 @@ use crate::{
 use async_trait::async_trait;
 use dashmap::DashMap;
 use intelligence::evaluation::messaging::EvaluationClient;
-use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
+use objects::storage::ObjectStorage;
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
 use tracing::{debug, info};
@@ -26,30 +26,25 @@ use types::{
 use super::evaluation::EvaluationProcessor;
 
 pub(crate) struct RevealProcessor<
-    O: ObjectNetworkClient,
-    E: EncoderInternalNetworkClient,
+    C: EncoderInternalNetworkClient,
     S: ObjectStorage,
-    P: EvaluationClient,
+    E: EvaluationClient,
 > {
     store: Arc<dyn Store>,
-    broadcaster: Arc<Broadcaster<E>>,
+    broadcaster: Arc<Broadcaster<C>>,
     oneshots: Arc<DashMap<Digest<Shard>, oneshot::Sender<()>>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    evaluation_pipeline: ActorHandle<EvaluationProcessor<O, E, S, P>>,
+    evaluation_pipeline: ActorHandle<EvaluationProcessor<C, S, E>>,
 }
 
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > RevealProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
+    RevealProcessor<C, S, E>
 {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        broadcaster: Arc<Broadcaster<E>>,
+        broadcaster: Arc<Broadcaster<C>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        evaluation_pipeline: ActorHandle<EvaluationProcessor<O, E, S, P>>,
+        evaluation_pipeline: ActorHandle<EvaluationProcessor<C, S, E>>,
     ) -> Self {
         Self {
             store,
@@ -86,12 +81,8 @@ impl<
 }
 
 #[async_trait]
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > Processor for RevealProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Processor
+    for RevealProcessor<C, S, E>
 {
     type Input = (Shard, Verified<Reveal>);
     type Output = ();
@@ -105,9 +96,11 @@ impl<
                 verified_reveal.author(),
             )?;
 
-            let _ = self
-                .store
-                .add_submission(&shard, verified_reveal.submission().clone())?;
+            let _ = self.store.add_submission(
+                &shard,
+                verified_reveal.submission().clone(),
+                verified_reveal.downloadable_metadata().clone(),
+            )?;
 
             let quorum_threshold = shard.quorum_threshold() as usize;
             let shard_digest = shard.digest()?;
@@ -125,7 +118,7 @@ impl<
 
             let count = all_submissions
                 .iter()
-                .filter(|(submission, _instant)| {
+                .filter(|(submission, _instant, _downloadable_metadata)| {
                     accepted_lookup
                         .get(submission.encoder())
                         .map_or(false, |accepted_digest| {
@@ -145,7 +138,7 @@ impl<
                     let _ = self
                         .store
                         .add_shard_stage_dispatch(&shard, ShardStage::Evaluation)?;
-                    let earliest = all_submissions.iter().map(|(_, t)| t).min().unwrap();
+                    let earliest = all_submissions.iter().map(|(_, t, _)| t).min().unwrap();
 
                     let duration = std::cmp::max(earliest.elapsed(), Duration::from_secs(5));
 

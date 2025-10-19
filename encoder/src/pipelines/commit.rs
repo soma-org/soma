@@ -10,7 +10,7 @@ use crate::{
 use async_trait::async_trait;
 use dashmap::DashMap;
 use intelligence::evaluation::messaging::EvaluationClient;
-use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
+use objects::storage::ObjectStorage;
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
 use tracing::info;
@@ -24,29 +24,24 @@ use types::{
 use super::commit_votes::CommitVotesProcessor;
 
 pub(crate) struct CommitProcessor<
-    O: ObjectNetworkClient,
-    E: EncoderInternalNetworkClient,
+    C: EncoderInternalNetworkClient,
     S: ObjectStorage,
-    P: EvaluationClient,
+    E: EvaluationClient,
 > {
     store: Arc<dyn Store>,
-    broadcaster: Arc<Broadcaster<E>>,
-    commit_vote_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
+    broadcaster: Arc<Broadcaster<C>>,
+    commit_vote_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
     oneshots: Arc<DashMap<Digest<Shard>, oneshot::Sender<()>>>,
     encoder_keypair: Arc<EncoderKeyPair>,
 }
 
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > CommitProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
+    CommitProcessor<C, S, E>
 {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        broadcaster: Arc<Broadcaster<E>>,
-        commit_vote_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
+        broadcaster: Arc<Broadcaster<C>>,
+        commit_vote_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
     ) -> Self {
         Self {
@@ -85,12 +80,8 @@ impl<
 }
 
 #[async_trait]
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > Processor for CommitProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Processor
+    for CommitProcessor<C, S, E>
 {
     type Input = (Shard, Verified<Commit>);
     type Output = ();

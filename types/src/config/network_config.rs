@@ -438,7 +438,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     Encoder::new(
                         (&e.account_key_pair.public()).into(),
                         e.encoder_key_pair.public().clone(),
-                        NetworkPublicKey::new(e.peer_key_pair.public().into_inner()),
+                        e.network_key_pair.public().clone(),
                         e.internal_network_address.clone(),
                         e.external_network_address.clone(),
                         e.object_address.clone(),
@@ -629,7 +629,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 EncoderConfig::new(
                     encoder.account_key_pair,
                     encoder.encoder_key_pair,
-                    encoder.peer_key_pair,
+                    encoder.network_key_pair,
                     encoder.internal_network_address,
                     encoder.external_network_address,
                     encoder.object_address,

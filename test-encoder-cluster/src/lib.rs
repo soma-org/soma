@@ -6,8 +6,9 @@ use rand::{rngs::StdRng, SeedableRng};
 
 use swarm::EncoderSwarm;
 use tracing::info;
+use types::crypto::NetworkKeyPair;
 use types::parameters::TonicParameters;
-use types::shard_crypto::keys::{EncoderPublicKey, PeerKeyPair};
+use types::shard_crypto::keys::EncoderPublicKey;
 use types::{base::SomaAddress, config::encoder_config::EncoderConfig};
 
 const NUM_ENCODERS: usize = 4;
@@ -23,7 +24,7 @@ mod swarm_node;
 
 pub struct TestEncoderCluster {
     pub swarm: EncoderSwarm,
-    pub client_keypair: PeerKeyPair,
+    pub client_keypair: NetworkKeyPair,
     pub parameters: Arc<TonicParameters>,
 }
 
@@ -81,7 +82,7 @@ impl TestEncoderCluster {
 
 pub struct TestEncoderClusterBuilder {
     encoders: Option<Vec<EncoderConfig>>,
-    client_keypair: Option<PeerKeyPair>,
+    client_keypair: Option<NetworkKeyPair>,
 }
 
 impl TestEncoderClusterBuilder {
@@ -97,7 +98,7 @@ impl TestEncoderClusterBuilder {
         self
     }
 
-    pub fn with_client_keypair(mut self, keypair: PeerKeyPair) -> Self {
+    pub fn with_client_keypair(mut self, keypair: NetworkKeyPair) -> Self {
         self.client_keypair = Some(keypair);
         self
     }
@@ -106,7 +107,7 @@ impl TestEncoderClusterBuilder {
         // Generate client keypair internally if not provided
         let client_keypair = self.client_keypair.unwrap_or_else(|| {
             let mut rng = StdRng::from_seed([0; 32]); // Use deterministic seed for testing
-            PeerKeyPair::generate(&mut rng)
+            NetworkKeyPair::generate(&mut rng)
         });
 
         let mut builder = EncoderSwarm::builder();

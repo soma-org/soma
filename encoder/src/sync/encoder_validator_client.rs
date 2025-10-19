@@ -6,7 +6,6 @@ use std::{
 };
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, info, warn};
-use types::committee::{to_networking_committee_intent, NetworkingCommittee};
 use types::encoder_committee::{to_encoder_committee_intent, Encoder, EncoderCommittee};
 use types::{
     base::AuthorityName,
@@ -21,7 +20,11 @@ use types::{
         EpochCommittee, FetchCommitteesRequest, FetchCommitteesResponse, GetLatestEpochRequest,
     },
     multiaddr::Multiaddr,
-    shard_crypto::keys::{EncoderPublicKey, PeerPublicKey},
+    shard_crypto::keys::EncoderPublicKey,
+};
+use types::{
+    committee::{to_networking_committee_intent, NetworkingCommittee},
+    crypto::NetworkPublicKey,
 };
 pub struct VerifiedCommittees {
     pub validator_committee: Committee,
@@ -41,8 +44,8 @@ pub struct EnrichedVerifiedCommittees {
     pub previous_networking_committee: Option<NetworkingCommittee>,
 
     // Additional data for CommitteeSyncManager
-    pub networking_info: Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>,
-    pub object_servers: HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
+    pub networking_info: Vec<(EncoderPublicKey, (NetworkPublicKey, Multiaddr))>,
+    pub object_servers: HashMap<EncoderPublicKey, (NetworkPublicKey, Multiaddr)>,
     pub epoch_start_timestamp_ms: u64,
 }
 
@@ -152,8 +155,8 @@ impl EncoderValidatorClient {
         encoder_committee: &EncoderCommittee,
         previous_encoder_committee: Option<&EncoderCommittee>,
     ) -> (
-        Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>,
-        HashMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>, // For object servers
+        Vec<(EncoderPublicKey, (NetworkPublicKey, Multiaddr))>,
+        HashMap<EncoderPublicKey, (NetworkPublicKey, Multiaddr)>, // For object servers
     ) {
         let mut networking_info = Vec::new();
         let mut object_servers = HashMap::new();
@@ -161,14 +164,14 @@ impl EncoderValidatorClient {
         // Helper function to process a single committee
         let process_committee =
             |committee: &EncoderCommittee,
-             networking_info: &mut Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>,
+             networking_info: &mut Vec<(EncoderPublicKey, (NetworkPublicKey, Multiaddr))>,
              objects: &mut HashMap<_, _>| {
                 // Process each encoder and its network metadata
                 for (encoder_key, _) in &committee.members() {
                     if let Some(metadata) = committee.network_metadata.get(encoder_key) {
-                        // Convert NetworkPublicKey to PeerPublicKey (they have the same inner type)
+                        // Convert NetworkPublicKey to NetworkPublicKey (they have the same inner type)
                         let peer_key =
-                            PeerPublicKey::new(metadata.network_key.clone().into_inner());
+                            NetworkPublicKey::new(metadata.network_key.clone().into_inner());
 
                         networking_info.push((
                             encoder_key.clone(),

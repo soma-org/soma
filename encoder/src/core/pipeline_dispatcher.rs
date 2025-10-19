@@ -8,7 +8,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use intelligence::{evaluation::messaging::EvaluationClient, inference::InferenceClient};
-use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
+use objects::storage::ObjectStorage;
 use tokio_util::sync::CancellationToken;
 use types::error::ShardResult;
 use types::shard::Input;
@@ -44,29 +44,24 @@ pub trait InternalDispatcher: Sync + Send + 'static {
 
 #[derive(Clone)]
 pub(crate) struct InternalPipelineDispatcher<
-    E: EncoderInternalNetworkClient,
-    O: ObjectNetworkClient,
+    C: EncoderInternalNetworkClient,
     S: ObjectStorage,
-    P: EvaluationClient,
+    E: EvaluationClient,
 > {
-    commit_handle: ActorHandle<CommitProcessor<O, E, S, P>>,
-    commit_votes_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
-    reveal_handle: ActorHandle<RevealProcessor<O, E, S, P>>,
-    report_vote_handle: ActorHandle<ReportVoteProcessor<E>>,
+    commit_handle: ActorHandle<CommitProcessor<C, S, E>>,
+    commit_votes_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
+    reveal_handle: ActorHandle<RevealProcessor<C, S, E>>,
+    report_vote_handle: ActorHandle<ReportVoteProcessor<C>>,
 }
 
-impl<
-        E: EncoderInternalNetworkClient,
-        O: ObjectNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > InternalPipelineDispatcher<E, O, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
+    InternalPipelineDispatcher<C, S, E>
 {
     pub(crate) fn new(
-        commit_handle: ActorHandle<CommitProcessor<O, E, S, P>>,
-        commit_votes_handle: ActorHandle<CommitVotesProcessor<O, E, S, P>>,
-        reveal_handle: ActorHandle<RevealProcessor<O, E, S, P>>,
-        report_vote_handle: ActorHandle<ReportVoteProcessor<E>>,
+        commit_handle: ActorHandle<CommitProcessor<C, S, E>>,
+        commit_votes_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
+        reveal_handle: ActorHandle<RevealProcessor<C, S, E>>,
+        report_vote_handle: ActorHandle<ReportVoteProcessor<C>>,
     ) -> Self {
         Self {
             commit_handle,
@@ -78,12 +73,8 @@ impl<
 }
 
 #[async_trait]
-impl<
-        E: EncoderInternalNetworkClient,
-        C: ObjectNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > InternalDispatcher for InternalPipelineDispatcher<E, C, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> InternalDispatcher
+    for InternalPipelineDispatcher<C, S, E>
 {
     async fn dispatch_commit(
         &self,
@@ -143,36 +134,33 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
 
 #[derive(Clone)]
 pub(crate) struct ExternalPipelineDispatcher<
-    E: EncoderInternalNetworkClient,
-    O: ObjectNetworkClient,
-    M: InferenceClient,
+    C: EncoderInternalNetworkClient,
     S: ObjectStorage,
-    P: EvaluationClient,
+    E: EvaluationClient,
+    I: InferenceClient,
 > {
-    input_handle: ActorHandle<InputProcessor<E, O, M, S, P>>,
+    input_handle: ActorHandle<InputProcessor<C, S, E, I>>,
 }
 
 impl<
-        E: EncoderInternalNetworkClient,
-        O: ObjectNetworkClient,
-        M: InferenceClient,
+        C: EncoderInternalNetworkClient,
         S: ObjectStorage,
-        P: EvaluationClient,
-    > ExternalPipelineDispatcher<E, O, M, S, P>
+        E: EvaluationClient,
+        I: InferenceClient,
+    > ExternalPipelineDispatcher<C, S, E, I>
 {
-    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<E, O, M, S, P>>) -> Self {
+    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<C, S, E, I>>) -> Self {
         Self { input_handle }
     }
 }
 
 #[async_trait]
 impl<
-        E: EncoderInternalNetworkClient,
-        O: ObjectNetworkClient,
-        M: InferenceClient,
+        C: EncoderInternalNetworkClient,
         S: ObjectStorage,
-        P: EvaluationClient,
-    > ExternalDispatcher for ExternalPipelineDispatcher<E, O, M, S, P>
+        E: EvaluationClient,
+        I: InferenceClient,
+    > ExternalDispatcher for ExternalPipelineDispatcher<C, S, E, I>
 {
     async fn dispatch_input(
         &self,

@@ -443,7 +443,7 @@ impl Object {
     pub fn new_shard_input(
         id: ObjectID,
         digest: Digest<MetadataCommitment>,
-        data_size_bytes: usize,
+        data_size_bytes: u64,
         amount: u64,
         expiration_epoch: EpochId,
         submitter: SomaAddress,

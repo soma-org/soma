@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use types::metadata::Metadata;
 use types::multiaddr::Multiaddr;
-use types::{
-    checksum::Checksum,
-    committee::Committee,
-    shard_crypto::keys::{EncoderPublicKey, PeerPublicKey},
-};
+use types::{checksum::Checksum, committee::Committee, shard_crypto::keys::EncoderPublicKey};
 
 use types::error::{ShardError, ShardResult};
 
@@ -33,6 +30,9 @@ impl Context {
     pub fn own_encoder_key(&self) -> EncoderPublicKey {
         self.inner.load().own_encoder_public_key.clone()
     }
+    pub fn own_network_keypair(&self) -> NetworkKeyPair {
+        self.inner.load().own_network_keypair.clone()
+    }
 
     pub fn inner(&self) -> Arc<InnerContext> {
         self.inner.load_full()
@@ -53,8 +53,39 @@ impl Context {
         }
     }
 
-    pub fn object_server(&self, encoder: &EncoderPublicKey) -> Option<(PeerPublicKey, Multiaddr)> {
+    pub fn object_server(
+        &self,
+        encoder: &EncoderPublicKey,
+    ) -> Option<(NetworkPublicKey, Multiaddr)> {
         self.inner.load().object_server(encoder)
+    }
+
+    pub(crate) fn internal_object_service_address(&self) -> Multiaddr {
+        self.inner.load().internal_object_service_address.clone()
+    }
+    pub fn network_public_keys(
+        &self,
+        encoders: Vec<EncoderPublicKey>,
+    ) -> ShardResult<Vec<NetworkPublicKey>> {
+        let mut network_keys: Vec<NetworkPublicKey> = Vec::new();
+        for encoder_key in encoders {
+            if let Some(nm) = self
+                .inner
+                .load()
+                .current_committees()
+                .encoder_committee
+                .network_metadata
+                .get(&encoder_key)
+            {
+                network_keys.push(nm.network_key.clone());
+            } else {
+                return Err(ShardError::NotFound(
+                    "encoder network key not found".to_string(),
+                ));
+            }
+        }
+
+        Ok(network_keys)
     }
 }
 
@@ -65,6 +96,8 @@ pub struct InnerContext {
     committees: [Committees; 2],
     pub current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
+    own_network_keypair: NetworkKeyPair,
+    internal_object_service_address: Multiaddr,
 }
 
 impl InnerContext {
@@ -72,11 +105,15 @@ impl InnerContext {
         committees: [Committees; 2],
         current_epoch: Epoch,
         own_encoder_public_key: EncoderPublicKey,
+        own_network_keypair: NetworkKeyPair,
+        internal_object_service_address: Multiaddr,
     ) -> Self {
         Self {
             current_epoch,
             own_encoder_public_key,
             committees,
+            own_network_keypair,
+            internal_object_service_address,
         }
     }
 
@@ -100,14 +137,14 @@ impl InnerContext {
     pub(crate) fn object_server(
         &self,
         encoder: &EncoderPublicKey,
-    ) -> Option<(PeerPublicKey, Multiaddr)> {
+    ) -> Option<(NetworkPublicKey, Multiaddr)> {
         self.current_committees()
             .encoder_committee
             .network_metadata
             .get(encoder)
             .map(|networking_details| {
                 (
-                    PeerPublicKey::new(networking_details.network_key.clone().into_inner()),
+                    NetworkPublicKey::new(networking_details.network_key.clone().into_inner()),
                     networking_details.object_server_address.clone(),
                 )
             })

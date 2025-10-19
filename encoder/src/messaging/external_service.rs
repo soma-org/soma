@@ -8,9 +8,9 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 use types::{
+    crypto::NetworkPublicKey,
     error::{ShardError, ShardResult},
     shard::Shard,
-    shard_crypto::keys::PeerPublicKey,
     shard_crypto::verified::Verified,
 };
 use types::{
@@ -59,7 +59,11 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
 }
 #[async_trait]
 impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
-    async fn handle_send_input(&self, peer: &PeerPublicKey, input_bytes: Bytes) -> ShardResult<()> {
+    async fn handle_send_input(
+        &self,
+        peer: &NetworkPublicKey,
+        input_bytes: Bytes,
+    ) -> ShardResult<()> {
         let result: ShardResult<()> = {
             let input: Input = bcs::from_bytes(&input_bytes).map_err(ShardError::MalformedType)?;
 

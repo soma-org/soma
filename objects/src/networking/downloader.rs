@@ -1,23 +1,23 @@
 use std::sync::Arc;
 
 use crate::{
-    networking::ObjectNetworkClient,
-    storage::{ObjectPath, ObjectStorage},
+    networking::{ClientPool, ObjectClient},
+    storage::ObjectStorage,
 };
 use async_trait::async_trait;
 use tokio::sync::Semaphore;
 use types::actors::{ActorMessage, Processor};
 use types::error::{ShardError, ShardResult};
-use types::metadata::{DownloadableMetadata, DownloadableMetadataAPI, Metadata, MetadataAPI};
+use types::metadata::{DownloadableMetadata, DownloadableMetadataAPI, MetadataAPI};
 
-pub struct Downloader<C: ObjectNetworkClient, S: ObjectStorage> {
-    client: Arc<C>,
+pub struct Downloader<P: ClientPool, S: ObjectStorage> {
+    client: Arc<ObjectClient<P>>,
     storage: Arc<S>,
     semaphore: Arc<Semaphore>,
 }
 
-impl<C: ObjectNetworkClient, S: ObjectStorage> Downloader<C, S> {
-    pub fn new(concurrency: usize, client: Arc<C>, storage: Arc<S>) -> Self {
+impl<P: ClientPool, S: ObjectStorage> Downloader<P, S> {
+    pub fn new(concurrency: usize, client: Arc<ObjectClient<P>>, storage: Arc<S>) -> Self {
         let semaphore = Arc::new(Semaphore::new(concurrency));
         Self {
             client,
@@ -28,7 +28,7 @@ impl<C: ObjectNetworkClient, S: ObjectStorage> Downloader<C, S> {
 }
 
 #[async_trait]
-impl<C: ObjectNetworkClient, S: ObjectStorage> Processor for Downloader<C, S> {
+impl<P: ClientPool, S: ObjectStorage> Processor for Downloader<P, S> {
     type Input = DownloadableMetadata;
     type Output = ();
 
@@ -39,8 +39,7 @@ impl<C: ObjectNetworkClient, S: ObjectStorage> Processor for Downloader<C, S> {
             tokio::spawn(async move {
                 let result: ShardResult<()> = async {
                     let downloadable_metadata = msg.input;
-                    let object_path =
-                        ObjectPath::from_checksum(downloadable_metadata.metadata().checksum());
+                    let object_path = downloadable_metadata.metadata().path();
 
                     // check if the object exists
                     // TODO: explicitly match on the not found error only

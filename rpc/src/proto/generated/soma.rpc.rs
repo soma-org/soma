@@ -2608,8 +2608,8 @@ pub struct WithdrawStake {
 pub struct EmbedData {
     #[prost(bytes = "bytes", optional, tag = "1")]
     pub digest: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(uint32, optional, tag = "2")]
-    pub data_size_bytes: ::core::option::Option<u32>,
+    #[prost(uint64, optional, tag = "2")]
+    pub data_size_bytes: ::core::option::Option<u64>,
     #[prost(message, optional, tag = "3")]
     pub coin_ref: ::core::option::Option<ObjectReference>,
 }

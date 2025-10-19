@@ -2171,7 +2171,9 @@ impl serde::Serialize for EmbedData {
             struct_ser.serialize_field("digest", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.data_size_bytes.as_ref() {
-            struct_ser.serialize_field("dataSizeBytes", v)?;
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("dataSizeBytes", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.coin_ref.as_ref() {
             struct_ser.serialize_field("coinRef", v)?;

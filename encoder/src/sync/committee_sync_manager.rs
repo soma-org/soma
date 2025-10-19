@@ -13,9 +13,12 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
-use types::error::{ShardError, ShardResult};
-use types::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use types::shard_crypto::keys::EncoderPublicKey;
 use types::shard_networking::EncoderNetworkingInfo;
+use types::{
+    crypto::NetworkKeyPair,
+    error::{ShardError, ShardResult},
+};
 
 /// Manager for committee synchronization with validator nodes
 pub struct CommitteeSyncManager {
@@ -267,6 +270,9 @@ impl CommitteeSyncManager {
             ],
             epoch, // New current epoch
             self.own_encoder_key.clone(),
+            // TODO: should we handle this differently? must work across epochs so both should not be upgradable
+            self.context.own_network_keypair(),
+            self.context.internal_object_service_address(),
         );
 
         // Update the context with the new inner context

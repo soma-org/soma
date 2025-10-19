@@ -1,8 +1,8 @@
 //! `ChannelPool` stores tonic channels for re-use.
+use crate::crypto::{NetworkKeyPair, NetworkPublicKey};
 use crate::error::{ShardError, ShardResult};
 use crate::multiaddr::Multiaddr;
 use crate::p2p::to_host_port_str;
-use crate::shard_crypto::keys::{PeerKeyPair, PeerPublicKey};
 use crate::shard_networking::CERTIFICATE_NAME;
 use quick_cache::sync::Cache;
 use std::time::Duration;
@@ -12,7 +12,7 @@ use tracing::{debug, trace};
 use crate::parameters::TonicParameters;
 
 pub struct ChannelPool {
-    channels: Cache<(PeerPublicKey, Multiaddr), Channel>,
+    channels: Cache<(NetworkPublicKey, Multiaddr), Channel>,
 }
 
 /// Type alias since the type definition is so long
@@ -30,9 +30,9 @@ impl ChannelPool {
     pub async fn get_channel(
         &self,
         address: &Multiaddr,
-        peer_public_key: PeerPublicKey,
+        peer_public_key: NetworkPublicKey,
         config: &TonicParameters,
-        peer_keypair: PeerKeyPair,
+        peer_keypair: NetworkKeyPair,
         timeout: Duration,
     ) -> ShardResult<Channel> {
         let cache_key = (peer_public_key.clone(), address.clone());

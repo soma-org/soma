@@ -1,9 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::{
+    crypto::NetworkKeyPair,
     error::{ShardError, ShardResult},
     parameters::TonicParameters,
-    shard_crypto::keys::{EncoderPublicKey, PeerKeyPair},
+    shard_crypto::keys::EncoderPublicKey,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -31,7 +32,7 @@ pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
 // Implements Tonic RPC client for Encoders.
 pub struct EncoderExternalTonicClient {
     pub networking_info: EncoderNetworkingInfo,
-    own_peer_keypair: PeerKeyPair,
+    own_peer_keypair: NetworkKeyPair,
     parameters: Arc<TonicParameters>,
     channel_pool: Arc<ChannelPool>,
 }
@@ -40,7 +41,7 @@ impl EncoderExternalTonicClient {
     /// Creates a new encoder tonic client and establishes an arc'd channel pool
     pub fn new(
         networking_info: EncoderNetworkingInfo,
-        own_peer_keypair: PeerKeyPair,
+        own_peer_keypair: NetworkKeyPair,
         parameters: Arc<TonicParameters>,
         capacity: usize,
     ) -> Self {

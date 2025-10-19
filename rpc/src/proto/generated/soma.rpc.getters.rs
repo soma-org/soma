@@ -3538,7 +3538,7 @@ mod _getter_impls {
             self.digest = Some(field.into());
             self
         }
-        pub fn with_data_size_bytes(mut self, field: u32) -> Self {
+        pub fn with_data_size_bytes(mut self, field: u64) -> Self {
             self.data_size_bytes = Some(field.into());
             self
         }

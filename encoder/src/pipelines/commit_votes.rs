@@ -6,16 +6,19 @@ use crate::{
     messaging::{EncoderInternalNetworkClient, MESSAGE_TIMEOUT},
     types::{
         commit_votes::{CommitVotes, CommitVotesAPI},
+        context::Context,
         reveal::{Reveal, RevealV1},
     },
 };
 use async_trait::async_trait;
 use intelligence::evaluation::messaging::EvaluationClient;
-use objects::{networking::ObjectNetworkClient, storage::ObjectStorage};
+use objects::storage::ObjectStorage;
 use tracing::{debug, info, warn};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
+    crypto::NetworkKeyPair,
     error::ShardResult,
+    metadata::{DownloadableMetadata, DownloadableMetadataV1},
     shard::Shard,
     shard_crypto::{
         digest::Digest,
@@ -28,46 +31,40 @@ use types::{
 use super::reveal::RevealProcessor;
 
 pub(crate) struct CommitVotesProcessor<
-    O: ObjectNetworkClient,
-    E: EncoderInternalNetworkClient,
+    C: EncoderInternalNetworkClient,
     S: ObjectStorage,
-    P: EvaluationClient,
+    E: EvaluationClient,
 > {
     store: Arc<dyn Store>,
-    broadcaster: Arc<Broadcaster<E>>,
+    broadcaster: Arc<Broadcaster<C>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    reveal_pipeline: ActorHandle<RevealProcessor<O, E, S, P>>,
+    reveal_pipeline: ActorHandle<RevealProcessor<C, S, E>>,
+    context: Context,
 }
 
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > CommitVotesProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
+    CommitVotesProcessor<C, S, E>
 {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        broadcaster: Arc<Broadcaster<E>>,
+        broadcaster: Arc<Broadcaster<C>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        reveal_pipeline: ActorHandle<RevealProcessor<O, E, S, P>>,
+        reveal_pipeline: ActorHandle<RevealProcessor<C, S, E>>,
+        context: Context,
     ) -> Self {
         Self {
             store,
             broadcaster,
             encoder_keypair,
             reveal_pipeline,
+            context,
         }
     }
 }
 
 #[async_trait]
-impl<
-        O: ObjectNetworkClient,
-        E: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        P: EvaluationClient,
-    > Processor for CommitVotesProcessor<O, E, S, P>
+impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Processor
+    for CommitVotesProcessor<C, S, E>
 {
     type Input = (Shard, Verified<CommitVotes>);
     type Output = ();
@@ -170,12 +167,13 @@ impl<
 
                     let own_key = self.encoder_keypair.public();
                     if let Some(Some(own_submission_digest)) = finalized_encoders.get(&own_key) {
-                        let (own_submission, _) = self.store.get_submission(&shard, own_submission_digest.clone())?;
-
+                        let (own_submission, _, downloadable_metadata) = self.store.get_submission(&shard, own_submission_digest.clone())?;
                         let own_reveal = Reveal::V1(RevealV1::new(
                             commit_votes.auth_token().clone(),
                             own_key,
                             own_submission,
+                            downloadable_metadata,
+
                         ));
                         let verified_reveal = Verified::from_trusted(own_reveal).unwrap();
                         info!("Broadcasting own reveal to other nodes");

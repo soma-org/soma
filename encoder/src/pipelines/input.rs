@@ -15,7 +15,7 @@ use intelligence::inference::{
     InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI,
 };
 use objects::{
-    networking::{downloader::Downloader, ObjectNetworkClient},
+    networking::{downloader::Downloader, external_service::ExternalClientPool},
     storage::ObjectStorage,
 };
 use std::{sync::Arc, time::Duration};
@@ -24,7 +24,7 @@ use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
     evaluation::{EvaluationInput, EvaluationInputV1, EvaluationOutputAPI},
-    metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata},
+    metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataAPI, SignedParams},
     shard::Shard,
     shard_crypto::{digest::Digest, keys::EncoderKeyPair, verified::Verified},
     submission::{Submission, SubmissionV1},
@@ -38,41 +38,39 @@ use super::commit::CommitProcessor;
 
 pub(crate) struct InputProcessor<
     C: EncoderInternalNetworkClient,
-    O: ObjectNetworkClient,
-    M: InferenceClient,
     S: ObjectStorage,
-    P: EvaluationClient,
+    E: EvaluationClient,
+    I: InferenceClient,
 > {
     store: Arc<dyn Store>,
-    downloader: ActorHandle<Downloader<O, S>>,
+    downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
     broadcaster: Arc<Broadcaster<C>>,
-    inference_client: Arc<M>,
-    evaluation_client: Arc<P>,
+    inference_client: Arc<I>,
+    evaluation_client: Arc<E>,
     encoder_keypair: Arc<EncoderKeyPair>,
     storage: Arc<S>,
-    commit_pipeline: ActorHandle<CommitProcessor<O, C, S, P>>,
+    commit_pipeline: ActorHandle<CommitProcessor<C, S, E>>,
     local_object_server: Multiaddr,
     context: Context,
 }
 
 impl<
         C: EncoderInternalNetworkClient,
-        O: ObjectNetworkClient,
-        M: InferenceClient,
         S: ObjectStorage,
-        P: EvaluationClient,
-    > InputProcessor<C, O, M, S, P>
+        E: EvaluationClient,
+        I: InferenceClient,
+    > InputProcessor<C, S, E, I>
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        downloader: ActorHandle<Downloader<O, S>>,
+        downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
         broadcaster: Arc<Broadcaster<C>>,
-        inference_client: Arc<M>,
-        evaluation_client: Arc<P>,
+        inference_client: Arc<I>,
+        evaluation_client: Arc<E>,
         encoder_keypair: Arc<EncoderKeyPair>,
         storage: Arc<S>,
-        commit_pipeline: ActorHandle<CommitProcessor<O, C, S, P>>,
+        commit_pipeline: ActorHandle<CommitProcessor<C, S, E>>,
         local_object_server: Multiaddr,
         context: Context,
     ) -> Self {
@@ -94,11 +92,10 @@ impl<
 #[async_trait]
 impl<
         C: EncoderInternalNetworkClient,
-        O: ObjectNetworkClient,
-        M: InferenceClient,
         S: ObjectStorage,
-        P: EvaluationClient,
-    > Processor for InputProcessor<C, O, M, S, P>
+        E: EvaluationClient,
+        I: InferenceClient,
+    > Processor for InputProcessor<C, S, E, I>
 {
     type Input = (Shard, Verified<Input>);
     type Output = ();
@@ -117,15 +114,11 @@ impl<
             let metadata = verified_input.auth_token().metadata_commitment().metadata();
 
             if !cfg!(msim) {
-                let Metadata::V1(m) = metadata.clone();
-                let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                    verified_input.tls_key().clone(),
-                    verified_input.address().clone(),
-                    metadata.clone(),
-                ));
-                // TODO: Actually store input in fullnode for download
                 self.downloader
-                    .process(downloadable_metadata, msg.cancellation.clone())
+                    .process(
+                        verified_input.downloadable_metadata().clone(),
+                        msg.cancellation.clone(),
+                    )
                     .await?;
             }
 
@@ -139,16 +132,17 @@ impl<
                 .call(inference_input, inference_timeout)
                 .await
                 .map_err(ShardError::IntelligenceError)?;
+            // TODO need to rename from tmp to the appropriate shard?
 
             let (peer, address) = self
                 .context
                 .object_server(&self.encoder_keypair.public())
                 .ok_or(ShardError::MissingData)?;
+
             let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
                 metadata,
                 inference_output.metadata(),
                 inference_output.probe_set(),
-                peer,
                 address,
             ));
             // TODO: make this adjusted with size and coefficient configured by Parameters
@@ -177,8 +171,22 @@ impl<
                 evaluation_output.embedding_digest(),
             ));
 
+            let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
+                Some(self.context.own_network_keypair().public()),
+                Some(SignedParams::new(
+                    inference_output.metadata().path().path(),
+                    Some(self.context.network_public_keys(shard.encoders())?),
+                    Duration::from_secs(100000),
+                    &self.context.own_network_keypair(),
+                )),
+                self.context.internal_object_service_address(),
+                inference_output.metadata(),
+            ));
+
             let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
-            let _ = self.store.add_submission(&shard, submission)?;
+            let _ = self
+                .store
+                .add_submission(&shard, submission, downloadable_metadata)?;
 
             let commit = Commit::V1(CommitV1::new(
                 verified_input.auth_token().clone(),

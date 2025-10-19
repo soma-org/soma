@@ -43,6 +43,7 @@ pub enum Scope {
     BridgeEventUnused = 7, // for bridge purposes but it's currently not included in messages.
     ConsensusBlockHeader = 8, // Used for consensus authority signature on block's digest
     ShardReport = 9,
+    SignedUrl = 10,
 }
 
 impl TryFrom<u8> for Scope {

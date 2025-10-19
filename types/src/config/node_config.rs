@@ -545,11 +545,11 @@ impl ValidatorConfigBuilder {
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
             network_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
-                validator.network_key_pair.into_inner(),
+                validator.network_key_pair.clone().into_inner(),
             )),
             account_key_pair: KeyPairWithPath::new(validator.account_key_pair),
             worker_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
-                validator.worker_key_pair.into_inner(),
+                validator.worker_key_pair.clone().into_inner(),
             )),
             db_path,
             consensus_db_path,

@@ -1,12 +1,9 @@
 use crate::{
     encoder_committee::EncoderCommittee,
     error::{SharedError, SharedResult},
-    metadata::{Metadata, MetadataAPI},
+    metadata::Metadata,
     multiaddr::Multiaddr,
-    shard_crypto::{
-        digest::Digest,
-        keys::{EncoderPublicKey, PeerPublicKey},
-    },
+    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -16,7 +13,6 @@ pub trait EvaluationInputAPI {
     fn data(&self) -> Metadata;
     fn embeddings(&self) -> Metadata;
     fn probe_set(&self) -> ProbeSet;
-    fn tls_key(&self) -> PeerPublicKey;
     fn address(&self) -> Multiaddr;
 }
 
@@ -31,7 +27,6 @@ pub struct EvaluationInputV1 {
     data: Metadata,
     embeddings: Metadata,
     probe_set: ProbeSet,
-    tls_key: PeerPublicKey,
     address: Multiaddr,
 }
 
@@ -40,14 +35,12 @@ impl EvaluationInputV1 {
         data: Metadata,
         embeddings: Metadata,
         probe_set: ProbeSet,
-        tls_key: PeerPublicKey,
         address: Multiaddr,
     ) -> Self {
         Self {
             data,
             embeddings,
             probe_set,
-            tls_key,
             address,
         }
     }
@@ -62,9 +55,6 @@ impl EvaluationInputAPI for EvaluationInputV1 {
     }
     fn probe_set(&self) -> ProbeSet {
         self.probe_set.clone()
-    }
-    fn tls_key(&self) -> PeerPublicKey {
-        self.tls_key.clone()
     }
     fn address(&self) -> Multiaddr {
         self.address.clone()

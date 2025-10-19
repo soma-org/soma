@@ -10,7 +10,7 @@ pub struct ShardInput {
     /// Metadata commitment digest - cryptographic identifier of the data
     pub digest: Digest<MetadataCommitment>,
     /// Size of data in bytes
-    pub data_size_bytes: usize,
+    pub data_size_bytes: u64,
     /// Escrowed amount for the shard
     pub amount: u64,
     /// Epoch at which the shard expires
@@ -25,7 +25,7 @@ pub struct ShardResult {
     /// Metadata commitment digest the scores are for
     pub digest: Digest<MetadataCommitment>,
     /// Size of data in bytes
-    pub data_size_bytes: usize,
+    pub data_size_bytes: u64,
     /// Escrowed amount for the shard
     pub amount: u64,
     /// The submitted report

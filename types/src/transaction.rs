@@ -161,7 +161,7 @@ pub enum TransactionKind {
     // Shard txs
     EmbedData {
         digest: Digest<MetadataCommitment>,
-        data_size_bytes: usize,
+        data_size_bytes: u64,
         coin_ref: ObjectRef,
     },
     ClaimEscrow {

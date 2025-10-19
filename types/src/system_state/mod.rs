@@ -35,7 +35,7 @@ use std::{
 
 use crate::{
     checksum::Checksum,
-    metadata::{Metadata, MetadataV1},
+    metadata::{Metadata, MetadataV1, ObjectPath},
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use crate::{encoder_committee::CountUnit, shard::Shard};
@@ -1021,7 +1021,10 @@ impl SystemStateTrait for SystemState {
                     crate::encoder_committee::Encoder {
                         voting_power: encoder.voting_power,
                         encoder_key: encoder.metadata.encoder_pubkey.clone(),
-                        probe: Metadata::V1(MetadataV1::new(Checksum::default(), 0)), // TODO: store and get actual probe checksum
+                        probe: Metadata::V1(MetadataV1::new(
+                            ObjectPath::Probes(0, Checksum::default()),
+                            0,
+                        )), // TODO: store and get actual probe checksum
                     }
                 })
                 .collect();
@@ -1239,7 +1242,10 @@ impl Committees {
                 crate::encoder_committee::Encoder {
                     voting_power: encoder.voting_power,
                     encoder_key: encoder.metadata.encoder_pubkey.clone(),
-                    probe: Metadata::V1(MetadataV1::new(Checksum::default(), 0)), // TODO: store and get actual probe checksum
+                    probe: Metadata::V1(MetadataV1::new(
+                        ObjectPath::Probes(0, Checksum::default()),
+                        0,
+                    )), // TODO: store and get actual probe checksum
                 }
             })
             .collect();

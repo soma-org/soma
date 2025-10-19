@@ -1,8 +1,8 @@
-use crate::multiaddr::Multiaddr;
+use crate::{crypto::NetworkPublicKey, multiaddr::Multiaddr};
 use arc_swap::ArcSwap;
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use crate::shard_crypto::keys::EncoderPublicKey;
 
 pub mod channel_pool;
 pub mod external;
@@ -19,8 +19,8 @@ pub mod generated {
 
 #[derive(Debug, Clone, Default)]
 pub struct EncoderNetworkingInfoInner {
-    encoder_to_tls: BTreeMap<EncoderPublicKey, (PeerPublicKey, Multiaddr)>,
-    tls_to_encoder: BTreeMap<PeerPublicKey, EncoderPublicKey>,
+    encoder_to_tls: BTreeMap<EncoderPublicKey, (NetworkPublicKey, Multiaddr)>,
+    tls_to_encoder: BTreeMap<NetworkPublicKey, EncoderPublicKey>,
 }
 #[derive(Debug, Clone, Default)]
 pub struct EncoderNetworkingInfo {
@@ -28,7 +28,7 @@ pub struct EncoderNetworkingInfo {
 }
 
 impl EncoderNetworkingInfo {
-    pub fn new(mapping: Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>) -> Self {
+    pub fn new(mapping: Vec<(EncoderPublicKey, (NetworkPublicKey, Multiaddr))>) -> Self {
         let mut encoder_to_tls = BTreeMap::new();
         let mut tls_to_encoder = BTreeMap::new();
         for map in mapping {
@@ -48,7 +48,7 @@ impl EncoderNetworkingInfo {
         }
     }
 
-    pub fn update(&self, new_mapping: Vec<(EncoderPublicKey, (PeerPublicKey, Multiaddr))>) {
+    pub fn update(&self, new_mapping: Vec<(EncoderPublicKey, (NetworkPublicKey, Multiaddr))>) {
         let mut encoder_to_tls = BTreeMap::new();
         let mut tls_to_encoder = BTreeMap::new();
         for map in new_mapping {
@@ -69,7 +69,7 @@ impl EncoderNetworkingInfo {
     pub fn add(
         &mut self,
         encoder_public_key: EncoderPublicKey,
-        peer_public_key: PeerPublicKey,
+        peer_public_key: NetworkPublicKey,
         address: Multiaddr,
     ) {
         // Get the current map
@@ -88,13 +88,13 @@ impl EncoderNetworkingInfo {
         self.inner.store(Arc::new(inner));
     }
 
-    pub fn encoder_to_tls(&self, key: &EncoderPublicKey) -> Option<(PeerPublicKey, Multiaddr)> {
+    pub fn encoder_to_tls(&self, key: &EncoderPublicKey) -> Option<(NetworkPublicKey, Multiaddr)> {
         match self.inner.load().encoder_to_tls.get(key) {
             Some(k) => Some(k.clone()),
             None => None,
         }
     }
-    pub fn tls_to_encoder(&self, peer: &PeerPublicKey) -> Option<EncoderPublicKey> {
+    pub fn tls_to_encoder(&self, peer: &NetworkPublicKey) -> Option<EncoderPublicKey> {
         match self.inner.load().tls_to_encoder.get(peer) {
             Some(k) => Some(k.clone()),
             None => None,

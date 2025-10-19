@@ -8,7 +8,7 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 use tracing::info;
-use types::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use types::shard_crypto::keys::EncoderPublicKey;
 
 /// A handle to an in-memory Soma Encoder.
 ///

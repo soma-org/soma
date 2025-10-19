@@ -4,8 +4,8 @@ use encoder::core::encoder_node::EncoderNodeHandle;
 use futures::future::try_join_all;
 use std::collections::HashMap;
 use tracing::info;
-use types::config::encoder_config::EncoderConfig;
-use types::shard_crypto::keys::{EncoderPublicKey, PeerPublicKey};
+use types::shard_crypto::keys::EncoderPublicKey;
+use types::{config::encoder_config::EncoderConfig, crypto::NetworkPublicKey};
 
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -119,7 +119,7 @@ impl EncoderSwarm {
 
 pub struct EncoderSwarmBuilder {
     encoders: Option<Vec<EncoderConfig>>,
-    client_key: Option<PeerPublicKey>,
+    client_key: Option<NetworkPublicKey>,
     dir: Option<PathBuf>, // Add this field
 }
 
@@ -137,7 +137,7 @@ impl EncoderSwarmBuilder {
         self
     }
 
-    pub fn with_client_key(mut self, client_key: PeerPublicKey) -> Self {
+    pub fn with_client_key(mut self, client_key: NetworkPublicKey) -> Self {
         self.client_key = Some(client_key);
         self
     }

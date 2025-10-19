@@ -421,7 +421,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 coin_ref,
             } => Kind::EmbedData(EmbedData {
                 digest: Some(digest.into()),
-                data_size_bytes: Some(data_size_bytes as u32),
+                data_size_bytes: Some(data_size_bytes),
                 coin_ref: Some(object_ref_to_proto(coin_ref)),
             }),
             K::ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(ClaimEscrow {
@@ -1382,7 +1382,7 @@ impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
             digest,
             data_size_bytes: proto_shard
                 .data_size_bytes
-                .ok_or("Missing data_size_bytes")? as usize,
+                .ok_or("Missing data_size_bytes")?,
             amount: proto_shard.amount.ok_or("Missing amount")?,
             report,
         })

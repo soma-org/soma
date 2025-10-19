@@ -6,6 +6,8 @@ use types::committee::Epoch;
 use types::error::IntelligenceResult;
 use types::evaluation::ProbeSet;
 use types::metadata::Metadata;
+use types::shard::Shard;
+use types::shard_crypto::digest::Digest;
 pub mod json_client;
 pub mod mock_client;
 

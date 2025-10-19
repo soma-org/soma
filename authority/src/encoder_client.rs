@@ -1,17 +1,12 @@
 use std::{sync::Arc, time::Duration};
 use types::{
-    crypto::{AuthorityKeyPair, NetworkKeyPair},
+    crypto::{AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey},
     encoder_committee::EncoderCommittee,
     error::SharedResult,
-    multiaddr::Multiaddr,
-    parameters::{Parameters, TonicParameters},
+    metadata::DownloadableMetadata,
+    parameters::TonicParameters,
     shard::{Input, InputV1, ShardAuthToken},
-    shard_crypto::{
-        keys::{EncoderPublicKey, PeerKeyPair, PeerPublicKey},
-        scope::Scope,
-        signed::Signed,
-        verified::Verified,
-    },
+    shard_crypto::keys::EncoderPublicKey,
     shard_networking::{
         external::{EncoderExternalNetworkClient, EncoderExternalTonicClient},
         EncoderNetworkingInfo,
@@ -25,8 +20,8 @@ pub struct EncoderClientService {
 
 impl EncoderClientService {
     pub fn new(authority_keypair: AuthorityKeyPair, network_keypair: NetworkKeyPair) -> Self {
-        // Convert network keypair to PeerKeyPair for TLS
-        let peer_keypair = PeerKeyPair::new(network_keypair.into_inner());
+        // Convert network keypair to NetworkKeyPair for TLS
+        let peer_keypair = NetworkKeyPair::new(network_keypair.into_inner());
 
         // Create empty NetworkingInfo initially
         let networking_info = EncoderNetworkingInfo::new(Vec::new());
@@ -51,7 +46,8 @@ impl EncoderClientService {
 
         for (encoder_key, _) in &committee.members() {
             if let Some(metadata) = committee.network_metadata.get(encoder_key) {
-                let peer_public_key = PeerPublicKey::new(metadata.network_key.clone().into_inner());
+                let peer_public_key =
+                    NetworkPublicKey::new(metadata.network_key.clone().into_inner());
 
                 network_mapping.push((
                     encoder_key.clone(),
@@ -69,19 +65,17 @@ impl EncoderClientService {
         &self,
         encoders: Vec<EncoderPublicKey>,
         token: ShardAuthToken,
-        tls_key: PeerPublicKey,
-        address: Multiaddr,
+        downloadable_metadata: DownloadableMetadata,
         timeout: Duration,
     ) -> SharedResult<()> {
         // Create and sign the shard input
-        let input = Input::V1(InputV1::new(token.clone(), tls_key, address));
+        let input = Input::V1(InputV1::new(token.clone(), downloadable_metadata));
         // Send to each shard member
         for encoder_key in encoders {
             self.client
                 .send_input(&encoder_key, &input, timeout)
                 .await?;
         }
-
         Ok(())
     }
 }

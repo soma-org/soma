@@ -1,29 +1,29 @@
 use async_trait::async_trait;
-use safetensors::SafeTensors;
 use std::sync::Arc;
 
 use objects::{
-    networking::{downloader::Downloader, ObjectNetworkClient},
-    storage::{ObjectPath, ObjectStorage},
+    networking::{downloader::Downloader, internal_service::InternalClientPool},
+    storage::ObjectStorage,
 };
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::ShardResult,
-    evaluation::{
-        EvaluationInput, EvaluationInputAPI, EvaluationOutput, ProbeSetAPI, ProbeWeightAPI,
-    },
-    metadata::{DownloadableMetadata, DownloadableMetadataV1, MetadataAPI},
+    evaluation::{EvaluationInput, EvaluationInputAPI, EvaluationOutput},
+    metadata::{DownloadableMetadata, DownloadableMetadataV1},
 };
 
 use super::safetensor_buffer::SafetensorBuffer;
 
-pub(crate) struct CoreProcessor<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> {
-    downloader: ActorHandle<Downloader<O, S>>,
+pub(crate) struct CoreProcessor<S: ObjectStorage + SafetensorBuffer> {
+    downloader: ActorHandle<Downloader<InternalClientPool, S>>,
     storage: Arc<S>,
 }
 
-impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> CoreProcessor<O, S> {
-    pub(crate) fn new(downloader: ActorHandle<Downloader<O, S>>, storage: Arc<S>) -> Self {
+impl<S: ObjectStorage + SafetensorBuffer> CoreProcessor<S> {
+    pub(crate) fn new(
+        downloader: ActorHandle<Downloader<InternalClientPool, S>>,
+        storage: Arc<S>,
+    ) -> Self {
         Self {
             downloader,
             storage,
@@ -32,9 +32,7 @@ impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> CoreProcessor<
 }
 
 #[async_trait]
-impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> Processor
-    for CoreProcessor<O, S>
-{
+impl<S: ObjectStorage + SafetensorBuffer> Processor for CoreProcessor<S> {
     type Input = EvaluationInput;
     type Output = EvaluationOutput;
 
@@ -46,7 +44,8 @@ impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> Processor
                 .downloader
                 .process(
                     DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                        evaluation_input.tls_key(),
+                        None,
+                        None,
                         evaluation_input.address(),
                         evaluation_input.data(),
                     )),
@@ -58,7 +57,8 @@ impl<O: ObjectNetworkClient, S: ObjectStorage + SafetensorBuffer> Processor
                 .downloader
                 .process(
                     DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                        evaluation_input.tls_key(),
+                        None,
+                        None,
                         evaluation_input.address(),
                         evaluation_input.embeddings(),
                     )),

@@ -393,8 +393,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .into(),
                 data_size_bytes: embed
                     .data_size_bytes
-                    .ok_or_else(|| TryFromProtoError::missing("data_size_bytes"))?
-                    as usize,
+                    .ok_or_else(|| TryFromProtoError::missing("data_size_bytes"))?,
                 coin_ref: embed
                     .coin_ref
                     .as_ref()
@@ -931,7 +930,7 @@ impl From<crate::types::ObjectReference> for WithdrawStake {
 // EmbedData conversions
 pub struct EmbedDataArgs {
     pub digest: Vec<u8>,
-    pub data_size_bytes: usize,
+    pub data_size_bytes: u64,
     pub coin_ref: crate::types::ObjectReference,
 }
 
@@ -939,7 +938,7 @@ impl From<EmbedDataArgs> for EmbedData {
     fn from(args: EmbedDataArgs) -> Self {
         Self {
             digest: Some(args.digest.into()),
-            data_size_bytes: Some(args.data_size_bytes as u32),
+            data_size_bytes: Some(args.data_size_bytes),
             coin_ref: Some(args.coin_ref.into()),
         }
     }

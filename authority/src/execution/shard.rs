@@ -47,7 +47,7 @@ impl ShardExecutor {
         store: &mut TemporaryStore,
         signer: SomaAddress,
         digest: Digest<MetadataCommitment>,
-        data_size_bytes: usize,
+        data_size_bytes: u64,
         coin_ref: ObjectRef,
         tx_digest: TransactionDigest,
         value_fee: u64,

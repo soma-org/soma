@@ -4,18 +4,23 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use memmap2::{Mmap, MmapOptions};
 use objects::storage::{
-    filesystem::FilesystemObjectStorage, memory::MemoryObjectStore, ObjectPath,
+    filesystem::FilesystemObjectStorage, memory::MemoryObjectStore, ObjectStorage,
 };
-use types::error::{EvaluationError, EvaluationResult};
+use types::{
+    error::{EvaluationError, EvaluationResult},
+    metadata::ObjectPath,
+};
 
+#[async_trait]
 pub trait SafetensorBuffer: Send + Sync + Sized {
     type Buffer: AsRef<[u8]> + Send + Sync;
-    fn safetensor_buffer(&self, path: ObjectPath) -> EvaluationResult<Self::Buffer>;
+    async fn safetensor_buffer(&self, path: ObjectPath) -> EvaluationResult<Self::Buffer>;
 }
 
+#[async_trait]
 impl SafetensorBuffer for FilesystemObjectStorage {
     type Buffer = Mmap;
-    fn safetensor_buffer(&self, path: ObjectPath) -> EvaluationResult<Self::Buffer> {
+    async fn safetensor_buffer(&self, path: ObjectPath) -> EvaluationResult<Self::Buffer> {
         let file = File::open(self.get_full_path(&path))
             .map_err(|e| EvaluationError::StorageFailure(e.to_string()))?;
         let mmap = unsafe { MmapOptions::new().map(&file) }
@@ -27,12 +32,10 @@ impl SafetensorBuffer for FilesystemObjectStorage {
 #[async_trait]
 impl SafetensorBuffer for MemoryObjectStore {
     type Buffer = Bytes;
-    fn safetensor_buffer(&self, path: ObjectPath) -> EvaluationResult<Self::Buffer> {
-        self.store
-            .read()
-            .get(&path)
-            .cloned()
-            .ok_or_else(|| EvaluationError::StorageFailure("object not found in path".to_string()))
+    async fn safetensor_buffer(&self, path: ObjectPath) -> EvaluationResult<Self::Buffer> {
+        self.get_object(&path)
+            .await
+            .map_err(|e| EvaluationError::StorageFailure(e.to_string()))
     }
 }
 
@@ -40,10 +43,14 @@ impl SafetensorBuffer for MemoryObjectStore {
 mod tests {
     use bytes::Bytes;
     use objects::storage::{
-        filesystem::FilesystemObjectStorage, memory::MemoryObjectStore, ObjectPath, ObjectStorage,
+        filesystem::FilesystemObjectStorage, memory::MemoryObjectStore, ObjectStorage,
     };
     use safetensors::{serialize, tensor::TensorView, Dtype, SafeTensors};
     use tempdir::TempDir;
+    use types::{
+        checksum::{self, Checksum},
+        metadata::ObjectPath,
+    };
 
     use crate::evaluation::core::safetensor_buffer::SafetensorBuffer;
 
@@ -55,7 +62,8 @@ mod tests {
         let tensor = TensorView::new(Dtype::F32, vec![4], &data_bytes).unwrap();
         let tensors = vec![("test_tensor".to_string(), tensor)];
 
-        let path = ObjectPath::new("test".to_string()).unwrap();
+        let checksum = Checksum::new_from_bytes(&data_bytes);
+        let path = ObjectPath::Tmp(0, checksum);
 
         let serialized = serialize(tensors, &None).unwrap();
 
@@ -68,7 +76,7 @@ mod tests {
             .await
             .unwrap();
 
-        let buffer = store.safetensor_buffer(path).unwrap();
+        let buffer = store.safetensor_buffer(path).await.unwrap();
 
         let t = SafeTensors::deserialize(&buffer).unwrap();
         let x = t.tensor("test_tensor").unwrap();
@@ -83,19 +91,20 @@ mod tests {
         let data_bytes: Vec<u8> = data.into_iter().flat_map(|x| x.to_le_bytes()).collect();
         let tensor = TensorView::new(Dtype::F32, vec![4], &data_bytes).unwrap();
 
+        let checksum = Checksum::new_from_bytes(&data_bytes);
         // Create a map of tensors (e.g., a single tensor named "my_tensor")
         let tensors = vec![("test_tensor".to_string(), tensor)];
 
         let serialized = serialize(tensors, &None).unwrap();
 
-        let store = MemoryObjectStore::new_for_test();
-        let path = ObjectPath::new("test".to_string()).unwrap();
+        let store = MemoryObjectStore::new();
+        let path = ObjectPath::Tmp(0, checksum);
         store
             .put_object(&path, Bytes::from(serialized))
             .await
             .unwrap();
 
-        let buffer = store.safetensor_buffer(path).unwrap();
+        let buffer = store.safetensor_buffer(path).await.unwrap();
 
         let t = SafeTensors::deserialize(&buffer).unwrap();
         let x = t.tensor("test_tensor").unwrap();

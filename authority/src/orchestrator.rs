@@ -13,13 +13,17 @@ use tokio::{
 use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
 use types::{
     checksum::Checksum,
+    crypto::{NetworkKeyPair, NetworkPublicKey},
     digests::TransactionDigest,
     effects::{self, TransactionEffectsAPI, VerifiedCertifiedTransactionEffects},
     encoder_committee::EncoderCommittee,
     entropy::SimpleVDF,
     error::{SomaError, SomaResult},
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
-    metadata::{Metadata, MetadataCommitment, MetadataV1},
+    metadata::{
+        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
+        ObjectPath, SignedParams,
+    },
     multiaddr::Multiaddr,
     object::{Object, ObjectRef},
     quorum_driver::{
@@ -28,7 +32,7 @@ use types::{
         QuorumDriverError, QuorumDriverResponse, QuorumDriverResult,
     },
     shard::{Shard, ShardAuthToken, ShardEntropy},
-    shard_crypto::{digest::Digest, keys::PeerPublicKey},
+    shard_crypto::digest::Digest,
     system_state::{SystemState, SystemStateTrait},
     transaction::{
         Transaction, TransactionData, TransactionKind, VerifiedExecutableTransaction,
@@ -431,17 +435,13 @@ where
 
         // TODO: define real Metadata and commitment
         let size_in_bytes = 1;
-        let metadata = MetadataV1::new(Checksum::default(), size_in_bytes);
+        let metadata = MetadataV1::new(
+            ObjectPath::Inputs(finality_proof.block_ref().epoch, Checksum::default()),
+            size_in_bytes,
+        );
         let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
 
-        let tls_key = PeerPublicKey::new(
-            self.validator_state
-                .config
-                .network_key_pair()
-                .into_inner()
-                .public()
-                .clone(),
-        );
+        let network_key_pair = self.validator_state.config.network_key_pair().clone();
         let address = self.validator_state.config.network_address.clone();
 
         if let Ok(shard) = self
@@ -449,7 +449,7 @@ where
                 &finality_proof,
                 metadata_commitment.clone(),
                 shard_input_ref,
-                tls_key,
+                network_key_pair,
                 address,
                 transaction.digest(),
             )
@@ -467,12 +467,12 @@ where
         finality_proof: &FinalityProof,
         metadata_commitment: MetadataCommitment,
         shard_input_ref: ObjectRef,
-        tls_key: PeerPublicKey,
+        network_key_pair: NetworkKeyPair,
         address: Multiaddr,
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Shard> {
         let (shard, shard_auth_token) = self
-            .generate_shard_selection(finality_proof, metadata_commitment, shard_input_ref)
+            .generate_shard_selection(finality_proof, metadata_commitment.clone(), shard_input_ref)
             .await?;
 
         if let Some(encoder_client) = &self.encoder_client {
@@ -481,18 +481,39 @@ where
                 encoder_client.update_encoder_committee(&committee);
             }
 
+            let mut shard_peer_keys: Vec<NetworkPublicKey> = Vec::new();
+            if let Ok(committee) = self.get_current_encoder_committee().await {
+                for encoder_key in shard.encoders() {
+                    if let Some(x) = committee.network_metadata.get(&encoder_key) {
+                        shard_peer_keys.push(x.network_key.clone())
+                    }
+                }
+            }
+
             let client = encoder_client.clone();
             let token = shard_auth_token.clone();
             let digest = *tx_digest;
             let shard = shard.clone();
+            let signed_params = SignedParams::new(
+                "/".to_string(),
+                Some(shard_peer_keys),
+                Duration::from_secs(100),
+                &network_key_pair,
+            );
+
+            let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
+                Some(network_key_pair.public()),
+                Some(signed_params),
+                address,
+                metadata_commitment.metadata(),
+            ));
 
             tokio::spawn(async move {
                 match client
                     .send_to_shard(
                         shard.encoders(),
                         token,
-                        tls_key,
-                        address,
+                        downloadable_metadata,
                         Duration::from_secs(5),
                     )
                     .await

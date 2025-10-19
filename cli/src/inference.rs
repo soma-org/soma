@@ -13,9 +13,12 @@ use intelligence::inference::{
 };
 use json_to_table::{json_to_table, Orientation};
 use objects::{
-    networking::{proxy::LocalObjectServerManager, ObjectNetworkService},
-    storage::{memory::MemoryObjectStore, ObjectPath, ObjectStorage},
+    networking::{
+        internal_service::InternalObjectServiceManager, ObjectService, ObjectServiceManager,
+    },
+    storage::{memory::MemoryObjectStore, ObjectStorage},
 };
+use rand::{rngs::StdRng, SeedableRng};
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::json;
@@ -24,9 +27,11 @@ use tracing::info;
 use types::{
     checksum::Checksum,
     consensus::committee::get_available_local_address,
+    crypto::NetworkKeyPair,
     evaluation::ProbeSet,
-    metadata::{Metadata, MetadataV1},
+    metadata::{Metadata, MetadataV1, ObjectPath},
     p2p::to_host_port_str,
+    parameters::HttpParameters,
 };
 
 #[allow(clippy::large_enum_variant)]
@@ -69,32 +74,37 @@ impl InferenceCommand {
 
                 let address = get_available_local_address();
 
-                let server_object_storage = Arc::new(MemoryObjectStore::new_for_test());
+                let object_storage = Arc::new(MemoryObjectStore::new());
                 let checksum = Checksum::new_from_bytes(&data);
-                let size = data.len();
+                let size = data.len() as u64;
+                let epoch = epoch.unwrap_or(0);
+                let object_path = ObjectPath::Inputs(epoch, checksum);
 
-                let metadata = Metadata::V1(MetadataV1::new(checksum, size));
+                let metadata = Metadata::V1(MetadataV1::new(object_path.clone(), size));
 
-                let object_path = ObjectPath::from_checksum(checksum);
+                let mut rng = StdRng::from_seed([0; 32]);
+                let network_keypair = NetworkKeyPair::generate(&mut rng);
 
-                server_object_storage
+                object_storage
                     .put_object(&object_path, Bytes::from(data))
                     .await
                     .map_err(|e| CliError::InferenceError(e.to_string()))?;
 
-                let object_network_service: ObjectNetworkService<MemoryObjectStore> =
-                    ObjectNetworkService::new(server_object_storage.clone());
+                let object_service: ObjectService<MemoryObjectStore> =
+                    ObjectService::new(object_storage.clone(), network_keypair.public());
 
-                let mut local_obj_server = LocalObjectServerManager::new();
-                local_obj_server
-                    .start(&address, object_network_service)
-                    .await;
+                let mut object_service_manager = InternalObjectServiceManager::new(
+                    network_keypair.clone(),
+                    Arc::new(HttpParameters::default()),
+                )
+                .unwrap();
+                object_service_manager.start(&address, object_service).await;
 
                 let object_server_url =
                     Url::parse(&format!("http://{}", to_host_port_str(&address).unwrap())).unwrap();
 
                 let client = JSONClient::new(object_server_url, base_url).unwrap();
-                let input = InferenceInput::V1(InferenceInputV1::new(epoch.unwrap_or(0), metadata));
+                let input = InferenceInput::V1(InferenceInputV1::new(epoch, metadata));
                 let inference_output = client
                     .call(input, Duration::from_secs(timeout_secs.unwrap_or(30)))
                     .await
