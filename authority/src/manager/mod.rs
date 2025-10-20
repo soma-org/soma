@@ -72,7 +72,6 @@ impl ConsensusManager {
             node_config.worker_key_pair().into_inner(),
             node_config.network_key_pair().into_inner(),
             node_config.protocol_key_pair().copy(),
-            consensus_config.db_path().to_path_buf(),
             mysticeti_client.clone(),
             accumulator_store,
             consensus_adapter,
@@ -86,10 +85,6 @@ impl ConsensusManager {
             active: parking_lot::Mutex::new(false),
             consensus_client,
         }
-    }
-
-    pub fn get_storage_base_path(&self) -> PathBuf {
-        self.consensus_config.db_path().to_path_buf()
     }
 }
 

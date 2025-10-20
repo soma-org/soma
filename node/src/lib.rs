@@ -73,7 +73,7 @@ use types::{
     shard::{Shard, ShardAuthToken},
     storage::{
         committee_store::CommitteeStore,
-        consensus::{mem_store::MemStore, ConsensusStore},
+        consensus::{mem_store::MemStore, rocksdb_store::RocksDBStore, ConsensusStore},
         write_store::WriteStore,
     },
     system_state::{
@@ -222,7 +222,8 @@ impl SomaNode {
         info!("created epoch store");
 
         info!("creating long term consensus store");
-        let consensus_store = Arc::new(MemStore::new());
+        let store_path = config.consensus_db_path();
+        let consensus_store = Arc::new(RocksDBStore::new(store_path.as_path().to_str().unwrap()));
 
         info!("creating state sync store");
         let state_sync_store = StateSyncStore::new(

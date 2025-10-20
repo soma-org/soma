@@ -43,6 +43,8 @@ pub struct NodeConfig {
     pub network_key_pair: KeyPairWithPath,
 
     pub db_path: PathBuf,
+
+    pub consensus_db_path: PathBuf,
     // #[serde(default = "default_grpc_address")]
     pub network_address: Multiaddr,
 
@@ -79,6 +81,10 @@ impl NodeConfig {
 
     pub fn db_path(&self) -> PathBuf {
         self.db_path.clone()
+    }
+
+    pub fn consensus_db_path(&self) -> PathBuf {
+        self.consensus_db_path.clone()
     }
 
     pub fn worker_key_pair(&self) -> NetworkKeyPair {
@@ -223,9 +229,6 @@ impl AuthorityKeyPairWithPath {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ConsensusConfig {
-    // Base consensus DB path for all epochs.
-    pub db_path: PathBuf,
-
     // The number of epochs for which to retain the consensus DBs. Setting it to 0 will make a consensus DB getting
     // dropped as soon as system is switched to a new epoch.
     pub db_retention_epochs: Option<u64>,
@@ -256,10 +259,6 @@ pub struct ConsensusConfig {
 impl ConsensusConfig {
     pub fn address(&self) -> &Multiaddr {
         &self.address
-    }
-
-    pub fn db_path(&self) -> &Path {
-        &self.db_path
     }
 
     pub fn max_pending_transactions(&self) -> usize {
@@ -351,7 +350,6 @@ impl ValidatorConfigBuilder {
         } else {
             Some(ConsensusConfig {
                 address: consensus_address,
-                db_path: consensus_db_path,
                 db_pruner_period_secs: None,
                 db_retention_epochs: None,
                 submit_delay_step_override_millis: None,
@@ -389,6 +387,7 @@ impl ValidatorConfigBuilder {
                 validator.worker_key_pair.into_inner(),
             )),
             db_path,
+            consensus_db_path,
             network_address,
             genesis: genesis,
             encoder_validator_address: validator.encoder_validator_address,

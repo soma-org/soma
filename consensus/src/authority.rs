@@ -97,8 +97,6 @@ impl ConsensusAuthority {
         let broadcaster =
             Broadcaster::new(context.clone(), network_client.clone(), &signals_receivers);
 
-        // let store = Arc::new(MemStore::new());
-        // let store = Arc::new(RocksDBStore::new(store_path));
         let dag_state = Arc::new(RwLock::new(DagState::new(
             context.clone(),
             consensus_store.clone(),
@@ -247,9 +245,9 @@ mod tests {
     async fn test_authority_start_and_stop() {
         let (committee, keypairs, authority_keypairs) = local_committee_and_keys(0, vec![1]);
 
-        let temp_dir = TempDir::new().unwrap();
+        // let temp_dir = TempDir::new().unwrap();
         let parameters = Parameters {
-            db_path: temp_dir.into_path(),
+            // db_path: temp_dir.into_path(),
             ..Default::default()
         };
         let txn_verifier = NoopTransactionVerifier {};
@@ -535,7 +533,7 @@ mod tests {
     ) -> (ConsensusAuthority, UnboundedReceiver<CommittedSubDag>) {
         // Cache less blocks to exercise commit sync.
         let parameters = Parameters {
-            db_path: db_dir.path().to_path_buf(),
+            // db_path: db_dir.path().to_path_buf(),
             dag_state_cached_rounds: 5,
             commit_sync_parallel_fetches: 3,
             commit_sync_batch_size: 3,

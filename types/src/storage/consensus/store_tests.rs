@@ -1,41 +1,46 @@
+use tempfile::TempDir;
+
 use super::{mem_store::MemStore, ConsensusStore, WriteBatch};
 use crate::committee::AuthorityIndex;
 use crate::consensus::{
     block::{BlockAPI as _, BlockDigest, BlockRef, Slot, TestBlock, VerifiedBlock},
     commit::{CommitDigest, TrustedCommit},
 };
+use crate::storage::consensus::rocksdb_store::RocksDBStore;
+use rstest::rstest;
 
 /// Test fixture for store tests. Wraps around various store implementations.
 enum TestStore {
-    // RocksDB((RocksDBStore, TempDir)),
+    RocksDB((RocksDBStore, TempDir)),
     Mem(MemStore),
 }
 
 impl TestStore {
     fn store(&self) -> &dyn ConsensusStore {
         match self {
-            // TestStore::RocksDB((store, _)) => store,
+            TestStore::RocksDB((store, _)) => store,
             TestStore::Mem(store) => store,
         }
     }
 }
 
-// fn new_rocksdb_teststore() -> TestStore {
-//     let temp_dir = TempDir::new().unwrap();
-//     TestStore::RocksDB((
-//         RocksDBStore::new(temp_dir.path().to_str().unwrap()),
-//         temp_dir,
-//     ))
-// }
+fn new_rocksdb_teststore() -> TestStore {
+    let temp_dir = TempDir::new().unwrap();
+    TestStore::RocksDB((
+        RocksDBStore::new(temp_dir.path().to_str().unwrap()),
+        temp_dir,
+    ))
+}
 
 fn new_mem_teststore() -> TestStore {
     TestStore::Mem(MemStore::new())
 }
 
-// #[rstest]
+#[rstest]
 #[tokio::test]
-async fn read_and_contain_blocks() {
-    let test_store = new_mem_teststore();
+async fn test_store_read(
+    #[values(new_rocksdb_teststore(), new_mem_teststore())] test_store: TestStore,
+) {
     let store = test_store.store();
 
     let written_blocks: Vec<VerifiedBlock> = vec![
@@ -99,27 +104,13 @@ async fn read_and_contain_blocks() {
         assert!(!contain_blocks[1]);
         assert!(contain_blocks[2]);
     }
-
-    {
-        for block in &written_blocks {
-            let found = store
-                .contains_block_at_slot(block.slot(), 0)
-                .expect("Read blocks should not fail");
-            assert!(found);
-        }
-
-        let found = store
-            .contains_block_at_slot(Slot::new(10, AuthorityIndex::new_for_test(0)), 0)
-            .expect("Read blocks should not fail");
-        assert!(!found);
-    }
 }
 
-// #[rstest]
+#[rstest]
 #[tokio::test]
-async fn scan_blocks(// #[values(new_rocksdb_teststore(), new_mem_teststore())] test_store: TestStore,
+async fn scan_blocks(
+    #[values(new_rocksdb_teststore(), new_mem_teststore())] test_store: TestStore,
 ) {
-    let test_store = new_mem_teststore();
     let store = test_store.store();
 
     let written_blocks = vec![
@@ -198,11 +189,11 @@ async fn scan_blocks(// #[values(new_rocksdb_teststore(), new_mem_teststore())] 
     }
 }
 
-// #[rstest]
+#[rstest]
 #[tokio::test]
-async fn read_and_scan_commits(// #[values(new_rocksdb_teststore(), new_mem_teststore())] test_store: TestStore,
+async fn read_and_scan_commits(
+    #[values(new_rocksdb_teststore(), new_mem_teststore())] test_store: TestStore,
 ) {
-    let test_store = new_mem_teststore();
     let store = test_store.store();
 
     {

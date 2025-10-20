@@ -6,6 +6,7 @@ use crate::consensus::{
 use crate::error::ConsensusResult;
 
 pub mod mem_store;
+pub mod rocksdb_store;
 #[cfg(test)]
 mod store_tests;
 
@@ -19,9 +20,6 @@ pub trait ConsensusStore: Send + Sync {
 
     /// Checks if blocks exist in the store.
     fn contains_blocks(&self, refs: &[BlockRef]) -> ConsensusResult<Vec<bool>>;
-
-    /// Checks whether there is any block at the given slot
-    fn contains_block_at_slot(&self, slot: Slot, epoch: Epoch) -> ConsensusResult<bool>;
 
     /// Reads blocks for an authority, from start_round.
     fn scan_blocks_by_author(

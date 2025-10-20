@@ -202,14 +202,6 @@ impl ConsensusStore for TestP2pStore {
         todo!()
     }
 
-    fn contains_block_at_slot(
-        &self,
-        slot: crate::consensus::block::Slot,
-        epoch: Epoch,
-    ) -> crate::error::ConsensusResult<bool> {
-        todo!()
-    }
-
     fn scan_blocks_by_author(
         &self,
         authority: crate::committee::AuthorityIndex,

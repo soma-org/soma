@@ -35,7 +35,6 @@ pub struct MysticetiManager {
     protocol_keypair: ProtocolKeyPair,
     network_keypair: NetworkKeyPair,
     authority_keypair: AuthorityKeyPair,
-    storage_base_path: PathBuf,
     running: Mutex<Running>,
     authority: ArcSwapOption<ConsensusAuthority>,
     // Use a shared lazy mysticeti client so we can update the internal mysticeti
@@ -55,7 +54,6 @@ impl MysticetiManager {
         protocol_keypair: Ed25519KeyPair,
         network_keypair: Ed25519KeyPair,
         authority_keypair: BLS12381KeyPair,
-        storage_base_path: PathBuf,
         client: Arc<LazyMysticetiClient>,
         accumulator_store: Arc<dyn AccumulatorStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
@@ -66,7 +64,6 @@ impl MysticetiManager {
             protocol_keypair: ProtocolKeyPair::new(protocol_keypair),
             network_keypair: NetworkKeyPair::new(network_keypair),
             authority_keypair,
-            storage_base_path,
             running: Mutex::new(Running::False),
             authority: ArcSwapOption::empty(),
             client,
@@ -76,12 +73,6 @@ impl MysticetiManager {
             consensus_store,
             committee_store,
         }
-    }
-
-    fn get_store_path(&self, epoch: EpochId) -> PathBuf {
-        let mut store_path = self.storage_base_path.clone();
-        store_path.push(format!("{}", epoch));
-        store_path
     }
 }
 
@@ -103,7 +94,6 @@ impl ConsensusManagerTrait for MysticetiManager {
             .consensus_config()
             .expect("consensus_config should exist");
         let parameters = Parameters {
-            db_path: self.get_store_path(epoch),
             ..consensus_config.parameters.clone().unwrap_or_default()
         };
 

@@ -34,6 +34,7 @@ use std::collections::BTreeMap;
 use fastcrypto::error;
 use fastcrypto::{error::FastCryptoError, hash::Digest};
 use serde::{Deserialize, Serialize};
+use store::TypedStoreError;
 use strum::IntoStaticStr;
 use thiserror::Error;
 use tonic::Status;
@@ -872,6 +873,9 @@ pub enum ConsensusError {
     /// Error when end of epoch data in block is invalid
     #[error("Invalid end of epoch data in block: {0}")]
     InvalidEndOfEpoch(String),
+
+    #[error("RocksDB failure: {0}")]
+    RocksDBFailure(#[from] TypedStoreError),
 }
 
 /// Standard Result type for consensus operations.

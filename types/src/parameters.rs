@@ -11,11 +11,6 @@ use serde::{Deserialize, Serialize};
 /// should not need to specify any field, except db_path.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Parameters {
-    /// Path to consensus DB for this epoch. Required when initializing consensus.
-    /// This is calculated based on user configuration for base directory.
-    #[serde(skip)]
-    pub db_path: PathBuf,
-
     /// Time to wait for parent round leader before sealing a block.
     #[serde(default = "Parameters::default_leader_timeout")]
     pub leader_timeout: Duration,
@@ -153,7 +148,6 @@ impl Parameters {
 impl Default for Parameters {
     fn default() -> Self {
         Self {
-            db_path: PathBuf::default(),
             leader_timeout: Parameters::default_leader_timeout(),
             min_round_delay: Parameters::default_min_round_delay(),
             max_forward_time_drift: Parameters::default_max_forward_time_drift(),

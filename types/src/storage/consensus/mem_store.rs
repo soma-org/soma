@@ -165,24 +165,6 @@ impl ConsensusStore for MemStore {
         Ok(blocks)
     }
 
-    fn contains_block_at_slot(&self, slot: Slot, epoch: EpochId) -> ConsensusResult<bool> {
-        let inner = self.inner.read();
-        let found = inner
-            .digests_by_authorities
-            .get(&epoch)
-            .map(|epoch_digests| {
-                epoch_digests
-                    .range((
-                        Included((slot.authority, slot.round, BlockDigest::MIN)),
-                        Included((slot.authority, slot.round, BlockDigest::MAX)),
-                    ))
-                    .next()
-                    .is_some()
-            })
-            .unwrap_or(false);
-        Ok(found)
-    }
-
     fn scan_last_blocks_by_author(
         &self,
         author: AuthorityIndex,
