@@ -1,0 +1,17 @@
+[package]
+name = "store-derive"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+proc-macro2 = "1.0.47"
+quote = "1.0.23"
+syn = { version = "1.0.104", features = ["full", "derive", "extra-traits"] }
+itertools.workspace = true
+
+[lints]
+workspace = true
+
+
+[lib]
+proc-macro = true

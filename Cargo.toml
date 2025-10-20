@@ -22,8 +22,11 @@ members = [
   "soma-keys",
   "rpc",
   "sdk",
-  "python-sdk", "probes",
-  "arrgen"
+  "python-sdk",
+  "probes",
+  "arrgen",
+  "store",
+  "store-derive",
 ]
 
 
@@ -102,6 +105,8 @@ soma-keys = { path = "soma-keys" }
 rpc = { path = "rpc" }
 sdk = { path = "sdk" }
 python-sdk = { path = "python-sdk" }
+store-derive = { path = "store-derive" }
+store = { path = "store" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim-macros" }
