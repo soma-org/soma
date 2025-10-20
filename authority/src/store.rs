@@ -7,6 +7,11 @@ use std::{
 use fastcrypto::hash::{HashFunction, Sha3_256};
 use itertools::izip;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use store::{
+    rocks::{DBBatch, DBMap},
+    Map as _, TypedStoreError,
+};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
 use types::{
@@ -82,10 +87,8 @@ impl AuthorityStore {
             info!("Loading epoch start config from DB");
             perpetual_tables
                 .epoch_start_configuration
-                .read()
-                .get(&())
+                .get(&())?
                 .expect("Epoch start configuration must be set in non-empty DB")
-                .clone()
         };
         let cur_epoch = perpetual_tables.get_recovery_epoch_at_restart()?;
         info!("Epoch start config: {:?}", epoch_start_configuration);
@@ -132,16 +135,17 @@ impl AuthorityStore {
             // insert txn and effects of genesis
             let transaction = VerifiedTransaction::new_unchecked(genesis.transaction().clone());
 
-            store.perpetual_tables.transactions.write().insert(
-                *transaction.digest(),
-                transaction.serializable_ref().clone(),
-            );
+            store
+                .perpetual_tables
+                .transactions
+                .insert(transaction.digest(), transaction.serializable_ref())
+                .unwrap();
 
             store
                 .perpetual_tables
                 .effects
-                .write()
-                .insert(genesis.effects().digest(), genesis.effects().clone());
+                .insert(&genesis.effects().digest(), genesis.effects())
+                .unwrap();
             // We don't insert the effects to executed_effects yet because the genesis tx hasn't but will be executed.
             // This is important for fullnodes to be able to generate indexing data right now.
         }
@@ -157,12 +161,11 @@ impl AuthorityStore {
     ) -> SomaResult<()> {
         // We can safely delete all entries in the per epoch marker table since this is only called
         // at epoch boundaries (during reconfiguration). Therefore any entries that currently
-        // exist can be removed. Because of this we can use the `schedule_delete_all` method.
+        // exist can be removed. Because of this we can use the `schedule_delete_all` method.x
         Ok(self
             .perpetual_tables
             .object_per_epoch_marker_table
-            .write()
-            .clear())
+            .schedule_delete_all()?)
     }
 
     pub fn get_recovery_epoch_at_restart(&self) -> SomaResult<EpochId> {
@@ -173,41 +176,34 @@ impl AuthorityStore {
         &self,
         effects_digest: &TransactionEffectsDigest,
     ) -> SomaResult<Option<TransactionEffects>> {
-        Ok(self
-            .perpetual_tables
-            .effects
-            .read()
-            .get(effects_digest)
-            .cloned())
+        Ok(self.perpetual_tables.effects.get(effects_digest)?)
     }
 
     /// Returns true if we have an effects structure for this transaction digest
     pub fn effects_exists(&self, effects_digest: &TransactionEffectsDigest) -> SomaResult<bool> {
-        Ok(self
-            .perpetual_tables
+        self.perpetual_tables
             .effects
-            .read()
-            .contains_key(effects_digest))
+            .contains_key(effects_digest)
+            .map_err(|e| e.into())
     }
 
     pub fn multi_get_effects<'a>(
         &self,
         effects_digests: impl Iterator<Item = &'a TransactionEffectsDigest>,
     ) -> SomaResult<Vec<Option<TransactionEffects>>> {
-        let read_guard = self.perpetual_tables.effects.read();
-        Ok(effects_digests
-            .map(|key| read_guard.get(key).cloned())
-            .collect())
+        self.perpetual_tables
+            .effects
+            .multi_get(effects_digests)
+            .map_err(|e| e.into())
     }
 
     pub fn get_executed_effects(
         &self,
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Option<TransactionEffects>> {
-        let executed_effects_read = self.perpetual_tables.executed_effects.read();
-        let effects_digest = executed_effects_read.get(tx_digest);
+        let effects_digest = self.perpetual_tables.executed_effects.get(tx_digest)?;
         match effects_digest {
-            Some(digest) => Ok(self.perpetual_tables.effects.read().get(&digest).cloned()),
+            Some(digest) => Ok(self.perpetual_tables.effects.get(&digest)?),
             None => Ok(None),
         }
     }
@@ -218,12 +214,10 @@ impl AuthorityStore {
         &self,
         digests: &[TransactionDigest],
     ) -> SomaResult<Vec<Option<TransactionEffectsDigest>>> {
-        let read_guard = self.perpetual_tables.executed_effects.read();
-
-        Ok(digests
-            .iter()
-            .map(|key| read_guard.get(key).cloned())
-            .collect())
+        self.perpetual_tables
+            .executed_effects
+            .multi_get(digests)
+            .map_err(|e| e.into())
     }
 
     /// Given a list of transaction digests, returns a list of the corresponding effects only if they have been
@@ -232,11 +226,7 @@ impl AuthorityStore {
         &self,
         digests: &[TransactionDigest],
     ) -> SomaResult<Vec<Option<TransactionEffects>>> {
-        let read_guard = self.perpetual_tables.executed_effects.read();
-        let executed_effects_digests: Vec<Option<TransactionEffectsDigest>> = digests
-            .iter()
-            .map(|key| read_guard.get(key).cloned())
-            .collect();
+        let executed_effects_digests = self.perpetual_tables.executed_effects.multi_get(digests)?;
         let effects = self.multi_get_effects(executed_effects_digests.iter().flatten())?;
         let mut tx_to_effects_map = effects
             .into_iter()
@@ -253,8 +243,7 @@ impl AuthorityStore {
         Ok(self
             .perpetual_tables
             .executed_effects
-            .read()
-            .contains_key(digest))
+            .contains_key(digest)?)
     }
 
     pub fn set_epoch_start_configuration(
@@ -267,12 +256,7 @@ impl AuthorityStore {
     }
 
     pub fn get_epoch_start_configuration(&self) -> SomaResult<Option<EpochStartConfiguration>> {
-        Ok(self
-            .perpetual_tables
-            .epoch_start_configuration
-            .read()
-            .get(&())
-            .cloned())
+        Ok(self.perpetual_tables.epoch_start_configuration.get(&())?)
     }
 
     pub fn insert_transaction_and_effects(
@@ -280,15 +264,20 @@ impl AuthorityStore {
         transaction: &VerifiedTransaction,
         transaction_effects: &TransactionEffects,
     ) -> Result<(), TypedStoreError> {
-        self.perpetual_tables.transactions.write().insert(
-            *transaction.digest(),
-            transaction.serializable_ref().clone(),
-        );
+        let mut write_batch = self.perpetual_tables.transactions.batch();
+        // effects must be inserted before the corresponding transaction entry
+        // because they carry epoch information necessary for correct pruning via relocation filters
+        write_batch
+            .insert_batch(
+                &self.perpetual_tables.effects,
+                [(transaction_effects.digest(), transaction_effects)],
+            )?
+            .insert_batch(
+                &self.perpetual_tables.transactions,
+                [(transaction.digest(), transaction.serializable_ref())],
+            )?;
 
-        self.perpetual_tables
-            .effects
-            .write()
-            .insert(transaction_effects.digest(), transaction_effects.clone());
+        write_batch.write()?;
         Ok(())
     }
 
@@ -296,37 +285,36 @@ impl AuthorityStore {
         &self,
         transactions: impl Iterator<Item = &'a VerifiedTransaction>,
     ) -> Result<(), TypedStoreError> {
+        let mut write_batch = self.perpetual_tables.transactions.batch();
         for tx in transactions {
-            self.perpetual_tables
-                .transactions
-                .write()
-                .insert(*tx.digest(), tx.serializable_ref().clone());
+            write_batch.insert_batch(
+                &self.perpetual_tables.transactions,
+                [(tx.digest(), tx.serializable_ref())],
+            )?;
         }
 
+        write_batch.write()?;
         Ok(())
     }
 
     pub fn multi_get_transaction_blocks(
         &self,
         tx_digests: &[TransactionDigest],
-    ) -> SomaResult<Vec<Option<VerifiedTransaction>>> {
-        let read_guard = self.perpetual_tables.transactions.read();
-        Ok(tx_digests
-            .iter()
-            .map(|key| read_guard.get(key).cloned().map(|v| v.into()))
-            .collect())
+    ) -> Result<Vec<Option<VerifiedTransaction>>, TypedStoreError> {
+        self.perpetual_tables
+            .transactions
+            .multi_get(tx_digests)
+            .map(|v| v.into_iter().map(|v| v.map(|v| v.into())).collect())
     }
 
     pub fn get_transaction_block(
         &self,
         tx_digest: &TransactionDigest,
-    ) -> Option<VerifiedTransaction> {
+    ) -> Result<Option<VerifiedTransaction>, TypedStoreError> {
         self.perpetual_tables
             .transactions
-            .read()
             .get(tx_digest)
-            .cloned()
-            .map(|v| v.into())
+            .map(|v| v.map(|v| v.into()))
     }
 
     /// Updates the state resulting from the execution of a certificate.
@@ -343,82 +331,15 @@ impl AuthorityStore {
 
         let _locks = self.acquire_read_locks_for_objects(&written).await;
 
+        // Create a single batch for all operations
+        let mut write_batch = self.perpetual_tables.transactions.batch();
+
         for outputs in tx_outputs {
-            let TransactionOutputs {
-                transaction,
-                effects,
-                markers,
-                written,
-                deleted,
-                locks_to_delete,
-                new_locks_to_init,
-            } = outputs as &TransactionOutputs;
-
-            // Store the certificate indexed by transaction digest
-            let transaction_digest = transaction.digest();
-            self.perpetual_tables
-                .transactions
-                .write()
-                .insert(*transaction_digest, transaction.serializable_ref().clone());
-
-            let effects_digest = effects.digest();
-
-            markers
-                .iter()
-                .map(|(key, marker_value)| ((epoch_id, *key), *marker_value))
-                .for_each(|(key, value)| {
-                    self.perpetual_tables
-                        .object_per_epoch_marker_table
-                        .write()
-                        .insert(key, value);
-                });
-
-            deleted
-                .iter()
-                .map(|key| (key, StoreObject::Deleted))
-                .for_each(|(key, store_object)| {
-                    self.perpetual_tables
-                        .objects
-                        .write()
-                        .insert(*key, store_object);
-                });
-
-            // Insert each output object into the stores
-            let new_objects: Vec<(ObjectKey, &Object)> = written
-                .iter()
-                .map(|(id, new_object)| {
-                    let version = new_object.version();
-                    debug!(?id, ?version, "writing object");
-
-                    (ObjectKey(*id, version), new_object)
-                })
-                .collect();
-
-            for (key, object) in new_objects.iter() {
-                self.perpetual_tables
-                    .objects
-                    .write()
-                    .insert(*key, StoreObject::Value((*object).clone().into_inner()));
-            }
-
-            self.initialize_object_transaction_locks_impl(new_locks_to_init, false)?;
-
-            // Note: deletes locks for received objects as well (but not for objects that were in
-            // `Receiving` arguments which were not received)
-            self.delete_object_transaction_locks(locks_to_delete)?;
-
-            self.perpetual_tables
-                .effects
-                .write()
-                .insert(effects_digest, effects.clone());
-
-            self.perpetual_tables
-                .executed_effects
-                .write()
-                .insert(*transaction_digest, effects_digest);
-
-            debug!(effects_digest = ?effects.digest(), "commit_certificate finished");
+            self.write_one_transaction_outputs(&mut write_batch, epoch_id, outputs)?;
         }
+
+        // Write all changes atomically
+        write_batch.write()?;
 
         trace!(
             "committed transactions: {:?}",
@@ -431,19 +352,93 @@ impl AuthorityStore {
         Ok(())
     }
 
-    /// Commits transactions only to the db. Called by checkpoint builder. See
-    /// ExecutionCache::commit_transactions for more info
+    fn write_one_transaction_outputs(
+        &self,
+        write_batch: &mut DBBatch,
+        epoch_id: EpochId,
+        tx_outputs: &TransactionOutputs,
+    ) -> SomaResult {
+        let TransactionOutputs {
+        transaction,
+        effects,
+        markers,
+        written,
+        deleted,
+        locks_to_delete,
+        new_locks_to_init,
+        ..  // Add this if there are other fields
+    } = tx_outputs;
+
+        let effects_digest = effects.digest();
+        let transaction_digest = transaction.digest();
+
+        // Effects must be inserted before the corresponding dependent entries
+        write_batch
+            .insert_batch(
+                &self.perpetual_tables.effects,
+                [(effects_digest, effects.clone())],
+            )?
+            .insert_batch(
+                &self.perpetual_tables.executed_effects,
+                [(transaction_digest, effects_digest)],
+            )?;
+
+        // Store the certificate indexed by transaction digest
+        write_batch.insert_batch(
+            &self.perpetual_tables.transactions,
+            iter::once((transaction_digest, transaction.serializable_ref())),
+        )?;
+
+        // Add batched writes for markers
+        write_batch.insert_batch(
+            &self.perpetual_tables.object_per_epoch_marker_table,
+            markers
+                .iter()
+                .map(|(key, marker_value)| ((epoch_id, *key), *marker_value)),
+        )?;
+
+        // Add batched writes for deleted objects
+        write_batch.insert_batch(
+            &self.perpetual_tables.objects,
+            deleted.iter().map(|key| (key, StoreObject::Deleted)),
+        )?;
+
+        // Insert each output object into the stores
+        let new_objects = written.iter().map(|(id, new_object)| {
+            let version = new_object.version();
+            debug!(?id, ?version, "writing object");
+            let store_object = get_store_object(new_object.clone());
+            (ObjectKey(*id, version), store_object)
+        });
+
+        write_batch.insert_batch(&self.perpetual_tables.objects, new_objects)?;
+
+        // Initialize and delete locks
+        self.initialize_object_transaction_locks_impl(write_batch, new_locks_to_init, false)?;
+        self.delete_object_transaction_locks(write_batch, locks_to_delete)?;
+
+        debug!(effects_digest = ?effects.digest(), "commit_certificate finished");
+
+        Ok(())
+    }
+
+    /// Commits transactions only to the db. Called by checkpoint builder.
     pub(crate) fn commit_transactions(
         &self,
         transactions: &[(TransactionDigest, VerifiedTransaction)],
     ) -> SomaResult {
         info!(?transactions, "commit_transactions");
-        for (digest, transaction) in transactions {
-            self.perpetual_tables
-                .transactions
-                .write()
-                .insert(*digest, transaction.serializable_ref().clone());
-        }
+
+        let mut batch = self.perpetual_tables.transactions.batch();
+
+        batch.insert_batch(
+            &self.perpetual_tables.transactions,
+            transactions
+                .iter()
+                .map(|(digest, transaction)| (*digest, transaction.serializable_ref())),
+        )?;
+
+        batch.write()?;
         Ok(())
     }
 
@@ -458,16 +453,15 @@ impl AuthorityStore {
         Ok(self
             .perpetual_tables
             .objects
-            .read()
-            .contains_key(&ObjectKey(*object_id, version)))
+            .contains_key(&ObjectKey(*object_id, version))?)
     }
 
     pub fn multi_object_exists_by_key(&self, object_keys: &[ObjectKey]) -> SomaResult<Vec<bool>> {
-        let objects_guard = self.perpetual_tables.objects.read();
-
-        Ok(object_keys
-            .iter()
-            .map(|key| objects_guard.contains_key(key))
+        Ok(self
+            .perpetual_tables
+            .objects
+            .multi_contains_keys(object_keys.to_vec())?
+            .into_iter()
             .collect())
     }
 
@@ -479,47 +473,40 @@ impl AuthorityStore {
         let Some(prior_version) = version.one_before() else {
             return Ok(None);
         };
-        // Get read lock on objects
-        let objects = self.perpetual_tables.objects.read();
+        let mut iterator = self
+            .perpetual_tables
+            .objects
+            .reversed_safe_iter_with_bounds(
+                Some(ObjectKey::min_for_id(object_id)),
+                Some(ObjectKey(*object_id, prior_version)),
+            )?;
 
-        // Find the entry with version less than or equal to prior_version
-        let target_key = ObjectKey(*object_id, prior_version);
-
-        // Use range to get all entries for this object_id up to and including prior_version
-        let matching_entry = objects
-            .range(..=target_key) // Get all entries up to and including our target
-            .rev() // Reverse to get the highest version first
-            .find(|(key, _)| key.0 == *object_id) // Find first entry matching our object_id
-            .map(|(key, value)| (key.clone(), value.clone()));
-
-        // If we found a matching entry, convert it to ObjectRef
-        if let Some((object_key, value)) = matching_entry {
-            Ok(Some(
-                self.perpetual_tables.object_reference(&object_key, value)?,
-            ))
-        } else {
-            Ok(None)
+        if let Some((object_key, value)) = iterator.next().transpose()? {
+            if object_key.0 == *object_id {
+                return Ok(Some(
+                    self.perpetual_tables.object_reference(&object_key, value)?,
+                ));
+            }
         }
+        Ok(None)
     }
 
     pub fn multi_get_objects_by_key(
         &self,
         object_keys: &[ObjectKey],
     ) -> Result<Vec<Option<Object>>, SomaError> {
-        // Get single read lock to avoid multiple lock acquisitions
-        let objects_guard = self.perpetual_tables.objects.read();
+        let wrappers = self
+            .perpetual_tables
+            .objects
+            .multi_get(object_keys.to_vec())?;
+        let mut ret = vec![];
 
-        // Pre-allocate the result vector to avoid reallocations
-        let mut ret = Vec::with_capacity(object_keys.len());
-
-        // Process each key and transform the result
-        for key in object_keys {
-            let wrapper = objects_guard.get(key).cloned();
-            let obj = wrapper
-                .map(|object| self.perpetual_tables.object(key, object))
-                .transpose()?
-                .flatten();
-            ret.push(obj);
+        for (idx, w) in wrappers.into_iter().enumerate() {
+            ret.push(
+                w.map(|object| self.perpetual_tables.object(&object_keys[idx], object))
+                    .transpose()?
+                    .flatten(),
+            );
         }
         Ok(ret)
     }
@@ -546,18 +533,23 @@ impl AuthorityStore {
     /// NOTE: does not handle transaction lock.
     /// This is used to insert genesis objects
     fn insert_object_direct(&self, object_ref: ObjectRef, object: &Object) -> SomaResult {
+        let mut write_batch = self.perpetual_tables.objects.batch();
+
         // Insert object
         let store_object = get_store_object(object.clone());
-        self.perpetual_tables
-            .objects
-            .write()
-            .insert(ObjectKey::from(object_ref), store_object);
+        write_batch.insert_batch(
+            &self.perpetual_tables.objects,
+            std::iter::once((ObjectKey::from(object_ref), store_object)),
+        )?;
 
         // Update the index
         if object.get_single_owner().is_some() {
             // Only initialize lock for address owned objects.
-            self.initialize_object_transaction_locks_impl(&[object_ref], false)?;
+
+            self.initialize_object_transaction_locks_impl(&mut write_batch, &[object_ref], false)?;
         }
+
+        write_batch.write()?;
 
         Ok(())
     }
@@ -565,24 +557,26 @@ impl AuthorityStore {
     /// This function should only be used for initializing genesis and should remain private.
     #[instrument(level = "debug", skip_all)]
     pub(crate) fn bulk_insert_genesis_objects(&self, objects: &[Object]) -> SomaResult<()> {
+        let mut batch = self.perpetual_tables.objects.batch();
         let ref_and_objects: Vec<_> = objects
             .iter()
             .map(|o| (o.compute_object_reference(), o))
             .collect();
 
-        for (oref, o) in &ref_and_objects {
-            self.perpetual_tables.objects.write().insert(
-                ObjectKey::from(oref),
-                StoreObject::Value((**o).clone().into_inner()),
-            );
-        }
+        batch.insert_batch(
+            &self.perpetual_tables.objects,
+            ref_and_objects
+                .iter()
+                .map(|(oref, o)| (ObjectKey::from(oref), get_store_object((*o).clone()))),
+        )?;
 
         let refs: Vec<_> = ref_and_objects.iter().map(|(oref, _)| *oref).collect();
 
         self.initialize_object_transaction_locks_impl(
-            &(refs),
-            false, // is_force_reset
+            &mut batch, &refs, false, // is_force_reset
         )?;
+
+        batch.write()?;
 
         Ok(())
     }
@@ -594,22 +588,35 @@ impl AuthorityStore {
         expected_sha3_digest: &[u8; 32],
     ) -> SomaResult<()> {
         let mut hasher = Sha3_256::default();
-
+        let mut batch = perpetual_db.objects.batch();
+        let mut written = 0usize;
+        const MAX_BATCH_SIZE: usize = 100_000;
         for object in live_objects {
             hasher.update(object.object_reference().2.inner());
             match object {
                 LiveObject::Normal(object) => {
-                    perpetual_db.objects.write().insert(
-                        ObjectKey::from(object.compute_object_reference()),
-                        StoreObject::Value(object.clone().into_inner()),
-                    );
+                    let store_object_wrapper = get_store_object(object.clone());
+                    batch.insert_batch(
+                        &perpetual_db.objects,
+                        std::iter::once((
+                            ObjectKey::from(object.compute_object_reference()),
+                            store_object_wrapper,
+                        )),
+                    )?;
 
                     Self::initialize_object_transaction_locks(
                         &perpetual_db.object_transaction_locks,
+                        &mut batch,
                         &[object.compute_object_reference()],
                         false, // is_force_reset
                     )?;
                 }
+            }
+            written += 1;
+            if written > MAX_BATCH_SIZE {
+                batch.write()?;
+                batch = perpetual_db.objects.batch();
+                written = 0;
             }
         }
         let sha3_digest = hasher.finalize().digest;
@@ -620,7 +627,7 @@ impl AuthorityStore {
             );
             return Err(SomaError::from("Sha does not match"));
         }
-
+        batch.write()?;
         Ok(())
     }
 
@@ -653,27 +660,24 @@ impl AuthorityStore {
         // Other writers may be attempting to acquire locks on the same objects, so a mutex is
         // required.
         // TODO: replace with optimistic db_transactions (i.e. set lock to tx if none)
-        let _mutexes = self.acquire_locks(owned_input_objects).await;
+        let _mutexes = self.acquire_locks(owned_input_objects);
 
         trace!(?owned_input_objects, "acquire_locks");
         let mut locks_to_write = Vec::new();
 
-        let object_transaction_locks = {
-            let locks = self.perpetual_tables.object_transaction_locks.read();
-            owned_input_objects
-                .iter()
-                .map(|key| locks.get(key).cloned())
-                .collect::<Vec<_>>()
-        };
+        let live_object_markers = self
+            .perpetual_tables
+            .object_transaction_locks
+            .multi_get(owned_input_objects)?;
 
         let epoch_tables = epoch_store.tables()?;
 
         let locks = epoch_tables.multi_get_locked_transactions(owned_input_objects)?;
 
-        assert_eq!(locks.len(), object_transaction_locks.len());
+        assert_eq!(locks.len(), live_object_markers.len());
 
         for (live_marker, lock, obj_ref) in izip!(
-            object_transaction_locks.into_iter(),
+            live_object_markers.into_iter(),
             locks.into_iter(),
             owned_input_objects
         ) {
@@ -737,8 +741,7 @@ impl AuthorityStore {
         if self
             .perpetual_tables
             .object_transaction_locks
-            .read()
-            .get(&obj_ref)
+            .get(&obj_ref)?
             .is_none()
         {
             return Ok(ObjectLockStatus::LockedAtDifferentVersion {
@@ -763,15 +766,16 @@ impl AuthorityStore {
         &self,
         object_id: ObjectID,
     ) -> SomaResult<ObjectRef> {
-        let locks_guard = self.perpetual_tables.object_transaction_locks.read();
-
-        let max_key = (object_id, Version::MAX, ObjectDigest::MAX);
-        let mut iterator = locks_guard
-            .range(..=max_key) // Get all entries up to and including max key
-            .rev() // Reverse to get highest version first
-            .filter(|(key, _)| key.0 == object_id); // Only get entries for this object_id
-        Ok(*iterator
+        let mut iterator = self
+            .perpetual_tables
+            .object_transaction_locks
+            .reversed_safe_iter_with_bounds(
+                None,
+                Some((object_id, Version::MAX, ObjectDigest::MAX)),
+            )?;
+        Ok(iterator
             .next()
+            .transpose()?
             .and_then(|value| {
                 if value.0 .0 == object_id {
                     Some(value)
@@ -786,171 +790,70 @@ impl AuthorityStore {
             .0)
     }
 
-    /// This function is called at the end of epoch for each transaction that's
-    /// executed locally on the validator but didn't make to the last commit.
-    /// The effects of the execution is reverted here.
-    /// The following things are reverted:
-    /// 1. All new object states are deleted.
-    /// 2. owner_index table change is reverted.
-    ///
-    /// NOTE: transaction and effects are intentionally not deleted. It's
-    /// possible that if this node is behind, the network will execute the
-    /// transaction in a later epoch. In that case, we need to keep it saved
-    /// so that when we receive the commit that includes it from state
-    /// sync, we are able to execute the commit.
-    /// TODO: implement GC for transactions that are no longer needed.
-    pub fn revert_state_update(&self, tx_digest: &TransactionDigest) -> SomaResult {
-        let Some(effects) = self.get_executed_effects(tx_digest)? else {
-            info!("Not reverting {:?} as it was not executed", tx_digest);
-            return Ok(());
-        };
-
-        info!(?tx_digest, ?effects, "reverting transaction");
-
-        self.perpetual_tables
-            .executed_effects
-            .write()
-            .remove(tx_digest);
-
-        // Remove tombstones
-        for (id, version) in effects.all_tombstones() {
-            let key = ObjectKey(id, version);
-            self.perpetual_tables.objects.write().remove(&key);
-        }
-
-        // Remove changed objects
-        let all_new_object_keys: Vec<ObjectKey> = effects
-            .all_changed_objects()
-            .into_iter()
-            .map(|((id, version, _), _, _)| ObjectKey(id, version))
-            .collect();
-
-        // Get write lock once and perform all removals
-        let mut objects = self.perpetual_tables.objects.write();
-        for key in &all_new_object_keys {
-            objects.remove(key);
-        }
-
-        let modified_object_keys = effects
-            .modified_at_versions()
-            .into_iter()
-            .map(|(id, version)| ObjectKey(id, version));
-
-        let old_locks: Vec<_> = modified_object_keys
-            .map(|key| (self.perpetual_tables.objects.read().get(&key).cloned(), key))
-            .filter_map(|(obj_opt, key)| {
-                let obj = self
-                    .perpetual_tables
-                    .object(
-                        &key,
-                        obj_opt
-                            .unwrap_or_else(|| panic!("Older object version not found: {:?}", key)),
-                    )
-                    .expect("Matching indirect object not found")?;
-
-                let obj_ref = obj.compute_object_reference();
-                Some(obj_ref)
-            })
-            .collect();
-
-        let new_locks = all_new_object_keys
-            .iter()
-            .map(|key| (self.perpetual_tables.objects.read().get(&key).cloned(), key))
-            .filter_map(|(obj_opt, key)| {
-                let obj = self
-                    .perpetual_tables
-                    .object(
-                        &key,
-                        obj_opt
-                            .unwrap_or_else(|| panic!("Older object version not found: {:?}", key)),
-                    )
-                    .expect("Matching indirect object not found")?;
-
-                let obj_ref = obj.compute_object_reference();
-                Some(obj_ref)
-            });
-
-        // Re-create old locks.
-        self.initialize_object_transaction_locks_impl(&old_locks, true)?;
-
-        // Delete new locks
-        for lock in new_locks {
-            self.perpetual_tables
-                .object_transaction_locks
-                .write()
-                .remove(&lock);
-        }
-
-        Ok(())
-    }
-
-    /// Initialize a lock to None (but exists) for a given list of ObjectRefs.
-    /// Returns SomaError::ObjectLockAlreadyInitialized if the lock already exists and is locked to a transaction
     fn initialize_object_transaction_locks_impl(
         &self,
+        write_batch: &mut DBBatch,
         objects: &[ObjectRef],
         is_force_reset: bool,
     ) -> SomaResult {
         AuthorityStore::initialize_object_transaction_locks(
             &self.perpetual_tables.object_transaction_locks,
+            write_batch,
             objects,
             is_force_reset,
         )
     }
 
     pub fn initialize_object_transaction_locks(
-        object_transaction_locks_table: &RwLock<BTreeMap<ObjectRef, Option<LockDetails>>>,
+        object_transaction_locks_table: &DBMap<ObjectRef, Option<LockDetails>>,
+        write_batch: &mut DBBatch,
         objects: &[ObjectRef],
         is_force_reset: bool,
     ) -> SomaResult {
         trace!(?objects, "initialize_locks");
 
-        // First check for existing locks if not force resetting
+        let object_transaction_locks = object_transaction_locks_table.multi_get(objects)?;
+
         if !is_force_reset {
-            let locks_guard = object_transaction_locks_table.read();
-
-            // Check for existing locks
-            let existing_object_transaction_locks: Vec<ObjectRef> = objects
+            // If any live_object_markers exist and are not None, return errors for them
+            // Note we don't check if there is a pre-existing lock. this is because initializing the live
+            // object marker will not overwrite the lock and cause the validator to equivocate.
+            let existing_live_object_markers: Vec<ObjectRef> = object_transaction_locks
                 .iter()
-                .filter(|objref| {
-                    locks_guard
-                        .get(objref)
-                        .and_then(|lock_opt| lock_opt.clone())
-                        .is_some()
+                .zip(objects)
+                .filter_map(|(lock_opt, objref)| {
+                    lock_opt.clone().flatten().map(|_tx_digest| *objref)
                 })
-                .copied()
                 .collect();
-
-            if !existing_object_transaction_locks.is_empty() {
+            if !existing_live_object_markers.is_empty() {
                 info!(
-                    ?existing_object_transaction_locks,
-                    "Cannot initialize object_transaction_locks because some exist already"
+                    ?existing_live_object_markers,
+                    "Cannot initialize live_object_markers because some exist already"
                 );
                 return Err(SomaError::ObjectLockAlreadyInitialized {
-                    refs: existing_object_transaction_locks,
+                    refs: existing_live_object_markers,
                 });
             }
         }
 
-        // Initialize all locks
-        let mut locks_guard = object_transaction_locks_table.write();
-        for obj_ref in objects {
-            locks_guard.insert(*obj_ref, None);
-        }
-
+        write_batch.insert_batch(
+            object_transaction_locks_table,
+            objects.iter().map(|obj_ref| (obj_ref, None)),
+        )?;
         Ok(())
     }
 
     /// Removes locks for a given list of ObjectRefs.
-    fn delete_object_transaction_locks(&self, objects: &[ObjectRef]) -> SomaResult {
+    fn delete_object_transaction_locks(
+        &self,
+        write_batch: &mut DBBatch,
+        objects: &[ObjectRef],
+    ) -> SomaResult {
         trace!(?objects, "delete_locks");
-        for object in objects {
-            self.perpetual_tables
-                .object_transaction_locks
-                .write()
-                .remove(object);
-        }
-
+        write_batch.delete_batch(
+            &self.perpetual_tables.object_transaction_locks,
+            objects.iter(),
+        )?;
         Ok(())
     }
 
@@ -966,24 +869,19 @@ impl AuthorityStore {
             epoch_store.delete_object_locks_for_test(objects);
         }
 
-        // let mut batch = self.perpetual_tables.live_owned_object_markers.batch();
-        // batch
-        //     .delete_batch(
-        //         &self.perpetual_tables.live_owned_object_markers,
-        //         objects.iter(),
-        //     )
-        //     .unwrap();
-        // batch.write().unwrap();
-
-        for object in objects {
-            self.perpetual_tables
-                .object_transaction_locks
-                .write()
-                .remove(object);
-        }
-
-        self.initialize_object_transaction_locks_impl(objects, false)
+        let mut batch = self.perpetual_tables.object_transaction_locks.batch();
+        batch
+            .delete_batch(
+                &self.perpetual_tables.object_transaction_locks,
+                objects.iter(),
+            )
             .unwrap();
+        batch.write().unwrap();
+
+        let mut batch = self.perpetual_tables.object_transaction_locks.batch();
+        self.initialize_object_transaction_locks_impl(&mut batch, objects, false)
+            .unwrap();
+        batch.write().unwrap();
     }
 
     /// Return the object with version less then or eq to the provided seq number.
@@ -1074,9 +972,7 @@ impl AuthorityStore {
         Ok(self
             .perpetual_tables
             .object_per_epoch_marker_table
-            .read()
-            .get(&(epoch_id, object_key))
-            .cloned())
+            .get(&(epoch_id, object_key))?)
     }
 
     pub fn get_latest_marker(
@@ -1087,70 +983,20 @@ impl AuthorityStore {
         let min_key = (epoch_id, FullObjectKey::min_for_id(&object_id));
         let max_key = (epoch_id, FullObjectKey::max_for_id(&object_id));
 
-        // Acquire read lock on the BTreeMap
-        let marker_map = self.perpetual_tables.object_per_epoch_marker_table.read();
-
-        // Find the entry with the highest key that's less than or equal to max_key
-        // This is equivalent to the skip_prior_to(&max_key) behavior
-        let marker_entry = marker_map
-            .range((
-                std::ops::Bound::Included(min_key),
-                std::ops::Bound::Included(max_key),
-            ))
-            .next_back();
-
-        match marker_entry {
-            Some(((epoch, key), marker)) => {
-                // Verify the bounds
-                assert_eq!(*epoch, epoch_id);
-                assert_eq!(key.id(), object_id);
-                Ok(Some((key.version(), marker.clone())))
-            }
-            None => Ok(None),
-        }
-    }
-
-    pub fn have_deleted_owned_object_at_version_or_after(
-        &self,
-        object_id: &ObjectID,
-        version: Version,
-        epoch_id: EpochId,
-    ) -> Result<bool, SomaError> {
-        let object_key = ObjectKey::max_for_id(object_id);
-        let marker_key = (epoch_id, FullObjectKey::Fastpath(object_key));
-
-        // Acquire read lock on the BTreeMap
-        let marker_map = self.perpetual_tables.object_per_epoch_marker_table.read();
-
-        // Get the first entry equal to or greater than marker_key
-        let marker_entry = marker_map
-            .range((
-                std::ops::Bound::Included(marker_key),
-                std::ops::Bound::Unbounded,
-            ))
+        let marker_entry = self
+            .perpetual_tables
+            .object_per_epoch_marker_table
+            .reversed_safe_iter_with_bounds(Some(min_key), Some(max_key))?
             .next();
-
         match marker_entry {
-            Some(((epoch, key), marker)) => {
-                // For FullObjectKey::Fastpath, we need to extract the inner ObjectKey
-                let object_id_matches = match key {
-                    FullObjectKey::Fastpath(obj_key) => obj_key.0 == *object_id,
-                    FullObjectKey::Consensus(cons_key) => false, // Not handling consensus case
-                };
-
-                let version_matches = match key {
-                    FullObjectKey::Fastpath(obj_key) => obj_key.1 >= version,
-                    FullObjectKey::Consensus(_) => false,
-                };
-
-                // Check all conditions
-                let object_data_ok = object_id_matches && version_matches;
-                let epoch_data_ok = *epoch == epoch_id;
-                let mark_data_ok = *marker == MarkerValue::OwnedDeleted;
-
-                Ok(object_data_ok && epoch_data_ok && mark_data_ok)
+            Some(Ok(((epoch, key), marker))) => {
+                // because of the iterator bounds these cannot fail
+                assert_eq!(epoch, epoch_id);
+                assert_eq!(key.id(), object_id);
+                Ok(Some((key.version(), marker)))
             }
-            None => Ok(false),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
         }
     }
 }
@@ -1178,12 +1024,10 @@ impl AccumulatorStore for AuthorityStore {
         &self,
         epoch: EpochId,
     ) -> SomaResult<Option<(CommitIndex, Accumulator)>> {
-        Ok(self
-            .perpetual_tables
+        self.perpetual_tables
             .root_state_hash_by_epoch
-            .read()
             .get(&epoch)
-            .cloned())
+            .map_err(Into::into)
     }
 
     fn get_root_state_accumulator_for_highest_epoch(
@@ -1192,10 +1036,9 @@ impl AccumulatorStore for AuthorityStore {
         Ok(self
             .perpetual_tables
             .root_state_hash_by_epoch
-            .read()
-            .iter()
-            .next_back()
-            .map(|(seq, acc)| (*seq, acc.clone())))
+            .reversed_safe_iter_with_bounds(None, None)?
+            .next()
+            .transpose()?)
     }
 
     fn insert_state_accumulator_for_epoch(
@@ -1206,8 +1049,7 @@ impl AccumulatorStore for AuthorityStore {
     ) -> SomaResult {
         self.perpetual_tables
             .root_state_hash_by_epoch
-            .write()
-            .insert(epoch, (*commit, acc.clone()));
+            .insert(&epoch, &(*commit, acc.clone()))?;
 
         Ok(())
     }
@@ -1218,35 +1060,5 @@ impl AccumulatorStore for AuthorityStore {
 
     fn iter_cached_live_object_set_for_testing(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
         self.iter_live_object_set()
-    }
-}
-
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
-#[non_exhaustive]
-#[derive(Error, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Ord, PartialOrd)]
-pub enum TypedStoreError {
-    #[error("rocksdb error: {0}")]
-    RocksDBError(String),
-    #[error("(de)serialization error: {0}")]
-    SerializationError(String),
-    #[error("the column family {0} was not registered with the database")]
-    UnregisteredColumn(String),
-    #[error("a batch operation can't operate across databases")]
-    CrossDBBatch,
-    #[error("Transaction should be retried")]
-    RetryableTransactionError,
-}
-
-impl From<TypedStoreError> for SomaError {
-    fn from(e: TypedStoreError) -> Self {
-        Self::Storage(e.to_string())
-    }
-}
-
-impl From<TypedStoreError> for types::storage::storage_error::Error {
-    fn from(error: TypedStoreError) -> Self {
-        types::storage::storage_error::Error::custom(error)
     }
 }

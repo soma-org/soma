@@ -732,7 +732,10 @@ impl WritebackCache {
                 .map(|o| o.transaction.clone())
             else {
                 // tx should exist in the db if it is not in dirty set.
-                debug_assert!(self.store.get_transaction_block(tx_digest).is_some());
+                debug_assert!(self
+                    .store
+                    .get_transaction_block(tx_digest)
+                    .is_ok_and(|v| v.is_some()));
                 // If the transaction is not in dirty, it does not need to be committed.
                 // This situation can happen if we build a checkpoint locally which was just executed
                 // via state sync.
@@ -916,9 +919,15 @@ impl TransactionCacheRead for WritebackCache {
                 Ok(CacheResult::Miss)
             },
             |remaining| {
-                self.store
-                    .multi_get_transaction_blocks(remaining)
-                    .map(|v| v.into_iter().map(|o| o.map(Arc::new)).collect())
+                let results: Vec<_> = self
+                    .store
+                    .multi_get_transaction_blocks(&remaining)
+                    .expect("db error")
+                    .into_iter()
+                    .map(|o| o.map(Arc::new))
+                    .collect();
+
+                Ok(results)
             },
         )
     }

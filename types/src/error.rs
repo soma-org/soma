@@ -482,6 +482,18 @@ impl From<ConsensusError> for SomaError {
     }
 }
 
+impl From<TypedStoreError> for SomaError {
+    fn from(e: TypedStoreError) -> Self {
+        Self::Storage(e.to_string())
+    }
+}
+
+impl From<TypedStoreError> for crate::storage::storage_error::Error {
+    fn from(error: TypedStoreError) -> Self {
+        crate::storage::storage_error::Error::custom(error)
+    }
+}
+
 /// Type alias for a boxed Error trait object with Send + Sync requirements.
 ///
 /// This provides a standard error type that can be used for dynamic errors

@@ -17,10 +17,18 @@ use types::{
 };
 
 use crate::{
-    cache::build_execution_cache, commit::CommitStore, epoch_store::AuthorityPerEpochStore,
-    rpc_index::RpcIndexStore, start_epoch::EpochStartConfiguration, state::AuthorityState,
-    state_accumulator::StateAccumulator, store::AuthorityStore,
-    store_tables::AuthorityPerpetualTables,
+    cache::build_execution_cache,
+    commit::CommitStore,
+    epoch_store::AuthorityPerEpochStore,
+    rpc_index::RpcIndexStore,
+    start_epoch::EpochStartConfiguration,
+    state::AuthorityState,
+    state_accumulator::StateAccumulator,
+    store::AuthorityStore,
+    store_pruner::ObjectsCompactionFilter,
+    store_tables::{
+        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
+    },
 };
 
 #[derive(Default, Clone)]
@@ -140,17 +148,25 @@ impl<'a> TestAuthorityBuilder<'a> {
             store_base_path
         });
         let mut config = local_network_config.validator_configs()[0].clone();
+        let mut pruner_db = None;
+        // if config
+        //     .authority_store_pruning_config
+        //     .enable_compaction_filter
+        // {
+        //     pruner_db = Some(Arc::new(AuthorityPrunerTables::open(&path.join("store"))));
+        // }
+        let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
 
         let authority_store = match self.store {
             Some(store) => store,
             None => {
-                // let perpetual_tables_options = AuthorityPerpetualTablesOptions {
-                //     compaction_filter,
-                //     ..Default::default()
-                // };
+                let perpetual_tables_options = AuthorityPerpetualTablesOptions {
+                    compaction_filter,
+                    ..Default::default()
+                };
                 let perpetual_tables = Arc::new(AuthorityPerpetualTables::open(
                     &path.join("store"),
-                    // Some(perpetual_tables_options),
+                    Some(perpetual_tables_options),
                 ));
                 // unwrap ok - for testing only.
                 AuthorityStore::open_with_committee_for_testing(

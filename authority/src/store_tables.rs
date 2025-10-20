@@ -5,7 +5,13 @@ use std::{
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use store::{
+    rocks::{default_db_options, read_size_from_env, DBMap, DBMapTableConfigMap, DBOptions},
+    rocksdb::compaction_filter::Decision,
+    DBMapUtils,
+};
+use store::{DbIterator, Map as _};
+use tracing::{error, info};
 use types::{
     accumulator::{Accumulator, CommitIndex},
     base::SomaAddress,
@@ -22,7 +28,30 @@ use types::{
 use crate::{
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
     store::LockDetails,
+    store_pruner::ObjectsCompactionFilter,
 };
+
+const ENV_VAR_OBJECTS_BLOCK_CACHE_SIZE: &str = "OBJECTS_BLOCK_CACHE_MB";
+pub(crate) const ENV_VAR_LOCKS_BLOCK_CACHE_SIZE: &str = "LOCKS_BLOCK_CACHE_MB";
+const ENV_VAR_TRANSACTIONS_BLOCK_CACHE_SIZE: &str = "TRANSACTIONS_BLOCK_CACHE_MB";
+const ENV_VAR_EFFECTS_BLOCK_CACHE_SIZE: &str = "EFFECTS_BLOCK_CACHE_MB";
+
+/// Options to apply to every column family of the `perpetual` DB.
+#[derive(Default)]
+pub struct AuthorityPerpetualTablesOptions {
+    /// Whether to enable write stalling on all column families.
+    pub enable_write_stall: bool,
+    pub compaction_filter: Option<ObjectsCompactionFilter>,
+}
+
+impl AuthorityPerpetualTablesOptions {
+    fn apply_to(&self, mut db_options: DBOptions) -> DBOptions {
+        if !self.enable_write_stall {
+            db_options = db_options.disable_write_throttling();
+        }
+        db_options
+    }
+}
 
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash)]
 pub enum StoreObject {
@@ -35,6 +64,7 @@ pub fn get_store_object(object: Object) -> StoreObject {
 }
 
 /// AuthorityPerpetualTables contains data that must be preserved from one epoch to the next.
+#[derive(DBMapUtils)]
 pub struct AuthorityPerpetualTables {
     /// This is a map between the object (ID, version) and the latest state of the object, namely the
     /// state that is needed to process new transactions.
@@ -48,18 +78,18 @@ pub struct AuthorityPerpetualTables {
     /// This is because there can be partially executed transactions whose effects have not yet
     /// been written out, and which must be retried. But, they cannot be retried unless their input
     /// objects are still accessible!
-    pub(crate) objects: RwLock<BTreeMap<ObjectKey, StoreObject>>,
+    pub(crate) objects: DBMap<ObjectKey, StoreObject>,
 
     /// This is a map between object references of currently active objects that can be mutated.
     ///
     /// For old epochs, it may also contain the transaction that they are lock on for use by this
     /// specific validator. The transaction locks themselves are now in AuthorityPerEpochStore.
-    pub(crate) object_transaction_locks: RwLock<BTreeMap<ObjectRef, Option<LockDetails>>>,
+    pub(crate) object_transaction_locks: DBMap<ObjectRef, Option<LockDetails>>,
 
     /// This is a map between the transaction digest and the corresponding transaction that's known to be
     /// executable. This means that it may have been executed locally, or it may have been synced through
     /// state-sync but hasn't been executed yet.
-    pub(crate) transactions: RwLock<BTreeMap<TransactionDigest, TrustedTransaction>>,
+    pub(crate) transactions: DBMap<TransactionDigest, TrustedTransaction>,
 
     /// A map between the transaction digest of a certificate to the effects of its execution.
     /// We store effects into this table in two different cases:
@@ -69,29 +99,28 @@ pub struct AuthorityPerpetualTables {
     ///     it's possible to store the same effects twice (once for the synced transaction, and once for the executed).
     ///
     /// It's also possible for the effects to be reverted if the transaction didn't make it into the epoch.
-    pub(crate) effects: RwLock<BTreeMap<TransactionEffectsDigest, TransactionEffects>>,
+    pub(crate) effects: DBMap<TransactionEffectsDigest, TransactionEffects>,
 
     /// Transactions that have been executed locally on this node. We need this table since the `effects` table
     /// doesn't say anything about the execution status of the transaction on this node. When we wait for transactions
     /// to be executed, we wait for them to appear in this table. When we revert transactions, we remove them from both
     /// tables.
-    pub(crate) executed_effects: RwLock<BTreeMap<TransactionDigest, TransactionEffectsDigest>>,
+    pub(crate) executed_effects: DBMap<TransactionDigest, TransactionEffectsDigest>,
 
     /// Parameters of the system fixed at the epoch start
-    pub(crate) epoch_start_configuration: RwLock<BTreeMap<(), EpochStartConfiguration>>,
+    pub(crate) epoch_start_configuration: DBMap<(), EpochStartConfiguration>,
 
     // Finalized root state accumulator for epoch, to be included in
     // of last commit of epoch. These values should only ever be written once
     // and never changed
-    pub(crate) root_state_hash_by_epoch: RwLock<BTreeMap<EpochId, (CommitIndex, Accumulator)>>,
+    pub(crate) root_state_hash_by_epoch: DBMap<EpochId, (CommitIndex, Accumulator)>,
 
     /// Table that stores the set of received objects and deleted objects and the version at
     /// which they were received. This is used to prevent possible race conditions around receiving
     /// objects (since they are not locked by the transaction manager) and for tracking shared
     /// objects that have been deleted. This table is meant to be pruned per-epoch, and all
     /// previous epochs other than the current epoch may be pruned safely.
-    pub(crate) object_per_epoch_marker_table:
-        RwLock<BTreeMap<(EpochId, FullObjectKey), MarkerValue>>,
+    pub(crate) object_per_epoch_marker_table: DBMap<(EpochId, FullObjectKey), MarkerValue>,
 }
 
 impl AuthorityPerpetualTables {
@@ -99,18 +128,41 @@ impl AuthorityPerpetualTables {
         parent_path.join("perpetual")
     }
 
-    pub fn open(parent_path: &Path) -> Self {
-        // Self::open_tables_read_write(Self::path(parent_path))
-        Self {
-            transactions: RwLock::new(BTreeMap::new()),
-            effects: RwLock::new(BTreeMap::new()),
-            executed_effects: RwLock::new(BTreeMap::new()),
-            epoch_start_configuration: RwLock::new(BTreeMap::new()),
-            objects: RwLock::new(BTreeMap::new()),
-            object_transaction_locks: RwLock::new(BTreeMap::new()),
-            object_per_epoch_marker_table: RwLock::new(BTreeMap::new()),
-            root_state_hash_by_epoch: RwLock::new(BTreeMap::new()),
-        }
+    pub fn open(
+        parent_path: &Path,
+        db_options_override: Option<AuthorityPerpetualTablesOptions>,
+    ) -> Self {
+        let db_options_override = db_options_override.unwrap_or_default();
+        let db_options =
+            db_options_override.apply_to(default_db_options().optimize_db_for_write_throughput(4));
+        let table_options = DBMapTableConfigMap::new(BTreeMap::from([
+            (
+                "objects".to_string(),
+                objects_table_config(db_options.clone(), db_options_override.compaction_filter),
+            ),
+            (
+                "owned_object_transaction_locks".to_string(),
+                owned_object_transaction_locks_table_config(db_options.clone()),
+            ),
+            (
+                "transactions".to_string(),
+                transactions_table_config(db_options.clone()),
+            ),
+            (
+                "effects".to_string(),
+                effects_table_config(db_options.clone()),
+            ),
+        ]));
+
+        Self::open_tables_read_write(
+            Self::path(parent_path),
+            Some(db_options.options),
+            Some(table_options),
+        )
+    }
+
+    pub fn open_readonly(parent_path: &Path) -> AuthorityPerpetualTablesReadOnly {
+        Self::get_read_only_handle(Self::path(parent_path), None, None)
     }
 
     pub fn find_object_lt_or_eq_version(
@@ -118,17 +170,13 @@ impl AuthorityPerpetualTables {
         object_id: ObjectID,
         version: Version,
     ) -> SomaResult<Option<Object>> {
-        // Create boundary keys
-        let start_key = ObjectKey::min_for_id(&object_id);
-        let end_key = ObjectKey(object_id, version);
-
-        // Use bounded range and get the highest version that's <= our target
-        match self.objects.read()
-            .range(start_key..=end_key)  // Get range from min to target version
-            .rev()  // Get highest version first
-            .next()  // Take the first one (highest version in our range)
-        {
-            Some((key, obj)) => self.object(key, obj.clone()),
+        let mut iter = self.objects.reversed_safe_iter_with_bounds(
+            Some(ObjectKey::min_for_id(&object_id)),
+            Some(ObjectKey(object_id, version)),
+        )?;
+        match iter.next() {
+            Some(Ok((key, o))) => self.object(&key, o),
+            Some(Err(e)) => Err(e.into()),
             None => Ok(None),
         }
     }
@@ -169,22 +217,17 @@ impl AuthorityPerpetualTables {
         &self,
         object_id: ObjectID,
     ) -> Result<Option<ObjectRef>, SomaError> {
-        // Create boundary keys for this object_id
-        let start_key = ObjectKey::min_for_id(&object_id);
-        let end_key = ObjectKey::max_for_id(&object_id);
+        let mut iterator = self.objects.reversed_safe_iter_with_bounds(
+            Some(ObjectKey::min_for_id(&object_id)),
+            Some(ObjectKey::max_for_id(&object_id)),
+        )?;
 
-        // Get the latest version within this range
-        let latest = self
-            .objects
-            .read()
-            .range(start_key..=end_key) // Get exact range for this object_id
-            .next_back() // Get the last entry (highest version)
-            .map(|(key, value)| (key.clone(), value.clone()));
-
-        match latest {
-            Some((object_key, value)) => Ok(Some(self.object_reference(&object_key, value)?)),
-            None => Ok(None),
+        if let Some(Ok((object_key, value))) = iterator.next() {
+            if object_key.0 == object_id {
+                return Ok(Some(self.object_reference(&object_key, value)?));
+            }
         }
+        Ok(None)
     }
 
     pub fn tombstone_reference(
@@ -207,24 +250,23 @@ impl AuthorityPerpetualTables {
         &self,
         object_id: ObjectID,
     ) -> Result<Option<(ObjectKey, StoreObject)>, SomaError> {
-        // Create boundary keys for this object_id
-        let start_key = ObjectKey::min_for_id(&object_id);
-        let end_key = ObjectKey::max_for_id(&object_id);
+        let mut iterator = self.objects.reversed_safe_iter_with_bounds(
+            Some(ObjectKey::min_for_id(&object_id)),
+            Some(ObjectKey::max_for_id(&object_id)),
+        )?;
 
-        // Get the latest version within this range
-        Ok(self
-            .objects
-            .read()
-            .range(start_key..=end_key) // Get exact range for this object_id
-            .next_back() // Get the last entry (highest version)
-            .map(|(key, value)| (key.clone(), value.clone())))
+        if let Some(Ok((object_key, value))) = iterator.next() {
+            if object_key.0 == object_id {
+                return Ok(Some((object_key, value)));
+            }
+        }
+        Ok(None)
     }
 
     pub fn get_recovery_epoch_at_restart(&self) -> SomaResult<EpochId> {
         Ok(self
             .epoch_start_configuration
-            .read()
-            .get(&())
+            .get(&())?
             .expect("Must have current epoch.")
             .epoch_start_state()
             .epoch())
@@ -234,9 +276,12 @@ impl AuthorityPerpetualTables {
         &self,
         epoch_start_configuration: &EpochStartConfiguration,
     ) -> SomaResult {
-        self.epoch_start_configuration
-            .write()
-            .insert((), epoch_start_configuration.clone());
+        let mut wb = self.epoch_start_configuration.batch();
+        wb.insert_batch(
+            &self.epoch_start_configuration,
+            std::iter::once(((), epoch_start_configuration)),
+        )?;
+        wb.write()?;
         Ok(())
     }
 
@@ -244,57 +289,44 @@ impl AuthorityPerpetualTables {
         &self,
         digest: &TransactionDigest,
     ) -> SomaResult<Option<TrustedTransaction>> {
-        let transaction_read = self.transactions.read();
-        let Some(transaction) = transaction_read.get(digest) else {
+        let Some(transaction) = self.transactions.get(digest)? else {
             return Ok(None);
         };
-        Ok(Some(transaction.clone()))
+        Ok(Some(transaction))
     }
 
     pub fn get_effects(
         &self,
         digest: &TransactionDigest,
     ) -> SomaResult<Option<TransactionEffects>> {
-        let executed_effects_read = self.executed_effects.read();
-        let Some(effect_digest) = executed_effects_read.get(digest) else {
+        let Some(effect_digest) = self.executed_effects.get(digest)? else {
             return Ok(None);
         };
-        Ok(self.effects.read().get(&effect_digest).cloned())
+        Ok(self.effects.get(&effect_digest)?)
     }
 
     pub fn database_is_empty(&self) -> SomaResult<bool> {
-        let guard = self.objects.read();
-        Ok(guard.is_empty() || {
-            // If not empty, check if there are any entries >= ZERO
-            guard.range(ObjectKey::ZERO..).next().is_none()
-        })
+        Ok(self.objects.safe_iter().next().is_none())
     }
 
     pub fn get_newer_object_keys(
         &self,
         object: &(ObjectID, Version),
     ) -> SomaResult<Vec<ObjectKey>> {
-        let start_key = ObjectKey(object.0, object.1.next());
-        let end_key = ObjectKey(object.0, Version::MAX);
-
-        // Collect all keys in range, maintaining object ID match
-        Ok(self
-            .objects
-            .read()
-            .range(start_key..=end_key)
-            .take_while(|(key, _)| key.0 == object.0)
-            .map(|(key, _)| key.clone())
-            .collect())
+        let mut objects = vec![];
+        for result in self.objects.safe_iter_with_bounds(
+            Some(ObjectKey(object.0, object.1.next())),
+            Some(ObjectKey(object.0, Version::MAX)),
+        ) {
+            let (key, _) = result?;
+            objects.push(key);
+        }
+        Ok(objects)
     }
 
     pub fn iter_live_object_set(&self) -> LiveSetIter<'_> {
         LiveSetIter {
-            iter: self
-                .objects
-                .read()
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect(),
+            iter: Box::new(self.objects.safe_iter()),
             tables: self,
             prev: None,
         }
@@ -306,27 +338,42 @@ impl AuthorityPerpetualTables {
         upper_bound: Option<ObjectID>,
         include_wrapped_object: bool,
     ) -> LiveSetIter<'_> {
-        let lower_bound_key = lower_bound.as_ref().map(ObjectKey::min_for_id);
-        let upper_bound_key = upper_bound.as_ref().map(ObjectKey::max_for_id);
-
-        let guard = self.objects.read();
-
-        // Create a new BTreeMap containing only the entries within the specified range
-        let filtered_map: BTreeMap<ObjectKey, StoreObject> =
-            match (lower_bound_key, upper_bound_key) {
-                (Some(start), Some(end)) => guard.range(start..=end),
-                (Some(start), None) => guard.range(start..),
-                (None, Some(end)) => guard.range(..=end),
-                (None, None) => guard.range(..),
-            }
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let lower_bound = lower_bound.as_ref().map(ObjectKey::min_for_id);
+        let upper_bound = upper_bound.as_ref().map(ObjectKey::max_for_id);
 
         LiveSetIter {
-            iter: filtered_map,
+            iter: Box::new(self.objects.safe_iter_with_bounds(lower_bound, upper_bound)),
             tables: self,
             prev: None,
         }
+    }
+
+    pub fn get_object_fallible(&self, object_id: &ObjectID) -> SomaResult<Option<Object>> {
+        let obj_entry = self
+            .objects
+            .reversed_safe_iter_with_bounds(None, Some(ObjectKey::max_for_id(object_id)))?
+            .next();
+
+        match obj_entry.transpose()? {
+            Some((ObjectKey(obj_id, version), obj)) if obj_id == *object_id => {
+                Ok(self.object(&ObjectKey(obj_id, version), obj)?)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    pub fn get_object_by_key_fallible(
+        &self,
+        object_id: &ObjectID,
+        version: Version,
+    ) -> SomaResult<Option<Object>> {
+        Ok(self
+            .objects
+            .get(&ObjectKey(*object_id, version))?
+            .and_then(|object| {
+                self.object(&ObjectKey(*object_id, version), object)
+                    .expect("object construction error")
+            }))
     }
 }
 
@@ -336,22 +383,8 @@ impl ObjectStore for AuthorityPerpetualTables {
         &self,
         object_id: &ObjectID,
     ) -> Result<Option<Object>, types::storage::storage_error::Error> {
-        // Get read lock on objects
-        let objects = self.objects.read();
-
-        // Find the latest version of the object using range
-        let obj_entry = objects
-            .range(..=ObjectKey::max_for_id(object_id)) // Get all entries up to max version
-            .rev() // Reverse to get highest version first
-            .find(|(key, _)| key.0 == *object_id) // Find first entry matching our object_id
-            .map(|(key, value)| (key.clone(), value.clone()));
-
-        match obj_entry {
-            Some((key, obj)) => Ok(self
-                .object(&key, obj)
-                .map_err(types::storage::storage_error::Error::custom)?),
-            None => Ok(None),
-        }
+        self.get_object_fallible(object_id)
+            .map_err(types::storage::storage_error::Error::custom)
     }
 
     fn get_object_by_key(
@@ -359,22 +392,15 @@ impl ObjectStore for AuthorityPerpetualTables {
         object_id: &ObjectID,
         version: Version,
     ) -> Result<Option<Object>, types::storage::storage_error::Error> {
-        Ok(self
-            .objects
-            .read()
-            .get(&ObjectKey(*object_id, version))
-            // .map_err(types::storage::storage_error::Error::custom)?
-            .map(|object| self.object(&ObjectKey(*object_id, version), object.clone()))
-            .transpose()
-            .map_err(types::storage::storage_error::Error::custom)?
-            .flatten())
+        self.get_object_by_key_fallible(object_id, version)
+            .map_err(types::storage::storage_error::Error::custom)
     }
 }
 
 type Map<K, V> = BTreeMap<K, V>;
 
 pub struct LiveSetIter<'a> {
-    iter: BTreeMap<ObjectKey, StoreObject>,
+    iter: DbIterator<'a, (ObjectKey, StoreObject)>,
     tables: &'a AuthorityPerpetualTables,
     prev: Option<(ObjectKey, StoreObject)>,
 }
@@ -403,9 +429,9 @@ impl Iterator for LiveSetIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some((next_key, next_value)) = self.iter.iter().next() {
+            if let Some(Ok((next_key, next_value))) = self.iter.next() {
                 let prev = self.prev.take();
-                self.prev = Some((next_key.clone(), next_value.clone()));
+                self.prev = Some((next_key, next_value));
 
                 if let Some((prev_key, prev_value)) = prev {
                     if prev_key.0 != next_key.0 {
@@ -440,4 +466,69 @@ pub(crate) fn try_construct_object(store_object: StoreObject) -> Result<Object, 
     };
 
     Ok(data.into())
+}
+
+#[derive(DBMapUtils)]
+pub struct AuthorityPrunerTables {
+    pub(crate) object_tombstones: DBMap<ObjectID, Version>,
+}
+
+impl AuthorityPrunerTables {
+    pub fn path(parent_path: &Path) -> PathBuf {
+        parent_path.join("pruner")
+    }
+
+    pub fn open(parent_path: &Path) -> Self {
+        Self::open_tables_read_write(Self::path(parent_path), None, None)
+    }
+}
+
+// These functions are used to initialize the DB tables
+fn owned_object_transaction_locks_table_config(db_options: DBOptions) -> DBOptions {
+    DBOptions {
+        options: db_options
+            .clone()
+            .optimize_for_write_throughput()
+            .optimize_for_read(read_size_from_env(ENV_VAR_LOCKS_BLOCK_CACHE_SIZE).unwrap_or(1024))
+            .options,
+        rw_options: db_options.rw_options.set_ignore_range_deletions(false),
+    }
+}
+
+fn objects_table_config(
+    mut db_options: DBOptions,
+    compaction_filter: Option<ObjectsCompactionFilter>,
+) -> DBOptions {
+    if let Some(mut compaction_filter) = compaction_filter {
+        db_options
+            .options
+            .set_compaction_filter("objects", move |_, key, value| {
+                match compaction_filter.filter(key, value) {
+                    Ok(decision) => decision,
+                    Err(err) => {
+                        error!("Compaction error: {:?}", err);
+                        Decision::Keep
+                    }
+                }
+            });
+    }
+    db_options
+        .optimize_for_write_throughput()
+        .optimize_for_read(read_size_from_env(ENV_VAR_OBJECTS_BLOCK_CACHE_SIZE).unwrap_or(5 * 1024))
+}
+
+fn transactions_table_config(db_options: DBOptions) -> DBOptions {
+    db_options
+        .optimize_for_write_throughput()
+        .optimize_for_point_lookup(
+            read_size_from_env(ENV_VAR_TRANSACTIONS_BLOCK_CACHE_SIZE).unwrap_or(512),
+        )
+}
+
+fn effects_table_config(db_options: DBOptions) -> DBOptions {
+    db_options
+        .optimize_for_write_throughput()
+        .optimize_for_point_lookup(
+            read_size_from_env(ENV_VAR_EFFECTS_BLOCK_CACHE_SIZE).unwrap_or(1024),
+        )
 }

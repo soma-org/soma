@@ -21,7 +21,10 @@ use authority::{
     state_accumulator::StateAccumulator,
     state_sync_store::StateSyncStore,
     store::AuthorityStore,
-    store_tables::AuthorityPerpetualTables,
+    store_pruner::ObjectsCompactionFilter,
+    store_tables::{
+        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
+    },
     throughput::{
         ConsensusThroughputCalculator, ConsensusThroughputProfiler, ThroughputProfileRanges,
     },
@@ -178,8 +181,26 @@ impl SomaNode {
             &genesis_committee,
         ));
 
+        let mut pruner_db = None;
+        // TODO: if config
+        //     .authority_store_pruning_config
+        //     .enable_compaction_filter
+        // {
+        //     pruner_db = Some(Arc::new(AuthorityPrunerTables::open(
+        //         &config.db_path().join("store"),
+        //     )));
+        // }
+        let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
+
+        // By default, only enable write stall on validators for perpetual db.
+        // TODO: let enable_write_stall = config.enable_db_write_stall.unwrap_or(is_validator);
+        let perpetual_tables_options = AuthorityPerpetualTablesOptions {
+            enable_write_stall: true,
+            compaction_filter,
+        };
         let perpetual_tables = Arc::new(AuthorityPerpetualTables::open(
             &config.db_path().join("store"),
+            Some(perpetual_tables_options),
         ));
         let is_genesis = perpetual_tables
             .database_is_empty()

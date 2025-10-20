@@ -27,6 +27,7 @@ pub mod state;
 pub mod state_accumulator;
 pub mod state_sync_store;
 pub mod store;
+pub mod store_pruner;
 pub mod store_tables;
 pub mod test_authority_builder;
 pub mod throughput;

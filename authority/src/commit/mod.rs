@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use store::TypedStoreError;
 use tracing::{debug, info, instrument};
 use types::{
     accumulator::CommitIndex,
@@ -12,8 +13,6 @@ use types::{
     },
     error::SomaResult,
 };
-
-use crate::store::TypedStoreError;
 
 pub mod causal_order;
 pub mod executor;
