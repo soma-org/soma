@@ -34,7 +34,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     future::Future,
     ops::{Bound, Deref},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Weak},
     time::{Duration, Instant},
 };
@@ -47,6 +47,11 @@ use futures::{
 };
 use itertools::izip;
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use store::rocksdb::Options;
+use store::{
+    rocks::{default_db_options, read_size_from_env, DBMap, DBOptions, ReadWriteOptions},
+    DBMapUtils, Map as _,
+};
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::{Accumulator, CommitIndex},
@@ -111,7 +116,10 @@ use crate::{
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
     state_accumulator::StateAccumulator,
     store::LockDetails,
+    store_tables::ENV_VAR_LOCKS_BLOCK_CACHE_SIZE,
 };
+
+pub const EPOCH_DB_PREFIX: &str = "epoch_";
 
 /// # CertLockGuard and CertTxGuard
 ///
@@ -260,8 +268,10 @@ pub struct AuthorityPerEpochStore {
 
     protocol_config: ProtocolConfig,
 
-    // db_options: Option<Options>,
-    //
+    // needed for re-opening epoch db.
+    parent_path: PathBuf,
+    db_options: Option<Options>,
+
     /// In-memory cache of the content from the reconfig_state db table.
     reconfig_state_mem: RwLock<ReconfigState>,
     consensus_notify_read: NotifyRead<SequencedConsensusTransactionKey, ()>,
@@ -293,7 +303,7 @@ pub struct AuthorityPerEpochStore {
     /// We need to keep track of those in order to know when to send EndOfPublish message.
     /// Lock ordering: this is a 'leaf' lock, no other locks should be acquired in the scope of this lock
     /// In particular, this lock is always acquired after taking read or write lock on reconfig state
-    pending_consensus_certificates: Mutex<HashSet<TransactionDigest>>,
+    pending_consensus_certificates: RwLock<HashSet<TransactionDigest>>,
 
     /// MutexTable for transaction locks (prevent concurrent execution of same transaction)
     mutex_table: MutexTable<TransactionDigest>,
@@ -346,7 +356,7 @@ pub struct AuthorityPerEpochStore {
 /// ## Thread Safety
 /// Most tables are protected by RwLocks to allow concurrent access while maintaining
 /// consistency. The lock ordering must be carefully maintained to prevent deadlocks.
-#[derive(Default)]
+#[derive(DBMapUtils)]
 pub struct AuthorityEpochTables {
     /// Certificates that have been received from clients or received from consensus, but not yet
     /// executed. Entries are cleared after execution.
@@ -357,7 +367,7 @@ pub struct AuthorityEpochTables {
     /// progress. But it is more complex, because it would be necessary to track inflight
     /// executions not ordered by indices. For now, tracking inflight certificates as a map
     /// seems easier.
-    pub(crate) pending_execution: RwLock<BTreeMap<TransactionDigest, TrustedExecutableTransaction>>,
+    pub(crate) pending_execution: DBMap<TransactionDigest, TrustedExecutableTransaction>,
 
     /// Track which transactions have been processed in handle_consensus_transaction. We must be
     /// sure to advance next_shared_object_versions exactly once for each transaction we receive from
@@ -367,116 +377,141 @@ pub struct AuthorityEpochTables {
     /// Entries in this table can be garbage collected whenever we can prove that we won't receive
     /// another handle_consensus_transaction call for the given digest. This probably means at
     /// epoch change.
-    pub(crate) consensus_message_processed:
-        RwLock<BTreeMap<SequencedConsensusTransactionKey, bool>>,
+    pub(crate) consensus_message_processed: DBMap<SequencedConsensusTransactionKey, bool>,
 
     /// Map stores pending transactions that this authority submitted to consensus
-    pending_consensus_transactions: RwLock<BTreeMap<ConsensusTransactionKey, ConsensusTransaction>>,
+    pending_consensus_transactions: DBMap<ConsensusTransactionKey, ConsensusTransaction>,
 
     /// The following table is used to store a single value (the corresponding key is a constant). The value
     /// represents the index of the latest consensus message this authority processed, running hash of
     /// transactions, and accumulated stats of consensus output.
     /// This field is written by a single process (consensus handler).
-    pub(crate) last_consensus_stats: RwLock<BTreeMap<u64, ExecutionIndices>>,
+    pub(crate) last_consensus_stats: DBMap<u64, ExecutionIndices>,
 
     /// This table contains current reconfiguration state for validator for current epoch
-    pub(crate) reconfig_state: RwLock<BTreeMap<u64, ReconfigState>>,
+    pub(crate) reconfig_state: DBMap<u64, ReconfigState>,
 
     /// Validators that have sent EndOfPublish message in this epoch
-    pub(crate) end_of_publish: RwLock<BTreeMap<AuthorityName, ()>>,
+    pub(crate) end_of_publish: DBMap<AuthorityName, ()>,
 
     /// Signatures over transaction effects that we have signed and returned to users.
     /// We store this to avoid re-signing the same effects twice.
     /// Note that this may contain signatures for effects from previous epochs, in the case
     /// that a user requests a signature for effects from a previous epoch. However, the
     /// signature is still epoch-specific and so is stored in the epoch store.
-    effects_signatures: RwLock<BTreeMap<TransactionDigest, AuthoritySignInfo>>,
+    effects_signatures: DBMap<TransactionDigest, AuthoritySignInfo>,
 
     /// When we sign a TransactionEffects, we must record the digest of the effects in order
     /// to detect and prevent equivocation when re-executing a transaction that may not have been
     /// committed to disk.
     /// Entries are removed from this table after the transaction in question has been committed
     /// to disk.
-    signed_effects_digests: RwLock<BTreeMap<TransactionDigest, TransactionEffectsDigest>>,
+    signed_effects_digests: DBMap<TransactionDigest, TransactionEffectsDigest>,
 
     /// Signatures of transaction certificates that are executed locally.
-    transaction_cert_signatures: RwLock<BTreeMap<TransactionDigest, AuthorityStrongQuorumSignInfo>>,
+    transaction_cert_signatures: DBMap<TransactionDigest, AuthorityStrongQuorumSignInfo>,
 
     /// This is map between the transaction digest and transactions found in the `transaction_lock`.
     signed_transactions:
-        RwLock<BTreeMap<TransactionDigest, TrustedEnvelope<SenderSignedData, AuthoritySignInfo>>>,
+        DBMap<TransactionDigest, TrustedEnvelope<SenderSignedData, AuthoritySignInfo>>,
 
     /// Map from ObjectRef to transaction locking that object
-    object_locked_transactions: RwLock<BTreeMap<ObjectRef, TransactionDigest>>,
+    object_locked_transactions: DBMap<ObjectRef, TransactionDigest>,
 
     // Maps commit index to an accumulator with accumulated state
     // only for the checkpoint that the key references. Append-only, i.e.,
     // the accumulator is complete wrt the commit
-    pub state_hash_by_commit: RwLock<BTreeMap<CommitIndex, Accumulator>>,
+    pub state_hash_by_commit: DBMap<CommitIndex, Accumulator>,
 
     /// Maps commit index to the running (non-finalized) root state
     /// accumulator up to that commit. Guaranteed to be written to in commit
     /// index order.
-    pub running_root_accumulators: RwLock<BTreeMap<CommitIndex, Accumulator>>,
+    pub running_root_accumulators: DBMap<CommitIndex, Accumulator>,
 
     /// When transaction is executed via commit executor, we store association here
-    pub(crate) executed_transactions_to_commit: RwLock<BTreeMap<TransactionDigest, CommitIndex>>,
+    pub(crate) executed_transactions_to_commit: DBMap<TransactionDigest, CommitIndex>,
 
     /// Next available shared object versions for each shared object.
-    pub(crate) next_shared_object_versions: RwLock<BTreeMap<ConsensusObjectSequenceKey, Version>>,
+    pub(crate) next_shared_object_versions: DBMap<ConsensusObjectSequenceKey, Version>,
     // TODO:  Transactions that were executed in the current epoch: executed_in_epoch
     // TODO: Transactions that are being deferred until some future time deferred_transactions: DBMap<DeferralKey, Vec<VerifiedSequencedConsensusTransaction>>,
     // TODO: Accumulated per-object debts for congestion control. congestion_control_object_debts: DBMap<ObjectID, CongestionPerObjectDebt>,
     /// Signed consensus finality for EmbedData transactions
-    pub(crate) consensus_finalities: RwLock<BTreeMap<TransactionDigest, BlockRef>>,
+    pub(crate) consensus_finalities: DBMap<TransactionDigest, BlockRef>,
+}
+
+fn signed_transactions_table_default_config() -> DBOptions {
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan(1 << 10)
+}
+
+fn owned_object_transaction_locks_table_default_config() -> DBOptions {
+    DBOptions {
+        options: default_db_options()
+            .optimize_for_write_throughput()
+            .optimize_for_read(read_size_from_env(ENV_VAR_LOCKS_BLOCK_CACHE_SIZE).unwrap_or(1024))
+            .options,
+        rw_options: ReadWriteOptions::default().set_ignore_range_deletions(false),
+    }
+}
+
+fn pending_consensus_transactions_table_default_config() -> DBOptions {
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan(1 << 10)
 }
 
 impl AuthorityEpochTables {
+    pub fn open(epoch: EpochId, parent_path: &Path, db_options: Option<Options>) -> Self {
+        Self::open_tables_read_write(Self::path(epoch, parent_path), db_options, None)
+    }
+
+    pub fn open_readonly(epoch: EpochId, parent_path: &Path) -> AuthorityEpochTablesReadOnly {
+        Self::get_read_only_handle(Self::path(epoch, parent_path), None, None)
+    }
+
+    pub fn path(epoch: EpochId, parent_path: &Path) -> PathBuf {
+        parent_path.join(format!("{}{}", EPOCH_DB_PREFIX, epoch))
+    }
+
     fn load_reconfig_state(&self) -> SomaResult<ReconfigState> {
         let state = self
             .reconfig_state
-            .read()
-            .get(&RECONFIG_STATE_INDEX)
-            .cloned()
+            .get(&RECONFIG_STATE_INDEX)?
             .unwrap_or_default();
         Ok(state)
     }
 
-    pub fn get_all_pending_consensus_transactions(&self) -> Vec<ConsensusTransaction> {
-        self.pending_consensus_transactions
-            .read()
-            .values()
-            .cloned()
-            .collect()
+    pub fn get_all_pending_consensus_transactions(&self) -> SomaResult<Vec<ConsensusTransaction>> {
+        Ok(self
+            .pending_consensus_transactions
+            .safe_iter()
+            .map(|item| item.map(|(_k, v)| v))
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     pub fn get_last_consensus_stats(&self) -> SomaResult<Option<ExecutionIndices>> {
-        Ok(self
-            .last_consensus_stats
-            .read()
-            .get(&LAST_CONSENSUS_STATS_ADDR)
-            .copied())
+        Ok(self.last_consensus_stats.get(&LAST_CONSENSUS_STATS_ADDR)?)
     }
 
     pub fn get_locked_transaction(
         &self,
         obj_ref: &ObjectRef,
     ) -> SomaResult<Option<TransactionDigest>> {
-        Ok(self.object_locked_transactions.read().get(obj_ref).cloned())
+        Ok(self.object_locked_transactions.get(obj_ref)?.map(|l| l))
     }
 
     pub fn multi_get_locked_transactions(
         &self,
         owned_input_objects: &[ObjectRef],
     ) -> SomaResult<Vec<Option<TransactionDigest>>> {
-        let locks = self.object_locked_transactions.read();
-        let mut results = Vec::with_capacity(owned_input_objects.len());
-
-        for obj_ref in owned_input_objects {
-            results.push(locks.get(obj_ref).cloned());
-        }
-
-        Ok(results)
+        Ok(self
+            .object_locked_transactions
+            .multi_get(owned_input_objects)?
+            .into_iter()
+            .map(|l| l.map(|l| l))
+            .collect())
     }
 
     pub fn write_transaction_locks(
@@ -484,25 +519,21 @@ impl AuthorityEpochTables {
         signed_transaction: VerifiedSignedTransaction,
         locks_to_write: impl Iterator<Item = (ObjectRef, TransactionDigest)>,
     ) -> SomaResult {
-        info!(
-            "Writing transaction locks for tx: {}",
-            signed_transaction.digest()
-        );
-        // Insert locks
+        let mut batch = self.object_locked_transactions.batch();
+        batch.insert_batch(
+            &self.object_locked_transactions,
+            locks_to_write.map(|(obj_ref, lock)| (obj_ref, lock)),
+        )?;
 
-        let mut locked_transactions = self.object_locked_transactions.write();
-        for (obj_ref, lock) in locks_to_write {
-            locked_transactions.insert(obj_ref, lock);
-        }
+        batch.insert_batch(
+            &self.signed_transactions,
+            std::iter::once((
+                *signed_transaction.digest(),
+                signed_transaction.serializable_ref(),
+            )),
+        )?;
 
-        // Insert transaction
-
-        let mut transactions = self.signed_transactions.write();
-        transactions.insert(
-            *signed_transaction.digest(),
-            signed_transaction.serializable_ref().clone(),
-        );
-
+        batch.write()?;
         Ok(())
     }
 }
@@ -514,24 +545,23 @@ impl AuthorityPerEpochStore {
     pub fn new(
         name: AuthorityName,
         committee: Arc<Committee>,
+        parent_path: &Path,
+        db_options: Option<Options>,
         epoch_start_configuration: EpochStartConfiguration,
         highest_executed_commit: CommitIndex,
-    ) -> Arc<Self> {
+    ) -> SomaResult<Arc<Self>> {
         let current_time = Instant::now();
         let epoch_id = committee.epoch;
 
-        // TODO: change this
-        let tables = AuthorityEpochTables::default();
-        let end_of_publish = StakeAggregator::from_iter(
-            committee.clone(),
-            tables.end_of_publish.read().iter().map(|(k, _)| (*k, ())),
-        );
+        let tables = AuthorityEpochTables::open(epoch_id, parent_path, db_options.clone());
+        let end_of_publish =
+            StakeAggregator::from_iter(committee.clone(), tables.end_of_publish.safe_iter())?;
         let reconfig_state = tables
             .load_reconfig_state()
             .expect("Load reconfig state at initialization cannot fail");
 
         let epoch_alive_notify = NotifyOnce::new();
-        let pending_consensus_transactions = tables.get_all_pending_consensus_transactions();
+        let pending_consensus_transactions = tables.get_all_pending_consensus_transactions()?;
         let pending_consensus_certificates: HashSet<_> = pending_consensus_transactions
             .iter()
             .filter_map(|transaction| {
@@ -563,6 +593,8 @@ impl AuthorityPerEpochStore {
             consensus_quarantine: RwLock::new(ConsensusOutputQuarantine::new(
                 highest_executed_commit,
             )),
+            parent_path: parent_path.to_path_buf(),
+            db_options,
             reconfig_state_mem: RwLock::new(reconfig_state),
             epoch_alive_notify,
             user_certs_closed_notify: NotifyOnce::new(),
@@ -572,7 +604,7 @@ impl AuthorityPerEpochStore {
             executed_digests_notify_read: NotifyRead::new(),
             running_root_notify_read: NotifyRead::new(),
             end_of_publish: Mutex::new(end_of_publish),
-            pending_consensus_certificates: Mutex::new(pending_consensus_certificates),
+            pending_consensus_certificates: RwLock::new(pending_consensus_certificates),
             mutex_table: MutexTable::new(MUTEX_TABLE_SIZE),
             version_assignment_mutex_table: MutexTable::new(MUTEX_TABLE_SIZE),
             epoch_open_time: current_time,
@@ -584,7 +616,7 @@ impl AuthorityPerEpochStore {
             next_epoch_state: RwLock::new(None),
             consensus_leader_notify_read: NotifyRead::new(),
         });
-        s
+        Ok(s)
     }
 
     pub fn tables(&self) -> SomaResult<Arc<AuthorityEpochTables>> {
@@ -619,91 +651,45 @@ impl AuthorityPerEpochStore {
         new_committee: Committee,
         epoch_start_configuration: EpochStartConfiguration,
         highest_executed_commit: CommitIndex,
-    ) -> Arc<Self> {
+    ) -> SomaResult<Arc<Self>> {
         assert_eq!(self.epoch() + 1, new_committee.epoch);
 
-        // Get the last consensus stats from current epoch
+        // Get the last consensus stats from current epoch before creating new store
         let last_consensus_stats = self
-            .tables()
-            .expect("Tables should exist when creating next epoch")
-            .get_last_consensus_stats()
-            .expect("Reading last consensus stats should not fail")
+            .tables()?
+            .get_last_consensus_stats()?
             .unwrap_or_default();
 
-        // Create new tables but initialize with previous consensus stats
-        let mut tables = AuthorityEpochTables::default();
+        // Create the new epoch store with fresh tables
+        let new_store = Self::new(
+            name,
+            Arc::new(new_committee),
+            &self.parent_path,
+            self.db_options.clone(),
+            epoch_start_configuration,
+            highest_executed_commit,
+        )?;
+
+        // Transfer state from old epoch to new epoch
+        new_store.transfer_epoch_state(last_consensus_stats)?;
+
+        Ok(new_store)
+    }
+
+    // Add this helper method to AuthorityPerEpochStore
+    fn transfer_epoch_state(&self, last_consensus_stats: ExecutionIndices) -> SomaResult {
+        let tables = self.tables()?;
+
+        // Write the last consensus stats from previous epoch
         tables
             .last_consensus_stats
-            .write()
-            .insert(LAST_CONSENSUS_STATS_ADDR, last_consensus_stats);
+            .insert(&LAST_CONSENSUS_STATS_ADDR, &last_consensus_stats)?;
 
-        let epoch_id = new_committee.epoch;
-        let current_time = Instant::now();
+        // Transfer any other state that needs to persist across epochs here
+        // For example, you might want to transfer certain reconfig state or
+        // other persistent data
 
-        // Rest of initialization...
-        let end_of_publish = StakeAggregator::from_iter(
-            Arc::new(new_committee.clone()),
-            tables.end_of_publish.read().iter().map(|(k, _)| (*k, ())),
-        );
-
-        let reconfig_state = tables
-            .load_reconfig_state()
-            .expect("Load reconfig state at initialization cannot fail");
-
-        let epoch_alive_notify = NotifyOnce::new();
-
-        let pending_consensus_transactions = tables.get_all_pending_consensus_transactions();
-        let pending_consensus_certificates: HashSet<_> = pending_consensus_transactions
-            .iter()
-            .filter_map(|transaction| {
-                if let ConsensusTransactionKind::UserTransaction(certificate) = &transaction.kind {
-                    Some(*certificate.digest())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        assert_eq!(
-            epoch_start_configuration.epoch_start_state().epoch(),
-            epoch_id
-        );
-
-        let epoch_start_configuration = Arc::new(epoch_start_configuration);
-        let protocol_config = ProtocolConfig::default();
-        let signature_verifier = SignatureVerifier::new(Arc::new(new_committee.clone()), None);
-        let consensus_output_cache = ConsensusOutputCache::new(&epoch_start_configuration, &tables);
-
-        Arc::new(Self {
-            name,
-            committee: Arc::new(new_committee),
-            protocol_config,
-            tables: ArcSwapOption::new(Some(Arc::new(tables))),
-            consensus_output_cache,
-            consensus_quarantine: RwLock::new(ConsensusOutputQuarantine::new(
-                highest_executed_commit,
-            )),
-            reconfig_state_mem: RwLock::new(reconfig_state),
-            epoch_alive_notify,
-            user_certs_closed_notify: NotifyOnce::new(),
-            epoch_alive: tokio::sync::RwLock::new(true),
-            consensus_notify_read: NotifyRead::new(),
-            signature_verifier,
-            executed_digests_notify_read: NotifyRead::new(),
-            running_root_notify_read: NotifyRead::new(),
-            end_of_publish: Mutex::new(end_of_publish),
-            pending_consensus_certificates: Mutex::new(pending_consensus_certificates),
-            mutex_table: MutexTable::new(MUTEX_TABLE_SIZE),
-            version_assignment_mutex_table: MutexTable::new(MUTEX_TABLE_SIZE),
-            epoch_open_time: current_time,
-            epoch_close_time: Default::default(),
-            epoch_start_configuration,
-            executed_transactions_to_commit_notify_read: NotifyRead::new(),
-            highest_synced_commit: RwLock::new(0),
-            synced_commit_notify_read: NotifyRead::new(),
-            next_epoch_state: RwLock::new(None),
-            consensus_leader_notify_read: NotifyRead::new(),
-        })
+        Ok(())
     }
 
     pub fn new_at_next_epoch_for_testing(&self) -> Arc<Self> {
@@ -721,6 +707,7 @@ impl AuthorityPerEpochStore {
             epoch_start_configuration.new_at_next_epoch_for_testing(),
             0,
         )
+        .expect("failed to create new authority per epoch store")
     }
 
     pub fn committee(&self) -> &Arc<Committee> {
@@ -743,12 +730,7 @@ impl AuthorityPerEpochStore {
         &self,
         commit: &CommitIndex,
     ) -> SomaResult<Option<Accumulator>> {
-        Ok(self
-            .tables()?
-            .state_hash_by_commit
-            .read()
-            .get(commit)
-            .cloned())
+        Ok(self.tables()?.state_hash_by_commit.get(commit)?)
     }
 
     pub fn insert_state_hash_for_commit(
@@ -756,10 +738,13 @@ impl AuthorityPerEpochStore {
         commit: &CommitIndex,
         accumulator: &Accumulator,
     ) -> SomaResult {
-        self.tables()?
-            .state_hash_by_commit
-            .write()
-            .insert(*commit, accumulator.clone());
+        let tables = self.tables()?;
+        let mut batch = tables.state_hash_by_commit.batch();
+        batch.insert_batch(
+            &tables.state_hash_by_commit,
+            [(*commit, accumulator.clone())],
+        )?;
+        batch.write()?;
         Ok(())
     }
 
@@ -767,12 +752,7 @@ impl AuthorityPerEpochStore {
         &self,
         commit: &CommitIndex,
     ) -> SomaResult<Option<Accumulator>> {
-        Ok(self
-            .tables()?
-            .running_root_accumulators
-            .read()
-            .get(commit)
-            .cloned())
+        Ok(self.tables()?.running_root_accumulators.get(commit)?)
     }
 
     pub fn get_highest_running_root_accumulator(
@@ -781,10 +761,9 @@ impl AuthorityPerEpochStore {
         Ok(self
             .tables()?
             .running_root_accumulators
-            .read()
-            .iter()
-            .next_back()
-            .map(|(k, v)| (*k, v.clone())))
+            .reversed_safe_iter_with_bounds(None, None)?
+            .next()
+            .transpose()?)
     }
 
     pub fn insert_running_root_accumulator(
@@ -794,8 +773,7 @@ impl AuthorityPerEpochStore {
     ) -> SomaResult {
         self.tables()?
             .running_root_accumulators
-            .write()
-            .insert(*checkpoint, acc.clone());
+            .insert(checkpoint, acc)?;
         self.running_root_notify_read.notify(checkpoint, acc);
 
         Ok(())
@@ -803,12 +781,7 @@ impl AuthorityPerEpochStore {
 
     pub async fn notify_read_running_root(&self, commit: CommitIndex) -> SomaResult<Accumulator> {
         let registration = self.running_root_notify_read.register_one(&commit);
-        let acc = self
-            .tables()?
-            .running_root_accumulators
-            .read()
-            .get(&commit)
-            .cloned();
+        let acc = self.tables()?.running_root_accumulators.get(&commit)?;
 
         let result = match acc {
             Some(ready) => Either::Left(futures::future::ready(ready)),
@@ -826,27 +799,28 @@ impl AuthorityPerEpochStore {
         transactions: &[ConsensusTransaction],
         lock: Option<&RwLockReadGuard<ReconfigState>>,
     ) -> SomaResult {
-        let tables = self.tables()?;
-
-        {
-            let mut pending_transactions = tables.pending_consensus_transactions.write();
-            pending_transactions.extend(transactions.iter().map(|tx| (tx.key(), tx.clone())));
+        let key_value_pairs = transactions.iter().map(|tx| (tx.key(), tx.clone()));
+        self.tables()?
+            .pending_consensus_transactions
+            .multi_insert(key_value_pairs)?;
+        let digests: Vec<_> = transactions
+            .iter()
+            .filter_map(|tx| match &tx.kind {
+                ConsensusTransactionKind::UserTransaction(cert) => Some(cert.digest()),
+                _ => None,
+            })
+            .collect();
+        if !digests.is_empty() {
+            let state = lock.expect("Must pass reconfiguration lock when storing certificate");
+            // Caller is responsible for performing graceful check
+            assert!(
+                state.should_accept_user_certs(),
+                "Reconfiguration state should allow accepting user transactions"
+            );
+            let mut pending_consensus_certificates = self.pending_consensus_certificates.write();
+            pending_consensus_certificates.extend(digests);
         }
 
-        // TODO: lock once for all insert() calls.
-        for transaction in transactions {
-            if let ConsensusTransactionKind::UserTransaction(cert) = &transaction.kind {
-                let state = lock.expect("Must pass reconfiguration lock when storing certificate");
-                // Caller is responsible for performing graceful check
-                assert!(
-                    state.should_accept_user_certs(),
-                    "Reconfiguration state should allow accepting user transactions"
-                );
-                self.pending_consensus_certificates
-                    .lock()
-                    .insert(*cert.digest());
-            }
-        }
         Ok(())
     }
 
@@ -854,32 +828,28 @@ impl AuthorityPerEpochStore {
         &self,
         keys: &[ConsensusTransactionKey],
     ) -> SomaResult {
-        let tables = self.tables()?;
-
-        {
-            let mut pending_transactions = tables.pending_consensus_transactions.write();
-            let keys_set: HashSet<_> = keys.iter().collect();
-            pending_transactions.retain(|k, _| !keys_set.contains(k));
-        }
-        // TODO: lock once for all remove() calls.
+        self.tables()?
+            .pending_consensus_transactions
+            .multi_remove(keys)?;
+        let mut pending_consensus_certificates = self.pending_consensus_certificates.write();
         for key in keys {
-            if let ConsensusTransactionKey::Certificate(cert) = key {
-                self.pending_consensus_certificates.lock().remove(cert);
+            if let ConsensusTransactionKey::Certificate(digest) = key {
+                pending_consensus_certificates.remove(digest);
             }
         }
         Ok(())
     }
 
     pub fn pending_consensus_certificates_count(&self) -> usize {
-        self.pending_consensus_certificates.lock().len()
+        self.pending_consensus_certificates.read().len()
     }
 
     pub fn pending_consensus_certificates_empty(&self) -> bool {
-        self.pending_consensus_certificates.lock().is_empty()
+        self.pending_consensus_certificates.read().is_empty()
     }
 
     pub fn pending_consensus_certificates(&self) -> HashSet<TransactionDigest> {
-        self.pending_consensus_certificates.lock().clone()
+        self.pending_consensus_certificates.read().clone()
     }
 
     /// Check whether certificate was processed by consensus.
@@ -934,20 +904,20 @@ impl AuthorityPerEpochStore {
         Ok(self
             .tables()?
             .consensus_message_processed
-            .read()
-            .contains_key(key))
+            .contains_key(key)?)
     }
 
     pub fn check_consensus_messages_processed(
         &self,
         keys: impl Iterator<Item = SequencedConsensusTransactionKey>,
     ) -> SomaResult<Vec<bool>> {
+        let keys = keys.collect::<Vec<_>>();
         let tables = self.tables()?;
-        let consensus_message_processed = tables.consensus_message_processed.read(); // Assuming you're using RwLock
 
-        Ok(keys
-            .map(|key| consensus_message_processed.contains_key(&key))
-            .collect())
+        Ok(tables
+            .consensus_message_processed
+            .multi_contains_keys(keys)
+            .expect("db error"))
     }
 
     pub async fn consensus_messages_processed_notify(
@@ -994,6 +964,7 @@ impl AuthorityPerEpochStore {
         self.tables()
             .expect("recovery should not cross epoch boundary")
             .get_all_pending_consensus_transactions()
+            .expect("failed to get pending consensus transactions")
     }
 
     pub fn close_user_certs(&self, mut lock_guard: RwLockWriteGuard<'_, ReconfigState>) {
@@ -1587,20 +1558,18 @@ impl AuthorityPerEpochStore {
 
     pub fn all_pending_execution(&self) -> SomaResult<Vec<VerifiedExecutableTransaction>> {
         let tables = self.tables()?;
-        let pending_execution = tables.pending_execution.read();
 
-        Ok(pending_execution
-            .values()
-            .cloned()
-            .map(|cert| cert.into())
-            .collect())
+        Ok(tables
+            .pending_execution
+            .safe_iter()
+            .map(|item| item.map(|(_k, v)| v.into()))
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     pub fn store_reconfig_state(&self, new_state: &ReconfigState) -> SomaResult {
         self.tables()?
             .reconfig_state
-            .write()
-            .insert(RECONFIG_STATE_INDEX, new_state.clone());
+            .insert(&RECONFIG_STATE_INDEX, new_state)?;
         Ok(())
     }
 
@@ -1624,17 +1593,11 @@ impl AuthorityPerEpochStore {
         // can be removed.
         // After end-to-end quarantining, we will not need pending_execution since the consensus
         // log itself will be used for recovery.
-        tables
-            .pending_execution
-            .write()
-            .retain(|k, _| !digests.contains(k));
+        tables.pending_execution.multi_remove(digests)?;
 
         // Now that the transaction effects are committed, we will never re-execute, so we
         // don't need to worry about equivocating.
-        tables
-            .signed_effects_digests
-            .write()
-            .retain(|d, _| !digests.contains(d));
+        tables.signed_effects_digests.multi_remove(digests)?;
 
         let mut quarantine = self.consensus_quarantine.write();
         quarantine.update_highest_executed_commit(commit, self)?;
@@ -1703,7 +1666,6 @@ impl AuthorityPerEpochStore {
         self.tables()
             .expect("test should not cross epoch boundary")
             .signed_transactions
-            .write()
             .remove(transaction)
             .unwrap();
     }
@@ -1714,7 +1676,6 @@ impl AuthorityPerEpochStore {
             self.tables()
                 .expect("test should not cross epoch boundary")
                 .object_locked_transactions
-                .write()
                 .remove(object)
                 .unwrap();
         }
@@ -1727,9 +1688,7 @@ impl AuthorityPerEpochStore {
         Ok(self
             .tables()?
             .signed_transactions
-            .read()
-            .get(tx_digest)
-            .cloned()
+            .get(tx_digest)?
             .map(|t| t.into()))
     }
 
@@ -1748,23 +1707,16 @@ impl AuthorityPerEpochStore {
         cert_sig: &AuthorityStrongQuorumSignInfo,
     ) -> SomaResult {
         let tables = self.tables()?;
-        let _ = tables
+        Ok(tables
             .transaction_cert_signatures
-            .write()
-            .insert(*tx_digest, cert_sig.clone());
-        Ok(())
+            .insert(tx_digest, cert_sig)?)
     }
 
     pub fn get_transaction_cert_sig(
         &self,
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Option<AuthorityStrongQuorumSignInfo>> {
-        Ok(self
-            .tables()?
-            .transaction_cert_signatures
-            .read()
-            .get(tx_digest)
-            .cloned())
+        Ok(self.tables()?.transaction_cert_signatures.get(tx_digest)?)
     }
 
     pub fn get_effects_signature(
@@ -1772,8 +1724,7 @@ impl AuthorityPerEpochStore {
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Option<AuthoritySignInfo>> {
         let tables = self.tables()?;
-        let effects_signatures = tables.effects_signatures.read();
-        Ok(effects_signatures.get(tx_digest).cloned())
+        Ok(tables.effects_signatures.get(tx_digest)?)
     }
 
     pub fn insert_effects_digest_and_signature(
@@ -1783,15 +1734,13 @@ impl AuthorityPerEpochStore {
         effects_signature: &AuthoritySignInfo,
     ) -> SomaResult {
         let tables = self.tables()?;
-        let _ = tables
-            .effects_signatures
-            .write()
-            .insert(*tx_digest, effects_signature.clone());
-        let _ = tables
-            .signed_effects_digests
-            .write()
-            .insert(*tx_digest, *effects_digest);
-
+        let mut batch = tables.effects_signatures.batch();
+        batch.insert_batch(&tables.effects_signatures, [(tx_digest, effects_signature)])?;
+        batch.insert_batch(
+            &tables.signed_effects_digests,
+            [(tx_digest, effects_digest)],
+        )?;
+        batch.write()?;
         Ok(())
     }
 
@@ -1806,14 +1755,13 @@ impl AuthorityPerEpochStore {
         let tables = self.tables()?;
 
         if let Some(effects_signature) = effects_signature {
-            let _ = tables
-                .effects_signatures
-                .write()
-                .insert(*tx_digest, effects_signature.clone());
-            let _ = tables
-                .signed_effects_digests
-                .write()
-                .insert(*tx_digest, *effects_digest);
+            let mut batch = tables.effects_signatures.batch();
+            batch.insert_batch(&tables.effects_signatures, [(tx_digest, effects_signature)])?;
+            batch.insert_batch(
+                &tables.signed_effects_digests,
+                [(tx_digest, effects_digest)],
+            )?;
+            batch.write()?;
         }
 
         if !matches!(tx_key, TransactionKey::Digest(_)) {
@@ -1839,8 +1787,7 @@ impl AuthorityPerEpochStore {
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Option<TransactionEffectsDigest>> {
         let tables = self.tables()?;
-        let signed_effects_digests = tables.signed_effects_digests.read();
-        Ok(signed_effects_digests.get(tx_digest).cloned())
+        Ok(tables.signed_effects_digests.get(tx_digest)?)
     }
 
     #[cfg(test)]
@@ -1852,9 +1799,8 @@ impl AuthorityPerEpochStore {
         self.tables()
             .expect("test should not cross epoch boundary")
             .next_shared_object_versions
-            .read()
             .get(&(*obj, start_version))
-            .cloned()
+            .unwrap()
     }
 
     pub fn set_shared_object_versions_for_testing(
@@ -1931,10 +1877,12 @@ impl AuthorityPerEpochStore {
         digests: &[TransactionDigest],
         index: CommitIndex,
     ) -> SomaResult {
-        self.tables()?
-            .executed_transactions_to_commit
-            .write()
-            .extend(digests.iter().map(|digest| (*digest, index)));
+        let mut batch = self.tables()?.executed_transactions_to_commit.batch();
+        batch.insert_batch(
+            &self.tables()?.executed_transactions_to_commit,
+            digests.iter().map(|d| (*d, index)),
+        )?;
+        batch.write()?;
         trace!("Transactions {digests:?} finalized at commit {index}");
 
         // Notify all readers that the transactions have been finalized as part of a checkpoint execution.
@@ -1944,55 +1892,6 @@ impl AuthorityPerEpochStore {
         }
 
         Ok(())
-    }
-
-    // Converts transaction keys to digests, waiting for digests to become available for any
-    // non-digest keys.
-    pub async fn notify_read_executed_digests(
-        &self,
-        keys: &[TransactionKey],
-    ) -> SomaResult<Vec<TransactionDigest>> {
-        // TODO: is this function necessary? in resolve_commit_transactions before create_commit
-
-        // TODO: decide if TransactionKey will ever not be a transaction digest, i.e. a randomnous round
-        // let non_digest_keys: Vec<_> = keys
-        //     .iter()
-        //     .filter_map(|key| {
-        //         if matches!(key, TransactionKey::Digest(_)) {
-        //             None
-        //         } else {
-        //             Some(*key)
-        //         }
-        //     })
-        //     .collect();
-
-        // let registrations = self
-        //     .executed_digests_notify_read
-        //     .register_all(&non_digest_keys);
-        // let executed_digests = self
-        //     .tables()?
-        //     .transaction_key_to_digest
-        //     .multi_get(&non_digest_keys)?;
-        // let futures = executed_digests
-        //     .into_iter()
-        //     .zip(registrations)
-        //     .map(|(d, r)| match d {
-        //         // Note that Some() clause also drops registration that is already fulfilled
-        //         Some(ready) => Either::Left(futures::future::ready(ready)),
-        //         None => Either::Right(r),
-        //     });
-        // let mut results = VecDeque::from(join_all(futures).await);
-
-        Ok(keys
-            .iter()
-            .filter_map(|key| {
-                if let TransactionKey::Digest(digest) = key {
-                    Some(*digest)
-                } else {
-                    None
-                }
-            })
-            .collect())
     }
 
     pub fn set_next_epoch_state(
@@ -2104,13 +2003,9 @@ impl AuthorityPerEpochStore {
             ?versions_to_write,
             "initializing next_shared_object_versions"
         );
-
-        versions_to_write.iter().for_each(|(k, v)| {
-            tables
-                .next_shared_object_versions
-                .write()
-                .insert(k.clone(), v.clone());
-        });
+        tables
+            .next_shared_object_versions
+            .multi_insert(versions_to_write)?;
 
         Ok(ret)
     }
@@ -2251,20 +2146,22 @@ impl AuthorityPerEpochStore {
         // Step 4: Update next_shared_object_versions table with new versions
         {
             let tables = self.tables()?;
-            let mut next_versions = tables.next_shared_object_versions.write();
+            let mut batch = tables.next_shared_object_versions.batch();
 
             for (key, version) in &shared_input_next_versions {
                 // Update only if the new version is higher than what's already there
-                let should_update = match next_versions.get(key) {
-                    Some(existing) => *version > *existing,
+                let should_update = match tables.next_shared_object_versions.get(key)? {
+                    Some(existing) => *version > existing,
                     None => true,
                 };
 
                 if should_update {
                     debug!(?key, ?version, "Updating next_shared_object_versions");
-                    next_versions.insert(*key, *version);
+                    batch.insert_batch(&tables.next_shared_object_versions, [(*key, *version)])?;
                 }
             }
+
+            batch.write()?;
         }
 
         // Step 5: Store the assigned versions in the cache
@@ -2348,18 +2245,20 @@ impl AuthorityPerEpochStore {
         block_ref: BlockRef,
     ) -> SomaResult<bool> {
         let tables = self.tables()?;
-        let mut consensus_leaders = tables.consensus_finalities.write();
 
-        // Only insert if not already present (first write wins)
-        if !consensus_leaders.contains_key(tx_digest) {
-            consensus_leaders.insert(*tx_digest, block_ref);
-            // Notify waiters
-            self.consensus_leader_notify_read
-                .notify(tx_digest, &block_ref);
-            Ok(true)
-        } else {
-            Ok(false)
+        // Check if already exists
+        if tables.consensus_finalities.contains_key(tx_digest)? {
+            return Ok(false);
         }
+
+        // Insert since it doesn't exist
+        tables.consensus_finalities.insert(tx_digest, &block_ref)?;
+
+        // Notify waiters
+        self.consensus_leader_notify_read
+            .notify(tx_digest, &block_ref);
+
+        Ok(true)
     }
 
     /// Get consensus leader block if available
@@ -2367,12 +2266,7 @@ impl AuthorityPerEpochStore {
         &self,
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Option<BlockRef>> {
-        Ok(self
-            .tables()?
-            .consensus_finalities
-            .read()
-            .get(tx_digest)
-            .cloned())
+        Ok(self.tables()?.consensus_finalities.get(tx_digest)?)
     }
 
     /// Wait for consensus leader block to become available

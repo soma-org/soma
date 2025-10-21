@@ -42,6 +42,7 @@ use p2p::{
     tonic_gen::p2p_server::P2pServer,
 };
 use parking_lot::RwLock;
+use store::rocks::default_db_options;
 use tower::ServiceBuilder;
 
 use std::{
@@ -230,15 +231,18 @@ impl SomaNode {
 
         let commit_store = CommitStore::new();
 
+        let epoch_options = default_db_options().optimize_db_for_write_throughput(4);
         let epoch_store = AuthorityPerEpochStore::new(
             config.protocol_public_key(),
             committee.clone(),
+            &config.db_path().join("store"),
+            Some(epoch_options.options),
             epoch_start_configuration,
             commit_store
                 .get_highest_executed_commit_index()
                 .expect("commit store read cannot fail")
                 .unwrap_or(0),
-        );
+        )?;
 
         info!("created epoch store");
 

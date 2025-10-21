@@ -1355,7 +1355,7 @@ impl AuthorityState {
             new_committee,
             epoch_start_configuration,
             epoch_last_commit,
-        );
+        )?;
         self.epoch_store.store(new_epoch_store.clone());
         cur_epoch_store.epoch_terminated().await;
         Ok(new_epoch_store)

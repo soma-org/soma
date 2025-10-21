@@ -1,6 +1,7 @@
 use std::collections::{hash_map, BTreeSet, HashMap, VecDeque};
 
 use dashmap::DashMap;
+use store::Map as _;
 use tracing::{info, trace};
 use types::{
     base::{AuthorityName, ConsensusObjectSequenceKey},
@@ -87,52 +88,60 @@ impl ConsensusCommitOutput {
         self.next_shared_object_versions = Some(next_versions);
     }
 
-    pub fn write_to_batch(
-        self,
-        epoch_store: &AuthorityPerEpochStore,
-        // batch: &mut DBBatch,
-    ) -> SomaResult {
+    pub fn write_to_batch(self, epoch_store: &AuthorityPerEpochStore) -> SomaResult {
         let tables = epoch_store.tables()?;
-        tables.consensus_message_processed.write().extend(
+
+        // Create a batch for all operations
+        let mut batch = tables.consensus_message_processed.batch();
+
+        // Add consensus messages to batch
+        batch.insert_batch(
+            &tables.consensus_message_processed,
             self.consensus_messages_processed
                 .iter()
                 .map(|key| (key.clone(), true)),
-        );
+        )?;
 
-        tables
-            .end_of_publish
-            .write()
-            .extend(self.end_of_publish.iter().map(|authority| (*authority, ())));
+        // Add end_of_publish to batch
+        batch.insert_batch(
+            &tables.end_of_publish,
+            self.end_of_publish.iter().map(|authority| (*authority, ())),
+        )?;
 
+        // Add reconfig state if present
         if let Some(reconfig_state) = &self.reconfig_state {
-            tables
-                .reconfig_state
-                .write()
-                .insert(RECONFIG_STATE_INDEX, reconfig_state.clone());
+            batch.insert_batch(
+                &tables.reconfig_state,
+                [(RECONFIG_STATE_INDEX, reconfig_state.clone())],
+            )?;
         }
 
+        // Add consensus commit stats if present
         if let Some(consensus_commit_stats) = &self.consensus_commit_stats {
-            tables
-                .last_consensus_stats
-                .write()
-                .insert(LAST_CONSENSUS_STATS_ADDR, consensus_commit_stats.clone());
+            batch.insert_batch(
+                &tables.last_consensus_stats,
+                [(LAST_CONSENSUS_STATS_ADDR, consensus_commit_stats.clone())],
+            )?;
         }
 
-        tables.pending_execution.write().extend(
+        // Add pending execution
+        batch.insert_batch(
+            &tables.pending_execution,
             self.pending_execution
                 .into_iter()
                 .map(|tx| (*tx.inner().digest(), tx.serializable())),
-        );
+        )?;
 
+        // Add next shared object versions if present
         if let Some(next_versions) = self.next_shared_object_versions {
-            tables
-                .next_shared_object_versions
-                .write()
-                .extend(next_versions.iter().map(|(k, v)| (k, v)));
+            batch.insert_batch(
+                &tables.next_shared_object_versions,
+                next_versions.into_iter(),
+            )?;
         }
 
-        // batch.delete_batch(&tables.deferred_transactions, self.deleted_deferred_txns)?;
-        // batch.insert_batch(&tables.deferred_transactions, self.deferred_txns)?;
+        // Write the batch
+        batch.write()?;
 
         Ok(())
     }
@@ -447,10 +456,10 @@ impl ConsensusOutputQuarantine {
                 }
             },
             |object_keys| {
-                Ok(object_keys
-                    .iter()
-                    .map(|key| tables.next_shared_object_versions.read().get(key).cloned())
-                    .collect())
+                // Use multi_get for batch lookup from DBMap
+                let results = tables.next_shared_object_versions.multi_get(object_keys)?;
+
+                Ok(results.into_iter().collect())
             },
         )
     }

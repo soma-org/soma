@@ -215,9 +215,12 @@ impl<'a> TestAuthorityBuilder<'a> {
         let epoch_store = AuthorityPerEpochStore::new(
             name,
             Arc::new(genesis_committee.clone()),
+            &path.join("store"),
+            None,
             epoch_start_configuration,
             0,
-        );
+        )
+        .expect("failed to create authority per epoch store");
         let committee_store =
             Arc::new(CommitteeStore::new(path.join("epochs"), &genesis_committee));
         let accumulator = Arc::new(StateAccumulator::new(
