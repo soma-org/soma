@@ -1,8 +1,8 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use store::TypedStoreError;
+use store::{rocks::DBMap, DBMapUtils, Map as _, TypedStoreError};
 use tracing::{debug, info, instrument};
 use types::{
     accumulator::CommitIndex,
@@ -25,9 +25,10 @@ pub enum CommitWatermark {
     // HighestPruned,
 }
 
+#[derive(DBMapUtils)]
 pub struct CommitStore {
     /// Maps commit  digest to commit index
-    pub(crate) commit_index_by_digest: RwLock<BTreeMap<CommitDigest, CommitIndex>>,
+    pub(crate) commit_index_by_digest: DBMap<CommitDigest, CommitIndex>,
 
     // TODO: delete full commits after state accumulation
     /// Stores entire commit contents from state sync for
@@ -36,33 +37,26 @@ pub struct CommitStore {
     // full_commit_content: RwLock<BTreeMap<CommitIndex, FullCommitContents>>,
 
     /// Stores certified commits (CommittedSubDag)
-    pub(crate) certified_commits: RwLock<BTreeMap<CommitIndex, CommittedSubDag>>,
+    pub(crate) certified_commits: DBMap<CommitIndex, CommittedSubDag>,
     /// Map from commit digest to certified commit (CommittedSubDag)
-    pub(crate) commit_by_digest: RwLock<BTreeMap<CommitDigest, CommittedSubDag>>,
+    pub(crate) commit_by_digest: DBMap<CommitDigest, CommittedSubDag>,
 
     /// Watermarks used to determine the highest verified, fully synced, and
     /// fully executed commits
-    pub(crate) watermarks: RwLock<BTreeMap<CommitWatermark, (CommitIndex, CommitDigest)>>,
+    pub(crate) watermarks: DBMap<CommitWatermark, (CommitIndex, CommitDigest)>,
 
     /// A map from epoch ID to the index of the last commit in that epoch.
-    epoch_last_commit_map: RwLock<BTreeMap<EpochId, CommitIndex>>,
+    epoch_last_commit_map: DBMap<EpochId, CommitIndex>,
 
     /// Store locally computed commit summaries so that we can detect forks and log useful
     /// information. Can be pruned as soon as we verify that we are in agreement with the latest
     /// certified commit.
-    pub(crate) locally_computed_commits: RwLock<BTreeMap<CommitIndex, CommittedSubDag>>,
+    pub(crate) locally_computed_commits: DBMap<CommitIndex, CommittedSubDag>,
 }
 
 impl CommitStore {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            commit_index_by_digest: RwLock::new(BTreeMap::new()),
-            certified_commits: RwLock::new(BTreeMap::new()),
-            commit_by_digest: RwLock::new(BTreeMap::new()),
-            watermarks: RwLock::new(BTreeMap::new()),
-            epoch_last_commit_map: RwLock::new(BTreeMap::new()),
-            locally_computed_commits: RwLock::new(BTreeMap::new()),
-        })
+    pub fn new(path: &Path) -> Arc<Self> {
+        Arc::new(Self::open_tables_read_write(path.to_path_buf(), None, None))
     }
 
     #[instrument(level = "info", skip_all)]
@@ -91,41 +85,34 @@ impl CommitStore {
         &self,
         digest: &CommitDigest,
     ) -> Result<Option<CommittedSubDag>, TypedStoreError> {
-        Ok(self
-            .commit_by_digest
-            .read()
+        self.commit_by_digest
             .get(digest)
-            .map(|maybe_commit| maybe_commit.to_owned().into()))
+            .map(|maybe_commit| maybe_commit.map(|c| c.into()))
     }
 
     pub fn get_commit_by_index(
         &self,
         index: CommitIndex,
     ) -> Result<Option<CommittedSubDag>, TypedStoreError> {
-        Ok(self
-            .certified_commits
-            .read()
+        self.certified_commits
             .get(&index)
-            .map(|maybe_commit| maybe_commit.to_owned().into()))
+            .map(|maybe_commit| maybe_commit.to_owned().into())
     }
 
     pub fn get_highest_synced_commit(&self) -> Result<Option<CommittedSubDag>, TypedStoreError> {
-        let highest_synced = if let Some(highest_synced) =
-            self.watermarks.read().get(&CommitWatermark::HighestSynced)
-        {
-            highest_synced.clone()
-        } else {
-            return Ok(None);
-        };
+        let highest_synced =
+            if let Some(highest_synced) = self.watermarks.get(&CommitWatermark::HighestSynced)? {
+                highest_synced.clone()
+            } else {
+                return Ok(None);
+            };
 
         self.get_commit_by_digest(&highest_synced.1)
     }
 
     pub fn get_highest_executed_commit(&self) -> Result<Option<CommittedSubDag>, TypedStoreError> {
-        let highest_executed = if let Some(highest_executed) = self
-            .watermarks
-            .read()
-            .get(&CommitWatermark::HighestExecuted)
+        let highest_executed = if let Some(highest_executed) =
+            self.watermarks.get(&CommitWatermark::HighestExecuted)?
         {
             highest_executed.clone()
         } else {
@@ -137,11 +124,7 @@ impl CommitStore {
     pub fn get_highest_executed_commit_index(
         &self,
     ) -> Result<Option<CommitIndex>, TypedStoreError> {
-        if let Some(highest_executed) = self
-            .watermarks
-            .read()
-            .get(&CommitWatermark::HighestExecuted)
-        {
+        if let Some(highest_executed) = self.watermarks.get(&CommitWatermark::HighestExecuted)? {
             Ok(Some(highest_executed.0))
         } else {
             Ok(None)
@@ -149,16 +132,17 @@ impl CommitStore {
     }
 
     pub fn prune_local_summaries(&self) -> SomaResult {
-        // Get write lock on the BTreeMap
-        let mut commits = self.locally_computed_commits.write();
-
-        if let Some((&last_local_summary, _)) = commits.iter().next_back() {
-            // Remove all entries up to and including last_local_summary
-            commits.retain(|&k, _| k > last_local_summary);
-
+        if let Some((last_local_summary, _)) = self
+            .locally_computed_commits
+            .reversed_safe_iter_with_bounds(None, None)?
+            .next()
+            .transpose()?
+        {
+            let mut batch = self.locally_computed_commits.batch();
+            batch.schedule_delete_range(&self.locally_computed_commits, &0, &last_local_summary)?;
+            batch.write()?;
             info!("Pruned local summaries up to {:?}", last_local_summary);
         }
-
         Ok(())
     }
 
@@ -233,19 +217,24 @@ impl CommitStore {
             commit_index = commit.commit_ref.index,
             "Inserting certified commit",
         );
-        self.certified_commits
-            .write()
-            .insert(commit.commit_ref.index, commit.clone());
 
-        self.commit_by_digest
-            .write()
-            .insert(commit.commit_ref.digest, commit.clone());
-
+        let mut batch = self.certified_commits.batch();
+        batch
+            .insert_batch(
+                &self.certified_commits,
+                [(commit.commit_ref.index, commit.clone())],
+            )?
+            .insert_batch(
+                &self.commit_by_digest,
+                [(commit.commit_ref.digest, commit.clone())],
+            )?;
         if commit.is_last_commit_of_epoch() {
-            self.epoch_last_commit_map
-                .write()
-                .insert(commit.epoch(), commit.commit_ref.index);
+            batch.insert_batch(
+                &self.epoch_last_commit_map,
+                [(commit.epoch(), commit.commit_ref.index)],
+            )?;
         }
+        batch.write()?;
 
         // TODO: check for commit forks
         // if let Some(local_commit) = self.locally_computed_commits.read().get(commit.index()) {
@@ -263,10 +252,10 @@ impl CommitStore {
             commit_index = commit.commit_ref.index,
             "Updating highest synced commit",
         );
-        self.watermarks.write().insert(
-            CommitWatermark::HighestSynced,
-            (commit.commit_ref.index, commit.commit_ref.digest),
-        );
+        self.watermarks.insert(
+            &CommitWatermark::HighestSynced,
+            &(commit.commit_ref.index, commit.commit_ref.digest),
+        )?;
 
         info!(
             commit_index = commit.commit_ref.index,
@@ -296,10 +285,10 @@ impl CommitStore {
             index = commit.commit_ref.index,
             "Updating highest executed commit",
         );
-        self.watermarks.write().insert(
-            CommitWatermark::HighestExecuted,
-            (commit.commit_ref.index, commit.commit_ref.digest),
-        );
+        self.watermarks.insert(
+            &CommitWatermark::HighestExecuted,
+            &(commit.commit_ref.index, commit.commit_ref.digest),
+        )?;
 
         Ok(())
     }
@@ -308,20 +297,18 @@ impl CommitStore {
         &self,
         digest: &CommitDigest,
     ) -> Result<Option<CommitIndex>, TypedStoreError> {
-        Ok(self.commit_index_by_digest.read().get(digest).cloned())
+        self.commit_index_by_digest.get(digest)
     }
 
     pub fn delete_commit(&self, index: CommitIndex) -> Result<(), TypedStoreError> {
-        self.certified_commits.write().remove(&index);
-        Ok(())
+        self.certified_commits.remove(&index)
     }
 
     pub fn delete_digest_index_mapping(
         &self,
         digest: &CommitDigest,
     ) -> Result<(), TypedStoreError> {
-        self.commit_index_by_digest.write().remove(digest);
-        Ok(())
+        self.commit_index_by_digest.remove(digest)
     }
 
     pub fn insert_epoch_last_commit(
@@ -330,23 +317,24 @@ impl CommitStore {
         commit: &CommittedSubDag,
     ) -> SomaResult {
         self.epoch_last_commit_map
-            .write()
-            .insert(epoch_id, commit.commit_ref.index);
+            .insert(&epoch_id, &commit.commit_ref.index)?;
         Ok(())
     }
 
     pub fn get_epoch_last_commit(&self, epoch_id: EpochId) -> SomaResult<Option<CommittedSubDag>> {
-        let guard = self.epoch_last_commit_map.read();
-        let index = guard.get(&epoch_id);
+        let index = self.epoch_last_commit_map.get(&epoch_id)?;
         let commit = match index {
-            Some(index) => self.get_commit_by_index(*index)?,
+            Some(index) => self.get_commit_by_index(index)?,
             None => None,
         };
         Ok(commit)
     }
 
-    pub fn get_last_commit_index_of_epoch(&self, epoch: EpochId) -> Option<CommitIndex> {
-        self.epoch_last_commit_map.read().get(&epoch).cloned()
+    pub fn get_last_commit_index_of_epoch(
+        &self,
+        epoch: EpochId,
+    ) -> SomaResult<Option<CommitIndex>> {
+        Ok(self.epoch_last_commit_map.get(&epoch)?)
     }
 
     // Called by state sync, apart from inserting the commit and updating

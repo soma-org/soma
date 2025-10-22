@@ -229,7 +229,7 @@ impl SomaNode {
 
         info!("creating commit store");
 
-        let commit_store = CommitStore::new();
+        let commit_store = CommitStore::new(&config.db_path().join("commits"));
 
         let epoch_options = default_db_options().optimize_db_for_write_throughput(4);
         let epoch_store = AuthorityPerEpochStore::new(

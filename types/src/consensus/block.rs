@@ -445,7 +445,7 @@ fn verify_block_signature(
         .map_err(ConsensusError::SignatureVerificationFailure)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct VerifiedBlock {
     block: Arc<SignedBlock>,
 

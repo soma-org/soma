@@ -202,7 +202,7 @@ impl<'a> TestAuthorityBuilder<'a> {
             // epoch_flags,
         );
 
-        let commit_store = CommitStore::new();
+        let commit_store = CommitStore::new(&path.join("commits"));
 
         let cache_traits = build_execution_cache(&authority_store);
 

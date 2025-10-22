@@ -91,7 +91,9 @@ impl ReadStore for StateSyncStore {
     }
 
     fn get_last_commit_index_of_epoch(&self, epoch: EpochId) -> Option<CommitIndex> {
-        self.commit_store.get_last_commit_index_of_epoch(epoch)
+        self.commit_store
+            .get_last_commit_index_of_epoch(epoch)
+            .expect("db error")
     }
 
     fn get_lowest_available_commit(&self) -> Result<CommitIndex, StorageError> {

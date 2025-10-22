@@ -267,7 +267,7 @@ pub type CommitVote = CommitRef;
 ///
 /// The application processing CommittedSubDag can arbitrarily sort the blocks within
 /// each sub-dag (but using a deterministic algorithm).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct CommittedSubDag {
     /// A reference to the leader of the sub-dag
     pub leader: BlockRef,
