@@ -1,6 +1,7 @@
 use crate::rpc_index::{OwnerIndexInfo, OwnerIndexKey};
 use crate::{rpc_index::RpcIndexStore, state::AuthorityState, state_sync_store::StateSyncStore};
 use std::sync::Arc;
+use store::TypedStoreError;
 use tap::Pipe;
 use types::accumulator::CommitIndex;
 use types::base::SomaAddress;
@@ -115,11 +116,8 @@ impl RpcIndexes for RpcIndexStore {
         owner: SomaAddress,
         object_type: Option<ObjectType>,
         cursor: Option<OwnedObjectInfo>,
-    ) -> StorageResult<
-        Box<
-            dyn Iterator<Item = Result<OwnedObjectInfo, types::storage::storage_error::Error>> + '_,
-        >,
-    > {
+    ) -> StorageResult<Box<dyn Iterator<Item = Result<OwnedObjectInfo, TypedStoreError>> + '_>>
+    {
         let cursor = cursor.map(|cursor| OwnerIndexKey {
             owner: cursor.owner,
             object_type: cursor.object_type,

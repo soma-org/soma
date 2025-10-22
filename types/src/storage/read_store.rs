@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
+use store::TypedStoreError;
 
 use crate::{
     accumulator::CommitIndex,
@@ -150,11 +151,7 @@ pub trait RpcIndexes: Send + Sync {
         owner: SomaAddress,
         object_type: Option<ObjectType>,
         cursor: Option<OwnedObjectInfo>,
-    ) -> Result<
-        Box<
-            dyn Iterator<Item = Result<OwnedObjectInfo, crate::storage::storage_error::Error>> + '_,
-        >,
-    >;
+    ) -> Result<Box<dyn Iterator<Item = Result<OwnedObjectInfo, TypedStoreError>> + '_>>;
 
     fn get_balance(&self, owner: &SomaAddress) -> Result<Option<u64>>;
 }

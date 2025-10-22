@@ -1,10 +1,17 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use parking_lot::{Mutex, RwLock};
+use crate::commit::CommitStore;
+use crate::output::ConsensusOutputAPI;
+use crate::store::AuthorityStore;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use store::rocks::{DBMap, DBMapTableConfigMap};
+use store::rocksdb::{compaction_filter::Decision, MergeOperands, WriteOptions};
+use store::{DBMapUtils, Map as _, TypedStoreError};
+use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
 use types::checkpoint::{CheckpointData, CheckpointTransaction};
 use types::committee::EpochId;
@@ -20,12 +27,85 @@ use types::{
     object::{Object, ObjectID, ObjectType, Owner, Version},
 };
 
-use crate::commit::CommitStore;
-use crate::output::ConsensusOutputAPI;
-use crate::store::AuthorityStore;
-
 const CURRENT_DB_VERSION: u64 = 1;
 const BALANCE_FLUSH_THRESHOLD: usize = 10_000;
+
+fn bulk_ingestion_write_options() -> WriteOptions {
+    let mut opts = WriteOptions::default();
+    opts.disable_wal(true);
+    opts
+}
+
+/// Get available memory, respecting cgroup limits in containerized environments
+fn get_available_memory() -> u64 {
+    // RefreshKind::nothing().with_memory() avoids collecting other, slower stats
+    let mut sys = System::new_with_specifics(
+        RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
+    );
+    sys.refresh_memory();
+
+    // Check if we have cgroup limits
+    if let Some(cgroup_limits) = sys.cgroup_limits() {
+        let memory_limit = cgroup_limits.total_memory;
+        // cgroup_limits.total_memory is 0 when there's no limit
+        if memory_limit > 0 {
+            debug!("Using cgroup memory limit: {} bytes", memory_limit);
+            return memory_limit;
+        }
+    }
+
+    // Fall back to system memory if no cgroup limits found
+    // sysinfo 0.35 already reports bytes (not KiB like older versions)
+    let total_memory_bytes = sys.total_memory();
+    debug!("Using system memory: {} bytes", total_memory_bytes);
+    total_memory_bytes
+}
+
+fn default_table_options() -> store::rocks::DBOptions {
+    store::rocks::default_db_options().disable_write_throttling()
+}
+
+fn balance_delta_merge_operator(
+    _key: &[u8],
+    existing_val: Option<&[u8]>,
+    operands: &MergeOperands,
+) -> Option<Vec<u8>> {
+    let mut result = existing_val
+        .map(|v| {
+            bcs::from_bytes::<BalanceIndexInfo>(v)
+                .expect("Failed to deserialize BalanceIndexInfo from RocksDB - data corruption.")
+        })
+        .unwrap_or_default();
+
+    for operand in operands.iter() {
+        let delta = bcs::from_bytes::<BalanceIndexInfo>(operand)
+            .expect("Failed to deserialize BalanceIndexInfo from RocksDB - data corruption.");
+        result.merge_delta(&delta);
+    }
+    Some(
+        bcs::to_bytes(&result)
+            .expect("Failed to deserialize BalanceIndexInfo from RocksDB - data corruption."),
+    )
+}
+
+fn balance_compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> Decision {
+    let balance_info = match bcs::from_bytes::<BalanceIndexInfo>(value) {
+        Ok(info) => info,
+        Err(_) => return Decision::Keep,
+    };
+
+    if balance_info.balance_delta == 0 {
+        Decision::Remove
+    } else {
+        Decision::Keep
+    }
+}
+
+fn balance_table_options() -> store::rocks::DBOptions {
+    default_table_options()
+        .set_merge_operator_associative("balance_merge", balance_delta_merge_operator)
+        .set_compaction_filter("balance_zero_filter", balance_compaction_filter)
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct MetadataInfo {
@@ -144,7 +224,7 @@ impl From<BalanceIndexInfo> for types::storage::read_store::BalanceInfo {
 /// NOTE: Authors and Reviewers before adding any new tables ensure that they are either:
 /// - bounded in size by the live object set
 /// - are prune-able and have corresponding logic in the `prune` function
-// #[derive(DBMapUtils)]
+#[derive(DBMapUtils)]
 struct IndexStoreTables {
     /// A singleton that store metadata information on the DB.
     ///
@@ -153,35 +233,35 @@ struct IndexStoreTables {
     ///     initialization)
     /// - version of the DB. Everytime a new table or schema is changed the version number needs to
     ///     be incremented.
-    meta: RwLock<BTreeMap<(), MetadataInfo>>,
+    meta: DBMap<(), MetadataInfo>,
 
     /// Table used to track watermark for the highest indexed checkpoint
     ///
     /// This is useful to help know the highest checkpoint that was indexed in the event that the
     /// node was running with indexes enabled, then run for a period of time with indexes disabled,
     /// and then run with them enabled again so that the tables can be reinitialized.
-    watermark: RwLock<BTreeMap<Watermark, CommitIndex>>,
+    watermark: DBMap<Watermark, CommitIndex>,
 
     /// An index of extra metadata for Epochs.
     ///
     /// Only contains entries for transactions which have yet to be pruned from the main database.
-    epochs: RwLock<BTreeMap<EpochId, EpochInfo>>,
+    epochs: DBMap<EpochId, EpochInfo>,
 
     /// An index of extra metadata for Transactions.
     ///
     /// Only contains entries for transactions which have yet to be pruned from the main database.
-    transactions: RwLock<BTreeMap<TransactionDigest, TransactionInfo>>,
+    transactions: DBMap<TransactionDigest, TransactionInfo>,
 
     /// An index of object ownership.
     ///
     /// Allows an efficient iterator to list all objects currently owned by a specific user
     /// account.
-    owner: RwLock<BTreeMap<OwnerIndexKey, OwnerIndexInfo>>,
+    owner: DBMap<OwnerIndexKey, OwnerIndexInfo>,
 
     /// An index of Balances.
     ///
     /// Allows looking up balances by owner address and coin type.
-    balance: RwLock<BTreeMap<BalanceKey, BalanceIndexInfo>>,
+    balance: DBMap<BalanceKey, BalanceIndexInfo>,
 }
 
 impl IndexStoreTables {
@@ -204,21 +284,33 @@ impl IndexStoreTables {
         Ok(())
     }
 
-    fn open<P: Into<PathBuf>>(path: P) -> Self {
-        Self {
-            meta: RwLock::new(BTreeMap::new()),
-            watermark: RwLock::new(BTreeMap::new()),
-            epochs: RwLock::new(BTreeMap::new()),
-            transactions: RwLock::new(BTreeMap::new()),
-            owner: RwLock::new(BTreeMap::new()),
-            balance: RwLock::new(BTreeMap::new()),
-        }
+    fn open_with_index_options<P: Into<PathBuf>>(
+        path: P,
+        // index_options: IndexStoreOptions,
+    ) -> Self {
+        let mut table_options = std::collections::BTreeMap::new();
+        table_options.insert("balance".to_string(), balance_table_options());
+
+        IndexStoreTables::open_tables_read_write(
+            path.into(),
+            None,
+            Some(DBMapTableConfigMap::new(table_options)),
+        )
+    }
+
+    fn open_with_options<P: Into<PathBuf>>(
+        path: P,
+        options: store::rocksdb::Options,
+        table_options: Option<DBMapTableConfigMap>,
+    ) -> Self {
+        IndexStoreTables::open_tables_read_write(path.into(), Some(options), table_options)
     }
 
     fn needs_to_do_initialization(&self, commit_store: &CommitStore) -> bool {
-        (match self.meta.read().get(&()) {
-            Some(metadata) => metadata.version != CURRENT_DB_VERSION,
-            None => true,
+        (match self.meta.get(&()) {
+            Ok(Some(metadata)) => metadata.version != CURRENT_DB_VERSION,
+            Ok(None) => true,
+            Err(_) => true,
         }) || self.is_indexed_watermark_out_of_date(commit_store)
     }
 
@@ -228,9 +320,8 @@ impl IndexStoreTables {
             .get_highest_executed_commit_index()
             .ok()
             .flatten();
-        let lock = self.watermark.read();
-        let watermark = lock.get(&Watermark::Indexed);
-        watermark < highest_executed_checkpoint.as_ref()
+        let watermark = self.watermark.get(&Watermark::Indexed).ok().flatten();
+        watermark < highest_executed_checkpoint
     }
 
     #[tracing::instrument(skip_all)]
@@ -280,16 +371,17 @@ impl IndexStoreTables {
             par_index_live_object_set(authority_store, &make_live_object_indexer)?;
         }
 
-        self.watermark
-            .write()
-            .insert(Watermark::Indexed, highest_executed_checkpoint.unwrap_or(0));
+        self.watermark.insert(
+            &Watermark::Indexed,
+            &highest_executed_checkpoint.unwrap_or(0),
+        )?;
 
-        self.meta.write().insert(
-            (),
-            MetadataInfo {
+        self.meta.insert(
+            &(),
+            &MetadataInfo {
                 version: CURRENT_DB_VERSION,
             },
-        );
+        )?;
 
         info!("Finished initializing RPC indexes");
 
@@ -313,10 +405,14 @@ impl IndexStoreTables {
             let checkpoint_data =
                 sparse_checkpoint_data_for_backfill(authority_store, commit_store, seq)?;
 
-            self.index_epoch(&checkpoint_data);
-            self.index_transactions(&checkpoint_data);
+            let mut batch = self.transactions.batch();
 
-            Ok::<(), StorageError>(())
+            self.index_epoch(&checkpoint_data, &mut batch);
+            self.index_transactions(&checkpoint_data, &mut batch);
+
+            batch
+                .write_opt(&(bulk_ingestion_write_options()))
+                .map_err(StorageError::from)
         })?;
 
         info!(
@@ -346,47 +442,54 @@ impl IndexStoreTables {
     // }
 
     /// Index a Checkpoint
-    fn index_checkpoint(&self, checkpoint: &CheckpointData) -> Result<(), StorageError> {
+    fn index_checkpoint(
+        &self,
+        checkpoint: &CheckpointData,
+    ) -> Result<store::rocks::DBBatch, StorageError> {
         debug!(
             checkpoint = checkpoint.committed_subdag.commit_ref.index,
             "indexing checkpoint"
         );
 
-        self.index_epoch(checkpoint)?;
-        self.index_transactions(checkpoint)?;
-        self.index_objects(checkpoint)?;
+        let mut batch = self.transactions.batch();
 
-        self.watermark.write().insert(
-            Watermark::Indexed,
-            checkpoint.committed_subdag.commit_ref.index,
-        );
+        self.index_epoch(checkpoint, &mut batch)?;
+        self.index_transactions(checkpoint, &mut batch)?;
+        self.index_objects(checkpoint, &mut batch)?;
+
+        batch.insert_batch(
+            &self.watermark,
+            [(
+                Watermark::Indexed,
+                checkpoint.committed_subdag.commit_ref.index,
+            )],
+        )?;
 
         debug!(
             checkpoint = checkpoint.committed_subdag.commit_ref.index,
             "finished indexing checkpoint"
         );
 
-        Ok(())
+        Ok(batch)
     }
 
-    fn index_epoch(&self, checkpoint: &CheckpointData) -> Result<(), StorageError> {
+    fn index_epoch(
+        &self,
+        checkpoint: &CheckpointData,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
         let Some(epoch_info) = checkpoint.epoch_info()? else {
             return Ok(());
         };
         if epoch_info.epoch > 0 {
             let prev_epoch = epoch_info.epoch - 1;
-            let mut current_epoch = self
-                .epochs
-                .read()
-                .get(&prev_epoch)
-                .cloned()
-                .unwrap_or_default();
+            let mut current_epoch = self.epochs.get(&prev_epoch)?.unwrap_or_default();
             current_epoch.epoch = prev_epoch; // set this incase there wasn't an entry
             current_epoch.end_timestamp_ms = epoch_info.start_timestamp_ms;
             // current_epoch.end_checkpoint = epoch_info.start_checkpoint.map(|sq| sq - 1);
-            self.epochs.write().insert(prev_epoch, current_epoch);
+            batch.insert_batch(&self.epochs, [(prev_epoch, current_epoch)])?;
         }
-        self.epochs.write().insert(epoch_info.epoch, epoch_info);
+        batch.insert_batch(&self.epochs, [(epoch_info.epoch, epoch_info)])?;
 
         Ok(())
     }
@@ -405,12 +508,7 @@ impl IndexStoreTables {
         let system_state = types::system_state::get_system_state(authority_store)
             .map_err(|e| StorageError::custom(format!("Failed to find system state: {e}")))?;
 
-        let mut epoch = self
-            .epochs
-            .read()
-            .get(&checkpoint.epoch())
-            .cloned()
-            .unwrap_or_default();
+        let mut epoch = self.epochs.get(&checkpoint.epoch())?.unwrap_or_default();
         epoch.epoch = checkpoint.epoch();
 
         if epoch.start_timestamp_ms.is_none() {
@@ -421,12 +519,16 @@ impl IndexStoreTables {
             epoch.system_state = Some(system_state);
         }
 
-        self.epochs.write().insert(epoch.epoch, epoch);
+        self.epochs.insert(&epoch.epoch, &epoch)?;
 
         Ok(())
     }
 
-    fn index_transactions(&self, checkpoint: &CheckpointData) -> Result<(), StorageError> {
+    fn index_transactions(
+        &self,
+        checkpoint: &CheckpointData,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
         for tx in &checkpoint.transactions {
             let info = TransactionInfo::new(
                 &tx.effects,
@@ -436,13 +538,17 @@ impl IndexStoreTables {
             );
 
             let digest = tx.transaction.digest();
-            self.transactions.write().insert(*digest, info);
+            batch.insert_batch(&self.transactions, [(digest, info)])?;
         }
 
         Ok(())
     }
 
-    fn index_objects(&self, checkpoint: &CheckpointData) -> Result<(), StorageError> {
+    fn index_objects(
+        &self,
+        checkpoint: &CheckpointData,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
         let mut balance_changes: HashMap<BalanceKey, BalanceIndexInfo> = HashMap::new();
 
         for tx in &checkpoint.transactions {
@@ -458,7 +564,7 @@ impl IndexStoreTables {
                         )?;
 
                         let owner_key = OwnerIndexKey::from_object(removed_object);
-                        self.owner.write().remove(&owner_key);
+                        batch.delete_batch(&self.owner, [owner_key])?;
                     }
 
                     Owner::Shared { .. } | Owner::Immutable => {}
@@ -478,7 +584,7 @@ impl IndexStoreTables {
                             )?;
 
                             let owner_key = OwnerIndexKey::from_object(old_object);
-                            self.owner.write().remove(&owner_key);
+                            batch.delete_batch(&self.owner, [owner_key])?;
                         }
 
                         Owner::Shared { .. } | Owner::Immutable => {}
@@ -495,7 +601,7 @@ impl IndexStoreTables {
                         )?;
                         let owner_key = OwnerIndexKey::from_object(object);
                         let owner_info = OwnerIndexInfo::new(object);
-                        self.owner.write().insert(owner_key, owner_info);
+                        batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
                     }
 
                     Owner::Shared { .. } | Owner::Immutable => {}
@@ -503,39 +609,20 @@ impl IndexStoreTables {
             }
         }
 
-        self.apply_balance_changes(balance_changes)?;
+        batch.partial_merge_batch(&self.balance, balance_changes)?;
 
         Ok(())
     }
 
-    fn apply_balance_changes(
+    fn get_epoch_info(&self, epoch: EpochId) -> Result<Option<EpochInfo>, TypedStoreError> {
+        self.epochs.get(&epoch)
+    }
+
+    fn get_transaction_info(
         &self,
-        balance_changes: HashMap<BalanceKey, BalanceIndexInfo>,
-    ) -> Result<(), StorageError> {
-        let mut balance_table = self.balance.write();
-
-        for (key, delta) in balance_changes {
-            match balance_table.get_mut(&key) {
-                Some(existing) => {
-                    // Merge the delta into the existing balance
-                    existing.merge_delta(&delta);
-                }
-                None => {
-                    // Insert new balance entry
-                    balance_table.insert(key, delta);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn get_epoch_info(&self, epoch: EpochId) -> Option<EpochInfo> {
-        self.epochs.read().get(&epoch).cloned()
-    }
-
-    fn get_transaction_info(&self, digest: &TransactionDigest) -> Option<TransactionInfo> {
-        self.transactions.read().get(digest).cloned()
+        digest: &TransactionDigest,
+    ) -> Result<Option<TransactionInfo>, TypedStoreError> {
+        self.transactions.get(digest)
     }
 
     fn owner_iter(
@@ -544,8 +631,8 @@ impl IndexStoreTables {
         object_type: Option<ObjectType>,
         cursor: Option<OwnerIndexKey>,
     ) -> Result<
-        impl Iterator<Item = Result<(OwnerIndexKey, OwnerIndexInfo), StorageError>> + '_,
-        StorageError,
+        impl Iterator<Item = Result<(OwnerIndexKey, OwnerIndexInfo), TypedStoreError>> + '_,
+        TypedStoreError,
     > {
         // TODO can we figure out how to pass a raw byte array as a cursor?
         let lower_bound = cursor.unwrap_or_else(|| OwnerIndexKey {
@@ -554,27 +641,34 @@ impl IndexStoreTables {
             inverted_balance: None,
             object_id: ObjectID::ZERO,
         });
-        let guard = self.owner.read();
-        let results: Vec<_> = guard
-            .range(lower_bound..)
-            .take_while(|(key, _)| {
+
+        Ok(self
+            .owner
+            .safe_iter_with_bounds(Some(lower_bound), None)
+            .take_while(move |item| {
+                // If there's an error let if flow through
+                let Ok((key, _)) = item else {
+                    return true;
+                };
+
+                // Only take if owner matches
                 key.owner == owner
+                    // and if an object type was supplied that the type matches
                     && object_type
                         .as_ref()
                         .map(|ty| ty == &key.object_type)
                         .unwrap_or(true)
-            })
-            .map(|(k, v)| Ok((k.clone(), v.clone())))
-            .collect();
-
-        Ok(results.into_iter())
+            }))
     }
 
-    fn get_balance(&self, owner: &SomaAddress) -> Option<BalanceIndexInfo> {
+    fn get_balance(
+        &self,
+        owner: &SomaAddress,
+    ) -> Result<Option<BalanceIndexInfo>, TypedStoreError> {
         let key = BalanceKey {
             owner: owner.to_owned(),
         };
-        self.balance.read().get(&key).cloned()
+        self.balance.get(&key)
     }
 
     fn balance_iter(
@@ -582,19 +676,21 @@ impl IndexStoreTables {
         owner: SomaAddress,
         cursor: Option<BalanceKey>,
     ) -> Result<
-        impl Iterator<Item = Result<(BalanceKey, BalanceIndexInfo), StorageError>> + '_,
-        StorageError,
+        impl Iterator<Item = Result<(BalanceKey, BalanceIndexInfo), TypedStoreError>> + '_,
+        TypedStoreError,
     > {
         let lower_bound = cursor.unwrap_or_else(|| BalanceKey { owner });
 
-        let guard = self.balance.read();
-        let results: Vec<_> = guard
-            .range(lower_bound..)
-            .take_while(|(key, _)| key.owner == owner)
-            .map(|(k, v)| Ok((k.clone(), v.clone())))
-            .collect();
-
-        Ok(results.into_iter())
+        Ok(self
+            .balance
+            .safe_iter_with_bounds(Some(lower_bound), None)
+            .scan((), move |_, item| {
+                match item {
+                    Ok((key, value)) if key.owner == owner => Some(Ok((key, value))),
+                    Ok(_) => None,          // Different owner, stop iteration
+                    Err(e) => Some(Err(e)), // Propagate error
+                }
+            }))
     }
 }
 
@@ -668,7 +764,7 @@ fn sparse_checkpoint_data_for_backfill(
 
 pub struct RpcIndexStore {
     tables: IndexStoreTables,
-    // pending_updates: Mutex<BTreeMap<u64, typed_store::rocks::DBBatch>>,
+    pending_updates: Mutex<BTreeMap<u64, store::rocks::DBBatch>>,
 }
 
 impl RpcIndexStore {
@@ -686,24 +782,227 @@ impl RpcIndexStore {
         let path = Self::db_path(dir);
 
         let tables = {
-            let tables = IndexStoreTables::open(&path);
+            let tables = IndexStoreTables::open_with_index_options(&path);
 
-            tables
+            // If the index tables are uninitialized or on an older version then we need to
+            // populate them
+            if tables.needs_to_do_initialization(commit_store) {
+                let batch_size_limit;
+
+                let mut tables = {
+                    drop(tables);
+                    store::rocks::safe_drop_db(path.clone(), Duration::from_secs(30))
+                        .await
+                        .expect("unable to destroy old rpc-index db");
+
+                    // Open the empty DB with `unordered_write`s enabled in order to get a ~3x
+                    // speedup when indexing
+                    let mut options = store::rocksdb::Options::default();
+                    options.set_unordered_write(true);
+
+                    // Allow CPU-intensive flushing operations to use all CPUs.
+                    let max_background_jobs = if let Some(jobs) = None
+                    //TODO: index_config.as_ref().and_then(|c| c.max_background_jobs)
+                    {
+                        debug!("Using config override for max_background_jobs: {}", jobs);
+                        jobs
+                    } else {
+                        let jobs = num_cpus::get() as i32;
+                        debug!(
+                            "Calculated max_background_jobs: {} (based on CPU count)",
+                            jobs
+                        );
+                        jobs
+                    };
+                    options.set_max_background_jobs(max_background_jobs);
+
+                    // We are disabling compaction for all column families below. This means we can
+                    // also disable the backpressure that slows down writes when the number of L0
+                    // files builds up since we will never compact them anyway.
+                    options.set_level_zero_file_num_compaction_trigger(0);
+                    options.set_level_zero_slowdown_writes_trigger(-1);
+                    options.set_level_zero_stop_writes_trigger(i32::MAX);
+
+                    let total_memory_bytes = get_available_memory();
+                    // This is an upper bound on the amount to of ram the memtables can use across
+                    // all column families.
+                    let db_buffer_size = if let Some(size) = None
+                    //TODO:index_config.as_ref().and_then(|c| c.db_write_buffer_size)
+                    {
+                        debug!(
+                            "Using config override for db_write_buffer_size: {} bytes",
+                            size
+                        );
+                        size
+                    } else {
+                        // Default to 80% of system RAM
+                        let size = (total_memory_bytes as f64 * 0.8) as usize;
+                        debug!(
+                            "Calculated db_write_buffer_size: {} bytes (80% of {} total bytes)",
+                            size, total_memory_bytes
+                        );
+                        size
+                    };
+                    options.set_db_write_buffer_size(db_buffer_size);
+
+                    // Create column family specific options.
+                    let mut table_config_map = BTreeMap::new();
+
+                    // Create options with compactions disabled and large write buffers.
+                    // Each CF can use up to 25% of system RAM, but total is still limited by
+                    // set_db_write_buffer_size configured above.
+                    let mut cf_options = store::rocks::default_db_options();
+                    cf_options.options.set_disable_auto_compactions(true);
+
+                    let (buffer_size, buffer_count) = match (
+                        None,
+                        None, //TODO: index_config.as_ref().and_then(|c| c.cf_write_buffer_size),
+                             // index_config
+                             //     .as_ref()
+                             //     .and_then(|c| c.cf_max_write_buffer_number),
+                    ) {
+                        (Some(size), Some(count)) => {
+                            debug!(
+                                "Using config overrides - buffer_size: {} bytes, buffer_count: {}",
+                                size, count
+                            );
+                            (size, count)
+                        }
+                        (None, None) => {
+                            // Calculate buffer configuration: 25% of RAM split across buffers
+                            let cf_memory_budget = (total_memory_bytes as f64 * 0.25) as usize;
+                            debug!(
+                                "Column family memory budget: {} bytes (25% of {} total bytes)",
+                                cf_memory_budget, total_memory_bytes
+                            );
+                            const MIN_BUFFER_SIZE: usize = 64 * 1024 * 1024; // 64MB minimum
+
+                            // Target number of buffers based on CPU count
+                            // More CPUs = more parallel flushing capability
+                            let target_buffer_count = num_cpus::get().max(2);
+
+                            // Aim for CPU-based buffer count, but reduce if it would make buffers too small
+                            //   For example:
+                            // - 128GB RAM, 32 CPUs: 32GB per CF / 32 buffers = 1GB each
+                            // - 16GB RAM, 8 CPUs: 4GB per CF / 8 buffers = 512MB each
+                            // - 4GB RAM, 8 CPUs: 1GB per CF / 64MB min = ~16 buffers of 64MB each
+                            let buffer_size =
+                                (cf_memory_budget / target_buffer_count).max(MIN_BUFFER_SIZE);
+                            let buffer_count = (cf_memory_budget / buffer_size)
+                                .clamp(2, target_buffer_count)
+                                as i32;
+                            debug!("Calculated buffer_size: {} bytes, buffer_count: {} (based on {} CPUs)", 
+                                buffer_size, buffer_count, target_buffer_count);
+                            (buffer_size, buffer_count)
+                        }
+                        _ => {
+                            panic!("indexing-cf-write-buffer-size and indexing-cf-max-write-buffer-number must both be specified or both be omitted");
+                        }
+                    };
+
+                    cf_options.options.set_write_buffer_size(buffer_size);
+                    cf_options.options.set_max_write_buffer_number(buffer_count);
+
+                    // TODO: Calculate batch size limit: default to half the buffer size or 128MB, whichever is smaller
+                    // batch_size_limit = if let Some(limit) =
+                    //     index_config.as_ref().and_then(|c| c.batch_size_limit)
+                    // {
+                    //     debug!(
+                    //         "Using config override for batch_size_limit: {} bytes",
+                    //         limit
+                    //     );
+                    //     limit
+                    // } else {
+                    batch_size_limit = {
+                        let half_buffer = buffer_size / 2;
+                        let default_limit = 1 << 27; // 128MB
+                        let limit = half_buffer.min(default_limit);
+                        debug!("Calculated batch_size_limit: {} bytes (min of half_buffer={} and default_limit={})", 
+                            limit, half_buffer, default_limit);
+                        limit
+                    };
+
+                    // Apply cf_options to all tables
+                    for (table_name, _) in IndexStoreTables::describe_tables() {
+                        table_config_map.insert(table_name, cf_options.clone());
+                    }
+
+                    // Override Balance options with the merge operator
+                    let mut balance_options = cf_options.clone();
+                    balance_options = balance_options.set_merge_operator_associative(
+                        "balance_merge",
+                        balance_delta_merge_operator,
+                    );
+                    table_config_map.insert("balance".to_string(), balance_options);
+
+                    IndexStoreTables::open_with_options(
+                        &path,
+                        options,
+                        Some(DBMapTableConfigMap::new(table_config_map)),
+                    )
+                };
+
+                tables
+                    .init(authority_store, commit_store, batch_size_limit)
+                    .expect("unable to initialize rpc index from live object set");
+
+                // Flush all data to disk before dropping tables.
+                // This is critical because WAL is disabled during bulk indexing.
+                // Note we only need to call flush on one table because all tables share the same
+                // underlying database.
+                tables
+                    .meta
+                    .flush()
+                    .expect("Failed to flush RPC index tables to disk");
+
+                let weak_db = Arc::downgrade(&tables.meta.db);
+                drop(tables);
+
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                loop {
+                    if weak_db.strong_count() == 0 {
+                        break;
+                    }
+                    if std::time::Instant::now() > deadline {
+                        panic!("unable to reopen DB after indexing");
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+
+                // Reopen the DB with default options (eg without `unordered_write`s enabled)
+                let reopened_tables = IndexStoreTables::open_with_index_options(&path);
+
+                // Sanity check: verify the database version was persisted correctly
+                let stored_version = reopened_tables
+                    .meta
+                    .get(&())
+                    .expect("Failed to read metadata from reopened database")
+                    .expect("Metadata not found in reopened database");
+                assert_eq!(
+                    stored_version.version, CURRENT_DB_VERSION,
+                    "Database version mismatch after flush and reopen: expected {}, found {}",
+                    CURRENT_DB_VERSION, stored_version.version
+                );
+
+                reopened_tables
+            } else {
+                tables
+            }
         };
 
         Self {
             tables,
-            // pending_updates: Default::default(),
+            pending_updates: Default::default(),
         }
     }
 
     pub fn new_without_init(dir: &Path) -> Self {
         let path = Self::db_path(dir);
-        let tables = IndexStoreTables::open(path);
+        let tables = IndexStoreTables::open_with_index_options(path);
 
         Self {
             tables,
-            // pending_updates: Default::default(),
+            pending_updates: Default::default(),
         }
     }
 
@@ -727,18 +1026,44 @@ impl RpcIndexStore {
     )]
     pub fn index_checkpoint(&self, checkpoint: &CheckpointData) {
         let sequence_number = checkpoint.committed_subdag.commit_ref.index;
-        self.tables.index_checkpoint(checkpoint).expect("db error");
+        let batch = self.tables.index_checkpoint(checkpoint).expect("db error");
+
+        self.pending_updates
+            .lock()
+            .unwrap()
+            .insert(sequence_number.into(), batch);
     }
 
-    pub fn get_epoch_info(&self, epoch: EpochId) -> Result<Option<EpochInfo>, StorageError> {
-        Ok(self.tables.get_epoch_info(epoch))
+    /// Commits the pending updates for the provided checkpoint number.
+    ///
+    /// Invariants:
+    /// - `index_checkpoint` must have been called for the provided checkpoint
+    /// - Callers of this function must ensure that it is called for each checkpoint in sequential
+    ///   order. This will panic if the provided checkpoint does not match the expected next
+    ///   checkpoint to commit.
+    #[tracing::instrument(skip(self))]
+    pub fn commit_update_for_checkpoint(&self, checkpoint: u64) -> Result<(), StorageError> {
+        let next_batch = self.pending_updates.lock().unwrap().pop_first();
+
+        // Its expected that the next batch exists
+        let (next_sequence_number, batch) = next_batch.unwrap();
+        assert_eq!(
+            checkpoint, next_sequence_number,
+            "commit_update_for_checkpoint must be called in order"
+        );
+
+        Ok(batch.write()?)
+    }
+
+    pub fn get_epoch_info(&self, epoch: EpochId) -> Result<Option<EpochInfo>, TypedStoreError> {
+        self.tables.get_epoch_info(epoch)
     }
 
     pub fn get_transaction_info(
         &self,
         digest: &TransactionDigest,
-    ) -> Result<Option<TransactionInfo>, StorageError> {
-        Ok(self.tables.get_transaction_info(digest))
+    ) -> Result<Option<TransactionInfo>, TypedStoreError> {
+        self.tables.get_transaction_info(digest)
     }
 
     pub fn owner_iter(
@@ -747,8 +1072,8 @@ impl RpcIndexStore {
         object_type: Option<ObjectType>,
         cursor: Option<OwnerIndexKey>,
     ) -> Result<
-        impl Iterator<Item = Result<(OwnerIndexKey, OwnerIndexInfo), StorageError>> + '_,
-        StorageError,
+        impl Iterator<Item = Result<(OwnerIndexKey, OwnerIndexInfo), TypedStoreError>> + '_,
+        TypedStoreError,
     > {
         self.tables.owner_iter(owner, object_type, cursor)
     }
@@ -756,8 +1081,8 @@ impl RpcIndexStore {
     pub fn get_balance(
         &self,
         owner: &SomaAddress,
-    ) -> Result<Option<BalanceIndexInfo>, StorageError> {
-        Ok(self.tables.get_balance(owner))
+    ) -> Result<Option<BalanceIndexInfo>, TypedStoreError> {
+        self.tables.get_balance(owner)
     }
 
     pub fn balance_iter(
@@ -765,8 +1090,8 @@ impl RpcIndexStore {
         owner: SomaAddress,
         cursor: Option<BalanceKey>,
     ) -> Result<
-        impl Iterator<Item = Result<(BalanceKey, BalanceIndexInfo), StorageError>> + '_,
-        StorageError,
+        impl Iterator<Item = Result<(BalanceKey, BalanceIndexInfo), TypedStoreError>> + '_,
+        TypedStoreError,
     > {
         self.tables.balance_iter(owner, cursor)
     }
@@ -779,7 +1104,7 @@ struct RpcParLiveObjectSetIndexer<'a> {
 
 struct RpcLiveObjectIndexer<'a> {
     tables: &'a IndexStoreTables,
-
+    batch: store::rocks::DBBatch,
     balance_changes: HashMap<BalanceKey, BalanceIndexInfo>,
     batch_size_limit: usize,
 }
@@ -790,6 +1115,7 @@ impl<'a> ParMakeLiveObjectIndexer for RpcParLiveObjectSetIndexer<'a> {
     fn make_live_object_indexer(&self) -> Self::ObjectIndexer {
         RpcLiveObjectIndexer {
             tables: self.tables,
+            batch: self.tables.owner.batch(),
             balance_changes: HashMap::new(),
             batch_size_limit: self.batch_size_limit,
         }
@@ -803,7 +1129,8 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
             Owner::AddressOwner(owner) => {
                 let owner_key = OwnerIndexKey::from_object(&object);
                 let owner_info = OwnerIndexInfo::new(&object);
-                self.tables.owner.write().insert(owner_key, owner_info);
+                self.batch
+                    .insert_batch(&self.tables.owner, [(owner_key, owner_info)])?;
 
                 if let Some(value) = object.as_coin() {
                     let balance_key = BalanceKey { owner };
@@ -814,8 +1141,10 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
                         .merge_delta(&balance_info);
 
                     if self.balance_changes.len() >= BALANCE_FLUSH_THRESHOLD {
-                        self.tables
-                            .apply_balance_changes(std::mem::take(&mut self.balance_changes))?;
+                        self.batch.partial_merge_batch(
+                            &self.tables.balance,
+                            std::mem::take(&mut self.balance_changes),
+                        )?;
                     }
                 }
             }
@@ -823,12 +1152,22 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
             Owner::Shared { .. } | Owner::Immutable => {}
         }
 
+        // If the batch size grows to greater than the limit then write out to the DB so that the
+        // data we need to hold in memory doesn't grow unbounded.
+        if self.batch.size_in_bytes() >= self.batch_size_limit {
+            std::mem::replace(&mut self.batch, self.tables.owner.batch())
+                .write_opt(&bulk_ingestion_write_options())?;
+        }
+
         Ok(())
     }
 
     fn finish(mut self) -> Result<(), StorageError> {
-        self.tables
-            .apply_balance_changes(std::mem::take(&mut self.balance_changes))?;
+        self.batch.partial_merge_batch(
+            &self.tables.balance,
+            std::mem::take(&mut self.balance_changes),
+        )?;
+        self.batch.write_opt(&bulk_ingestion_write_options())?;
 
         Ok(())
     }

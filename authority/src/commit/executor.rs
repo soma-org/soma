@@ -325,6 +325,16 @@ impl CommitExecutor {
                         {
                             Ok(checkpoint_data) => {
                                 rpc_index.index_checkpoint(&checkpoint_data);
+
+                                rpc_index
+                                    .commit_update_for_checkpoint(commit.commit_ref.index.into())
+                                    .tap_err(|e| {
+                                        error!(
+                                            "Failed to commit checkpoint update {}: {:?}",
+                                            commit.commit_ref.index, e
+                                        );
+                                    })
+                                    .ok();
                             }
                             Err(e) => {
                                 error!(
@@ -556,6 +566,16 @@ impl CommitExecutor {
             match self.form_checkpoint_data(commit, all_tx_digests).await {
                 Ok(checkpoint_data) => {
                     rpc_index.index_checkpoint(&checkpoint_data);
+
+                    rpc_index
+                        .commit_update_for_checkpoint(commit.commit_ref.index.into())
+                        .tap_err(|e| {
+                            error!(
+                                "Failed to commit checkpoint update {}: {:?}",
+                                commit.commit_ref.index, e
+                            );
+                        })
+                        .ok();
                 }
                 Err(e) => {
                     error!(
