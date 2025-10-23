@@ -993,8 +993,7 @@ impl AuthorityState {
         // expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
         let new_epoch = new_committee.epoch;
-        self.committee_store
-            .insert_new_committee(new_committee.clone())?;
+        self.committee_store.insert_new_committee(&new_committee)?;
         let mut execution_lock = self.execution_lock_for_reconfiguration().await;
 
         // TODO: check system consistency using accumulator after reverting uncommitted epoch transactions

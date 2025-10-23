@@ -208,7 +208,7 @@ impl WriteStore for StateSyncStore {
 
     fn insert_committee(&self, new_committee: Committee) -> Result<()> {
         self.committee_store
-            .insert_new_committee(new_committee)
+            .insert_new_committee(&new_committee)
             .unwrap();
         Ok(())
     }

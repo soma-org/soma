@@ -180,6 +180,7 @@ impl SomaNode {
         let committee_store = Arc::new(CommitteeStore::new(
             config.db_path().join("epochs"),
             &genesis_committee,
+            None,
         ));
 
         let mut pruner_db = None;
