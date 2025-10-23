@@ -11,6 +11,7 @@ use types::{
         block::BlockAPI,
         commit::{CommitDigest, CommittedSubDag},
     },
+    digests::TransactionEffectsDigest,
     error::SomaResult,
 };
 
@@ -22,7 +23,7 @@ pub enum CommitWatermark {
     // HighestVerified,
     HighestSynced,
     HighestExecuted,
-    // HighestPruned,
+    HighestPruned,
 }
 
 #[derive(DBMapUtils)]
@@ -40,6 +41,9 @@ pub struct CommitStore {
     pub(crate) certified_commits: DBMap<CommitIndex, CommittedSubDag>,
     /// Map from commit digest to certified commit (CommittedSubDag)
     pub(crate) commit_by_digest: DBMap<CommitDigest, CommittedSubDag>,
+
+    /// Maps commit digest to the effects digests generated from execution
+    pub(crate) effects_digests_by_commit_digest: DBMap<CommitDigest, Vec<TransactionEffectsDigest>>,
 
     /// Watermarks used to determine the highest verified, fully synced, and
     /// fully executed commits
@@ -129,6 +133,12 @@ impl CommitStore {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn get_highest_pruned_commit_index(&self) -> Result<Option<CommitIndex>, TypedStoreError> {
+        self.watermarks
+            .get(&CommitWatermark::HighestPruned)
+            .map(|watermark| watermark.map(|w| w.0))
     }
 
     pub fn prune_local_summaries(&self) -> SomaResult {
@@ -342,5 +352,29 @@ impl CommitStore {
     pub fn insert_commit(&self, commit: CommittedSubDag) -> Result<(), TypedStoreError> {
         self.insert_certified_commit(&commit)?;
         self.update_highest_synced_commit(&commit)
+    }
+
+    /// Get effects by commit digest
+    pub fn get_effects_by_commit_digest(
+        &self,
+        digest: &CommitDigest,
+    ) -> Result<Option<Vec<TransactionEffectsDigest>>, TypedStoreError> {
+        self.effects_digests_by_commit_digest.get(digest)
+    }
+
+    /// Store effects after commit execution
+    pub fn insert_effects_for_commit(
+        &self,
+        digest: &CommitDigest,
+        effects_digests: Vec<TransactionEffectsDigest>,
+    ) -> Result<(), TypedStoreError> {
+        let mut batch = self.effects_digests_by_commit_digest.batch();
+        batch.insert_batch(
+            &self.effects_digests_by_commit_digest,
+            [(digest.clone(), effects_digests.clone())],
+        )?;
+
+        batch.write()?;
+        Ok(())
     }
 }

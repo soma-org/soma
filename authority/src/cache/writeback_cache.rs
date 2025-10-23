@@ -1422,6 +1422,13 @@ impl ObjectCacheRead for WritebackCache {
         Ok(())
     }
 
+    fn get_highest_pruned_commit(&self) -> Option<CommitIndex> {
+        self.store
+            .perpetual_tables
+            .get_highest_pruned_commit()
+            .expect("db error")
+    }
+
     fn get_system_state_object(&self) -> SomaResult<SystemState> {
         get_system_state(self)
     }

@@ -25,7 +25,7 @@ use crate::{
     state::AuthorityState,
     state_accumulator::StateAccumulator,
     store::AuthorityStore,
-    store_pruner::ObjectsCompactionFilter,
+    store_pruner::{ObjectsCompactionFilter, PrunerWatermarks},
     store_tables::{
         AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
     },
@@ -148,13 +148,14 @@ impl<'a> TestAuthorityBuilder<'a> {
             store_base_path
         });
         let mut config = local_network_config.validator_configs()[0].clone();
+        let pruner_watermarks = Arc::new(PrunerWatermarks::default());
         let mut pruner_db = None;
-        // if config
-        //     .authority_store_pruning_config
-        //     .enable_compaction_filter
-        // {
-        //     pruner_db = Some(Arc::new(AuthorityPrunerTables::open(&path.join("store"))));
-        // }
+        if config
+            .authority_store_pruning_config
+            .enable_compaction_filter
+        {
+            pruner_db = Some(Arc::new(AuthorityPrunerTables::open(&path.join("store"))));
+        }
         let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
 
         let authority_store = match self.store {
@@ -250,6 +251,10 @@ impl<'a> TestAuthorityBuilder<'a> {
             cache_traits,
             accumulator,
             rpc_index,
+            commit_store.clone(),
+            authority_store.clone(),
+            pruner_db,
+            pruner_watermarks,
         )
         .await;
 

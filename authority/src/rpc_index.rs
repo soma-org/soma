@@ -335,23 +335,23 @@ impl IndexStoreTables {
 
         let highest_executed_checkpoint = commit_store.get_highest_executed_commit_index()?;
 
-        // TODO: get lowest available checkpoint after implementing pruning
-        // let lowest_available_checkpoint = commit_store
-        //     .get_highest_synced_commit_index()?
-        //     .map(|c| c.saturating_add(1))
-        //     .unwrap_or(0);
-        // let lowest_available_checkpoint_objects = authority_store
-        //     .perpetual_tables
-        //     .get_highest_pruned_checkpoint()?
-        //     .map(|c| c.saturating_add(1))
-        //     .unwrap_or(0);
+        let lowest_available_checkpoint = commit_store
+            .get_highest_synced_commit()?
+            .map(|c| c.commit_ref.index.saturating_add(1))
+            .unwrap_or(0);
+        let lowest_available_checkpoint_objects = authority_store
+            .perpetual_tables
+            .get_highest_pruned_commit()?
+            .map(|c| c.saturating_add(1))
+            .unwrap_or(0);
         // // Doing backfill requires processing objects so we have to restrict our backfill range
         // // to the range of checkpoints that we have objects for.
-        // let lowest_available_checkpoint =
-        //     lowest_available_checkpoint.max(lowest_available_checkpoint_objects);
+        let lowest_available_checkpoint =
+            lowest_available_checkpoint.max(lowest_available_checkpoint_objects);
 
-        let checkpoint_range = highest_executed_checkpoint
-            .map(|highest_executed_checkpint| 0..=highest_executed_checkpint.into());
+        let checkpoint_range = highest_executed_checkpoint.map(|highest_executed_checkpint| {
+            lowest_available_checkpoint..=highest_executed_checkpint
+        });
 
         if let Some(checkpoint_range) = checkpoint_range {
             self.index_existing_transactions(authority_store, commit_store, checkpoint_range)?;
@@ -393,7 +393,7 @@ impl IndexStoreTables {
         &mut self,
         authority_store: &AuthorityStore,
         commit_store: &CommitStore,
-        checkpoint_range: std::ops::RangeInclusive<u64>,
+        checkpoint_range: std::ops::RangeInclusive<u32>,
     ) -> Result<(), StorageError> {
         info!(
             "Indexing {} checkpoints in range {checkpoint_range:?}",
@@ -422,24 +422,21 @@ impl IndexStoreTables {
         Ok(())
     }
 
-    // TODO: Prune data from this Index
-    // fn prune(
-    //     &self,
-    //     pruned_checkpoint_watermark: u64,
-    //     checkpoint_contents_to_prune: &[CheckpointContents],
-    // ) -> Result<(), StorageError> {
-    //     let transactions_to_prune = checkpoint_contents_to_prune
-    //         .iter()
-    //         .flat_map(|contents| contents.iter().map(|digests| digests.transaction));
+    fn prune(
+        &self,
+        pruned_checkpoint_watermark: u32,
+        transactions_to_prune: &[TransactionDigest],
+    ) -> Result<(), TypedStoreError> {
+        let mut batch = self.transactions.batch();
 
-    //     batch.delete_batch(&self.transactions, transactions_to_prune)?;
-    //     batch.insert_batch(
-    //         &self.watermark,
-    //         [(Watermark::Pruned, pruned_checkpoint_watermark)],
-    //     )?;
+        batch.delete_batch(&self.transactions, transactions_to_prune)?;
+        batch.insert_batch(
+            &self.watermark,
+            [(Watermark::Pruned, pruned_checkpoint_watermark)],
+        )?;
 
-    //     batch.write()
-    // }
+        batch.write()
+    }
 
     /// Index a Checkpoint
     fn index_checkpoint(
@@ -697,10 +694,10 @@ impl IndexStoreTables {
 fn sparse_checkpoint_data_for_backfill(
     authority_store: &AuthorityStore,
     commit_store: &CommitStore,
-    checkpoint: u64,
+    checkpoint: u32,
 ) -> Result<CheckpointData, StorageError> {
     let committed_subdag = commit_store
-        .get_commit_by_index(checkpoint.try_into().unwrap())? //TODO: fix this
+        .get_commit_by_index(checkpoint)?
         .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
     // let contents = commit_store
     //     .get_checkpoint_contents(&summary.content_digest)?
@@ -1006,15 +1003,14 @@ impl RpcIndexStore {
         }
     }
 
-    // TODO: prune
-    // pub fn prune(
-    //     &self,
-    //     pruned_checkpoint_watermark: u64,
-    //     checkpoint_contents_to_prune: &[CheckpointContents],
-    // ) -> Result<(), StorageError> {
-    //     self.tables
-    //         .prune(pruned_checkpoint_watermark, checkpoint_contents_to_prune)
-    // }
+    pub fn prune(
+        &self,
+        pruned_checkpoint_watermark: u32,
+        tx_digests_to_prune: &[TransactionDigest],
+    ) -> Result<(), TypedStoreError> {
+        self.tables
+            .prune(pruned_checkpoint_watermark, tx_digests_to_prune)
+    }
 
     /// Index a checkpoint and stage the index updated in `pending_updates`.
     ///

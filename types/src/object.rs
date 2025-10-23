@@ -186,6 +186,18 @@ impl Version {
     }
 }
 
+impl From<Version> for u64 {
+    fn from(val: Version) -> Self {
+        val.0
+    }
+}
+
+impl From<u64> for Version {
+    fn from(value: u64) -> Self {
+        Version(value)
+    }
+}
+
 /// A tuple of (Version, ObjectDigest) used to uniquely identify an object at a specific version
 pub type VersionDigest = (Version, ObjectDigest);
 

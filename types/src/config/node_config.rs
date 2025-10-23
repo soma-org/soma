@@ -21,6 +21,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Duration,
 };
+use tracing::info;
 
 use super::{
     genesis_config::{ValidatorGenesisConfig, ValidatorGenesisConfigBuilder},
@@ -54,6 +55,8 @@ pub struct NodeConfig {
     pub rpc: Option<RpcConfig>,
 
     pub genesis: Genesis,
+
+    pub authority_store_pruning_config: AuthorityStorePruningConfig,
 
     pub end_of_epoch_broadcast_channel_capacity: usize, // 128
 
@@ -125,6 +128,131 @@ impl NodeConfig {
 
     pub fn rpc(&self) -> Option<&crate::config::rpc_config::RpcConfig> {
         self.rpc.as_ref()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct AuthorityStorePruningConfig {
+    /// number of the latest epoch dbs to retain
+    #[serde(default = "default_num_latest_epoch_dbs_to_retain")]
+    pub num_latest_epoch_dbs_to_retain: usize,
+    /// time interval used by the pruner to determine whether there are any epoch DBs to remove
+    #[serde(default = "default_epoch_db_pruning_period_secs")]
+    pub epoch_db_pruning_period_secs: u64,
+    /// number of epochs to keep the latest version of objects for.
+    /// Note that a zero value corresponds to an aggressive pruner.
+    /// This mode is experimental and needs to be used with caution.
+    /// Use `u64::MAX` to disable the pruner for the objects.
+    #[serde(default)]
+    pub num_epochs_to_retain: u64,
+    /// pruner's runtime interval used for aggressive mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pruning_run_delay_seconds: Option<u64>,
+    /// maximum number of commits in the pruning batch. Can be adjusted to increase performance
+    #[serde(default = "default_max_commits_in_batch")]
+    pub max_commits_in_batch: usize,
+    /// maximum number of transaction in the pruning batch
+    #[serde(default = "default_max_transactions_in_batch")]
+    pub max_transactions_in_batch: usize,
+    /// enables periodic background compaction for old SST files whose last modified time is
+    /// older than `periodic_compaction_threshold_days` days.
+    /// That ensures that all sst files eventually go through the compaction process
+    #[serde(
+        default = "default_periodic_compaction_threshold_days",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub periodic_compaction_threshold_days: Option<usize>,
+    /// number of epochs to keep the latest version of transactions and effects for
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_epochs_to_retain_for_commits: Option<u64>,
+    /// disables object tombstone pruning. We don't serialize it if it is the default value, false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub killswitch_tombstone_pruning: bool,
+    #[serde(default = "default_smoothing", skip_serializing_if = "is_true")]
+    pub smooth: bool,
+    /// Enables the compaction filter for pruning the objects table.
+    /// If disabled, a range deletion approach is used instead.
+    /// While it is generally safe to switch between the two modes,
+    /// switching from the compaction filter approach back to range deletion
+    /// may result in some old versions that will never be pruned.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub enable_compaction_filter: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_epochs_to_retain_for_indexes: Option<u64>,
+}
+
+fn default_num_latest_epoch_dbs_to_retain() -> usize {
+    3
+}
+
+fn default_epoch_db_pruning_period_secs() -> u64 {
+    3600
+}
+
+fn default_max_transactions_in_batch() -> usize {
+    1000
+}
+
+fn default_max_commits_in_batch() -> usize {
+    10
+}
+
+fn default_smoothing() -> bool {
+    cfg!(not(test))
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+fn default_periodic_compaction_threshold_days() -> Option<usize> {
+    Some(1)
+}
+
+impl Default for AuthorityStorePruningConfig {
+    fn default() -> Self {
+        Self {
+            num_latest_epoch_dbs_to_retain: default_num_latest_epoch_dbs_to_retain(),
+            epoch_db_pruning_period_secs: default_epoch_db_pruning_period_secs(),
+            num_epochs_to_retain: 0,
+            pruning_run_delay_seconds: if cfg!(msim) { Some(2) } else { None },
+            max_commits_in_batch: default_max_commits_in_batch(),
+            max_transactions_in_batch: default_max_transactions_in_batch(),
+            periodic_compaction_threshold_days: None,
+            num_epochs_to_retain_for_commits: if cfg!(msim) { Some(2) } else { None },
+            killswitch_tombstone_pruning: false,
+            smooth: true,
+            enable_compaction_filter: cfg!(test) || cfg!(msim),
+            num_epochs_to_retain_for_indexes: None,
+        }
+    }
+}
+
+impl AuthorityStorePruningConfig {
+    pub fn set_num_epochs_to_retain(&mut self, num_epochs_to_retain: u64) {
+        self.num_epochs_to_retain = num_epochs_to_retain;
+    }
+
+    pub fn set_num_epochs_to_retain_for_commits(&mut self, num_epochs_to_retain: Option<u64>) {
+        self.num_epochs_to_retain_for_commits = num_epochs_to_retain;
+    }
+
+    pub fn num_epochs_to_retain_for_checkpoints(&self) -> Option<u64> {
+        self.num_epochs_to_retain_for_commits
+            // if n less than 2, coerce to 2 and log
+            .map(|n| {
+                if n < 2 {
+                    info!("num_epochs_to_retain_for_checkpoints must be at least 2, rounding up from {}", n);
+                    2
+                } else {
+                    n
+                }
+            })
+    }
+
+    pub fn set_killswitch_tombstone_pruning(&mut self, killswitch_tombstone_pruning: bool) {
+        self.killswitch_tombstone_pruning = killswitch_tombstone_pruning;
     }
 }
 
@@ -377,6 +505,8 @@ impl ValidatorConfigBuilder {
             }
         };
 
+        let pruning_config = AuthorityStorePruningConfig::default();
+
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
             network_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
@@ -396,6 +526,7 @@ impl ValidatorConfigBuilder {
                 ..Default::default()
             }),
             consensus_config,
+            authority_store_pruning_config: pruning_config,
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,
         }

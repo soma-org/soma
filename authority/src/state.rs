@@ -82,6 +82,7 @@ use crate::cache::{
     ExecutionCacheCommit, ExecutionCacheReconfigAPI, ExecutionCacheTraitPointers,
     ExecutionCacheWrite, ObjectCacheRead, TransactionCacheRead,
 };
+use crate::commit::CommitStore;
 use crate::consensus_quarantine;
 use crate::epoch_store::{CertLockGuard, CertTxGuard};
 use crate::execution::execute_transaction;
@@ -90,6 +91,8 @@ use crate::rpc_index::RpcIndexStore;
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::state_accumulator::StateAccumulator;
 use crate::store::{AuthorityStore, ObjectLockStatus};
+use crate::store_pruner::{AuthorityStorePruner, PrunerWatermarks, EPOCH_DURATION_MS_FOR_TESTING};
+use crate::store_tables::AuthorityPrunerTables;
 use crate::tx_input_loader::TransactionInputLoader;
 use crate::{
     client::NetworkAuthorityClient, epoch_store::AuthorityPerEpochStore,
@@ -187,6 +190,10 @@ pub struct AuthorityState {
     accumulator: Arc<StateAccumulator>,
 
     pub rpc_index: Option<Arc<RpcIndexStore>>,
+
+    _pruner: AuthorityStorePruner,
+
+    commit_store: Arc<CommitStore>,
 }
 
 impl AuthorityState {
@@ -220,6 +227,10 @@ impl AuthorityState {
         execution_cache_trait_pointers: ExecutionCacheTraitPointers,
         accumulator: Arc<StateAccumulator>,
         rpc_index: Option<Arc<RpcIndexStore>>,
+        commit_store: Arc<CommitStore>,
+        store: Arc<AuthorityStore>,
+        pruner_db: Option<Arc<AuthorityPrunerTables>>,
+        pruner_watermarks: Arc<PrunerWatermarks>,
     ) -> Arc<Self> {
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
         let transaction_manager = Arc::new(TransactionManager::new(
@@ -233,6 +244,18 @@ impl AuthorityState {
         let (tx_execution_shutdown, rx_execution_shutdown) = oneshot::channel();
 
         let epoch = epoch_store.epoch();
+
+        let _pruner = AuthorityStorePruner::new(
+            store.perpetual_tables.clone(),
+            commit_store.clone(),
+            rpc_index.clone(),
+            config.authority_store_pruning_config.clone(),
+            epoch_store.committee().authority_exists(&name),
+            epoch_store.epoch_start_state().epoch_duration_ms(),
+            pruner_db,
+            pruner_watermarks,
+        );
+
         let input_loader =
             TransactionInputLoader::new(execution_cache_trait_pointers.object_cache_reader.clone());
 
@@ -249,6 +272,8 @@ impl AuthorityState {
             execution_cache_trait_pointers,
             accumulator,
             rpc_index,
+            _pruner,
+            commit_store,
         });
 
         // Start a task to execute ready certificates.
@@ -1724,6 +1749,23 @@ impl AuthorityState {
         };
 
         Ok(lock)
+    }
+
+    pub async fn prune_commits_for_eligible_epochs_for_testing(
+        &self,
+        config: NodeConfig,
+    ) -> anyhow::Result<()> {
+        let watermarks = Arc::new(PrunerWatermarks::default());
+        AuthorityStorePruner::prune_commits_for_eligible_epochs(
+            &self.database_for_testing().perpetual_tables,
+            &self.commit_store,
+            self.rpc_index.as_deref(),
+            None,
+            config.authority_store_pruning_config,
+            EPOCH_DURATION_MS_FOR_TESTING,
+            &watermarks,
+        )
+        .await
     }
 }
 

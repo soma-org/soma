@@ -197,6 +197,10 @@ impl CommitDigest {
     pub fn into_inner(self) -> [u8; DIGEST_LENGTH] {
         self.0
     }
+
+    pub fn random() -> Self {
+        Self(crate::digests::Digest::random().into_inner())
+    }
 }
 
 impl Hash for CommitDigest {

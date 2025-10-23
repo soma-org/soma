@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use futures::{future::BoxFuture, FutureExt};
 use tracing::debug;
 use types::{
-    accumulator::AccumulatorStore,
+    accumulator::{AccumulatorStore, CommitIndex},
     base::{FullObjectID, SomaAddress},
     committee::EpochId,
     digests::{TransactionDigest, TransactionEffectsDigest},
@@ -466,6 +466,9 @@ pub trait ObjectCacheRead: Send + Sync {
             Some((marker_version, MarkerValue::OwnedDeleted)) if marker_version >= version
         )
     }
+
+    /// Return the watermark for the highest commit for which we've pruned objects.
+    fn get_highest_pruned_commit(&self) -> Option<CommitIndex>;
 
     // This method is considered "private" - only used by multi_get_objects_with_more_accurate_error_return
     fn _get_live_objref(&self, object_id: ObjectID) -> SomaResult<ObjectRef>;

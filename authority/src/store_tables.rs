@@ -6,9 +6,11 @@ use std::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use store::{
-    rocks::{default_db_options, read_size_from_env, DBMap, DBMapTableConfigMap, DBOptions},
+    rocks::{
+        default_db_options, read_size_from_env, DBBatch, DBMap, DBMapTableConfigMap, DBOptions,
+    },
     rocksdb::compaction_filter::Decision,
-    DBMapUtils,
+    DBMapUtils, TypedStoreError,
 };
 use store::{DbIterator, Map as _};
 use tracing::{error, info};
@@ -109,6 +111,9 @@ pub struct AuthorityPerpetualTables {
 
     /// Parameters of the system fixed at the epoch start
     pub(crate) epoch_start_configuration: DBMap<(), EpochStartConfiguration>,
+
+    /// A singleton table that stores latest pruned commit. Used to keep objects pruner progress
+    pub(crate) pruned_commit: DBMap<(), CommitIndex>,
 
     // Finalized root state accumulator for epoch, to be included in
     // of last commit of epoch. These values should only ever be written once
@@ -282,6 +287,19 @@ impl AuthorityPerpetualTables {
             std::iter::once(((), epoch_start_configuration)),
         )?;
         wb.write()?;
+        Ok(())
+    }
+
+    pub fn get_highest_pruned_commit(&self) -> Result<Option<CommitIndex>, TypedStoreError> {
+        self.pruned_commit.get(&())
+    }
+
+    pub fn set_highest_pruned_commit(
+        &self,
+        wb: &mut DBBatch,
+        commit_index: CommitIndex,
+    ) -> SomaResult {
+        wb.insert_batch(&self.pruned_commit, [((), commit_index)])?;
         Ok(())
     }
 

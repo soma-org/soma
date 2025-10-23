@@ -20,6 +20,7 @@ use types::{
     consensus::{block::BlockAPI, commit::CommittedSubDag, ConsensusTransactionKind},
     digests::TransactionDigest,
     effects::TransactionEffects,
+    envelope::Message,
     error::SomaResult,
     transaction::{VerifiedCertificate, VerifiedExecutableTransaction, VerifiedTransaction},
 };
@@ -1011,6 +1012,12 @@ async fn handle_execution_effects(
             }
             Ok(Err(err)) => panic!("Failed to notify_read_executed_effects: {:?}", err),
             Ok(Ok(effects)) => {
+                commit_store
+                    .insert_effects_for_commit(
+                        &commit.commit_ref.digest,
+                        effects.iter().map(|e| e.digest()).collect(),
+                    )
+                    .ok()?;
                 // if no end of epoch commit, we must finalize the commit after executing
                 // the change epoch tx, which is done after all other commit execution
                 if !commit.is_last_commit_of_epoch() {

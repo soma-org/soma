@@ -21,7 +21,7 @@ use authority::{
     state_accumulator::StateAccumulator,
     state_sync_store::StateSyncStore,
     store::AuthorityStore,
-    store_pruner::ObjectsCompactionFilter,
+    store_pruner::{ObjectsCompactionFilter, PrunerWatermarks},
     store_tables::{
         AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
     },
@@ -183,15 +183,17 @@ impl SomaNode {
             None,
         ));
 
+        let pruner_watermarks = Arc::new(PrunerWatermarks::default());
+
         let mut pruner_db = None;
-        // TODO: if config
-        //     .authority_store_pruning_config
-        //     .enable_compaction_filter
-        // {
-        //     pruner_db = Some(Arc::new(AuthorityPrunerTables::open(
-        //         &config.db_path().join("store"),
-        //     )));
-        // }
+        if config
+            .authority_store_pruning_config
+            .enable_compaction_filter
+        {
+            pruner_db = Some(Arc::new(AuthorityPrunerTables::open(
+                &config.db_path().join("store"),
+            )));
+        }
         let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
 
         // By default, only enable write stall on validators for perpetual db.
@@ -308,6 +310,10 @@ impl SomaNode {
             cache_traits.clone(),
             accumulator.clone(),
             rpc_index,
+            commit_store.clone(),
+            store.clone(),
+            pruner_db,
+            pruner_watermarks,
         )
         .await;
 
@@ -886,6 +892,19 @@ impl SomaNode {
             // Force releasing current epoch store DB handle, because the
             // Arc<AuthorityPerEpochStore> may linger.
             cur_epoch_store.release_db_handles();
+
+            if cfg!(msim)
+                && !matches!(
+                    self.config
+                        .authority_store_pruning_config
+                        .num_epochs_to_retain_for_checkpoints(),
+                    None | Some(u64::MAX) | Some(0)
+                )
+            {
+                self.state
+                    .prune_commits_for_eligible_epochs_for_testing(self.config.clone())
+                    .await?;
+            }
 
             info!("Reconfiguration finished");
         }
