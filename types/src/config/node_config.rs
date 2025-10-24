@@ -238,12 +238,15 @@ impl AuthorityStorePruningConfig {
         self.num_epochs_to_retain_for_commits = num_epochs_to_retain;
     }
 
-    pub fn num_epochs_to_retain_for_checkpoints(&self) -> Option<u64> {
+    pub fn num_epochs_to_retain_for_commits(&self) -> Option<u64> {
         self.num_epochs_to_retain_for_commits
             // if n less than 2, coerce to 2 and log
             .map(|n| {
                 if n < 2 {
-                    info!("num_epochs_to_retain_for_checkpoints must be at least 2, rounding up from {}", n);
+                    info!(
+                        "num_epochs_to_retain_for_commits must be at least 2, rounding up from {}",
+                        n
+                    );
                     2
                 } else {
                     n
@@ -357,6 +360,9 @@ impl AuthorityKeyPairWithPath {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ConsensusConfig {
+    // Base consensus DB path for all epochs.
+    pub db_path: PathBuf,
+
     // The number of epochs for which to retain the consensus DBs. Setting it to 0 will make a consensus DB getting
     // dropped as soon as system is switched to a new epoch.
     pub db_retention_epochs: Option<u64>,
@@ -385,6 +391,10 @@ pub struct ConsensusConfig {
 }
 
 impl ConsensusConfig {
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
     pub fn address(&self) -> &Multiaddr {
         &self.address
     }
@@ -396,6 +406,30 @@ impl ConsensusConfig {
     pub fn submit_delay_step_override(&self) -> Option<Duration> {
         self.submit_delay_step_override_millis
             .map(Duration::from_millis)
+    }
+
+    pub fn db_retention_epochs(&self) -> u64 {
+        self.db_retention_epochs
+            // if n less than 2, coerce to 2 and log
+            .map(|n| {
+                if n < 2 {
+                    info!(
+                        "db_retention_epochs must be at least 2, rounding up from {}",
+                        n
+                    );
+                    2
+                } else {
+                    n
+                }
+            })
+            .unwrap_or(2)
+    }
+
+    pub fn db_pruner_period(&self) -> Duration {
+        // Default to 1 hour
+        self.db_pruner_period_secs
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(3_600))
     }
 }
 
@@ -477,6 +511,7 @@ impl ValidatorConfigBuilder {
             None
         } else {
             Some(ConsensusConfig {
+                db_path: consensus_db_path.clone(),
                 address: consensus_address,
                 db_pruner_period_secs: None,
                 db_retention_epochs: None,

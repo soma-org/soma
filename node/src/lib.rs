@@ -6,6 +6,7 @@ use authority::{
     cache::build_execution_cache,
     client::NetworkAuthorityClient,
     commit::{executor::CommitExecutor, CommitStore},
+    consensus_store_pruner::ConsensusStorePruner,
     encoder_client::EncoderClientService,
     epoch_store::AuthorityPerEpochStore,
     handler::ConsensusHandlerInitializer,
@@ -116,7 +117,7 @@ mod simulator {
 pub struct ValidatorComponents {
     validator_server_handle: JoinHandle<Result<()>>,
     consensus_manager: ConsensusManager,
-    // consensus_store_pruner: ConsensusStorePruner,
+    consensus_store_pruner: ConsensusStorePruner,
     consensus_adapter: Arc<ConsensusAdapter>,
 }
 
@@ -556,17 +557,16 @@ impl SomaNode {
             client,
             state.get_accumulator_store().clone(),
             consensus_adapter.clone(),
-            consensus_store,
+            consensus_store.clone(),
             state.clone_committee_store(),
         );
 
         // This only gets started up once, not on every epoch. (Make call to remove every epoch.)
-        // let consensus_store_pruner = ConsensusStorePruner::new(
-        //     consensus_manager.get_storage_base_path(),
-        //     consensus_config.db_retention_epochs(),
-        //     consensus_config.db_pruner_period(),
-        //     &registry_service.default_registry(),
-        // );
+        let consensus_store_pruner = ConsensusStorePruner::new(
+            consensus_store.clone(),
+            consensus_config.db_retention_epochs(),
+            consensus_config.db_pruner_period(),
+        );
 
         let validator_server_handle =
             Self::start_grpc_validator_service(&config, state.clone(), consensus_adapter.clone())
@@ -596,12 +596,10 @@ impl SomaNode {
             consensus_adapter,
             epoch_store,
             state_sync_handle,
-            // randomness_handle,
             consensus_manager,
-            // consensus_store_pruner,
+            consensus_store_pruner,
             accumulator,
             validator_server_handle,
-            // validator_overload_monitor_handle,
         )
         .await
     }
@@ -612,12 +610,10 @@ impl SomaNode {
         consensus_adapter: Arc<ConsensusAdapter>,
         epoch_store: Arc<AuthorityPerEpochStore>,
         state_sync_handle: StateSyncHandle,
-        // randomness_handle: randomness::Handle,
         consensus_manager: ConsensusManager,
-        // consensus_store_pruner: ConsensusStorePruner,
+        consensus_store_pruner: ConsensusStorePruner,
         accumulator: Weak<StateAccumulator>,
         validator_server_handle: JoinHandle<Result<()>>,
-        // validator_overload_monitor_handle: Option<JoinHandle<()>>,
     ) -> Result<ValidatorComponents> {
         let throughput_calculator = Arc::new(ConsensusThroughputCalculator::new(None));
 
@@ -649,7 +645,7 @@ impl SomaNode {
         Ok(ValidatorComponents {
             validator_server_handle,
             consensus_manager,
-            // consensus_store_pruner,
+            consensus_store_pruner,
             consensus_adapter,
         })
     }
@@ -805,6 +801,7 @@ impl SomaNode {
             let new_validator_components = if let Some(ValidatorComponents {
                 validator_server_handle,
                 consensus_manager,
+                consensus_store_pruner,
                 consensus_adapter,
             }) = self.validator_components.lock().await.take()
             {
@@ -829,6 +826,8 @@ impl SomaNode {
                 let weak_accumulator = Arc::downgrade(&new_accumulator);
                 *accumulator_guard = Some(new_accumulator);
 
+                consensus_store_pruner.prune(next_epoch).await;
+
                 if self.state.is_validator(&new_epoch_store)
                     && self.config.consensus_config().is_some()
                 {
@@ -841,6 +840,7 @@ impl SomaNode {
                             new_epoch_store.clone(),
                             self.state_sync_handle.clone(),
                             consensus_manager,
+                            consensus_store_pruner,
                             weak_accumulator,
                             validator_server_handle,
                         )
@@ -897,7 +897,7 @@ impl SomaNode {
                 && !matches!(
                     self.config
                         .authority_store_pruning_config
-                        .num_epochs_to_retain_for_checkpoints(),
+                        .num_epochs_to_retain_for_commits(),
                     None | Some(u64::MAX) | Some(0)
                 )
             {

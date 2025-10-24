@@ -251,4 +251,8 @@ impl ConsensusStore for TestP2pStore {
     > {
         todo!()
     }
+
+    fn prune_epochs_before(&self, epoch: Epoch) -> crate::error::ConsensusResult<()> {
+        todo!()
+    }
 }

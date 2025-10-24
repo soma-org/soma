@@ -2,6 +2,7 @@ use parking_lot::RwLock;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::Bound::Included;
 use std::sync::Arc;
+use tracing::info;
 
 use crate::consensus::{
     block::{BlockAPI as _, BlockDigest, BlockRef, Round, Slot, VerifiedBlock},
@@ -299,5 +300,70 @@ impl ConsensusStore for MemStore {
             }
         }
         Ok(None)
+    }
+
+    fn prune_epochs_before(&self, epoch: Epoch) -> ConsensusResult<()> {
+        info!("Starting MemStore pruning for epochs < {}", epoch);
+
+        let mut inner = self.inner.write();
+
+        // Track statistics for logging
+        let mut pruned_blocks = 0usize;
+        let mut pruned_digests = 0usize;
+        let mut pruned_commits = 0usize;
+        let mut pruned_votes = 0usize;
+        let mut pruned_commit_info = 0usize;
+        let mut pruned_epoch_mappings = 0usize;
+
+        // Since MemStore is already organized by epoch, we can use split_off for efficiency
+        // split_off(epoch) keeps everything >= epoch and removes everything < epoch
+
+        // Count and prune blocks
+        for (_, epoch_blocks) in inner.blocks.range(..epoch) {
+            pruned_blocks += epoch_blocks.len();
+        }
+        inner.blocks = inner.blocks.split_off(&epoch);
+
+        // Count and prune digests_by_authorities
+        for (_, epoch_digests) in inner.digests_by_authorities.range(..epoch) {
+            pruned_digests += epoch_digests.len();
+        }
+        inner.digests_by_authorities = inner.digests_by_authorities.split_off(&epoch);
+
+        // For commits, also need to clean up epochs_by_commits mapping
+        let mut commit_indices_to_remove = Vec::new();
+        for (epoch_id, epoch_commits) in inner.commits.range(..epoch) {
+            for ((commit_index, _), _) in epoch_commits {
+                commit_indices_to_remove.push(*commit_index);
+            }
+            pruned_commits += epoch_commits.len();
+        }
+        inner.commits = inner.commits.split_off(&epoch);
+
+        // Clean up the epochs_by_commits reverse mapping
+        for commit_index in commit_indices_to_remove {
+            if inner.epochs_by_commits.remove(&commit_index).is_some() {
+                pruned_epoch_mappings += 1;
+            }
+        }
+
+        // Count and prune commit_votes
+        for (_, epoch_votes) in inner.commit_votes.range(..epoch) {
+            pruned_votes += epoch_votes.len();
+        }
+        inner.commit_votes = inner.commit_votes.split_off(&epoch);
+
+        // Count and prune commit_info
+        for (_, epoch_info) in inner.commit_info.range(..epoch) {
+            pruned_commit_info += epoch_info.len();
+        }
+        inner.commit_info = inner.commit_info.split_off(&epoch);
+
+        info!(
+            "Completed MemStore pruning for epochs < {}: pruned {} blocks, {} digests, {} commits, {} votes, {} commit_info entries, {} epoch mappings",
+            epoch, pruned_blocks, pruned_digests, pruned_commits, pruned_votes, pruned_commit_info, pruned_epoch_mappings
+        );
+
+        Ok(())
     }
 }

@@ -51,6 +51,10 @@ pub trait ConsensusStore: Send + Sync {
 
     // Reads the last commit info, written atomically with the last commit.
     fn read_last_commit_info(&self) -> ConsensusResult<Option<(CommitRef, CommitInfo)>>;
+
+    /// Prunes all data from epochs before the given epoch.
+    /// This removes blocks, commits, commit votes, and commit info for old epochs.
+    fn prune_epochs_before(&self, epoch: Epoch) -> ConsensusResult<()>;
 }
 
 /// Represents data to be written to the store together atomically.

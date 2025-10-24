@@ -5,6 +5,7 @@ use store::{
     rocks::{default_db_options, DBMap, DBMapTableConfigMap},
     DBMapUtils, Map,
 };
+use tracing::{debug, info};
 
 use crate::{
     committee::{AuthorityIndex, Epoch},
@@ -284,5 +285,161 @@ impl ConsensusStore for RocksDBStore {
         };
         let (key, commit_info) = result.map_err(ConsensusError::RocksDBFailure)?;
         Ok(Some((CommitRef::new(key.0, key.1), commit_info)))
+    }
+
+    fn prune_epochs_before(&self, epoch: Epoch) -> ConsensusResult<()> {
+        info!("Starting consensus store pruning for epochs < {}", epoch);
+
+        // Create a single batch for all deletions
+        let mut batch = self.blocks.batch();
+        let mut pruned_blocks = 0u64;
+        let mut pruned_digests = 0u64;
+        let mut pruned_commits = 0u64;
+        let mut pruned_votes = 0u64;
+        let mut pruned_commit_info = 0u64;
+
+        // Prune blocks using range deletion
+        // The end key is EXCLUSIVE, so (epoch, MIN, MIN, MIN) means "up to but not including epoch"
+        let blocks_start_key = (
+            Epoch::MIN,
+            Round::MIN,
+            AuthorityIndex::MIN,
+            BlockDigest::MIN,
+        );
+        let blocks_end_key = (epoch, Round::MIN, AuthorityIndex::MIN, BlockDigest::MIN);
+
+        // Optional: Count blocks to be deleted for logging
+        for result in self
+            .blocks
+            .safe_iter_with_bounds(Some(blocks_start_key), Some(blocks_end_key))
+        {
+            if result.is_ok() {
+                pruned_blocks += 1;
+            }
+        }
+
+        if pruned_blocks > 0 {
+            debug!("Scheduling deletion of {} blocks", pruned_blocks);
+            batch
+                .schedule_delete_range(&self.blocks, &blocks_start_key, &blocks_end_key)
+                .map_err(ConsensusError::RocksDBFailure)?;
+        }
+
+        // Prune digests_by_authorities using range deletion
+        let digest_start_key = (
+            Epoch::MIN,
+            AuthorityIndex::MIN,
+            Round::MIN,
+            BlockDigest::MIN,
+        );
+        let digest_end_key = (epoch, AuthorityIndex::MIN, Round::MIN, BlockDigest::MIN);
+
+        // Optional: Count digests to be deleted
+        for result in self
+            .digests_by_authorities
+            .safe_iter_with_bounds(Some(digest_start_key), Some(digest_end_key))
+        {
+            if result.is_ok() {
+                pruned_digests += 1;
+            }
+        }
+
+        if pruned_digests > 0 {
+            debug!("Scheduling deletion of {} digests", pruned_digests);
+            batch
+                .schedule_delete_range(
+                    &self.digests_by_authorities,
+                    &digest_start_key,
+                    &digest_end_key,
+                )
+                .map_err(ConsensusError::RocksDBFailure)?;
+        }
+
+        // For commits, deserialize and check epoch
+        let mut commit_keys_to_delete = Vec::new();
+        for result in self.commits.safe_iter_with_bounds(None, None) {
+            let ((index, digest), serialized) = result?;
+            let commit = TrustedCommit::new_trusted(
+                bcs::from_bytes(&serialized).map_err(ConsensusError::MalformedCommit)?,
+                serialized,
+            );
+            if commit.epoch() < epoch {
+                commit_keys_to_delete.push((index, digest));
+            }
+        }
+        // Delete in batches
+        batch.delete_batch(&self.commits, commit_keys_to_delete.iter())?;
+
+        // For commit_votes, check BlockRef.epoch
+        let mut vote_keys_to_delete = Vec::new();
+        for result in self.commit_votes.safe_iter_with_bounds(None, None) {
+            let ((index, digest, block_ref), _) = result?;
+            if block_ref.epoch < epoch {
+                vote_keys_to_delete.push((index, digest, block_ref));
+            }
+        }
+        batch.delete_batch(&self.commit_votes, vote_keys_to_delete.iter())?;
+
+        // Delete commit_info entries for pruned commits
+        if !commit_keys_to_delete.is_empty() {
+            // The commit_info table has the same key structure as commits
+            let mut commit_info_keys = Vec::new();
+            for (index, digest) in &commit_keys_to_delete {
+                if self.commit_info.contains_key(&(*index, *digest))? {
+                    commit_info_keys.push((*index, *digest));
+                    pruned_commit_info += 1;
+                }
+            }
+            batch.delete_batch(&self.commit_info, commit_info_keys.iter())?;
+        }
+
+        // Count commits being deleted
+        pruned_commits = commit_keys_to_delete.len() as u64;
+
+        // Count votes being deleted
+        pruned_votes = vote_keys_to_delete.len() as u64;
+
+        // Write all deletions atomically
+        batch.write()?;
+
+        info!(
+            "Completed pruning for epochs < {}: pruned {} blocks, {} digests, {} commits, {} votes, {} commit_info entries",
+            epoch, pruned_blocks, pruned_digests, pruned_commits, pruned_votes, pruned_commit_info
+        );
+
+        // Trigger compaction to reclaim space
+        // This is especially important after large range deletions
+        if pruned_blocks > 0 {
+            debug!("Triggering compaction for blocks column family");
+            self.blocks
+                .compact_range(&blocks_start_key, &blocks_end_key)?;
+        }
+
+        if pruned_digests > 0 {
+            debug!("Triggering compaction for digests column family");
+            self.digests_by_authorities
+                .compact_range(&digest_start_key, &digest_end_key)?;
+        }
+
+        // For commits and commit_votes, we used point deletions, not range deletions
+        // So we need to compact the entire table or the specific ranges we deleted
+        if pruned_commits > 0 {
+            debug!("Triggering compaction for commits column family");
+            // Option 1: Compact the entire table (slower but thorough)
+            self.commits.compact_range(
+                &(CommitIndex::MIN, CommitDigest::MIN),
+                &(CommitIndex::MAX, CommitDigest::MAX),
+            )?;
+        }
+
+        if pruned_votes > 0 {
+            debug!("Triggering compaction for commit_votes column family");
+            // Compact the entire table since we did point deletions
+            self.commit_votes.compact_range(
+                &(CommitIndex::MIN, CommitDigest::MIN, BlockRef::MIN),
+                &(CommitIndex::MAX, CommitDigest::MAX, BlockRef::MAX),
+            )?;
+        }
+        Ok(())
     }
 }

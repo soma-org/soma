@@ -97,18 +97,15 @@ impl ReadStore for StateSyncStore {
     }
 
     fn get_lowest_available_commit(&self) -> Result<CommitIndex, StorageError> {
-        // TODO: update this to work with pruning
-        // let highest_pruned_cp = self
+        // if let Some(highest_pruned_cp) = self
         //     .commit_store
-        //     .get_highest_pruned_commit_seq_number()
-        //     .map_err(Into::<StorageError>::into)?;
-
-        // if highest_pruned_cp == 0 {
-        //     Ok(0)
-        // } else {
+        //     .get_highest_pruned_commit_index()
+        //     .map_err(Into::<StorageError>::into)?
+        // {
         //     Ok(highest_pruned_cp + 1)
+        // } else {
+        //     Ok(0)
         // }
-
         Ok(0)
     }
 
@@ -301,6 +298,13 @@ impl ConsensusStore for StateSyncStore {
         )>,
     > {
         self.consensus_store.read_last_commit_info()
+    }
+
+    fn prune_epochs_before(
+        &self,
+        epoch: types::committee::Epoch,
+    ) -> types::error::ConsensusResult<()> {
+        self.consensus_store.prune_epochs_before(epoch)
     }
 }
 

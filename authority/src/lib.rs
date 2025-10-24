@@ -5,6 +5,7 @@ pub mod cache;
 pub mod client;
 pub mod commit;
 pub mod consensus_quarantine;
+pub mod consensus_store_pruner;
 pub mod encoder_client;
 pub mod epoch_store;
 pub mod execution;
