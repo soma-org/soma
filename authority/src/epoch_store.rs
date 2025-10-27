@@ -2284,6 +2284,10 @@ impl AuthorityPerEpochStore {
         // Wait for notification
         Ok(registration.await)
     }
+
+    pub fn get_parent_path(&self) -> PathBuf {
+        self.parent_path.clone()
+    }
 }
 
 impl EndOfEpochAPI for AuthorityPerEpochStore {

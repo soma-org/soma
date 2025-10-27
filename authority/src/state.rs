@@ -85,6 +85,7 @@ use crate::cache::{
 use crate::commit::CommitStore;
 use crate::consensus_quarantine;
 use crate::epoch_store::{CertLockGuard, CertTxGuard};
+use crate::epoch_store_pruner::AuthorityPerEpochStorePruner;
 use crate::execution::execute_transaction;
 use crate::execution_driver::execution_process;
 use crate::rpc_index::RpcIndexStore;
@@ -193,6 +194,8 @@ pub struct AuthorityState {
 
     _pruner: AuthorityStorePruner,
 
+    _authority_per_epoch_pruner: AuthorityPerEpochStorePruner,
+
     commit_store: Arc<CommitStore>,
 }
 
@@ -244,7 +247,10 @@ impl AuthorityState {
         let (tx_execution_shutdown, rx_execution_shutdown) = oneshot::channel();
 
         let epoch = epoch_store.epoch();
-
+        let _authority_per_epoch_pruner = AuthorityPerEpochStorePruner::new(
+            epoch_store.get_parent_path(),
+            &config.authority_store_pruning_config,
+        );
         let _pruner = AuthorityStorePruner::new(
             store.perpetual_tables.clone(),
             commit_store.clone(),
@@ -273,6 +279,7 @@ impl AuthorityState {
             accumulator,
             rpc_index,
             _pruner,
+            _authority_per_epoch_pruner,
             commit_store,
         });
 

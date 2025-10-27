@@ -8,6 +8,7 @@ pub mod consensus_quarantine;
 pub mod consensus_store_pruner;
 pub mod encoder_client;
 pub mod epoch_store;
+pub mod epoch_store_pruner;
 pub mod execution;
 pub mod execution_driver;
 pub mod handler;
