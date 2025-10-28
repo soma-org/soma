@@ -723,7 +723,7 @@ impl ValidatorConfigBuilder {
 // }
 
 /// Given a validator keypair, return a path that can be used to identify the validator.
-fn get_key_path(key_pair: &AuthorityKeyPair) -> String {
+pub fn get_key_path(key_pair: &AuthorityKeyPair) -> String {
     let public_key: AuthorityPublicKeyBytes = key_pair.public().into();
     let mut key_path = Hex::encode(public_key);
     // 12 is rather arbitrary here but it's a nice balance between being short and being unique.
@@ -734,3 +734,4 @@ fn get_key_path(key_pair: &AuthorityKeyPair) -> String {
 pub const CONSENSUS_DB_NAME: &str = "consensus_db";
 pub const FULL_NODE_DB_PATH: &str = "full_node_db";
 pub const AUTHORITIES_DB_NAME: &str = "authorities_db";
+pub const ENCODERS_DB_NAME: &str = "encoders_db";

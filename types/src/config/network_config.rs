@@ -10,7 +10,10 @@ use std::{
 use crate::{
     base::SomaAddress,
     committee::{Committee, CommitteeWithNetworkMetadata},
-    config::{node_config::NodeConfig, p2p_config::SeedPeer},
+    config::{
+        node_config::{get_key_path, NodeConfig, ENCODERS_DB_NAME},
+        p2p_config::SeedPeer,
+    },
     consensus::stake_aggregator::StakeAggregator,
     crypto::{
         get_key_pair_from_rng, AuthorityPublicKeyBytes, AuthoritySignInfo,
@@ -623,12 +626,16 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             })
             .collect();
 
+        // let key_path = get_key_path(&account_keypair);
+        let encoder_config_directory = tempfile::tempdir().unwrap().into_path();
+        let db_path = encoder_config_directory.join(ENCODERS_DB_NAME);
+
         let encoder_configs = encoders
             .into_iter()
             .map(|encoder| {
                 EncoderConfig::new(
                     encoder.account_key_pair,
-                    encoder.encoder_key_pair,
+                    encoder.encoder_key_pair.clone(),
                     encoder.network_key_pair,
                     encoder.internal_network_address,
                     encoder.external_network_address,
@@ -642,6 +649,9 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     PathBuf::from("/entry/point.py"), // Default path, should be configurable
                     validator_sync_address.clone(),
                     genesis.clone(),
+                    db_path
+                        .clone()
+                        .join(get_key_path(encoder.encoder_key_pair.inner())),
                 )
                 .with_epoch_duration(genesis_config.parameters.epoch_duration_ms)
             })

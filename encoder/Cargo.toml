@@ -32,6 +32,7 @@ tower.workspace = true
 aes.workspace = true
 ctr.workspace = true
 crypto-common.workspace = true
+store.workspace = true
 # pyo3.workspace = true
 numpy.workspace = true
 ndarray.workspace = true
@@ -52,6 +53,8 @@ encoder-validator-api.workspace = true
 anyhow.workspace = true
 sdk.workspace = true
 soma-keys.workspace = true
+eyre.workspace = true
+tempfile.workspace = true
 
 [dependencies.pyo3]
 workspace = true

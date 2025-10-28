@@ -488,6 +488,12 @@ impl From<TypedStoreError> for SomaError {
     }
 }
 
+impl From<TypedStoreError> for ShardError {
+    fn from(e: TypedStoreError) -> Self {
+        Self::DatastoreError(e.to_string())
+    }
+}
+
 impl From<TypedStoreError> for crate::storage::storage_error::Error {
     fn from(error: TypedStoreError) -> Self {
         crate::storage::storage_error::Error::custom(error)

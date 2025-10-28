@@ -32,6 +32,7 @@ use super::{
     internal_broadcaster::Broadcaster,
     pipeline_dispatcher::{ExternalPipelineDispatcher, InternalPipelineDispatcher},
 };
+use crate::datastore::rocksdb_store::RocksDBStore;
 use crate::pipelines::clean_up::CleanUpProcessor;
 use crate::{
     datastore::{mem_store::MemStore, Store},
@@ -229,7 +230,7 @@ impl EncoderNode {
             ActorManager::new(default_buffer, external_download_processor);
         let external_downloader_handle = external_downloader_manager.handle();
 
-        let store = Arc::new(MemStore::new());
+        let store = Arc::new(RocksDBStore::new(config.db_path().to_str().unwrap()));
 
         let broadcaster = Arc::new(Broadcaster::new(
             messaging_client.clone(),

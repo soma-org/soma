@@ -5,9 +5,10 @@ use test_cluster::TestCluster;
 use tokio::time::sleep;
 use tracing::info;
 use types::checksum::Checksum;
-use types::crypto::KeypairTraits;
+use types::crypto::{KeypairTraits, NetworkKeyPair};
 use types::metadata::{
     DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
+    ObjectPath,
 };
 use types::shard::{Shard, ShardAuthToken};
 use types::shard_crypto::digest::Digest;
@@ -54,7 +55,7 @@ async fn test_integrated_encoder_validator_system() {
     let encoder_config = test_cluster.create_new_encoder_config(
         new_encoder_genesis.encoder_key_pair.clone(),
         new_encoder_genesis.account_key_pair.copy(),
-        new_encoder_genesis.peer_key_pair.clone(),
+        new_encoder_genesis.network_key_pair.clone(),
     );
 
     // Register the new encoder
@@ -114,16 +115,14 @@ async fn test_integrated_encoder_validator_system() {
         .config
         .clone();
 
-    let tls_key = PeerPublicKey::new(
-        fullnode_config
-            .network_key_pair()
-            .into_inner()
-            .public()
-            .clone(),
-    );
+    let tls_key = fullnode_config.network_key_pair();
     let address = fullnode_config.network_address;
 
-    let metadata = MetadataV1::new(Checksum::default(), size_in_bytes);
+    let checksum = Checksum::default();
+    let epoch = 1;
+    let object_path = ObjectPath::Inputs(epoch, checksum);
+
+    let metadata = MetadataV1::new(object_path, size_in_bytes);
     let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
     let digest = metadata_commitment
         .digest()

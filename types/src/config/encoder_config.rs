@@ -65,6 +65,8 @@ pub struct EncoderConfig {
     pub genesis: Genesis,
 
     pub epoch_duration_ms: u64,
+
+    pub db_path: PathBuf,
 }
 
 impl EncoderConfig {
@@ -83,6 +85,7 @@ impl EncoderConfig {
         entry_point: PathBuf,
         validator_sync_address: Multiaddr,
         genesis: Genesis,
+        db_path: PathBuf,
     ) -> Self {
         // Create default parameters
         // TODO: let parameters = Arc::new(Parameters::default());
@@ -101,6 +104,7 @@ impl EncoderConfig {
             external_object_address,
             evaluation_address,
             // parameters,
+            db_path,
             object_parameters,
             evaluation_parameters,
             project_root,
@@ -110,6 +114,10 @@ impl EncoderConfig {
             genesis,
             epoch_duration_ms: 1000, //TODO: Default epoch duration
         }
+    }
+
+    pub fn db_path(&self) -> PathBuf {
+        self.db_path.clone()
     }
 
     pub fn protocol_public_key(&self) -> EncoderPublicKey {

@@ -1,11 +1,13 @@
 #![doc = include_str!("README.md")]
 
 pub(crate) mod mem_store;
+pub(crate) mod rocksdb_store;
 
 use std::time::Instant;
 
 use crate::types::commit_votes::CommitVotes;
 use crate::types::report_vote::ReportVote;
+use serde::{Deserialize, Serialize};
 use types::error::ShardResult;
 use types::metadata::DownloadableMetadata;
 use types::submission::Submission;
@@ -18,7 +20,7 @@ use types::{
     },
 };
 
-#[derive(Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub(crate) enum ShardStage {
     Input,
     Commit,

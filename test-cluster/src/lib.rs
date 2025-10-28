@@ -28,7 +28,7 @@ use types::{
         },
         local_ip_utils,
         network_config::NetworkConfig,
-        node_config::{NodeConfig, ValidatorConfigBuilder},
+        node_config::{get_key_path, NodeConfig, ValidatorConfigBuilder, ENCODERS_DB_NAME},
         p2p_config::SeedPeer,
         Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
     },
@@ -407,6 +407,13 @@ impl TestCluster {
         let project_root = PathBuf::from("/tmp");
         let entry_point = PathBuf::from("test_module.py");
 
+        let key_path = get_key_path(encoder_keypair.inner());
+        let config_directory = tempfile::tempdir().unwrap().into_path();
+
+        let db_path = config_directory
+            .join(ENCODERS_DB_NAME)
+            .join(key_path.clone());
+
         // Create the encoder config
         let mut config = EncoderConfig::new(
             account_keypair,
@@ -422,6 +429,7 @@ impl TestCluster {
             entry_point,
             validator_sync_address,
             genesis,
+            db_path,
         );
 
         // Set epoch duration to match the validator system
