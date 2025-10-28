@@ -23,6 +23,8 @@ pub struct ValidatorGenesisConfig {
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub encoder_validator_address: Multiaddr,
+    pub internal_object_address: Multiaddr,
+    pub external_object_address: Multiaddr,
     pub rpc_address: Multiaddr,
     #[serde(default = "default_stake")]
     pub stake: u64,
@@ -195,6 +197,8 @@ impl ValidatorGenesisConfigBuilder {
             p2p_address,
             encoder_validator_address,
             rpc_address,
+            internal_object_address,
+            external_object_address,
         ) = if let Some(offset) = self.port_offset {
             (
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
@@ -202,9 +206,13 @@ impl ValidatorGenesisConfigBuilder {
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 5),
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 6),
             )
         } else {
             (
+                local_ip_utils::new_tcp_address_for_testing(&ip),
+                local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -222,6 +230,8 @@ impl ValidatorGenesisConfigBuilder {
             consensus_address,
             p2p_address,
             encoder_validator_address,
+            internal_object_address,
+            external_object_address,
             rpc_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,

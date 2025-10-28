@@ -65,6 +65,11 @@ pub struct NodeConfig {
 
     pub encoder_validator_address: Multiaddr,
 
+    /// The network address for the unencrypted object storage
+    pub internal_object_address: Multiaddr,
+    /// The network address for object storage
+    pub external_object_address: Multiaddr,
+
     #[serde(default = "default_rpc_address")]
     pub rpc_address: SocketAddr,
 }
@@ -557,6 +562,8 @@ impl ValidatorConfigBuilder {
             genesis: genesis,
             encoder_validator_address: validator.encoder_validator_address,
             rpc_address: validator.rpc_address.to_socket_addr().unwrap(),
+            internal_object_address: validator.internal_object_address,
+            external_object_address: validator.external_object_address,
             rpc: Some(RpcConfig {
                 ..Default::default()
             }),
