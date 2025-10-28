@@ -55,6 +55,8 @@ pub trait ConsensusStore: Send + Sync {
     /// Prunes all data from epochs before the given epoch.
     /// This removes blocks, commits, commit votes, and commit info for old epochs.
     fn prune_epochs_before(&self, epoch: Epoch) -> ConsensusResult<()>;
+
+    fn get_highest_pruned_commit_index(&self) -> ConsensusResult<Option<CommitIndex>>;
 }
 
 /// Represents data to be written to the store together atomically.

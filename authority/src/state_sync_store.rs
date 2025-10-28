@@ -10,6 +10,8 @@ use types::consensus::block::BlockAPI;
 use types::consensus::block::EndOfEpochData;
 use types::consensus::commit::CommitDigest;
 use types::consensus::commit::CommittedSubDag;
+use types::error::ConsensusError;
+use types::error::SomaError;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::consensus::ConsensusStore;
 use types::storage::read_store::ReadCommitteeStore;
@@ -97,16 +99,16 @@ impl ReadStore for StateSyncStore {
     }
 
     fn get_lowest_available_commit(&self) -> Result<CommitIndex, StorageError> {
-        // if let Some(highest_pruned_cp) = self
-        //     .commit_store
-        //     .get_highest_pruned_commit_index()
-        //     .map_err(Into::<StorageError>::into)?
-        // {
-        //     Ok(highest_pruned_cp + 1)
-        // } else {
-        //     Ok(0)
-        // }
-        Ok(0)
+        if let Some(highest_pruned_cp) = self
+            .consensus_store
+            .get_highest_pruned_commit_index()
+            .map_err(Into::<SomaError>::into)
+            .map_err(Into::<StorageError>::into)?
+        {
+            Ok(highest_pruned_cp + 1)
+        } else {
+            Ok(0)
+        }
     }
 
     fn get_transaction(
@@ -305,6 +307,12 @@ impl ConsensusStore for StateSyncStore {
         epoch: types::committee::Epoch,
     ) -> types::error::ConsensusResult<()> {
         self.consensus_store.prune_epochs_before(epoch)
+    }
+
+    fn get_highest_pruned_commit_index(
+        &self,
+    ) -> types::error::ConsensusResult<Option<types::consensus::commit::CommitIndex>> {
+        self.consensus_store.get_highest_pruned_commit_index()
     }
 }
 

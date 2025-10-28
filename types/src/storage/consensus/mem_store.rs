@@ -33,6 +33,9 @@ struct Inner {
     commits: BTreeMap<EpochId, BTreeMap<(CommitIndex, CommitDigest), TrustedCommit>>,
     commit_votes: BTreeMap<EpochId, BTreeSet<(CommitIndex, CommitDigest, BlockRef)>>,
     commit_info: BTreeMap<EpochId, BTreeMap<(CommitIndex, CommitDigest), CommitInfo>>,
+
+    // Track the highest commit index that has been pruned
+    highest_pruned_commit_index: Option<CommitIndex>,
 }
 
 impl MemStore {
@@ -48,6 +51,7 @@ impl MemStore {
                 commits: BTreeMap::new(),
                 commit_votes: BTreeMap::new(),
                 commit_info: BTreeMap::new(),
+                highest_pruned_commit_index: None,
             }),
         }
     }
@@ -315,6 +319,8 @@ impl ConsensusStore for MemStore {
         let mut pruned_commit_info = 0usize;
         let mut pruned_epoch_mappings = 0usize;
 
+        let mut max_pruned_commit_index: Option<CommitIndex> = None;
+
         // Since MemStore is already organized by epoch, we can use split_off for efficiency
         // split_off(epoch) keeps everything >= epoch and removes everything < epoch
 
@@ -335,6 +341,10 @@ impl ConsensusStore for MemStore {
         for (epoch_id, epoch_commits) in inner.commits.range(..epoch) {
             for ((commit_index, _), _) in epoch_commits {
                 commit_indices_to_remove.push(*commit_index);
+                // Track the maximum commit index being pruned
+                max_pruned_commit_index = Some(
+                    max_pruned_commit_index.map_or(*commit_index, |max| max.max(*commit_index)),
+                );
             }
             pruned_commits += epoch_commits.len();
         }
@@ -359,11 +369,25 @@ impl ConsensusStore for MemStore {
         }
         inner.commit_info = inner.commit_info.split_off(&epoch);
 
+        // Update the highest pruned commit index
+        if let Some(new_max) = max_pruned_commit_index {
+            inner.highest_pruned_commit_index = Some(
+                inner
+                    .highest_pruned_commit_index
+                    .map_or(new_max, |existing| existing.max(new_max)),
+            );
+        }
+
         info!(
             "Completed MemStore pruning for epochs < {}: pruned {} blocks, {} digests, {} commits, {} votes, {} commit_info entries, {} epoch mappings",
             epoch, pruned_blocks, pruned_digests, pruned_commits, pruned_votes, pruned_commit_info, pruned_epoch_mappings
         );
 
         Ok(())
+    }
+
+    fn get_highest_pruned_commit_index(&self) -> ConsensusResult<Option<CommitIndex>> {
+        let inner = self.inner.read();
+        Ok(inner.highest_pruned_commit_index)
     }
 }

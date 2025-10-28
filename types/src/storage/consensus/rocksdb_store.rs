@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 use std::ops::Bound::Included;
 use store::{
@@ -19,6 +20,11 @@ use crate::{
     storage::consensus::{ConsensusStore, WriteBatch},
 };
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CommitWatermark {
+    HighestPruned,
+}
+
 /// Persistent storage with RocksDB.
 #[derive(DBMapUtils)]
 pub struct RocksDBStore {
@@ -34,6 +40,8 @@ pub struct RocksDBStore {
     commit_votes: DBMap<(CommitIndex, CommitDigest, BlockRef), ()>,
     /// Stores info related to Commit that helps recovery.
     commit_info: DBMap<(CommitIndex, CommitDigest), CommitInfo>,
+    /// Stores watermarks for tracking various commit processing stages
+    pub(crate) watermarks: DBMap<CommitWatermark, (CommitIndex, CommitDigest)>,
 }
 
 impl RocksDBStore {
@@ -43,6 +51,7 @@ impl RocksDBStore {
     const COMMIT_VOTES_CF: &'static str = "commit_votes";
     const COMMIT_INFO_CF: &'static str = "commit_info";
     const FINALIZED_COMMITS_CF: &'static str = "finalized_commits";
+    const WATERMARKS_CF: &'static str = "watermarks";
 
     /// Creates a new instance of RocksDB storage.
     pub fn new(path: &str) -> Self {
@@ -66,12 +75,30 @@ impl RocksDBStore {
             (Self::COMMIT_VOTES_CF.to_string(), cf_options.clone()),
             (Self::COMMIT_INFO_CF.to_string(), cf_options.clone()),
             (Self::FINALIZED_COMMITS_CF.to_string(), cf_options.clone()),
+            (Self::WATERMARKS_CF.to_string(), cf_options.clone()),
         ]));
         Self::open_tables_read_write(
             path.into(),
             Some(db_options.options),
             Some(column_family_options),
         )
+    }
+
+    pub fn get_watermark(
+        &self,
+        watermark: CommitWatermark,
+    ) -> ConsensusResult<Option<(CommitIndex, CommitDigest)>> {
+        Ok(self.watermarks.get(&watermark)?)
+    }
+
+    pub fn set_watermark(
+        &self,
+        watermark: CommitWatermark,
+        index: CommitIndex,
+        digest: CommitDigest,
+    ) -> ConsensusResult<()> {
+        self.watermarks.insert(&watermark, &(index, digest))?;
+        Ok(())
     }
 }
 
@@ -297,6 +324,8 @@ impl ConsensusStore for RocksDBStore {
         let mut pruned_commits = 0u64;
         let mut pruned_votes = 0u64;
         let mut pruned_commit_info = 0u64;
+        // Track the highest commit being pruned (both index and digest)
+        let mut highest_pruned_commit: Option<(CommitIndex, CommitDigest)> = None;
 
         // Prune blocks using range deletion
         // The end key is EXCLUSIVE, so (epoch, MIN, MIN, MIN) means "up to but not including epoch"
@@ -365,10 +394,40 @@ impl ConsensusStore for RocksDBStore {
             );
             if commit.epoch() < epoch {
                 commit_keys_to_delete.push((index, digest));
+                // Track the highest commit being pruned
+                match highest_pruned_commit {
+                    None => highest_pruned_commit = Some((index, digest)),
+                    Some((curr_index, _)) if index > curr_index => {
+                        highest_pruned_commit = Some((index, digest));
+                    }
+                    _ => {}
+                }
             }
         }
         // Delete in batches
         batch.delete_batch(&self.commits, commit_keys_to_delete.iter())?;
+
+        // Update the watermark in the batch
+        if let Some((new_index, new_digest)) = highest_pruned_commit {
+            let should_update = match self.watermarks.get(&CommitWatermark::HighestPruned)? {
+                None => true,
+                Some((existing_index, _)) => new_index > existing_index,
+            };
+
+            if should_update {
+                batch
+                    .insert_batch(
+                        &self.watermarks,
+                        [(CommitWatermark::HighestPruned, (new_index, new_digest))],
+                    )
+                    .map_err(ConsensusError::RocksDBFailure)?;
+
+                info!(
+                    "Updated highest pruned watermark to commit {} with digest {:?}",
+                    new_index, new_digest
+                );
+            }
+        }
 
         // For commit_votes, check BlockRef.epoch
         let mut vote_keys_to_delete = Vec::new();
@@ -441,5 +500,12 @@ impl ConsensusStore for RocksDBStore {
             )?;
         }
         Ok(())
+    }
+
+    fn get_highest_pruned_commit_index(&self) -> ConsensusResult<Option<CommitIndex>> {
+        Ok(self
+            .watermarks
+            .get(&CommitWatermark::HighestPruned)?
+            .map(|(index, _digest)| index))
     }
 }

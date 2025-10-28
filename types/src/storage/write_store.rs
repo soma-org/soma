@@ -255,4 +255,10 @@ impl ConsensusStore for TestP2pStore {
     fn prune_epochs_before(&self, epoch: Epoch) -> crate::error::ConsensusResult<()> {
         todo!()
     }
+
+    fn get_highest_pruned_commit_index(
+        &self,
+    ) -> crate::error::ConsensusResult<Option<CommitIndex>> {
+        todo!()
+    }
 }
