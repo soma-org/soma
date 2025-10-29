@@ -10,7 +10,7 @@ use crate::{
 use async_trait::async_trait;
 use dashmap::DashMap;
 use intelligence::evaluation::messaging::EvaluationClient;
-use objects::storage::ObjectStorage;
+use object_store::ObjectStore;
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
 use tracing::info;
@@ -23,25 +23,19 @@ use types::{
 
 use super::commit_votes::CommitVotesProcessor;
 
-pub(crate) struct CommitProcessor<
-    C: EncoderInternalNetworkClient,
-    S: ObjectStorage,
-    E: EvaluationClient,
-> {
+pub(crate) struct CommitProcessor<C: EncoderInternalNetworkClient, E: EvaluationClient> {
     store: Arc<dyn Store>,
     broadcaster: Arc<Broadcaster<C>>,
-    commit_vote_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
+    commit_vote_handle: ActorHandle<CommitVotesProcessor<C, E>>,
     oneshots: Arc<DashMap<Digest<Shard>, oneshot::Sender<()>>>,
     encoder_keypair: Arc<EncoderKeyPair>,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
-    CommitProcessor<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> CommitProcessor<C, E> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
         broadcaster: Arc<Broadcaster<C>>,
-        commit_vote_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
+        commit_vote_handle: ActorHandle<CommitVotesProcessor<C, E>>,
         encoder_keypair: Arc<EncoderKeyPair>,
     ) -> Self {
         Self {
@@ -80,9 +74,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Processor
-    for CommitProcessor<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for CommitProcessor<C, E> {
     type Input = (Shard, Verified<Commit>);
     type Output = ();
 

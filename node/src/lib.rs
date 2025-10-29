@@ -32,18 +32,15 @@ use authority::{
     tonic_gen::validator_server::ValidatorServer,
     tx_validator::TxValidator,
 };
-use core::time;
 use encoder_validator_api::{
     service::EncoderValidatorService,
     tonic_gen::encoder_validator_api_server::EncoderValidatorApiServer,
 };
 use futures::TryFutureExt;
-use objects::{
-    networking::{
-        external_service::ExternalObjectServiceManager,
-        internal_service::InternalObjectServiceManager, ObjectService, ObjectServiceManager as _,
-    },
-    storage::memory::MemoryObjectStore,
+use object_store::memory::InMemory;
+use objects::networking::{
+    external_service::ExternalObjectServiceManager, internal_service::InternalObjectServiceManager,
+    DownloadService, ObjectServiceManager as _,
 };
 use p2p::{
     builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle},
@@ -761,10 +758,12 @@ impl SomaNode {
         allower: AllowPublicKeys,
         object_storage: Arc<MemoryObjectStore>,
     ) -> Result<(InternalObjectServiceManager, ExternalObjectServiceManager)> {
+        // TODO: for production make this configurable to use either Filesystem or Bucket
+        let object_storage = Arc::new(InMemory::new());
         let params = Arc::new(HttpParameters::default());
 
-        let object_network_service =
-            ObjectService::new(object_storage.clone(), config.network_key_pair().public());
+        let download_service =
+            DownloadService::new(object_storage.clone(), config.network_key_pair().public());
 
         let mut external_object_manager =
             ExternalObjectServiceManager::new(config.network_key_pair(), params.clone(), allower)?;
@@ -773,13 +772,10 @@ impl SomaNode {
             InternalObjectServiceManager::new(config.network_key_pair(), params)?;
 
         external_object_manager
-            .start(
-                &config.external_object_address,
-                object_network_service.clone(),
-            )
+            .start(&config.external_object_address, download_service.clone())
             .await;
         internal_object_manager
-            .start(&config.internal_object_address, object_network_service)
+            .start(&config.internal_object_address, download_service)
             .await;
 
         info!("Started internal and external object servers");

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use types::crypto::{NetworkKeyPair, NetworkPublicKey};
-use types::metadata::Metadata;
+use types::metadata::{DownloadMetadata, Metadata};
 use types::multiaddr::Multiaddr;
 use types::{checksum::Checksum, committee::Committee, shard_crypto::keys::EncoderPublicKey};
 
@@ -38,7 +38,7 @@ impl Context {
         self.inner.load_full()
     }
 
-    pub fn probe(&self, epoch: Epoch, encoder: &EncoderPublicKey) -> ShardResult<Metadata> {
+    pub fn probe(&self, epoch: Epoch, encoder: &EncoderPublicKey) -> ShardResult<DownloadMetadata> {
         match self
             .inner
             .load()

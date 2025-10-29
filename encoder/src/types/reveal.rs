@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use types::encoder_committee::EncoderCommittee;
-use types::metadata::{DownloadableMetadata, SignedParams};
+use types::metadata::DownloadMetadata;
 use types::submission::{verify_submission, Submission, SubmissionAPI};
 use types::{
     error::{SharedError, SharedResult},
@@ -25,7 +27,8 @@ pub(crate) trait RevealAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
     fn submission(&self) -> &Submission;
-    fn downloadable_metadata(&self) -> &DownloadableMetadata;
+    fn embedding_download_metadata(&self) -> &DownloadMetadata;
+    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -33,7 +36,8 @@ pub(crate) struct RevealV1 {
     auth_token: ShardAuthToken,
     author: EncoderPublicKey,
     submission: Submission,
-    downloadable_metadata: DownloadableMetadata,
+    embedding_download_metadata: DownloadMetadata,
+    probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
 }
 
 impl RevealV1 {
@@ -41,13 +45,15 @@ impl RevealV1 {
         auth_token: ShardAuthToken,
         author: EncoderPublicKey,
         submission: Submission,
-        downloadable_metadata: DownloadableMetadata,
+        embedding_download_metadata: DownloadMetadata,
+        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     ) -> Self {
         Self {
             auth_token,
             author,
             submission,
-            downloadable_metadata,
+            embedding_download_metadata,
+            probe_set_download_metadata,
         }
     }
 }
@@ -62,8 +68,11 @@ impl RevealAPI for RevealV1 {
     fn submission(&self) -> &Submission {
         &self.submission
     }
-    fn downloadable_metadata(&self) -> &DownloadableMetadata {
-        &self.downloadable_metadata
+    fn embedding_download_metadata(&self) -> &DownloadMetadata {
+        &self.embedding_download_metadata
+    }
+    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata> {
+        &self.probe_set_download_metadata
     }
 }
 

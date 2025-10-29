@@ -1,29 +1,23 @@
 use async_trait::async_trait;
+use object_store::ObjectStore;
 use std::sync::Arc;
 
-use objects::{
-    networking::{downloader::Downloader, internal_service::InternalClientPool},
-    storage::ObjectStorage,
-};
+use objects::networking::downloader::Downloader;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::ShardResult,
     evaluation::{EvaluationInput, EvaluationInputAPI, EvaluationOutput},
-    metadata::{DownloadableMetadata, DownloadableMetadataV1},
 };
 
 use super::safetensor_buffer::SafetensorBuffer;
 
-pub(crate) struct CoreProcessor<S: ObjectStorage + SafetensorBuffer> {
-    downloader: ActorHandle<Downloader<InternalClientPool, S>>,
+pub(crate) struct CoreProcessor<S: ObjectStore + SafetensorBuffer> {
+    downloader: ActorHandle<Downloader<S>>,
     storage: Arc<S>,
 }
 
-impl<S: ObjectStorage + SafetensorBuffer> CoreProcessor<S> {
-    pub(crate) fn new(
-        downloader: ActorHandle<Downloader<InternalClientPool, S>>,
-        storage: Arc<S>,
-    ) -> Self {
+impl<S: ObjectStore + SafetensorBuffer> CoreProcessor<S> {
+    pub(crate) fn new(downloader: ActorHandle<Downloader<S>>, storage: Arc<S>) -> Self {
         Self {
             downloader,
             storage,
@@ -32,7 +26,7 @@ impl<S: ObjectStorage + SafetensorBuffer> CoreProcessor<S> {
 }
 
 #[async_trait]
-impl<S: ObjectStorage + SafetensorBuffer> Processor for CoreProcessor<S> {
+impl<S: ObjectStore + SafetensorBuffer> Processor for CoreProcessor<S> {
     type Input = EvaluationInput;
     type Output = EvaluationOutput;
 
@@ -40,31 +34,31 @@ impl<S: ObjectStorage + SafetensorBuffer> Processor for CoreProcessor<S> {
         let result: ShardResult<Self::Output> = async {
             let evaluation_input = msg.input;
 
-            let _ = self
-                .downloader
-                .process(
-                    DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                        None,
-                        None,
-                        evaluation_input.address(),
-                        evaluation_input.data(),
-                    )),
-                    msg.cancellation.clone(),
-                )
-                .await?;
+            // let _ = self
+            //     .downloader
+            //     .process(
+            //         DownloadableMetadata::V1(DownloadableMetadataV1::new(
+            //             None,
+            //             None,
+            //             evaluation_input.address(),
+            //             evaluation_input.data(),
+            //         )),
+            //         msg.cancellation.clone(),
+            //     )
+            //     .await?;
 
-            let _ = self
-                .downloader
-                .process(
-                    DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                        None,
-                        None,
-                        evaluation_input.address(),
-                        evaluation_input.embeddings(),
-                    )),
-                    msg.cancellation.clone(),
-                )
-                .await?;
+            // let _ = self
+            //     .downloader
+            //     .process(
+            //         DownloadableMetadata::V1(DownloadableMetadataV1::new(
+            //             None,
+            //             None,
+            //             evaluation_input.address(),
+            //             evaluation_input.embeddings(),
+            //         )),
+            //         msg.cancellation.clone(),
+            //     )
+            //     .await?;
 
             // for p in evaluation_input.probe_set().probe_weights() {
             //     let _ = self

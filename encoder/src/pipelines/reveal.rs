@@ -7,7 +7,7 @@ use crate::{
 use async_trait::async_trait;
 use dashmap::DashMap;
 use intelligence::evaluation::messaging::EvaluationClient;
-use objects::storage::ObjectStorage;
+use object_store::ObjectStore;
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
 use tracing::{debug, info};
@@ -25,26 +25,20 @@ use types::{
 
 use super::evaluation::EvaluationProcessor;
 
-pub(crate) struct RevealProcessor<
-    C: EncoderInternalNetworkClient,
-    S: ObjectStorage,
-    E: EvaluationClient,
-> {
+pub(crate) struct RevealProcessor<C: EncoderInternalNetworkClient, E: EvaluationClient> {
     store: Arc<dyn Store>,
     broadcaster: Arc<Broadcaster<C>>,
     oneshots: Arc<DashMap<Digest<Shard>, oneshot::Sender<()>>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    evaluation_pipeline: ActorHandle<EvaluationProcessor<C, S, E>>,
+    evaluation_pipeline: ActorHandle<EvaluationProcessor<C, E>>,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
-    RevealProcessor<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> RevealProcessor<C, E> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
         broadcaster: Arc<Broadcaster<C>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        evaluation_pipeline: ActorHandle<EvaluationProcessor<C, S, E>>,
+        evaluation_pipeline: ActorHandle<EvaluationProcessor<C, E>>,
     ) -> Self {
         Self {
             store,
@@ -81,9 +75,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Processor
-    for RevealProcessor<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for RevealProcessor<C, E> {
     type Input = (Shard, Verified<Reveal>);
     type Output = ();
 
@@ -99,7 +91,8 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Pro
             let _ = self.store.add_submission(
                 &shard,
                 verified_reveal.submission().clone(),
-                verified_reveal.downloadable_metadata().clone(),
+                verified_reveal.embedding_download_metadata().clone(),
+                verified_reveal.probe_set_download_metadata().clone(),
             )?;
 
             let quorum_threshold = shard.quorum_threshold() as usize;
@@ -118,13 +111,20 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Pro
 
             let count = all_submissions
                 .iter()
-                .filter(|(submission, _instant, _downloadable_metadata)| {
-                    accepted_lookup
-                        .get(submission.encoder())
-                        .map_or(false, |accepted_digest| {
-                            accepted_digest == &Digest::new(submission).unwrap()
-                        })
-                })
+                .filter(
+                    |(
+                        submission,
+                        _instant,
+                        _embedding_download_metadata,
+                        _probe_set_download_metadata,
+                    )| {
+                        accepted_lookup
+                            .get(submission.encoder())
+                            .map_or(false, |accepted_digest| {
+                                accepted_digest == &Digest::new(submission).unwrap()
+                            })
+                    },
+                )
                 .count();
 
             info!(
@@ -138,7 +138,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Pro
                     let _ = self
                         .store
                         .add_shard_stage_dispatch(&shard, ShardStage::Evaluation)?;
-                    let earliest = all_submissions.iter().map(|(_, t, _)| t).min().unwrap();
+                    let earliest = all_submissions.iter().map(|(_, t, _, _)| t).min().unwrap();
 
                     let duration = std::cmp::max(earliest.elapsed(), Duration::from_secs(5));
 

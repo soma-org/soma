@@ -1,8 +1,4 @@
-use crate::{
-    networking::{ClientPool, ObjectClient, ObjectService, ObjectServiceManager},
-    storage::ObjectStorage,
-};
-use async_trait::async_trait;
+use crate::networking::{DownloadService, ObjectServiceManager};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -10,7 +6,7 @@ use axum::{
     routing::get,
     Router,
 };
-use reqwest::Client;
+use object_store::ObjectStore;
 use soma_http::ServerHandle;
 use std::{
     sync::Arc,
@@ -18,71 +14,12 @@ use std::{
 };
 use tracing::{info, warn};
 use types::{
-    checksum::Checksum,
-    committee::{AuthorityIndex, Epoch},
-    consensus::block::Round,
-    crypto::NetworkKeyPair,
-    error::{ObjectError, ObjectResult},
-    metadata::{DownloadableMetadata, ObjectPath},
-    multiaddr::Multiaddr,
-    p2p::to_socket_addr,
-    parameters::HttpParameters,
-    shard::Shard,
-    shard_crypto::digest::Digest,
+    checksum::Checksum, committee::Epoch, crypto::NetworkKeyPair, error::ObjectResult,
+    metadata::ObjectPath, multiaddr::Multiaddr, p2p::to_socket_addr, parameters::HttpParameters,
+    shard::Shard, shard_crypto::digest::Digest,
 };
 
-pub struct InternalClientPool {
-    client: Client,
-    parameters: Arc<HttpParameters>,
-    own_key: NetworkKeyPair,
-}
-
-impl InternalClientPool {
-    pub(crate) fn new(
-        own_key: NetworkKeyPair,
-        parameters: Arc<HttpParameters>,
-    ) -> ObjectResult<Self> {
-        let buffer_size = parameters.connection_buffer_size;
-
-        let client = reqwest::Client::builder()
-            .http2_initial_connection_window_size(Some(buffer_size as u32))
-            .http2_initial_stream_window_size(Some(buffer_size as u32 / 2))
-            .http2_keep_alive_while_idle(true)
-            .http2_keep_alive_interval(parameters.keepalive_interval)
-            .http2_keep_alive_timeout(parameters.keepalive_interval)
-            .connect_timeout(parameters.connect_timeout)
-            .user_agent("SOMA (Object Client)")
-            .build()
-            .map_err(|e| ObjectError::ReqwestError(e.to_string()))?;
-
-        Ok(Self {
-            client,
-            parameters,
-            own_key,
-        })
-    }
-}
-
-#[async_trait]
-impl ClientPool for InternalClientPool {
-    async fn get_client(
-        &self,
-        downloadable_metadata: &DownloadableMetadata,
-    ) -> ObjectResult<Client> {
-        Ok(self.client.clone())
-    }
-
-    fn calculate_timeout(&self, num_bytes: u64) -> Duration {
-        let nanos = self
-            .parameters
-            .nanoseconds_per_byte
-            .saturating_mul(num_bytes);
-        self.parameters.connect_timeout + Duration::from_nanos(nanos)
-    }
-}
-
 pub struct InternalObjectServiceManager {
-    client: Arc<ObjectClient<InternalClientPool>>,
     parameters: Arc<HttpParameters>,
     own_key: NetworkKeyPair,
     server: Option<ServerHandle>,
@@ -91,10 +28,6 @@ pub struct InternalObjectServiceManager {
 impl InternalObjectServiceManager {
     pub fn new(own_key: NetworkKeyPair, parameters: Arc<HttpParameters>) -> ObjectResult<Self> {
         Ok(Self {
-            client: Arc::new(ObjectClient::new(InternalClientPool::new(
-                own_key.clone(),
-                parameters.clone(),
-            )?)?),
             parameters,
             own_key,
             server: None,
@@ -102,12 +35,8 @@ impl InternalObjectServiceManager {
     }
 }
 
-impl<S: ObjectStorage + Clone> ObjectServiceManager<S> for InternalObjectServiceManager {
-    type ClientPool = InternalClientPool;
-    fn client(&self) -> Arc<ObjectClient<Self::ClientPool>> {
-        self.client.clone()
-    }
-    async fn start(&mut self, address: &Multiaddr, service: ObjectService<S>) {
+impl<S: ObjectStore> ObjectServiceManager<S> for InternalObjectServiceManager {
+    async fn start(&mut self, address: &Multiaddr, service: DownloadService<S>) {
         let own_address = if address.is_localhost_ip() {
             address.clone()
         } else {
@@ -152,13 +81,20 @@ impl Drop for InternalObjectServiceManager {
     }
 }
 
-#[derive(Clone)]
-struct InternalObjectService<S: ObjectStorage> {
-    service: ObjectService<S>,
+struct InternalObjectService<S: ObjectStore> {
+    service: DownloadService<S>,
 }
 
-impl<S: ObjectStorage + Clone> InternalObjectService<S> {
-    const fn new(service: ObjectService<S>) -> Self {
+impl<S: ObjectStore> Clone for InternalObjectService<S> {
+    fn clone(&self) -> Self {
+        Self {
+            service: self.service.clone(),
+        }
+    }
+}
+
+impl<S: ObjectStore> InternalObjectService<S> {
+    const fn new(service: DownloadService<S>) -> Self {
         Self { service }
     }
 
@@ -169,10 +105,9 @@ impl<S: ObjectStorage + Clone> InternalObjectService<S> {
                 get(Self::embeddings),
             )
             .route("/epochs/{epoch}/probes/{checksum}", get(Self::probes))
-            .route("/epochs/{epoch}/inputs/{checksum}", get(Self::inputs))
             .route(
-                "/epochs/{epoch}/rounds/{round}/authorities/{authority_index}/blocks/{checksum}",
-                get(Self::blocks),
+                "/epochs/{epoch}/shards/{shard}/inputs/{checksum}",
+                get(Self::inputs),
             )
             .with_state(self)
     }
@@ -194,28 +129,15 @@ impl<S: ObjectStorage + Clone> InternalObjectService<S> {
     }
 
     pub async fn inputs(
-        Path((epoch, checksum)): Path<(Epoch, Checksum)>,
+        Path((epoch, shard, checksum)): Path<(Epoch, Digest<Shard>, Checksum)>,
         State(Self { service }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
-        let path = ObjectPath::Inputs(epoch, checksum);
-        Self::download(service, path).await
-    }
-
-    pub async fn blocks(
-        Path((epoch, round, authority_index, checksum)): Path<(
-            Epoch,
-            Round,
-            AuthorityIndex,
-            Checksum,
-        )>,
-        State(Self { service }): State<Self>,
-    ) -> Result<impl IntoResponse, StatusCode> {
-        let path = ObjectPath::Blocks(epoch, round, authority_index, checksum);
+        let path = ObjectPath::Inputs(epoch, shard, checksum);
         Self::download(service, path).await
     }
 
     pub async fn download(
-        service: ObjectService<S>,
+        service: DownloadService<S>,
         path: ObjectPath,
     ) -> Result<impl IntoResponse, StatusCode> {
         service

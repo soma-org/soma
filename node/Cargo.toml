@@ -24,3 +24,4 @@ tower-http.workspace = true
 store.workspace = true
 objects.workspace = true
 soma-tls.workspace = true
+object_store.workspace = true

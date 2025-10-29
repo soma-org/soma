@@ -6,11 +6,11 @@ use intelligence::evaluation::messaging::service::MockEvaluationService;
 use intelligence::evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
 use intelligence::evaluation::messaging::EvaluationManager;
 use intelligence::inference::mock_client::MockInferenceClient;
+use object_store::memory::InMemory;
 use objects::networking::downloader::Downloader;
-use objects::networking::external_service::{ExternalClientPool, ExternalObjectServiceManager};
+use objects::networking::external_service::ExternalObjectServiceManager;
 use objects::networking::internal_service::InternalObjectServiceManager;
-use objects::networking::{ObjectClient, ObjectService, ObjectServiceManager};
-use objects::storage::memory::MemoryObjectStore;
+use objects::networking::{DownloadClient, DownloadService, ObjectServiceManager};
 use sdk::client_config::{SomaClientConfig, SomaEnv};
 use sdk::wallet_context::WalletContext;
 use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
@@ -22,6 +22,7 @@ use types::base::SomaAddress;
 use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
 use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use types::multiaddr::Multiaddr;
+use types::parameters::HttpParameters;
 use types::shard_crypto::keys::EncoderPublicKey;
 use types::{
     config::{encoder_config::EncoderConfig, Config},
@@ -72,32 +73,27 @@ pub struct EncoderNode {
     internal_object_service_manager: InternalObjectServiceManager,
     external_object_service_manager: ExternalObjectServiceManager,
     evaluation_network_manager: EvaluationTonicManager,
-    external_downloader_manager: ActorManager<Downloader<ExternalClientPool, MemoryObjectStore>>,
+    downloader_manager: ActorManager<Downloader<InMemory>>,
     clean_up_manager: ActorManager<CleanUpProcessor>,
     report_vote_manager: ActorManager<ReportVoteProcessor<EncoderInternalTonicClient>>,
-    evaluation_manager: ActorManager<
-        EvaluationProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
-    >,
-    reveal_manager: ActorManager<
-        RevealProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
-    >,
-    commit_votes_manager: ActorManager<
-        CommitVotesProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
-    >,
-    commit_manager: ActorManager<
-        CommitProcessor<EncoderInternalTonicClient, MemoryObjectStore, EvaluationTonicClient>,
-    >,
+    evaluation_manager:
+        ActorManager<EvaluationProcessor<EncoderInternalTonicClient, EvaluationTonicClient>>,
+    reveal_manager:
+        ActorManager<RevealProcessor<EncoderInternalTonicClient, EvaluationTonicClient>>,
+    commit_votes_manager:
+        ActorManager<CommitVotesProcessor<EncoderInternalTonicClient, EvaluationTonicClient>>,
+    commit_manager:
+        ActorManager<CommitProcessor<EncoderInternalTonicClient, EvaluationTonicClient>>,
     input_manager: ActorManager<
         InputProcessor<
             EncoderInternalTonicClient,
-            MemoryObjectStore,
             EvaluationTonicClient,
-            MockInferenceClient<MemoryObjectStore>,
+            MockInferenceClient<InMemory>,
         >,
     >,
     store: Arc<dyn Store>,
     pub context: Context,
-    object_storage: Arc<MemoryObjectStore>,
+    object_storage: Arc<InMemory>,
     committee_sync_manager: Arc<CommitteeSyncManager>,
     wallet_context: Arc<RwLock<WalletContext>>,
 
@@ -153,17 +149,13 @@ impl EncoderNode {
 
         let messaging_client = <EncoderInternalTonicManager as EncoderInternalNetworkManager<
             EncoderInternalService<
-                InternalPipelineDispatcher<
-                    EncoderInternalTonicClient,
-                    MemoryObjectStore,
-                    EvaluationTonicClient,
-                >,
+                InternalPipelineDispatcher<EncoderInternalTonicClient, EvaluationTonicClient>,
             >,
         >>::client(&internal_network_manager);
 
-        let object_storage = Arc::new(MemoryObjectStore::new());
-        let object_service: ObjectService<MemoryObjectStore> =
-            ObjectService::new(object_storage.clone(), network_keypair.public());
+        let object_storage = Arc::new(InMemory::new());
+        let download_service: DownloadService<InMemory> =
+            DownloadService::new(object_storage.clone(), network_keypair.public());
 
         let mut external_object_service_manager = ExternalObjectServiceManager::new(
             network_keypair.clone(),
@@ -173,7 +165,7 @@ impl EncoderNode {
         .unwrap();
 
         external_object_service_manager
-            .start(&external_object_address, object_service.clone())
+            .start(&external_object_address, download_service.clone())
             .await;
 
         let mut internal_object_service_manager = InternalObjectServiceManager::new(
@@ -183,7 +175,7 @@ impl EncoderNode {
         .unwrap();
 
         internal_object_service_manager
-            .start(&internal_object_address, object_service.clone())
+            .start(&internal_object_address, download_service.clone())
             .await;
 
         ///////////////////////////
@@ -215,20 +207,22 @@ impl EncoderNode {
 
         let default_buffer = 100_usize;
         let default_concurrency = 100_usize;
+        // 5gb
+        let max_size: u64 = 5 * 1024 * 1024 * 1024;
 
-        let external_object_client: Arc<ObjectClient<ExternalClientPool>> =
-            <ExternalObjectServiceManager as ObjectServiceManager<MemoryObjectStore>>::client(
-                &external_object_service_manager,
-            );
-
-        let external_download_processor = Downloader::new(
-            default_concurrency,
-            external_object_client,
-            object_storage.clone(),
+        let download_client: Arc<DownloadClient<InMemory>> = Arc::new(
+            DownloadClient::new(
+                object_storage.clone(),
+                network_keypair.clone(),
+                Arc::new(HttpParameters::default()),
+                max_size,
+            )
+            .unwrap(),
         );
-        let external_downloader_manager =
-            ActorManager::new(default_buffer, external_download_processor);
-        let external_downloader_handle = external_downloader_manager.handle();
+
+        let downloader_processor = Downloader::new(default_concurrency, download_client);
+        let downloader_manager = ActorManager::new(default_buffer, downloader_processor);
+        let downloader_handle = downloader_manager.handle();
 
         let store = Arc::new(RocksDBStore::new(config.db_path().to_str().unwrap()));
 
@@ -254,10 +248,8 @@ impl EncoderNode {
 
         let evaluation_processor = EvaluationProcessor::new(
             store.clone(),
-            external_downloader_handle.clone(),
             broadcaster.clone(),
             encoder_keypair.clone(),
-            object_storage.clone(),
             report_vote_handle.clone(),
             evaluation_client.clone(),
             context.clone(),
@@ -297,14 +289,11 @@ impl EncoderNode {
 
         let input_processor = InputProcessor::new(
             store.clone(),
-            external_downloader_handle.clone(),
             broadcaster.clone(),
             inference_client,
             evaluation_client,
             encoder_keypair.clone(),
-            object_storage.clone(),
             commit_handle.clone(),
-            internal_object_address,
             context.clone(),
         );
         let input_manager = ActorManager::new(default_buffer, input_processor);
@@ -391,7 +380,7 @@ impl EncoderNode {
             context,
             evaluation_network_manager,
             committee_sync_manager,
-            external_downloader_manager,
+            downloader_manager,
             clean_up_manager,
             report_vote_manager,
             evaluation_manager,
@@ -408,11 +397,7 @@ impl EncoderNode {
     pub(crate) async fn stop(mut self) {
         <EncoderInternalTonicManager as EncoderInternalNetworkManager<
             EncoderInternalService<
-                InternalPipelineDispatcher<
-                    EncoderInternalTonicClient,
-                    MemoryObjectStore,
-                    EvaluationTonicClient,
-                >,
+                InternalPipelineDispatcher<EncoderInternalTonicClient, EvaluationTonicClient>,
             >,
         >>::stop(&mut self.internal_network_manager)
         .await;
@@ -421,9 +406,8 @@ impl EncoderNode {
             EncoderExternalService<
                 ExternalPipelineDispatcher<
                     EncoderInternalTonicClient,
-                    MemoryObjectStore,
                     EvaluationTonicClient,
-                    MockInferenceClient<MemoryObjectStore>,
+                    MockInferenceClient<InMemory>,
                 >,
             >,
         >>::stop(&mut self.external_network_manager)
@@ -431,11 +415,11 @@ impl EncoderNode {
 
         self.committee_sync_manager.stop();
 
-        <InternalObjectServiceManager as ObjectServiceManager<MemoryObjectStore>>::stop(
+        <InternalObjectServiceManager as ObjectServiceManager<InMemory>>::stop(
             &mut self.internal_object_service_manager,
         )
         .await;
-        <ExternalObjectServiceManager as ObjectServiceManager<MemoryObjectStore>>::stop(
+        <ExternalObjectServiceManager as ObjectServiceManager<InMemory>>::stop(
             &mut self.external_object_service_manager,
         )
         .await;
@@ -446,7 +430,7 @@ impl EncoderNode {
         )
         .await;
 
-        self.external_downloader_manager.shutdown();
+        self.downloader_manager.shutdown();
         self.clean_up_manager.shutdown();
         self.report_vote_manager.shutdown();
         self.evaluation_manager.shutdown();
@@ -597,7 +581,7 @@ impl EncoderNodeHandle {
         cb(self.inner())
     }
 
-    pub fn object_storage(&self) -> Arc<MemoryObjectStore> {
+    pub fn object_storage(&self) -> Arc<InMemory> {
         self.with(|soma_node| soma_node.object_storage.clone())
     }
 

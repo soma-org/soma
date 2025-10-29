@@ -1,8 +1,9 @@
+use std::collections::HashMap;
+
 use crate::{
     encoder_committee::EncoderCommittee,
     error::{SharedError, SharedResult},
-    metadata::Metadata,
-    multiaddr::Multiaddr,
+    metadata::DownloadMetadata,
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use enum_dispatch::enum_dispatch;
@@ -10,10 +11,10 @@ use serde::{Deserialize, Serialize};
 
 #[enum_dispatch]
 pub trait EvaluationInputAPI {
-    fn data(&self) -> Metadata;
-    fn embeddings(&self) -> Metadata;
-    fn probe_set(&self) -> ProbeSet;
-    fn address(&self) -> Multiaddr;
+    fn input_download_metadata(&self) -> &DownloadMetadata;
+    fn embedding_download_metadata(&self) -> &DownloadMetadata;
+    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata>;
+    fn probe_set(&self) -> &ProbeSet;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -24,47 +25,47 @@ pub enum EvaluationInput {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EvaluationInputV1 {
-    data: Metadata,
-    embeddings: Metadata,
+    input_download_metadata: DownloadMetadata,
+    embedding_download_metadata: DownloadMetadata,
+    probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     probe_set: ProbeSet,
-    address: Multiaddr,
 }
 
 impl EvaluationInputV1 {
     pub fn new(
-        data: Metadata,
-        embeddings: Metadata,
+        input_download_metadata: DownloadMetadata,
+        embedding_download_metadata: DownloadMetadata,
+        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
         probe_set: ProbeSet,
-        address: Multiaddr,
     ) -> Self {
         Self {
-            data,
-            embeddings,
+            input_download_metadata,
+            embedding_download_metadata,
+            probe_set_download_metadata,
             probe_set,
-            address,
         }
     }
 }
 
 impl EvaluationInputAPI for EvaluationInputV1 {
-    fn data(&self) -> Metadata {
-        self.data.clone()
+    fn input_download_metadata(&self) -> &DownloadMetadata {
+        &self.input_download_metadata
     }
-    fn embeddings(&self) -> Metadata {
-        self.embeddings.clone()
+    fn embedding_download_metadata(&self) -> &DownloadMetadata {
+        &self.embedding_download_metadata
     }
-    fn probe_set(&self) -> ProbeSet {
-        self.probe_set.clone()
+    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata> {
+        &self.probe_set_download_metadata
     }
-    fn address(&self) -> Multiaddr {
-        self.address.clone()
+    fn probe_set(&self) -> &ProbeSet {
+        &self.probe_set
     }
 }
 
 #[enum_dispatch]
 pub trait EvaluationOutputAPI {
     fn score(&self) -> Score;
-    fn embedding_digest(&self) -> EmbeddingDigest;
+    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -76,14 +77,17 @@ pub enum EvaluationOutput {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct EvaluationOutputV1 {
     score: ScoreV1,
-    embedding_digest: EmbeddingDigest,
+    probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
 }
 
 impl EvaluationOutputV1 {
-    pub fn new(score: ScoreV1, embedding_digest: EmbeddingDigest) -> Self {
+    pub fn new(
+        score: ScoreV1,
+        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
+    ) -> Self {
         Self {
             score,
-            embedding_digest,
+            probe_set_download_metadata,
         }
     }
 }
@@ -92,8 +96,8 @@ impl EvaluationOutputAPI for EvaluationOutputV1 {
     fn score(&self) -> Score {
         Score::V1(self.score.clone())
     }
-    fn embedding_digest(&self) -> EmbeddingDigest {
-        self.embedding_digest.clone()
+    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata> {
+        &self.probe_set_download_metadata
     }
 }
 
