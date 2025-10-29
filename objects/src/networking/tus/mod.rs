@@ -17,15 +17,14 @@ use types::{
 };
 use uuid::Uuid;
 
-const UPLOAD_OFFSET: &str = "upload-offset";
-const UPLOAD_LENGTH: &str = "upload-length";
-const TUS_VERSION: &str = "tus-version";
-const TUS_RESUMABLE: &str = "tus-resumable";
-const TUS_EXTENSION: &str = "tus-extension";
-const TUS_MAX_SIZE: &str = "tus-max-size";
+use crate::networking::tus::headers::{
+    TUS_EXTENSION, TUS_MAX_SIZE, TUS_RESUMABLE, TUS_VERSION, UPLOAD_LENGTH, UPLOAD_OFFSET,
+};
+
+pub mod client;
+mod headers;
 
 const SOMA_SUPPORTED_VERSION: &str = "1.0.0";
-// X-HTTP-Method-Override is unsupported
 
 pub struct TusManager {
     server: Option<ServerHandle>,

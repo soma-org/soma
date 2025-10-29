@@ -1423,12 +1423,14 @@ pub enum ObjectError {
     ReqwestError(String),
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
-    #[error("Failed to parse URL: {0}")]
-    UrlParseError(String),
+    #[error("Parse error: {0}")]
+    ParseError(String),
     #[error("Failed to send request: {0:?}")]
     NetworkRequest(String),
     #[error("write error: {0}")]
     WriteError(String),
+    #[error("read error: {0}")]
+    ReadError(String),
     #[error("ObjectStorage: {0}")]
     ObjectStorage(String),
     #[error("Not found: {0}")]
@@ -1439,6 +1441,12 @@ pub enum ObjectError {
     TusError(String),
     #[error("Io error: {0}, {1}")]
     Io(String, String),
+    #[error("missing header: {0}")]
+    MissingHeader(String),
+    #[error("file too large")]
+    FileTooLarge,
+    #[error("unexpected status code: {0}")]
+    UnexpectedStatusCode(u16),
 }
 pub type ObjectResult<T> = Result<T, ObjectError>;
 
