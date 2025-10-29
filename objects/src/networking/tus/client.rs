@@ -60,7 +60,7 @@ impl TusClient {
         })
     }
 
-    pub async fn create(&self, size: u64) -> ObjectResult<String> {
+    pub async fn create(&self, size: u64) -> ObjectResult<Uuid> {
         let url = self
             .base_url
             .join("/uploads")
@@ -84,7 +84,15 @@ impl TusClient {
             StatusCode::CREATED => {
                 let headers = resp.headers();
                 let location: String = headers.required_typed(LOCATION)?;
-                Ok(location)
+                let uuid_str = location
+                    .rsplit('/')
+                    .next()
+                    .ok_or("Invalid location")
+                    .map_err(|e| ObjectError::ParseError(e.to_string()))?
+                    .to_string();
+                let uuid = Uuid::parse_str(&uuid_str)
+                    .map_err(|e| ObjectError::ParseError(e.to_string()))?;
+                Ok(uuid)
             }
             StatusCode::PAYLOAD_TOO_LARGE => Err(ObjectError::FileTooLarge),
             s => Err(ObjectError::UnexpectedStatusCode(s.as_u16())),
