@@ -411,6 +411,9 @@ impl SomaNode {
         // setup shutdown channel
         // let (shutdown_channel, _) = broadcast::channel::<Option<RunWithRange>>(1);
 
+        // TODO: for production make this configurable to use either Filesystem or Bucket
+        let object_storage = Arc::new(MemoryObjectStore::new());
+
         let encoder_client_service = if is_full_node {
             // Only fullnodes send to encoders, not validators
             Some(Arc::new(EncoderClientService::new(
@@ -427,6 +430,7 @@ impl SomaNode {
                 state.clone(),
                 end_of_epoch_receiver,
                 encoder_client_service.clone(),
+                Some(object_storage.clone()),
             )))
         } else {
             None
@@ -463,7 +467,7 @@ impl SomaNode {
         let allower = AllowPublicKeys::new(encoder_committee_keys);
 
         let object_managers = if is_full_node {
-            Some(Self::start_object_services(&config, allower.clone()).await?)
+            Some(Self::start_object_services(&config, allower.clone(), object_storage).await?)
         } else {
             None
         };
@@ -755,9 +759,8 @@ impl SomaNode {
     async fn start_object_services(
         config: &NodeConfig,
         allower: AllowPublicKeys,
+        object_storage: Arc<MemoryObjectStore>,
     ) -> Result<(InternalObjectServiceManager, ExternalObjectServiceManager)> {
-        // TODO: for production make this configurable to use either Filesystem or Bucket
-        let object_storage = Arc::new(MemoryObjectStore::new());
         let params = Arc::new(HttpParameters::default());
 
         let object_network_service =

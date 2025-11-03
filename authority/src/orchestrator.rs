@@ -5,6 +5,7 @@ use futures::{
     future::{select, Either},
     FutureExt,
 };
+use objects::storage::{memory::MemoryObjectStore, ObjectStorage};
 use tokio::{
     sync::broadcast::{error::RecvError, Receiver},
     task::JoinHandle,
@@ -67,6 +68,7 @@ pub struct TransactionOrchestrator<A: Clone> {
     notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
     vdf: Arc<SimpleVDF>,
     encoder_client: Option<Arc<EncoderClientService>>,
+    object_storage: Option<Arc<MemoryObjectStore>>,
 }
 
 impl TransactionOrchestrator<NetworkAuthorityClient> {
@@ -75,10 +77,17 @@ impl TransactionOrchestrator<NetworkAuthorityClient> {
         validator_state: Arc<AuthorityState>,
         reconfig_channel: Receiver<SystemState>,
         encoder_client: Option<Arc<EncoderClientService>>,
+        object_storage: Option<Arc<MemoryObjectStore>>,
     ) -> Self {
         let observer =
             OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
-        TransactionOrchestrator::new(validators, validator_state, observer, encoder_client)
+        TransactionOrchestrator::new(
+            validators,
+            validator_state,
+            observer,
+            encoder_client,
+            object_storage,
+        )
     }
 
     pub fn new_with_auth_aggregator(
@@ -88,7 +97,7 @@ impl TransactionOrchestrator<NetworkAuthorityClient> {
     ) -> Self {
         let observer =
             OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
-        TransactionOrchestrator::new(validators, validator_state, observer, None)
+        TransactionOrchestrator::new(validators, validator_state, observer, None, None)
     }
 }
 
@@ -102,6 +111,7 @@ where
         validator_state: Arc<AuthorityState>,
         reconfig_observer: OnsiteReconfigObserver,
         encoder_client: Option<Arc<EncoderClientService>>,
+        object_storage: Option<Arc<MemoryObjectStore>>,
     ) -> Self {
         let notifier = Arc::new(NotifyRead::new());
         let quorum_driver_handler = Arc::new(
@@ -130,6 +140,7 @@ where
             notifier,
             vdf: Arc::new(SimpleVDF::new(VDF_ITERATIONS)),
             encoder_client,
+            object_storage,
         }
     }
 }
@@ -415,16 +426,11 @@ where
 
         info!("Generated finality proof for tx: {}", transaction.digest());
 
-        let shard_input_ref = if transaction
-            .data()
-            .inner()
-            .intent_message
-            .value
-            .kind()
-            .is_embed_tx()
-        {
+        let kind = transaction.data().inner().intent_message.value.kind();
+
+        let (shard_input_ref, digest) = if let TransactionKind::EmbedData { digest, .. } = kind {
             if let Some(object) = created.first() {
-                *object
+                (*object, digest)
             } else {
                 error!("Could not get created shard input ref from created objects of tx");
                 return None;
@@ -433,7 +439,7 @@ where
             return None;
         };
 
-        // TODO: define real Metadata and commitment
+        // TODO: look up real metadata commitment using metadata_commitment_digest in tx
         let size_in_bytes = 1;
         let metadata = MetadataV1::new(
             ObjectPath::Inputs(finality_proof.block_ref().epoch, Checksum::default()),

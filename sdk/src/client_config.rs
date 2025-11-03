@@ -88,9 +88,11 @@ pub fn encoder_config_to_client_config(
     let address = SomaAddress::from(&account_kp.public());
     keystore.add_key(Some("encoder-account".to_string()), account_kp)?;
 
+    // TODO: should encoder config have the internal object address of the rpc?
     let env = SomaEnv {
         alias: "encoder-env".to_string(),
         rpc: format!("http://{}", encoder_config.rpc_address),
+        internal_object_address: format!("http://{}", encoder_config.rpc_address),
         basic_auth: None,
     };
 
@@ -112,6 +114,7 @@ impl Config for SomaClientConfig {}
 pub struct SomaEnv {
     pub alias: String,
     pub rpc: String, // This is now the gRPC endpoint URL
+    pub internal_object_address: String,
     pub basic_auth: Option<String>,
 }
 
@@ -121,6 +124,7 @@ impl SomaEnv {
         request_timeout: Option<std::time::Duration>,
     ) -> Result<SomaClient, anyhow::Error> {
         let mut builder = SomaClientBuilder::default();
+
         if let Some(request_timeout) = request_timeout {
             builder = builder.request_timeout(request_timeout);
         }
@@ -135,13 +139,16 @@ impl SomaEnv {
             builder = builder.basic_auth(fields[0], fields[1]);
         }
 
-        Ok(builder.build(&self.rpc).await?)
+        Ok(builder
+            .build(&self.rpc, &self.internal_object_address)
+            .await?)
     }
 
     pub fn devnet() -> Self {
         Self {
             alias: "devnet".to_string(),
             rpc: SOMA_DEVNET_URL.into(),
+            internal_object_address: "http://fullnode.devnet.soma.org:8080".into(),
             basic_auth: None,
         }
     }
@@ -149,6 +156,7 @@ impl SomaEnv {
         Self {
             alias: "testnet".to_string(),
             rpc: SOMA_TESTNET_URL.into(),
+            internal_object_address: "http://fullnode.testnet.soma.org:8080".into(),
             basic_auth: None,
         }
     }
@@ -157,6 +165,7 @@ impl SomaEnv {
         Self {
             alias: "local".to_string(),
             rpc: SOMA_LOCAL_NETWORK_URL.into(),
+            internal_object_address: "http://127.0.0.1:8080".into(),
             basic_auth: None,
         }
     }

@@ -61,17 +61,27 @@ pub struct FullNodeHandle {
     pub soma_node: SomaNodeHandle,
     pub soma_client: SomaClient,
     pub rpc_url: String,
+    pub internal_object_address: String,
 }
 
 impl FullNodeHandle {
-    pub async fn new(soma_node: SomaNodeHandle, rpc_address: SocketAddr) -> Self {
+    pub async fn new(
+        soma_node: SomaNodeHandle,
+        rpc_address: SocketAddr,
+        internal_object_address: SocketAddr,
+    ) -> Self {
         let rpc_url = format!("http://{}", rpc_address);
-        let soma_client = SomaClientBuilder::default().build(&rpc_url).await.unwrap();
+        let internal_object_address = format!("http://{}", internal_object_address);
+        let soma_client = SomaClientBuilder::default()
+            .build(&rpc_url, &internal_object_address)
+            .await
+            .unwrap();
 
         Self {
             soma_node,
             soma_client,
             rpc_url,
+            internal_object_address,
         }
     }
 }
@@ -173,8 +183,9 @@ impl TestCluster {
 
     pub async fn start_fullnode_from_config(&mut self, config: NodeConfig) -> FullNodeHandle {
         let rpc_address = config.rpc_address;
+        let internal_object_address = config.internal_object_address.to_socket_addr().unwrap();
         let node = self.swarm.spawn_new_node(config).await;
-        FullNodeHandle::new(node, rpc_address).await
+        FullNodeHandle::new(node, rpc_address, internal_object_address).await
     }
 
     /// Ask 2f+1 validators to close epoch actively, and wait for the entire network to reach the next
@@ -529,16 +540,27 @@ impl TestClusterBuilder {
             .expect("No networking validator found to use as fullnode");
 
         let rpc_address = fullnode.config().rpc_address;
-        let fullnode_handle =
-            FullNodeHandle::new(fullnode.get_node_handle().unwrap(), rpc_address).await;
+        let internal_object_address = fullnode
+            .config()
+            .internal_object_address
+            .to_socket_addr()
+            .expect("Fullnode must have internal_object_address configured");
+        let fullnode_handle = FullNodeHandle::new(
+            fullnode.get_node_handle().unwrap(),
+            rpc_address,
+            internal_object_address,
+        )
+        .await;
 
         let rpc_url = fullnode_handle.rpc_url.clone();
+        let object_url = fullnode_handle.internal_object_address.clone();
 
         let mut wallet_conf: SomaClientConfig =
             PersistedConfig::read(&working_dir.join(SOMA_CLIENT_CONFIG)).unwrap();
         wallet_conf.envs.push(SomaEnv {
             alias: "localnet".to_string(),
             rpc: rpc_url,
+            internal_object_address: object_url,
             basic_auth: None,
         });
         wallet_conf.active_env = Some("localnet".to_string());

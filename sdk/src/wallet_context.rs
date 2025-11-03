@@ -7,9 +7,12 @@ use rpc::types::ObjectType;
 use rpc::utils::field::{FieldMask, FieldMaskUtil};
 use soma_keys::key_identity::KeyIdentity;
 use soma_keys::keystore::{AccountKeystore, Keystore};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::fs::File;
+use tokio::io::{AsyncRead, AsyncSeek};
 use tokio::sync::RwLock;
 use tracing::info;
 use types::base::SomaAddress;
@@ -420,6 +423,77 @@ impl WalletContext {
     ) -> anyhow::Result<TransactionExecutionResponse> {
         let client = self.get_client().await?;
         Ok(client.execute_transaction(&tx).await?)
+    }
+
+    pub async fn upload_data_and_submit_tx<R>(
+        &self,
+        data_reader: R,
+        data_size: u64,
+        tx: Transaction,
+    ) -> Result<TransactionExecutionResponse, anyhow::Error>
+    where
+        R: AsyncRead + AsyncSeek + Unpin + Send,
+    {
+        info!("Starting data upload and shard transaction submission");
+
+        // Get the client (which always has TUS functionality)
+        let client = self.get_client().await?;
+
+        // Create upload session
+        info!("Creating upload session for {} bytes", data_size);
+        let upload_uuid = client.create_upload(data_size).await?;
+        info!("Created upload with UUID: {}", upload_uuid);
+
+        // Upload the data
+        info!("Starting data upload...");
+        client.upload_data(upload_uuid, data_reader).await?;
+
+        // Verify upload completion
+        let upload_info = client.get_upload_info(upload_uuid).await?;
+
+        if upload_info.bytes_uploaded != upload_info.total_size {
+            return Err(anyhow!(
+                "Upload incomplete: {}/{} bytes uploaded",
+                upload_info.bytes_uploaded,
+                upload_info.total_size
+            ));
+        }
+        info!("Upload completed successfully");
+
+        let response = self.execute_transaction_must_succeed(tx).await;
+
+        info!("Shard transaction submitted successfully: {:?}", response);
+        Ok(response)
+    }
+
+    /// Upload data from bytes and submit shard transaction
+    pub async fn upload_bytes_and_submit_tx(
+        &self,
+        data: Vec<u8>,
+        tx: Transaction,
+    ) -> Result<TransactionExecutionResponse, anyhow::Error> {
+        let data_size = data.len() as u64;
+        let reader = Cursor::new(data);
+
+        self.upload_data_and_submit_tx(reader, data_size, tx).await
+    }
+
+    /// Upload data from file and submit shard transaction  
+    pub async fn upload_file_and_submit_tx(
+        &self,
+        file_path: &Path,
+        tx: Transaction,
+    ) -> Result<TransactionExecutionResponse, anyhow::Error> {
+        let metadata = tokio::fs::metadata(file_path)
+            .await
+            .map_err(|e| anyhow!("Failed to read file metadata: {}", e))?;
+        let file_size = metadata.len();
+
+        let file = File::open(file_path)
+            .await
+            .map_err(|e| anyhow!("Failed to open file: {}", e))?;
+
+        self.upload_data_and_submit_tx(file, file_size, tx).await
     }
 
     /// Get one address managed by the wallet (for testing)

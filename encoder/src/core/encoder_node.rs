@@ -486,6 +486,7 @@ async fn init_wallet_context(
     let env = SomaEnv {
         alias: "localnet".to_string(),
         rpc: config.rpc_address.to_string(),
+        internal_object_address: config.rpc_address.to_string(), // TODO: replace this with rpc's internal object address
         basic_auth: None,
     };
 

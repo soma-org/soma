@@ -106,34 +106,26 @@ async fn test_integrated_encoder_validator_system() {
         });
     }
 
-    // TODO: define real Metadata and commitment
-    let size_in_bytes = 1;
-    let fullnode_config = test_cluster
-        .fullnode_handle
-        .soma_node
-        .state()
-        .config
-        .clone();
+    let data_size = 1024 * 10; // 10KB of data
+    let mut data = vec![0u8; data_size];
+    rand::RngCore::fill_bytes(&mut rng, &mut data);
+    let checksum = Checksum::new_from_bytes(&data);
 
-    let tls_key = fullnode_config.network_key_pair();
-    let address = fullnode_config.network_address;
-
-    let checksum = Checksum::default();
     let epoch = 1;
     let object_path = ObjectPath::Inputs(epoch, checksum);
 
-    let metadata = MetadataV1::new(object_path, size_in_bytes);
+    let metadata = MetadataV1::new(object_path, data.len() as u64);
     let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
     let digest = metadata_commitment
         .digest()
         .expect("Could not create Digest for MetadataCommitment");
 
-    let shard = execute_embed_data_transaction(
+    let shard = execute_embed_data_with_upload(
         new_encoder_genesis.account_key_pair.copy(),
         &mut test_cluster,
         new_encoder_address,
         digest,
-        size_in_bytes,
+        data,
     )
     .await
     .expect("Could not get shard auth token from transaction execution");
@@ -160,14 +152,16 @@ async fn test_integrated_encoder_validator_system() {
     }
 }
 
-/// Execute EmbedData transaction
-async fn execute_embed_data_transaction(
+/// Execute EmbedData transaction with actual data upload
+async fn execute_embed_data_with_upload(
     signer: SomaKeyPair,
     test_cluster: &mut TestCluster,
     address: SomaAddress,
     digest: Digest<MetadataCommitment>,
-    data_size_bytes: u64,
+    data: Vec<u8>, // Actual data to upload
 ) -> Option<Shard> {
+    let data_size_bytes = data.len() as u64;
+
     // Get gas object for the transaction
     let gas_object = test_cluster
         .wallet
@@ -190,8 +184,18 @@ async fn execute_embed_data_transaction(
         vec![&signer], // Sign with keypair
     );
 
-    tracing::info!(?tx, "Executing embed data tx for {}", address);
-    let response = test_cluster.execute_transaction(tx).await;
+    tracing::info!(
+        "Uploading {} bytes and executing embed data tx for {}",
+        data_size_bytes,
+        address
+    );
+
+    // Upload data and submit transaction in one call
+    let response = test_cluster
+        .wallet
+        .upload_bytes_and_submit_tx(data, tx)
+        .await
+        .expect("Failed to upload data and submit transaction");
 
     response.shard
 }
