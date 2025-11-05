@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::commit::CommitStore;
-use crate::output::ConsensusOutputAPI;
 use crate::store::AuthorityStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -15,6 +14,7 @@ use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
 use types::checkpoint::{CheckpointData, CheckpointTransaction};
 use types::committee::EpochId;
+use types::consensus::output::ConsensusOutputAPI;
 use types::consensus::ConsensusTransactionKind;
 use types::digests::TransactionDigest;
 use types::object::LiveObject;

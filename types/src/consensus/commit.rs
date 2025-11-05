@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use fastcrypto::encoding::{Base58, Encoding};
 use fastcrypto::hash::{Digest, HashFunction as _};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -194,6 +195,10 @@ impl CommitDigest {
     pub const MIN: Self = Self([u8::MIN; DIGEST_LENGTH]);
     pub const MAX: Self = Self([u8::MAX; DIGEST_LENGTH]);
 
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(digest)
+    }
+
     pub fn into_inner(self) -> [u8; DIGEST_LENGTH] {
         self.0
     }
@@ -234,6 +239,20 @@ impl fmt::Debug for CommitDigest {
             "{}",
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
         )
+    }
+}
+
+impl std::str::FromStr for CommitDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(CommitDigest::new(result))
     }
 }
 

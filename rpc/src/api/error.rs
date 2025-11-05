@@ -395,3 +395,49 @@ impl std::error::Error for RpcError {
         None
     }
 }
+
+#[derive(Debug)]
+pub struct CommitNotFoundError {
+    index: Option<u32>,
+    digest: Option<crate::types::Digest>,
+}
+
+impl CommitNotFoundError {
+    pub fn index(index: u32) -> Self {
+        Self {
+            index: Some(index),
+            digest: None,
+        }
+    }
+
+    pub fn digest(digest: crate::types::Digest) -> Self {
+        Self {
+            index: None,
+            digest: Some(digest),
+        }
+    }
+}
+
+impl std::fmt::Display for CommitNotFoundError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Commit ")?;
+
+        if let Some(s) = self.index {
+            write!(f, "{s} ")?;
+        }
+
+        if let Some(d) = &self.digest {
+            write!(f, "{d} ")?;
+        }
+
+        write!(f, "not found")
+    }
+}
+
+impl std::error::Error for CommitNotFoundError {}
+
+impl From<CommitNotFoundError> for RpcError {
+    fn from(value: CommitNotFoundError) -> Self {
+        Self::new(tonic::Code::NotFound, value.to_string())
+    }
+}

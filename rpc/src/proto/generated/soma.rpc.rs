@@ -10,6 +10,21 @@ pub struct BalanceChange {
     #[prost(string, optional, tag = "2")]
     pub amount: ::core::option::Option<::prost::alloc::string::String>,
 }
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Commit {
+    /// The index of this commit.
+    #[prost(uint32, optional, tag = "1")]
+    pub index: ::core::option::Option<u32>,
+    /// The digest of this commit.
+    #[prost(string, optional, tag = "2")]
+    pub digest: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "3")]
+    pub timestamp_ms: ::core::option::Option<u64>,
+    /// List of transactions included in this commit.
+    #[prost(message, repeated, tag = "4")]
+    pub transactions: ::prost::alloc::vec::Vec<ExecutedTransaction>,
+}
 /// The effects of executing a transaction.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -624,6 +639,37 @@ pub mod get_transaction_result {
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetCommitRequest {
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, defaults to `index,digest`.
+    #[prost(message, optional, tag = "3")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+    /// If neither is provided, return the latest
+    #[prost(oneof = "get_commit_request::CommitId", tags = "1, 2")]
+    pub commit_id: ::core::option::Option<get_commit_request::CommitId>,
+}
+/// Nested message and enum types in `GetCommitRequest`.
+pub mod get_commit_request {
+    /// If neither is provided, return the latest
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum CommitId {
+        /// The index of the requested commit.
+        #[prost(uint32, tag = "1")]
+        Index(u32),
+        /// The digest of the requested commit.
+        #[prost(string, tag = "2")]
+        Digest(::prost::alloc::string::String),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetCommitResponse {
+    #[prost(message, optional, tag = "1")]
+    pub commit: ::core::option::Option<Commit>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetEpochRequest {
     /// The requested epoch.
     /// If no epoch is provided the current epoch will be returned.
@@ -829,6 +875,30 @@ pub mod ledger_service_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn get_commit(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetCommitRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetCommitResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetCommit",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetCommit"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn get_epoch(
             &mut self,
             request: impl tonic::IntoRequest<super::GetEpochRequest>,
@@ -894,6 +964,13 @@ pub mod ledger_service_server {
             request: tonic::Request<super::BatchGetTransactionsRequest>,
         ) -> std::result::Result<
             tonic::Response<super::BatchGetTransactionsResponse>,
+            tonic::Status,
+        >;
+        async fn get_commit(
+            &self,
+            request: tonic::Request<super::GetCommitRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetCommitResponse>,
             tonic::Status,
         >;
         async fn get_epoch(
@@ -1150,6 +1227,51 @@ pub mod ledger_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = BatchGetTransactionsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetCommit" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetCommitSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetCommitRequest>
+                    for GetCommitSvc<T> {
+                        type Response = super::GetCommitResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetCommitRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_commit(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetCommitSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

@@ -1,7 +1,10 @@
+use crate::base::TimestampMs;
+use crate::consensus::commit::CommitIndex;
+use crate::crypto::GenericSignature;
 use crate::effects::{TransactionEffects, TransactionEffectsAPI};
 use crate::storage::storage_error::Error as StorageError;
 use crate::system_state::{get_system_state, SystemStateTrait};
-use crate::transaction::{Transaction, TransactionKind};
+use crate::transaction::{Transaction, TransactionData, TransactionKind};
 use crate::{
     consensus::commit::CommittedSubDag,
     object::{Object, ObjectRef},
@@ -168,4 +171,20 @@ impl CheckpointTransaction {
     //         effects: self.effects.clone(),
     //     }
     // }
+}
+
+#[derive(Clone, Debug)]
+pub struct Checkpoint {
+    pub commit_index: CommitIndex,
+    pub timestamp_ms: TimestampMs,
+    pub transactions: Vec<ExecutedTransaction>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExecutedTransaction {
+    /// The input Transaction
+    pub transaction: TransactionData,
+    // pub signatures: Vec<GenericSignature>,
+    /// The effects produced by executing this transaction
+    pub effects: TransactionEffects,
 }

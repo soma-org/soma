@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
-use types::committee::AuthorityIndex;
-use types::consensus::block::BlockRef;
-use types::consensus::{block::BlockAPI, commit::CommittedSubDag};
-use types::{
+use crate::committee::AuthorityIndex;
+use crate::consensus::block::BlockRef;
+use crate::consensus::{block::BlockAPI, commit::CommittedSubDag};
+use crate::{
     consensus::ConsensusTransaction, digests::ConsensusCommitDigest, protocol::ProtocolConfig,
 };
 
@@ -12,7 +12,7 @@ use types::{
 /// For each transaction, returns the serialized transaction and the deserialized transaction.
 type ConsensusOutputTransactions<'a> = Vec<(AuthorityIndex, Vec<(&'a [u8], ConsensusTransaction)>)>;
 
-pub(crate) trait ConsensusOutputAPI: Display {
+pub trait ConsensusOutputAPI: Display {
     fn leader_round(&self) -> u64;
     fn leader_author_index(&self) -> AuthorityIndex;
     fn leader_block_ref(&self) -> BlockRef;

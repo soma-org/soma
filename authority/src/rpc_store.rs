@@ -57,6 +57,10 @@ impl ReadCommitteeStore for RestReadStore {
 }
 
 impl ReadStore for RestReadStore {
+    fn get_latest_commit(&self) -> StorageResult<CommittedSubDag> {
+        self.store.get_latest_commit()
+    }
+
     fn get_highest_synced_commit(&self) -> StorageResult<CommittedSubDag> {
         self.store.get_highest_synced_commit()
     }

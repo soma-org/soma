@@ -119,6 +119,10 @@ impl ReadCommitteeStore for TestP2pStore {
 }
 
 impl ReadStore for TestP2pStore {
+    fn get_latest_commit(&self) -> Result<CommittedSubDag> {
+        todo!()
+    }
+
     fn get_highest_synced_commit(&self) -> Result<CommittedSubDag> {
         todo!()
     }

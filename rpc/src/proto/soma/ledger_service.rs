@@ -121,3 +121,34 @@ impl GetEpochResponse {
         Self { epoch: Some(epoch) }
     }
 }
+
+impl GetCommitRequest {
+    pub fn latest() -> Self {
+        Self {
+            read_mask: None,
+            commit_id: None,
+        }
+    }
+
+    pub fn by_index(commit: u32) -> Self {
+        Self {
+            read_mask: None,
+            commit_id: Some(get_commit_request::CommitId::Index(commit)),
+        }
+    }
+
+    pub fn by_digest(digest: &Digest) -> Self {
+        Self {
+            read_mask: None,
+            commit_id: Some(get_commit_request::CommitId::Digest(digest.to_string())),
+        }
+    }
+}
+
+impl GetCommitResponse {
+    pub fn new(commit: Commit) -> Self {
+        Self {
+            commit: Some(commit),
+        }
+    }
+}

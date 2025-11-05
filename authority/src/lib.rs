@@ -14,7 +14,6 @@ pub mod execution_driver;
 pub mod handler;
 pub mod manager;
 pub mod orchestrator;
-pub mod output;
 pub mod quorum_driver;
 pub mod reconfiguration;
 pub mod rpc_index;

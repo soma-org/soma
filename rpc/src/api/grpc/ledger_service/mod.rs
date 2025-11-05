@@ -3,6 +3,8 @@ use crate::proto::soma::BatchGetObjectsRequest;
 use crate::proto::soma::BatchGetObjectsResponse;
 use crate::proto::soma::BatchGetTransactionsRequest;
 use crate::proto::soma::BatchGetTransactionsResponse;
+use crate::proto::soma::GetCommitRequest;
+use crate::proto::soma::GetCommitResponse;
 use crate::proto::soma::GetEpochRequest;
 use crate::proto::soma::GetEpochResponse;
 use crate::proto::soma::GetObjectRequest;
@@ -11,6 +13,7 @@ use crate::proto::soma::GetTransactionRequest;
 use crate::proto::soma::GetTransactionResponse;
 use crate::proto::soma::ledger_service_server::LedgerService;
 
+mod get_commit;
 mod get_epoch;
 mod get_object;
 mod get_transaction;
@@ -58,6 +61,15 @@ impl LedgerService for RpcService {
         request: tonic::Request<GetEpochRequest>,
     ) -> Result<tonic::Response<GetEpochResponse>, tonic::Status> {
         get_epoch::get_epoch(self, request.into_inner())
+            .map(tonic::Response::new)
+            .map_err(Into::into)
+    }
+
+    async fn get_commit(
+        &self,
+        request: tonic::Request<GetCommitRequest>,
+    ) -> Result<tonic::Response<GetCommitResponse>, tonic::Status> {
+        get_commit::get_commit(self, request.into_inner())
             .map(tonic::Response::new)
             .map_err(Into::into)
     }

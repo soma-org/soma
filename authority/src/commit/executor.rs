@@ -4,6 +4,13 @@ use std::{
     time::Duration,
 };
 
+use crate::{
+    cache::{ObjectCacheRead, TransactionCacheRead},
+    epoch_store::AuthorityPerEpochStore,
+    state::AuthorityState,
+    state_accumulator::StateAccumulator,
+    tx_manager::TransactionManager,
+};
 use futures::stream::FuturesOrdered;
 use itertools::{izip, Either};
 use tap::{TapFallible, TapOptional};
@@ -14,6 +21,8 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument, trace, warn};
+use types::consensus::output::ConsensusOutputAPI;
+use types::storage::storage_error::Error as StorageError;
 use types::{
     accumulator::{Accumulator, CommitIndex},
     checkpoint::{CheckpointData, CheckpointTransaction},
@@ -24,16 +33,6 @@ use types::{
     error::SomaResult,
     transaction::{VerifiedCertificate, VerifiedExecutableTransaction, VerifiedTransaction},
 };
-
-use crate::{
-    cache::{ObjectCacheRead, TransactionCacheRead},
-    epoch_store::AuthorityPerEpochStore,
-    output::ConsensusOutputAPI,
-    state::AuthorityState,
-    state_accumulator::StateAccumulator,
-    tx_manager::TransactionManager,
-};
-use types::storage::storage_error::Error as StorageError;
 
 use super::CommitStore;
 

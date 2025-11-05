@@ -71,6 +71,15 @@ impl StateSyncStore {
 }
 
 impl ReadStore for StateSyncStore {
+    fn get_latest_commit(&self) -> Result<CommittedSubDag, StorageError> {
+        self.commit_store
+            .get_highest_executed_commit()
+            .map(|maybe_commit| {
+                maybe_commit.expect("storage should have been initialized with genesis commit")
+            })
+            .map_err(Into::into)
+    }
+
     fn get_commit_by_digest(&self, digest: &CommitDigest) -> Option<CommittedSubDag> {
         self.commit_store
             .get_commit_by_digest(digest)

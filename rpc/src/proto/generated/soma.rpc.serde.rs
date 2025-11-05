@@ -1967,6 +1967,161 @@ impl<'de> serde::Deserialize<'de> for ClaimEscrow {
         deserializer.deserialize_struct("soma.rpc.ClaimEscrow", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for Commit {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.index.is_some() {
+            len += 1;
+        }
+        if self.digest.is_some() {
+            len += 1;
+        }
+        if self.timestamp_ms.is_some() {
+            len += 1;
+        }
+        if !self.transactions.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.Commit", len)?;
+        if let Some(v) = self.index.as_ref() {
+            struct_ser.serialize_field("index", v)?;
+        }
+        if let Some(v) = self.digest.as_ref() {
+            struct_ser.serialize_field("digest", v)?;
+        }
+        if let Some(v) = self.timestamp_ms.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("timestampMs", ToString::to_string(&v).as_str())?;
+        }
+        if !self.transactions.is_empty() {
+            struct_ser.serialize_field("transactions", &self.transactions)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for Commit {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "index",
+            "digest",
+            "timestamp_ms",
+            "timestampMs",
+            "transactions",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Index,
+            Digest,
+            TimestampMs,
+            Transactions,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "index" => Ok(GeneratedField::Index),
+                            "digest" => Ok(GeneratedField::Digest),
+                            "timestampMs" | "timestamp_ms" => Ok(GeneratedField::TimestampMs),
+                            "transactions" => Ok(GeneratedField::Transactions),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = Commit;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.Commit")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<Commit, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut index__ = None;
+                let mut digest__ = None;
+                let mut timestamp_ms__ = None;
+                let mut transactions__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Index => {
+                            if index__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("index"));
+                            }
+                            index__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Digest => {
+                            if digest__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("digest"));
+                            }
+                            digest__ = map_.next_value()?;
+                        }
+                        GeneratedField::TimestampMs => {
+                            if timestamp_ms__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("timestampMs"));
+                            }
+                            timestamp_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Transactions => {
+                            if transactions__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transactions"));
+                            }
+                            transactions__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(Commit {
+                    index: index__,
+                    digest: digest__,
+                    timestamp_ms: timestamp_ms__,
+                    transactions: transactions__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.Commit", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for ConsensusCommitPrologue {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -4390,6 +4545,234 @@ impl<'de> serde::Deserialize<'de> for GetBalanceResponse {
             }
         }
         deserializer.deserialize_struct("soma.rpc.GetBalanceResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetCommitRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        if self.commit_id.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetCommitRequest", len)?;
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        if let Some(v) = self.commit_id.as_ref() {
+            match v {
+                get_commit_request::CommitId::Index(v) => {
+                    struct_ser.serialize_field("index", v)?;
+                }
+                get_commit_request::CommitId::Digest(v) => {
+                    struct_ser.serialize_field("digest", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetCommitRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "read_mask",
+            "readMask",
+            "index",
+            "digest",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ReadMask,
+            Index,
+            Digest,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            "index" => Ok(GeneratedField::Index),
+                            "digest" => Ok(GeneratedField::Digest),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetCommitRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetCommitRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetCommitRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut read_mask__ = None;
+                let mut commit_id__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::Index => {
+                            if commit_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("index"));
+                            }
+                            commit_id__ = map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| get_commit_request::CommitId::Index(x.0));
+                        }
+                        GeneratedField::Digest => {
+                            if commit_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("digest"));
+                            }
+                            commit_id__ = map_.next_value::<::std::option::Option<_>>()?.map(get_commit_request::CommitId::Digest);
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetCommitRequest {
+                    read_mask: read_mask__,
+                    commit_id: commit_id__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetCommitRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetCommitResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.commit.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetCommitResponse", len)?;
+        if let Some(v) = self.commit.as_ref() {
+            struct_ser.serialize_field("commit", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetCommitResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "commit",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Commit,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "commit" => Ok(GeneratedField::Commit),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetCommitResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetCommitResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetCommitResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut commit__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Commit => {
+                            if commit__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("commit"));
+                            }
+                            commit__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetCommitResponse {
+                    commit: commit__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetCommitResponse", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for GetEpochRequest {

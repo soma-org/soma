@@ -52,6 +52,77 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl Commit {
+        pub const INDEX_FIELD: &'static MessageField = &MessageField {
+            name: "index",
+            json_name: "index",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const DIGEST_FIELD: &'static MessageField = &MessageField {
+            name: "digest",
+            json_name: "digest",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const TIMESTAMP_MS_FIELD: &'static MessageField = &MessageField {
+            name: "timestamp_ms",
+            json_name: "timestampMs",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const TRANSACTIONS_FIELD: &'static MessageField = &MessageField {
+            name: "transactions",
+            json_name: "transactions",
+            number: 4i32,
+            message_fields: Some(ExecutedTransaction::FIELDS),
+        };
+    }
+    impl MessageFields for Commit {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::INDEX_FIELD,
+            Self::DIGEST_FIELD,
+            Self::TIMESTAMP_MS_FIELD,
+            Self::TRANSACTIONS_FIELD,
+        ];
+    }
+    impl Commit {
+        pub fn path_builder() -> CommitFieldPathBuilder {
+            CommitFieldPathBuilder::new()
+        }
+    }
+    pub struct CommitFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl CommitFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn index(mut self) -> String {
+            self.path.push(Commit::INDEX_FIELD.name);
+            self.finish()
+        }
+        pub fn digest(mut self) -> String {
+            self.path.push(Commit::DIGEST_FIELD.name);
+            self.finish()
+        }
+        pub fn timestamp_ms(mut self) -> String {
+            self.path.push(Commit::TIMESTAMP_MS_FIELD.name);
+            self.finish()
+        }
+        pub fn transactions(mut self) -> ExecutedTransactionFieldPathBuilder {
+            self.path.push(Commit::TRANSACTIONS_FIELD.name);
+            ExecutedTransactionFieldPathBuilder::new_with_base(self.path)
+        }
+    }
     impl TransactionEffects {
         pub const STATUS_FIELD: &'static MessageField = &MessageField {
             name: "status",
@@ -1185,6 +1256,102 @@ mod _field_impls {
         pub fn error(mut self) -> String {
             self.path.push(GetTransactionResult::ERROR_FIELD.name);
             self.finish()
+        }
+    }
+    impl GetCommitRequest {
+        pub const INDEX_FIELD: &'static MessageField = &MessageField {
+            name: "index",
+            json_name: "index",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const DIGEST_FIELD: &'static MessageField = &MessageField {
+            name: "digest",
+            json_name: "digest",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
+            name: "read_mask",
+            json_name: "readMask",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetCommitRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::INDEX_FIELD,
+            Self::DIGEST_FIELD,
+            Self::READ_MASK_FIELD,
+        ];
+    }
+    impl GetCommitRequest {
+        pub fn path_builder() -> GetCommitRequestFieldPathBuilder {
+            GetCommitRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetCommitRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetCommitRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn index(mut self) -> String {
+            self.path.push(GetCommitRequest::INDEX_FIELD.name);
+            self.finish()
+        }
+        pub fn digest(mut self) -> String {
+            self.path.push(GetCommitRequest::DIGEST_FIELD.name);
+            self.finish()
+        }
+        pub fn read_mask(mut self) -> String {
+            self.path.push(GetCommitRequest::READ_MASK_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetCommitResponse {
+        pub const COMMIT_FIELD: &'static MessageField = &MessageField {
+            name: "commit",
+            json_name: "commit",
+            number: 1i32,
+            message_fields: Some(Commit::FIELDS),
+        };
+    }
+    impl MessageFields for GetCommitResponse {
+        const FIELDS: &'static [&'static MessageField] = &[Self::COMMIT_FIELD];
+    }
+    impl GetCommitResponse {
+        pub fn path_builder() -> GetCommitResponseFieldPathBuilder {
+            GetCommitResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetCommitResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetCommitResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn commit(mut self) -> CommitFieldPathBuilder {
+            self.path.push(GetCommitResponse::COMMIT_FIELD.name);
+            CommitFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl GetEpochRequest {

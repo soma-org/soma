@@ -1,5 +1,4 @@
 use crate::commit::{CommitStore, CommitWatermark};
-use crate::output::ConsensusOutputAPI;
 use crate::rpc_index::RpcIndexStore;
 use crate::store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
 use anyhow::anyhow;
@@ -20,6 +19,7 @@ use tracing::{debug, error, info, warn};
 use types::committee::EpochId;
 use types::config::node_config::AuthorityStorePruningConfig;
 use types::consensus::commit::{CommitDigest, CommitIndex, CommittedSubDag};
+use types::consensus::output::ConsensusOutputAPI;
 use types::consensus::ConsensusTransactionKind;
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::envelope::Message as _;

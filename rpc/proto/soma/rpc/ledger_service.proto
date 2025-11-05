@@ -5,7 +5,7 @@ package soma.rpc;
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
-// import "soma/rpc/checkpoint.proto";
+import "soma/rpc/commit.proto";
 import "soma/rpc/epoch.proto";
 import "soma/rpc/executed_transaction.proto";
 import "soma/rpc/object.proto";
@@ -21,7 +21,7 @@ service LedgerService {
   rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   rpc BatchGetTransactions(BatchGetTransactionsRequest) returns (BatchGetTransactionsResponse);
 
-//   rpc GetCheckpoint(GetCheckpointRequest) returns (GetCheckpointResponse);
+  rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
 
   rpc GetEpoch(GetEpochRequest) returns (GetEpochResponse);
 }
@@ -129,24 +129,24 @@ message GetTransactionResult {
   }
 }
 
-// message GetCheckpointRequest {
-//   // If neither is provided, return the latest
-//   oneof checkpoint_id {
-//     // The sequence number of the requested checkpoint.
-//     uint64 sequence_number = 1;
+message GetCommitRequest {
+  // If neither is provided, return the latest
+  oneof commit_id {
+    // The index of the requested commit.
+    uint32 index = 1;
 
-//     // The digest of the requested checkpoint.
-//     string digest = 2;
-//   }
+    // The digest of the requested commit.
+    string digest = 2;
+  }
 
-//   // Mask specifying which fields to read.
-//   // If no mask is specified, defaults to `sequence_number,digest`.
-//   optional google.protobuf.FieldMask read_mask = 3;
-// }
+  // Mask specifying which fields to read.
+  // If no mask is specified, defaults to `index,digest`.
+  optional google.protobuf.FieldMask read_mask = 3;
+}
 
-// message GetCheckpointResponse {
-//   optional Checkpoint checkpoint = 1;
-// }
+message GetCommitResponse {
+  optional Commit commit = 1;
+}
 
 message GetEpochRequest {
   // The requested epoch.

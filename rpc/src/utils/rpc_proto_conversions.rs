@@ -4,6 +4,7 @@ use std::str::FromStr;
 use crate::proto::{TryFromProtoError, soma::*};
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
+use crate::utils::types_conversions::SdkTypeConversionError;
 use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
 use types::base::SomaAddress;
 use types::crypto::SomaSignature;
@@ -1834,5 +1835,102 @@ impl From<simulate_transaction_request::TransactionChecks>
             // Default to enabled
             _ => Self::Enabled,
         }
+    }
+}
+
+impl Merge<&types::checkpoint::Checkpoint> for Commit {
+    fn merge(&mut self, source: &types::checkpoint::Checkpoint, mask: &FieldMaskTree) {
+        if let Some(submask) = mask.subtree(Commit::TRANSACTIONS_FIELD.name) {
+            self.transactions = source
+                .transactions
+                .iter()
+                .map(|t| {
+                    let mut transaction = ExecutedTransaction::merge_from(t, &submask);
+                    transaction.commit = submask
+                        .contains(ExecutedTransaction::COMMIT_FIELD)
+                        .then_some(source.commit_index.into());
+                    transaction.timestamp = submask
+                        .contains(ExecutedTransaction::TIMESTAMP_FIELD)
+                        .then(|| crate::proto::timestamp_ms_to_proto(source.timestamp_ms));
+                    transaction
+                })
+                .collect();
+        }
+    }
+}
+
+impl Merge<&types::checkpoint::ExecutedTransaction> for ExecutedTransaction {
+    fn merge(&mut self, source: &types::checkpoint::ExecutedTransaction, mask: &FieldMaskTree) {
+        if mask.contains(ExecutedTransaction::DIGEST_FIELD) {
+            self.digest = Some(source.transaction.digest().to_string());
+        }
+
+        if let Some(submask) = mask.subtree(ExecutedTransaction::TRANSACTION_FIELD) {
+            self.transaction = Some(Transaction::merge_from(
+                source.transaction.clone(),
+                &submask,
+            ));
+        }
+
+        if let Some(submask) = mask.subtree(ExecutedTransaction::EFFECTS_FIELD) {
+            let effects = TransactionEffects::merge_from(&source.effects, &submask);
+
+            self.effects = Some(effects);
+        }
+    }
+}
+
+impl TryFrom<&Commit> for types::checkpoint::Checkpoint {
+    type Error = TryFromProtoError;
+
+    fn try_from(checkpoint: &Commit) -> Result<Self, Self::Error> {
+        let transactions = checkpoint
+            .transactions()
+            .iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            commit_index: checkpoint.index(),
+            timestamp_ms: checkpoint.timestamp_ms(),
+            transactions,
+        })
+    }
+}
+
+impl TryFrom<&ExecutedTransaction> for types::checkpoint::ExecutedTransaction {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &ExecutedTransaction) -> Result<Self, Self::Error> {
+        // Convert proto Transaction -> crate::types::Transaction -> types::transaction::TransactionData
+        let transaction = {
+            let proto_transaction = value.transaction();
+            let crate_transaction: crate::types::Transaction = proto_transaction
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("transaction", e))?;
+
+            // Now convert crate::types::Transaction to types::transaction::TransactionData
+            crate_transaction
+                .try_into()
+                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("transaction", e))?
+        };
+
+        // Convert proto TransactionEffects -> crate::types::TransactionEffects -> types::effects::TransactionEffects
+        let effects = {
+            let proto_effects = value.effects();
+            let crate_effects: crate::types::TransactionEffects = proto_effects
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("effects", e))?;
+
+            // Now convert crate::types::TransactionEffects to types::effects::TransactionEffects
+            crate_effects
+                .try_into()
+                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("effects", e))?
+        };
+
+        Ok(Self {
+            transaction,
+            effects,
+        })
     }
 }

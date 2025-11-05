@@ -22,6 +22,40 @@ mod _getter_impls {
             self
         }
     }
+    impl Commit {
+        pub const fn const_default() -> Self {
+            Self {
+                index: None,
+                digest: None,
+                timestamp_ms: None,
+                transactions: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Commit = Commit::const_default();
+            &DEFAULT
+        }
+        pub fn with_index(mut self, field: u32) -> Self {
+            self.index = Some(field.into());
+            self
+        }
+        pub fn with_digest(mut self, field: String) -> Self {
+            self.digest = Some(field.into());
+            self
+        }
+        pub fn with_timestamp_ms(mut self, field: u64) -> Self {
+            self.timestamp_ms = Some(field.into());
+            self
+        }
+        pub fn transactions(&self) -> &[ExecutedTransaction] {
+            &self.transactions
+        }
+        pub fn with_transactions(mut self, field: Vec<ExecutedTransaction>) -> Self {
+            self.transactions = field;
+            self
+        }
+    }
     impl TransactionEffects {
         pub const fn const_default() -> Self {
             Self {
@@ -798,6 +832,117 @@ mod _getter_impls {
             self.result = Some(
                 get_transaction_result::Result::Transaction(field.into()),
             );
+            self
+        }
+    }
+    impl GetCommitRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                read_mask: None,
+                commit_id: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetCommitRequest = GetCommitRequest::const_default();
+            &DEFAULT
+        }
+        pub fn index(&self) -> u32 {
+            if let Some(get_commit_request::CommitId::Index(field)) = &self.commit_id {
+                *field
+            } else {
+                0u32
+            }
+        }
+        pub fn index_opt(&self) -> Option<u32> {
+            if let Some(get_commit_request::CommitId::Index(field)) = &self.commit_id {
+                Some(*field)
+            } else {
+                None
+            }
+        }
+        pub fn index_opt_mut(&mut self) -> Option<&mut u32> {
+            if let Some(get_commit_request::CommitId::Index(field)) = &mut self.commit_id
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn index_mut(&mut self) -> &mut u32 {
+            if self.index_opt_mut().is_none() {
+                self.commit_id = Some(
+                    get_commit_request::CommitId::Index(u32::default()),
+                );
+            }
+            self.index_opt_mut().unwrap()
+        }
+        pub fn with_index(mut self, field: u32) -> Self {
+            self.commit_id = Some(get_commit_request::CommitId::Index(field.into()));
+            self
+        }
+        pub fn digest(&self) -> &str {
+            if let Some(get_commit_request::CommitId::Digest(field)) = &self.commit_id {
+                field as _
+            } else {
+                ""
+            }
+        }
+        pub fn digest_opt(&self) -> Option<&str> {
+            if let Some(get_commit_request::CommitId::Digest(field)) = &self.commit_id {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn digest_opt_mut(&mut self) -> Option<&mut String> {
+            if let Some(get_commit_request::CommitId::Digest(field)) = &mut self
+                .commit_id
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn digest_mut(&mut self) -> &mut String {
+            if self.digest_opt_mut().is_none() {
+                self.commit_id = Some(
+                    get_commit_request::CommitId::Digest(String::default()),
+                );
+            }
+            self.digest_opt_mut().unwrap()
+        }
+        pub fn with_digest(mut self, field: String) -> Self {
+            self.commit_id = Some(get_commit_request::CommitId::Digest(field.into()));
+            self
+        }
+    }
+    impl GetCommitResponse {
+        pub const fn const_default() -> Self {
+            Self { commit: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetCommitResponse = GetCommitResponse::const_default();
+            &DEFAULT
+        }
+        pub fn commit(&self) -> &Commit {
+            self.commit
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Commit::default_instance() as _)
+        }
+        pub fn commit_opt(&self) -> Option<&Commit> {
+            self.commit.as_ref().map(|field| field as _)
+        }
+        pub fn commit_opt_mut(&mut self) -> Option<&mut Commit> {
+            self.commit.as_mut().map(|field| field as _)
+        }
+        pub fn commit_mut(&mut self) -> &mut Commit {
+            self.commit.get_or_insert_default()
+        }
+        pub fn with_commit(mut self, field: Commit) -> Self {
+            self.commit = Some(field.into());
             self
         }
     }

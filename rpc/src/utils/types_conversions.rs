@@ -851,6 +851,18 @@ impl TryFrom<SignedTransaction> for types::transaction::Transaction {
     }
 }
 
+impl From<types::consensus::commit::CommitDigest> for Digest {
+    fn from(value: types::consensus::commit::CommitDigest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+impl From<Digest> for types::consensus::commit::CommitDigest {
+    fn from(value: Digest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
 impl From<types::digests::ObjectDigest> for Digest {
     fn from(value: types::digests::ObjectDigest) -> Self {
         Self::new(value.into_inner())
