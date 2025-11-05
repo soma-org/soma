@@ -20,6 +20,8 @@ prost = "0.13.4"
 prost-types = "0.13.3"
 types.workspace = true
 tokio.workspace = true
+tokio-stream.workspace = true
+async-stream = "0.3.6"
 axum = { workspace = true, features = ["matched-path"] }
 tower.workspace = true
 tracing.workspace = true

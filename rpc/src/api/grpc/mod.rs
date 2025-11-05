@@ -6,6 +6,7 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 mod ledger_service;
 mod live_data_service;
+mod subscription_service;
 mod transaction_execution_service;
 
 #[derive(Default)]

@@ -188,3 +188,26 @@ pub struct ExecutedTransaction {
     /// The effects produced by executing this transaction
     pub effects: TransactionEffects,
 }
+
+impl From<CheckpointData> for Checkpoint {
+    fn from(value: CheckpointData) -> Self {
+        let transactions = value
+            .transactions
+            .into_iter()
+            .map(|tx| {
+                let sender_signed = tx.transaction.into_data().into_inner();
+
+                ExecutedTransaction {
+                    transaction: sender_signed.intent_message.value,
+
+                    effects: tx.effects,
+                }
+            })
+            .collect();
+        Self {
+            commit_index: value.committed_subdag.commit_ref.index,
+            timestamp_ms: value.committed_subdag.timestamp_ms,
+            transactions,
+        }
+    }
+}

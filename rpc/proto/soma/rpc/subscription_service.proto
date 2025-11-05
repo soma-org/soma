@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+import "google/protobuf/field_mask.proto";
+import "soma/rpc/commit.proto";
+
+service SubscriptionService {
+  // Subscribe to the stream of commits.
+  //
+  // This API provides a subscription to the commit stream for the
+  // blockchain. When a subscription is initialized the stream will begin with
+  // the latest executed commit as seen by the server. Responses are
+  // guaranteed to return commits in-order and without gaps. This enables
+  // clients to know exactly the last commit they have processed and in the
+  // event the subscription terminates (either by the client/server or by the
+  // connection breaking), clients will be able to reinitialize a subscription
+  // and then leverage other APIs in order to request data for the commits
+  // they missed.
+  rpc SubscribeCommits(SubscribeCommitsRequest) returns (stream SubscribeCommitsResponse);
+}
+
+// Request message for SubscriptionService.SubscribeCommits
+message SubscribeCommitsRequest {
+  // Optional. Mask for specifying which parts of the
+  // SubscribeCommitsResponse should be returned.
+  optional google.protobuf.FieldMask read_mask = 1;
+}
+
+// Response message for SubscriptionService.SubscribeCommits
+message SubscribeCommitsResponse {
+  // Required. The commit index and value of the current cursor
+  // into the commit stream
+  optional uint64 cursor = 1;
+
+  // The requested data for this commit
+  optional Commit commit = 2;
+}

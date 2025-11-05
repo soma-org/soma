@@ -51,6 +51,9 @@ mod _getter_impls {
         pub fn transactions(&self) -> &[ExecutedTransaction] {
             &self.transactions
         }
+        pub fn transactions_mut(&mut self) -> &mut Vec<ExecutedTransaction> {
+            &mut self.transactions
+        }
         pub fn with_transactions(mut self, field: Vec<ExecutedTransaction>) -> Self {
             self.transactions = field;
             self
@@ -123,6 +126,9 @@ mod _getter_impls {
         pub fn dependencies(&self) -> &[String] {
             &self.dependencies
         }
+        pub fn dependencies_mut(&mut self) -> &mut Vec<String> {
+            &mut self.dependencies
+        }
         pub fn with_dependencies(mut self, field: Vec<String>) -> Self {
             self.dependencies = field;
             self
@@ -134,12 +140,20 @@ mod _getter_impls {
         pub fn changed_objects(&self) -> &[ChangedObject] {
             &self.changed_objects
         }
+        pub fn changed_objects_mut(&mut self) -> &mut Vec<ChangedObject> {
+            &mut self.changed_objects
+        }
         pub fn with_changed_objects(mut self, field: Vec<ChangedObject>) -> Self {
             self.changed_objects = field;
             self
         }
         pub fn unchanged_shared_objects(&self) -> &[UnchangedSharedObject] {
             &self.unchanged_shared_objects
+        }
+        pub fn unchanged_shared_objects_mut(
+            &mut self,
+        ) -> &mut Vec<UnchangedSharedObject> {
+            &mut self.unchanged_shared_objects
         }
         pub fn with_unchanged_shared_objects(
             mut self,
@@ -369,6 +383,9 @@ mod _getter_impls {
         pub fn signatures(&self) -> &[UserSignature] {
             &self.signatures
         }
+        pub fn signatures_mut(&mut self) -> &mut Vec<UserSignature> {
+            &mut self.signatures
+        }
         pub fn with_signatures(mut self, field: Vec<UserSignature>) -> Self {
             self.signatures = field;
             self
@@ -399,6 +416,9 @@ mod _getter_impls {
         pub fn balance_changes(&self) -> &[BalanceChange] {
             &self.balance_changes
         }
+        pub fn balance_changes_mut(&mut self) -> &mut Vec<BalanceChange> {
+            &mut self.balance_changes
+        }
         pub fn with_balance_changes(mut self, field: Vec<BalanceChange>) -> Self {
             self.balance_changes = field;
             self
@@ -406,12 +426,18 @@ mod _getter_impls {
         pub fn input_objects(&self) -> &[Object] {
             &self.input_objects
         }
+        pub fn input_objects_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.input_objects
+        }
         pub fn with_input_objects(mut self, field: Vec<Object>) -> Self {
             self.input_objects = field;
             self
         }
         pub fn output_objects(&self) -> &[Object] {
             &self.output_objects
+        }
+        pub fn output_objects_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.output_objects
         }
         pub fn with_output_objects(mut self, field: Vec<Object>) -> Self {
             self.output_objects = field;
@@ -636,6 +662,9 @@ mod _getter_impls {
         pub fn requests(&self) -> &[GetObjectRequest] {
             &self.requests
         }
+        pub fn requests_mut(&mut self) -> &mut Vec<GetObjectRequest> {
+            &mut self.requests
+        }
         pub fn with_requests(mut self, field: Vec<GetObjectRequest>) -> Self {
             self.requests = field;
             self
@@ -652,6 +681,9 @@ mod _getter_impls {
         }
         pub fn objects(&self) -> &[GetObjectResult] {
             &self.objects
+        }
+        pub fn objects_mut(&mut self) -> &mut Vec<GetObjectResult> {
+            &mut self.objects
         }
         pub fn with_objects(mut self, field: Vec<GetObjectResult>) -> Self {
             self.objects = field;
@@ -760,6 +792,9 @@ mod _getter_impls {
         pub fn digests(&self) -> &[String] {
             &self.digests
         }
+        pub fn digests_mut(&mut self) -> &mut Vec<String> {
+            &mut self.digests
+        }
         pub fn with_digests(mut self, field: Vec<String>) -> Self {
             self.digests = field;
             self
@@ -776,6 +811,9 @@ mod _getter_impls {
         }
         pub fn transactions(&self) -> &[GetTransactionResult] {
             &self.transactions
+        }
+        pub fn transactions_mut(&mut self) -> &mut Vec<GetTransactionResult> {
+            &mut self.transactions
         }
         pub fn with_transactions(mut self, field: Vec<GetTransactionResult>) -> Self {
             self.transactions = field;
@@ -1129,6 +1167,9 @@ mod _getter_impls {
         pub fn objects(&self) -> &[Object] {
             &self.objects
         }
+        pub fn objects_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.objects
+        }
         pub fn with_objects(mut self, field: Vec<Object>) -> Self {
             self.objects = field;
             self
@@ -1268,6 +1309,9 @@ mod _getter_impls {
         pub fn encoders(&self) -> &[String] {
             &self.encoders
         }
+        pub fn encoders_mut(&mut self) -> &mut Vec<String> {
+            &mut self.encoders
+        }
         pub fn with_encoders(mut self, field: Vec<String>) -> Self {
             self.encoders = field;
             self
@@ -1367,6 +1411,9 @@ mod _getter_impls {
         }
         pub fn members(&self) -> &[ValidatorCommitteeMember] {
             &self.members
+        }
+        pub fn members_mut(&mut self) -> &mut Vec<ValidatorCommitteeMember> {
+            &mut self.members
         }
         pub fn with_members(mut self, field: Vec<ValidatorCommitteeMember>) -> Self {
             self.members = field;
@@ -1471,8 +1518,54 @@ mod _getter_impls {
         pub fn bitmap(&self) -> &[u32] {
             &self.bitmap
         }
+        pub fn bitmap_mut(&mut self) -> &mut Vec<u32> {
+            &mut self.bitmap
+        }
         pub fn with_bitmap(mut self, field: Vec<u32>) -> Self {
             self.bitmap = field;
+            self
+        }
+    }
+    impl SubscribeCommitsRequest {
+        pub const fn const_default() -> Self {
+            Self { read_mask: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SubscribeCommitsRequest = SubscribeCommitsRequest::const_default();
+            &DEFAULT
+        }
+    }
+    impl SubscribeCommitsResponse {
+        pub const fn const_default() -> Self {
+            Self { cursor: None, commit: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SubscribeCommitsResponse = SubscribeCommitsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn with_cursor(mut self, field: u64) -> Self {
+            self.cursor = Some(field.into());
+            self
+        }
+        pub fn commit(&self) -> &Commit {
+            self.commit
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Commit::default_instance() as _)
+        }
+        pub fn commit_opt(&self) -> Option<&Commit> {
+            self.commit.as_ref().map(|field| field as _)
+        }
+        pub fn commit_opt_mut(&mut self) -> Option<&mut Commit> {
+            self.commit.as_mut().map(|field| field as _)
+        }
+        pub fn commit_mut(&mut self) -> &mut Commit {
+            self.commit.get_or_insert_default()
+        }
+        pub fn with_commit(mut self, field: Commit) -> Self {
+            self.commit = Some(field.into());
             self
         }
     }
@@ -1592,6 +1685,9 @@ mod _getter_impls {
         pub fn reporters(&self) -> &[String] {
             &self.reporters
         }
+        pub fn reporters_mut(&mut self) -> &mut Vec<String> {
+            &mut self.reporters
+        }
         pub fn with_reporters(mut self, field: Vec<String>) -> Self {
             self.reporters = field;
             self
@@ -1679,12 +1775,18 @@ mod _getter_impls {
         pub fn consensus_validators(&self) -> &[Validator] {
             &self.consensus_validators
         }
+        pub fn consensus_validators_mut(&mut self) -> &mut Vec<Validator> {
+            &mut self.consensus_validators
+        }
         pub fn with_consensus_validators(mut self, field: Vec<Validator>) -> Self {
             self.consensus_validators = field;
             self
         }
         pub fn networking_validators(&self) -> &[Validator] {
             &self.networking_validators
+        }
+        pub fn networking_validators_mut(&mut self) -> &mut Vec<Validator> {
+            &mut self.networking_validators
         }
         pub fn with_networking_validators(mut self, field: Vec<Validator>) -> Self {
             self.networking_validators = field;
@@ -1693,12 +1795,18 @@ mod _getter_impls {
         pub fn pending_validators(&self) -> &[Validator] {
             &self.pending_validators
         }
+        pub fn pending_validators_mut(&mut self) -> &mut Vec<Validator> {
+            &mut self.pending_validators
+        }
         pub fn with_pending_validators(mut self, field: Vec<Validator>) -> Self {
             self.pending_validators = field;
             self
         }
         pub fn pending_removals(&self) -> &[PendingRemoval] {
             &self.pending_removals
+        }
+        pub fn pending_removals_mut(&mut self) -> &mut Vec<PendingRemoval> {
+            &mut self.pending_removals
         }
         pub fn with_pending_removals(mut self, field: Vec<PendingRemoval>) -> Self {
             self.pending_removals = field;
@@ -1967,6 +2075,9 @@ mod _getter_impls {
         pub fn active_encoders(&self) -> &[Encoder] {
             &self.active_encoders
         }
+        pub fn active_encoders_mut(&mut self) -> &mut Vec<Encoder> {
+            &mut self.active_encoders
+        }
         pub fn with_active_encoders(mut self, field: Vec<Encoder>) -> Self {
             self.active_encoders = field;
             self
@@ -1974,12 +2085,18 @@ mod _getter_impls {
         pub fn pending_active_encoders(&self) -> &[Encoder] {
             &self.pending_active_encoders
         }
+        pub fn pending_active_encoders_mut(&mut self) -> &mut Vec<Encoder> {
+            &mut self.pending_active_encoders
+        }
         pub fn with_pending_active_encoders(mut self, field: Vec<Encoder>) -> Self {
             self.pending_active_encoders = field;
             self
         }
         pub fn pending_removals(&self) -> &[u32] {
             &self.pending_removals
+        }
+        pub fn pending_removals_mut(&mut self) -> &mut Vec<u32> {
+            &mut self.pending_removals
         }
         pub fn with_pending_removals(mut self, field: Vec<u32>) -> Self {
             self.pending_removals = field;
@@ -2184,6 +2301,9 @@ mod _getter_impls {
         }
         pub fn gas_payment(&self) -> &[ObjectReference] {
             &self.gas_payment
+        }
+        pub fn gas_payment_mut(&mut self) -> &mut Vec<ObjectReference> {
+            &mut self.gas_payment
         }
         pub fn with_gas_payment(mut self, field: Vec<ObjectReference>) -> Self {
             self.gas_payment = field;
@@ -3512,6 +3632,9 @@ mod _getter_impls {
         pub fn coins(&self) -> &[ObjectReference] {
             &self.coins
         }
+        pub fn coins_mut(&mut self) -> &mut Vec<ObjectReference> {
+            &mut self.coins
+        }
         pub fn with_coins(mut self, field: Vec<ObjectReference>) -> Self {
             self.coins = field;
             self
@@ -3519,12 +3642,18 @@ mod _getter_impls {
         pub fn amounts(&self) -> &[u64] {
             &self.amounts
         }
+        pub fn amounts_mut(&mut self) -> &mut Vec<u64> {
+            &mut self.amounts
+        }
         pub fn with_amounts(mut self, field: Vec<u64>) -> Self {
             self.amounts = field;
             self
         }
         pub fn recipients(&self) -> &[String] {
             &self.recipients
+        }
+        pub fn recipients_mut(&mut self) -> &mut Vec<String> {
+            &mut self.recipients
         }
         pub fn with_recipients(mut self, field: Vec<String>) -> Self {
             self.recipients = field;
@@ -3545,6 +3674,9 @@ mod _getter_impls {
         }
         pub fn objects(&self) -> &[ObjectReference] {
             &self.objects
+        }
+        pub fn objects_mut(&mut self) -> &mut Vec<ObjectReference> {
+            &mut self.objects
         }
         pub fn with_objects(mut self, field: Vec<ObjectReference>) -> Self {
             self.objects = field;
@@ -3784,6 +3916,9 @@ mod _getter_impls {
         pub fn signers(&self) -> &[String] {
             &self.signers
         }
+        pub fn signers_mut(&mut self) -> &mut Vec<String> {
+            &mut self.signers
+        }
         pub fn with_signers(mut self, field: Vec<String>) -> Self {
             self.signers = field;
             self
@@ -3821,6 +3956,9 @@ mod _getter_impls {
         }
         pub fn objects(&self) -> &[Object] {
             &self.objects
+        }
+        pub fn objects_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.objects
         }
         pub fn with_objects(mut self, field: Vec<Object>) -> Self {
             self.objects = field;
@@ -3893,6 +4031,9 @@ mod _getter_impls {
         }
         pub fn signatures(&self) -> &[UserSignature] {
             &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<UserSignature> {
+            &mut self.signatures
         }
         pub fn with_signatures(mut self, field: Vec<UserSignature>) -> Self {
             self.signatures = field;

@@ -50,6 +50,7 @@ use p2p::{
     tonic_gen::p2p_server::P2pServer,
 };
 use parking_lot::RwLock;
+use rpc::api::subscription::SubscriptionService;
 use soma_tls::AllowPublicKeys;
 use store::rocks::default_db_options;
 use tower::ServiceBuilder;
@@ -67,6 +68,7 @@ use tokio::{
 use tracing::{error_span, info, warn, Instrument};
 use types::{
     base::{AuthorityName, SomaAddress},
+    checkpoint::Checkpoint,
     client::Config,
     committee::Committee,
     config::node_config::{ConsensusConfig, NodeConfig},
@@ -168,6 +170,8 @@ pub struct SomaNode {
     http_servers: HttpServers,
     object_managers: Option<(InternalObjectServiceManager, ExternalObjectServiceManager)>,
     allower: AllowPublicKeys,
+
+    subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
 
     #[cfg(msim)]
     sim_state: SimState,
@@ -436,7 +440,7 @@ impl SomaNode {
             None
         };
 
-        let http_servers = build_http_servers(
+        let (http_servers, subscription_service_checkpoint_sender) = build_http_servers(
             state.clone(),
             state_sync_store,
             &transaction_orchestrator.clone(),
@@ -488,6 +492,7 @@ impl SomaNode {
             http_servers,
             object_managers,
             allower,
+            subscription_service_checkpoint_sender,
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -815,6 +820,7 @@ impl SomaNode {
                 self.commit_store.clone(),
                 self.state.clone(),
                 accumulator.clone(),
+                self.subscription_service_checkpoint_sender.clone(),
             );
 
             let cur_epoch_store = self.state.load_epoch_store_one_call_per_task();
@@ -1095,14 +1101,16 @@ async fn build_http_servers(
     store: StateSyncStore, //RocksDbStore,
     transaction_orchestrator: &Option<Arc<TransactionOrchestrator<NetworkAuthorityClient>>>,
     config: &NodeConfig,
-) -> Result<HttpServers> {
+) -> Result<(HttpServers, Option<tokio::sync::mpsc::Sender<Checkpoint>>)> {
     // Validators do not expose these APIs
     if config.consensus_config().is_some() {
-        return Ok(HttpServers::default());
+        return Ok((HttpServers::default(), None));
     }
 
     let mut router = axum::Router::new();
 
+    let (subscription_service_checkpoint_sender, subscription_service_handle) =
+        SubscriptionService::build();
     let rpc_router = {
         let mut rpc_service =
             rpc::api::RpcService::new(Arc::new(RestReadStore::new(state.clone(), store)));
@@ -1111,6 +1119,8 @@ async fn build_http_servers(
         if let Some(config) = config.rpc.clone() {
             rpc_service.with_config(config);
         }
+
+        rpc_service.with_subscription_service(subscription_service_handle);
 
         if let Some(transaction_orchestrator) = transaction_orchestrator {
             rpc_service.with_executor(transaction_orchestrator.clone())
@@ -1168,8 +1178,11 @@ async fn build_http_servers(
         http.local_addr()
     );
 
-    Ok(HttpServers {
-        http: Some(http),
-        https,
-    })
+    Ok((
+        HttpServers {
+            http: Some(http),
+            https,
+        },
+        Some(subscription_service_checkpoint_sender),
+    ))
 }

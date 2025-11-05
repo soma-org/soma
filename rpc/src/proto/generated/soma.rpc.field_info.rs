@@ -2382,6 +2382,91 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl SubscribeCommitsRequest {
+        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
+            name: "read_mask",
+            json_name: "readMask",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for SubscribeCommitsRequest {
+        const FIELDS: &'static [&'static MessageField] = &[Self::READ_MASK_FIELD];
+    }
+    impl SubscribeCommitsRequest {
+        pub fn path_builder() -> SubscribeCommitsRequestFieldPathBuilder {
+            SubscribeCommitsRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct SubscribeCommitsRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SubscribeCommitsRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn read_mask(mut self) -> String {
+            self.path.push(SubscribeCommitsRequest::READ_MASK_FIELD.name);
+            self.finish()
+        }
+    }
+    impl SubscribeCommitsResponse {
+        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "cursor",
+            json_name: "cursor",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const COMMIT_FIELD: &'static MessageField = &MessageField {
+            name: "commit",
+            json_name: "commit",
+            number: 2i32,
+            message_fields: Some(Commit::FIELDS),
+        };
+    }
+    impl MessageFields for SubscribeCommitsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CURSOR_FIELD,
+            Self::COMMIT_FIELD,
+        ];
+    }
+    impl SubscribeCommitsResponse {
+        pub fn path_builder() -> SubscribeCommitsResponseFieldPathBuilder {
+            SubscribeCommitsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct SubscribeCommitsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SubscribeCommitsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn cursor(mut self) -> String {
+            self.path.push(SubscribeCommitsResponse::CURSOR_FIELD.name);
+            self.finish()
+        }
+        pub fn commit(mut self) -> CommitFieldPathBuilder {
+            self.path.push(SubscribeCommitsResponse::COMMIT_FIELD.name);
+            CommitFieldPathBuilder::new_with_base(self.path)
+        }
+    }
     impl SystemState {
         pub const EPOCH_FIELD: &'static MessageField = &MessageField {
             name: "epoch",

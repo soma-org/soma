@@ -5,17 +5,19 @@ use types::{
     transaction_executor::TransactionExecutor,
 };
 
-use crate::api::reader::StateReader;
+use crate::api::{reader::StateReader, subscription::SubscriptionServiceHandle};
 pub mod client;
 pub mod error;
 mod grpc;
 mod reader;
 mod response;
+pub mod subscription;
 
 #[derive(Clone)]
 pub struct RpcService {
     reader: StateReader,
     // chain_id: types::digests::ChainIdentifier,
+    subscription_service_handle: Option<SubscriptionServiceHandle>,
     config: RpcConfig,
     executor: Option<Arc<dyn TransactionExecutor>>,
 }
@@ -26,6 +28,7 @@ impl RpcService {
         Self {
             reader: StateReader::new(reader),
             executor: None,
+            subscription_service_handle: None,
             // chain_id,
             config: RpcConfig::default(),
         }
@@ -37,6 +40,13 @@ impl RpcService {
 
     pub fn with_config(&mut self, config: RpcConfig) {
         self.config = config;
+    }
+
+    pub fn with_subscription_service(
+        &mut self,
+        subscription_service_handle: SubscriptionServiceHandle,
+    ) {
+        self.subscription_service_handle = Some(subscription_service_handle);
     }
 
     pub async fn into_router(self) -> axum::Router {
@@ -68,12 +78,22 @@ impl RpcService {
                 S::NAME
             }
 
-            grpc::Services::new()
+            let mut services = grpc::Services::new()
                 .add_service(ledger_service)
                 .add_service(transaction_execution_service)
-                .add_service(live_data_service)
-                // .add_service(reflection_v1alpha)
-                .into_router()
+                .add_service(live_data_service);
+            // .add_service(reflection_v1alpha)
+
+            if self.subscription_service_handle.is_some() {
+                let subscription_service =
+                    crate::proto::soma::subscription_service_server::SubscriptionServiceServer::new(
+                        self.clone(),
+                    );
+
+                services = services.add_service(subscription_service);
+            }
+
+            services.into_router()
         };
 
         router.layer(axum::middleware::map_response_with_state(

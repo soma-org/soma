@@ -21,7 +21,6 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument, trace, warn};
-use types::consensus::output::ConsensusOutputAPI;
 use types::storage::storage_error::Error as StorageError;
 use types::{
     accumulator::{Accumulator, CommitIndex},
@@ -33,6 +32,7 @@ use types::{
     error::SomaResult,
     transaction::{VerifiedCertificate, VerifiedExecutableTransaction, VerifiedTransaction},
 };
+use types::{checkpoint::Checkpoint, consensus::output::ConsensusOutputAPI};
 
 use super::CommitStore;
 
@@ -50,6 +50,7 @@ pub struct CommitExecutor {
     transaction_cache_reader: Arc<dyn TransactionCacheRead>,
     tx_manager: Arc<TransactionManager>,
     accumulator: Arc<StateAccumulator>,
+    subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -64,6 +65,7 @@ impl CommitExecutor {
         commit_store: Arc<CommitStore>,
         state: Arc<AuthorityState>,
         accumulator: Arc<StateAccumulator>,
+        subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
     ) -> Self {
         Self {
             mailbox,
@@ -73,6 +75,7 @@ impl CommitExecutor {
             tx_manager: state.transaction_manager().clone(),
             state,
             accumulator,
+            subscription_service_checkpoint_sender,
         }
     }
 
@@ -576,6 +579,12 @@ impl CommitExecutor {
                             );
                         })
                         .ok();
+
+                    if let Some(sender) = &self.subscription_service_checkpoint_sender {
+                        if let Err(e) = sender.send(checkpoint_data.into()).await {
+                            warn!("unable to send checkpoint to subscription service: {e}");
+                        }
+                    }
                 }
                 Err(e) => {
                     error!(

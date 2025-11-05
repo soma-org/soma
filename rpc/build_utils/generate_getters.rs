@@ -208,6 +208,10 @@ fn generate_getter_function(
                 &self.#name
             }
 
+            pub fn #name_mut(&mut self) -> &mut Vec<#field_message_ty> {
+                &mut self.#name
+            }
+
             pub fn #with_name(mut self, field: Vec<#field_message_ty>) -> Self {
                 self.#name = field;
                 self
