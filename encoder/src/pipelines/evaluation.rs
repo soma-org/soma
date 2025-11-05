@@ -12,21 +12,16 @@ use crate::{
 use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
 use intelligence::evaluation::messaging::EvaluationClient;
-use objects::{
-    networking::{downloader::Downloader, external_service::ExternalClientPool},
-    storage::ObjectStorage,
-};
+use object_store::ObjectStore;
+use objects::networking::downloader::Downloader;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     committee::Epoch,
     error::{ShardError, ShardResult},
-    evaluation::{
-        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, ProbeSetAPI, ProbeWeightAPI,
-        ScoreAPI,
-    },
-    metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata},
+    evaluation::{EvaluationInput, EvaluationInputV1, ProbeSetAPI, ProbeWeightAPI, ScoreAPI},
+    metadata::{DownloadMetadata, Metadata, MetadataAPI, ObjectPath},
     report::{Report, ReportV1},
     shard::Shard,
     shard_crypto::{
@@ -42,40 +37,28 @@ use types::{shard::ShardAuthToken, submission::Submission};
 
 use super::report_vote::ReportVoteProcessor;
 
-pub(crate) struct EvaluationProcessor<
-    C: EncoderInternalNetworkClient,
-    S: ObjectStorage,
-    E: EvaluationClient,
-> {
+pub(crate) struct EvaluationProcessor<C: EncoderInternalNetworkClient, E: EvaluationClient> {
     store: Arc<dyn Store>,
-    downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
     broadcaster: Arc<Broadcaster<C>>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    storage: Arc<S>,
     report_vote_pipeline: ActorHandle<ReportVoteProcessor<C>>,
     evaluation_client: Arc<E>,
     context: Context,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
-    EvaluationProcessor<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> EvaluationProcessor<C, E> {
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
         broadcaster: Arc<Broadcaster<C>>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        storage: Arc<S>,
         report_vote_pipeline: ActorHandle<ReportVoteProcessor<C>>,
         evaluation_client: Arc<E>,
         context: Context,
     ) -> Self {
         Self {
             store,
-            downloader,
             broadcaster,
             encoder_keypair,
-            storage,
             report_vote_pipeline,
             evaluation_client,
             context,
@@ -84,9 +67,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Processor
-    for EvaluationProcessor<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for EvaluationProcessor<C, E> {
     type Input = (ShardAuthToken, Shard);
     type Output = ();
 
@@ -94,8 +75,11 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Pro
         let result: ShardResult<()> = async {
             let (auth_token, shard) = msg.input;
 
+            let shard_digest = shard.digest()?;
+
             let all_submissions = self.store.get_all_submissions(&shard)?;
             let all_accepted_commits = self.store.get_all_accepted_commits(&shard)?;
+            let input_download_metadata = self.store.get_input_download_metadata(&shard)?;
 
             let accepted_lookup: HashMap<EncoderPublicKey, Digest<Submission>> =
                 all_accepted_commits
@@ -104,16 +88,33 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Pro
                     .map(|(encoder, digest)| (encoder, digest))
                     .collect();
 
-            let mut valid_submissions: Vec<(Submission, DownloadableMetadata)> = all_submissions
+            let mut valid_submissions: Vec<(
+                Submission,
+                DownloadMetadata,
+                HashMap<EncoderPublicKey, DownloadMetadata>,
+            )> = all_submissions
                 .into_iter()
-                .filter_map(|(submission, _instant, downloadable_metadata)| {
-                    accepted_lookup
-                        .get(submission.encoder())
-                        .filter(|accepted_digest| {
-                            **accepted_digest == Digest::new(&submission).unwrap()
-                        })
-                        .map(|_| (submission, downloadable_metadata))
-                })
+                .filter_map(
+                    |(
+                        submission,
+                        _instant,
+                        embedding_download_metadata,
+                        probe_set_download_metadata,
+                    )| {
+                        accepted_lookup
+                            .get(submission.encoder())
+                            .filter(|accepted_digest| {
+                                **accepted_digest == Digest::new(&submission).unwrap()
+                            })
+                            .map(|_| {
+                                (
+                                    submission,
+                                    embedding_download_metadata,
+                                    probe_set_download_metadata,
+                                )
+                            })
+                    },
+                )
                 .collect();
 
             // TODO: ANY ACCEPTED COMMITS THAT DO NOT REVEAL SHOULD BE TALLIED
@@ -128,6 +129,8 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Pro
             let best_score = self
                 .process_submissions(
                     auth_token.epoch(),
+                    shard_digest.clone(),
+                    input_download_metadata,
                     valid_submissions,
                     auth_token.metadata_commitment().metadata(),
                     &self.context,
@@ -181,50 +184,33 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> Pro
     fn shutdown(&mut self) {}
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
-    EvaluationProcessor<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> EvaluationProcessor<C, E> {
     async fn process_submissions(
         &self,
         epoch: Epoch,
-        submissions: Vec<(Submission, DownloadableMetadata)>,
+        shard_digest: Digest<Shard>,
+        input_download_metadata: DownloadMetadata,
+        submissions: Vec<(
+            Submission,
+            DownloadMetadata,
+            HashMap<EncoderPublicKey, DownloadMetadata>,
+        )>,
         data_metadata: Metadata,
         context: &Context,
         cancellation: CancellationToken,
     ) -> ShardResult<Submission> {
-        for (submission, downloadable_metadata) in submissions {
+        for (submission, embedding_download_metadata, probe_set_download_metadata) in submissions {
             let result: ShardResult<()> = {
                 if submission.encoder().inner() == self.context.own_encoder_key().inner() {
                     // skip early if your own representations
                     return Ok(submission);
                 }
-                self.downloader
-                    .process(downloadable_metadata, cancellation.clone())
-                    .await?;
-
-                let (peer, address) = context
-                    .object_server(submission.encoder())
-                    .ok_or(ShardError::MissingData)?;
-                for probe in submission.probe_set().probe_weights() {
-                    let probe_metadata = context.probe(epoch, probe.encoder())?;
-                    let downloadable_metadata =
-                        DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                            Some(peer.clone()),
-                            None,
-                            address.clone(),
-                            probe_metadata,
-                        ));
-                    self.downloader
-                        .process(downloadable_metadata, cancellation.clone())
-                        .await?;
-                }
-                // TODO: IF DOWNLOADING FAILS, TALLY
 
                 let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
-                    data_metadata.clone(),
-                    submission.metadata().clone(),
+                    input_download_metadata.clone(),
+                    embedding_download_metadata,
+                    probe_set_download_metadata,
                     submission.probe_set().clone(),
-                    context.internal_object_service_address(),
                 ));
 
                 let evaluation_timeout = Duration::from_secs(1);
@@ -238,7 +224,7 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
 
                 // TODO: this verification should be handled very differently allowing for an epsilon of error due to differences in
                 if true {
-                    // TODO: IF VERIFICATION FAILS, TALLY
+                    // TODO: IF VERIFICATION FAILTALLY
                     // floating point math on various accelerators
                     return Ok(submission); // Short-circuit and return the first valid reveal
                 } else {

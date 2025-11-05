@@ -62,56 +62,55 @@ impl InferenceClient for JSONClient {
         input: InferenceInput,
         timeout: Duration,
     ) -> IntelligenceResult<InferenceOutput> {
-        let full_url = self
-            .webhook_url
-            .join("/call")
-            .map_err(|e| IntelligenceError::ParseError(e.to_string()))?;
+        unimplemented!();
+        //     let full_url = self
+        //         .webhook_url
+        //         .join("/call")
+        //         .map_err(|e| IntelligenceError::ParseError(e.to_string()))?;
 
-        let download_url = self
-            .object_server_url
-            .join(&format!("/{}", input.metadata().checksum()))
-            .map_err(|e| IntelligenceError::ParseError(e.to_string()))?
-            .to_string();
+        //     let download_url = self
+        //         .object_server_url
+        //         .join(&format!("/{}", input.metadata().checksum()))
+        //         .map_err(|e| IntelligenceError::ParseError(e.to_string()))?
+        //         .to_string();
 
-        let upload_url = self
-            .object_server_url
-            .join("/upload")
-            .map_err(|e| IntelligenceError::ParseError(e.to_string()))?
-            .to_string();
+        //     let upload_url = self
+        //         .object_server_url
+        //         .join("/upload")
+        //         .map_err(|e| IntelligenceError::ParseError(e.to_string()))?
+        //         .to_string();
 
-        let request_data = JsonCallRequest {
-            download_url,
-            upload_url,
-            checksum: input.metadata().checksum(),
-            size: input.metadata().size(),
-            epoch: input.epoch(),
-        };
-        let response = self
-            .client
-            .post(full_url)
-            .timeout(timeout)
-            .json(&request_data)
-            .send()
-            .await
-            .map_err(IntelligenceError::ReqwestError)?;
+        //     let request_data = JsonCallRequest {
+        //         download_url,
+        //         upload_url,
+        //         checksum: input.metadata().checksum(),
+        //         size: input.metadata().size(),
+        //         epoch: input.epoch(),
+        //     };
+        //     let response = self
+        //         .client
+        //         .post(full_url)
+        //         .timeout(timeout)
+        //         .json(&request_data)
+        //         .send()
+        //         .await
+        //         .map_err(IntelligenceError::ReqwestError)?;
 
-        let response_data: JsonCallResponse = response
-            .json()
-            .await
-            .map_err(IntelligenceError::ReqwestError)?;
+        //     let response_data: JsonCallResponse = response
+        //         .json()
+        //         .await
+        //         .map_err(IntelligenceError::ReqwestError)?;
 
-        let probe_weights: Vec<ProbeWeightV1> = response_data
-            .probe_set
-            .into_iter()
-            .map(|pw| ProbeWeightV1::new(pw.encoder, pw.weight))
-            .collect();
+        //     let probe_weights: Vec<ProbeWeightV1> = response_data
+        //         .probe_set
+        //         .into_iter()
+        //         .map(|pw| ProbeWeightV1::new(pw.encoder, pw.weight))
+        //         .collect();
 
-        Ok(InferenceOutput::V1(InferenceOutputV1::new(
-            Metadata::V1(MetadataV1::new(
-                ObjectPath::Tmp(input.epoch(), response_data.checksum),
-                response_data.size,
-            )),
-            ProbeSet::V1(ProbeSetV1::new(probe_weights)),
-        )))
+        //     Ok(InferenceOutput::V1(InferenceOutputV1::new(
+        //         ObjectPath::Uploads(response_data.checksum),
+        //         ProbeSet::V1(ProbeSetV1::new(probe_weights)),
+        //         Metadata::V1(MetadataV1::new(response_data.checksum, response_data.size)),
+        //     )))
     }
 }

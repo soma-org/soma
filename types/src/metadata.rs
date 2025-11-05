@@ -6,13 +6,13 @@ use std::{
 };
 
 use enum_dispatch::enum_dispatch;
+use object_store::path::Path;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
     checksum::Checksum,
-    committee::{AuthorityIndex, Epoch},
-    consensus::block::Round,
+    committee::Epoch,
     crypto::{NetworkKeyPair, NetworkPublicKey, NetworkSignature},
     error::{ShardError, ShardResult, SharedError, SharedResult},
     multiaddr::Multiaddr,
@@ -28,81 +28,66 @@ type SizeInBytes = u64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ObjectPath {
-    Inputs(Epoch, Checksum),
-    Probes(Epoch, Checksum),
+    Inputs(Epoch, Digest<Shard>, Checksum),
     Embeddings(Epoch, Digest<Shard>, Checksum),
-    Blocks(Epoch, Round, AuthorityIndex, Checksum),
-    Tmp(Epoch, Checksum),
+    Probes(Epoch, Checksum),
+    Uploads(Checksum),
 }
 
 impl ObjectPath {
-    pub fn path(&self) -> String {
+    pub fn path(&self) -> Path {
         match self {
-            Self::Embeddings(epoch, shard_digest, checksum) => {
-                format!(
-                    "epochs/{}/shards/{}/embeddings/{}",
-                    epoch, shard_digest, checksum
-                )
-            }
+            Self::Inputs(epoch, shard_digest, checksum) => Path::from(format!(
+                "epochs/{}/shards/{}/inputs/{}",
+                epoch, shard_digest, checksum
+            )),
+            Self::Embeddings(epoch, shard_digest, checksum) => Path::from(format!(
+                "epochs/{}/shards/{}/embeddings/{}",
+                epoch, shard_digest, checksum
+            )),
             Self::Probes(epoch, checksum) => {
-                format!("epochs/{}/probes/{}", epoch, checksum)
+                Path::from(format!("epochs/{}/probes/{}", epoch, checksum))
             }
-            Self::Inputs(epoch, checksum) => {
-                format!("epochs/{}/inputs/{}", epoch, checksum)
-            }
-            Self::Blocks(epoch, round, authority_index, checksum) => {
-                format!(
-                    "epochs/{}/rounds/{}/authorities/{}/blocks/{}",
-                    epoch, round, authority_index, checksum
-                )
-            }
-            Self::Tmp(epoch, checksum) => {
-                format!("epochs/{}/tmp/{}", epoch, checksum)
-            }
+            Self::Uploads(checksum) => Path::from(format!("uploads/{}", checksum)),
         }
     }
     pub fn checksum(&self) -> Checksum {
         match self {
+            Self::Inputs(_, _, checksum) => checksum.clone(),
             Self::Embeddings(_, _, checksum) => checksum.clone(),
             Self::Probes(_, checksum) => checksum.clone(),
-            Self::Inputs(_, checksum) => checksum.clone(),
-            Self::Blocks(_, _, _, checksum) => checksum.clone(),
-            Self::Tmp(_, checksum) => checksum.clone(),
+            Self::Uploads(checksum) => checksum.clone(),
         }
     }
 }
 
 impl fmt::Display for ObjectPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{}", self.path())
+        write!(f, "{}", self.path().as_ref())
     }
 }
 
 #[enum_dispatch]
 pub trait MetadataAPI {
-    fn path(&self) -> ObjectPath;
     fn checksum(&self) -> Checksum;
     fn size(&self) -> SizeInBytes;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct MetadataV1 {
-    path: ObjectPath,
+    checksum: Checksum,
     size: SizeInBytes,
 }
 
 impl MetadataV1 {
-    pub fn new(path: ObjectPath, size: SizeInBytes) -> Self {
-        Self { path, size }
+    pub fn new(checksum: Checksum, size: SizeInBytes) -> Self {
+        Self { checksum, size }
     }
 }
 
 impl MetadataAPI for MetadataV1 {
-    fn path(&self) -> ObjectPath {
-        self.path.clone()
-    }
     fn checksum(&self) -> Checksum {
-        self.path.checksum()
+        self.checksum.clone()
     }
     fn size(&self) -> SizeInBytes {
         self.size
@@ -193,69 +178,99 @@ impl SignedParams {
 }
 
 #[enum_dispatch]
-pub trait DownloadableMetadataAPI {
-    fn peer(&self) -> Option<NetworkPublicKey>;
-    fn params(&self) -> Option<SignedParams>;
-    fn address(&self) -> Multiaddr;
-    fn metadata(&self) -> Metadata;
-    fn url(&self) -> SharedResult<Url>;
+pub trait DefaultDownloadMetadataAPI {
+    fn url(&self) -> &Url;
+    fn metadata(&self) -> &Metadata;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct DownloadableMetadataV1 {
-    peer: Option<NetworkPublicKey>,
-    params: Option<SignedParams>,
-    address: Multiaddr,
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DefaultDownloadMetadataV1 {
+    url: Url,
     metadata: Metadata,
 }
 
-impl DownloadableMetadataV1 {
-    pub fn new(
-        peer: Option<NetworkPublicKey>,
-        params: Option<SignedParams>,
-        address: Multiaddr,
-        metadata: Metadata,
-    ) -> Self {
+impl DefaultDownloadMetadataV1 {
+    pub fn new(url: Url, metadata: Metadata) -> Self {
+        Self { url, metadata }
+    }
+}
+
+impl DefaultDownloadMetadataAPI for DefaultDownloadMetadataV1 {
+    fn url(&self) -> &Url {
+        &self.url
+    }
+    fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[enum_dispatch(DefaultDownloadMetadataAPI)]
+pub enum DefaultDownloadMetadata {
+    V1(DefaultDownloadMetadataV1),
+}
+
+#[enum_dispatch]
+pub trait MtlsDownloadMetadataAPI {
+    fn peer(&self) -> &NetworkPublicKey;
+    fn url(&self) -> &Url;
+    fn metadata(&self) -> &Metadata;
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MtlsDownloadMetadataV1 {
+    peer: NetworkPublicKey,
+    url: Url,
+    metadata: Metadata,
+}
+
+impl MtlsDownloadMetadataV1 {
+    pub fn new(peer: NetworkPublicKey, url: Url, metadata: Metadata) -> Self {
         Self {
             peer,
-            params,
-            address,
+            url,
             metadata,
         }
     }
 }
 
-impl DownloadableMetadataAPI for DownloadableMetadataV1 {
-    fn peer(&self) -> Option<NetworkPublicKey> {
-        self.peer.clone()
+impl MtlsDownloadMetadataAPI for MtlsDownloadMetadataV1 {
+    fn peer(&self) -> &NetworkPublicKey {
+        &self.peer
     }
-    fn params(&self) -> Option<SignedParams> {
-        self.params.clone()
+    fn url(&self) -> &Url {
+        &self.url
     }
-    fn address(&self) -> Multiaddr {
-        self.address.clone()
-    }
-    fn metadata(&self) -> Metadata {
-        self.metadata.clone()
-    }
-    fn url(&self) -> SharedResult<Url> {
-        let host_port =
-            to_host_port_str(&self.address).map_err(|e| SharedError::UrlError(e.to_string()))?;
-        let mut address = format!("https://{host_port}/{}", self.metadata.path().path());
-        if let Some(params) = self.params.clone() {
-            let query = serde_urlencoded::to_string(params)
-                .map_err(|e| SharedError::UrlError(e.to_string()))?;
-            address = format!("{}?{}", address, query);
-        }
-        let url = Url::from_str(&address).unwrap();
-        Ok(url)
+    fn metadata(&self) -> &Metadata {
+        &self.metadata
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
-#[enum_dispatch(DownloadableMetadataAPI)]
-pub enum DownloadableMetadata {
-    V1(DownloadableMetadataV1),
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[enum_dispatch(MtlsDownloadMetadataAPI)]
+pub enum MtlsDownloadMetadata {
+    V1(MtlsDownloadMetadataV1),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, PartialOrd, Ord)]
+pub enum DownloadMetadata {
+    Default(DefaultDownloadMetadata),
+    Mtls(MtlsDownloadMetadata),
+}
+
+impl DownloadMetadata {
+    pub fn url(&self) -> &Url {
+        match self {
+            Self::Default(dm) => dm.url(),
+            Self::Mtls(dm) => dm.url(),
+        }
+    }
+    pub fn metadata(&self) -> &Metadata {
+        match self {
+            Self::Default(dm) => dm.metadata(),
+            Self::Mtls(dm) => dm.metadata(),
+        }
+    }
 }
 
 /// Tx contains Digest<MetadataCommitment> however there is no way to figure out the inner metadata and nonce values from that.

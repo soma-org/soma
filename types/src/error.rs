@@ -1278,6 +1278,9 @@ pub enum ShardError {
     #[error("Object error: {0}")]
     ObjectError(ObjectError),
 
+    #[error("Object store error: {0}")]
+    ObjectStoreError(object_store::Error),
+
     #[error("Not found: {0}")]
     NotFound(String),
 

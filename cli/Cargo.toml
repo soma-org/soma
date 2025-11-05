@@ -27,6 +27,7 @@ objects.workspace = true
 soma-tls.workspace = true
 rand.workspace = true
 bytes.workspace = true
+object_store.workspace = true
 
 [lints]
 workspace = true

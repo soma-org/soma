@@ -3,7 +3,7 @@ use types::{
     crypto::{AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey},
     encoder_committee::EncoderCommittee,
     error::SharedResult,
-    metadata::DownloadableMetadata,
+    metadata::DownloadMetadata,
     parameters::TonicParameters,
     shard::{Input, InputV1, ShardAuthToken},
     shard_crypto::keys::EncoderPublicKey,
@@ -65,11 +65,11 @@ impl EncoderClientService {
         &self,
         encoders: Vec<EncoderPublicKey>,
         token: ShardAuthToken,
-        downloadable_metadata: DownloadableMetadata,
+        download_metadata: DownloadMetadata,
         timeout: Duration,
     ) -> SharedResult<()> {
         // Create and sign the shard input
-        let input = Input::V1(InputV1::new(token.clone(), downloadable_metadata));
+        let input = Input::V1(InputV1::new(token.clone(), download_metadata));
         // Send to each shard member
         for encoder_key in encoders {
             self.client

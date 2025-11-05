@@ -30,7 +30,9 @@ base64.workspace = true
 uuid.workspace = true
 futures.workspace = true
 bcs.workspace = true
+object_store.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
 tempdir.workspace = true
+serde_html_form = "0.2.8"

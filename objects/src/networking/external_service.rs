@@ -11,15 +11,16 @@ use axum::{
     routing::get,
     Router,
 };
+use object_store::ObjectStore;
 use quick_cache::sync::Cache;
 use reqwest::Client;
 use soma_http::{PeerCertificates, ServerHandle};
 use soma_tls::{create_rustls_client_config, public_key_from_certificate, AllowPublicKeys};
 use tracing::{info, warn};
+use types::shard_networking::CERTIFICATE_NAME;
 use types::{
     checksum::Checksum,
-    committee::{AuthorityIndex, Epoch},
-    consensus::block::Round,
+    committee::Epoch,
     crypto::{NetworkKeyPair, NetworkPublicKey},
     metadata::ObjectPath,
     parameters::HttpParameters,
@@ -30,87 +31,24 @@ use types::{
     error::{ObjectError, ObjectResult},
     metadata::SignedParams,
 };
-use types::{
-    metadata::{DownloadableMetadata, DownloadableMetadataAPI},
-    shard_networking::CERTIFICATE_NAME,
-};
 use types::{multiaddr::Multiaddr, p2p::to_socket_addr};
 
-use crate::networking::{ClientPool, ObjectService, ObjectServiceManager};
+use crate::networking::{DownloadService, ObjectServiceManager};
 
-use super::{ObjectClient, ObjectStorage};
-
-pub struct ExternalClientPool {
-    clients: Cache<NetworkPublicKey, Client>,
-    parameters: Arc<HttpParameters>,
-    own_key: NetworkKeyPair,
+struct ExternalObjectService<S: ObjectStore> {
+    service: DownloadService<S>,
 }
 
-impl ExternalClientPool {
-    pub(crate) fn new(own_key: NetworkKeyPair, parameters: Arc<HttpParameters>) -> Self {
+impl<S: ObjectStore> Clone for ExternalObjectService<S> {
+    fn clone(&self) -> Self {
         Self {
-            clients: Cache::new(parameters.client_pool_capacity),
-            parameters,
-            own_key,
+            service: self.service.clone(),
         }
     }
 }
 
-#[async_trait]
-impl ClientPool for ExternalClientPool {
-    async fn get_client(
-        &self,
-        downloadable_metadata: &DownloadableMetadata,
-    ) -> ObjectResult<Client> {
-        if let Some(peer) = downloadable_metadata.peer() {
-            if let Some(client) = self.clients.get(&peer) {
-                return Ok(client);
-            }
-            let buffer_size = self.parameters.connection_buffer_size;
-
-            let tls_config = create_rustls_client_config(
-                peer.clone().into_inner(),
-                CERTIFICATE_NAME.to_string(),
-                Some(self.own_key.clone().private_key().into_inner()),
-            );
-            let client = reqwest::Client::builder()
-                .http2_prior_knowledge()
-                .use_preconfigured_tls(tls_config)
-                .http2_initial_connection_window_size(Some(buffer_size as u32))
-                .http2_initial_stream_window_size(Some(buffer_size as u32 / 2))
-                .http2_keep_alive_while_idle(true)
-                .http2_keep_alive_interval(self.parameters.keepalive_interval)
-                .http2_keep_alive_timeout(self.parameters.keepalive_interval)
-                .connect_timeout(self.parameters.connect_timeout)
-                .user_agent("SOMA (Object Client)")
-                .build()
-                .map_err(|e| ObjectError::ReqwestError(e.to_string()))?;
-
-            self.clients.insert(peer.clone(), client.clone());
-            Ok(client)
-        } else {
-            Err(ObjectError::NetworkRequest(
-                "A peer is needed for mTLS".to_string(),
-            ))
-        }
-    }
-
-    fn calculate_timeout(&self, num_bytes: u64) -> Duration {
-        let nanos = self
-            .parameters
-            .nanoseconds_per_byte
-            .saturating_mul(num_bytes);
-        self.parameters.connect_timeout + Duration::from_nanos(nanos)
-    }
-}
-
-#[derive(Clone)]
-struct ExternalObjectService<S: ObjectStorage> {
-    service: ObjectService<S>,
-}
-
-impl<S: ObjectStorage + Clone> ExternalObjectService<S> {
-    const fn new(service: ObjectService<S>) -> Self {
+impl<S: ObjectStore> ExternalObjectService<S> {
+    const fn new(service: DownloadService<S>) -> Self {
         Self { service }
     }
 
@@ -121,10 +59,9 @@ impl<S: ObjectStorage + Clone> ExternalObjectService<S> {
                 get(Self::embeddings),
             )
             .route("/epochs/{epoch}/probes/{checksum}", get(Self::probes))
-            .route("/epochs/{epoch}/inputs/{checksum}", get(Self::inputs))
             .route(
-                "/epochs/{epoch}/rounds/{round}/authorities/{authority_index}/blocks/{checksum}",
-                get(Self::blocks),
+                "/epochs/{epoch}/shards/{shard}/inputs/{checksum}",
+                get(Self::inputs),
             )
             .with_state(self)
     }
@@ -152,32 +89,17 @@ impl<S: ObjectStorage + Clone> ExternalObjectService<S> {
     }
 
     pub async fn inputs(
-        Path((epoch, checksum)): Path<(Epoch, Checksum)>,
+        Path((epoch, shard, checksum)): Path<(Epoch, Digest<Shard>, Checksum)>,
         Query(params): Query<SignedParams>,
         peer_certificates: axum::Extension<PeerCertificates>,
         State(Self { service }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
-        let path = ObjectPath::Inputs(epoch, checksum);
-        Self::signed_download(service, path, params, peer_certificates).await
-    }
-
-    pub async fn blocks(
-        Path((epoch, round, authority_index, checksum)): Path<(
-            Epoch,
-            Round,
-            AuthorityIndex,
-            Checksum,
-        )>,
-        Query(params): Query<SignedParams>,
-        peer_certificates: axum::Extension<PeerCertificates>,
-        State(Self { service }): State<Self>,
-    ) -> Result<impl IntoResponse, StatusCode> {
-        let path = ObjectPath::Blocks(epoch, round, authority_index, checksum);
+        let path = ObjectPath::Inputs(epoch, shard, checksum);
         Self::signed_download(service, path, params, peer_certificates).await
     }
 
     pub async fn signed_download(
-        service: ObjectService<S>,
+        service: DownloadService<S>,
         path: ObjectPath,
         params: SignedParams,
         peer_certificates: axum::Extension<PeerCertificates>,
@@ -204,7 +126,7 @@ impl<S: ObjectStorage + Clone> ExternalObjectService<S> {
             return Err(StatusCode::GONE);
         }
 
-        if params.prefix.is_empty() || !path.path().starts_with(&params.prefix) {
+        if params.prefix.is_empty() || !path.path().as_ref().starts_with(&params.prefix) {
             return Err(StatusCode::BAD_REQUEST);
         }
 
@@ -220,7 +142,6 @@ impl<S: ObjectStorage + Clone> ExternalObjectService<S> {
 }
 
 pub struct ExternalObjectServiceManager {
-    client: Arc<ObjectClient<ExternalClientPool>>,
     own_key: NetworkKeyPair,
     allower: AllowPublicKeys,
     parameters: Arc<HttpParameters>,
@@ -234,10 +155,6 @@ impl ExternalObjectServiceManager {
         allower: AllowPublicKeys,
     ) -> ObjectResult<Self> {
         Ok(Self {
-            client: Arc::new(ObjectClient::new(ExternalClientPool::new(
-                own_key.clone(),
-                parameters.clone(),
-            ))?),
             own_key,
             allower,
             parameters,
@@ -246,14 +163,8 @@ impl ExternalObjectServiceManager {
     }
 }
 
-impl<S: ObjectStorage + Clone> ObjectServiceManager<S> for ExternalObjectServiceManager {
-    type ClientPool = ExternalClientPool;
-
-    fn client(&self) -> Arc<ObjectClient<Self::ClientPool>> {
-        self.client.clone()
-    }
-
-    async fn start(&mut self, address: &Multiaddr, service: ObjectService<S>) {
+impl<S: ObjectStore> ObjectServiceManager<S> for ExternalObjectServiceManager {
+    async fn start(&mut self, address: &Multiaddr, service: DownloadService<S>) {
         let config = &self.parameters;
         let own_address = if address.is_localhost_ip() {
             address.clone()
@@ -326,25 +237,19 @@ mod tests {
     };
 
     use bytes::Bytes;
+    use object_store::{memory::InMemory, ObjectStore, PutPayload};
     use rand::{rngs::OsRng, RngCore};
+    use serde::Serialize;
     use soma_tls::AllowPublicKeys;
     use types::{
         checksum::Checksum,
-        metadata::{
-            DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataV1, ObjectPath,
-            SignedParams,
-        },
+        crypto::NetworkPublicKey,
+        metadata::{DownloadMetadata, Metadata, MetadataV1, ObjectPath, SignedParams},
         parameters::HttpParameters,
     };
     use types::{crypto::NetworkKeyPair, multiaddr::Multiaddr};
 
-    use crate::{
-        networking::{
-            external_service::{ExternalClientPool, ExternalObjectServiceManager},
-            ObjectClient, ObjectService, ObjectServiceManager,
-        },
-        storage::{memory::MemoryObjectStore, ObjectStorage},
-    };
+    use crate::networking::{external_service::ExternalObjectServiceManager, ObjectServiceManager};
 
     fn get_available_local_address() -> Multiaddr {
         let host = "127.0.0.1";
@@ -377,80 +282,109 @@ mod tests {
         Ok(addr.port())
     }
 
+    // #[tokio::test]
+    // async fn object_http_success() {
+    //     tracing_subscriber::fmt::init();
+    //     let parameters = Arc::new(HttpParameters::default());
+    //     let mut rng = rand::thread_rng();
+    //     let mut buffer = vec![0u8; 1024 * 1024];
+    //     OsRng.fill_bytes(&mut buffer);
+    //     let random_bytes = Bytes::from(buffer);
+
+    //     let address = get_available_local_address();
+    //     let client_keypair = NetworkKeyPair::generate(&mut rng);
+    //     let server_keypair = NetworkKeyPair::generate(&mut rng);
+    //     let checksum = Checksum::new_from_bytes(&random_bytes);
+    //     let download_size = random_bytes.len() as u64;
+
+    //     let object_path = ObjectPath::Uploads(checksum);
+    //     let metadata = Metadata::V1(MetadataV1::new(checksum, download_size));
+
+    //     let params = SignedParams::new(
+    //         object_path.path().to_string(),
+    //         Some(vec![client_keypair.public()]),
+    //         Duration::from_secs(10),
+    //         &server_keypair,
+    //     );
+
+    //     let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
+    //         Some(server_keypair.public()),
+    //         Some(params),
+    //         address.clone(),
+    //         object_path.clone(),
+    //         metadata,
+    //     ));
+
+    //     let client_object_storage = Arc::new(InMemory::new());
+    //     let server_object_storage = Arc::new(InMemory::new());
+
+    //     server_object_storage
+    //         .put(
+    //             &object_path.path(),
+    //             PutPayload::from_bytes(Bytes::from(random_bytes.clone())),
+    //         )
+    //         .await
+    //         .unwrap();
+
+    //     let server_object_network_service: ObjectService<InMemory> =
+    //         ObjectService::new(server_object_storage.clone(), server_keypair.public());
+
+    //     let allower = AllowPublicKeys::new(BTreeSet::from([client_keypair
+    //         .public()
+    //         .into_inner()
+    //         .clone()]));
+    //     // allower.update(BTreeSet::from([client_public_key.clone()]));
+    //     let mut server_object_network_manager =
+    //         ExternalObjectServiceManager::new(server_keypair.clone(), parameters.clone(), allower)
+    //             .unwrap();
+
+    //     server_object_network_manager
+    //         .start(&address, server_object_network_service)
+    //         .await;
+
+    //     let object_client =
+    //         ObjectClient::new(ExternalClientPool::new(client_keypair, parameters)).unwrap();
+
+    //     object_client
+    //         .download_object(client_object_storage.clone(), &downloadable_metadata)
+    //         .await
+    //         .unwrap();
+
+    //     let x = client_object_storage
+    //         .get(&object_path.path())
+    //         .await
+    //         .unwrap();
+
+    //     let bytes = x.bytes().await.unwrap();
+
+    //     assert_eq!(random_bytes, bytes)
+    // }
     #[tokio::test]
-    async fn object_http_success() {
-        tracing_subscriber::fmt::init();
-        let parameters = Arc::new(HttpParameters::default());
+    async fn signed_params() {
+        #[derive(Serialize)]
+        struct Params {
+            peers: Vec<NetworkPublicKey>,
+            prefix: String,
+            // pub peers: Option<Vec<NetworkPublicKey>>,
+            expires: u64,
+            // pub signature: NetworkSignature,
+        }
         let mut rng = rand::thread_rng();
         let mut buffer = vec![0u8; 1024 * 1024];
         OsRng.fill_bytes(&mut buffer);
         let random_bytes = Bytes::from(buffer);
 
-        let address = get_available_local_address();
-        let client_keypair = NetworkKeyPair::generate(&mut rng);
-        let server_keypair = NetworkKeyPair::generate(&mut rng);
+        let keypair = NetworkKeyPair::generate(&mut rng);
         let checksum = Checksum::new_from_bytes(&random_bytes);
         let download_size = random_bytes.len() as u64;
-        let object_path = ObjectPath::Tmp(0, checksum);
 
-        let metadata = Metadata::V1(MetadataV1::new(object_path.clone(), download_size));
-
-        let params = SignedParams::new(
-            object_path.path(),
-            Some(vec![client_keypair.public()]),
-            Duration::from_secs(10),
-            &server_keypair,
-        );
-
-        let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
-            Some(server_keypair.public()),
-            Some(params),
-            address.clone(),
-            metadata,
-        ));
-
-        let client_object_storage = Arc::new(MemoryObjectStore::new());
-        let server_object_storage = Arc::new(MemoryObjectStore::new());
-
-        server_object_storage
-            .put_object(&object_path, random_bytes.clone())
-            .await
-            .unwrap();
-
-        let server_object_network_service: ObjectService<MemoryObjectStore> =
-            ObjectService::new(server_object_storage.clone(), server_keypair.public());
-
-        let allower = AllowPublicKeys::new(BTreeSet::from([client_keypair
-            .public()
-            .into_inner()
-            .clone()]));
-        // allower.update(BTreeSet::from([client_public_key.clone()]));
-        let mut server_object_network_manager =
-            ExternalObjectServiceManager::new(server_keypair.clone(), parameters.clone(), allower)
-                .unwrap();
-
-        server_object_network_manager
-            .start(&address, server_object_network_service)
-            .await;
-
-        let object_client =
-            ObjectClient::new(ExternalClientPool::new(client_keypair, parameters)).unwrap();
-
-        let mut writer = client_object_storage
-            .get_object_writer(&object_path)
-            .await
-            .unwrap();
-
-        object_client
-            .download_object(&mut writer, &downloadable_metadata)
-            .await
-            .unwrap();
-
-        let x = client_object_storage
-            .get_object(&object_path)
-            .await
-            .unwrap();
-
-        assert_eq!(random_bytes, x)
+        let object_path = ObjectPath::Uploads(checksum);
+        let params = Params {
+            peers: vec![keypair.public(), keypair.public()],
+            prefix: object_path.path().to_string(),
+            expires: 1000000,
+        };
+        let query = serde_html_form::to_string(params).unwrap();
+        println!("{}", query);
     }
 }

@@ -55,6 +55,7 @@ sdk.workspace = true
 soma-keys.workspace = true
 eyre.workspace = true
 tempfile.workspace = true
+object_store.workspace = true
 
 [dependencies.pyo3]
 workspace = true

@@ -14,88 +14,81 @@ use fastcrypto::traits::KeyPair;
 use intelligence::inference::{
     InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI,
 };
-use objects::{
-    networking::{downloader::Downloader, external_service::ExternalClientPool},
-    storage::ObjectStorage,
+use object_store::ObjectStore;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
 };
-use std::{sync::Arc, time::Duration};
 use tracing::error;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
-    evaluation::{EvaluationInput, EvaluationInputV1, EvaluationOutputAPI},
-    metadata::{DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataAPI, SignedParams},
+    evaluation::{
+        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, ProbeSetAPI, ProbeWeightAPI,
+    },
+    metadata::{
+        DownloadMetadata, MetadataAPI, MtlsDownloadMetadata, MtlsDownloadMetadataV1, ObjectPath,
+    },
     shard::Shard,
-    shard_crypto::{digest::Digest, keys::EncoderKeyPair, verified::Verified},
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderKeyPair, EncoderPublicKey},
+        verified::Verified,
+    },
     submission::{Submission, SubmissionV1},
 };
 use types::{
     multiaddr::Multiaddr,
     shard::{Input, InputAPI},
 };
+use url::Url;
 
 use super::commit::CommitProcessor;
 
 pub(crate) struct InputProcessor<
     C: EncoderInternalNetworkClient,
-    S: ObjectStorage,
     E: EvaluationClient,
     I: InferenceClient,
 > {
     store: Arc<dyn Store>,
-    downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
     broadcaster: Arc<Broadcaster<C>>,
     inference_client: Arc<I>,
     evaluation_client: Arc<E>,
     encoder_keypair: Arc<EncoderKeyPair>,
-    storage: Arc<S>,
-    commit_pipeline: ActorHandle<CommitProcessor<C, S, E>>,
-    local_object_server: Multiaddr,
+    commit_pipeline: ActorHandle<CommitProcessor<C, E>>,
     context: Context,
 }
 
-impl<
-        C: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        E: EvaluationClient,
-        I: InferenceClient,
-    > InputProcessor<C, S, E, I>
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient>
+    InputProcessor<C, E, I>
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         store: Arc<dyn Store>,
-        downloader: ActorHandle<Downloader<ExternalClientPool, S>>,
         broadcaster: Arc<Broadcaster<C>>,
         inference_client: Arc<I>,
         evaluation_client: Arc<E>,
         encoder_keypair: Arc<EncoderKeyPair>,
-        storage: Arc<S>,
-        commit_pipeline: ActorHandle<CommitProcessor<C, S, E>>,
-        local_object_server: Multiaddr,
+        commit_pipeline: ActorHandle<CommitProcessor<C, E>>,
         context: Context,
     ) -> Self {
         Self {
             store,
-            downloader,
             broadcaster,
             inference_client,
             evaluation_client,
             encoder_keypair,
-            storage,
             commit_pipeline,
-            local_object_server,
             context,
         }
     }
 }
 
 #[async_trait]
-impl<
-        C: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        E: EvaluationClient,
-        I: InferenceClient,
-    > Processor for InputProcessor<C, S, E, I>
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> Processor
+    for InputProcessor<C, E, I>
 {
     type Input = (Shard, Verified<Input>);
     type Output = ();
@@ -104,6 +97,7 @@ impl<
         let keypair = self.encoder_keypair.inner().copy();
         let result: ShardResult<()> = async {
             let (shard, verified_input) = msg.input;
+            let epoch = shard.epoch();
 
             // the add_external_stage function will fail if the encoder has already dispatched to input processing
             // this stops redundant or conflicting messages from reaching the pipelines even on encoder restart
@@ -111,42 +105,41 @@ impl<
                 .store
                 .add_shard_stage_dispatch(&shard, ShardStage::Input)?;
             let shard_digest = shard.digest()?;
-            let metadata = verified_input.auth_token().metadata_commitment().metadata();
 
-            if !cfg!(msim) {
-                self.downloader
-                    .process(
-                        verified_input.downloadable_metadata().clone(),
-                        msg.cancellation.clone(),
-                    )
-                    .await?;
-            }
+            let input_download_metadata = verified_input.download_metadata();
 
-            let inference_input =
-                InferenceInput::V1(InferenceInputV1::new(shard.epoch(), metadata.clone()));
+            self.store
+                .add_input_download_metadata(&shard, input_download_metadata.clone())?;
+
+            let inference_input = InferenceInput::V1(InferenceInputV1::new(
+                epoch,
+                input_download_metadata.clone(),
+            ));
 
             // TODO: make this adjusted with size and coefficient configured by Parameters
-            let inference_timeout = Duration::from_secs(1);
+            let inference_timeout = Duration::from_secs(60);
+
             let inference_output = self
                 .inference_client
                 .call(inference_input, inference_timeout)
                 .await
                 .map_err(ShardError::IntelligenceError)?;
-            // TODO need to rename from tmp to the appropriate shard?
 
-            let (peer, address) = self
-                .context
-                .object_server(&self.encoder_keypair.public())
-                .ok_or(ShardError::MissingData)?;
+            let mut probe_set_download_metadata = HashMap::new();
+            for pw in inference_output.probe_set().probe_weights() {
+                let probe_download_metadata = self.context.probe(epoch, pw.encoder())?;
+                probe_set_download_metadata.insert(pw.encoder().clone(), probe_download_metadata);
+            }
 
             let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
-                metadata,
-                inference_output.metadata(),
-                inference_output.probe_set(),
-                address,
+                input_download_metadata.clone(),
+                inference_output.download_metadata().clone(),
+                probe_set_download_metadata,
+                inference_output.probe_set().clone(),
             ));
-            // TODO: make this adjusted with size and coefficient configured by Parameters
-            let evaluation_timeout = Duration::from_secs(1);
+
+            // TODO: make this based on size
+            let evaluation_timeout = Duration::from_secs(60);
 
             let evaluation_output = self
                 .evaluation_client
@@ -154,39 +147,22 @@ impl<
                 .await
                 .map_err(ShardError::EvaluationError)?;
 
-            // send input data object path to inference
-            // inference returns: probe_set, object path to representations/byte-ranges
-            // send input data, probe set, and representations to evaluation
-            // evaluation returns: score and summary embedding bytes
-            // create and sign a reveal message
-            // store in datastore
-            // use the digest of the reveal to create and sign a commit message
-
             let submission = Submission::V1(SubmissionV1::new(
                 self.encoder_keypair.public(),
                 shard_digest,
-                inference_output.metadata(),
-                inference_output.probe_set(),
+                inference_output.download_metadata().metadata().clone(),
+                inference_output.probe_set().clone(),
                 evaluation_output.score(),
-                evaluation_output.embedding_digest(),
-            ));
-
-            let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                Some(self.context.own_network_keypair().public()),
-                Some(SignedParams::new(
-                    inference_output.metadata().path().path(),
-                    Some(self.context.network_public_keys(shard.encoders())?),
-                    Duration::from_secs(100000),
-                    &self.context.own_network_keypair(),
-                )),
-                self.context.internal_object_service_address(),
-                inference_output.metadata(),
+                inference_output.summary_digest().clone(),
             ));
 
             let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
-            let _ = self
-                .store
-                .add_submission(&shard, submission, downloadable_metadata)?;
+            let _ = self.store.add_submission(
+                &shard,
+                submission,
+                inference_output.download_metadata().clone(),
+                evaluation_output.probe_set_download_metadata().clone(),
+            )?;
 
             let commit = Commit::V1(CommitV1::new(
                 verified_input.auth_token().clone(),

@@ -4,7 +4,7 @@ use crate::encoder_committee::CountUnit;
 use crate::entropy::{BlockEntropy, BlockEntropyProof};
 use crate::error::{ShardError, ShardResult, SharedError};
 use crate::finality::FinalityProof;
-use crate::metadata::{DownloadableMetadata, DownloadableMetadataAPI, MetadataCommitment};
+use crate::metadata::{DownloadMetadata, MetadataCommitment, MtlsDownloadMetadataAPI};
 use crate::object::ObjectRef;
 use crate::shard_crypto::keys::EncoderPublicKey;
 use crate::{error::SharedResult, shard_crypto::digest::Digest};
@@ -142,20 +142,20 @@ pub enum Input {
 #[enum_dispatch]
 pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn downloadable_metadata(&self) -> &DownloadableMetadata;
+    fn download_metadata(&self) -> &DownloadMetadata;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InputV1 {
     auth_token: ShardAuthToken,
-    downloadable_metadata: DownloadableMetadata,
+    download_metadata: DownloadMetadata,
 }
 
 impl InputV1 {
-    pub fn new(auth_token: ShardAuthToken, downloadable_metadata: DownloadableMetadata) -> Self {
+    pub fn new(auth_token: ShardAuthToken, download_metadata: DownloadMetadata) -> Self {
         Self {
             auth_token,
-            downloadable_metadata,
+            download_metadata,
         }
     }
 }
@@ -164,22 +164,21 @@ impl InputAPI for InputV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn downloadable_metadata(&self) -> &DownloadableMetadata {
-        &self.downloadable_metadata
+    fn download_metadata(&self) -> &DownloadMetadata {
+        &self.download_metadata
     }
 }
 
 pub fn verify_input(input: &Input, shard: &Shard, peer: &NetworkPublicKey) -> SharedResult<()> {
-    if let Some(input_peer) = input.downloadable_metadata().peer() {
-        if input_peer != *peer {
-            return Err(SharedError::FailedTypeVerification(
-                "sending peer must match tls key in input".to_string(),
-            ));
+    match input.download_metadata() {
+        DownloadMetadata::Mtls(download_metadata) => {
+            if download_metadata.peer() != peer {
+                return Err(SharedError::FailedTypeVerification(
+                    "sending peer must match tls key in input".to_string(),
+                ));
+            }
         }
-    } else {
-        return Err(SharedError::FailedTypeVerification(
-            "sending peer must match tls key in input".to_string(),
-        ));
+        _ => {}
     }
     Ok(())
 }

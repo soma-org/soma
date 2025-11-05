@@ -11,7 +11,7 @@ use crate::{
     },
     error::{ConsensusError, ConsensusResult},
     intent::{Intent, IntentMessage, IntentScope},
-    metadata::Metadata,
+    metadata::{DownloadMetadata, Metadata},
     multiaddr::Multiaddr,
     shard::{Shard, ShardEntropy},
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
@@ -353,7 +353,7 @@ pub fn to_encoder_committee_intent(
 pub struct Encoder {
     pub voting_power: VotingPower,
     pub encoder_key: EncoderPublicKey,
-    pub probe: Metadata,
+    pub probe: DownloadMetadata,
 }
 
 /// Represents an EncoderIndex, also modality marked for type safety

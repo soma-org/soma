@@ -8,7 +8,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use intelligence::{evaluation::messaging::EvaluationClient, inference::InferenceClient};
-use objects::storage::ObjectStorage;
+use object_store::ObjectStore;
 use tokio_util::sync::CancellationToken;
 use types::error::ShardResult;
 use types::shard::Input;
@@ -43,24 +43,18 @@ pub trait InternalDispatcher: Sync + Send + 'static {
 }
 
 #[derive(Clone)]
-pub(crate) struct InternalPipelineDispatcher<
-    C: EncoderInternalNetworkClient,
-    S: ObjectStorage,
-    E: EvaluationClient,
-> {
-    commit_handle: ActorHandle<CommitProcessor<C, S, E>>,
-    commit_votes_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
-    reveal_handle: ActorHandle<RevealProcessor<C, S, E>>,
+pub(crate) struct InternalPipelineDispatcher<C: EncoderInternalNetworkClient, E: EvaluationClient> {
+    commit_handle: ActorHandle<CommitProcessor<C, E>>,
+    commit_votes_handle: ActorHandle<CommitVotesProcessor<C, E>>,
+    reveal_handle: ActorHandle<RevealProcessor<C, E>>,
     report_vote_handle: ActorHandle<ReportVoteProcessor<C>>,
 }
 
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
-    InternalPipelineDispatcher<C, S, E>
-{
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> InternalPipelineDispatcher<C, E> {
     pub(crate) fn new(
-        commit_handle: ActorHandle<CommitProcessor<C, S, E>>,
-        commit_votes_handle: ActorHandle<CommitVotesProcessor<C, S, E>>,
-        reveal_handle: ActorHandle<RevealProcessor<C, S, E>>,
+        commit_handle: ActorHandle<CommitProcessor<C, E>>,
+        commit_votes_handle: ActorHandle<CommitVotesProcessor<C, E>>,
+        reveal_handle: ActorHandle<RevealProcessor<C, E>>,
         report_vote_handle: ActorHandle<ReportVoteProcessor<C>>,
     ) -> Self {
         Self {
@@ -73,8 +67,8 @@ impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient>
 }
 
 #[async_trait]
-impl<C: EncoderInternalNetworkClient, S: ObjectStorage, E: EvaluationClient> InternalDispatcher
-    for InternalPipelineDispatcher<C, S, E>
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient> InternalDispatcher
+    for InternalPipelineDispatcher<C, E>
 {
     async fn dispatch_commit(
         &self,
@@ -135,32 +129,23 @@ pub trait ExternalDispatcher: Sync + Send + 'static {
 #[derive(Clone)]
 pub(crate) struct ExternalPipelineDispatcher<
     C: EncoderInternalNetworkClient,
-    S: ObjectStorage,
     E: EvaluationClient,
     I: InferenceClient,
 > {
-    input_handle: ActorHandle<InputProcessor<C, S, E, I>>,
+    input_handle: ActorHandle<InputProcessor<C, E, I>>,
 }
 
-impl<
-        C: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        E: EvaluationClient,
-        I: InferenceClient,
-    > ExternalPipelineDispatcher<C, S, E, I>
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient>
+    ExternalPipelineDispatcher<C, E, I>
 {
-    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<C, S, E, I>>) -> Self {
+    pub(crate) fn new(input_handle: ActorHandle<InputProcessor<C, E, I>>) -> Self {
         Self { input_handle }
     }
 }
 
 #[async_trait]
-impl<
-        C: EncoderInternalNetworkClient,
-        S: ObjectStorage,
-        E: EvaluationClient,
-        I: InferenceClient,
-    > ExternalDispatcher for ExternalPipelineDispatcher<C, S, E, I>
+impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> ExternalDispatcher
+    for ExternalPipelineDispatcher<C, E, I>
 {
     async fn dispatch_input(
         &self,

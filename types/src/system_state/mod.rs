@@ -35,7 +35,10 @@ use std::{
 
 use crate::{
     checksum::Checksum,
-    metadata::{Metadata, MetadataV1, ObjectPath},
+    metadata::{
+        DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
+        ObjectPath,
+    },
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use crate::{encoder_committee::CountUnit, shard::Shard};
@@ -51,6 +54,7 @@ use shard::ShardResult;
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
 use tracing::{error, info};
+use url::Url;
 use validator::{Validator, ValidatorSet};
 
 use crate::{
@@ -1017,15 +1021,16 @@ impl SystemStateTrait for SystemState {
                 .encoders
                 .active_encoders
                 .iter()
-                .map(|encoder| {
-                    crate::encoder_committee::Encoder {
-                        voting_power: encoder.voting_power,
-                        encoder_key: encoder.metadata.encoder_pubkey.clone(),
-                        probe: Metadata::V1(MetadataV1::new(
-                            ObjectPath::Probes(0, Checksum::default()),
-                            0,
-                        )), // TODO: store and get actual probe checksum
-                    }
+                .map(|encoder| crate::encoder_committee::Encoder {
+                    voting_power: encoder.voting_power,
+                    encoder_key: encoder.metadata.encoder_pubkey.clone(),
+                    // TODO: actually correctly set the probes
+                    probe: DownloadMetadata::Default(DefaultDownloadMetadata::V1(
+                        DefaultDownloadMetadataV1::new(
+                            Url::from_str("https://example.com").unwrap(),
+                            Metadata::V1(MetadataV1::new(Checksum::default(), 0)),
+                        ),
+                    )),
                 })
                 .collect();
 
@@ -1238,15 +1243,16 @@ impl Committees {
             .encoder_set
             .active_encoders
             .iter()
-            .map(|encoder| {
-                crate::encoder_committee::Encoder {
-                    voting_power: encoder.voting_power,
-                    encoder_key: encoder.metadata.encoder_pubkey.clone(),
-                    probe: Metadata::V1(MetadataV1::new(
-                        ObjectPath::Probes(0, Checksum::default()),
-                        0,
-                    )), // TODO: store and get actual probe checksum
-                }
+            .map(|encoder| crate::encoder_committee::Encoder {
+                voting_power: encoder.voting_power,
+                encoder_key: encoder.metadata.encoder_pubkey.clone(),
+                // TODO: correctly handle the probe
+                probe: DownloadMetadata::Default(DefaultDownloadMetadata::V1(
+                    DefaultDownloadMetadataV1::new(
+                        Url::from_str("https://example.com").unwrap(),
+                        Metadata::V1(MetadataV1::new(Checksum::default(), 0)),
+                    ),
+                )),
             })
             .collect();
 

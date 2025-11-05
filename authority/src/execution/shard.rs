@@ -10,7 +10,7 @@ use types::{
     effects::ExecutionFailureStatus,
     encoder_committee::EncoderCommittee,
     error::{ConsensusError, ExecutionResult, SomaError},
-    metadata::{DownloadableMetadataAPI, MetadataAPI, MetadataCommitment},
+    metadata::{MetadataAPI, MetadataCommitment},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
     report::Report,
     shard::ShardAuthToken,

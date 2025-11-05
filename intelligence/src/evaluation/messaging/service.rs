@@ -2,27 +2,27 @@ use super::EvaluationService;
 use crate::evaluation::core::{pipeline::CoreProcessor, safetensor_buffer::SafetensorBuffer};
 use async_trait::async_trait;
 use bytes::Bytes;
-use objects::storage::ObjectStorage;
+use object_store::ObjectStore;
 use tokio_util::sync::CancellationToken;
 use types::error::{EvaluationError, EvaluationResult};
+use types::evaluation::EvaluationInputAPI;
 use types::{
     actors::ActorHandle,
-    evaluation::{EmbeddingDigest, EvaluationInput, EvaluationOutput, EvaluationOutputV1, ScoreV1},
-    shard_crypto::digest::Digest,
+    evaluation::{EvaluationInput, EvaluationOutput, EvaluationOutputV1, ScoreV1},
 };
 
-pub struct Evaluator<S: ObjectStorage + SafetensorBuffer> {
+pub struct Evaluator<S: ObjectStore + SafetensorBuffer> {
     core_processor: ActorHandle<CoreProcessor<S>>,
 }
 
-impl<S: ObjectStorage + SafetensorBuffer> Evaluator<S> {
+impl<S: ObjectStore + SafetensorBuffer> Evaluator<S> {
     pub fn new(core_processor: ActorHandle<CoreProcessor<S>>) -> Self {
         Self { core_processor }
     }
 }
 
 #[async_trait]
-impl<S: ObjectStorage + SafetensorBuffer> EvaluationService for Evaluator<S> {
+impl<S: ObjectStore + SafetensorBuffer> EvaluationService for Evaluator<S> {
     async fn handle_evaluation(&self, input_bytes: Bytes) -> EvaluationResult<Bytes> {
         let evaluation_input: EvaluationInput =
             bcs::from_bytes(&input_bytes).map_err(EvaluationError::MalformedType)?;
@@ -51,15 +51,17 @@ impl MockEvaluationService {
 #[async_trait]
 impl EvaluationService for MockEvaluationService {
     async fn handle_evaluation(&self, input_bytes: Bytes) -> EvaluationResult<Bytes> {
-        let _input: EvaluationInput =
+        let input: EvaluationInput =
             bcs::from_bytes(&input_bytes).map_err(EvaluationError::MalformedType)?;
 
         // TODO: do something with the input
 
         let score = ScoreV1::new(rand::random());
-        let summary_embedding: EmbeddingDigest = Digest::new(&vec![1, 1, 1]).unwrap();
 
-        let output = EvaluationOutput::V1(EvaluationOutputV1::new(score, summary_embedding));
+        let output = EvaluationOutput::V1(EvaluationOutputV1::new(
+            score,
+            input.probe_set_download_metadata().clone(),
+        ));
 
         let output_bytes =
             Bytes::from(bcs::to_bytes(&output).map_err(EvaluationError::MalformedType)?);

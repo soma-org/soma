@@ -3,13 +3,14 @@
 pub(crate) mod mem_store;
 pub(crate) mod rocksdb_store;
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::types::commit_votes::CommitVotes;
 use crate::types::report_vote::ReportVote;
 use serde::{Deserialize, Serialize};
 use types::error::ShardResult;
-use types::metadata::DownloadableMetadata;
+use types::metadata::DownloadMetadata;
 use types::submission::Submission;
 use types::{
     shard::Shard,
@@ -41,6 +42,14 @@ pub trait Store: Send + Sync + 'static {
     ) -> ShardResult<()>;
 
     fn add_shard_stage_dispatch(&self, shard: &Shard, stage: ShardStage) -> ShardResult<()>;
+
+    fn add_input_download_metadata(
+        &self,
+        shard: &Shard,
+        download_metadata: DownloadMetadata,
+    ) -> ShardResult<()>;
+
+    fn get_input_download_metadata(&self, shard: &Shard) -> ShardResult<DownloadMetadata>;
 
     fn add_submission_digest(
         &self,
@@ -80,19 +89,32 @@ pub trait Store: Send + Sync + 'static {
         &self,
         shard: &Shard,
         submission: Submission,
-        downloadable_metadata: DownloadableMetadata,
+        embedding_download_metadata: DownloadMetadata,
+        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     ) -> ShardResult<()>;
 
     fn get_submission(
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(Submission, Instant, DownloadableMetadata)>;
+    ) -> ShardResult<(
+        Submission,
+        Instant,
+        DownloadMetadata,
+        HashMap<EncoderPublicKey, DownloadMetadata>,
+    )>;
 
     fn get_all_submissions(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<(Submission, Instant, DownloadableMetadata)>>;
+    ) -> ShardResult<
+        Vec<(
+            Submission,
+            Instant,
+            DownloadMetadata,
+            HashMap<EncoderPublicKey, DownloadMetadata>,
+        )>,
+    >;
 
     fn add_report_vote(&self, shard: &Shard, report_vote: &Verified<ReportVote>)
         -> ShardResult<()>;

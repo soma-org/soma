@@ -6,10 +6,7 @@ use tokio::time::sleep;
 use tracing::info;
 use types::checksum::Checksum;
 use types::crypto::{KeypairTraits, NetworkKeyPair};
-use types::metadata::{
-    DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
-    ObjectPath,
-};
+use types::metadata::{DownloadMetadata, Metadata, MetadataCommitment, MetadataV1, ObjectPath};
 use types::shard::{Shard, ShardAuthToken};
 use types::shard_crypto::digest::Digest;
 use types::{

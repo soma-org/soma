@@ -12,12 +12,8 @@ use intelligence::inference::{
     json_client::JSONClient, InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI,
 };
 use json_to_table::{json_to_table, Orientation};
-use objects::{
-    networking::{
-        internal_service::InternalObjectServiceManager, ObjectService, ObjectServiceManager,
-    },
-    storage::{memory::MemoryObjectStore, ObjectStorage},
-};
+use object_store::{memory::InMemory, ObjectStore, PutPayload};
+use objects::networking::{internal_service::InternalObjectServiceManager, ObjectServiceManager};
 use rand::{rngs::StdRng, SeedableRng};
 use reqwest::Url;
 use serde::Serialize;
@@ -32,6 +28,8 @@ use types::{
     metadata::{Metadata, MetadataV1, ObjectPath},
     p2p::to_host_port_str,
     parameters::HttpParameters,
+    shard::Shard,
+    shard_crypto::digest::Digest,
 };
 
 #[allow(clippy::large_enum_variant)]
@@ -68,52 +66,58 @@ impl InferenceCommand {
                 timeout_secs,
                 epoch,
             } => {
-                let data = fs::read(&data_path)
-                    .await
-                    .map_err(|e| CliError::InferenceError(e.to_string()))?;
+                unimplemented!()
+                // let data = fs::read(&data_path)
+                //     .await
+                //     .map_err(|e| CliError::InferenceError(e.to_string()))?;
 
-                let address = get_available_local_address();
+                // let address = get_available_local_address();
 
-                let object_storage = Arc::new(MemoryObjectStore::new());
-                let checksum = Checksum::new_from_bytes(&data);
-                let size = data.len() as u64;
-                let epoch = epoch.unwrap_or(0);
-                let object_path = ObjectPath::Inputs(epoch, checksum);
+                // let object_storage = Arc::new(InMemory::new());
+                // let checksum = Checksum::new_from_bytes(&data);
+                // let size = data.len() as u64;
+                // let epoch = epoch.unwrap_or(0);
+                // let shard_digest = Digest::<Shard>::new_from_bytes([1; 32]);
 
-                let metadata = Metadata::V1(MetadataV1::new(object_path.clone(), size));
+                // let object_path = ObjectPath::Inputs(epoch, shard_digest, checksum);
 
-                let mut rng = StdRng::from_seed([0; 32]);
-                let network_keypair = NetworkKeyPair::generate(&mut rng);
+                // let metadata = Metadata::V1(MetadataV1::new(checksum, size));
 
-                object_storage
-                    .put_object(&object_path, Bytes::from(data))
-                    .await
-                    .map_err(|e| CliError::InferenceError(e.to_string()))?;
+                // let mut rng = StdRng::from_seed([0; 32]);
+                // let network_keypair = NetworkKeyPair::generate(&mut rng);
 
-                let object_service: ObjectService<MemoryObjectStore> =
-                    ObjectService::new(object_storage.clone(), network_keypair.public());
+                // object_storage
+                //     .put(
+                //         &object_path.path(),
+                //         PutPayload::from_bytes(Bytes::from(data)),
+                //     )
+                //     .await
+                //     .map_err(|e| CliError::InferenceError(e.to_string()))?;
 
-                let mut object_service_manager = InternalObjectServiceManager::new(
-                    network_keypair.clone(),
-                    Arc::new(HttpParameters::default()),
-                )
-                .unwrap();
-                object_service_manager.start(&address, object_service).await;
+                // let object_service: ObjectService<InMemory> =
+                //     ObjectService::new(object_storage.clone(), network_keypair.public());
 
-                let object_server_url =
-                    Url::parse(&format!("http://{}", to_host_port_str(&address).unwrap())).unwrap();
+                // let mut object_service_manager = InternalObjectServiceManager::new(
+                //     network_keypair.clone(),
+                //     Arc::new(HttpParameters::default()),
+                // )
+                // .unwrap();
+                // object_service_manager.start(&address, object_service).await;
 
-                let client = JSONClient::new(object_server_url, base_url).unwrap();
-                let input = InferenceInput::V1(InferenceInputV1::new(epoch, metadata));
-                let inference_output = client
-                    .call(input, Duration::from_secs(timeout_secs.unwrap_or(30)))
-                    .await
-                    .map_err(|e| CliError::InferenceError(e.to_string()))?;
+                // let object_server_url =
+                //     Url::parse(&format!("http://{}", to_host_port_str(&address).unwrap())).unwrap();
 
-                CommandOutput::Mock(InferenceOutput {
-                    metadata: inference_output.metadata(),
-                    probe_set: inference_output.probe_set(),
-                })
+                // let client = JSONClient::new(object_server_url, base_url).unwrap();
+                // let input = InferenceInput::V1(InferenceInputV1::new(epoch, object_path, metadata));
+                // let inference_output = client
+                //     .call(input, Duration::from_secs(timeout_secs.unwrap_or(30)))
+                //     .await
+                //     .map_err(|e| CliError::InferenceError(e.to_string()))?;
+
+                // CommandOutput::Mock(InferenceOutput {
+                //     metadata: inference_output.metadata(),
+                //     probe_set: inference_output.probe_set(),
+                // })
             }
         })
     }

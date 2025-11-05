@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use store::DBMapUtils;
 use store::{
@@ -16,7 +16,7 @@ use crate::types::{
 use types::{
     committee::Epoch,
     error::{ShardError, ShardResult},
-    metadata::DownloadableMetadata,
+    metadata::DownloadMetadata,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
@@ -70,6 +70,8 @@ pub struct RocksDBStore {
     /// Stores dispatch markers for shard stages
     shard_stage_dispatches: DBMap<(Epoch, Digest<Shard>, ShardStage), ()>,
 
+    input_download_metadata: DBMap<(Epoch, Digest<Shard>), DownloadMetadata>,
+
     /// Stores submission digests with timestamps
     submission_digests:
         DBMap<(Epoch, Digest<Shard>, EncoderPublicKey), TimestampedData<Digest<Submission>>>,
@@ -77,7 +79,11 @@ pub struct RocksDBStore {
     /// Stores actual submissions with metadata
     submissions: DBMap<
         (Epoch, Digest<Shard>, Digest<Submission>),
-        TimestampedData<(Bytes, DownloadableMetadata)>,
+        TimestampedData<(
+            Bytes,
+            DownloadMetadata,
+            HashMap<EncoderPublicKey, DownloadMetadata>,
+        )>,
     >,
 
     /// Stores commit votes
@@ -96,6 +102,7 @@ pub struct RocksDBStore {
 impl RocksDBStore {
     const SHARD_STAGE_MESSAGES_CF: &'static str = "shard_stage_messages";
     const SHARD_STAGE_DISPATCHES_CF: &'static str = "shard_stage_dispatches";
+    const INPUT_DOWNLOAD_METADATA_CF: &'static str = "input_download_metadata";
     const SUBMISSION_DIGESTS_CF: &'static str = "submission_digests";
     const SUBMISSIONS_CF: &'static str = "submissions";
     const COMMIT_VOTES_CF: &'static str = "commit_votes";
@@ -116,6 +123,10 @@ impl RocksDBStore {
             ),
             (
                 Self::SHARD_STAGE_DISPATCHES_CF.to_string(),
+                cf_options.clone(),
+            ),
+            (
+                Self::INPUT_DOWNLOAD_METADATA_CF.to_string(),
                 cf_options.clone(),
             ),
             (Self::SUBMISSION_DIGESTS_CF.to_string(), cf_options.clone()),
@@ -178,6 +189,33 @@ impl Store for RocksDBStore {
             self.shard_stage_dispatches.insert(&key, &())?;
             Ok(())
         }
+    }
+    fn add_input_download_metadata(
+        &self,
+        shard: &Shard,
+        download_metadata: DownloadMetadata,
+    ) -> ShardResult<()> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let key = (epoch, shard_digest);
+
+        if self.input_download_metadata.contains_key(&key)? {
+            return Err(ShardError::RecvDuplicate);
+        }
+
+        self.input_download_metadata
+            .insert(&key, &download_metadata)?;
+        Ok(())
+    }
+
+    fn get_input_download_metadata(&self, shard: &Shard) -> ShardResult<DownloadMetadata> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let key = (epoch, shard_digest);
+
+        self.input_download_metadata
+            .get(&key)?
+            .ok_or_else(|| ShardError::NotFound("submission digest".to_string()))
     }
 
     fn add_submission_digest(
@@ -327,7 +365,8 @@ impl Store for RocksDBStore {
         &self,
         shard: &Shard,
         submission: Submission,
-        downloadable_metadata: DownloadableMetadata,
+        embedding_download_metadata: DownloadMetadata,
+        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = submission.shard_digest();
@@ -340,7 +379,11 @@ impl Store for RocksDBStore {
 
         let serialized = bcs::to_bytes(&submission)
             .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
-        let timestamped = TimestampedData::new((Bytes::from(serialized), downloadable_metadata));
+        let timestamped = TimestampedData::new((
+            Bytes::from(serialized),
+            embedding_download_metadata,
+            probe_set_download_metadata,
+        ));
         self.submissions.insert(&key, &timestamped)?;
         Ok(())
     }
@@ -349,7 +392,12 @@ impl Store for RocksDBStore {
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(Submission, Instant, DownloadableMetadata)> {
+    ) -> ShardResult<(
+        Submission,
+        Instant,
+        DownloadMetadata,
+        HashMap<EncoderPublicKey, DownloadMetadata>,
+    )> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest, submission_digest);
@@ -359,7 +407,12 @@ impl Store for RocksDBStore {
             .map(|timestamped| {
                 let submission: Submission = bcs::from_bytes(&timestamped.data.0)
                     .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
-                Ok((submission, timestamped.instant(), timestamped.data.1))
+                Ok((
+                    submission,
+                    timestamped.instant(),
+                    timestamped.data.1,
+                    timestamped.data.2,
+                ))
             })
             .ok_or_else(|| ShardError::NotFound("submission".to_string()))?
     }
@@ -367,7 +420,14 @@ impl Store for RocksDBStore {
     fn get_all_submissions(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<(Submission, Instant, DownloadableMetadata)>> {
+    ) -> ShardResult<
+        Vec<(
+            Submission,
+            Instant,
+            DownloadMetadata,
+            HashMap<EncoderPublicKey, DownloadMetadata>,
+        )>,
+    > {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -383,7 +443,12 @@ impl Store for RocksDBStore {
             if e == epoch && sd == shard_digest {
                 let submission: Submission = bcs::from_bytes(&timestamped.data.0)
                     .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
-                results.push((submission, timestamped.instant(), timestamped.data.1));
+                results.push((
+                    submission,
+                    timestamped.instant(),
+                    timestamped.data.1,
+                    timestamped.data.2,
+                ));
             }
         }
 

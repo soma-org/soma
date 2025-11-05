@@ -1,13 +1,13 @@
 use parking_lot::RwLock;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     ops::Deref,
     time::Instant,
 };
 use types::{
     committee::Epoch,
     error::{ShardError, ShardResult},
-    metadata::DownloadableMetadata,
+    metadata::DownloadMetadata,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
@@ -36,11 +36,16 @@ type Encoder = EncoderPublicKey;
 pub(crate) struct Inner {
     shard_stage_messages: BTreeMap<(Epoch, Digest<Shard>, ShardStage), HashSet<EncoderPublicKey>>,
     shard_stage_dispatches: BTreeMap<(Epoch, Digest<Shard>, ShardStage), ()>,
-
+    input_download_metadata: BTreeMap<(Epoch, Digest<Shard>), DownloadMetadata>,
     submission_digests: BTreeMap<(Epoch, Digest<Shard>, Encoder), (Digest<Submission>, Instant)>,
     submissions: BTreeMap<
         (Epoch, Digest<Shard>, Digest<Submission>),
-        (Submission, Instant, DownloadableMetadata),
+        (
+            Submission,
+            Instant,
+            DownloadMetadata,
+            HashMap<EncoderPublicKey, DownloadMetadata>,
+        ),
     >,
 
     commit_votes: BTreeMap<(Epoch, Digest<Shard>, Encoder), CommitVotes>,
@@ -58,6 +63,7 @@ impl MemStore {
             inner: RwLock::new(Inner {
                 shard_stage_messages: BTreeMap::new(),
                 shard_stage_dispatches: BTreeMap::new(),
+                input_download_metadata: BTreeMap::new(),
                 submission_digests: BTreeMap::new(),
                 submissions: BTreeMap::new(),
                 commit_votes: BTreeMap::new(),
@@ -91,6 +97,7 @@ impl Store for MemStore {
             Ok(())
         }
     }
+
     fn add_shard_stage_dispatch(&self, shard: &Shard, stage: ShardStage) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
@@ -103,6 +110,40 @@ impl Store for MemStore {
             Err(ShardError::Conflict("stage already exists".to_string()))
         }
     }
+    fn add_input_download_metadata(
+        &self,
+        shard: &Shard,
+        download_metadata: DownloadMetadata,
+    ) -> ShardResult<()> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let key = (epoch, shard_digest);
+
+        let mut guard = self.inner.write();
+
+        match guard.input_download_metadata.get(&key) {
+            Some(_existing) => Err(ShardError::Conflict(
+                "encoder has existing download metadata".to_string(),
+            )),
+            None => {
+                guard.input_download_metadata.insert(key, download_metadata);
+                Ok(())
+            }
+        }
+    }
+    fn get_input_download_metadata(&self, shard: &Shard) -> ShardResult<DownloadMetadata> {
+        let epoch = shard.epoch();
+        let shard_digest = shard.digest()?;
+        let key = (epoch, shard_digest);
+
+        let inner = self.inner.read();
+        if let Some(input_download_metadata) = inner.input_download_metadata.get(&key) {
+            Ok(input_download_metadata.clone())
+        } else {
+            Err(ShardError::NotFound("score set".to_string()))
+        }
+    }
+
     fn add_submission_digest(
         &self,
         shard: &Shard,
@@ -246,7 +287,8 @@ impl Store for MemStore {
         &self,
         shard: &Shard,
         submission: Submission,
-        downloadable_metadata: DownloadableMetadata,
+        embedding_download_metadata: DownloadMetadata,
+        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = submission.shard_digest();
@@ -258,9 +300,15 @@ impl Store for MemStore {
         match guard.submissions.get(&key) {
             Some(_) => {}
             None => {
-                guard
-                    .submissions
-                    .insert(key, (submission, Instant::now(), downloadable_metadata));
+                guard.submissions.insert(
+                    key,
+                    (
+                        submission,
+                        Instant::now(),
+                        embedding_download_metadata,
+                        probe_set_download_metadata,
+                    ),
+                );
             }
         };
         Ok(())
@@ -270,7 +318,12 @@ impl Store for MemStore {
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(Submission, Instant, DownloadableMetadata)> {
+    ) -> ShardResult<(
+        Submission,
+        Instant,
+        DownloadMetadata,
+        HashMap<EncoderPublicKey, DownloadMetadata>,
+    )> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest, submission_digest);
@@ -285,7 +338,14 @@ impl Store for MemStore {
     fn get_all_submissions(
         &self,
         shard: &Shard,
-    ) -> ShardResult<Vec<(Submission, Instant, DownloadableMetadata)>> {
+    ) -> ShardResult<
+        Vec<(
+            Submission,
+            Instant,
+            DownloadMetadata,
+            HashMap<EncoderPublicKey, DownloadMetadata>,
+        )>,
+    > {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -295,13 +355,19 @@ impl Store for MemStore {
             .submissions
             .iter()
             .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
-            .map(|(_, (submission, instant, downloadable_metadata))| {
-                (
-                    submission.clone(),
-                    instant.clone(),
-                    downloadable_metadata.clone(),
-                )
-            })
+            .map(
+                |(
+                    _,
+                    (submission, instant, embedding_download_metadata, probe_set_download_metadata),
+                )| {
+                    (
+                        submission.clone(),
+                        instant.clone(),
+                        embedding_download_metadata.clone(),
+                        probe_set_download_metadata.clone(),
+                    )
+                },
+            )
             .collect();
 
         Ok(submissions)

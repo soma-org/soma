@@ -22,8 +22,8 @@ use types::{
     error::{SomaError, SomaResult},
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
     metadata::{
-        DownloadableMetadata, DownloadableMetadataV1, Metadata, MetadataCommitment, MetadataV1,
-        ObjectPath, SignedParams,
+        DownloadMetadata, Metadata, MetadataAPI, MetadataCommitment, MetadataV1, ObjectPath,
+        SignedParams,
     },
     multiaddr::Multiaddr,
     object::{Object, ObjectRef},
@@ -441,10 +441,7 @@ where
 
         // TODO: look up real metadata commitment using metadata_commitment_digest in tx
         let size_in_bytes = 1;
-        let metadata = MetadataV1::new(
-            ObjectPath::Inputs(finality_proof.block_ref().epoch, Checksum::default()),
-            size_in_bytes,
-        );
+        let metadata = MetadataV1::new(Checksum::default(), size_in_bytes);
         let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
 
         let network_key_pair = self.validator_state.config.network_key_pair().clone();
@@ -500,6 +497,8 @@ where
             let token = shard_auth_token.clone();
             let digest = *tx_digest;
             let shard = shard.clone();
+            //TODO: handle this error better
+            let shard_digest = shard.digest().unwrap();
             let signed_params = SignedParams::new(
                 "/".to_string(),
                 Some(shard_peer_keys),
@@ -507,31 +506,38 @@ where
                 &network_key_pair,
             );
 
-            let downloadable_metadata = DownloadableMetadata::V1(DownloadableMetadataV1::new(
-                Some(network_key_pair.public()),
-                Some(signed_params),
-                address,
-                metadata_commitment.metadata(),
-            ));
+            unimplemented!();
 
-            tokio::spawn(async move {
-                match client
-                    .send_to_shard(
-                        shard.encoders(),
-                        token,
-                        downloadable_metadata,
-                        Duration::from_secs(5),
-                    )
-                    .await
-                {
-                    Ok(()) => {
-                        debug!(?digest, "Successfully sent shard input to all members");
-                    }
-                    Err(e) => {
-                        error!(?digest, error = ?e, "Failed to send to shard members");
-                    }
-                }
-            });
+            // let downloadable_metadata = DownloadMetadata::V1(DownloadableMetadataV1::new(
+            //     Some(network_key_pair.public()),
+            //     Some(signed_params),
+            //     address,
+            //     ObjectPath::Inputs(
+            //         shard.epoch(),
+            //         shard_digest,
+            //         metadata_commitment.metadata().checksum(),
+            //     ),
+            //     metadata_commitment.metadata(),
+            // ));
+
+            // tokio::spawn(async move {
+            //     match client
+            //         .send_to_shard(
+            //             shard.encoders(),
+            //             token,
+            //             downloadable_metadata,
+            //             Duration::from_secs(5),
+            //         )
+            //         .await
+            //     {
+            //         Ok(()) => {
+            //             debug!(?digest, "Successfully sent shard input to all members");
+            //         }
+            //         Err(e) => {
+            //             error!(?digest, error = ?e, "Failed to send to shard members");
+            //         }
+            //     }
+            // });
         }
 
         return Ok(shard);

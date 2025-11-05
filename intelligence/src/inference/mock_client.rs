@@ -1,21 +1,21 @@
 use crate::inference::{InferenceClient, InferenceInput, InferenceOutput};
 use async_trait::async_trait;
-use objects::storage::ObjectStorage;
+use object_store::ObjectStore;
 use std::{sync::Arc, time::Duration};
 use types::error::IntelligenceResult;
 
-pub struct MockInferenceClient<S: ObjectStorage> {
+pub struct MockInferenceClient<S: ObjectStore> {
     storage: Arc<S>,
 }
 
-impl<S: ObjectStorage> MockInferenceClient<S> {
+impl<S: ObjectStore> MockInferenceClient<S> {
     pub fn new(storage: Arc<S>) -> Self {
         Self { storage }
     }
 }
 
 #[async_trait]
-impl<S: ObjectStorage> InferenceClient for MockInferenceClient<S> {
+impl<S: ObjectStore> InferenceClient for MockInferenceClient<S> {
     async fn call(
         &self,
         input: InferenceInput,
