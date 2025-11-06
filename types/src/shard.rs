@@ -4,7 +4,7 @@ use crate::encoder_committee::CountUnit;
 use crate::entropy::{BlockEntropy, BlockEntropyProof};
 use crate::error::{ShardError, ShardResult, SharedError};
 use crate::finality::FinalityProof;
-use crate::metadata::{DownloadMetadata, MetadataCommitment, MtlsDownloadMetadataAPI};
+use crate::metadata::{DownloadMetadata, Metadata, MtlsDownloadMetadataAPI};
 use crate::object::ObjectRef;
 use crate::shard_crypto::keys::EncoderPublicKey;
 use crate::{error::SharedResult, shard_crypto::digest::Digest};
@@ -69,16 +69,13 @@ impl Shard {
 /// BlockEntropy is derived from VDF(Epoch, BlockRef, iterations)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ShardEntropy {
-    metadata_commitment: MetadataCommitment,
+    metadata: Metadata,
     entropy: BlockEntropy,
 }
 
 impl ShardEntropy {
-    pub fn new(metadata_commitment: MetadataCommitment, entropy: BlockEntropy) -> Self {
-        Self {
-            metadata_commitment,
-            entropy,
-        }
+    pub fn new(metadata: Metadata, entropy: BlockEntropy) -> Self {
+        Self { metadata, entropy }
     }
 }
 
@@ -87,7 +84,7 @@ pub struct ShardAuthToken {
     pub finality_proof: FinalityProof,
     pub block_entropy: BlockEntropy,
     pub block_entropy_proof: BlockEntropyProof,
-    pub metadata_commitment: MetadataCommitment,
+    pub metadata: Metadata,
     pub shard_input_ref: ObjectRef,
 }
 
@@ -96,14 +93,14 @@ impl ShardAuthToken {
         finality_proof: FinalityProof,
         block_entropy: BlockEntropy,
         block_entropy_proof: BlockEntropyProof,
-        metadata_commitment: MetadataCommitment,
+        metadata: Metadata,
         shard_input_ref: ObjectRef,
     ) -> Self {
         Self {
             finality_proof,
             block_entropy,
             block_entropy_proof,
-            metadata_commitment,
+            metadata,
             shard_input_ref,
         }
     }
@@ -120,8 +117,8 @@ impl ShardAuthToken {
         self.block_entropy_proof.clone()
     }
 
-    pub fn metadata_commitment(&self) -> MetadataCommitment {
-        self.metadata_commitment.clone()
+    pub fn metadata(&self) -> Metadata {
+        self.metadata.clone()
     }
 
     pub fn shard_input_ref(&self) -> ObjectRef {

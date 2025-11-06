@@ -2230,8 +2230,7 @@ mod _getter_impls {
     impl ShardResult {
         pub const fn const_default() -> Self {
             Self {
-                digest: None,
-                data_size_bytes: None,
+                metadata: None,
                 amount: None,
                 report: None,
             }
@@ -2241,12 +2240,23 @@ mod _getter_impls {
             static DEFAULT: ShardResult = ShardResult::const_default();
             &DEFAULT
         }
-        pub fn with_digest(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.digest = Some(field.into());
-            self
+        pub fn metadata(&self) -> &Metadata {
+            self.metadata
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Metadata::default_instance() as _)
         }
-        pub fn with_data_size_bytes(mut self, field: u64) -> Self {
-            self.data_size_bytes = Some(field.into());
+        pub fn metadata_opt(&self) -> Option<&Metadata> {
+            self.metadata.as_ref().map(|field| field as _)
+        }
+        pub fn metadata_opt_mut(&mut self) -> Option<&mut Metadata> {
+            self.metadata.as_mut().map(|field| field as _)
+        }
+        pub fn metadata_mut(&mut self) -> &mut Metadata {
+            self.metadata.get_or_insert_default()
+        }
+        pub fn with_metadata(mut self, field: Metadata) -> Self {
+            self.metadata = Some(field.into());
             self
         }
         pub fn with_amount(mut self, field: u64) -> Self {
@@ -3798,11 +3808,69 @@ mod _getter_impls {
             self
         }
     }
+    impl Metadata {
+        pub const fn const_default() -> Self {
+            Self { version: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Metadata = Metadata::const_default();
+            &DEFAULT
+        }
+        pub fn v1(&self) -> &MetadataV1 {
+            if let Some(metadata::Version::V1(field)) = &self.version {
+                field as _
+            } else {
+                MetadataV1::default_instance() as _
+            }
+        }
+        pub fn v1_opt(&self) -> Option<&MetadataV1> {
+            if let Some(metadata::Version::V1(field)) = &self.version {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_opt_mut(&mut self) -> Option<&mut MetadataV1> {
+            if let Some(metadata::Version::V1(field)) = &mut self.version {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_mut(&mut self) -> &mut MetadataV1 {
+            if self.v1_opt_mut().is_none() {
+                self.version = Some(metadata::Version::V1(MetadataV1::default()));
+            }
+            self.v1_opt_mut().unwrap()
+        }
+        pub fn with_v1(mut self, field: MetadataV1) -> Self {
+            self.version = Some(metadata::Version::V1(field.into()));
+            self
+        }
+    }
+    impl MetadataV1 {
+        pub const fn const_default() -> Self {
+            Self { checksum: None, size: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MetadataV1 = MetadataV1::const_default();
+            &DEFAULT
+        }
+        pub fn with_checksum(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.checksum = Some(field.into());
+            self
+        }
+        pub fn with_size(mut self, field: u64) -> Self {
+            self.size = Some(field.into());
+            self
+        }
+    }
     impl EmbedData {
         pub const fn const_default() -> Self {
             Self {
-                digest: None,
-                data_size_bytes: None,
+                metadata: None,
                 coin_ref: None,
             }
         }
@@ -3811,12 +3879,23 @@ mod _getter_impls {
             static DEFAULT: EmbedData = EmbedData::const_default();
             &DEFAULT
         }
-        pub fn with_digest(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.digest = Some(field.into());
-            self
+        pub fn metadata(&self) -> &Metadata {
+            self.metadata
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Metadata::default_instance() as _)
         }
-        pub fn with_data_size_bytes(mut self, field: u64) -> Self {
-            self.data_size_bytes = Some(field.into());
+        pub fn metadata_opt(&self) -> Option<&Metadata> {
+            self.metadata.as_ref().map(|field| field as _)
+        }
+        pub fn metadata_opt_mut(&mut self) -> Option<&mut Metadata> {
+            self.metadata.as_mut().map(|field| field as _)
+        }
+        pub fn metadata_mut(&mut self) -> &mut Metadata {
+            self.metadata.get_or_insert_default()
+        }
+        pub fn with_metadata(mut self, field: Metadata) -> Self {
+            self.metadata = Some(field.into());
             self
         }
         pub fn coin_ref(&self) -> &ObjectReference {

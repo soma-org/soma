@@ -2815,14 +2815,12 @@ pub struct Encoder {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ShardResult {
-    #[prost(bytes = "bytes", optional, tag = "1")]
-    pub digest: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Changed from digest + data_size_bytes
+    #[prost(message, optional, tag = "1")]
+    pub metadata: ::core::option::Option<Metadata>,
     #[prost(uint64, optional, tag = "2")]
-    pub data_size_bytes: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "3")]
     pub amount: ::core::option::Option<u64>,
-    /// Serialized Report
-    #[prost(bytes = "bytes", optional, tag = "4")]
+    #[prost(bytes = "bytes", optional, tag = "3")]
     pub report: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// A transaction.
@@ -3086,12 +3084,35 @@ pub struct WithdrawStake {
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct EmbedData {
+pub struct Metadata {
+    #[prost(oneof = "metadata::Version", tags = "1")]
+    pub version: ::core::option::Option<metadata::Version>,
+}
+/// Nested message and enum types in `Metadata`.
+pub mod metadata {
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Version {
+        #[prost(message, tag = "1")]
+        V1(super::MetadataV1),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MetadataV1 {
+    /// 32-byte digest
     #[prost(bytes = "bytes", optional, tag = "1")]
-    pub digest: ::core::option::Option<::prost::bytes::Bytes>,
+    pub checksum: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Size in bytes
     #[prost(uint64, optional, tag = "2")]
-    pub data_size_bytes: ::core::option::Option<u64>,
-    #[prost(message, optional, tag = "3")]
+    pub size: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EmbedData {
+    #[prost(message, optional, tag = "1")]
+    pub metadata: ::core::option::Option<Metadata>,
+    #[prost(message, optional, tag = "2")]
     pub coin_ref: ::core::option::Option<ObjectReference>,
 }
 #[non_exhaustive]

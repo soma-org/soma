@@ -31,6 +31,8 @@
 //! - Lamport timestamps for causal ordering
 
 use crate::base::HexAccountAddress;
+use crate::metadata::Metadata;
+use crate::shard_crypto::digest::Digest;
 use crate::{
     base::{FullObjectID, FullObjectRef, SomaAddress, SOMA_ADDRESS_LENGTH},
     committee::EpochId,
@@ -40,7 +42,6 @@ use crate::{
     serde::Readable,
     system_state::{shard::ShardInput, staking::StakedSoma},
 };
-use crate::{metadata::MetadataCommitment, shard_crypto::digest::Digest};
 use anyhow::anyhow;
 use fastcrypto::{
     encoding::{decode_bytes_hex, Encoding, Hex},
@@ -442,8 +443,7 @@ impl Object {
     /// Create a new ShardInput object
     pub fn new_shard_input(
         id: ObjectID,
-        digest: Digest<MetadataCommitment>,
-        data_size_bytes: u64,
+        metadata: Metadata,
         amount: u64,
         expiration_epoch: EpochId,
         submitter: SomaAddress,
@@ -451,8 +451,7 @@ impl Object {
         previous_transaction: TransactionDigest,
     ) -> Self {
         let shard_input = ShardInput {
-            digest,
-            data_size_bytes,
+            metadata,
             amount,
             expiration_epoch,
             submitter,

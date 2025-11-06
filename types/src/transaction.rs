@@ -34,10 +34,12 @@ use std::{
 };
 
 use crate::{
-    metadata::MetadataCommitment,
+    metadata::Metadata,
     shard::Shard,
-    shard_crypto::digest::Digest,
-    shard_crypto::keys::{EncoderAggregateSignature, EncoderPublicKey},
+    shard_crypto::{
+        digest::Digest,
+        keys::{EncoderAggregateSignature, EncoderPublicKey},
+    },
 };
 use fastcrypto::{
     hash::HashFunction,
@@ -160,8 +162,7 @@ pub enum TransactionKind {
 
     // Shard txs
     EmbedData {
-        digest: Digest<MetadataCommitment>,
-        data_size_bytes: u64,
+        metadata: Metadata,
         coin_ref: ObjectRef,
     },
     ClaimEscrow {

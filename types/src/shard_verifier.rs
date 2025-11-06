@@ -74,19 +74,13 @@ impl ShardVerifier {
                 .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
             if let TransactionKind::EmbedData {
-                digest,
-                data_size_bytes,
+                metadata,
                 coin_ref: _coin_ref, // Use `_coin_ref` if you don’t need this field
             } = token.finality_proof.transaction.transaction_data().kind()
             {
-                if digest.to_owned() != token.metadata_commitment().digest().unwrap() {
+                if metadata.to_owned() != token.metadata() {
                     return Err(ShardError::InvalidShardToken(
-                        "metadata commitment digest does not match transaction".to_string(),
-                    ));
-                }
-                if token.metadata_commitment().metadata().size() != data_size_bytes.clone() {
-                    return Err(ShardError::InvalidShardToken(
-                        "metadata size in commitment does not match transaction".to_string(),
+                        "metadata does not match transaction".to_string(),
                     ));
                 }
             } else {
@@ -103,10 +97,8 @@ impl ShardVerifier {
                 )
                 .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
-            let shard_entropy_input = ShardEntropy::new(
-                token.metadata_commitment.clone(),
-                token.block_entropy.clone(),
-            );
+            let shard_entropy_input =
+                ShardEntropy::new(token.metadata.clone(), token.block_entropy.clone());
             let shard_seed = Digest::new(&shard_entropy_input)
                 .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
             let shard = encoder_committee.sample_shard(shard_seed)?;

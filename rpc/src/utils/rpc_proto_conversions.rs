@@ -6,8 +6,10 @@ use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
 use crate::utils::types_conversions::SdkTypeConversionError;
 use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
+use fastcrypto::traits::ToFromBytes as _;
 use types::base::SomaAddress;
 use types::crypto::SomaSignature;
+use types::metadata::MetadataAPI as _;
 
 //
 // TransactionFee
@@ -416,13 +418,8 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {
                 staked_soma: Some(object_ref_to_proto(staked_soma)),
             }),
-            K::EmbedData {
-                digest,
-                data_size_bytes,
-                coin_ref,
-            } => Kind::EmbedData(EmbedData {
-                digest: Some(digest.into()),
-                data_size_bytes: Some(data_size_bytes),
+            K::EmbedData { metadata, coin_ref } => Kind::EmbedData(EmbedData {
+                metadata: Some(metadata.into()),
                 coin_ref: Some(object_ref_to_proto(coin_ref)),
             }),
             K::ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(ClaimEscrow {
@@ -1367,11 +1364,13 @@ impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
     type Error = String;
 
     fn try_from(proto_shard: ShardResult) -> Result<Self, Self::Error> {
-        let digest_bytes = proto_shard.digest.ok_or("Missing digest")?.to_vec();
-
-        // Convert bytes to Digest<MetadataCommitment> using TryFrom
-        let digest = types::shard_crypto::digest::Digest::try_from(digest_bytes)
-            .map_err(|e| format!("Invalid digest: {:?}", e))?;
+        // Convert proto Metadata to domain Metadata
+        let metadata = proto_shard
+            .metadata
+            .as_ref()
+            .ok_or("Missing metadata")?
+            .try_into()
+            .map_err(|e: TryFromProtoError| format!("Invalid metadata: {}", e))?;
 
         let report_bytes = proto_shard.report.ok_or("Missing report")?.to_vec();
 
@@ -1380,16 +1379,12 @@ impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
             .map_err(|e| format!("Failed to deserialize report: {}", e))?;
 
         Ok(types::system_state::shard::ShardResult {
-            digest,
-            data_size_bytes: proto_shard
-                .data_size_bytes
-                .ok_or("Missing data_size_bytes")?,
+            metadata,
             amount: proto_shard.amount.ok_or("Missing amount")?,
             report,
         })
     }
 }
-
 // Helper functions
 fn convert_report_records(
     proto_records: BTreeMap<String, ReporterSet>,
@@ -1772,16 +1767,15 @@ impl TryFrom<types::system_state::shard::ShardResult> for ShardResult {
     ) -> Result<Self, Self::Error> {
         use bytes::Bytes;
 
-        // Convert Digest to bytes
-        let digest_bytes = Bytes::from(domain_shard.digest.into_inner().to_vec());
+        // Convert domain Metadata to proto Metadata
+        let metadata: crate::proto::soma::Metadata = domain_shard.metadata.into();
 
         // Serialize the report to bytes
         let report_bytes = bcs::to_bytes(&domain_shard.report)
             .map_err(|e| format!("Failed to serialize report: {}", e))?;
 
         Ok(ShardResult {
-            digest: Some(digest_bytes),
-            data_size_bytes: Some(domain_shard.data_size_bytes as u64),
+            metadata: Some(metadata),
             amount: Some(domain_shard.amount),
             report: Some(Bytes::from(report_bytes)),
         })
@@ -1812,7 +1806,6 @@ fn convert_shard_results_to_proto(
         .into_iter()
         .map(|(digest, result)| {
             // Convert Digest to base64 string (matching the Display impl)
-            // Explicitly use AsRef<[u8]> to avoid ambiguity
             let bytes: &[u8] = digest.as_ref();
             let key = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
             let proto_result = result.try_into()?;
@@ -1820,7 +1813,6 @@ fn convert_shard_results_to_proto(
         })
         .collect()
 }
-
 //
 // TransactionChecks
 //
@@ -1932,5 +1924,62 @@ impl TryFrom<&ExecutedTransaction> for types::checkpoint::ExecutedTransaction {
             transaction,
             effects,
         })
+    }
+}
+
+impl From<types::metadata::Metadata> for Metadata {
+    fn from(value: types::metadata::Metadata) -> Self {
+        let mut message = Self::default();
+        match value {
+            types::metadata::Metadata::V1(v1) => {
+                let mut proto_v1 = MetadataV1::default();
+                proto_v1.checksum = Some(v1.checksum().as_bytes().to_vec().into());
+                proto_v1.size = Some(v1.size());
+                message.version = Some(crate::proto::soma::metadata::Version::V1(proto_v1));
+            }
+        }
+        message
+    }
+}
+
+// Add this conversion for Metadata
+impl TryFrom<&Metadata> for types::metadata::Metadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &crate::proto::soma::Metadata) -> Result<Self, Self::Error> {
+        use crate::proto::soma::metadata::Version;
+
+        match value
+            .version
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("metadata version"))?
+        {
+            Version::V1(v1) => {
+                let checksum_bytes = v1
+                    .checksum
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("checksum"))?
+                    .as_ref();
+
+                // Convert bytes to Checksum
+                let checksum = types::checksum::Checksum::from_bytes(checksum_bytes)
+                    .map_err(|e| TryFromProtoError::invalid("checksum", e))?;
+
+                let size = v1.size.ok_or_else(|| TryFromProtoError::missing("size"))?;
+
+                Ok(types::metadata::Metadata::V1(
+                    types::metadata::MetadataV1::new(checksum, size),
+                ))
+            }
+        }
+    }
+}
+
+// Also add the owned version
+impl TryFrom<Metadata> for types::metadata::Metadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: Metadata) -> Result<Self, Self::Error> {
+        (&value).try_into()
     }
 }

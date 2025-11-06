@@ -73,7 +73,7 @@ pub trait MetadataAPI {
     fn size(&self) -> SizeInBytes;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct MetadataV1 {
     checksum: Checksum,
     size: SizeInBytes,
@@ -94,7 +94,7 @@ impl MetadataAPI for MetadataV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Hash)]
 #[enum_dispatch(MetadataAPI)]
 pub enum Metadata {
     V1(MetadataV1),
@@ -270,30 +270,6 @@ impl DownloadMetadata {
             Self::Default(dm) => dm.metadata(),
             Self::Mtls(dm) => dm.metadata(),
         }
-    }
-}
-
-/// Tx contains Digest<MetadataCommitment> however there is no way to figure out the inner metadata and nonce values from that.
-/// The nonce makes it so that the same identical metadata cannot be detected based on hash.
-/// Prior to landing on this solution, a double hash was going to be used except it is deterministic meaning
-/// that if a piece of metadata had been submitted earlier, the hash and values would be known to network participants.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct MetadataCommitment {
-    metadata: Metadata,
-    nonce: [u8; 32],
-}
-
-impl MetadataCommitment {
-    pub fn new(metadata: Metadata, nonce: [u8; 32]) -> Self {
-        MetadataCommitment { metadata, nonce }
-    }
-
-    pub fn metadata(&self) -> Metadata {
-        self.metadata.clone()
-    }
-
-    pub fn digest(&self) -> ShardResult<Digest<Self>> {
-        Digest::new(self).map_err(ShardError::DigestFailure)
     }
 }
 

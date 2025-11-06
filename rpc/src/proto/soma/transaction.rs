@@ -4,6 +4,56 @@ use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
 use tap::Pipe;
 
+impl From<crate::types::Metadata> for Metadata {
+    fn from(value: crate::types::Metadata) -> Self {
+        use metadata::Version;
+
+        let mut message = Self::default();
+        match value {
+            crate::types::Metadata::V1(v1) => {
+                let mut proto_v1 = MetadataV1::default();
+                proto_v1.checksum = Some(v1.checksum.into());
+                proto_v1.size = Some(v1.size);
+                message.version = Some(Version::V1(proto_v1));
+            }
+        }
+        message
+    }
+}
+
+impl TryFrom<&Metadata> for crate::types::Metadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &Metadata) -> Result<Self, Self::Error> {
+        use metadata::Version;
+
+        match value
+            .version
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("metadata version"))?
+        {
+            Version::V1(v1) => {
+                let checksum = v1
+                    .checksum
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("checksum"))?
+                    .as_ref()
+                    .try_into()
+                    .map_err(|_| {
+                        TryFromProtoError::invalid("checksum", "invalid checksum length")
+                    })?;
+
+                let size = v1.size.ok_or_else(|| TryFromProtoError::missing("size"))?;
+
+                Ok(crate::types::Metadata::V1(crate::types::MetadataV1 {
+                    checksum,
+                    size,
+                }))
+            }
+        }
+    }
+}
+
 //
 // Transaction
 //
@@ -188,18 +238,9 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
 
             // Shard operations
-            EmbedData {
-                digest,
-                data_size_bytes,
-                coin_ref,
-            } => Kind::EmbedData(
-                EmbedDataArgs {
-                    digest,
-                    data_size_bytes,
-                    coin_ref,
-                }
-                .into(),
-            ),
+            EmbedData { metadata, coin_ref } => {
+                Kind::EmbedData(EmbedDataArgs { metadata, coin_ref }.into())
+            }
             ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(shard_input_ref.into()),
             ReportWinner {
                 shard_input_ref,
@@ -386,14 +427,11 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
 
             // Shard operations
             Kind::EmbedData(embed) => Self::EmbedData {
-                digest: embed
-                    .digest
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("digest"))?
-                    .into(),
-                data_size_bytes: embed
-                    .data_size_bytes
-                    .ok_or_else(|| TryFromProtoError::missing("data_size_bytes"))?,
+                metadata: embed
+                    .metadata
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .try_into()?,
                 coin_ref: embed
                     .coin_ref
                     .as_ref()
@@ -929,16 +967,14 @@ impl From<crate::types::ObjectReference> for WithdrawStake {
 
 // EmbedData conversions
 pub struct EmbedDataArgs {
-    pub digest: Vec<u8>,
-    pub data_size_bytes: u64,
+    pub metadata: crate::types::Metadata,
     pub coin_ref: crate::types::ObjectReference,
 }
 
 impl From<EmbedDataArgs> for EmbedData {
     fn from(args: EmbedDataArgs) -> Self {
         Self {
-            digest: Some(args.digest.into()),
-            data_size_bytes: Some(args.data_size_bytes),
+            metadata: Some(args.metadata.into()),
             coin_ref: Some(args.coin_ref.into()),
         }
     }

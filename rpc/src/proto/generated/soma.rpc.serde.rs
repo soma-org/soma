@@ -2310,25 +2310,15 @@ impl serde::Serialize for EmbedData {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.digest.is_some() {
-            len += 1;
-        }
-        if self.data_size_bytes.is_some() {
+        if self.metadata.is_some() {
             len += 1;
         }
         if self.coin_ref.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.EmbedData", len)?;
-        if let Some(v) = self.digest.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("digest", crate::utils::_serde::base64::encode(&v).as_str())?;
-        }
-        if let Some(v) = self.data_size_bytes.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("dataSizeBytes", ToString::to_string(&v).as_str())?;
+        if let Some(v) = self.metadata.as_ref() {
+            struct_ser.serialize_field("metadata", v)?;
         }
         if let Some(v) = self.coin_ref.as_ref() {
             struct_ser.serialize_field("coinRef", v)?;
@@ -2343,17 +2333,14 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "digest",
-            "data_size_bytes",
-            "dataSizeBytes",
+            "metadata",
             "coin_ref",
             "coinRef",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Digest,
-            DataSizeBytes,
+            Metadata,
             CoinRef,
             __SkipField__,
         }
@@ -2377,8 +2364,7 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
                         E: serde::de::Error,
                     {
                         match value {
-                            "digest" => Ok(GeneratedField::Digest),
-                            "dataSizeBytes" | "data_size_bytes" => Ok(GeneratedField::DataSizeBytes),
+                            "metadata" => Ok(GeneratedField::Metadata),
                             "coinRef" | "coin_ref" => Ok(GeneratedField::CoinRef),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -2401,26 +2387,15 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut digest__ = None;
-                let mut data_size_bytes__ = None;
+                let mut metadata__ = None;
                 let mut coin_ref__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Digest => {
-                            if digest__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("digest"));
+                        GeneratedField::Metadata => {
+                            if metadata__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("metadata"));
                             }
-                            digest__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::DataSizeBytes => {
-                            if data_size_bytes__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("dataSizeBytes"));
-                            }
-                            data_size_bytes__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            metadata__ = map_.next_value()?;
                         }
                         GeneratedField::CoinRef => {
                             if coin_ref__.is_some() {
@@ -2434,8 +2409,7 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
                     }
                 }
                 Ok(EmbedData {
-                    digest: digest__,
-                    data_size_bytes: data_size_bytes__,
+                    metadata: metadata__,
                     coin_ref: coin_ref__,
                 })
             }
@@ -5961,6 +5935,230 @@ impl<'de> serde::Deserialize<'de> for ListOwnedObjectsResponse {
         deserializer.deserialize_struct("soma.rpc.ListOwnedObjectsResponse", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for Metadata {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.version.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.Metadata", len)?;
+        if let Some(v) = self.version.as_ref() {
+            match v {
+                metadata::Version::V1(v) => {
+                    struct_ser.serialize_field("v1", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for Metadata {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "v1",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            V1,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "v1" => Ok(GeneratedField::V1),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = Metadata;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.Metadata")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<Metadata, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut version__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::V1 => {
+                            if version__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("v1"));
+                            }
+                            version__ = map_.next_value::<::std::option::Option<_>>()?.map(metadata::Version::V1)
+;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(Metadata {
+                    version: version__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.Metadata", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for MetadataV1 {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.checksum.is_some() {
+            len += 1;
+        }
+        if self.size.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MetadataV1", len)?;
+        if let Some(v) = self.checksum.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("checksum", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.size.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("size", ToString::to_string(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MetadataV1 {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "checksum",
+            "size",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Checksum,
+            Size,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "checksum" => Ok(GeneratedField::Checksum),
+                            "size" => Ok(GeneratedField::Size),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MetadataV1;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MetadataV1")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MetadataV1, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut checksum__ = None;
+                let mut size__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Checksum => {
+                            if checksum__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("checksum"));
+                            }
+                            checksum__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Size => {
+                            if size__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("size"));
+                            }
+                            size__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MetadataV1 {
+                    checksum: checksum__,
+                    size: size__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MetadataV1", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for Object {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -8045,10 +8243,7 @@ impl serde::Serialize for ShardResult {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.digest.is_some() {
-            len += 1;
-        }
-        if self.data_size_bytes.is_some() {
+        if self.metadata.is_some() {
             len += 1;
         }
         if self.amount.is_some() {
@@ -8058,15 +8253,8 @@ impl serde::Serialize for ShardResult {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.ShardResult", len)?;
-        if let Some(v) = self.digest.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("digest", crate::utils::_serde::base64::encode(&v).as_str())?;
-        }
-        if let Some(v) = self.data_size_bytes.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("dataSizeBytes", ToString::to_string(&v).as_str())?;
+        if let Some(v) = self.metadata.as_ref() {
+            struct_ser.serialize_field("metadata", v)?;
         }
         if let Some(v) = self.amount.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -8088,17 +8276,14 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "digest",
-            "data_size_bytes",
-            "dataSizeBytes",
+            "metadata",
             "amount",
             "report",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Digest,
-            DataSizeBytes,
+            Metadata,
             Amount,
             Report,
             __SkipField__,
@@ -8123,8 +8308,7 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
                         E: serde::de::Error,
                     {
                         match value {
-                            "digest" => Ok(GeneratedField::Digest),
-                            "dataSizeBytes" | "data_size_bytes" => Ok(GeneratedField::DataSizeBytes),
+                            "metadata" => Ok(GeneratedField::Metadata),
                             "amount" => Ok(GeneratedField::Amount),
                             "report" => Ok(GeneratedField::Report),
                             _ => Ok(GeneratedField::__SkipField__),
@@ -8148,27 +8332,16 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut digest__ = None;
-                let mut data_size_bytes__ = None;
+                let mut metadata__ = None;
                 let mut amount__ = None;
                 let mut report__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Digest => {
-                            if digest__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("digest"));
+                        GeneratedField::Metadata => {
+                            if metadata__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("metadata"));
                             }
-                            digest__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::DataSizeBytes => {
-                            if data_size_bytes__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("dataSizeBytes"));
-                            }
-                            data_size_bytes__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            metadata__ = map_.next_value()?;
                         }
                         GeneratedField::Amount => {
                             if amount__.is_some() {
@@ -8192,8 +8365,7 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
                     }
                 }
                 Ok(ShardResult {
-                    digest: digest__,
-                    data_size_bytes: data_size_bytes__,
+                    metadata: metadata__,
                     amount: amount__,
                     report: report__,
                 })

@@ -5,7 +5,10 @@ use base64::Engine;
 use fastcrypto::{bls12381::min_sig::BLS12381PublicKey, traits::ToFromBytes};
 use tap::Pipe;
 use tracing::info;
-use types::crypto::{DIGEST_LENGTH, SomaSignature};
+use types::{
+    crypto::{DIGEST_LENGTH, SomaSignature},
+    metadata::MetadataAPI as _,
+};
 
 #[derive(Debug)]
 pub struct SdkTypeConversionError(String);
@@ -360,13 +363,8 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             },
 
             // Shard operations
-            TK::EmbedData {
-                digest,
-                data_size_bytes,
-                coin_ref,
-            } => TransactionKind::EmbedData {
-                digest: digest.into(),
-                data_size_bytes,
+            TK::EmbedData { metadata, coin_ref } => TransactionKind::EmbedData {
+                metadata: metadata.into(),
                 coin_ref: coin_ref.into(),
             },
 
@@ -562,15 +560,8 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             },
 
             // Shard operations
-            TransactionKind::EmbedData {
-                digest,
-                data_size_bytes,
-                coin_ref,
-            } => TK::EmbedData {
-                digest: digest
-                    .try_into()
-                    .map_err(|e| SdkTypeConversionError(format!("Invalid digest: {}", e)))?,
-                data_size_bytes,
+            TransactionKind::EmbedData { metadata, coin_ref } => TK::EmbedData {
+                metadata: metadata.try_into()?,
                 coin_ref: coin_ref.into(),
             },
 
@@ -1369,5 +1360,37 @@ impl TryFrom<Shard> for types::shard::Shard {
             seed,
             value.epoch,
         ))
+    }
+}
+
+impl From<types::metadata::Metadata> for Metadata {
+    fn from(value: types::metadata::Metadata) -> Self {
+        match value {
+            types::metadata::Metadata::V1(v1) => Metadata::V1(MetadataV1 {
+                checksum: v1
+                    .checksum()
+                    .as_bytes()
+                    .try_into()
+                    .expect("checksum should be 32 bytes"),
+                size: v1.size(),
+            }),
+        }
+    }
+}
+
+impl TryFrom<Metadata> for types::metadata::Metadata {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: Metadata) -> Result<Self, Self::Error> {
+        match value {
+            Metadata::V1(v1) => {
+                let checksum = types::checksum::Checksum::from_bytes(&v1.checksum)
+                    .map_err(|e| SdkTypeConversionError(format!("Invalid checksum: {}", e)))?;
+
+                Ok(types::metadata::Metadata::V1(
+                    types::metadata::MetadataV1::new(checksum, v1.size),
+                ))
+            }
+        }
     }
 }

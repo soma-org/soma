@@ -10,7 +10,7 @@ use types::{
     effects::ExecutionFailureStatus,
     encoder_committee::EncoderCommittee,
     error::{ConsensusError, ExecutionResult, SomaError},
-    metadata::{MetadataAPI, MetadataCommitment},
+    metadata::{Metadata, MetadataAPI},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
     report::Report,
     shard::ShardAuthToken,
@@ -46,8 +46,7 @@ impl ShardExecutor {
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
-        digest: Digest<MetadataCommitment>,
-        data_size_bytes: u64,
+        metadata: Metadata,
         coin_ref: ObjectRef,
         tx_digest: TransactionDigest,
         value_fee: u64,
@@ -79,7 +78,7 @@ impl ShardExecutor {
         let current_epoch = state.epoch;
 
         // Calculate total price for the data size
-        let embed_price = byte_price.saturating_mul(data_size_bytes as u64);
+        let embed_price = byte_price.saturating_mul(metadata.size());
 
         if embed_price == 0 {
             return Err(ExecutionFailureStatus::InvalidArguments {
@@ -131,8 +130,7 @@ impl ShardExecutor {
         // Create ShardInput object as a shared object
         let shard_input = Object::new_shard_input(
             ObjectID::derive_id(tx_digest, store.next_creation_num()),
-            digest,
-            data_size_bytes,
+            metadata,
             embed_price,
             expiration_epoch,
             signer,
@@ -409,30 +407,10 @@ impl ShardExecutor {
             ))
         })?;
 
-        // 2.3 Verify the metadata commitment digests match
-        let metadata_commitment_digest =
-            shard_auth_token.metadata_commitment.digest().map_err(|e| {
-                ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                    "Failed to get metadata commitment digest: {}",
-                    e
-                )))
-            })?;
-
-        if shard_input.digest != metadata_commitment_digest {
+        // 2.3 Verify the metadata matches
+        if shard_input.metadata != shard_auth_token.metadata() {
             return Err(ExecutionFailureStatus::InvalidArguments {
-                reason: "Metadata commitment digest mismatch".to_string(),
-            });
-        }
-
-        // 2.4 Verify the data sizes match
-        let data_size = shard_auth_token.metadata_commitment().metadata().size();
-
-        if shard_input.data_size_bytes != data_size {
-            return Err(ExecutionFailureStatus::InvalidArguments {
-                reason: format!(
-                    "Data size mismatch. ShardInput: {}, Scores: {}",
-                    shard_input.data_size_bytes, data_size
-                ),
+                reason: "Metadata mismatch".to_string(),
             });
         }
 
@@ -449,8 +427,7 @@ impl ShardExecutor {
         state.add_shard_result(
             shard_digest,
             ShardResult {
-                digest: metadata_commitment_digest,
-                data_size_bytes: data_size,
+                metadata: shard_input.metadata,
                 amount: shard_input.amount,
                 report: signed_report.into_inner(),
             },
@@ -483,19 +460,9 @@ impl TransactionExecutor for ShardExecutor {
         value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::EmbedData {
-                digest,
-                data_size_bytes,
-                coin_ref,
-            } => self.execute_embed_data(
-                store,
-                signer,
-                digest,
-                data_size_bytes,
-                coin_ref,
-                tx_digest,
-                value_fee,
-            ),
+            TransactionKind::EmbedData { metadata, coin_ref } => {
+                self.execute_embed_data(store, signer, metadata, coin_ref, tx_digest, value_fee)
+            }
             TransactionKind::ClaimEscrow { shard_input_ref } => {
                 self.execute_claim_escrow(store, signer, shard_input_ref, tx_digest)
             }
@@ -524,9 +491,7 @@ impl FeeCalculator for ShardExecutor {
     fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
         match kind {
             TransactionKind::EmbedData {
-                data_size_bytes,
-                coin_ref,
-                ..
+                metadata, coin_ref, ..
             } => {
                 // Get the actual embedding cost
                 if let Some(state_obj) = store.read_object(&SYSTEM_STATE_OBJECT_ID) {
@@ -534,7 +499,7 @@ impl FeeCalculator for ShardExecutor {
                         bcs::from_bytes::<SystemState>(state_obj.as_inner().data.contents())
                     {
                         let byte_price = state.encoders.reference_byte_price;
-                        let embed_cost = byte_price.saturating_mul(*data_size_bytes as u64);
+                        let embed_cost = byte_price.saturating_mul(metadata.size());
 
                         // Fee is 0.05% (5 basis points) of the embedding cost
                         let fee = (embed_cost * 5) / 10000;

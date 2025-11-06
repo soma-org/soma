@@ -183,10 +183,21 @@ message WithdrawStake {
   optional ObjectReference staked_soma = 1;
 }
 
+message Metadata {
+  oneof version {
+    MetadataV1 v1 = 1;
+  }
+}
+
+message MetadataV1 {
+  optional bytes checksum = 1;  // 32-byte digest
+  optional uint64 size = 2;      // Size in bytes
+}
+
+
 message EmbedData {
-  optional bytes digest = 1;
-  optional uint64 data_size_bytes = 2;
-  optional ObjectReference coin_ref = 3;
+  optional Metadata metadata = 1;
+  optional ObjectReference coin_ref = 2;
 }
 
 message ClaimEscrow {

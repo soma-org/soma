@@ -59,3 +59,4 @@ pub use transaction::Transaction;
 pub use transaction::TransactionKind;
 pub use transaction::UpdateEncoderMetadataArgs;
 pub use transaction::UpdateValidatorMetadataArgs;
+pub use transaction::{Metadata, MetadataV1};

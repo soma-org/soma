@@ -1,5 +1,5 @@
-use crate::shard_crypto::digest::Digest;
-use crate::{metadata::MetadataCommitment, report::Report};
+use crate::metadata::Metadata;
+use crate::report::Report;
 use serde::{Deserialize, Serialize};
 
 use crate::{base::SomaAddress, committee::EpochId};
@@ -7,10 +7,8 @@ use crate::{base::SomaAddress, committee::EpochId};
 /// ShardInput represents an escrowed amount for data encoding
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ShardInput {
-    /// Metadata commitment digest - cryptographic identifier of the data
-    pub digest: Digest<MetadataCommitment>,
-    /// Size of data in bytes
-    pub data_size_bytes: u64,
+    /// Metadata
+    pub metadata: Metadata,
     /// Escrowed amount for the shard
     pub amount: u64,
     /// Epoch at which the shard expires
@@ -22,10 +20,8 @@ pub struct ShardInput {
 /// Scores associated with a particular metadata commitment
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ShardResult {
-    /// Metadata commitment digest the scores are for
-    pub digest: Digest<MetadataCommitment>,
-    /// Size of data in bytes
-    pub data_size_bytes: u64,
+    /// Metadata
+    pub metadata: Metadata,
     /// Escrowed amount for the shard
     pub amount: u64,
     /// The submitted report

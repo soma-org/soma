@@ -32,6 +32,17 @@ pub struct SignedTransaction {
     pub signatures: Vec<UserSignature>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct MetadataV1 {
+    pub checksum: Vec<u8>,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub enum Metadata {
+    V1(MetadataV1),
+}
+
 /// Transaction type
 ///
 /// # BCS
@@ -119,8 +130,7 @@ pub enum TransactionKind {
 
     // Shard operations
     EmbedData {
-        digest: Vec<u8>,
-        data_size_bytes: u64,
+        metadata: Metadata,
         coin_ref: ObjectReference,
     },
     ClaimEscrow {

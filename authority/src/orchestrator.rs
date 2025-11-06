@@ -5,7 +5,6 @@ use futures::{
     future::{select, Either},
     FutureExt,
 };
-use objects::storage::{memory::MemoryObjectStore, ObjectStorage};
 use tokio::{
     sync::broadcast::{error::RecvError, Receiver},
     task::JoinHandle,
@@ -22,8 +21,8 @@ use types::{
     error::{SomaError, SomaResult},
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
     metadata::{
-        DownloadMetadata, Metadata, MetadataAPI, MetadataCommitment, MetadataV1, ObjectPath,
-        SignedParams,
+        DownloadMetadata, Metadata, MetadataAPI, MetadataV1, MtlsDownloadMetadata,
+        MtlsDownloadMetadataV1, ObjectPath, SignedParams,
     },
     multiaddr::Multiaddr,
     object::{Object, ObjectRef},
@@ -428,9 +427,9 @@ where
 
         let kind = transaction.data().inner().intent_message.value.kind();
 
-        let (shard_input_ref, digest) = if let TransactionKind::EmbedData { digest, .. } = kind {
+        let (shard_input_ref, digest) = if let TransactionKind::EmbedData { metadata, .. } = kind {
             if let Some(object) = created.first() {
-                (*object, digest)
+                (*object, metadata)
             } else {
                 error!("Could not get created shard input ref from created objects of tx");
                 return None;
@@ -441,8 +440,7 @@ where
 
         // TODO: look up real metadata commitment using metadata_commitment_digest in tx
         let size_in_bytes = 1;
-        let metadata = MetadataV1::new(Checksum::default(), size_in_bytes);
-        let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
+        let metadata = Metadata::V1(MetadataV1::new(Checksum::default(), size_in_bytes));
 
         let network_key_pair = self.validator_state.config.network_key_pair().clone();
         let address = self.validator_state.config.network_address.clone();
@@ -450,7 +448,7 @@ where
         if let Ok(shard) = self
             .initiate_encoder_work_for_embed_data(
                 &finality_proof,
-                metadata_commitment.clone(),
+                metadata.clone(),
                 shard_input_ref,
                 network_key_pair,
                 address,
@@ -468,14 +466,14 @@ where
     async fn initiate_encoder_work_for_embed_data(
         &self,
         finality_proof: &FinalityProof,
-        metadata_commitment: MetadataCommitment,
+        metadata: Metadata,
         shard_input_ref: ObjectRef,
         network_key_pair: NetworkKeyPair,
         address: Multiaddr,
         tx_digest: &TransactionDigest,
     ) -> SomaResult<Shard> {
         let (shard, shard_auth_token) = self
-            .generate_shard_selection(finality_proof, metadata_commitment.clone(), shard_input_ref)
+            .generate_shard_selection(finality_proof, metadata.clone(), shard_input_ref)
             .await?;
 
         if let Some(encoder_client) = &self.encoder_client {
@@ -506,38 +504,31 @@ where
                 &network_key_pair,
             );
 
-            unimplemented!();
+            let downloadable_metadata =
+                DownloadMetadata::Mtls(MtlsDownloadMetadata::V1(MtlsDownloadMetadataV1::new(
+                    network_key_pair.public(),
+                    Some(signed_params), // TODO: generate URL from object store
+                    metadata,
+                )));
 
-            // let downloadable_metadata = DownloadMetadata::V1(DownloadableMetadataV1::new(
-            //     Some(network_key_pair.public()),
-            //     Some(signed_params),
-            //     address,
-            //     ObjectPath::Inputs(
-            //         shard.epoch(),
-            //         shard_digest,
-            //         metadata_commitment.metadata().checksum(),
-            //     ),
-            //     metadata_commitment.metadata(),
-            // ));
-
-            // tokio::spawn(async move {
-            //     match client
-            //         .send_to_shard(
-            //             shard.encoders(),
-            //             token,
-            //             downloadable_metadata,
-            //             Duration::from_secs(5),
-            //         )
-            //         .await
-            //     {
-            //         Ok(()) => {
-            //             debug!(?digest, "Successfully sent shard input to all members");
-            //         }
-            //         Err(e) => {
-            //             error!(?digest, error = ?e, "Failed to send to shard members");
-            //         }
-            //     }
-            // });
+            tokio::spawn(async move {
+                match client
+                    .send_to_shard(
+                        shard.encoders(),
+                        token,
+                        downloadable_metadata,
+                        Duration::from_secs(5),
+                    )
+                    .await
+                {
+                    Ok(()) => {
+                        debug!(?digest, "Successfully sent shard input to all members");
+                    }
+                    Err(e) => {
+                        error!(?digest, error = ?e, "Failed to send to shard members");
+                    }
+                }
+            });
         }
 
         return Ok(shard);
@@ -547,7 +538,7 @@ where
     async fn generate_shard_selection(
         &self,
         finality_proof: &FinalityProof,
-        metadata_commitment: MetadataCommitment,
+        metadata: Metadata,
         shard_input_ref: ObjectRef,
     ) -> SomaResult<(Shard, ShardAuthToken)> {
         let block_ref = finality_proof.block_ref().clone();
@@ -562,7 +553,7 @@ where
         let encoder_committee = self.get_current_encoder_committee().await?;
 
         // Create ShardEntropy
-        let shard_entropy = ShardEntropy::new(metadata_commitment.clone(), block_entropy.clone());
+        let shard_entropy = ShardEntropy::new(metadata.clone(), block_entropy.clone());
 
         // Calculate entropy digest
         let entropy_digest = Digest::new(&shard_entropy)
@@ -577,7 +568,7 @@ where
             finality_proof.clone(),
             block_entropy,
             block_entropy_proof,
-            metadata_commitment,
+            metadata,
             shard_input_ref,
         );
 

@@ -3687,35 +3687,28 @@ mod _field_impls {
         }
     }
     impl ShardResult {
-        pub const DIGEST_FIELD: &'static MessageField = &MessageField {
-            name: "digest",
-            json_name: "digest",
+        pub const METADATA_FIELD: &'static MessageField = &MessageField {
+            name: "metadata",
+            json_name: "metadata",
             number: 1i32,
-            message_fields: None,
-        };
-        pub const DATA_SIZE_BYTES_FIELD: &'static MessageField = &MessageField {
-            name: "data_size_bytes",
-            json_name: "dataSizeBytes",
-            number: 2i32,
-            message_fields: None,
+            message_fields: Some(Metadata::FIELDS),
         };
         pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
             name: "amount",
             json_name: "amount",
-            number: 3i32,
+            number: 2i32,
             message_fields: None,
         };
         pub const REPORT_FIELD: &'static MessageField = &MessageField {
             name: "report",
             json_name: "report",
-            number: 4i32,
+            number: 3i32,
             message_fields: None,
         };
     }
     impl MessageFields for ShardResult {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::DIGEST_FIELD,
-            Self::DATA_SIZE_BYTES_FIELD,
+            Self::METADATA_FIELD,
             Self::AMOUNT_FIELD,
             Self::REPORT_FIELD,
         ];
@@ -3740,13 +3733,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn digest(mut self) -> String {
-            self.path.push(ShardResult::DIGEST_FIELD.name);
-            self.finish()
-        }
-        pub fn data_size_bytes(mut self) -> String {
-            self.path.push(ShardResult::DATA_SIZE_BYTES_FIELD.name);
-            self.finish()
+        pub fn metadata(mut self) -> MetadataFieldPathBuilder {
+            self.path.push(ShardResult::METADATA_FIELD.name);
+            MetadataFieldPathBuilder::new_with_base(self.path)
         }
         pub fn amount(mut self) -> String {
             self.path.push(ShardResult::AMOUNT_FIELD.name);
@@ -5152,30 +5141,108 @@ mod _field_impls {
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
     }
-    impl EmbedData {
-        pub const DIGEST_FIELD: &'static MessageField = &MessageField {
-            name: "digest",
-            json_name: "digest",
+    impl Metadata {
+        pub const V1_FIELD: &'static MessageField = &MessageField {
+            name: "v1",
+            json_name: "v1",
+            number: 1i32,
+            message_fields: Some(MetadataV1::FIELDS),
+        };
+    }
+    impl MessageFields for Metadata {
+        const FIELDS: &'static [&'static MessageField] = &[Self::V1_FIELD];
+    }
+    impl Metadata {
+        pub fn path_builder() -> MetadataFieldPathBuilder {
+            MetadataFieldPathBuilder::new()
+        }
+    }
+    pub struct MetadataFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl MetadataFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn v1(mut self) -> MetadataV1FieldPathBuilder {
+            self.path.push(Metadata::V1_FIELD.name);
+            MetadataV1FieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl MetadataV1 {
+        pub const CHECKSUM_FIELD: &'static MessageField = &MessageField {
+            name: "checksum",
+            json_name: "checksum",
             number: 1i32,
             message_fields: None,
         };
-        pub const DATA_SIZE_BYTES_FIELD: &'static MessageField = &MessageField {
-            name: "data_size_bytes",
-            json_name: "dataSizeBytes",
+        pub const SIZE_FIELD: &'static MessageField = &MessageField {
+            name: "size",
+            json_name: "size",
             number: 2i32,
             message_fields: None,
+        };
+    }
+    impl MessageFields for MetadataV1 {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHECKSUM_FIELD,
+            Self::SIZE_FIELD,
+        ];
+    }
+    impl MetadataV1 {
+        pub fn path_builder() -> MetadataV1FieldPathBuilder {
+            MetadataV1FieldPathBuilder::new()
+        }
+    }
+    pub struct MetadataV1FieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl MetadataV1FieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn checksum(mut self) -> String {
+            self.path.push(MetadataV1::CHECKSUM_FIELD.name);
+            self.finish()
+        }
+        pub fn size(mut self) -> String {
+            self.path.push(MetadataV1::SIZE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl EmbedData {
+        pub const METADATA_FIELD: &'static MessageField = &MessageField {
+            name: "metadata",
+            json_name: "metadata",
+            number: 1i32,
+            message_fields: Some(Metadata::FIELDS),
         };
         pub const COIN_REF_FIELD: &'static MessageField = &MessageField {
             name: "coin_ref",
             json_name: "coinRef",
-            number: 3i32,
+            number: 2i32,
             message_fields: Some(ObjectReference::FIELDS),
         };
     }
     impl MessageFields for EmbedData {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::DIGEST_FIELD,
-            Self::DATA_SIZE_BYTES_FIELD,
+            Self::METADATA_FIELD,
             Self::COIN_REF_FIELD,
         ];
     }
@@ -5199,13 +5266,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn digest(mut self) -> String {
-            self.path.push(EmbedData::DIGEST_FIELD.name);
-            self.finish()
-        }
-        pub fn data_size_bytes(mut self) -> String {
-            self.path.push(EmbedData::DATA_SIZE_BYTES_FIELD.name);
-            self.finish()
+        pub fn metadata(mut self) -> MetadataFieldPathBuilder {
+            self.path.push(EmbedData::METADATA_FIELD.name);
+            MetadataFieldPathBuilder::new_with_base(self.path)
         }
         pub fn coin_ref(mut self) -> ObjectReferenceFieldPathBuilder {
             self.path.push(EmbedData::COIN_REF_FIELD.name);
