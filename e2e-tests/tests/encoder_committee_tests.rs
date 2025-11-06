@@ -6,7 +6,7 @@ use tokio::time::sleep;
 use tracing::info;
 use types::checksum::Checksum;
 use types::crypto::{KeypairTraits, NetworkKeyPair};
-use types::metadata::{DownloadMetadata, Metadata, MetadataCommitment, MetadataV1, ObjectPath};
+use types::metadata::{DownloadMetadata, Metadata, MetadataV1, ObjectPath};
 use types::shard::{Shard, ShardAuthToken};
 use types::shard_crypto::digest::Digest;
 use types::{
@@ -108,20 +108,13 @@ async fn test_integrated_encoder_validator_system() {
     rand::RngCore::fill_bytes(&mut rng, &mut data);
     let checksum = Checksum::new_from_bytes(&data);
 
-    let epoch = 1;
-    let object_path = ObjectPath::Inputs(epoch, checksum);
-
-    let metadata = MetadataV1::new(object_path, data.len() as u64);
-    let metadata_commitment = MetadataCommitment::new(Metadata::V1(metadata), [0u8; 32]);
-    let digest = metadata_commitment
-        .digest()
-        .expect("Could not create Digest for MetadataCommitment");
+    let metadata = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
 
     let shard = execute_embed_data_with_upload(
         new_encoder_genesis.account_key_pair.copy(),
         &mut test_cluster,
         new_encoder_address,
-        digest,
+        metadata,
         data,
     )
     .await
@@ -154,7 +147,7 @@ async fn execute_embed_data_with_upload(
     signer: SomaKeyPair,
     test_cluster: &mut TestCluster,
     address: SomaAddress,
-    digest: Digest<MetadataCommitment>,
+    metadata: Metadata,
     data: Vec<u8>, // Actual data to upload
 ) -> Option<Shard> {
     let data_size_bytes = data.len() as u64;
@@ -171,8 +164,7 @@ async fn execute_embed_data_with_upload(
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
             TransactionKind::EmbedData {
-                digest: digest,
-                data_size_bytes,
+                metadata,
                 coin_ref: gas_object,
             },
             address,

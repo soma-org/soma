@@ -1,10 +1,10 @@
-use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
-
 use fastcrypto::traits::KeyPair;
 use futures::{
     future::{select, Either},
     FutureExt,
 };
+use object_store::{memory::InMemory, path::Path, ObjectStore};
+use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{
     sync::broadcast::{error::RecvError, Receiver},
     task::JoinHandle,
@@ -21,11 +21,12 @@ use types::{
     error::{SomaError, SomaResult},
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
     metadata::{
-        DownloadMetadata, Metadata, MetadataAPI, MetadataV1, MtlsDownloadMetadata,
+        self, DownloadMetadata, Metadata, MetadataAPI, MetadataV1, MtlsDownloadMetadata,
         MtlsDownloadMetadataV1, ObjectPath, SignedParams,
     },
     multiaddr::Multiaddr,
     object::{Object, ObjectRef},
+    p2p::to_host_port_str,
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
         FinalizedEffects, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
@@ -40,6 +41,7 @@ use types::{
     },
     transaction_executor::{SimulateTransactionResult, TransactionChecks},
 };
+use url::Url;
 use utils::notify_read::NotifyRead;
 
 use crate::{
@@ -67,7 +69,7 @@ pub struct TransactionOrchestrator<A: Clone> {
     notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
     vdf: Arc<SimpleVDF>,
     encoder_client: Option<Arc<EncoderClientService>>,
-    object_storage: Option<Arc<MemoryObjectStore>>,
+    object_storage: Option<Arc<InMemory>>,
 }
 
 impl TransactionOrchestrator<NetworkAuthorityClient> {
@@ -76,7 +78,7 @@ impl TransactionOrchestrator<NetworkAuthorityClient> {
         validator_state: Arc<AuthorityState>,
         reconfig_channel: Receiver<SystemState>,
         encoder_client: Option<Arc<EncoderClientService>>,
-        object_storage: Option<Arc<MemoryObjectStore>>,
+        object_storage: Option<Arc<InMemory>>,
     ) -> Self {
         let observer =
             OnsiteReconfigObserver::new(reconfig_channel, validator_state.clone_committee_store());
@@ -110,7 +112,7 @@ where
         validator_state: Arc<AuthorityState>,
         reconfig_observer: OnsiteReconfigObserver,
         encoder_client: Option<Arc<EncoderClientService>>,
-        object_storage: Option<Arc<MemoryObjectStore>>,
+        object_storage: Option<Arc<InMemory>>,
     ) -> Self {
         let notifier = Arc::new(NotifyRead::new());
         let quorum_driver_handler = Arc::new(
@@ -427,7 +429,8 @@ where
 
         let kind = transaction.data().inner().intent_message.value.kind();
 
-        let (shard_input_ref, digest) = if let TransactionKind::EmbedData { metadata, .. } = kind {
+        let (shard_input_ref, metadata) = if let TransactionKind::EmbedData { metadata, .. } = kind
+        {
             if let Some(object) = created.first() {
                 (*object, metadata)
             } else {
@@ -438,25 +441,33 @@ where
             return None;
         };
 
-        // TODO: look up real metadata commitment using metadata_commitment_digest in tx
-        let size_in_bytes = 1;
-        let metadata = Metadata::V1(MetadataV1::new(Checksum::default(), size_in_bytes));
-
         let network_key_pair = self.validator_state.config.network_key_pair().clone();
-        let address = self.validator_state.config.network_address.clone();
+        let address = self.validator_state.config.external_object_address.clone();
 
-        if let Ok(shard) = self
-            .initiate_encoder_work_for_embed_data(
-                &finality_proof,
-                metadata.clone(),
-                shard_input_ref,
-                network_key_pair,
-                address,
-                transaction.digest(),
-            )
-            .await
-        {
-            Some(shard)
+        if let Some(store) = &self.object_storage {
+            let path = ObjectPath::Uploads(metadata.checksum()).path();
+            // check if it has the data downloaded before contacting shard using metadata
+            if let Err(err) = store.get(&path).await {
+                // TODO: handle this error better
+                return None;
+            }
+
+            if let Ok(shard) = self
+                .initiate_encoder_work_for_embed_data(
+                    &finality_proof,
+                    metadata.clone(),
+                    shard_input_ref,
+                    network_key_pair,
+                    address,
+                    transaction.digest(),
+                    path,
+                )
+                .await
+            {
+                Some(shard)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -471,6 +482,7 @@ where
         network_key_pair: NetworkKeyPair,
         address: Multiaddr,
         tx_digest: &TransactionDigest,
+        path: Path,
     ) -> SomaResult<Shard> {
         let (shard, shard_auth_token) = self
             .generate_shard_selection(finality_proof, metadata.clone(), shard_input_ref)
@@ -495,21 +507,18 @@ where
             let token = shard_auth_token.clone();
             let digest = *tx_digest;
             let shard = shard.clone();
-            //TODO: handle this error better
-            let shard_digest = shard.digest().unwrap();
-            let signed_params = SignedParams::new(
-                "/".to_string(),
-                Some(shard_peer_keys),
-                Duration::from_secs(100),
-                &network_key_pair,
-            );
 
-            let downloadable_metadata =
-                DownloadMetadata::Mtls(MtlsDownloadMetadata::V1(MtlsDownloadMetadataV1::new(
-                    network_key_pair.public(),
-                    Some(signed_params), // TODO: generate URL from object store
-                    metadata,
-                )));
+            let host_port = to_host_port_str(&address)
+                .map_err(|e| SomaError::from(format!("Failed to parse multiaddr: {}", e)))?;
+
+            let url_string = format!("https://{}/{}", host_port, path.as_ref());
+
+            let download_url = Url::parse(&url_string)
+                .map_err(|e| SomaError::from(format!("Failed to parse URL: {}", e)))?;
+
+            let downloadable_metadata = DownloadMetadata::Mtls(MtlsDownloadMetadata::V1(
+                MtlsDownloadMetadataV1::new(network_key_pair.public(), download_url, metadata),
+            ));
 
             tokio::spawn(async move {
                 match client

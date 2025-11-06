@@ -413,7 +413,7 @@ impl SomaNode {
         // let (shutdown_channel, _) = broadcast::channel::<Option<RunWithRange>>(1);
 
         // TODO: for production make this configurable to use either Filesystem or Bucket
-        let object_storage = Arc::new(MemoryObjectStore::new());
+        let object_storage = Arc::new(InMemory::new());
 
         let encoder_client_service = if is_full_node {
             // Only fullnodes send to encoders, not validators
@@ -761,10 +761,9 @@ impl SomaNode {
     async fn start_object_services(
         config: &NodeConfig,
         allower: AllowPublicKeys,
-        object_storage: Arc<MemoryObjectStore>,
+        object_storage: Arc<InMemory>,
     ) -> Result<(InternalObjectServiceManager, ExternalObjectServiceManager)> {
         // TODO: for production make this configurable to use either Filesystem or Bucket
-        let object_storage = Arc::new(InMemory::new());
         let params = Arc::new(HttpParameters::default());
 
         let download_service =

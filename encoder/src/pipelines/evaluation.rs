@@ -132,7 +132,7 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for Evaluat
                     shard_digest.clone(),
                     input_download_metadata,
                     valid_submissions,
-                    auth_token.metadata_commitment().metadata(),
+                    auth_token.metadata(),
                     &self.context,
                     msg.cancellation.clone(),
                 )
