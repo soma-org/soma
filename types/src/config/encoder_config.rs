@@ -43,6 +43,8 @@ pub struct EncoderConfig {
     pub internal_object_address: Multiaddr,
     /// The network address for object storage
     pub external_object_address: Multiaddr,
+    /// The network address for inference service
+    pub inference_address: Multiaddr,
     /// The network address for evaluation service
     pub evaluation_address: Multiaddr,
     /// Parameters for the encoder system
@@ -79,6 +81,7 @@ impl EncoderConfig {
         external_network_address: Multiaddr,
         internal_object_address: Multiaddr,
         external_object_address: Multiaddr,
+        inference_address: Multiaddr,
         evaluation_address: Multiaddr,
         rpc_address: SocketAddr,
         project_root: PathBuf,
@@ -102,6 +105,7 @@ impl EncoderConfig {
             external_network_address,
             internal_object_address,
             external_object_address,
+            inference_address,
             evaluation_address,
             // parameters,
             db_path,
@@ -268,6 +272,7 @@ pub struct EncoderGenesisConfig {
     pub external_network_address: Multiaddr,
     pub object_address: Multiaddr,
     pub local_object_address: Multiaddr,
+    pub inference_address: Multiaddr,
     pub evaluation_address: Multiaddr,
     pub stake: u64,
     pub commission_rate: u64,
@@ -343,6 +348,7 @@ impl EncoderGenesisConfigBuilder {
             external_network_address,
             object_address,
             local_object_address,
+            inference_address,
             evaluation_address,
         ) = if let Some(offset) = self.port_offset {
             (
@@ -351,9 +357,11 @@ impl EncoderGenesisConfigBuilder {
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
+                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 5),
             )
         } else {
             (
+                local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -370,6 +378,7 @@ impl EncoderGenesisConfigBuilder {
             external_network_address,
             object_address,
             local_object_address,
+            inference_address,
             evaluation_address,
             stake,
             commission_rate: DEFAULT_ENCODER_COMMISSION_RATE,

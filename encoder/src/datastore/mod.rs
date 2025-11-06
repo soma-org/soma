@@ -90,31 +90,18 @@ pub trait Store: Send + Sync + 'static {
         shard: &Shard,
         submission: Submission,
         embedding_download_metadata: DownloadMetadata,
-        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     ) -> ShardResult<()>;
 
     fn get_submission(
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(
-        Submission,
-        Instant,
-        DownloadMetadata,
-        HashMap<EncoderPublicKey, DownloadMetadata>,
-    )>;
+    ) -> ShardResult<(Submission, Instant, DownloadMetadata)>;
 
     fn get_all_submissions(
         &self,
         shard: &Shard,
-    ) -> ShardResult<
-        Vec<(
-            Submission,
-            Instant,
-            DownloadMetadata,
-            HashMap<EncoderPublicKey, DownloadMetadata>,
-        )>,
-    >;
+    ) -> ShardResult<Vec<(Submission, Instant, DownloadMetadata)>>;
 
     fn add_report_vote(&self, shard: &Shard, report_vote: &Verified<ReportVote>)
         -> ShardResult<()>;

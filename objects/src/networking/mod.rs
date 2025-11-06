@@ -2,6 +2,7 @@ pub mod download;
 pub mod downloader;
 pub mod external_service;
 pub mod internal_service;
+pub mod transfer;
 pub mod tus;
 
 use axum::{
@@ -32,18 +33,17 @@ const MIN_PART_SIZE: u64 = 5 * 1024 * 1024;
 /// Cloud providers typically have a max multipart part size
 const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
 
-pub struct DownloadClient<S: ObjectStore> {
+#[derive(Clone)]
+pub struct DownloadClient {
     client: Client,
     mtls_clients: Arc<Cache<NetworkPublicKey, Client>>,
     own_key: NetworkKeyPair,
     parameters: Arc<HttpParameters>,
-    storage: Arc<S>,
     max_size: u64,
 }
 
-impl<S: ObjectStore> DownloadClient<S> {
+impl DownloadClient {
     pub fn new(
-        storage: Arc<S>,
         own_key: NetworkKeyPair,
         parameters: Arc<HttpParameters>,
         max_size: u64,
@@ -66,13 +66,13 @@ impl<S: ObjectStore> DownloadClient<S> {
             mtls_clients: Arc::new(Cache::new(parameters.client_pool_capacity)),
             own_key,
             parameters,
-            storage,
             max_size,
         })
     }
 
     pub async fn download(
         &self,
+        storage: Arc<dyn ObjectStore>,
         path: ObjectPath,
         download_metadata: &DownloadMetadata,
     ) -> ObjectResult<()> {
@@ -111,7 +111,7 @@ impl<S: ObjectStore> DownloadClient<S> {
         Download::new(
             client,
             download_metadata.url().clone(),
-            self.storage.clone(),
+            storage.clone(),
             path,
             download_metadata.metadata().clone(),
             self.parameters.nanoseconds_per_byte,
@@ -121,18 +121,17 @@ impl<S: ObjectStore> DownloadClient<S> {
     }
 }
 
-impl<S: ObjectStore> Clone for DownloadClient<S> {
-    fn clone(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            mtls_clients: self.mtls_clients.clone(),
-            parameters: self.parameters.clone(),
-            own_key: self.own_key.clone(),
-            storage: self.storage.clone(),
-            max_size: self.max_size,
-        }
-    }
-}
+// impl<S: ObjectStore> Clone for DownloadClient<S> {
+//     fn clone(&self) -> Self {
+//         Self {
+//             client: self.client.clone(),
+//             mtls_clients: self.mtls_clients.clone(),
+//             parameters: self.parameters.clone(),
+//             own_key: self.own_key.clone(),
+//             max_size: self.max_size,
+//         }
+//     }
+// }
 
 pub struct DownloadService<S: ObjectStore> {
     storage: Arc<S>,

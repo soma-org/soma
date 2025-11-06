@@ -397,8 +397,9 @@ impl TestCluster {
         let internal_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
         let external_network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
         let object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
-        let probe_address = local_ip_utils::new_tcp_address_for_testing(&ip);
         let local_object_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+        let inference_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+        let evaluation_address = local_ip_utils::new_tcp_address_for_testing(&ip);
 
         let rpc_address = self
             .fullnode_handle
@@ -434,7 +435,8 @@ impl TestCluster {
             external_network_address,
             object_address,
             local_object_address,
-            probe_address,
+            inference_address,
+            evaluation_address,
             rpc_address,
             project_root,
             entry_point,

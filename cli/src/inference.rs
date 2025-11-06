@@ -8,9 +8,6 @@ use std::{
 use crate::error::{CliError, CliResult};
 use bytes::Bytes;
 use clap::Subcommand;
-use intelligence::inference::{
-    json_client::JSONClient, InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI,
-};
 use json_to_table::{json_to_table, Orientation};
 use object_store::{memory::InMemory, ObjectStore, PutPayload};
 use objects::networking::{internal_service::InternalObjectServiceManager, ObjectServiceManager};

@@ -76,16 +76,14 @@ impl<S: ObjectStore> ExternalObjectService<S> {
         Self::signed_download(service, path, params, peer_certificates).await
     }
 
-    /// probes is a special case where an object server will share this without requiring any peer or signed url authentication
     pub async fn probes(
         Path((epoch, checksum)): Path<(Epoch, Checksum)>,
+        Query(params): Query<SignedParams>,
+        peer_certificates: axum::Extension<PeerCertificates>,
         State(Self { service }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
         let path = ObjectPath::Probes(epoch, checksum);
-        service
-            .handle_download_object(&path)
-            .await
-            .map_err(|_| StatusCode::NOT_FOUND)
+        Self::signed_download(service, path, params, peer_certificates).await
     }
 
     pub async fn inputs(

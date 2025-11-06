@@ -8,16 +8,14 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use intelligence::evaluation::messaging::EvaluationClient;
+use intelligence::{
+    evaluation::messaging::EvaluationClient, inference::messaging::InferenceClient,
+};
 
 use fastcrypto::traits::KeyPair;
-use intelligence::inference::{
-    InferenceClient, InferenceInput, InferenceInputV1, InferenceOutputAPI,
-};
-use object_store::ObjectStore;
+use intelligence::inference::{InferenceInput, InferenceInputV1, InferenceOutputAPI};
 use std::{
     collections::{HashMap, HashSet},
-    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -107,12 +105,18 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
             let shard_digest = shard.digest()?;
 
             let input_download_metadata = verified_input.download_metadata();
+            let input_object_path = ObjectPath::Inputs(
+                epoch,
+                shard_digest,
+                input_download_metadata.metadata().checksum(),
+            );
 
             self.store
                 .add_input_download_metadata(&shard, input_download_metadata.clone())?;
 
             let inference_input = InferenceInput::V1(InferenceInputV1::new(
                 epoch,
+                input_object_path.clone(),
                 input_download_metadata.clone(),
             ));
 
@@ -121,19 +125,30 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
 
             let inference_output = self
                 .inference_client
-                .call(inference_input, inference_timeout)
+                .inference(inference_input, inference_timeout)
                 .await
-                .map_err(ShardError::IntelligenceError)?;
+                .map_err(ShardError::InferenceError)?;
 
             let mut probe_set_download_metadata = HashMap::new();
             for pw in inference_output.probe_set().probe_weights() {
                 let probe_download_metadata = self.context.probe(epoch, pw.encoder())?;
-                probe_set_download_metadata.insert(pw.encoder().clone(), probe_download_metadata);
+                let probe_object_path =
+                    ObjectPath::Probes(epoch, probe_download_metadata.metadata().checksum());
+                probe_set_download_metadata.insert(
+                    pw.encoder().clone(),
+                    (probe_download_metadata, probe_object_path),
+                );
             }
 
             let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
                 input_download_metadata.clone(),
+                input_object_path,
                 inference_output.download_metadata().clone(),
+                ObjectPath::Embeddings(
+                    epoch,
+                    shard_digest,
+                    inference_output.download_metadata().metadata().checksum(),
+                ),
                 probe_set_download_metadata,
                 inference_output.probe_set().clone(),
             ));
@@ -153,7 +168,7 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
                 inference_output.download_metadata().metadata().clone(),
                 inference_output.probe_set().clone(),
                 evaluation_output.score(),
-                inference_output.summary_digest().clone(),
+                evaluation_output.summary_digest().clone(),
             ));
 
             let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
@@ -161,7 +176,6 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
                 &shard,
                 submission,
                 inference_output.download_metadata().clone(),
-                evaluation_output.probe_set_download_metadata().clone(),
             )?;
 
             let commit = Commit::V1(CommitV1::new(

@@ -160,14 +160,12 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor
 
                     let own_key = self.encoder_keypair.public();
                     if let Some(Some(own_submission_digest)) = finalized_encoders.get(&own_key) {
-                        let (own_submission, _, embedding_download_metadata, probe_set_download_metadata) = self.store.get_submission(&shard, own_submission_digest.clone())?;
+                        let (own_submission, _, embedding_download_metadata ) = self.store.get_submission(&shard, own_submission_digest.clone())?;
                         let own_reveal = Reveal::V1(RevealV1::new(
                             commit_votes.auth_token().clone(),
                             own_key,
                             own_submission,
                             embedding_download_metadata,
-                            probe_set_download_metadata,
-
                         ));
                         let verified_reveal = Verified::from_trusted(own_reveal).unwrap();
                         info!("Broadcasting own reveal to other nodes");

@@ -9,21 +9,21 @@ use types::metadata::{DownloadMetadata, ObjectPath};
 
 use crate::networking::DownloadClient;
 
-pub struct Downloader<S: ObjectStore> {
-    client: Arc<DownloadClient<S>>,
+pub struct Downloader {
+    client: Arc<DownloadClient>,
     semaphore: Arc<Semaphore>,
 }
 
-impl<S: ObjectStore> Downloader<S> {
-    pub fn new(concurrency: usize, client: Arc<DownloadClient<S>>) -> Self {
+impl Downloader {
+    pub fn new(concurrency: usize, client: Arc<DownloadClient>) -> Self {
         let semaphore = Arc::new(Semaphore::new(concurrency));
         Self { client, semaphore }
     }
 }
 
 #[async_trait]
-impl<S: ObjectStore> Processor for Downloader<S> {
-    type Input = (DownloadMetadata, ObjectPath);
+impl Processor for Downloader {
+    type Input = (DownloadMetadata, ObjectPath, Arc<dyn ObjectStore>);
     type Output = ();
 
     async fn process(&self, msg: ActorMessage<Self>) {
@@ -31,8 +31,8 @@ impl<S: ObjectStore> Processor for Downloader<S> {
             let client = self.client.clone();
             tokio::spawn(async move {
                 let result: ShardResult<()> = async {
-                    let (download_metadata, path) = msg.input;
-                    if let Err(e) = client.download(path, &download_metadata).await {
+                    let (download_metadata, path, storage) = msg.input;
+                    if let Err(e) = client.download(storage, path, &download_metadata).await {
                         tracing::error!("Error downloading object! Delete and abort.");
                         return Err(ShardError::ObjectError(e));
                     }

@@ -92,7 +92,6 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for RevealP
                 &shard,
                 verified_reveal.submission().clone(),
                 verified_reveal.embedding_download_metadata().clone(),
-                verified_reveal.probe_set_download_metadata().clone(),
             )?;
 
             let quorum_threshold = shard.quorum_threshold() as usize;
@@ -111,20 +110,13 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for RevealP
 
             let count = all_submissions
                 .iter()
-                .filter(
-                    |(
-                        submission,
-                        _instant,
-                        _embedding_download_metadata,
-                        _probe_set_download_metadata,
-                    )| {
-                        accepted_lookup
-                            .get(submission.encoder())
-                            .map_or(false, |accepted_digest| {
-                                accepted_digest == &Digest::new(submission).unwrap()
-                            })
-                    },
-                )
+                .filter(|(submission, _instant, _embedding_download_metadata)| {
+                    accepted_lookup
+                        .get(submission.encoder())
+                        .map_or(false, |accepted_digest| {
+                            accepted_digest == &Digest::new(submission).unwrap()
+                        })
+                })
                 .count();
 
             info!(
@@ -138,7 +130,7 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for RevealP
                     let _ = self
                         .store
                         .add_shard_stage_dispatch(&shard, ShardStage::Evaluation)?;
-                    let earliest = all_submissions.iter().map(|(_, t, _, _)| t).min().unwrap();
+                    let earliest = all_submissions.iter().map(|(_, t, _)| t).min().unwrap();
 
                     let duration = std::cmp::max(earliest.elapsed(), Duration::from_secs(5));
 

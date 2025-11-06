@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     encoder_committee::EncoderCommittee,
     error::{SharedError, SharedResult},
-    metadata::DownloadMetadata,
+    metadata::{DownloadMetadata, ObjectPath},
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use enum_dispatch::enum_dispatch;
@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 #[enum_dispatch]
 pub trait EvaluationInputAPI {
     fn input_download_metadata(&self) -> &DownloadMetadata;
+    fn input_object_path(&self) -> &ObjectPath;
     fn embedding_download_metadata(&self) -> &DownloadMetadata;
-    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata>;
+    fn embedding_object_path(&self) -> &ObjectPath;
+    fn probe_set_data(&self) -> &HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)>;
     fn probe_set(&self) -> &ProbeSet;
 }
 
@@ -26,22 +28,28 @@ pub enum EvaluationInput {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EvaluationInputV1 {
     input_download_metadata: DownloadMetadata,
+    input_object_path: ObjectPath,
     embedding_download_metadata: DownloadMetadata,
-    probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
+    embedding_object_path: ObjectPath,
+    probe_set_data: HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)>,
     probe_set: ProbeSet,
 }
 
 impl EvaluationInputV1 {
     pub fn new(
         input_download_metadata: DownloadMetadata,
+        input_object_path: ObjectPath,
         embedding_download_metadata: DownloadMetadata,
-        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
+        embedding_object_path: ObjectPath,
+        probe_set_data: HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)>,
         probe_set: ProbeSet,
     ) -> Self {
         Self {
             input_download_metadata,
+            input_object_path,
             embedding_download_metadata,
-            probe_set_download_metadata,
+            embedding_object_path,
+            probe_set_data,
             probe_set,
         }
     }
@@ -51,12 +59,23 @@ impl EvaluationInputAPI for EvaluationInputV1 {
     fn input_download_metadata(&self) -> &DownloadMetadata {
         &self.input_download_metadata
     }
+
+    fn input_object_path(&self) -> &ObjectPath {
+        &self.input_object_path
+    }
+
     fn embedding_download_metadata(&self) -> &DownloadMetadata {
         &self.embedding_download_metadata
     }
-    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata> {
-        &self.probe_set_download_metadata
+
+    fn embedding_object_path(&self) -> &ObjectPath {
+        &self.embedding_object_path
     }
+
+    fn probe_set_data(&self) -> &HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)> {
+        &self.probe_set_data
+    }
+
     fn probe_set(&self) -> &ProbeSet {
         &self.probe_set
     }
@@ -65,7 +84,7 @@ impl EvaluationInputAPI for EvaluationInputV1 {
 #[enum_dispatch]
 pub trait EvaluationOutputAPI {
     fn score(&self) -> Score;
-    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata>;
+    fn summary_digest(&self) -> &EmbeddingDigest;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -76,28 +95,25 @@ pub enum EvaluationOutput {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct EvaluationOutputV1 {
-    score: ScoreV1,
-    probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
+    score: Score,
+    summary_digest: EmbeddingDigest,
 }
 
 impl EvaluationOutputV1 {
-    pub fn new(
-        score: ScoreV1,
-        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
-    ) -> Self {
+    pub fn new(score: Score, summary_digest: EmbeddingDigest) -> Self {
         Self {
             score,
-            probe_set_download_metadata,
+            summary_digest,
         }
     }
 }
 
 impl EvaluationOutputAPI for EvaluationOutputV1 {
     fn score(&self) -> Score {
-        Score::V1(self.score.clone())
+        self.score.clone()
     }
-    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata> {
-        &self.probe_set_download_metadata
+    fn summary_digest(&self) -> &EmbeddingDigest {
+        &self.summary_digest
     }
 }
 

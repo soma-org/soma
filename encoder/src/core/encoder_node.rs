@@ -1,16 +1,25 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::{collections::BTreeSet, future::Future, sync::Arc};
 
 use fastcrypto::traits::KeyPair;
-use intelligence::evaluation::messaging::service::MockEvaluationService;
+use intelligence::evaluation::core_processor::EvaluationCoreProcessor;
+use intelligence::evaluation::messaging::service::EvaluationNetworkService;
 use intelligence::evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
-use intelligence::evaluation::messaging::EvaluationManager;
-use intelligence::inference::mock_client::MockInferenceClient;
+use intelligence::evaluation::messaging::{EvaluationManager, EvaluationService};
+use intelligence::evaluation::{EvaluatorClient, MockEvaluator};
+use intelligence::inference::core_processor::InferenceCoreProcessor;
+use intelligence::inference::messaging::service::InferenceNetworkService;
+use intelligence::inference::messaging::tonic::{InferenceTonicClient, InferenceTonicManager};
+use intelligence::inference::messaging::InferenceServiceManager;
+use intelligence::inference::module::MockModule;
 use object_store::memory::InMemory;
 use objects::networking::downloader::Downloader;
 use objects::networking::external_service::ExternalObjectServiceManager;
 use objects::networking::internal_service::InternalObjectServiceManager;
 use objects::networking::{DownloadClient, DownloadService, ObjectServiceManager};
+use objects::{EphemeralInMemoryStore, PersistentInMemoryStore};
+use rand::Rng;
 use sdk::client_config::{SomaClientConfig, SomaEnv};
 use sdk::wallet_context::WalletContext;
 use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
@@ -20,14 +29,17 @@ use tracing::{error, info, warn};
 use types::actors::ActorManager;
 use types::base::SomaAddress;
 use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
-use types::crypto::{NetworkKeyPair, NetworkPublicKey};
+use types::crypto::NetworkKeyPair;
+use types::evaluation::{Score, ScoreV1};
 use types::multiaddr::Multiaddr;
+use types::p2p::to_host_port_str;
 use types::parameters::HttpParameters;
 use types::shard_crypto::keys::EncoderPublicKey;
 use types::{
     config::{encoder_config::EncoderConfig, Config},
     system_state::SystemStateTrait,
 };
+use url::Url;
 
 use super::{
     internal_broadcaster::Broadcaster,
@@ -36,7 +48,7 @@ use super::{
 use crate::datastore::rocksdb_store::RocksDBStore;
 use crate::pipelines::clean_up::CleanUpProcessor;
 use crate::{
-    datastore::{mem_store::MemStore, Store},
+    datastore::Store,
     messaging::{
         external_service::EncoderExternalService,
         internal_service::EncoderInternalService,
@@ -72,8 +84,9 @@ pub struct EncoderNode {
     external_network_manager: EncoderExternalTonicManager,
     internal_object_service_manager: InternalObjectServiceManager,
     external_object_service_manager: ExternalObjectServiceManager,
+    inference_network_manager: InferenceTonicManager,
     evaluation_network_manager: EvaluationTonicManager,
-    downloader_manager: ActorManager<Downloader<InMemory>>,
+    downloader_manager: ActorManager<Downloader>,
     clean_up_manager: ActorManager<CleanUpProcessor>,
     report_vote_manager: ActorManager<ReportVoteProcessor<EncoderInternalTonicClient>>,
     evaluation_manager:
@@ -85,11 +98,7 @@ pub struct EncoderNode {
     commit_manager:
         ActorManager<CommitProcessor<EncoderInternalTonicClient, EvaluationTonicClient>>,
     input_manager: ActorManager<
-        InputProcessor<
-            EncoderInternalTonicClient,
-            EvaluationTonicClient,
-            MockInferenceClient<InMemory>,
-        >,
+        InputProcessor<EncoderInternalTonicClient, EvaluationTonicClient, InferenceTonicClient>,
     >,
     store: Arc<dyn Store>,
     pub context: Context,
@@ -123,6 +132,11 @@ impl EncoderNode {
             .expect("Valid multiaddr");
         let external_object_address: Multiaddr = config
             .external_object_address
+            .to_string()
+            .parse()
+            .expect("Valid multiaddr");
+        let inference_address: Multiaddr = config
+            .inference_address
             .to_string()
             .parse()
             .expect("Valid multiaddr");
@@ -168,6 +182,11 @@ impl EncoderNode {
             .start(&external_object_address, download_service.clone())
             .await;
 
+        let external_object_server_url = Url::from_str(&format!(
+            "https://{}",
+            to_host_port_str(&external_object_address).unwrap()
+        ))
+        .unwrap();
         let mut internal_object_service_manager = InternalObjectServiceManager::new(
             network_keypair.clone(),
             config.object_parameters.clone(),
@@ -179,22 +198,14 @@ impl EncoderNode {
             .await;
 
         ///////////////////////////
-        let mut evaluation_network_manager = EvaluationTonicManager::new(
-            config.evaluation_parameters.clone(),
-            evaluation_address.clone(),
+        let ephemeral_store = EphemeralInMemoryStore::new(object_storage.clone());
+        let persistent_store = PersistentInMemoryStore::new(
+            object_storage.clone(),
+            external_object_server_url,
+            network_keypair.clone(),
         );
 
-        let evaluation_service = Arc::new(MockEvaluationService::new());
-        evaluation_network_manager.start(evaluation_service).await;
-
-        let evaluation_client = Arc::new(
-            EvaluationTonicClient::new(
-                evaluation_address.clone(),
-                config.evaluation_parameters.clone(),
-            )
-            .await
-            .unwrap(),
-        );
+        ///////////////////////////
         ////////////////////////////
 
         let encoder_keypair = Arc::new(encoder_keypair);
@@ -210,9 +221,8 @@ impl EncoderNode {
         // 5gb
         let max_size: u64 = 5 * 1024 * 1024 * 1024;
 
-        let download_client: Arc<DownloadClient<InMemory>> = Arc::new(
+        let download_client: Arc<DownloadClient> = Arc::new(
             DownloadClient::new(
-                object_storage.clone(),
                 network_keypair.clone(),
                 Arc::new(HttpParameters::default()),
                 max_size,
@@ -224,6 +234,66 @@ impl EncoderNode {
         let downloader_manager = ActorManager::new(default_buffer, downloader_processor);
         let downloader_handle = downloader_manager.handle();
 
+        let module_client = Arc::new(MockModule::new());
+        let inference_core_processor = InferenceCoreProcessor::new(
+            persistent_store.clone(),
+            ephemeral_store.clone(),
+            downloader_handle.clone(),
+            module_client,
+        );
+
+        let inference_processor_manager =
+            ActorManager::new(default_buffer, inference_core_processor);
+        let inference_processor_handle = inference_processor_manager.handle();
+
+        let inference_service = Arc::new(InferenceNetworkService::new(inference_processor_handle));
+        let mut inference_network_manager = InferenceTonicManager::new(
+            Arc::new(parameters.tonic.clone()),
+            inference_address.clone(),
+        );
+
+        inference_network_manager.start(inference_service).await;
+        let inference_client = Arc::new(
+            InferenceTonicClient::new(
+                inference_address.clone(),
+                Arc::new(parameters.tonic.clone()),
+            )
+            .await
+            .unwrap(),
+        );
+
+        let evaluator_client = Arc::new(MockEvaluator::new(Score::V1(ScoreV1::new(
+            rand::thread_rng().gen(),
+        ))));
+
+        let evaluation_core_processor = EvaluationCoreProcessor::new(
+            persistent_store,
+            ephemeral_store,
+            evaluator_client,
+            downloader_handle,
+        );
+
+        let evaluation_processor_manager =
+            ActorManager::new(default_buffer, evaluation_core_processor);
+        let evaluation_processor_handle = evaluation_processor_manager.handle();
+
+        let evaluation_service =
+            Arc::new(EvaluationNetworkService::new(evaluation_processor_handle));
+        let mut evaluation_network_manager = EvaluationTonicManager::new(
+            config.evaluation_parameters.clone(),
+            evaluation_address.clone(),
+        );
+
+        evaluation_network_manager.start(evaluation_service).await;
+
+        let evaluation_client = Arc::new(
+            EvaluationTonicClient::new(
+                evaluation_address.clone(),
+                config.evaluation_parameters.clone(),
+            )
+            .await
+            .unwrap(),
+        );
         let store = Arc::new(RocksDBStore::new(config.db_path().to_str().unwrap()));
 
         let broadcaster = Arc::new(Broadcaster::new(
@@ -284,8 +354,6 @@ impl EncoderNode {
         );
         let commit_manager = ActorManager::new(default_buffer, commit_processor);
         let commit_handle = commit_manager.handle();
-
-        let inference_client = Arc::new(MockInferenceClient::new(object_storage.clone()));
 
         let input_processor = InputProcessor::new(
             store.clone(),
@@ -378,6 +446,7 @@ impl EncoderNode {
             store,
             object_storage,
             context,
+            inference_network_manager,
             evaluation_network_manager,
             committee_sync_manager,
             downloader_manager,
@@ -407,7 +476,7 @@ impl EncoderNode {
                 ExternalPipelineDispatcher<
                     EncoderInternalTonicClient,
                     EvaluationTonicClient,
-                    MockInferenceClient<InMemory>,
+                    InferenceTonicClient,
                 >,
             >,
         >>::stop(&mut self.external_network_manager)
@@ -424,10 +493,18 @@ impl EncoderNode {
         )
         .await;
 
-        // TODO: Replace mock with real service
-        <EvaluationTonicManager as EvaluationManager<MockEvaluationService>>::stop(
-            &mut self.evaluation_network_manager,
-        )
+        <InferenceTonicManager as InferenceServiceManager<
+            InferenceNetworkService<PersistentInMemoryStore, EphemeralInMemoryStore, MockModule>,
+        >>::stop(&mut self.inference_network_manager)
+        .await;
+
+        <EvaluationTonicManager as EvaluationManager<
+            EvaluationNetworkService<
+                PersistentInMemoryStore,
+                EphemeralInMemoryStore,
+                MockEvaluator,
+            >,
+        >>::stop(&mut self.evaluation_network_manager)
         .await;
 
         self.downloader_manager.shutdown();

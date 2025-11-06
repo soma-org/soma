@@ -28,7 +28,6 @@ pub(crate) trait RevealAPI {
     fn author(&self) -> &EncoderPublicKey;
     fn submission(&self) -> &Submission;
     fn embedding_download_metadata(&self) -> &DownloadMetadata;
-    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -37,7 +36,6 @@ pub(crate) struct RevealV1 {
     author: EncoderPublicKey,
     submission: Submission,
     embedding_download_metadata: DownloadMetadata,
-    probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
 }
 
 impl RevealV1 {
@@ -46,14 +44,12 @@ impl RevealV1 {
         author: EncoderPublicKey,
         submission: Submission,
         embedding_download_metadata: DownloadMetadata,
-        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     ) -> Self {
         Self {
             auth_token,
             author,
             submission,
             embedding_download_metadata,
-            probe_set_download_metadata,
         }
     }
 }
@@ -70,9 +66,6 @@ impl RevealAPI for RevealV1 {
     }
     fn embedding_download_metadata(&self) -> &DownloadMetadata {
         &self.embedding_download_metadata
-    }
-    fn probe_set_download_metadata(&self) -> &HashMap<EncoderPublicKey, DownloadMetadata> {
-        &self.probe_set_download_metadata
     }
 }
 

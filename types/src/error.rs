@@ -33,6 +33,7 @@ use std::collections::BTreeMap;
 
 use fastcrypto::error;
 use fastcrypto::{error::FastCryptoError, hash::Digest};
+use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
 use store::TypedStoreError;
 use strum::IntoStaticStr;
@@ -1418,7 +1419,7 @@ pub enum ShardError {
 
 pub type ShardResult<T> = Result<T, ShardError>;
 
-#[derive(Clone, Debug, Error, IntoStaticStr)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum ObjectError {
     #[error("fast crypto error: {0}")]
     FastCrypto(String),
@@ -1450,15 +1451,23 @@ pub enum ObjectError {
     FileTooLarge,
     #[error("unexpected status code: {0}")]
     UnexpectedStatusCode(u16),
+    #[error("object store error: {0}")]
+    ObjectStoreError(object_store::Error),
+    #[error("Storage failed: {0}")]
+    StorageFailure(String),
 }
 pub type ObjectResult<T> = Result<T, ObjectError>;
 
 pub type InferenceResult<T> = Result<T, InferenceError>;
 
-#[derive(Clone, Debug, Error, IntoStaticStr)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum InferenceError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
+    #[error("Failed to connect as client: {0:?}")]
+    NetworkClientConnection(String),
+    #[error("Failed to send request: {0:?}")]
+    NetworkRequest(String),
     #[error("Failed to parse URL: {0}")]
     UrlParseError(String),
     #[error("Network request error: {0:?}")]
@@ -1467,6 +1476,14 @@ pub enum InferenceError {
     DeserializeError(String),
     #[error("Validation error: {0:?}")]
     ValidationError(String),
+    #[error("Error deserializing type: {0}")]
+    MalformedType(bcs::Error),
+    #[error("Error serializing: {0}")]
+    SerializationFailure(bcs::Error),
+    #[error("core processor error: {0:?}")]
+    CoreProcessorError(String),
+    #[error("Object store error: {0}")]
+    ObjectStoreError(object_store::Error),
 }
 
 pub type EvaluationResult<T> = Result<T, EvaluationError>;

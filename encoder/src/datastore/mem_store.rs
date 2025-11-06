@@ -40,12 +40,7 @@ pub(crate) struct Inner {
     submission_digests: BTreeMap<(Epoch, Digest<Shard>, Encoder), (Digest<Submission>, Instant)>,
     submissions: BTreeMap<
         (Epoch, Digest<Shard>, Digest<Submission>),
-        (
-            Submission,
-            Instant,
-            DownloadMetadata,
-            HashMap<EncoderPublicKey, DownloadMetadata>,
-        ),
+        (Submission, Instant, DownloadMetadata),
     >,
 
     commit_votes: BTreeMap<(Epoch, Digest<Shard>, Encoder), CommitVotes>,
@@ -288,7 +283,6 @@ impl Store for MemStore {
         shard: &Shard,
         submission: Submission,
         embedding_download_metadata: DownloadMetadata,
-        probe_set_download_metadata: HashMap<EncoderPublicKey, DownloadMetadata>,
     ) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = submission.shard_digest();
@@ -302,12 +296,7 @@ impl Store for MemStore {
             None => {
                 guard.submissions.insert(
                     key,
-                    (
-                        submission,
-                        Instant::now(),
-                        embedding_download_metadata,
-                        probe_set_download_metadata,
-                    ),
+                    (submission, Instant::now(), embedding_download_metadata),
                 );
             }
         };
@@ -318,12 +307,7 @@ impl Store for MemStore {
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(
-        Submission,
-        Instant,
-        DownloadMetadata,
-        HashMap<EncoderPublicKey, DownloadMetadata>,
-    )> {
+    ) -> ShardResult<(Submission, Instant, DownloadMetadata)> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest, submission_digest);
@@ -338,14 +322,7 @@ impl Store for MemStore {
     fn get_all_submissions(
         &self,
         shard: &Shard,
-    ) -> ShardResult<
-        Vec<(
-            Submission,
-            Instant,
-            DownloadMetadata,
-            HashMap<EncoderPublicKey, DownloadMetadata>,
-        )>,
-    > {
+    ) -> ShardResult<Vec<(Submission, Instant, DownloadMetadata)>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -355,19 +332,13 @@ impl Store for MemStore {
             .submissions
             .iter()
             .filter(|((e, sd, _), _)| *e == epoch && *sd == shard_digest)
-            .map(
-                |(
-                    _,
-                    (submission, instant, embedding_download_metadata, probe_set_download_metadata),
-                )| {
-                    (
-                        submission.clone(),
-                        instant.clone(),
-                        embedding_download_metadata.clone(),
-                        probe_set_download_metadata.clone(),
-                    )
-                },
-            )
+            .map(|(_, (submission, instant, embedding_download_metadata))| {
+                (
+                    submission.clone(),
+                    instant.clone(),
+                    embedding_download_metadata.clone(),
+                )
+            })
             .collect();
 
         Ok(submissions)
