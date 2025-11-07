@@ -10,12 +10,24 @@ use crate::{
     object::{Object, ObjectRef},
     storage::read_store::EpochInfo,
 };
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+/// Archive data format for a single commit
+#[derive(Serialize, Deserialize)]
+pub struct CommitArchiveData {
+    /// Serialized TrustedCommit
+    pub commit: Bytes,
+    /// All blocks referenced in the commit
+    pub blocks: Vec<Bytes>,
+    /// Certifier blocks that vote for this commit (for verification)
+    pub certifier_blocks: Vec<Bytes>,
+}
 
 #[derive(Clone, Debug)]
 pub struct CheckpointData {
     pub committed_subdag: CommittedSubDag,
-    // pub checkpoint_contents: CheckpointContents,
     pub transactions: Vec<CheckpointTransaction>,
 }
 

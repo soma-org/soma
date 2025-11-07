@@ -50,6 +50,7 @@ url.workspace = true
 store.workspace = true
 object_store.workspace = true
 uuid.workspace = true
+clap.workspace = true
 serde_yaml = "0.8.26"
 serde_with = { version = "3.8", features = ["schemars_0_8"] }
 derive_more = "0.99.17"

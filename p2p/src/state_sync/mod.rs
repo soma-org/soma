@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use data_ingestion::{executor::setup_single_workflow_with_options, reader::ReaderOptions};
 use futures::{stream::FuturesOrdered, StreamExt};
 use itertools::Itertools;
 use parking_lot::RwLock;
@@ -19,7 +20,7 @@ use tracing::{debug, info, instrument, trace, warn};
 use types::{
     accumulator::CommitIndex,
     committee::{Authority, Committee, Epoch, EpochId},
-    config::state_sync_config::StateSyncConfig,
+    config::{node_config::ArchiveReaderConfig, state_sync_config::StateSyncConfig},
     consensus::{
         block::{BlockAPI, BlockRef, EndOfEpochData, SignedBlock, VerifiedBlock},
         block_verifier::{BlockVerifier, SignedBlockVerifier},
@@ -46,10 +47,12 @@ use types::{
 
 use crate::{
     discovery::now_unix,
+    state_sync::worker::StateSyncWorker,
     tonic_gen::{p2p_client::P2pClient, p2p_server::P2p},
 };
 
 pub mod tx_verifier;
+mod worker;
 
 const COMMIT_SUMMARY_DOWNLOAD_CONCURRENCY: usize = 400;
 
@@ -228,6 +231,8 @@ pub struct StateSyncEventLoop<S> {
     active_peers: ActivePeers,
     peer_event_receiver: broadcast::Receiver<PeerEvent>,
     block_verifier: Arc<SignedBlockVerifier>,
+
+    archive_config: Option<ArchiveReaderConfig>,
 }
 
 impl<S> StateSyncEventLoop<S>
@@ -244,6 +249,7 @@ where
         active_peers: ActivePeers,
         peer_event_receiver: broadcast::Receiver<PeerEvent>,
         block_verifier: Arc<SignedBlockVerifier>,
+        archive_config: Option<ArchiveReaderConfig>,
     ) -> Self {
         Self {
             config,
@@ -257,6 +263,7 @@ where
             peer_event_receiver,
             block_verifier,
             sync_task: None,
+            archive_config,
         }
     }
 
@@ -272,6 +279,14 @@ where
         for peer_id in self.active_peers.peers().iter() {
             self.spawn_get_latest_from_peer(*peer_id);
         }
+
+        let archive_task = sync_commits_from_archive(
+            self.archive_config.clone(),
+            self.store.clone(),
+            self.peer_heights.clone(),
+            self.block_verifier.clone(),
+        );
+        self.tasks.spawn(archive_task);
 
         // Start main loop.
         loop {
@@ -498,6 +513,113 @@ where
             self.config.timeout(),
         );
         self.tasks.spawn(task);
+    }
+}
+
+async fn sync_commits_from_archive<S>(
+    archive_config: Option<ArchiveReaderConfig>,
+    store: S,
+    peer_heights: Arc<RwLock<PeerHeights>>,
+    block_verifier: Arc<SignedBlockVerifier>,
+) where
+    S: ConsensusStore + WriteStore + Clone + Send + Sync + 'static,
+{
+    loop {
+        sync_commits_from_archive_iteration(
+            &archive_config,
+            store.clone(),
+            peer_heights.clone(),
+            block_verifier.clone(),
+        )
+        .await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+async fn sync_commits_from_archive_iteration<S>(
+    archive_config: &Option<ArchiveReaderConfig>,
+    store: S,
+    peer_heights: Arc<RwLock<PeerHeights>>,
+    block_verifier: Arc<SignedBlockVerifier>,
+) where
+    S: ConsensusStore + WriteStore + Clone + Send + Sync + 'static,
+{
+    // Check if we need to sync from archive
+    let highest_synced = store
+        .get_highest_synced_commit()
+        .expect("store operation should not fail")
+        .commit_ref
+        .index;
+
+    let lowest_peer_commit = peer_heights
+        .read()
+        .peers
+        .values()
+        .map(|info| info.lowest)
+        .min();
+
+    let sync_from_archive = if let Some(lowest) = lowest_peer_commit {
+        highest_synced < lowest
+    } else {
+        false
+    };
+
+    debug!(
+        "Archive sync check: highest_synced={}, lowest_peer_commit={:?}, sync_needed={}",
+        highest_synced, lowest_peer_commit, sync_from_archive
+    );
+
+    if !sync_from_archive {
+        return;
+    }
+
+    let Some(archive_config) = archive_config else {
+        warn!("Archive sync needed but no archive config provided");
+        return;
+    };
+
+    let Some(ingestion_url) = &archive_config.ingestion_url else {
+        warn!("Archive ingestion URL not configured");
+        return;
+    };
+
+    let start = highest_synced
+        .checked_add(1)
+        .expect("Commit index overflow");
+    let end = lowest_peer_commit.unwrap();
+
+    info!("Starting archive sync for commits {} to {}", start, end);
+
+    // Setup worker and executor
+    let worker = StateSyncWorker::new(store, block_verifier);
+
+    let reader_options = ReaderOptions {
+        batch_size: archive_config.download_concurrency.into(),
+        upper_limit: Some(end),
+        ..Default::default()
+    };
+
+    match setup_single_workflow_with_options(
+        worker,
+        ingestion_url.clone(),
+        archive_config.remote_store_options.clone(),
+        start,
+        1, // Single worker for ordered processing
+        Some(reader_options),
+    )
+    .await
+    {
+        Ok((executor, _exit_sender)) => match executor.await {
+            Ok(_) => {
+                info!("Archive sync complete. Commits synced: {}", end - start + 1);
+            }
+            Err(err) => {
+                warn!("Archive sync failed: {:?}", err);
+            }
+        },
+        Err(err) => {
+            warn!("Failed to setup archive sync: {:?}", err);
+        }
     }
 }
 

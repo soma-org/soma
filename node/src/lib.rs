@@ -529,6 +529,7 @@ impl SomaNode {
         let (discovery, state_sync, p2p_server) = P2pBuilder::new()
             .config(config.p2p_config.clone())
             .store(state_sync_store)
+            .archive_config(config.state_archive_read_config.clone())
             .build();
 
         let own_address = config

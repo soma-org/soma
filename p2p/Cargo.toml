@@ -21,6 +21,9 @@ tokio-stream.workspace = true
 bytes.workspace = true
 eyre.workspace = true
 itertools.workspace = true
+serde.workspace = true
+async-trait.workspace = true
+data-ingestion.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

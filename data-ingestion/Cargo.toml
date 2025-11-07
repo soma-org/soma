@@ -1,0 +1,28 @@
+[package]
+name = "data-ingestion"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+types.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+futures.workspace = true
+object_store.workspace = true
+tap.workspace = true
+bcs.workspace = true
+tempfile.workspace = true
+url.workspace = true
+once_cell = { version = "1.20.3" }
+backoff = { version = "0.4.0", features = [
+    "futures",
+    "futures-core",
+    "pin-project-lite",
+    "tokio",
+    "tokio_1",
+] }
+
+[lints]
+workspace = true

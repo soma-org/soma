@@ -19,7 +19,9 @@ use tokio::{
 use tracing::{debug, info};
 use types::{
     accumulator::{self, AccumulatorStore},
-    config::{p2p_config::P2pConfig, state_sync_config::StateSyncConfig},
+    config::{
+        node_config::ArchiveReaderConfig, p2p_config::P2pConfig, state_sync_config::StateSyncConfig,
+    },
     consensus::{
         block_verifier::{BlockVerifier, SignedBlockVerifier},
         commit::CommittedSubDag,
@@ -168,6 +170,7 @@ pub struct UnstartedStateSync<S> {
     pub(super) peer_heights: Arc<RwLock<PeerHeights>>,
     pub(super) commit_event_sender: broadcast::Sender<CommittedSubDag>,
     pub(super) block_verifier: Arc<SignedBlockVerifier>,
+    pub(super) archive_config: Option<ArchiveReaderConfig>,
 }
 
 impl<S> UnstartedStateSync<S>
@@ -187,6 +190,7 @@ where
             peer_heights,
             commit_event_sender,
             block_verifier,
+            archive_config,
         } = self;
 
         (
@@ -200,6 +204,7 @@ where
                 active_peers,
                 peer_event_receiver,
                 block_verifier,
+                archive_config,
             ),
             handle,
         )
@@ -221,6 +226,7 @@ where
 pub struct P2pBuilder<S> {
     config: Option<P2pConfig>,
     store: Option<S>,
+    archive_config: Option<ArchiveReaderConfig>,
     // trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
 }
 
@@ -230,6 +236,7 @@ impl P2pBuilder<()> {
         Self {
             store: None,
             config: None,
+            archive_config: None,
         }
     }
 }
@@ -239,11 +246,17 @@ impl<S> P2pBuilder<S> {
         P2pBuilder {
             store: Some(store),
             config: self.config,
+            archive_config: None,
         }
     }
 
     pub fn config(mut self, config: P2pConfig) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    pub fn archive_config(mut self, archive_config: Option<ArchiveReaderConfig>) -> Self {
+        self.archive_config = archive_config;
         self
     }
 }
@@ -347,6 +360,7 @@ where
                 peer_heights,
                 commit_event_sender,
                 block_verifier,
+                archive_config: self.archive_config,
             },
             server,
         )

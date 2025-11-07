@@ -1,6 +1,6 @@
 use crate::{
     base::SomaAddress,
-    config::{local_ip_utils, rpc_config::RpcConfig},
+    config::{local_ip_utils, object_store_config::ObjectStoreConfig, rpc_config::RpcConfig},
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
     genesis::Genesis,
     multiaddr::Multiaddr,
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{
     net::SocketAddr,
+    num::NonZeroUsize,
     ops::Mul,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
@@ -59,6 +60,9 @@ pub struct NodeConfig {
     pub authority_store_pruning_config: AuthorityStorePruningConfig,
 
     pub end_of_epoch_broadcast_channel_capacity: usize, // 128
+
+    #[serde(default)]
+    pub state_archive_read_config: Option<ArchiveReaderConfig>,
 
     #[serde(default)]
     pub p2p_config: P2pConfig,
@@ -134,6 +138,14 @@ impl NodeConfig {
     pub fn rpc(&self) -> Option<&crate::config::rpc_config::RpcConfig> {
         self.rpc.as_ref()
     }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ArchiveReaderConfig {
+    pub remote_store_config: ObjectStoreConfig,
+    pub download_concurrency: NonZeroUsize,
+    pub ingestion_url: Option<String>,
+    pub remote_store_options: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -567,6 +579,7 @@ impl ValidatorConfigBuilder {
             rpc: Some(RpcConfig {
                 ..Default::default()
             }),
+            state_archive_read_config: None,
             consensus_config,
             authority_store_pruning_config: pruning_config,
             end_of_epoch_broadcast_channel_capacity: 128,
