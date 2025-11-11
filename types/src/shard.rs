@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+
+use crate::checksum::Checksum;
 use crate::committee::Epoch;
 use crate::crypto::NetworkPublicKey;
 use crate::encoder_committee::CountUnit;
 use crate::entropy::{BlockEntropy, BlockEntropyProof};
 use crate::error::{ShardError, ShardResult, SharedError};
 use crate::finality::FinalityProof;
-use crate::metadata::{DownloadMetadata, Metadata, MtlsDownloadMetadataAPI};
+use crate::metadata::{DownloadMetadata, Metadata, MtlsDownloadMetadataAPI, ObjectPath};
 use crate::object::ObjectRef;
 use crate::shard_crypto::keys::EncoderPublicKey;
 use crate::{error::SharedResult, shard_crypto::digest::Digest};
@@ -178,4 +181,61 @@ pub fn verify_input(input: &Input, shard: &Shard, peer: &NetworkPublicKey) -> Sh
         _ => {}
     }
     Ok(())
+}
+
+// /////////////////////////////////////////////////////
+#[enum_dispatch]
+pub trait GetDataAPI {
+    fn object_paths(&self) -> &Vec<ObjectPath>;
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetDataV1 {
+    object_paths: Vec<ObjectPath>,
+}
+
+impl GetDataV1 {
+    pub fn new(object_paths: Vec<ObjectPath>) -> Self {
+        Self { object_paths }
+    }
+}
+
+impl GetDataAPI for GetDataV1 {
+    fn object_paths(&self) -> &Vec<ObjectPath> {
+        &self.object_paths
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[enum_dispatch(GetDataAPI)]
+pub enum GetData {
+    V1(GetDataV1),
+}
+// /////////////////////////////////////////////////////
+
+#[enum_dispatch]
+pub trait DownloadLocationsAPI {
+    fn download_locations(&self) -> &HashMap<Checksum, DownloadMetadata>;
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DownloadLocationsV1 {
+    download_locations: HashMap<Checksum, DownloadMetadata>,
+}
+
+impl DownloadLocationsV1 {
+    pub fn new(download_locations: HashMap<Checksum, DownloadMetadata>) -> Self {
+        Self { download_locations }
+    }
+}
+
+impl DownloadLocationsAPI for DownloadLocationsV1 {
+    fn download_locations(&self) -> &HashMap<Checksum, DownloadMetadata> {
+        &self.download_locations
+    }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[enum_dispatch(DownloadLocationsAPI)]
+pub enum DownloadLocations {
+    V1(DownloadLocationsV1),
 }

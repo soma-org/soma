@@ -11,7 +11,10 @@ use types::{
     crypto::{NetworkKeyPair, NetworkPublicKey},
     multiaddr::Multiaddr,
     p2p::to_socket_addr,
-    shard_networking::CERTIFICATE_NAME,
+    shard_networking::{
+        external::{GetDataRequest, GetDataResponse},
+        CERTIFICATE_NAME,
+    },
 };
 
 use crate::messaging::{EncoderExternalNetworkManager, EncoderExternalNetworkService};
@@ -68,6 +71,27 @@ impl<S: EncoderExternalNetworkService> EncoderExternalTonicService
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
         Ok(Response::new(SendInputResponse {}))
+    }
+    async fn get_data(
+        &self,
+        request: Request<GetDataRequest>,
+    ) -> Result<Response<GetDataResponse>, tonic::Status> {
+        let Some(peer) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.peer.clone())
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let get_data = request.into_inner().get_data;
+
+        let download_locations = self
+            .service
+            .handle_get_data(&peer, get_data)
+            .await
+            .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
+
+        Ok(Response::new(GetDataResponse { download_locations }))
     }
 }
 

@@ -98,6 +98,11 @@ pub(crate) trait EncoderExternalNetworkService: Send + Sync + Sized + 'static {
         peer: &NetworkPublicKey,
         input_bytes: Bytes,
     ) -> ShardResult<()>;
+    async fn handle_get_data(
+        &self,
+        peer: &NetworkPublicKey,
+        get_data_bytes: Bytes,
+    ) -> ShardResult<Bytes>;
 }
 
 /// `EncoderNetworkManager` handles starting and stopping the network related services

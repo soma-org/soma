@@ -267,7 +267,7 @@ impl EncoderNode {
         ))));
 
         let evaluation_core_processor = EvaluationCoreProcessor::new(
-            persistent_store,
+            persistent_store.clone(),
             ephemeral_store,
             evaluator_client,
             downloader_handle,
@@ -397,6 +397,7 @@ impl EncoderNode {
             context.clone(),
             ExternalPipelineDispatcher::new(input_handle),
             verifier,
+            persistent_store,
         ));
 
         // Start the external manager with the service
@@ -478,6 +479,7 @@ impl EncoderNode {
                     EvaluationTonicClient,
                     InferenceTonicClient,
                 >,
+                PersistentInMemoryStore,
             >,
         >>::stop(&mut self.external_network_manager)
         .await;

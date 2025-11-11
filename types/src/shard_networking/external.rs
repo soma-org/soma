@@ -11,7 +11,7 @@ use bytes::Bytes;
 use tonic::{codec::CompressionEncoding, Request};
 
 use crate::{
-    shard::Input,
+    shard::{DownloadLocations, GetData, Input},
     shard_networking::{
         channel_pool::{Channel, ChannelPool},
         generated::encoder_external_tonic_service_client::EncoderExternalTonicServiceClient,
@@ -27,6 +27,13 @@ pub trait EncoderExternalNetworkClient: Send + Sync + Sized + 'static {
         input: &Input,
         timeout: Duration,
     ) -> ShardResult<()>;
+
+    async fn get_data(
+        &self,
+        encoder: &EncoderPublicKey,
+        get_data: &GetData,
+        timeout: Duration,
+    ) -> ShardResult<Bytes>;
 }
 
 // Implements Tonic RPC client for Encoders.
@@ -108,6 +115,27 @@ impl EncoderExternalNetworkClient for EncoderExternalTonicClient {
             .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?;
         Ok(())
     }
+    async fn get_data(
+        &self,
+        encoder: &EncoderPublicKey,
+        get_data: &GetData,
+        timeout: Duration,
+    ) -> ShardResult<Bytes> {
+        let get_data_bytes = bcs::to_bytes(get_data).expect("Could not serialize Input");
+        let mut request = Request::new(GetDataRequest {
+            get_data: Bytes::copy_from_slice(&get_data_bytes),
+        });
+        request.set_timeout(timeout);
+        let output = self
+            .get_client(encoder, timeout)
+            .await?
+            .get_data(request)
+            .await
+            .map_err(|e| ShardError::NetworkRequest(format!("request failed: {e:?}")))?
+            .into_inner();
+
+        Ok(output.download_locations)
+    }
 }
 
 #[derive(Clone, prost::Message)]
@@ -118,3 +146,15 @@ pub struct SendInputRequest {
 
 #[derive(Clone, prost::Message)]
 pub struct SendInputResponse {}
+
+#[derive(Clone, prost::Message)]
+pub struct GetDataRequest {
+    #[prost(bytes = "bytes", tag = "1")]
+    pub get_data: Bytes,
+}
+
+#[derive(Clone, prost::Message)]
+pub struct GetDataResponse {
+    #[prost(bytes = "bytes", tag = "1")]
+    pub download_locations: Bytes,
+}

@@ -4,13 +4,15 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use std::sync::Arc;
+use objects::PersistentStore;
+use std::{collections::HashMap, sync::Arc};
 use tokio_util::sync::CancellationToken;
 use tracing::error;
+use types::metadata::MetadataAPI;
 use types::{
     crypto::NetworkPublicKey,
-    error::{ShardError, ShardResult},
-    shard::Shard,
+    error::{ObjectError, ShardError, ShardResult},
+    shard::{DownloadLocations, DownloadLocationsV1, GetData, GetDataAPI, Shard},
     shard_crypto::verified::Verified,
 };
 use types::{
@@ -18,18 +20,25 @@ use types::{
     shard_verifier::ShardVerifier,
 };
 
-pub(crate) struct EncoderExternalService<D: ExternalDispatcher> {
+pub(crate) struct EncoderExternalService<D: ExternalDispatcher, P: PersistentStore> {
     context: Context,
     dispatcher: D,
     shard_verifier: Arc<ShardVerifier>,
+    persistent_store: P,
 }
 
-impl<D: ExternalDispatcher> EncoderExternalService<D> {
-    pub(crate) fn new(context: Context, dispatcher: D, shard_verifier: Arc<ShardVerifier>) -> Self {
+impl<D: ExternalDispatcher, P: PersistentStore> EncoderExternalService<D, P> {
+    pub(crate) fn new(
+        context: Context,
+        dispatcher: D,
+        shard_verifier: Arc<ShardVerifier>,
+        persistent_store: P,
+    ) -> Self {
         Self {
             context,
             dispatcher,
             shard_verifier,
+            persistent_store,
         }
     }
 
@@ -58,7 +67,9 @@ impl<D: ExternalDispatcher> EncoderExternalService<D> {
     }
 }
 #[async_trait]
-impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalService<D> {
+impl<D: ExternalDispatcher, P: PersistentStore> EncoderExternalNetworkService
+    for EncoderExternalService<D, P>
+{
     async fn handle_send_input(
         &self,
         peer: &NetworkPublicKey,
@@ -84,6 +95,48 @@ impl<D: ExternalDispatcher> EncoderExternalNetworkService for EncoderExternalSer
 
         match result {
             Ok(()) => Ok(()),
+            Err(e) => {
+                error!("{}", e.to_string());
+                Err(e)
+            }
+        }
+    }
+    async fn handle_get_data(
+        &self,
+        peer: &NetworkPublicKey,
+        get_data_bytes: Bytes,
+    ) -> ShardResult<Bytes> {
+        let result: ShardResult<Bytes> = {
+            let get_data: GetData =
+                bcs::from_bytes(&get_data_bytes).map_err(ShardError::MalformedType)?;
+
+            let mut download_map = HashMap::new();
+            for path in get_data.object_paths() {
+                let download_metadata =
+                    match self.persistent_store.download_metadata(path.clone()).await {
+                        Ok(metadata) => Some(metadata),
+                        Err(e) => match e {
+                            ObjectError::NotFound(_) => None,
+                            _ => return Err(ShardError::ObjectError(e)),
+                        },
+                    };
+
+                match download_metadata {
+                    Some(dm) => {
+                        download_map.insert(dm.metadata().checksum(), dm);
+                    }
+                    None => {}
+                }
+            }
+
+            let download_locations = DownloadLocations::V1(DownloadLocationsV1::new(download_map));
+            let download_locations_bytes = bcs::to_bytes(&download_locations)
+                .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
+            Ok(download_locations_bytes.into())
+        };
+
+        match result {
+            Ok(download_locations) => Ok(download_locations),
             Err(e) => {
                 error!("{}", e.to_string());
                 Err(e)

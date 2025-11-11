@@ -30,6 +30,15 @@ fn build_tonic_services(out_dir: &Path) {
                 .codec_path(codec_path)
                 .build(),
         )
+        .method(
+            tonic_build::manual::Method::builder()
+                .name("get_data")
+                .route_name("GetData")
+                .input_type("crate::shard_networking::external::GetDataRequest")
+                .output_type("crate::shard_networking::external::GetDataResponse")
+                .codec_path(codec_path)
+                .build(),
+        )
         .build();
 
     tonic_build::manual::Builder::new()

@@ -121,12 +121,14 @@ mod tests {
 
     struct MockExternalService {
         pub handle_send_inputs: RwLock<Vec<(NetworkPublicKey, Bytes)>>,
+        pub handle_get_data: RwLock<Vec<(NetworkPublicKey, Bytes)>>,
     }
 
     impl MockExternalService {
         fn new() -> Self {
             Self {
                 handle_send_inputs: RwLock::new(vec![]),
+                handle_get_data: RwLock::new(vec![]),
             }
         }
     }
@@ -142,6 +144,17 @@ mod tests {
                 .write()
                 .push((peer.to_owned(), input_bytes));
             Ok(())
+        }
+        async fn handle_get_data(
+            &self,
+            peer: &NetworkPublicKey,
+            get_data_bytes: Bytes,
+        ) -> ShardResult<Bytes> {
+            self.handle_get_data
+                .write()
+                .push((peer.to_owned(), get_data_bytes));
+            // TODO: adjust if neccessary to return something real
+            Ok(Bytes::new())
         }
     }
 
