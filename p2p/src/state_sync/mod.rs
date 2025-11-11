@@ -51,6 +51,8 @@ use crate::{
     tonic_gen::{p2p_client::P2pClient, p2p_server::P2p},
 };
 
+#[cfg(test)]
+mod tests;
 pub mod tx_verifier;
 mod worker;
 

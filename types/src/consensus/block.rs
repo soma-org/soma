@@ -96,7 +96,7 @@ pub struct Block {
     timestamp_ms: BlockTimestampMs,
     ancestors: Vec<BlockRef>,
     transactions: Vec<Transaction>,
-    commit_votes: Vec<CommitVote>,
+    pub commit_votes: Vec<CommitVote>,
     end_of_epoch_data: Option<EndOfEpochData>,
 }
 
@@ -599,17 +599,17 @@ impl TestBlock {
         }
     }
 
-    pub(crate) fn set_epoch(mut self, epoch: Epoch) -> Self {
+    pub fn set_epoch(mut self, epoch: Epoch) -> Self {
         self.block.epoch = epoch;
         self
     }
 
-    pub(crate) fn set_round(mut self, round: Round) -> Self {
+    pub fn set_round(mut self, round: Round) -> Self {
         self.block.round = round;
         self
     }
 
-    pub(crate) fn set_author(mut self, author: AuthorityIndex) -> Self {
+    pub fn set_author(mut self, author: AuthorityIndex) -> Self {
         self.block.author = author;
         self
     }

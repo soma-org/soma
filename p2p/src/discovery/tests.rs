@@ -1,6 +1,7 @@
 use crate::{
     builder::{P2pBuilder, UnstartedDiscovery},
     server::P2pService,
+    test_utils::create_test_channel_manager,
     tonic_gen::p2p_server::{P2p, P2pServer},
 };
 
@@ -17,34 +18,6 @@ use types::{
         write_store::{TestP2pStore, WriteStore},
     },
 };
-
-// Helper function to create a test channel manager
-async fn create_test_channel_manager<S>(
-    own_address: Multiaddr,
-    server: P2pServer<P2pService<S>>,
-) -> (
-    mpsc::Sender<ChannelManagerRequest>,
-    broadcast::Receiver<PeerEvent>,
-    ActivePeers,
-    NetworkKeyPair,
-)
-where
-    S: ConsensusStore + WriteStore + Clone + Send + Sync + 'static,
-{
-    let mut rng = StdRng::from_seed([0; 32]);
-    let active_peers = ActivePeers::new(1000);
-    let network_key_pair = NetworkKeyPair::generate(&mut rng);
-
-    let (manager, tx) = ChannelManager::new(
-        own_address,
-        network_key_pair.clone(),
-        server,
-        active_peers.clone(),
-    );
-    let rx = manager.subscribe();
-    tokio::spawn(manager.start());
-    (tx, rx, active_peers, network_key_pair)
-}
 
 #[tokio::test]
 async fn get_known_peers() -> SomaResult<()> {

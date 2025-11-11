@@ -4,6 +4,7 @@ edition = "2021"
 version.workspace = true
 
 [dependencies]
+tempfile.workspace = true
 types.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true

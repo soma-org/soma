@@ -7,3 +7,4 @@ pub mod tonic_gen {
 pub mod builder;
 pub mod server;
 pub mod state_sync;
+pub(crate) mod test_utils;

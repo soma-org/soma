@@ -206,7 +206,6 @@ impl IndexerExecutor {
         reader_options: ReaderOptions,
         mut exit_receiver: oneshot::Receiver<()>,
     ) -> Result<ExecutorProgress> {
-        // ... same implementation as before
         let (reader, mut commit_recv, gc_sender, _exit_sender) = CommitReader::initialize(
             path,
             self.current_commit,
