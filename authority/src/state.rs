@@ -82,7 +82,7 @@ use crate::cache::{
     ExecutionCacheCommit, ExecutionCacheReconfigAPI, ExecutionCacheTraitPointers,
     ExecutionCacheWrite, ObjectCacheRead, TransactionCacheRead,
 };
-use crate::commit::CommitStore;
+use crate::checkpoints::CommitStore;
 use crate::consensus_quarantine;
 use crate::epoch_store::{CertLockGuard, CertTxGuard};
 use crate::epoch_store_pruner::AuthorityPerEpochStorePruner;

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::tonic_gen::encoder_validator_api_server::EncoderValidatorApi;
 use async_trait::async_trait;
-use authority::{commit::CommitStore, state::AuthorityState};
+use authority::{checkpoints::CommitStore, state::AuthorityState};
 use tonic::Status;
 use tracing::{debug, error, error_span, info, warn};
 use types::{

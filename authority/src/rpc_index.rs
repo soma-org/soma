@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::commit::CommitStore;
+use crate::checkpoints::CommitStore;
 use crate::store::AuthorityStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;

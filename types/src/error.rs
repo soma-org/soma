@@ -394,6 +394,12 @@ pub enum SomaError {
 
     #[error("Checkpoint contents not found for digest: {0}")]
     CheckpointContentsNotFound(CheckpointContentsDigest),
+
+    #[error("Failure serializing transaction in the requested format: {error}")]
+    TransactionSerializationError { error: String },
+
+    #[error("Failed to perform file operation: {0}")]
+    FileIOError(String),
 }
 
 impl From<Status> for SomaError {

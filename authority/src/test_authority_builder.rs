@@ -18,7 +18,7 @@ use types::{
 
 use crate::{
     cache::build_execution_cache,
-    commit::CommitStore,
+    checkpoints::CommitStore,
     epoch_store::AuthorityPerEpochStore,
     rpc_index::RpcIndexStore,
     start_epoch::EpochStartConfiguration,

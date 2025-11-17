@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-
 use tracing::trace;
 use types::{
     digests::TransactionDigest,
     effects::{InputSharedObject, TransactionEffects, TransactionEffectsAPI},
     storage::ObjectKey,
 };
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub struct CausalOrder {
     not_seen: BTreeMap<TransactionDigest, TransactionDependencies>,
@@ -145,7 +145,7 @@ impl RWLockDependencyBuilder {
                         .entry(*effect.transaction_digest())
                         .or_default()
                         .push(ObjectKey(oid, version)),
-                    InputSharedObject::Cancelled(..) => (), // TODO: confirm that consensus_commit_prologue is always at the beginning of the checkpoint, so that cancelled txn don't need to worry about dependency.
+                    InputSharedObject::Cancelled(..) => (),
                 }
             }
         }
@@ -210,9 +210,11 @@ impl InsertState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::digests::ObjectDigest;
-    use types::effects::TransactionEffects;
-    use types::object::{ObjectID, Version};
+    use types::{
+        digests::ObjectDigest,
+        effects::TransactionEffects,
+        object::{ObjectID, Version},
+    };
 
     #[test]
     pub fn test_causal_order() {

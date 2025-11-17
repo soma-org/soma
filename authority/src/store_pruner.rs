@@ -1,4 +1,4 @@
-use crate::commit::{CommitStore, CommitWatermark};
+use crate::checkpoints::{CommitStore, CommitWatermark};
 use crate::rpc_index::RpcIndexStore;
 use crate::store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
 use anyhow::anyhow;

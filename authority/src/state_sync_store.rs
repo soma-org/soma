@@ -1,5 +1,5 @@
 use crate::cache::ExecutionCacheTraitPointers;
-use crate::commit::CommitStore;
+use crate::checkpoints::CommitStore;
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
 use std::sync::Arc;
