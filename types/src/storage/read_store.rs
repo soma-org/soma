@@ -7,12 +7,11 @@ use serde::{Deserialize, Serialize};
 use store::TypedStoreError;
 
 use crate::{
-    accumulator::CommitIndex,
     balance_change::{derive_balance_changes, BalanceChange},
     base::SomaAddress,
     committee::{Committee, EpochId},
     consensus::{
-        commit::{CommitAPI as _, CommitDigest, CommittedSubDag},
+        commit::{CommitAPI as _, CommitDigest, CommitIndex, CommittedSubDag},
         output::ConsensusOutputAPI as _,
         ConsensusTransactionKind,
     },

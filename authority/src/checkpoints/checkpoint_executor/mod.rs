@@ -21,6 +21,7 @@ use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
 };
 use crate::checkpoints::CheckpointStore;
 use crate::epoch_store::AuthorityPerEpochStore;
+use crate::global_state_hasher::GlobalStateHasher;
 use crate::state::AuthorityState;
 use futures::StreamExt;
 use parking_lot::Mutex;
@@ -28,7 +29,9 @@ use std::{sync::Arc, time::Instant};
 use tap::{TapFallible, TapOptional};
 use tracing::{debug, info, instrument, warn};
 use types::base::SequenceNumber;
-use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber, VerifiedCheckpoint};
+use types::checkpoints::{
+    CheckpointContents, CheckpointSequenceNumber, GlobalStateHash, VerifiedCheckpoint,
+};
 use types::config::node_config::CheckpointExecutorConfig;
 use types::digests::{TransactionDigest, TransactionEffectsDigest};
 use types::effects::{
@@ -62,11 +65,6 @@ pub(crate) struct CheckpointTransactionData {
     pub transactions: Vec<VerifiedExecutableTransaction>,
     pub effects: Vec<TransactionEffects>,
     pub executed_fx_digests: Vec<Option<TransactionEffectsDigest>>,
-    /// The accumulator versions for the transactions in the checkpoint.
-    /// None only if accumulator is not enabled (either all Some, or all None).
-    /// This information is needed for object balance withdraw processing.
-    /// The vector should be 1:1 with the transactions in the checkpoint.
-    pub accumulator_versions: Vec<Option<Version>>,
 }
 
 impl CheckpointTransactionData {
@@ -77,50 +75,11 @@ impl CheckpointTransactionData {
     ) -> Self {
         assert_eq!(transactions.len(), effects.len());
         assert_eq!(transactions.len(), executed_fx_digests.len());
-        let mut accumulator_versions = vec![None; transactions.len()];
-        let mut next_update_index = 0;
-        for (idx, efx) in effects.iter().enumerate() {
-            // Only barrier settlement transactions mutate the accumulator root object.
-            // This filtering detects whether this transaction is a barrier settlement transaction.
-            // And if so we get the old version of the accumulator root object.
-            // Transactions prior to the barrier settlement transaction reads this accumulator version.
-            let acc_version = efx.object_changes().into_iter().find_map(|change| {
-                if change.id == ACCUMULATOR_ROOT_OBJECT_ID {
-                    change.input_version
-                } else {
-                    None
-                }
-            });
-            if let Some(acc_version) = acc_version {
-                // Set version for transactions between [next_update_index, idx] inclusive.
-                for slot in accumulator_versions
-                    .iter_mut()
-                    .take(idx + 1)
-                    .skip(next_update_index)
-                {
-                    *slot = Some(acc_version);
-                }
-                next_update_index = idx + 1;
-            }
-        }
-        // Either accumulator is not enabled, then next_update_index == 0;
-        // or the last transaction is the barrier settlement transaction, and next_update_index == transactions.len();
-        // or the last transaction is the end of epoch transaction, and next_update_index == transactions.len() - 1.
-        assert!(
-            next_update_index == 0
-                || next_update_index == transactions.len()
-                || (next_update_index == transactions.len() - 1
-                    && transactions
-                        .last()
-                        .unwrap()
-                        .transaction_data()
-                        .is_end_of_epoch_tx())
-        );
+
         Self {
             transactions,
             effects,
             executed_fx_digests,
-            accumulator_versions,
         }
     }
 }
@@ -746,8 +705,6 @@ impl CheckpointExecutor {
         ckpt_state: &CheckpointExecutionState,
         tx_data: &CheckpointTransactionData,
     ) -> Vec<TransactionDigest> {
-        let mut barrier_deps_builder = BarrierDependencyBuilder::new();
-
         // Find unexecuted transactions and their expected effects digests
         let (unexecuted_tx_digests, unexecuted_txns): (Vec<_>, Vec<_>) = itertools::multiunzip(
             itertools::izip!(
@@ -756,20 +713,9 @@ impl CheckpointExecutor {
                 ckpt_state.data.fx_digests.iter(),
                 tx_data.effects.iter(),
                 tx_data.executed_fx_digests.iter(),
-                tx_data.accumulator_versions.iter()
             )
             .filter_map(
-                |(
-                    txn,
-                    tx_digest,
-                    expected_fx_digest,
-                    effects,
-                    executed_fx_digest,
-                    accumulator_version,
-                )| {
-                    let barrier_deps =
-                        barrier_deps_builder.process_tx(*tx_digest, txn.transaction_data());
-
+                |(txn, tx_digest, expected_fx_digest, effects, executed_fx_digest)| {
                     if let Some(executed_fx_digest) = executed_fx_digest {
                         assert_not_forked(
                             &ckpt_state.data.checkpoint,
@@ -787,24 +733,13 @@ impl CheckpointExecutor {
                             .acquire_shared_version_assignments_from_effects(
                                 txn,
                                 effects,
-                                *accumulator_version,
                                 &*self.object_cache_reader,
                             )
                             .expect("failed to acquire shared version assignments");
 
                         let mut env = ExecutionEnv::new()
                             .with_assigned_versions(assigned_versions)
-                            .with_expected_effects_digest(*expected_fx_digest)
-                            .with_barrier_dependencies(barrier_deps);
-
-                        // Check if the expected effects indicate insufficient balance
-                        if let ExecutionStatus::Failure {
-                            error: ExecutionFailureStatus::InsufficientBalanceForWithdraw,
-                            ..
-                        } = effects.status()
-                        {
-                            env = env.with_insufficient_balance();
-                        }
+                            .with_expected_effects_digest(*expected_fx_digest);
 
                         Some((tx_digest, (txn.clone(), env)))
                     }
@@ -855,7 +790,6 @@ impl CheckpointExecutor {
             .acquire_shared_version_assignments_from_effects(
                 change_epoch_tx,
                 change_epoch_fx,
-                None,
                 self.object_cache_reader.as_ref(),
             )
             .expect("Acquiring shared version assignments for change_epoch tx cannot fail");

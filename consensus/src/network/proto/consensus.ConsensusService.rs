@@ -118,10 +118,14 @@ pub mod consensus_service_client {
         }
         pub async fn fetch_blocks(
             &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::FetchBlocksRequest>,
+            request: impl tonic::IntoRequest<
+                crate::network::tonic_network::FetchBlocksRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<
-                tonic::codec::Streaming<types::state_sync::FetchBlocksResponse>,
+                tonic::codec::Streaming<
+                    crate::network::tonic_network::FetchBlocksResponse,
+                >,
             >,
             tonic::Status,
         > {
@@ -144,9 +148,11 @@ pub mod consensus_service_client {
         }
         pub async fn fetch_commits(
             &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::FetchCommitsRequest>,
+            request: impl tonic::IntoRequest<
+                crate::network::tonic_network::FetchCommitsRequest,
+            >,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::FetchCommitsResponse>,
+            tonic::Response<crate::network::tonic_network::FetchCommitsResponse>,
             tonic::Status,
         > {
             self.inner
@@ -223,7 +229,7 @@ pub mod consensus_service_server {
         /// Server streaming response type for the FetchBlocks method.
         type FetchBlocksStream: tonic::codegen::tokio_stream::Stream<
                 Item = std::result::Result<
-                    types::state_sync::FetchBlocksResponse,
+                    crate::network::tonic_network::FetchBlocksResponse,
                     tonic::Status,
                 >,
             >
@@ -231,16 +237,16 @@ pub mod consensus_service_server {
             + 'static;
         async fn fetch_blocks(
             &self,
-            request: tonic::Request<types::state_sync::FetchBlocksRequest>,
+            request: tonic::Request<crate::network::tonic_network::FetchBlocksRequest>,
         ) -> std::result::Result<
             tonic::Response<Self::FetchBlocksStream>,
             tonic::Status,
         >;
         async fn fetch_commits(
             &self,
-            request: tonic::Request<types::state_sync::FetchCommitsRequest>,
+            request: tonic::Request<crate::network::tonic_network::FetchCommitsRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::FetchCommitsResponse>,
+            tonic::Response<crate::network::tonic_network::FetchCommitsResponse>,
             tonic::Status,
         >;
         /// Server streaming response type for the FetchLatestBlocks method.
@@ -393,9 +399,9 @@ pub mod consensus_service_server {
                     impl<
                         T: ConsensusService,
                     > tonic::server::ServerStreamingService<
-                        types::state_sync::FetchBlocksRequest,
+                        crate::network::tonic_network::FetchBlocksRequest,
                     > for FetchBlocksSvc<T> {
-                        type Response = types::state_sync::FetchBlocksResponse;
+                        type Response = crate::network::tonic_network::FetchBlocksResponse;
                         type ResponseStream = T::FetchBlocksStream;
                         type Future = BoxFuture<
                             tonic::Response<Self::ResponseStream>,
@@ -404,7 +410,7 @@ pub mod consensus_service_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::FetchBlocksRequest,
+                                crate::network::tonic_network::FetchBlocksRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
@@ -441,9 +447,10 @@ pub mod consensus_service_server {
                     struct FetchCommitsSvc<T: ConsensusService>(pub Arc<T>);
                     impl<
                         T: ConsensusService,
-                    > tonic::server::UnaryService<types::state_sync::FetchCommitsRequest>
-                    for FetchCommitsSvc<T> {
-                        type Response = types::state_sync::FetchCommitsResponse;
+                    > tonic::server::UnaryService<
+                        crate::network::tonic_network::FetchCommitsRequest,
+                    > for FetchCommitsSvc<T> {
+                        type Response = crate::network::tonic_network::FetchCommitsResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -451,7 +458,7 @@ pub mod consensus_service_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::FetchCommitsRequest,
+                                crate::network::tonic_network::FetchCommitsRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);

@@ -20,8 +20,8 @@ fn main() -> Result<()> {
             tonic_build::manual::Method::builder()
                 .name("fetch_blocks")
                 .route_name("FetchBlocks")
-                .input_type("types::state_sync::FetchBlocksRequest")
-                .output_type("types::state_sync::FetchBlocksResponse")
+                .input_type("crate::network::tonic_network::FetchBlocksRequest")
+                .output_type("crate::network::tonic_network::FetchBlocksResponse")
                 .codec_path(codec_path)
                 .server_streaming()
                 .build(),
@@ -30,8 +30,8 @@ fn main() -> Result<()> {
             tonic_build::manual::Method::builder()
                 .name("fetch_commits")
                 .route_name("FetchCommits")
-                .input_type("types::state_sync::FetchCommitsRequest")
-                .output_type("types::state_sync::FetchCommitsResponse")
+                .input_type("crate::network::tonic_network::FetchCommitsRequest")
+                .output_type("crate::network::tonic_network::FetchCommitsResponse")
                 .codec_path(codec_path)
                 .build(),
         )

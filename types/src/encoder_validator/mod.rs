@@ -3,7 +3,6 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    accumulator::CommitIndex,
     committee::EpochId,
     consensus::{
         block::Round,

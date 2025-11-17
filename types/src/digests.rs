@@ -1,5 +1,4 @@
 use crate::{
-    accumulator::Accumulator,
     crypto::DIGEST_LENGTH,
     error::{SomaError, SomaResult},
     serde::Readable,

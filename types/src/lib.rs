@@ -1,4 +1,3 @@
-pub mod accumulator;
 pub mod actors;
 pub mod balance_change;
 pub mod base;
@@ -41,7 +40,6 @@ pub mod shard_crypto;
 pub mod shard_networking;
 pub mod shard_verifier;
 pub mod signature_verifier;
-pub mod state_sync;
 pub mod storage;
 pub mod submission;
 pub mod system_state;

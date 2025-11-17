@@ -1,12 +1,12 @@
 use std::{collections::HashMap, io::Read, sync::Arc};
 
 use crate::{
-    accumulator::{AccumulatorStore, CommitIndex},
     committee::{Committee, Epoch},
     consensus::{
         block::{BlockAPI as _, BlockRef, VerifiedBlock},
         commit::{
-            Commit, CommitAPI as _, CommitDigest, CommitInfo, CommittedSubDag, TrustedCommit,
+            Commit, CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommittedSubDag,
+            TrustedCommit,
         },
     },
     digests::TransactionDigest,
@@ -152,45 +152,6 @@ impl TestP2pStore {
 
     pub fn get_highest_synced_commit_inner(&self) -> Option<CommittedSubDag> {
         self.inner.read().highest_synced_commit.clone()
-    }
-}
-
-impl AccumulatorStore for TestP2pStore {
-    fn get_root_state_accumulator_for_epoch(
-        &self,
-        epoch: crate::committee::EpochId,
-    ) -> crate::error::SomaResult<Option<(CommitIndex, crate::accumulator::Accumulator)>> {
-        todo!()
-    }
-
-    fn get_root_state_accumulator_for_highest_epoch(
-        &self,
-    ) -> crate::error::SomaResult<
-        Option<(
-            crate::committee::EpochId,
-            (CommitIndex, crate::accumulator::Accumulator),
-        )>,
-    > {
-        todo!()
-    }
-
-    fn insert_state_accumulator_for_epoch(
-        &self,
-        epoch: crate::committee::EpochId,
-        commit: &CommitIndex,
-        acc: &crate::accumulator::Accumulator,
-    ) -> crate::error::SomaResult {
-        todo!()
-    }
-
-    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = crate::object::LiveObject> + '_> {
-        todo!()
-    }
-
-    fn iter_cached_live_object_set_for_testing(
-        &self,
-    ) -> Box<dyn Iterator<Item = crate::object::LiveObject> + '_> {
-        todo!()
     }
 }
 

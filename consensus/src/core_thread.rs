@@ -204,7 +204,7 @@ mod test {
     use fastcrypto::traits::KeyPair;
     use parking_lot::RwLock;
     use tokio::sync::mpsc::unbounded_channel;
-    use types::{accumulator::TestAccumulatorStore, consensus::TestEpochStore};
+    use types::consensus::TestEpochStore;
 
     use super::*;
     use crate::{

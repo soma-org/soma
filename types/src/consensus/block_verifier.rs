@@ -7,7 +7,6 @@ use super::block::{
 };
 use super::context::Context;
 use super::transaction::TransactionVerifier;
-use crate::accumulator::{self, AccumulatorStore};
 use crate::committee::{to_networking_committee_intent, Committee, EpochId};
 use crate::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use crate::consensus::validator_set::to_validator_set_intent;
@@ -48,14 +47,12 @@ pub struct SignedBlockVerifier {
     committee_store: Option<Arc<dyn ReadCommitteeStore>>,
     genesis: BTreeSet<BlockRef>,
     transaction_verifier: Arc<dyn TransactionVerifier>,
-    accumulator_store: Arc<dyn AccumulatorStore>,
 }
 
 impl SignedBlockVerifier {
     pub fn new(
         context: Arc<Context>,
         transaction_verifier: Arc<dyn TransactionVerifier>,
-        accumulator_store: Arc<dyn AccumulatorStore>,
         committee_store: Option<Arc<dyn ReadCommitteeStore>>,
     ) -> Self {
         let genesis = genesis_blocks(context.clone())
@@ -66,7 +63,6 @@ impl SignedBlockVerifier {
             context,
             genesis,
             transaction_verifier,
-            accumulator_store,
             committee_store,
         }
     }
@@ -113,18 +109,18 @@ impl BlockVerifier for SignedBlockVerifier {
         // Verify EndOfEpochData if present
         if let Some(eoe) = block.end_of_epoch_data() {
             // Verify state hash matches our local one if we have
-            if let Ok(Some((_, our_digest))) = self
-                .accumulator_store
-                .get_root_state_accumulator_for_epoch(block.epoch())
-            {
-                if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
-                    return Err(ConsensusError::InvalidEndOfEpoch(format!(
-                        "State hash mismatch: expected {:?}, got {:?}",
-                        our_digest.digest(),
-                        eoe.state_hash
-                    )));
-                }
-            }
+            // if let Ok(Some((_, our_digest))) = self
+            //     .accumulator_store
+            //     .get_root_state_accumulator_for_epoch(block.epoch())
+            // {
+            //     if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
+            //         return Err(ConsensusError::InvalidEndOfEpoch(format!(
+            //             "State hash mismatch: expected {:?}, got {:?}",
+            //             our_digest.digest(),
+            //             eoe.state_hash
+            //         )));
+            //     }
+            // }
 
             match (
                 &eoe.next_validator_set,
@@ -298,18 +294,18 @@ impl BlockVerifier for SignedBlockVerifier {
 
         if let Some(eoe) = block.end_of_epoch_data() {
             // Verify state hash matches our local one if we have it
-            if let Ok(Some((_, our_digest))) = self
-                .accumulator_store
-                .get_root_state_accumulator_for_epoch(block.epoch())
-            {
-                if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
-                    return Err(ConsensusError::InvalidEndOfEpoch(format!(
-                        "State hash mismatch: expected {:?}, got {:?}",
-                        our_digest.digest(),
-                        eoe.state_hash
-                    )));
-                }
-            }
+            // if let Ok(Some((_, our_digest))) = self
+            //     .accumulator_store
+            //     .get_root_state_accumulator_for_epoch(block.epoch())
+            // {
+            //     if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
+            //         return Err(ConsensusError::InvalidEndOfEpoch(format!(
+            //             "State hash mismatch: expected {:?}, got {:?}",
+            //             our_digest.digest(),
+            //             eoe.state_hash
+            //         )));
+            //     }
+            // }
 
             // Check if we have all three sets
             if let (Some(validator_set), Some(encoder_committee), Some(networking_committee)) = (

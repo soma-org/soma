@@ -286,7 +286,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     // get the highest accepted rounds
                     let highest_rounds = Self::get_highest_accepted_rounds(dag_state.clone(), &context);
 
-                    requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, FETCH_REQUEST_TIMEOUT, context.clone(), 1))
+                    requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, true, FETCH_REQUEST_TIMEOUT, context.clone(), 1))
                 },
                 Some((response, blocks_guard, retries, _peer, highest_rounds)) = requests.next() => {
                     match response {
@@ -305,7 +305,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                         },
                         Err(_) => {
                             if retries <= MAX_RETRIES {
-                                requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, FETCH_REQUEST_TIMEOUT, context.clone(), retries))
+                                requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, blocks_guard, highest_rounds, true, FETCH_REQUEST_TIMEOUT, context.clone(), retries))
                             } else {
                                 warn!("Max retries {retries} reached while trying to fetch blocks from peer {peer_index}.");
                                 // we don't necessarily need to do, but dropping the guard here to unlock the blocks
@@ -461,6 +461,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         peer: AuthorityIndex,
         blocks_guard: BlocksGuard,
         highest_rounds: Vec<Round>,
+        breadth_first: bool,
         request_timeout: Duration,
         context: Arc<Context>,
         mut retries: u32,
@@ -482,6 +483,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     .into_iter()
                     .collect::<Vec<_>>(),
                 highest_rounds.clone().into_iter().collect::<Vec<_>>(),
+                breadth_first,
                 request_timeout,
             ),
         )
@@ -748,6 +750,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     peer,
                     blocks_guard,
                     highest_rounds.clone(),
+                    false,
                     FETCH_REQUEST_TIMEOUT,
                     context.clone(),
                     1,
@@ -782,6 +785,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                         next_peer,
                                         blocks_guard,
                                         highest_rounds,
+                                        false,
                                         FETCH_REQUEST_TIMEOUT,
                                         context.clone(),
                                         1,
@@ -1102,6 +1106,7 @@ mod tests {
             peer: AuthorityIndex,
             block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
+            _breadth_first: bool,
             _timeout: Duration,
         ) -> ConsensusResult<Vec<Bytes>> {
             let mut lock = self.fetch_blocks_requests.lock().await;

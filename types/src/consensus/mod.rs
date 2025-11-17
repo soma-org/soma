@@ -31,14 +31,12 @@
 //! - Test utilities for consensus verification
 
 use crate::{
-    accumulator::Accumulator,
-    base::{AuthorityName, ConciseableName},
+    base::{AuthorityName, ConciseableName, TimestampMs},
     checkpoints::{CheckpointSequenceNumber, CheckpointSignatureMessage, ECMHLiveObjectSetDigest},
     committee::NetworkingCommittee,
     crypto::AuthorityPublicKeyBytes,
     digests::{CheckpointDigest, ConsensusCommitDigest, TransactionDigest},
     encoder_committee::EncoderCommittee,
-    state_sync::CommitTimestamp,
     transaction::{CertifiedTransaction, Transaction},
 };
 use serde::{Deserialize, Serialize};
@@ -259,7 +257,7 @@ pub struct ConsensusCommitPrologue {
     pub sub_dag_index: Option<u64>,
 
     /// Unix timestamp from consensus (in milliseconds)
-    pub commit_timestamp_ms: CommitTimestamp,
+    pub commit_timestamp_ms: TimestampMs,
 
     /// Digest of consensus output for verification
     pub consensus_commit_digest: ConsensusCommitDigest,

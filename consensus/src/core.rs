@@ -17,8 +17,8 @@ use tokio::sync::{
     watch,
 };
 use tracing::{debug, info, warn};
+use types::crypto::ProtocolKeyPair;
 use types::{
-    accumulator::AccumulatorStore,
     base::AuthorityName,
     committee::{AuthorityIndex, NetworkingCommittee, Stake},
     consensus::{
@@ -32,7 +32,6 @@ use types::{
     intent::IntentMessage,
     system_state::encoder,
 };
-use types::{accumulator::TestAccumulatorStore, crypto::ProtocolKeyPair};
 use types::{
     consensus::{
         block::{

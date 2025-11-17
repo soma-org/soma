@@ -10,11 +10,8 @@ use std::{
 
 use super::context::Context;
 use super::{commit::CommitVote, validator_set::ValidatorSet};
+use crate::committee::{AuthorityIndex, Epoch, NetworkingCommittee};
 use crate::encoder_committee::EncoderCommittee;
-use crate::{
-    accumulator::{Accumulator, CommitIndex},
-    committee::{AuthorityIndex, Epoch, NetworkingCommittee},
-};
 use crate::{
     checkpoints::ECMHLiveObjectSetDigest,
     crypto::{

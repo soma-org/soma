@@ -3,6 +3,7 @@ use crate::checkpoints::causal_order::CausalOrder;
 use crate::checkpoints::checkpoint_output::{CertifiedCheckpointOutput, CheckpointOutput};
 use crate::client::make_network_authority_clients_with_network_config;
 use crate::epoch_store::AuthorityPerEpochStore;
+use crate::global_state_hasher::GlobalStateHasher;
 use crate::handler::SequencedConsensusTransactionKey;
 use crate::stake_aggregator::{InsertResult, MultiStakeAggregator};
 use crate::state::AuthorityState;
@@ -1259,116 +1260,6 @@ impl CheckpointBuilder {
         Ok(highest_sequence)
     }
 
-    async fn construct_and_execute_settlement_transactions(
-        &self,
-        sorted_tx_effects_included_in_checkpoint: &[TransactionEffects],
-        checkpoint_height: CheckpointHeight,
-        checkpoint_seq: CheckpointSequenceNumber,
-        tx_index_offset: u64,
-    ) -> (TransactionKey, Vec<TransactionEffects>) {
-        let tx_key =
-            TransactionKey::AccumulatorSettlement(self.epoch_store.epoch(), checkpoint_height);
-
-        let epoch = self.epoch_store.epoch();
-        let accumulator_root_obj_initial_shared_version = self
-            .epoch_store
-            .epoch_start_config()
-            .accumulator_root_obj_initial_shared_version()
-            .expect("accumulator root object must exist");
-
-        let builder = AccumulatorSettlementTxBuilder::new(
-            Some(self.effects_store.as_ref()),
-            sorted_tx_effects_included_in_checkpoint,
-            checkpoint_seq,
-            tx_index_offset,
-        );
-
-        let accumulator_changes = builder.collect_accumulator_changes();
-        let num_updates = builder.num_updates();
-        let (settlement_txns, barrier_tx) = builder.build_tx(
-            self.epoch_store.protocol_config(),
-            epoch,
-            accumulator_root_obj_initial_shared_version,
-            checkpoint_height,
-            checkpoint_seq,
-        );
-
-        let settlement_txns: Vec<_> = settlement_txns
-            .into_iter()
-            .chain(std::iter::once(barrier_tx))
-            .map(|tx| {
-                VerifiedExecutableTransaction::new_system(
-                    VerifiedTransaction::new_system_transaction(tx),
-                    self.epoch_store.epoch(),
-                )
-            })
-            .collect();
-
-        let settlement_digests: Vec<_> = settlement_txns.iter().map(|tx| *tx.digest()).collect();
-
-        debug!(
-            ?settlement_digests,
-            ?tx_key,
-            "created settlement transactions with {num_updates} updates"
-        );
-
-        self.epoch_store
-            .notify_settlement_transactions_ready(tx_key, settlement_txns);
-
-        let settlement_effects = loop {
-            match tokio::time::timeout(Duration::from_secs(5), async {
-                self.effects_store
-                    .notify_read_executed_effects(
-                        "CheckpointBuilder::notify_read_settlement_effects",
-                        &settlement_digests,
-                    )
-                    .await
-            })
-            .await
-            {
-                Ok(effects) => break effects,
-                Err(_) => {
-                    debug!(
-                        "Timeout waiting for settlement transactions to be executed {:?}, retrying...",
-                        tx_key
-                    );
-                }
-            }
-        };
-
-        let mut next_accumulator_version = None;
-        for fx in settlement_effects.iter() {
-            assert!(
-                fx.status().is_ok(),
-                "settlement transaction cannot fail (digest: {:?}) {:#?}",
-                fx.transaction_digest(),
-                fx
-            );
-            if let Some(version) = fx
-                .mutated()
-                .iter()
-                .find_map(|(oref, _)| (oref.0 == ACCUMULATOR_ROOT_OBJECT_ID).then_some(oref.1))
-            {
-                assert!(
-                    next_accumulator_version.is_none(),
-                    "Only one settlement transaction should mutate the accumulator root object"
-                );
-                next_accumulator_version = Some(version);
-            }
-        }
-        let settlements = BalanceSettlement {
-            next_accumulator_version: next_accumulator_version
-                .expect("Accumulator root object should be mutated in the settlement transactions"),
-            balance_changes: accumulator_changes,
-        };
-
-        self.state
-            .execution_scheduler()
-            .settle_balances(settlements);
-
-        (tx_key, settlement_effects)
-    }
-
     // Given the root transactions of a pending checkpoint, resolve the transactions should be included in
     // the checkpoint, and return them in the order they should be included in the checkpoint.
     // `effects_in_current_checkpoint` tracks the transactions that already exist in the current
@@ -1399,17 +1290,6 @@ impl CheckpointBuilder {
                 pending.details.checkpoint_height,
                 pending.roots,
             );
-
-            let settlement_root = if self.epoch_store.accumulators_enabled() {
-                let Some(settlement_root @ TransactionKey::AccumulatorSettlement(..)) =
-                    pending.roots.pop()
-                else {
-                    panic!("No settlement root found");
-                };
-                Some(settlement_root)
-            } else {
-                None
-            };
 
             let roots = &pending.roots;
 
@@ -1474,39 +1354,6 @@ impl CheckpointBuilder {
                 sorted.push(ccp_effects);
             }
             sorted.extend(CausalOrder::causal_sort(unsorted));
-
-            if let Some(settlement_root) = settlement_root {
-                //TODO: this is an incorrect heuristic for checkpoint seq number
-                //      due to checkpoint splitting, to be fixed separately
-                let last_checkpoint =
-                    Self::load_last_built_checkpoint_summary(&self.epoch_store, &self.store)?;
-                let next_checkpoint_seq = last_checkpoint
-                    .as_ref()
-                    .map(|(seq, _)| *seq)
-                    .unwrap_or_default()
-                    + 1;
-                let tx_index_offset = tx_effects.len() as u64;
-
-                let (tx_key, settlement_effects) = self
-                    .construct_and_execute_settlement_transactions(
-                        &sorted,
-                        pending.details.checkpoint_height,
-                        next_checkpoint_seq,
-                        tx_index_offset,
-                    )
-                    .await;
-                debug!(?tx_key, "executed settlement transactions");
-
-                assert_eq!(settlement_root, tx_key);
-
-                // Note: we do not need to add the settlement digests to `tx_roots` - `tx_roots`
-                // should only include the digests of transactions that were originally roots in
-                // the pending checkpoint. It is later used to identify transactions which were
-                // added as dependencies, so that those transactions can be waited on using
-                // `consensus_messages_processed_notify()`. System transactions (such as
-                // settlements) are exempt from this already.
-                sorted.extend(settlement_effects);
-            }
 
             #[cfg(msim)]
             {

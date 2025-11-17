@@ -19,15 +19,11 @@ use crate::{
 };
 use parking_lot::RwLock;
 use tracing::info;
+use types::crypto::{NetworkKeyPair, ProtocolKeyPair};
 use types::{
-    accumulator,
     committee::{AuthorityIndex, Committee},
     crypto::AuthorityKeyPair,
     storage::{committee_store, consensus::ConsensusStore, read_store::ReadCommitteeStore},
-};
-use types::{
-    accumulator::AccumulatorStore,
-    crypto::{NetworkKeyPair, ProtocolKeyPair},
 };
 use types::{consensus::EndOfEpochAPI, parameters::Parameters};
 use types::{
@@ -63,7 +59,6 @@ impl ConsensusAuthority {
         authority_keypair: AuthorityKeyPair,
         transaction_verifier: Arc<dyn TransactionVerifier>,
         commit_consumer: CommitConsumer,
-        accumulator_store: Arc<dyn AccumulatorStore>,
         epoch_store: Arc<dyn EndOfEpochAPI>,
         consensus_store: Arc<dyn ConsensusStore>,
         committee_store: Arc<dyn ReadCommitteeStore>,
@@ -105,7 +100,6 @@ impl ConsensusAuthority {
         let block_verifier = Arc::new(SignedBlockVerifier::new(
             context.clone(),
             transaction_verifier,
-            accumulator_store.clone(),
             Some(committee_store),
         ));
 
@@ -224,7 +218,6 @@ mod tests {
     use std::sync::Mutex;
     use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
-    use accumulator::TestAccumulatorStore;
     use fastcrypto::traits::KeyPair;
     use tempfile::TempDir;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
@@ -270,7 +263,6 @@ mod tests {
             authority_keypair,
             Arc::new(txn_verifier),
             commit_consumer,
-            Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
             store.clone(),
             Arc::new(TestCommitteeStore::new()),
@@ -558,7 +550,6 @@ mod tests {
             authority_keypair,
             Arc::new(txn_verifier),
             commit_consumer,
-            Arc::new(TestAccumulatorStore::default()),
             Arc::new(TestEpochStore::new()),
             store.clone(),
             Arc::new(TestCommitteeStore::new()),

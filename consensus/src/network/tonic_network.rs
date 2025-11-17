@@ -43,9 +43,6 @@ use types::{
         context::Context,
     },
     error::{ConsensusError, ConsensusResult},
-    state_sync::{
-        FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse,
-    },
 };
 use utils::notify_once::NotifyOnce;
 
@@ -117,6 +114,7 @@ impl NetworkClient for TonicClient {
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
+        breadth_first: bool,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>> {
         let mut client = self.get_client(peer, timeout).await?;
@@ -132,6 +130,7 @@ impl NetworkClient for TonicClient {
                 })
                 .collect(),
             highest_accepted_rounds,
+            breadth_first,
         });
         request.set_timeout(timeout);
         let mut stream = client
@@ -832,7 +831,6 @@ impl ConnectionsInfo {
 struct PeerInfo {
     authority_index: AuthorityIndex,
 }
-
 /// Network message types.
 #[derive(Clone, prost::Message)]
 pub(crate) struct SendBlockRequest {
@@ -845,6 +843,64 @@ pub(crate) struct SendBlockRequest {
 pub(crate) struct SendBlockResponse {}
 
 #[derive(Clone, prost::Message)]
+pub(crate) struct SubscribeBlocksRequest {
+    #[prost(uint32, tag = "1")]
+    last_received_round: Round,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SubscribeBlocksResponse {
+    #[prost(bytes = "bytes", tag = "1")]
+    block: Bytes,
+    // Serialized BlockRefs that are excluded from the blocks ancestors.
+    #[prost(bytes = "vec", repeated, tag = "2")]
+    excluded_ancestors: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchBlocksRequest {
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    block_refs: Vec<Vec<u8>>,
+    // The highest accepted round per authority. The vector represents the round for each authority
+    // and its length should be the same as the committee size.
+    // When this field is non-empty, additional ancestors of the requested blocks can be fetched.
+    #[prost(uint32, repeated, tag = "2")]
+    highest_accepted_rounds: Vec<Round>,
+    // When true, this indicates that missing ancestors should be added breadth-first, by searching through
+    // missing ancestors of the requested blocks.
+    // When false, this indicates that missing ancestors should be added depth-first, by adding missing
+    // ancestors from the requested block authorities.
+    // This field is only meaningful when highest_accepted_rounds is non-empty.
+    #[prost(bool, tag = "3")]
+    breadth_first: bool,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchBlocksResponse {
+    // The response of the requested blocks as Serialized SignedBlock.
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    blocks: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchCommitsRequest {
+    #[prost(uint32, tag = "1")]
+    start: CommitIndex,
+    #[prost(uint32, tag = "2")]
+    end: CommitIndex,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchCommitsResponse {
+    // Serialized consecutive Commit.
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    commits: Vec<Bytes>,
+    // Serialized SignedBlock that certify the last commit from above.
+    #[prost(bytes = "bytes", repeated, tag = "2")]
+    certifier_blocks: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
 pub(crate) struct FetchLatestBlocksRequest {
     #[prost(uint32, repeated, tag = "1")]
     authorities: Vec<u32>,
@@ -855,6 +911,19 @@ pub(crate) struct FetchLatestBlocksResponse {
     // The response of the requested blocks as Serialized SignedBlock.
     #[prost(bytes = "bytes", repeated, tag = "1")]
     blocks: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetLatestRoundsRequest {}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetLatestRoundsResponse {
+    // Highest received round per authority.
+    #[prost(uint32, repeated, tag = "1")]
+    highest_received: Vec<u32>,
+    // Highest accepted round per authority.
+    #[prost(uint32, repeated, tag = "2")]
+    highest_accepted: Vec<u32>,
 }
 
 fn chunk_blocks(blocks: Vec<Bytes>, chunk_limit: usize) -> Vec<Vec<Bytes>> {

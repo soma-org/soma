@@ -34,7 +34,7 @@ use std::{
 };
 
 use crate::{
-    checkpoints::CheckpointSequenceNumber,
+    checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
     metadata::Metadata,
     shard::Shard,
     shard_crypto::{
@@ -52,7 +52,6 @@ use serde::{Deserialize, Serialize};
 use tracing::trace;
 
 use crate::{
-    accumulator::CommitIndex,
     base::{AuthorityName, SizeOneVec, SomaAddress},
     committee::{Committee, EpochId},
     consensus::ConsensusCommitPrologue,
@@ -66,7 +65,6 @@ use crate::{
     error::{SomaError, SomaResult},
     intent::{Intent, IntentMessage, IntentScope},
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
-    state_sync::CommitTimestamp,
     temporary_store::SharedInput,
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
@@ -1076,7 +1074,7 @@ impl VerifiedTransaction {
     pub fn new_consensus_commit_prologue(
         epoch: u64,
         round: u64,
-        commit_timestamp_ms: CommitTimestamp,
+        commit_timestamp_ms: CheckpointTimestamp,
         consensus_commit_digest: ConsensusCommitDigest,
     ) -> Self {
         ConsensusCommitPrologue {

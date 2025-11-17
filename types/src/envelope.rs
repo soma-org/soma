@@ -9,7 +9,6 @@ use fastcrypto::traits::{KeyPair, Signer};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
-    accumulator::CommitIndex,
     base::AuthorityName,
     checkpoints::CheckpointSequenceNumber,
     committee::{Committee, EpochId},

@@ -44,6 +44,7 @@ pub(crate) trait NetworkClient: Send + Sync + Sized + 'static {
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
+        breadth_first: bool,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>>;
 
