@@ -24,4 +24,7 @@ impl Chain {
 }
 
 #[derive(Clone, Serialize, Debug, Default)]
-pub struct ProtocolConfig {}
+pub struct ProtocolConfig {
+    /// Minimum interval of commit timestamps between consecutive checkpoints.
+    min_checkpoint_interval_ms: Option<u64>,
+}

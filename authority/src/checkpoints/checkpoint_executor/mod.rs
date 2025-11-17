@@ -32,7 +32,7 @@ use types::base::SequenceNumber;
 use types::checkpoints::{
     CheckpointContents, CheckpointSequenceNumber, GlobalStateHash, VerifiedCheckpoint,
 };
-use types::config::node_config::CheckpointExecutorConfig;
+use types::config::node_config::{CheckpointExecutorConfig, RunWithRange};
 use types::digests::{TransactionDigest, TransactionEffectsDigest};
 use types::effects::{
     ExecutionFailureStatus, ExecutionStatus, TransactionEffects, TransactionEffectsAPI as _,

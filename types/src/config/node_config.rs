@@ -1,5 +1,7 @@
 use crate::{
     base::SomaAddress,
+    checkpoints::CheckpointSequenceNumber,
+    committee::EpochId,
     config::{local_ip_utils, object_store_config::ObjectStoreConfig, rpc_config::RpcConfig},
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
     genesis::Genesis,
@@ -798,3 +800,29 @@ pub const CONSENSUS_DB_NAME: &str = "consensus_db";
 pub const FULL_NODE_DB_PATH: &str = "full_node_db";
 pub const AUTHORITIES_DB_NAME: &str = "authorities_db";
 pub const ENCODERS_DB_NAME: &str = "encoders_db";
+
+// RunWithRange is used to specify the ending epoch/checkpoint to process.
+// this is intended for use with disaster recovery debugging and verification workflows, never in normal operations
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub enum RunWithRange {
+    Epoch(EpochId),
+    Checkpoint(CheckpointSequenceNumber),
+}
+
+impl RunWithRange {
+    // is epoch_id > RunWithRange::Epoch
+    pub fn is_epoch_gt(&self, epoch_id: EpochId) -> bool {
+        matches!(self, RunWithRange::Epoch(e) if epoch_id > *e)
+    }
+
+    pub fn matches_checkpoint(&self, seq_num: CheckpointSequenceNumber) -> bool {
+        matches!(self, RunWithRange::Checkpoint(seq) if *seq == seq_num)
+    }
+
+    pub fn into_checkpoint_bound(self) -> Option<CheckpointSequenceNumber> {
+        match self {
+            RunWithRange::Epoch(_) => None,
+            RunWithRange::Checkpoint(seq) => Some(seq),
+        }
+    }
+}

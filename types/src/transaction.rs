@@ -312,6 +312,10 @@ impl TransactionKind {
         )
     }
 
+    pub fn is_end_of_epoch_tx(&self) -> bool {
+        matches!(self, TransactionKind::ChangeEpoch(_))
+    }
+
     pub fn requires_system_state(&self) -> bool {
         self.is_validator_tx()
             || self.is_epoch_change()

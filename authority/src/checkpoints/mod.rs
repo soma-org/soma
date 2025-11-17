@@ -1148,7 +1148,7 @@ impl CheckpointBuilder {
         let min_checkpoint_interval_ms = self
             .epoch_store
             .protocol_config()
-            .min_checkpoint_interval_ms_as_option()
+            .min_checkpoint_interval_ms()
             .unwrap_or_default();
         let mut grouped_pending_checkpoints = Vec::new();
         let mut checkpoints_iter = self
@@ -1302,11 +1302,7 @@ impl CheckpointBuilder {
                 )
                 .await;
 
-            let consensus_commit_prologue = if self
-                .epoch_store
-                .protocol_config()
-                .prepend_prologue_tx_in_consensus_commit_in_checkpoints()
-            {
+            let consensus_commit_prologue = {
                 // If the roots contains consensus commit prologue transaction, we want to extract it,
                 // and put it to the front of the checkpoint.
 
@@ -1336,8 +1332,6 @@ impl CheckpointBuilder {
                     assert_eq!(unsorted_ccp[0].transaction_digest(), ccp_digest);
                 }
                 consensus_commit_prologue
-            } else {
-                None
             };
 
             let unsorted =
@@ -1672,13 +1666,8 @@ impl CheckpointBuilder {
                     "Decrease of checkpoint timestamp, possibly due to epoch change. Sequence: {}, previous: {}, current: {}",
                     sequence_number, last_checkpoint.timestamp_ms, timestamp_ms,
                 );
-                    if self
-                        .epoch_store
-                        .protocol_config()
-                        .enforce_checkpoint_timestamp_monotonicity()
-                    {
-                        timestamp_ms = last_checkpoint.timestamp_ms;
-                    }
+                    // enforce timestamp monotonicity
+                    timestamp_ms = last_checkpoint.timestamp_ms;
                 }
             }
 
@@ -1732,15 +1721,7 @@ impl CheckpointBuilder {
 
                 info!("Epoch {epoch} root state hash digest: {root_state_digest:?}");
 
-                let epoch_commitments = if self
-                    .epoch_store
-                    .protocol_config()
-                    .check_commit_root_state_digest_supported()
-                {
-                    vec![root_state_digest.into()]
-                } else {
-                    vec![]
-                };
+                let epoch_commitments = vec![root_state_digest.into()];
 
                 Some(EndOfEpochData {
                     next_epoch_committee: committee.voting_rights,
@@ -1770,16 +1751,10 @@ impl CheckpointBuilder {
 
             let previous_digest = last_checkpoint.as_ref().map(|(_, c)| c.digest());
 
-            let checkpoint_commitments = if self
-                .epoch_store
-                .protocol_config()
-                .include_checkpoint_artifacts_digest_in_summary()
-            {
+            let checkpoint_commitments = {
                 let artifacts = CheckpointArtifacts::from(&effects[..]);
                 let artifacts_digest = artifacts.digest()?;
                 vec![artifacts_digest.into()]
-            } else {
-                Default::default()
             };
 
             let summary = CheckpointSummary::new(
@@ -1951,14 +1926,6 @@ impl CheckpointBuilder {
         root_digests: &[TransactionDigest],
         sorted: &[TransactionEffects],
     ) {
-        if !self
-            .epoch_store
-            .protocol_config()
-            .prepend_prologue_tx_in_consensus_commit_in_checkpoints()
-        {
-            return;
-        }
-
         // Gets all the consensus commit prologue transactions from the roots.
         let root_txs = self
             .state
