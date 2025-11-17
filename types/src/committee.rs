@@ -67,6 +67,8 @@ use tracing::info;
 /// of validators is active. The EpochId increments with each reconfiguration.
 pub type EpochId = u64;
 
+pub type StakeUnit = u64;
+
 /// Represents the voting power of an authority in the committee.
 ///
 /// The sum of all voting powers in a committee is fixed at TOTAL_VOTING_POWER.

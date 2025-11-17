@@ -68,6 +68,7 @@ pub enum IntentScope {
     EncoderCommittee = 7,
     NetworkingCommittee = 8,
     ConsensusFinality = 9,
+    CheckpointSummary = 10,
 }
 
 impl TryFrom<u8> for IntentScope {

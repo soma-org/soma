@@ -1,10 +1,22 @@
-use std::time::Duration;
-
+use crate::checkpoints::CheckpointSequenceNumber;
+use crate::digests::CheckpointDigest;
 use serde::{Deserialize, Serialize};
+use std::{num::NonZeroU32, time::Duration};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct StateSyncConfig {
-    /// Query peers for their latest commit every interval period.
+    /// List of "known-good" checkpoints that state sync will be forced to use. State sync will
+    /// skip verification of pinned checkpoints, and reject checkpoints with digests that don't
+    /// match pinned values for a given sequence number.
+    ///
+    /// This can be used:
+    /// - in case of a fork, to prevent the node from syncing to the wrong chain.
+    /// - in case of a network stall, to force the node to proceed with a manually-injected
+    ///   checkpoint.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub pinned_checkpoints: Vec<(CheckpointSequenceNumber, CheckpointDigest)>,
+
+    /// Query peers for their latest checkpoint every interval period.
     ///
     /// If unspecified, this will default to `5,000` milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -16,17 +28,31 @@ pub struct StateSyncConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mailbox_capacity: Option<usize>,
 
-    /// Size of the broadcast channel use for notifying other systems of newly sync'ed commits.
+    /// Size of the broadcast channel use for notifying other systems of newly sync'ed checkpoints.
     ///
     /// If unspecified, this will default to `1,024`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub synced_commit_broadcast_channel_capacity: Option<u64>,
+    pub synced_checkpoint_broadcast_channel_capacity: Option<usize>,
 
-    /// Set the upper bound on the number of commit contents to be downloaded concurrently.
+    /// Set the upper bound on the number of checkpoint headers to be downloaded concurrently.
     ///
     /// If unspecified, this will default to `400`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub commit_content_download_concurrency: Option<u64>,
+    pub checkpoint_header_download_concurrency: Option<usize>,
+
+    /// Set the upper bound on the number of checkpoint contents to be downloaded concurrently.
+    ///
+    /// If unspecified, this will default to `400`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint_content_download_concurrency: Option<usize>,
+
+    /// Set the upper bound on the number of individual transactions contained in checkpoint
+    /// contents to be downloaded concurrently. If both this value and
+    /// `checkpoint_content_download_concurrency` are set, the lower of the two will apply.
+    ///
+    /// If unspecified, this will default to `50,000`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint_content_download_tx_concurrency: Option<u64>,
 
     /// Set the timeout that should be used when sending most state-sync RPC requests.
     ///
@@ -34,11 +60,42 @@ pub struct StateSyncConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
 
-    /// Set the timeout that should be used when sending RPC requests to sync commit contents.
+    /// Set the timeout that should be used when sending RPC requests to sync checkpoint contents.
     ///
     /// If unspecified, this will default to `10,000` milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub commit_content_timeout_ms: Option<u64>,
+    pub checkpoint_content_timeout_ms: Option<u64>,
+
+    /// Per-peer rate-limit (in requests/sec) for the PushCheckpointSummary RPC.
+    ///
+    /// If unspecified, this will default to no limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push_checkpoint_summary_rate_limit: Option<NonZeroU32>,
+
+    /// Per-peer rate-limit (in requests/sec) for the GetCheckpointSummary RPC.
+    ///
+    /// If unspecified, this will default to no limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub get_checkpoint_summary_rate_limit: Option<NonZeroU32>,
+
+    /// Per-peer rate-limit (in requests/sec) for the GetCheckpointContents RPC.
+    ///
+    /// If unspecified, this will default to no limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub get_checkpoint_contents_rate_limit: Option<NonZeroU32>,
+
+    /// Per-peer inflight limit for the GetCheckpointContents RPC.
+    ///
+    /// If unspecified, this will default to no limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub get_checkpoint_contents_inflight_limit: Option<usize>,
+
+    /// Per-checkpoint inflight limit for the GetCheckpointContents RPC. This is enforced globally
+    /// across all peers.
+    ///
+    /// If unspecified, this will default to no limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub get_checkpoint_contents_per_checkpoint_limit: Option<usize>,
 
     /// The amount of time to wait before retry if there are no peers to sync content from.
     /// If unspecified, this will set to default value
@@ -59,18 +116,32 @@ impl StateSyncConfig {
         self.mailbox_capacity.unwrap_or(MAILBOX_CAPACITY)
     }
 
-    pub fn synced_commit_broadcast_channel_capacity(&self) -> u64 {
-        const SYNCED_CHECKPOINT_BROADCAST_CHANNEL_CAPACITY: u64 = 1_024;
+    pub fn synced_checkpoint_broadcast_channel_capacity(&self) -> usize {
+        const SYNCED_CHECKPOINT_BROADCAST_CHANNEL_CAPACITY: usize = 1_024;
 
-        self.synced_commit_broadcast_channel_capacity
+        self.synced_checkpoint_broadcast_channel_capacity
             .unwrap_or(SYNCED_CHECKPOINT_BROADCAST_CHANNEL_CAPACITY)
     }
 
-    pub fn commit_content_download_concurrency(&self) -> u64 {
-        const CHECKPOINT_CONTENT_DOWNLOAD_CONCURRENCY: u64 = 400;
+    pub fn checkpoint_header_download_concurrency(&self) -> usize {
+        const CHECKPOINT_HEADER_DOWNLOAD_CONCURRENCY: usize = 400;
 
-        self.commit_content_download_concurrency
+        self.checkpoint_header_download_concurrency
+            .unwrap_or(CHECKPOINT_HEADER_DOWNLOAD_CONCURRENCY)
+    }
+
+    pub fn checkpoint_content_download_concurrency(&self) -> usize {
+        const CHECKPOINT_CONTENT_DOWNLOAD_CONCURRENCY: usize = 400;
+
+        self.checkpoint_content_download_concurrency
             .unwrap_or(CHECKPOINT_CONTENT_DOWNLOAD_CONCURRENCY)
+    }
+
+    pub fn checkpoint_content_download_tx_concurrency(&self) -> u64 {
+        const CHECKPOINT_CONTENT_DOWNLOAD_TX_CONCURRENCY: u64 = 50_000;
+
+        self.checkpoint_content_download_tx_concurrency
+            .unwrap_or(CHECKPOINT_CONTENT_DOWNLOAD_TX_CONCURRENCY)
     }
 
     pub fn timeout(&self) -> Duration {
@@ -81,10 +152,10 @@ impl StateSyncConfig {
             .unwrap_or(DEFAULT_TIMEOUT)
     }
 
-    pub fn commit_content_timeout(&self) -> Duration {
+    pub fn checkpoint_content_timeout(&self) -> Duration {
         const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
-        self.commit_content_timeout_ms
+        self.checkpoint_content_timeout_ms
             .map(Duration::from_millis)
             .unwrap_or(DEFAULT_TIMEOUT)
     }

@@ -279,6 +279,25 @@ pub struct EncoderGenesisConfig {
     pub byte_price: u64,
 }
 
+impl Clone for EncoderGenesisConfig {
+    fn clone(&self) -> Self {
+        Self {
+            encoder_key_pair: self.encoder_key_pair.clone(),
+            account_key_pair: self.account_key_pair.copy(),
+            network_key_pair: self.network_key_pair.clone(),
+            internal_network_address: self.internal_network_address.clone(),
+            external_network_address: self.external_network_address.clone(),
+            object_address: self.object_address.clone(),
+            local_object_address: self.local_object_address.clone(),
+            inference_address: self.inference_address.clone(),
+            evaluation_address: self.evaluation_address.clone(),
+            stake: self.stake.clone(),
+            commission_rate: self.commission_rate.clone(),
+            byte_price: self.byte_price.clone(),
+        }
+    }
+}
+
 // 2. Create a builder for EncoderGenesisConfig
 #[derive(Default)]
 pub struct EncoderGenesisConfigBuilder {

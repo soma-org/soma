@@ -16,13 +16,14 @@ use crate::{
     },
     consensus::stake_aggregator::StakeAggregator,
     crypto::{
-        get_key_pair_from_rng, AuthorityPublicKeyBytes, AuthoritySignInfo,
+        get_key_pair_from_rng, AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo,
         AuthorityStrongQuorumSignInfo, NetworkPublicKey, PublicKey, SomaKeyPair,
     },
     digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
     error::{SomaError, SomaResult},
     genesis::{self, Genesis},
+    genesis_builder::GenesisBuilder,
     intent::Intent,
     multiaddr::Multiaddr,
     object::{self, Object, ObjectData, ObjectID, ObjectType, Owner, Version},
@@ -154,6 +155,17 @@ impl<R> ConfigBuilder<R> {
             encoder_committee: self.encoder_committee,
             genesis_config: self.genesis_config,
         }
+    }
+
+    pub fn with_current_unix_timestamp_ms(mut self) -> Self {
+        let duration_since_unix_epoch = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("SystemTime before UNIX EPOCH!");
+
+        self.get_or_init_genesis_config()
+            .parameters
+            .chain_start_timestamp_ms = duration_since_unix_epoch.as_millis() as u64;
+        self
     }
 
     pub fn with_accounts(mut self, accounts: Vec<AccountConfig>) -> Self {
@@ -296,9 +308,17 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             }
         };
 
-        let genesis_config = self
+        let mut genesis_config = self
             .genesis_config
             .unwrap_or_else(GenesisConfig::for_local_testing);
+
+        if genesis_config.parameters.chain_start_timestamp_ms == 0 {
+            genesis_config.parameters.chain_start_timestamp_ms = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("SystemTime before UNIX EPOCH!")
+                .as_millis()
+                as u64;
+        }
 
         let (account_keys, allocations) = genesis_config.generate_accounts(&mut rng).unwrap();
 
@@ -387,222 +407,31 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             builder.build()
         };
 
-        let now = Instant::now();
-        let duration_since_unix_epoch =
-            match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-                Ok(d) => d,
-                Err(e) => panic!("SystemTime before UNIX EPOCH! {e}"),
-            };
-        // let unix_epoch_instant = now.checked_sub(duration_since_unix_epoch).unwrap();
-
-        let mut system_state = SystemState::create(
-            consensus_configs
-                .iter()
-                .enumerate()
-                .map(|(i, v)| {
-                    Validator::new(
-                        (&v.account_key_pair.public()).into(),
-                        (v.key_pair.public()).clone(),
-                        v.network_key_pair.public().into(),
-                        v.worker_key_pair.public().into(),
-                        v.network_address.clone(),
-                        v.consensus_address.clone(),
-                        v.network_address.clone(),
-                        v.encoder_validator_address.clone(),
-                        0,
-                        v.commission_rate,
-                        ObjectID::random(),
-                    )
-                })
-                .collect(),
-            networking_configs
-                .iter()
-                .enumerate()
-                .map(|(i, v)| {
-                    Validator::new(
-                        (&v.account_key_pair.public()).into(),
-                        (v.key_pair.public()).clone(),
-                        v.network_key_pair.public().into(),
-                        v.worker_key_pair.public().into(),
-                        v.network_address.clone(),
-                        v.consensus_address.clone(),
-                        v.network_address.clone(),
-                        v.encoder_validator_address.clone(),
-                        0,
-                        v.commission_rate,
-                        ObjectID::random(),
-                    )
-                })
-                .collect(),
-            encoders
-                .iter()
-                .enumerate()
-                .map(|(i, e)| {
-                    Encoder::new(
-                        (&e.account_key_pair.public()).into(),
-                        e.encoder_key_pair.public().clone(),
-                        e.network_key_pair.public().clone(),
-                        e.internal_network_address.clone(),
-                        e.external_network_address.clone(),
-                        e.object_address.clone(),
-                        0,
-                        e.commission_rate,
-                        e.byte_price,
-                        ObjectID::random(),
-                    )
-                })
-                .collect(),
-            duration_since_unix_epoch.as_millis() as u64,
-            SystemParameters {
-                epoch_duration_ms: genesis_config.parameters.epoch_duration_ms,
-                ..Default::default()
-            },
-            token_distribution_schedule.stake_subsidy_fund_shannons,
-            genesis_config
-                .parameters
-                .stake_subsidy_initial_distribution_amount,
-            genesis_config.parameters.stake_subsidy_period_length,
-            genesis_config.parameters.stake_subsidy_decrease_rate,
-        );
-
-        let mut objects = vec![];
-
-        for allocation in token_distribution_schedule.allocations {
-            if let Some(validator) = allocation.staked_with_validator {
-                let staked_soma = system_state
-                    .request_add_stake_at_genesis(
-                        allocation.recipient_address,
-                        validator,
-                        allocation.amount_shannons,
-                    )
-                    .expect("Could not stake in validator at Genesis.");
-                let staked_soma_object = Object::new_staked_soma_object(
-                    ObjectID::random(),
-                    staked_soma,
-                    Owner::AddressOwner(allocation.recipient_address),
-                    TransactionDigest::default(),
-                );
-                objects.push(staked_soma_object);
-            } else if let Some(encoder) = allocation.staked_with_encoder {
-                let staked_soma = system_state
-                    .request_add_encoder_stake_at_genesis(
-                        allocation.recipient_address,
-                        encoder,
-                        allocation.amount_shannons,
-                    )
-                    .expect("Could not stake in encoder at Genesis.");
-                let staked_soma_object = Object::new_staked_soma_object(
-                    ObjectID::random(),
-                    staked_soma,
-                    Owner::AddressOwner(allocation.recipient_address),
-                    TransactionDigest::default(),
-                );
-                objects.push(staked_soma_object);
-            } else {
-                let coin_object = Object::new_coin(
-                    ObjectID::random(),
-                    allocation.amount_shannons,
-                    Owner::AddressOwner(allocation.recipient_address),
-                    TransactionDigest::default(),
-                );
-                objects.push(coin_object);
-            }
-        }
-
-        system_state.validators.set_voting_power();
-        system_state.encoders.set_voting_power();
-
-        // Initialize current epoch committees
-        let current_committees = system_state.build_committees_for_epoch(0);
-        system_state.committees[1] = Some(current_committees);
-
-        let state_object = Object::new(
-            ObjectData::new_with_id(
-                SYSTEM_STATE_OBJECT_ID,
-                ObjectType::SystemState,
-                Version::MIN,
-                bcs::to_bytes(&system_state).unwrap(),
-            ),
-            Owner::Shared {
-                initial_shared_version: Version::new(),
-            },
-            TransactionDigest::default(),
-        );
-
-        objects.push(state_object);
-
-        let committee = system_state.into_epoch_start_state().get_committee();
-        let unsigned_tx =
-            VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
-
-        // Collect all signatures directly
-        let mut signatures = Vec::new();
-        for validator in &consensus_configs {
-            let authority_name = AuthorityPublicKeyBytes::from(validator.key_pair.public());
-
-            let sig_info = AuthoritySignInfo::new(
-                committee.epoch(),
-                unsigned_tx.data(),
-                Intent::soma_transaction(),
-                authority_name,
-                &validator.key_pair,
-            );
-            signatures.push(sig_info);
-        }
-
-        // Create the quorum signature directly
-        let cert_sig =
-            AuthorityStrongQuorumSignInfo::new_from_auth_sign_infos(signatures, &committee)
-                .unwrap();
-
-        let certified_tx =
-            CertifiedTransaction::new_from_data_and_sig(unsigned_tx.into_data(), cert_sig);
-
-        // Verify the certificate
-        certified_tx
-            .verify_committee_sigs_only(&committee)
-            .expect("Genesis certificate should verify");
-
-        let digest = *certified_tx.digest();
-
-        // Create the input objects map for TemporaryStore
-        let input_objects = InputObjects::new(Vec::new());
-        let shared_object_refs = Vec::new(); // No shared objects in the input
-        let receiving_objects = Vec::new(); // No receiving objects
-
-        // Create a TemporaryStore for the genesis transaction
-        let mut temp_store = TemporaryStore::new(
-            input_objects,
-            receiving_objects,
-            digest,
-            0, // epoch_id
-        );
-
-        // Add the created objects to the store
-        for object in objects {
-            temp_store.create_object(object);
-        }
-
-        // Generate effects using the into_effects method
-        let (inner, effects) = temp_store.into_effects(
-            shared_object_refs,
-            &digest,
-            BTreeSet::new(), // No transaction dependencies for genesis
-            ExecutionStatus::Success,
-            0, // epoch_id
-            None,
-        );
-
-        let genesis = Genesis::new_with_certified_tx(
-            certified_tx.clone(),
-            effects,
-            inner.written.iter().map(|(_, o)| o.clone()).collect(),
-        );
+        let consensus_keypairs: Vec<AuthorityKeyPair> = consensus_configs
+            .clone()
+            .iter()
+            .map(|v| v.key_pair.copy()) // Use copy() method from KeyPair trait
+            .collect();
 
         let all_validators: Vec<ValidatorGenesisConfig> = networking_configs
             .into_iter()
-            .chain(consensus_configs.into_iter())
+            .chain(consensus_configs.clone().into_iter())
             .collect();
+
+        // Use GenesisBuilder
+        let mut genesis_builder = GenesisBuilder::new()
+            .with_parameters(genesis_config.clone())
+            .with_validators(consensus_configs.clone())
+            .with_encoders(encoders.clone())
+            .with_token_distribution_schedule(token_distribution_schedule);
+
+        // Add validator signatures
+        for keypair in &consensus_keypairs {
+            genesis_builder = genesis_builder.add_validator_signature(keypair);
+        }
+
+        // Build the genesis
+        let genesis = genesis_builder.build();
 
         let seed_peers: Vec<SeedPeer> = all_validators
             .iter()

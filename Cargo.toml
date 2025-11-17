@@ -142,11 +142,10 @@ tonic = { version = "0.12.1", features = ["zstd"] }
 tonic-build = "0.12.2"
 tracing = "0.1.41" # tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-fastcrypto = { version = "0.1.9", features = [
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "09f86974195ec85d8aae386b1909d341d3ccfe52", features = [
   "copy_key",
-] } #{ git = "https://github.com/MystenLabs/fastcrypto", rev = "5f2c63266a065996d53f98156f0412782b468597", features = [
-#  "copy_key",
-#] }
+] }
+
 bytes = { version = "1.10.1", features = [
   "serde",
 ] } # bytes = { version = "1.7.1", features = ["serde"] }

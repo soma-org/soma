@@ -33,15 +33,17 @@
 use crate::{
     accumulator::Accumulator,
     base::{AuthorityName, ConciseableName},
+    checkpoints::{CheckpointSequenceNumber, CheckpointSignatureMessage, ECMHLiveObjectSetDigest},
     committee::NetworkingCommittee,
     crypto::AuthorityPublicKeyBytes,
-    digests::{ConsensusCommitDigest, ECMHLiveObjectSetDigest, TransactionDigest},
+    digests::{CheckpointDigest, ConsensusCommitDigest, TransactionDigest},
     encoder_committee::EncoderCommittee,
     state_sync::CommitTimestamp,
-    transaction::CertifiedTransaction,
+    transaction::{CertifiedTransaction, Transaction},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
+use std::{collections::hash_map::DefaultHasher, hash::Hash as _, hash::Hasher as _};
 use validator_set::ValidatorSet;
 
 pub mod block;
@@ -68,6 +70,9 @@ pub mod validator_set;
 /// 3. Executed by the authority state after consensus commitment
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ConsensusTransaction {
+    /// Encodes an u64 unique tracking id to allow us trace a message between Sui and consensus.
+    /// Use an byte array instead of u64 to ensure stable serialization.
+    pub tracking_id: [u8; 8],
     /// The specific type of consensus transaction
     pub kind: ConsensusTransactionKind,
 }
@@ -82,12 +87,15 @@ pub struct ConsensusTransaction {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ConsensusTransactionKind {
     /// A user-submitted transaction that has been certified by a quorum of validators
-    UserTransaction(Box<CertifiedTransaction>),
+    CertifiedTransaction(Box<CertifiedTransaction>),
+
+    UserTransaction(Box<Transaction>),
 
     /// A message indicating that an authority has no more transactions to publish in this epoch
     /// Used for consensus liveness and epoch boundary detection
     EndOfPublish(AuthorityName),
-    // CheckpointSignature(Box<CheckpointSignatureMessage>),
+
+    CheckpointSignature(Box<CheckpointSignatureMessage>),
 }
 
 /// # ConsensusTransactionKey
@@ -102,18 +110,23 @@ pub enum ConsensusTransactionKey {
     /// Key for a user transaction certificate, identified by its digest
     Certificate(TransactionDigest),
 
+    CheckpointSignature(AuthorityName, CheckpointSequenceNumber, CheckpointDigest),
+
     /// Key for an end-of-publish message, identified by the authority that sent it
     EndOfPublish(AuthorityName),
-    // CheckpointSignature(AuthorityName, CheckpointSequenceNumber),
 }
 
 impl Debug for ConsensusTransactionKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Certificate(digest) => write!(f, "Certificate({:?})", digest),
-            // Self::CheckpointSignature(name, seq) => {
-            //     write!(f, "CheckpointSignature({:?}, {:?})", name.concise(), seq)
-            // }
+            Self::CheckpointSignature(name, seq, digest) => write!(
+                f,
+                "CheckpointSignature({:?}, {:?}, {:?})",
+                name.concise(),
+                seq,
+                digest
+            ),
             Self::EndOfPublish(name) => write!(f, "EndOfPublish({:?})", name.concise()),
         }
     }
@@ -121,22 +134,48 @@ impl Debug for ConsensusTransactionKey {
 
 impl ConsensusTransaction {
     pub fn new_certificate_message(
-        // authority: &AuthorityName,
+        authority: &AuthorityName,
         certificate: CertifiedTransaction,
     ) -> Self {
+        let mut hasher = DefaultHasher::new();
+        let tx_digest = certificate.digest();
+        tx_digest.hash(&mut hasher);
+        authority.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
         Self {
-            kind: ConsensusTransactionKind::UserTransaction(Box::new(certificate)),
+            tracking_id,
+            kind: ConsensusTransactionKind::CertifiedTransaction(Box::new(certificate)),
         }
     }
 
-    // pub fn new_checkpoint_signature_message(data: CheckpointSignatureMessage) -> Self {
-    //     Self {
-    //         kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)),
-    //     }
-    // }
+    pub fn new_user_transaction_message(authority: &AuthorityName, tx: Transaction) -> Self {
+        let mut hasher = DefaultHasher::new();
+        let tx_digest = tx.digest();
+        tx_digest.hash(&mut hasher);
+        authority.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
+        Self {
+            tracking_id,
+            kind: ConsensusTransactionKind::UserTransaction(Box::new(tx)),
+        }
+    }
+
+    pub fn new_checkpoint_signature_message(data: CheckpointSignatureMessage) -> Self {
+        let mut hasher = DefaultHasher::new();
+        data.summary.auth_sig().signature.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
+        Self {
+            tracking_id,
+            kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)),
+        }
+    }
 
     pub fn new_end_of_publish(authority: AuthorityName) -> Self {
+        let mut hasher = DefaultHasher::new();
+        authority.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
         Self {
+            tracking_id,
             kind: ConsensusTransactionKind::EndOfPublish(authority),
         }
     }
@@ -146,30 +185,48 @@ impl ConsensusTransaction {
         offset: u64,
         certificate: CertifiedTransaction,
     ) -> Self {
+        let mut hasher = DefaultHasher::new();
+        let tx_digest = certificate.digest();
+        tx_digest.hash(&mut hasher);
+        round.hash(&mut hasher);
+        offset.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
         Self {
-            kind: ConsensusTransactionKind::UserTransaction(Box::new(certificate)),
+            tracking_id,
+            kind: ConsensusTransactionKind::CertifiedTransaction(Box::new(certificate)),
         }
     }
 
     pub fn key(&self) -> ConsensusTransactionKey {
         match &self.kind {
-            ConsensusTransactionKind::UserTransaction(cert) => {
+            ConsensusTransactionKind::CertifiedTransaction(cert) => {
                 ConsensusTransactionKey::Certificate(*cert.digest())
             }
-            // ConsensusTransactionKind::CheckpointSignature(data) => {
-            //     ConsensusTransactionKey::CheckpointSignature(
-            //         data.summary.auth_sig().authority,
-            //         data.summary.sequence_number,
-            //     )
-            // }
+            ConsensusTransactionKind::CheckpointSignature(data) => {
+                ConsensusTransactionKey::CheckpointSignature(
+                    data.summary.auth_sig().authority,
+                    data.summary.sequence_number,
+                    *data.summary.digest(),
+                )
+            }
             ConsensusTransactionKind::EndOfPublish(authority) => {
                 ConsensusTransactionKey::EndOfPublish(*authority)
+            }
+            ConsensusTransactionKind::UserTransaction(tx) => {
+                // Use the same key format as ConsensusTransactionKind::CertifiedTransaction,
+                // because existing usages of ConsensusTransactionKey should not differentiate
+                // between CertifiedTransaction and UserTransaction.
+                ConsensusTransactionKey::Certificate(*tx.digest())
             }
         }
     }
 
-    pub fn is_user_certificate(&self) -> bool {
-        matches!(self.kind, ConsensusTransactionKind::UserTransaction(_))
+    pub fn is_user_transaction(&self) -> bool {
+        matches!(
+            self.kind,
+            ConsensusTransactionKind::UserTransaction(_)
+                | ConsensusTransactionKind::CertifiedTransaction(_)
+        )
     }
 
     pub fn is_end_of_publish(&self) -> bool {

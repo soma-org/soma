@@ -10,7 +10,6 @@ use crate::{
     accumulator::CommitIndex,
     balance_change::{derive_balance_changes, BalanceChange},
     base::SomaAddress,
-    checkpoint::{Checkpoint, ExecutedTransaction},
     committee::{Committee, EpochId},
     consensus::{
         commit::{CommitAPI as _, CommitDigest, CommittedSubDag},
@@ -45,75 +44,76 @@ pub trait ReadStore: ReadCommitteeStore + ObjectStore + Send + Sync {
 
     fn get_last_commit_index_of_epoch(&self, epoch: EpochId) -> Option<CommitIndex>;
 
-    fn get_checkpoint_data(&self, committed_sub_dag: &CommittedSubDag) -> Result<Checkpoint> {
-        let all_tx_digests: HashSet<_> = committed_sub_dag
-            .transactions()
-            .iter()
-            .flat_map(|(_, authority_transactions)| {
-                authority_transactions
-                    .iter()
-                    .filter_map(|(_, transaction)| {
-                        if let ConsensusTransactionKind::UserTransaction(cert_tx) =
-                            &transaction.kind
-                        {
-                            Some(*cert_tx.digest())
-                        } else {
-                            None
-                        }
-                    })
-            })
-            .collect();
+    // TODO: Fix this
+    // fn get_checkpoint_data(&self, committed_sub_dag: &CommittedSubDag) -> Result<Checkpoint> {
+    //     let all_tx_digests: HashSet<_> = committed_sub_dag
+    //         .transactions()
+    //         .iter()
+    //         .flat_map(|(_, authority_transactions)| {
+    //             authority_transactions
+    //                 .iter()
+    //                 .filter_map(|(_, transaction)| {
+    //                     if let ConsensusTransactionKind::UserTransaction(cert_tx) =
+    //                         &transaction.kind
+    //                     {
+    //                         Some(*cert_tx.digest())
+    //                     } else {
+    //                         None
+    //                     }
+    //                 })
+    //         })
+    //         .collect();
 
-        // Convert to Vec to maintain consistent ordering
-        let tx_digests: Vec<_> = all_tx_digests.into_iter().collect();
+    //     // Convert to Vec to maintain consistent ordering
+    //     let tx_digests: Vec<_> = all_tx_digests.into_iter().collect();
 
-        // Fetch all transactions
-        let transactions = self
-            .multi_get_transactions(&tx_digests)?
-            .into_iter()
-            .zip(&tx_digests)
-            .map(|(maybe_tx, digest)| {
-                maybe_tx.ok_or_else(|| {
-                    // Create appropriate error for missing transaction
-                    crate::storage::storage_error::Error::custom(format!(
-                        "Missing transaction for digest: {}",
-                        digest
-                    ))
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+    //     // Fetch all transactions
+    //     let transactions = self
+    //         .multi_get_transactions(&tx_digests)?
+    //         .into_iter()
+    //         .zip(&tx_digests)
+    //         .map(|(maybe_tx, digest)| {
+    //             maybe_tx.ok_or_else(|| {
+    //                 // Create appropriate error for missing transaction
+    //                 crate::storage::storage_error::Error::custom(format!(
+    //                     "Missing transaction for digest: {}",
+    //                     digest
+    //                 ))
+    //             })
+    //         })
+    //         .collect::<Result<Vec<_>>>()?;
 
-        // Fetch all effects
-        let effects = self
-            .multi_get_transaction_effects(&tx_digests)?
-            .into_iter()
-            .zip(&tx_digests)
-            .map(|(maybe_effects, digest)| {
-                maybe_effects.ok_or_else(|| {
-                    crate::storage::storage_error::Error::custom(format!(
-                        "Missing effects for digest: {}",
-                        digest
-                    ))
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+    //     // Fetch all effects
+    //     let effects = self
+    //         .multi_get_transaction_effects(&tx_digests)?
+    //         .into_iter()
+    //         .zip(&tx_digests)
+    //         .map(|(maybe_effects, digest)| {
+    //             maybe_effects.ok_or_else(|| {
+    //                 crate::storage::storage_error::Error::custom(format!(
+    //                     "Missing effects for digest: {}",
+    //                     digest
+    //                 ))
+    //             })
+    //         })
+    //         .collect::<Result<Vec<_>>>()?;
 
-        // Build ExecutedTransaction objects
-        let executed_transactions = transactions
-            .into_iter()
-            .zip(effects)
-            .map(|(tx, fx)| ExecutedTransaction {
-                transaction: tx.transaction_data().clone(),
-                effects: fx,
-            })
-            .collect();
+    //     // Build ExecutedTransaction objects
+    //     let executed_transactions = transactions
+    //         .into_iter()
+    //         .zip(effects)
+    //         .map(|(tx, fx)| ExecutedTransaction {
+    //             transaction: tx.transaction_data().clone(),
+    //             effects: fx,
+    //         })
+    //         .collect();
 
-        Ok(Checkpoint {
-            commit_index: committed_sub_dag.commit_ref.index,
-            timestamp_ms: committed_sub_dag.timestamp_ms,
-            transactions: executed_transactions,
-        })
-    }
+    //     Ok(Checkpoint {
+    //         commit_index: committed_sub_dag.commit_ref.index,
+    //         timestamp_ms: committed_sub_dag.timestamp_ms,
+    //         transactions: executed_transactions,
+    //     })
+    // }
 
     //
     // Transaction Getters
@@ -285,6 +285,8 @@ pub struct EpochInfo {
     // pub protocol_version: Option<u64>,
     pub start_timestamp_ms: Option<u64>,
     pub end_timestamp_ms: Option<u64>,
+    pub start_checkpoint: Option<u64>,
+    pub end_checkpoint: Option<u64>,
     // TODO: pub reference_byte_price: Option<u64>,
     pub system_state: Option<crate::system_state::SystemState>,
 }

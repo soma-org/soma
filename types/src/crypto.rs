@@ -1008,6 +1008,8 @@ mod bcs_signable {
     impl BcsSignable for crate::committee::Committee {}
     impl BcsSignable for crate::effects::TransactionEffects {}
     impl BcsSignable for crate::object::ObjectInner {}
+    impl BcsSignable for crate::checkpoints::CheckpointSummary {}
+    impl BcsSignable for crate::checkpoints::CheckpointContents {}
 }
 
 impl<T, W> Signable<W> for T

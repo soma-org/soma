@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     base::AuthorityName,
+    checkpoints::CheckpointSequenceNumber,
     committee::{EpochId, VotingPower},
     crypto::{AuthorityStrongQuorumSignInfo, ConciseAuthorityPublicKeyBytes},
     digests::TransactionDigest,
@@ -43,8 +44,14 @@ pub enum ExecuteTransactionRequestType {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum EffectsFinalityInfo {
+    /// Effects are certified by a quorum of validators.
     Certified(AuthorityStrongQuorumSignInfo),
-    // Checkpointed(EpochId, CheckpointSequenceNumber),
+
+    /// Effects are included in a checkpoint.
+    Checkpointed(EpochId, CheckpointSequenceNumber),
+
+    /// A quorum of validators have acknowledged effects.
+    QuorumExecuted(EpochId),
 }
 
 /// When requested to execute a transaction with WaitForLocalExecution,
@@ -176,7 +183,8 @@ impl FinalizedEffects {
     pub fn epoch(&self) -> EpochId {
         match &self.finality_info {
             EffectsFinalityInfo::Certified(cert) => cert.epoch,
-            // EffectsFinalityInfo::Checkpointed(epoch, _) => *epoch,
+            EffectsFinalityInfo::Checkpointed(epoch, _) => *epoch,
+            EffectsFinalityInfo::QuorumExecuted(epoch) => *epoch,
         }
     }
 }

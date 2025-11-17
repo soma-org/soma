@@ -11,6 +11,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use crate::{
     accumulator::CommitIndex,
     base::AuthorityName,
+    checkpoints::CheckpointSequenceNumber,
     committee::{Committee, EpochId},
     crypto::{
         AuthorityKeyPair, AuthorityQuorumSignInfo, AuthoritySignInfo, AuthoritySignInfoTrait,
@@ -351,10 +352,10 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
         })
     }
 
-    pub fn new_from_commit(
+    pub fn new_from_checkpoint(
         transaction: VerifiedEnvelope<T, EmptySignInfo>,
         epoch: EpochId,
-        commit: CommitIndex,
+        checkpoint: CheckpointSequenceNumber,
     ) -> Self {
         let inner = transaction.into_inner();
         let Envelope {
@@ -365,7 +366,24 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
         VerifiedEnvelope::new_unchecked(Envelope {
             digest,
             data,
-            auth_signature: CertificateProof::new_from_commit(epoch, commit),
+            auth_signature: CertificateProof::new_from_checkpoint(epoch, checkpoint),
+        })
+    }
+
+    pub fn new_from_consensus(
+        transaction: VerifiedEnvelope<T, EmptySignInfo>,
+        epoch: EpochId,
+    ) -> Self {
+        let inner = transaction.into_inner();
+        let Envelope {
+            digest,
+            data,
+            auth_signature: _,
+        } = inner;
+        VerifiedEnvelope::new_unchecked(Envelope {
+            digest,
+            data,
+            auth_signature: CertificateProof::new_from_consensus(epoch),
         })
     }
 

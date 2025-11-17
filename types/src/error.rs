@@ -40,6 +40,7 @@ use strum::IntoStaticStr;
 use thiserror::Error;
 use tonic::Status;
 
+use crate::checkpoints::CheckpointSequenceNumber;
 use crate::committee::{AuthorityIndex, Epoch, Stake};
 use crate::consensus::{
     block::{BlockRef, Round},
@@ -47,6 +48,7 @@ use crate::consensus::{
 };
 
 use crate::crypto::NetworkPublicKey;
+use crate::digests::CheckpointContentsDigest;
 use crate::transaction::TransactionKind;
 use crate::{
     base::AuthorityName,
@@ -380,6 +382,18 @@ pub enum SomaError {
 
     #[error("Invalid finality proof")]
     InvalidFinalityProof(String),
+
+    #[error("Verified checkpoint not found for sequence number: {0}")]
+    VerifiedCheckpointNotFound(CheckpointSequenceNumber),
+
+    #[error("Verified checkpoint not found for digest: {0}")]
+    VerifiedCheckpointDigestNotFound(String),
+
+    #[error("Latest checkpoint sequence number not found")]
+    LatestCheckpointSequenceNumberNotFound,
+
+    #[error("Checkpoint contents not found for digest: {0}")]
+    CheckpointContentsNotFound(CheckpointContentsDigest),
 }
 
 impl From<Status> for SomaError {

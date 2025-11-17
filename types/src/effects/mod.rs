@@ -30,7 +30,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use crate::error::ShardError;
+use crate::{base::ExecutionDigests, error::ShardError};
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -307,6 +307,53 @@ impl TransactionEffectsAPI for TransactionEffects {
                 .push((obj_id, UnchangedSharedKind::Cancelled(seqno))),
         }
     }
+
+    fn written(&self) -> Vec<ObjectRef> {
+        self.changed_objects
+            .iter()
+            .filter_map(
+                |(id, change)| match (&change.output_state, &change.id_operation) {
+                    (ObjectOut::NotExist, IDOperation::Deleted) => {
+                        Some((*id, self.version, ObjectDigest::OBJECT_DIGEST_DELETED))
+                    }
+                    (ObjectOut::NotExist, IDOperation::None) => {
+                        Some((*id, self.version, ObjectDigest::OBJECT_DIGEST_WRAPPED))
+                    }
+                    (ObjectOut::ObjectWrite((d, _)), _) => Some((*id, self.version, *d)),
+                    _ => None,
+                },
+            )
+            .collect()
+    }
+
+    fn object_changes(&self) -> Vec<ObjectChange> {
+        self.changed_objects
+            .iter()
+            .filter_map(|(id, change)| {
+                let input_version_digest = match &change.input_state {
+                    ObjectIn::NotExist => None,
+                    ObjectIn::Exist((vd, _)) => Some(*vd),
+                };
+
+                let output_version_digest = match &change.output_state {
+                    ObjectOut::NotExist => None,
+                    ObjectOut::ObjectWrite((d, _)) => Some((self.version, *d)),
+                };
+
+                Some(ObjectChange {
+                    id: *id,
+
+                    input_version: input_version_digest.map(|k| k.0),
+                    input_digest: input_version_digest.map(|k| k.1),
+
+                    output_version: output_version_digest.map(|k| k.0),
+                    output_digest: output_version_digest.map(|k| k.1),
+
+                    id_operation: change.id_operation,
+                })
+            })
+            .collect()
+    }
 }
 
 impl TransactionEffects {
@@ -360,6 +407,13 @@ impl TransactionEffects {
         result.check_invariant();
 
         result
+    }
+
+    pub fn execution_digests(&self) -> ExecutionDigests {
+        ExecutionDigests {
+            transaction: *self.transaction_digest(),
+            effects: self.digest(),
+        }
     }
 
     /// This function demonstrates what's the invariant of the effects.
@@ -520,6 +574,7 @@ pub trait TransactionEffectsAPI {
     fn created(&self) -> Vec<(ObjectRef, Owner)>;
     fn mutated(&self) -> Vec<(ObjectRef, Owner)>;
     fn deleted(&self) -> Vec<ObjectRef>;
+    fn written(&self) -> Vec<ObjectRef>;
 
     fn dependencies(&self) -> &[TransactionDigest];
 
@@ -545,6 +600,8 @@ pub trait TransactionEffectsAPI {
 
     fn transaction_fee(&self) -> Option<&TransactionFee>;
     fn mutated_excluding_gas(&self) -> Vec<(ObjectRef, Owner)>;
+
+    fn object_changes(&self) -> Vec<ObjectChange>;
 }
 
 pub type TransactionEffectsEnvelope<S> = Envelope<TransactionEffects, S>;
@@ -810,4 +867,14 @@ pub enum UnchangedSharedKind {
     Cancelled(Version),
     // /// Read of a per-epoch config object that should remain the same during an epoch
     // PerEpochConfig,
+}
+
+#[derive(Clone, Debug)]
+pub struct ObjectChange {
+    pub id: ObjectID,
+    pub input_version: Option<Version>,
+    pub input_digest: Option<ObjectDigest>,
+    pub output_version: Option<Version>,
+    pub output_digest: Option<ObjectDigest>,
+    pub id_operation: IDOperation,
 }

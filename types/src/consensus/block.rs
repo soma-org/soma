@@ -16,16 +16,16 @@ use crate::{
     committee::{AuthorityIndex, Epoch, NetworkingCommittee},
 };
 use crate::{
-    committee::Committee,
-    intent::{Intent, IntentMessage, IntentScope},
-};
-use crate::{
+    checkpoints::ECMHLiveObjectSetDigest,
     crypto::{
         AggregateAuthoritySignature, AuthorityPublicKeyBytes, AuthoritySignature,
         DefaultHash as DefaultHashFunction, ProtocolKeyPair, ProtocolKeySignature,
         ProtocolPublicKey, DIGEST_LENGTH,
     },
-    digests::ECMHLiveObjectSetDigest,
+};
+use crate::{
+    committee::Committee,
+    intent::{Intent, IntentMessage, IntentScope},
 };
 use crate::{
     ensure,

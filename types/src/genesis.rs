@@ -1,6 +1,17 @@
-use serde::{Deserialize, Serialize};
+use std::{fs, path::Path};
+
+use anyhow::Context;
+use fastcrypto::{
+    encoding::{Base64, Encoding as _},
+    hash::HashFunction as _,
+};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use tracing::trace;
 
 use crate::{
+    checkpoints::{
+        CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary, VerifiedCheckpoint,
+    },
     committee::{
         AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkingCommittee,
     },
@@ -9,6 +20,7 @@ use crate::{
         commit::{CommitDigest, CommitRef, CommittedSubDag},
         ConsensusTransaction,
     },
+    crypto::DefaultHash,
     effects::{self, TransactionEffects},
     encoder_committee::EncoderCommittee,
     error::SomaResult,
@@ -17,24 +29,88 @@ use crate::{
     transaction::{CertifiedTransaction, Transaction},
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Genesis {
-    transaction: CertifiedTransaction,
+    checkpoint: CertifiedCheckpointSummary,
+    checkpoint_contents: CheckpointContents,
+    transaction: Transaction,
     effects: TransactionEffects,
     objects: Vec<Object>,
 }
 
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub struct UnsignedGenesis {
+    pub checkpoint: CheckpointSummary,
+    pub checkpoint_contents: CheckpointContents,
+    pub transaction: Transaction,
+    pub effects: TransactionEffects,
+    pub objects: Vec<Object>,
+}
+
+impl PartialEq for Genesis {
+    fn eq(&self, other: &Self) -> bool {
+        self.checkpoint.data() == other.checkpoint.data()
+            && {
+                let this = self.checkpoint.auth_sig();
+                let other = other.checkpoint.auth_sig();
+
+                this.epoch == other.epoch
+                    && this.signature.as_ref() == other.signature.as_ref()
+                    && this.signers_map == other.signers_map
+            }
+            && self.checkpoint_contents == other.checkpoint_contents
+            && self.transaction == other.transaction
+            && self.effects == other.effects
+            && self.objects == other.objects
+    }
+}
+
 impl Genesis {
-    pub fn new_with_certified_tx(
-        transaction: CertifiedTransaction,
+    pub fn new(
+        checkpoint: CertifiedCheckpointSummary,
+        checkpoint_contents: CheckpointContents,
+        transaction: Transaction,
         effects: TransactionEffects,
         objects: Vec<Object>,
     ) -> Self {
         Self {
+            checkpoint,
+            checkpoint_contents,
             transaction,
             effects,
             objects,
         }
+    }
+
+    pub fn objects(&self) -> &[Object] {
+        &self.objects
+    }
+
+    pub fn object(&self, id: ObjectID) -> Option<Object> {
+        self.objects.iter().find(|o| o.id() == id).cloned()
+    }
+
+    pub fn transaction(&self) -> &Transaction {
+        &self.transaction
+    }
+
+    pub fn effects(&self) -> &TransactionEffects {
+        &self.effects
+    }
+
+    pub fn checkpoint(&self) -> VerifiedCheckpoint {
+        self.checkpoint
+            .clone()
+            .try_into_verified(&self.committee().unwrap())
+            .unwrap()
+    }
+
+    pub fn checkpoint_contents(&self) -> &CheckpointContents {
+        &self.checkpoint_contents
+    }
+
+    pub fn epoch(&self) -> EpochId {
+        0
     }
 
     pub fn encoder_committee(&self) -> EncoderCommittee {
@@ -54,14 +130,120 @@ impl Genesis {
         Ok(self.committee_with_network().committee().clone())
     }
 
-    pub fn transaction(&self) -> Transaction {
-        self.transaction.clone().into_unsigned()
+    pub fn system_object(&self) -> SystemState {
+        get_system_state(&self.objects()).expect("System State object must always exist")
     }
 
-    pub fn effects(&self) -> &TransactionEffects {
-        &self.effects
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, anyhow::Error> {
+        let path = path.as_ref();
+        trace!("Reading Genesis from {}", path.display());
+        let bytes = fs::read(path)
+            .with_context(|| format!("Unable to load Genesis from {}", path.display()))?;
+        bcs::from_bytes(&bytes)
+            .with_context(|| format!("Unable to parse Genesis from {}", path.display()))
     }
 
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), anyhow::Error> {
+        let path = path.as_ref();
+        trace!("Writing Genesis to {}", path.display());
+        let bytes = bcs::to_bytes(&self)?;
+        fs::write(path, bytes)
+            .with_context(|| format!("Unable to save Genesis to {}", path.display()))?;
+        Ok(())
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bcs::to_bytes(self).expect("failed to serialize genesis")
+    }
+
+    pub fn hash(&self) -> [u8; 32] {
+        use std::io::Write;
+
+        let mut digest = DefaultHash::default();
+        digest.write_all(&self.to_bytes()).unwrap();
+        let hash = digest.finalize();
+        hash.into()
+    }
+}
+
+impl Serialize for Genesis {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::Error;
+
+        #[derive(Serialize)]
+        struct RawGenesis<'a> {
+            checkpoint: &'a CertifiedCheckpointSummary,
+            checkpoint_contents: &'a CheckpointContents,
+            transaction: &'a Transaction,
+            effects: &'a TransactionEffects,
+            objects: &'a [Object],
+        }
+
+        let raw_genesis = RawGenesis {
+            checkpoint: &self.checkpoint,
+            checkpoint_contents: &self.checkpoint_contents,
+            transaction: &self.transaction,
+            effects: &self.effects,
+            objects: &self.objects,
+        };
+
+        let bytes = bcs::to_bytes(&raw_genesis).map_err(|e| Error::custom(e.to_string()))?;
+
+        if serializer.is_human_readable() {
+            let s = Base64::encode(&bytes);
+            serializer.serialize_str(&s)
+        } else {
+            serializer.serialize_bytes(&bytes)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Genesis {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        #[derive(Deserialize)]
+        struct RawGenesis {
+            checkpoint: CertifiedCheckpointSummary,
+            checkpoint_contents: CheckpointContents,
+            transaction: Transaction,
+            effects: TransactionEffects,
+            objects: Vec<Object>,
+        }
+
+        let bytes = if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            Base64::decode(&s).map_err(|e| Error::custom(e.to_string()))?
+        } else {
+            let data: Vec<u8> = Vec::deserialize(deserializer)?;
+            data
+        };
+
+        let RawGenesis {
+            checkpoint,
+            checkpoint_contents,
+            transaction,
+            effects,
+            objects,
+        } = bcs::from_bytes(&bytes).map_err(|e| Error::custom(e.to_string()))?;
+
+        Ok(Genesis {
+            checkpoint,
+            checkpoint_contents,
+            transaction,
+            effects,
+            objects,
+        })
+    }
+}
+
+impl UnsignedGenesis {
     pub fn objects(&self) -> &[Object] {
         &self.objects
     }
@@ -70,58 +252,27 @@ impl Genesis {
         self.objects.iter().find(|o| o.id() == id).cloned()
     }
 
+    pub fn transaction(&self) -> &Transaction {
+        &self.transaction
+    }
+
+    pub fn effects(&self) -> &TransactionEffects {
+        &self.effects
+    }
+
+    pub fn checkpoint(&self) -> &CheckpointSummary {
+        &self.checkpoint
+    }
+
+    pub fn checkpoint_contents(&self) -> &CheckpointContents {
+        &self.checkpoint_contents
+    }
+
     pub fn epoch(&self) -> EpochId {
         0
     }
 
-    pub fn commit(&self) -> CommittedSubDag {
-        // Create a genesis block that contains the genesis transaction
-        let genesis_block = self.create_genesis_block();
-
-        CommittedSubDag::new(
-            genesis_block.reference(), // Use the genesis block's reference as leader
-            vec![genesis_block],       // Include the genesis block in blocks
-            0,                         // Genesis timestamp
-            CommitRef::new(0, CommitDigest::default()),
-            CommitDigest::MIN,
-        )
-    }
-
-    /// Creates a synthetic genesis block containing the genesis transaction and objects
-    fn create_genesis_block(&self) -> VerifiedBlock {
-        let consensus_tx = ConsensusTransaction::new_certificate_message(self.transaction.clone());
-
-        // Serialize the consensus transaction
-        let tx_bytes =
-            bcs::to_bytes(&consensus_tx).expect("Serializing consensus transaction cannot fail");
-
-        // Create a Transaction for the block (wrapper around bytes)
-        let block_tx = crate::consensus::block::Transaction::new(tx_bytes);
-
-        // Create the genesis block
-        let block = Block::new(
-            0,                 // epoch
-            GENESIS_ROUND,     // round 0
-            AuthorityIndex(0), // Use authority 0 as genesis author
-            0,                 // timestamp_ms
-            vec![],            // No ancestors for genesis
-            vec![block_tx],    // Single transaction containing the consensus tx
-            vec![],            // No commit votes for genesis
-            None,              // No end of epoch data for genesis
-        );
-
-        // Create a signed block without actual signature (genesis doesn't need signature)
-        let signed_block = SignedBlock::new_genesis(block);
-
-        // Serialize and create verified block
-        let serialized = signed_block
-            .serialize()
-            .expect("Genesis block serialization should not fail");
-
-        VerifiedBlock::new_verified(signed_block, serialized)
-    }
-
     pub fn system_object(&self) -> SystemState {
-        get_system_state(&self.objects()).expect("System State object must always exist")
+        get_system_state(&self.objects()).expect("Sui System State object must always exist")
     }
 }

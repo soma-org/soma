@@ -76,6 +76,9 @@ pub struct NodeConfig {
 
     #[serde(default = "default_rpc_address")]
     pub rpc_address: SocketAddr,
+
+    #[serde(default)]
+    pub checkpoint_executor_config: CheckpointExecutorConfig,
 }
 
 impl NodeConfig {
@@ -450,6 +453,47 @@ impl ConsensusConfig {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct CheckpointExecutorConfig {
+    /// Upper bound on the number of checkpoints that can be concurrently executed
+    ///
+    /// If unspecified, this will default to `200`
+    #[serde(default = "default_checkpoint_execution_max_concurrency")]
+    pub checkpoint_execution_max_concurrency: usize,
+
+    /// Number of seconds to wait for effects of a batch of transactions
+    /// before logging a warning. Note that we will continue to retry
+    /// indefinitely
+    ///
+    /// If unspecified, this will default to `10`.
+    #[serde(default = "default_local_execution_timeout_sec")]
+    pub local_execution_timeout_sec: u64,
+
+    /// Optional directory used for data ingestion pipeline
+    /// When specified, each executed checkpoint will be saved in a local directory for post processing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_ingestion_dir: Option<PathBuf>,
+}
+
+fn default_checkpoint_execution_max_concurrency() -> usize {
+    4
+}
+
+fn default_local_execution_timeout_sec() -> u64 {
+    30
+}
+
+impl Default for CheckpointExecutorConfig {
+    fn default() -> Self {
+        Self {
+            checkpoint_execution_max_concurrency: default_checkpoint_execution_max_concurrency(),
+            local_execution_timeout_sec: default_local_execution_timeout_sec(),
+            data_ingestion_dir: None,
+        }
+    }
+}
+
 // fn default_authority_key_pair() -> AuthorityKeyPairWithPath {
 //     AuthorityKeyPairWithPath::new(get_key_pair_from_rng::<AuthorityKeyPair, _>(&mut OsRng).1)
 // }
@@ -550,7 +594,7 @@ impl ValidatorConfigBuilder {
                 // Set a shorter timeout for commit content download in tests, since
                 // commit pruning also happens much faster, and network is local.
                 state_sync: Some(StateSyncConfig {
-                    commit_content_timeout_ms: Some(10_000),
+                    checkpoint_content_timeout_ms: Some(10_000),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -558,6 +602,11 @@ impl ValidatorConfigBuilder {
         };
 
         let pruning_config = AuthorityStorePruningConfig::default();
+
+        let checkpoint_executor_config = CheckpointExecutorConfig {
+            // TODO: data_ingestion_dir: self.data_ingestion_dir,
+            ..Default::default()
+        };
 
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
@@ -579,6 +628,7 @@ impl ValidatorConfigBuilder {
             rpc: Some(RpcConfig {
                 ..Default::default()
             }),
+            checkpoint_executor_config,
             state_archive_read_config: None,
             consensus_config,
             authority_store_pruning_config: pruning_config,
