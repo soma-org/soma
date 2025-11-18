@@ -22,6 +22,7 @@ use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
 };
 use crate::checkpoints::CheckpointStore;
 use crate::epoch_store::AuthorityPerEpochStore;
+use crate::execution_scheduler::{BarrierDependencyBuilder, ExecutionScheduler};
 use crate::global_state_hasher::GlobalStateHasher;
 use futures::StreamExt;
 use parking_lot::Mutex;
@@ -705,6 +706,8 @@ impl CheckpointExecutor {
         ckpt_state: &CheckpointExecutionState,
         tx_data: &CheckpointTransactionData,
     ) -> Vec<TransactionDigest> {
+        let mut barrier_deps_builder = BarrierDependencyBuilder::new();
+
         // Find unexecuted transactions and their expected effects digests
         let (unexecuted_tx_digests, unexecuted_txns): (Vec<_>, Vec<_>) = itertools::multiunzip(
             itertools::izip!(
@@ -716,6 +719,9 @@ impl CheckpointExecutor {
             )
             .filter_map(
                 |(txn, tx_digest, expected_fx_digest, effects, executed_fx_digest)| {
+                    let barrier_deps =
+                        barrier_deps_builder.process_tx(*tx_digest, txn.transaction_data());
+
                     if let Some(executed_fx_digest) = executed_fx_digest {
                         assert_not_forked(
                             &ckpt_state.data.checkpoint,
@@ -739,7 +745,8 @@ impl CheckpointExecutor {
 
                         let mut env = ExecutionEnv::new()
                             .with_assigned_versions(assigned_versions)
-                            .with_expected_effects_digest(*expected_fx_digest);
+                            .with_expected_effects_digest(*expected_fx_digest)
+                            .with_barrier_dependencies(barrier_deps);
 
                         Some((tx_digest, (txn.clone(), env)))
                     }
@@ -753,7 +760,6 @@ impl CheckpointExecutor {
 
         unexecuted_tx_digests
     }
-
     // Execute the change epoch txn
     #[instrument(level = "error", skip_all)]
     async fn execute_change_epoch_tx(&self, tx_data: &CheckpointTransactionData) {

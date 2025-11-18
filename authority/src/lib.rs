@@ -14,6 +14,7 @@ pub mod epoch_store;
 pub mod epoch_store_pruner;
 pub mod execution;
 pub mod execution_driver;
+pub mod execution_scheduler;
 pub mod global_state_hasher;
 pub mod mysticeti_adapter;
 pub mod orchestrator;
