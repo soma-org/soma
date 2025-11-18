@@ -795,7 +795,7 @@ impl TransactionData {
         self.sender
     }
 
-    fn gas(&self) -> Vec<ObjectRef> {
+    pub fn gas(&self) -> Vec<ObjectRef> {
         self.gas_payment.clone()
     }
 

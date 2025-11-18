@@ -8,7 +8,6 @@ use types::{
     consensus::commit::CommitIndex,
     digests::TransactionDigest,
     error::SomaResult,
-    execution_indices::ExecutionIndices,
     object::Version,
     transaction::{TransactionKey, VerifiedExecutableTransaction},
 };

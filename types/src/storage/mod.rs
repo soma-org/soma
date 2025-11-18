@@ -30,6 +30,8 @@
 //! - Enum-based state representation for object lifecycle
 //! - Separation of read and write operations
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use tracing::info;
@@ -42,7 +44,7 @@ use crate::{
     error::SomaResult,
     object::{Object, ObjectID, ObjectRef, Version},
     storage::object_store::ObjectStore,
-    transaction::SenderSignedData,
+    transaction::{SenderSignedData, TransactionData},
 };
 
 pub mod committee_store;
@@ -450,21 +452,62 @@ pub fn get_transaction_output_objects(
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
-
-    // let output_objects = object_store
-    //     .multi_get_objects_by_key(&output_object_keys)?
-    //     .into_iter()
-    //     .enumerate()
-    //     .map(|(idx, maybe_object)| {
-    //         maybe_object.ok_or_else(|| {
-    //             storage_error::Error::custom(format!(
-    //                 "missing output object key {:?} from tx {} effects {}",
-    //                 output_object_keys[idx],
-    //                 effects.transaction_digest(),
-    //                 effects.digest()
-    //             ))
-    //         })
-    //     })
-    //     .collect::<Result<Vec<_>, _>>()?;
     Ok(output_objects)
+}
+
+// Returns an iterator over the ObjectKey's of objects read or written by this transaction
+pub fn get_transaction_object_set(
+    transaction: &TransactionData,
+    effects: &TransactionEffects,
+    unchanged_loaded_runtime_objects: &[ObjectKey],
+) -> BTreeSet<ObjectKey> {
+    // enumerate the full set of input objects in order to properly capture immutable objects that
+    // may not appear in the effects.
+    //
+    // This excludes packages
+    let input_objects = transaction
+        .input_objects()
+        .expect("txn was executed and must have valid input objects")
+        .into_iter()
+        .filter_map(|input| {
+            input
+                .version()
+                .map(|version| ObjectKey(input.object_id(), version))
+        });
+
+    // The full set of output/written objects as well as any of their initial versions
+    let modified_set = effects
+        .object_changes()
+        .into_iter()
+        .flat_map(|change| {
+            [
+                change
+                    .input_version
+                    .map(|version| ObjectKey(change.id, version)),
+                change
+                    .output_version
+                    .map(|version| ObjectKey(change.id, version)),
+            ]
+        })
+        .flatten();
+
+    // The set of unchanged consensus objects
+    let unchanged_consensus =
+        effects
+            .unchanged_shared_objects()
+            .into_iter()
+            .flat_map(|unchanged| {
+                if let crate::effects::UnchangedSharedKind::ReadOnlyRoot((version, _)) = unchanged.1
+                {
+                    Some(ObjectKey(unchanged.0, version))
+                } else {
+                    None
+                }
+            });
+
+    input_objects
+        .chain(modified_set)
+        .chain(unchanged_consensus)
+        .chain(unchanged_loaded_runtime_objects.iter().copied())
+        .collect()
 }

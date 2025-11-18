@@ -46,13 +46,13 @@ use utils::notify_read::NotifyRead;
 
 use crate::{
     aggregator::AuthorityAggregator,
+    authority::AuthorityState,
     client::{AuthorityAPI, NetworkAuthorityClient},
     encoder_client::EncoderClientService,
     epoch_store::AuthorityPerEpochStore,
     quorum_driver::{
         OnsiteReconfigObserver, QuorumDriverHandler, QuorumDriverHandlerBuilder, ReconfigObserver,
     },
-    state::AuthorityState,
 };
 
 // How long to wait for local execution (including parents) before a timeout

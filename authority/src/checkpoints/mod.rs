@@ -1,3 +1,4 @@
+use crate::authority::AuthorityState;
 use crate::cache::TransactionCacheRead;
 use crate::checkpoints::causal_order::CausalOrder;
 use crate::checkpoints::checkpoint_output::{CertifiedCheckpointOutput, CheckpointOutput};
@@ -7,7 +8,6 @@ use crate::consensus_manager::ReplayWaiter;
 use crate::epoch_store::AuthorityPerEpochStore;
 use crate::global_state_hasher::GlobalStateHasher;
 use crate::stake_aggregator::{InsertResult, MultiStakeAggregator};
-use crate::state::AuthorityState;
 use crate::store_pruner::PrunerWatermarks;
 use diffy::create_patch;
 use itertools::Itertools as _;
@@ -1297,10 +1297,7 @@ impl CheckpointBuilder {
             let root_digests = self.epoch_store.notify_read_tx_key_to_digest(roots).await?;
             let root_effects = self
                 .effects_store
-                .notify_read_executed_effects(
-                    CHECKPOINT_BUILDER_NOTIFY_READ_TASK_NAME,
-                    &root_digests,
-                )
+                .notify_read_executed_effects(&root_digests)
                 .await;
 
             let consensus_commit_prologue = {

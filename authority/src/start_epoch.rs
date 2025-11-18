@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
-use types::{
-    state_sync::CommitTimestamp,
-    system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
-};
+use types::system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait};
 
 pub trait EpochStartConfigTrait {
     fn epoch_start_state(&self) -> &EpochStartSystemState;

@@ -1,9 +1,9 @@
 use crate::adapter::ConsensusAdapter;
+use crate::authority;
 use crate::cache::ObjectCacheRead;
 use crate::reconfiguration::ReconfigurationInitiator;
-use crate::state;
 use crate::{
-    epoch_store::AuthorityPerEpochStore, state::AuthorityState,
+    authority::AuthorityState, epoch_store::AuthorityPerEpochStore,
     throughput::ConsensusThroughputCalculator, tx_manager::TransactionManager,
 };
 use lru::LruCache;
@@ -19,12 +19,10 @@ use types::consensus::output::ConsensusOutputAPI;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::transaction::TransactionKind;
 use types::{
-    accumulator::CommitIndex,
     base::AuthorityName,
     committee::{Committee, EpochId},
     consensus::{ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind},
     digests::{ConsensusCommitDigest, TransactionDigest},
-    execution_indices::ExecutionIndices,
     protocol::ProtocolConfig,
     transaction::{
         TrustedExecutableTransaction, VerifiedExecutableTransaction, VerifiedTransaction,

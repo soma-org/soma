@@ -31,7 +31,6 @@ use std::{
 use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
-    accumulator::{Accumulator, AccumulatorStore, CommitIndex},
     base::{FullObjectID, SomaAddress},
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},

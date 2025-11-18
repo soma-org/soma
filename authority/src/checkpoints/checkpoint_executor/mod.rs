@@ -15,6 +15,7 @@
 //! CheckpointExecutor enforces the invariant that if `run` returns successfully, we have reached the
 //! end of epoch. This allows us to use it as a signal for reconfig.
 
+use crate::authority::{AuthorityState, ExecutionEnv};
 use crate::cache::{ObjectCacheRead, TransactionCacheRead};
 use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
     load_checkpoint, store_checkpoint_locally,
@@ -22,7 +23,6 @@ use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
 use crate::checkpoints::CheckpointStore;
 use crate::epoch_store::AuthorityPerEpochStore;
 use crate::global_state_hasher::GlobalStateHasher;
-use crate::state::AuthorityState;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::{sync::Arc, time::Instant};

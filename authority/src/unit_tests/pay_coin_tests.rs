@@ -17,7 +17,7 @@ use types::{
 use utils::logging::init_tracing;
 
 use crate::{
-    authority_test_utils::send_and_confirm_transaction, state::AuthorityState,
+    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction,
     test_authority_builder::TestAuthorityBuilder,
 };
 

@@ -1,5 +1,5 @@
 use super::SomaNode;
-use authority::state::AuthorityState;
+use authority::authority::AuthorityState;
 use std::sync::Arc;
 use std::{future::Future, time::Duration};
 use types::transaction::Transaction;

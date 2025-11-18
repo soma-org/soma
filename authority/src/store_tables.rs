@@ -15,7 +15,6 @@ use store::{
 use store::{DbIterator, Map as _};
 use tracing::{error, info};
 use types::{
-    accumulator::{Accumulator, CommitIndex},
     base::SomaAddress,
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},

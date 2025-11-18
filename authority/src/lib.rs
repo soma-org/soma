@@ -1,4 +1,5 @@
 pub mod aggregator;
+pub mod authority;
 pub mod authority_test_utils;
 pub mod cache;
 pub mod checkpoints;
@@ -26,7 +27,6 @@ pub mod service;
 pub mod shared_obj_version_manager;
 pub mod stake_aggregator;
 pub mod start_epoch;
-pub mod state;
 pub mod state_sync_store;
 pub mod store;
 pub mod store_pruner;

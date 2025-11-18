@@ -3,6 +3,7 @@ use arc_swap::ArcSwap;
 use authority::{
     adapter::{ConsensusAdapter, SubmitToConsensus},
     aggregator::AuthorityAggregator,
+    authority::{self, AuthorityState},
     cache::build_execution_cache,
     checkpoints::{executor::CommitExecutor, CommitStore},
     client::NetworkAuthorityClient,
@@ -18,7 +19,6 @@ use authority::{
     server::ServerBuilder,
     service::ValidatorService,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    state::{self, AuthorityState},
     state_accumulator::StateAccumulator,
     state_sync_store::StateSyncStore,
     store::AuthorityStore,

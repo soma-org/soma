@@ -3,7 +3,6 @@ use std::{collections::HashSet, sync::Arc};
 use futures::{future::BoxFuture, FutureExt};
 use tracing::debug;
 use types::{
-    accumulator::{AccumulatorStore, CommitIndex},
     base::{FullObjectID, SomaAddress},
     committee::EpochId,
     digests::{TransactionDigest, TransactionEffectsDigest},
@@ -21,8 +20,8 @@ use types::{
 use writeback_cache::WritebackCache;
 
 use crate::{
+    authority::ExecutionLockWriteGuard,
     epoch_store::AuthorityPerEpochStore,
-    state::ExecutionLockWriteGuard,
     store::{AuthorityStore, LockResult},
 };
 

@@ -41,7 +41,6 @@ use parking_lot::RwLock;
 use tokio::{sync::mpsc::UnboundedSender, time::Instant};
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::{
-    accumulator::CommitIndex,
     base::FullObjectID,
     committee::EpochId,
     digests::{TransactionDigest, TransactionEffectsDigest},

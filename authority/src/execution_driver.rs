@@ -8,7 +8,7 @@ use tokio::{
 };
 use tracing::{error, error_span, info, trace, Instrument};
 
-use crate::{state::AuthorityState, tx_manager::PendingCertificate};
+use crate::{authority::AuthorityState, tx_manager::PendingCertificate};
 
 // Execution should not encounter permanent failures, so any failure can and needs
 // to be retried.

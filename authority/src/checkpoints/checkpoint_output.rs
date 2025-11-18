@@ -1,8 +1,8 @@
+use crate::authority::StableSyncAuthoritySigner;
 use crate::checkpoints::CheckpointStore;
 use crate::consensus_adapter::SubmitToConsensus;
 use crate::epoch_store::AuthorityPerEpochStore;
 use crate::reconfiguration::ReconfigurationInitiator;
-use crate::state::StableSyncAuthoritySigner;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, info, instrument, trace};

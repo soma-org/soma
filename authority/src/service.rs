@@ -1,6 +1,6 @@
 use crate::{
-    adapter::ConsensusAdapter, epoch_store::AuthorityPerEpochStore, state::AuthorityState,
-    tonic_gen::validator_server::Validator,
+    authority::AuthorityState, consensus_adapter::ConsensusAdapter,
+    epoch_store::AuthorityPerEpochStore, tonic_gen::validator_server::Validator,
 };
 use nonempty::nonempty;
 use nonempty::NonEmpty;

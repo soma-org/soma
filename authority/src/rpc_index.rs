@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::checkpoints::CommitStore;
 use crate::store::AuthorityStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -12,7 +11,7 @@ use store::rocksdb::{compaction_filter::Decision, MergeOperands, WriteOptions};
 use store::{DBMapUtils, Map as _, TypedStoreError};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
-use types::checkpoint::{CheckpointData, CheckpointTransaction};
+use types::checkpoints::{CheckpointData, CheckpointTransaction};
 use types::committee::EpochId;
 use types::consensus::output::ConsensusOutputAPI;
 use types::consensus::ConsensusTransactionKind;
@@ -22,7 +21,6 @@ use types::storage::read_store::{EpochInfo, TransactionInfo};
 use types::storage::storage_error::Error as StorageError;
 use types::system_state::SystemStateTrait;
 use types::{
-    accumulator::CommitIndex,
     base::SomaAddress,
     object::{Object, ObjectID, ObjectType, Owner, Version},
 };

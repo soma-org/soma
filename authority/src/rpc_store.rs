@@ -1,9 +1,10 @@
 use crate::rpc_index::{OwnerIndexInfo, OwnerIndexKey};
-use crate::{rpc_index::RpcIndexStore, state::AuthorityState, state_sync_store::StateSyncStore};
+use crate::{
+    authority::AuthorityState, rpc_index::RpcIndexStore, state_sync_store::StateSyncStore,
+};
 use std::sync::Arc;
 use store::TypedStoreError;
 use tap::Pipe;
-use types::accumulator::CommitIndex;
 use types::base::SomaAddress;
 use types::committee::{Committee, EpochId};
 use types::consensus::commit::{CommitDigest, CommittedSubDag};

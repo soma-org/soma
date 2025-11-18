@@ -19,8 +19,8 @@ use types::{
 };
 
 use crate::{
-    consensus_handler::SequencedConsensusTransaction, state::AuthorityState,
-    state_accumulator::StateAccumulator, test_authority_builder::TestAuthorityBuilder,
+    authority::AuthorityState, consensus_handler::SequencedConsensusTransaction,
+    test_authority_builder::TestAuthorityBuilder,
 };
 
 pub async fn init_state_with_ids<I: IntoIterator<Item = (SomaAddress, ObjectID)>>(

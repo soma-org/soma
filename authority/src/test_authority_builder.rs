@@ -17,13 +17,11 @@ use types::{
 };
 
 use crate::{
+    authority::AuthorityState,
     cache::build_execution_cache,
-    checkpoints::CommitStore,
     epoch_store::AuthorityPerEpochStore,
     rpc_index::RpcIndexStore,
     start_epoch::EpochStartConfiguration,
-    state::AuthorityState,
-    state_accumulator::StateAccumulator,
     store::AuthorityStore,
     store_pruner::{ObjectsCompactionFilter, PrunerWatermarks},
     store_tables::{

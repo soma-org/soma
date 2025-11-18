@@ -39,6 +39,7 @@ object_store.workspace = true
 url.workspace = true
 pin-project-lite.workspace = true
 rand.workspace = true
+serde_json.workspace = true
 strum = { version = "0.27.1", features = ["derive"] }
 strum_macros = "0.27.1"
 dashmap = "6.0.1"

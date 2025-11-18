@@ -15,7 +15,6 @@ use store::{
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
 use types::{
-    accumulator::{Accumulator, AccumulatorStore, CommitIndex},
     base::FullObjectID,
     committee::{Committee, EpochId},
     config::node_config::NodeConfig,
