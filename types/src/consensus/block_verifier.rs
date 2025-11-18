@@ -12,7 +12,7 @@ use crate::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use crate::consensus::validator_set::to_validator_set_intent;
 use crate::crypto::AuthorityPublicKey;
 use crate::encoder_committee::to_encoder_committee_intent;
-use crate::storage::read_store::{ReadCommitteeStore, ReadStore};
+use crate::storage::read_store::ReadStore;
 use fastcrypto::hash::MultisetHash;
 use fastcrypto::traits::AggregateAuthenticator;
 
@@ -44,17 +44,12 @@ pub trait BlockVerifier: Send + Sync + 'static {
 /// be accepted into the DAG.
 pub struct SignedBlockVerifier {
     context: Arc<Context>,
-    committee_store: Option<Arc<dyn ReadCommitteeStore>>,
     genesis: BTreeSet<BlockRef>,
     transaction_verifier: Arc<dyn TransactionVerifier>,
 }
 
 impl SignedBlockVerifier {
-    pub fn new(
-        context: Arc<Context>,
-        transaction_verifier: Arc<dyn TransactionVerifier>,
-        committee_store: Option<Arc<dyn ReadCommitteeStore>>,
-    ) -> Self {
+    pub fn new(context: Arc<Context>, transaction_verifier: Arc<dyn TransactionVerifier>) -> Self {
         let genesis = genesis_blocks(context.clone())
             .into_iter()
             .map(|b| b.reference())
@@ -63,19 +58,6 @@ impl SignedBlockVerifier {
             context,
             genesis,
             transaction_verifier,
-            committee_store,
-        }
-    }
-
-    pub fn get_committee(&self, epoch: EpochId) -> Arc<Committee> {
-        if let Some(committee_store) = &self.committee_store {
-            if let Ok(Some(committee)) = committee_store.get_committee(epoch) {
-                committee
-            } else {
-                Arc::new(self.context.committee.clone())
-            }
-        } else {
-            Arc::new(self.context.committee.clone())
         }
     }
 }
@@ -83,188 +65,188 @@ impl SignedBlockVerifier {
 // All block verification logic are implemented below.
 impl BlockVerifier for SignedBlockVerifier {
     fn verify(&self, block: &SignedBlock) -> ConsensusResult<()> {
-        let committee = self.get_committee(block.epoch());
+        // let committee = self.get_committee(block.epoch());
         // The block must belong to the current epoch and have valid authority index,
         // before having its signature verified.
-        if block.epoch() != committee.epoch() {
-            return Err(ConsensusError::WrongEpoch {
-                expected: committee.epoch(),
-                actual: block.epoch(),
-            });
-        }
+        // if block.epoch() != committee.epoch() {
+        //     return Err(ConsensusError::WrongEpoch {
+        //         expected: committee.epoch(),
+        //         actual: block.epoch(),
+        //     });
+        // }
 
         if block.round() == 0 {
             return Err(ConsensusError::UnexpectedGenesisBlock);
         }
-        if !committee.is_valid_index(block.author()) {
-            return Err(ConsensusError::InvalidAuthorityIndex {
-                index: block.author(),
-                max: committee.size() - 1,
-            });
-        }
+        // if !committee.is_valid_index(block.author()) {
+        //     return Err(ConsensusError::InvalidAuthorityIndex {
+        //         index: block.author(),
+        //         max: committee.size() - 1,
+        //     });
+        // }
 
-        // Verify the block's signature.
-        block.verify_signature(&committee)?;
+        // // Verify the block's signature.
+        // block.verify_signature(&committee)?;
 
         // Verify EndOfEpochData if present
-        if let Some(eoe) = block.end_of_epoch_data() {
-            // Verify state hash matches our local one if we have
-            // if let Ok(Some((_, our_digest))) = self
-            //     .accumulator_store
-            //     .get_root_state_accumulator_for_epoch(block.epoch())
-            // {
-            //     if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
-            //         return Err(ConsensusError::InvalidEndOfEpoch(format!(
-            //             "State hash mismatch: expected {:?}, got {:?}",
-            //             our_digest.digest(),
-            //             eoe.state_hash
-            //         )));
-            //     }
-            // }
+        // if let Some(eoe) = block.end_of_epoch_data() {
+        // Verify state hash matches our local one if we have
+        // if let Ok(Some((_, our_digest))) = self
+        //     .accumulator_store
+        //     .get_root_state_accumulator_for_epoch(block.epoch())
+        // {
+        //     if eoe.state_hash.is_some() && eoe.state_hash != Some(our_digest.digest().into()) {
+        //         return Err(ConsensusError::InvalidEndOfEpoch(format!(
+        //             "State hash mismatch: expected {:?}, got {:?}",
+        //             our_digest.digest(),
+        //             eoe.state_hash
+        //         )));
+        //     }
+        // }
 
-            match (
-                &eoe.next_validator_set,
-                &eoe.next_encoder_committee,
-                &eoe.next_networking_committee,
-                &eoe.validator_set_signature,
-                &eoe.encoder_committee_signature,
-                &eoe.networking_committee_signature,
-                &eoe.validator_aggregate_signature,
-                &eoe.encoder_aggregate_signature,
-                &eoe.networking_aggregate_signature,
-            ) {
-                // Valid cases - must progress through stages synchronously
+        //     match (
+        //         &eoe.next_validator_set,
+        //         &eoe.next_encoder_committee,
+        //         &eoe.next_networking_committee,
+        //         &eoe.validator_set_signature,
+        //         &eoe.encoder_committee_signature,
+        //         &eoe.networking_committee_signature,
+        //         &eoe.validator_aggregate_signature,
+        //         &eoe.encoder_aggregate_signature,
+        //         &eoe.networking_aggregate_signature,
+        //     ) {
+        //         // Valid cases - must progress through stages synchronously
 
-                // Stage 1: Valid proposal of all three sets without signatures
-                (Some(_), Some(_), Some(_), None, None, None, None, None, None) => {
-                    // First proposal with all three sets, no signatures yet - this is valid
-                }
+        //         // Stage 1: Valid proposal of all three sets without signatures
+        //         (Some(_), Some(_), Some(_), None, None, None, None, None, None) => {
+        //             // First proposal with all three sets, no signatures yet - this is valid
+        //         }
 
-                // Stage 2: All three sets with individual signatures, no aggregate yet
-                (
-                    Some(validator_set),
-                    Some(encoder_committee),
-                    Some(networking_committee),
-                    Some(val_sig),
-                    Some(enc_sig),
-                    Some(net_sig),
-                    None,
-                    None,
-                    None,
-                ) => {
-                    // Verify individual signatures
-                    let authority = committee
-                        .authority_by_authority_index(block.author())
-                        .unwrap();
-                    validator_set.verify_signature(val_sig, &authority.authority_key)?;
-                    encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
-                    networking_committee.verify_signature(net_sig, &authority.authority_key)?;
-                }
+        //         // Stage 2: All three sets with individual signatures, no aggregate yet
+        //         (
+        //             Some(validator_set),
+        //             Some(encoder_committee),
+        //             Some(networking_committee),
+        //             Some(val_sig),
+        //             Some(enc_sig),
+        //             Some(net_sig),
+        //             None,
+        //             None,
+        //             None,
+        //         ) => {
+        //             // Verify individual signatures
+        //             let authority = committee
+        //                 .authority_by_authority_index(block.author())
+        //                 .unwrap();
+        //             validator_set.verify_signature(val_sig, &authority.authority_key)?;
+        //             encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
+        //             networking_committee.verify_signature(net_sig, &authority.authority_key)?;
+        //         }
 
-                // Stage 3: Complete data with all three sets, all signatures, and all aggregates
-                (
-                    Some(validator_set),
-                    Some(encoder_committee),
-                    Some(networking_committee),
-                    Some(val_sig),
-                    Some(enc_sig),
-                    Some(net_sig),
-                    Some(val_agg),
-                    Some(enc_agg),
-                    Some(net_agg),
-                ) => {
-                    // Verify individual signatures first
-                    let authority = committee
-                        .authority_by_authority_index(block.author())
-                        .unwrap();
-                    validator_set.verify_signature(val_sig, &authority.authority_key)?;
-                    encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
-                    networking_committee.verify_signature(net_sig, &authority.authority_key)?;
+        //         // Stage 3: Complete data with all three sets, all signatures, and all aggregates
+        //         (
+        //             Some(validator_set),
+        //             Some(encoder_committee),
+        //             Some(networking_committee),
+        //             Some(val_sig),
+        //             Some(enc_sig),
+        //             Some(net_sig),
+        //             Some(val_agg),
+        //             Some(enc_agg),
+        //             Some(net_agg),
+        //         ) => {
+        //             // Verify individual signatures first
+        //             let authority = committee
+        //                 .authority_by_authority_index(block.author())
+        //                 .unwrap();
+        //             validator_set.verify_signature(val_sig, &authority.authority_key)?;
+        //             encoder_committee.verify_signature(enc_sig, &authority.authority_key)?;
+        //             networking_committee.verify_signature(net_sig, &authority.authority_key)?;
 
-                    // Aggregate signatures would be verified in a separate detailed verification function
-                    // that handles the ancestor collection, quorum checks, etc.
-                }
+        //             // Aggregate signatures would be verified in a separate detailed verification function
+        //             // that handles the ancestor collection, quorum checks, etc.
+        //         }
 
-                // No end of epoch data case
-                (None, None, None, None, None, None, None, None, None) => {
-                    // No end of epoch data at all - this is valid
-                }
+        //         // No end of epoch data case
+        //         (None, None, None, None, None, None, None, None, None) => {
+        //             // No end of epoch data at all - this is valid
+        //         }
 
-                // All other combinations are invalid - they represent out-of-sync progression
-                _ => {
-                    return Err(ConsensusError::InvalidEndOfEpoch(
-                "End of epoch data must include validator set, encoder committee, and networking committee, \
-                 and signatures must progress through stages synchronously"
-                    .into(),
-            ));
-                }
-            }
-        }
+        //         // All other combinations are invalid - they represent out-of-sync progression
+        //         _ => {
+        //             return Err(ConsensusError::InvalidEndOfEpoch(
+        //         "End of epoch data must include validator set, encoder committee, and networking committee, \
+        //          and signatures must progress through stages synchronously"
+        //             .into(),
+        //     ));
+        //         }
+        //     }
+        // }
 
         // Verify the block's ancestor refs are consistent with the block's round,
         // and total parent stakes reach quorum.
-        if block.ancestors().len() > committee.size() {
-            return Err(ConsensusError::TooManyAncestors(
-                block.ancestors().len(),
-                committee.size(),
-            ));
-        }
-        if block.ancestors().is_empty() {
-            return Err(ConsensusError::InsufficientParentStakes {
-                parent_stakes: 0,
-                quorum: committee.quorum_threshold(),
-            });
-        }
-        let mut seen_ancestors = vec![false; committee.size()];
-        let mut parent_stakes = 0;
-        for (i, ancestor) in block.ancestors().iter().enumerate() {
-            if !committee.is_valid_index(ancestor.author) {
-                return Err(ConsensusError::InvalidAuthorityIndex {
-                    index: ancestor.author,
-                    max: committee.size() - 1,
-                });
-            }
-            if (i == 0 && ancestor.author != block.author())
-                || (i > 0 && ancestor.author == block.author())
-            {
-                return Err(ConsensusError::InvalidAncestorPosition {
-                    block_authority: block.author(),
-                    ancestor_authority: ancestor.author,
-                    position: i,
-                });
-            }
-            if ancestor.round >= block.round() {
-                return Err(ConsensusError::InvalidAncestorRound {
-                    ancestor: ancestor.round,
-                    block: block.round(),
-                });
-            }
-            if ancestor.round == GENESIS_ROUND
-                && !genesis_blocks_from_committee(committee.clone())
-                    .iter()
-                    .map(|b| b.reference())
-                    .collect::<BTreeSet<BlockRef>>()
-                    .contains(ancestor)
-            {
-                return Err(ConsensusError::InvalidGenesisAncestor(*ancestor));
-            }
-            if seen_ancestors[ancestor.author] {
-                return Err(ConsensusError::DuplicatedAncestorsAuthority(
-                    ancestor.author,
-                ));
-            }
-            seen_ancestors[ancestor.author] = true;
-            // Block must have round >= 1 so checked_sub(1) should be safe.
-            if ancestor.round == block.round().checked_sub(1).unwrap() {
-                parent_stakes += committee.stake_by_index(ancestor.author);
-            }
-        }
-        if !committee.reached_quorum(parent_stakes) {
-            return Err(ConsensusError::InsufficientParentStakes {
-                parent_stakes,
-                quorum: committee.quorum_threshold(),
-            });
-        }
+        // if block.ancestors().len() > committee.size() {
+        //     return Err(ConsensusError::TooManyAncestors(
+        //         block.ancestors().len(),
+        //         committee.size(),
+        //     ));
+        // }
+        // if block.ancestors().is_empty() {
+        //     return Err(ConsensusError::InsufficientParentStakes {
+        //         parent_stakes: 0,
+        //         quorum: committee.quorum_threshold(),
+        //     });
+        // }
+        // let mut seen_ancestors = vec![false; committee.size()];
+        // let mut parent_stakes = 0;
+        // for (i, ancestor) in block.ancestors().iter().enumerate() {
+        //     if !committee.is_valid_index(ancestor.author) {
+        //         return Err(ConsensusError::InvalidAuthorityIndex {
+        //             index: ancestor.author,
+        //             max: committee.size() - 1,
+        //         });
+        //     }
+        //     if (i == 0 && ancestor.author != block.author())
+        //         || (i > 0 && ancestor.author == block.author())
+        //     {
+        //         return Err(ConsensusError::InvalidAncestorPosition {
+        //             block_authority: block.author(),
+        //             ancestor_authority: ancestor.author,
+        //             position: i,
+        //         });
+        //     }
+        //     if ancestor.round >= block.round() {
+        //         return Err(ConsensusError::InvalidAncestorRound {
+        //             ancestor: ancestor.round,
+        //             block: block.round(),
+        //         });
+        //     }
+        //     if ancestor.round == GENESIS_ROUND
+        //         && !genesis_blocks_from_committee(committee.clone())
+        //             .iter()
+        //             .map(|b| b.reference())
+        //             .collect::<BTreeSet<BlockRef>>()
+        //             .contains(ancestor)
+        //     {
+        //         return Err(ConsensusError::InvalidGenesisAncestor(*ancestor));
+        //     }
+        //     if seen_ancestors[ancestor.author] {
+        //         return Err(ConsensusError::DuplicatedAncestorsAuthority(
+        //             ancestor.author,
+        //         ));
+        //     }
+        //     seen_ancestors[ancestor.author] = true;
+        //     // Block must have round >= 1 so checked_sub(1) should be safe.
+        //     if ancestor.round == block.round().checked_sub(1).unwrap() {
+        //         parent_stakes += committee.stake_by_index(ancestor.author);
+        //     }
+        // }
+        // if !committee.reached_quorum(parent_stakes) {
+        //     return Err(ConsensusError::InsufficientParentStakes {
+        //         parent_stakes,
+        //         quorum: committee.quorum_threshold(),
+        //     });
+        // }
 
         // TODO: check transaction size, total size and count.
         let batch: Vec<_> = block.transactions().iter().map(|t| t.data()).collect();

@@ -17,6 +17,7 @@ use fastcrypto::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{
+    collections::BTreeMap,
     net::SocketAddr,
     num::NonZeroUsize,
     ops::Mul,
@@ -81,6 +82,24 @@ pub struct NodeConfig {
 
     #[serde(default)]
     pub checkpoint_executor_config: CheckpointExecutorConfig,
+
+    #[serde(default)]
+    pub execution_cache: ExecutionCacheConfig,
+
+    #[serde(default)]
+    pub state_debug_dump_config: StateDebugDumpConfig,
+
+    /// Fork recovery configuration for handling validator equivocation after forks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fork_recovery: Option<ForkRecoveryConfig>,
+
+    // #[serde(default)]
+    // pub transaction_deny_config: TransactionDenyConfig,
+
+    // #[serde(default)]
+    // pub certificate_deny_config: CertificateDenyConfig,
+    #[serde(default)]
+    pub expensive_safety_check_config: ExpensiveSafetyCheckConfig,
 }
 
 impl NodeConfig {
@@ -636,6 +655,11 @@ impl ValidatorConfigBuilder {
             authority_store_pruning_config: pruning_config,
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,
+            state_debug_dump_config: Default::default(),
+            // By default, expensive checks will be enabled in debug build, but not in release build.
+            expensive_safety_check_config: ExpensiveSafetyCheckConfig::default(),
+            execution_cache: ExecutionCacheConfig::default(),
+            fork_recovery: None,
         }
     }
 
@@ -825,4 +849,273 @@ impl RunWithRange {
             RunWithRange::Checkpoint(seq) => Some(seq),
         }
     }
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionCacheConfig {
+    WritebackCache {
+        /// Maximum number of entries in each cache. (There are several different caches).
+        /// If None, the default of 10000 is used.
+        max_cache_size: Option<u64>,
+
+        package_cache_size: Option<u64>, // defaults to 1000
+
+        object_cache_size: Option<u64>, // defaults to max_cache_size
+        marker_cache_size: Option<u64>, // defaults to object_cache_size
+        object_by_id_cache_size: Option<u64>, // defaults to object_cache_size
+
+        transaction_cache_size: Option<u64>, // defaults to max_cache_size
+        executed_effect_cache_size: Option<u64>, // defaults to transaction_cache_size
+        effect_cache_size: Option<u64>,      // defaults to executed_effect_cache_size
+
+        transaction_objects_cache_size: Option<u64>, // defaults to 1000
+
+        /// Number of uncommitted transactions at which to pause consensus handler.
+        backpressure_threshold: Option<u64>,
+
+        /// Number of uncommitted transactions at which to refuse new transaction
+        /// submissions. Defaults to backpressure_threshold if unset.
+        backpressure_threshold_for_rpc: Option<u64>,
+
+        fastpath_transaction_outputs_cache_size: Option<u64>,
+    },
+}
+
+impl Default for ExecutionCacheConfig {
+    fn default() -> Self {
+        ExecutionCacheConfig::WritebackCache {
+            max_cache_size: None,
+            backpressure_threshold: None,
+            backpressure_threshold_for_rpc: None,
+            package_cache_size: None,
+            object_cache_size: None,
+            marker_cache_size: None,
+            object_by_id_cache_size: None,
+            transaction_cache_size: None,
+            executed_effect_cache_size: None,
+            effect_cache_size: None,
+            transaction_objects_cache_size: None,
+            fastpath_transaction_outputs_cache_size: None,
+        }
+    }
+}
+
+impl ExecutionCacheConfig {
+    pub fn max_cache_size(&self) -> u64 {
+        std::env::var("SOMA_MAX_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache { max_cache_size, .. } => {
+                    max_cache_size.unwrap_or(100000)
+                }
+            })
+    }
+
+    pub fn package_cache_size(&self) -> u64 {
+        std::env::var("SOMA_PACKAGE_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    package_cache_size, ..
+                } => package_cache_size.unwrap_or(1000),
+            })
+    }
+
+    pub fn object_cache_size(&self) -> u64 {
+        std::env::var("SOMA_OBJECT_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    object_cache_size, ..
+                } => object_cache_size.unwrap_or(self.max_cache_size()),
+            })
+    }
+
+    pub fn marker_cache_size(&self) -> u64 {
+        std::env::var("SOMA_MARKER_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    marker_cache_size, ..
+                } => marker_cache_size.unwrap_or(self.object_cache_size()),
+            })
+    }
+
+    pub fn object_by_id_cache_size(&self) -> u64 {
+        std::env::var("SOMA_OBJECT_BY_ID_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    object_by_id_cache_size,
+                    ..
+                } => object_by_id_cache_size.unwrap_or(self.object_cache_size()),
+            })
+    }
+
+    pub fn transaction_cache_size(&self) -> u64 {
+        std::env::var("SOMA_TRANSACTION_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    transaction_cache_size,
+                    ..
+                } => transaction_cache_size.unwrap_or(self.max_cache_size()),
+            })
+    }
+
+    pub fn executed_effect_cache_size(&self) -> u64 {
+        std::env::var("SOMA_EXECUTED_EFFECT_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    executed_effect_cache_size,
+                    ..
+                } => executed_effect_cache_size.unwrap_or(self.transaction_cache_size()),
+            })
+    }
+
+    pub fn effect_cache_size(&self) -> u64 {
+        std::env::var("SOMA_EFFECT_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    effect_cache_size, ..
+                } => effect_cache_size.unwrap_or(self.executed_effect_cache_size()),
+            })
+    }
+
+    pub fn transaction_objects_cache_size(&self) -> u64 {
+        std::env::var("SOMA_TRANSACTION_OBJECTS_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    transaction_objects_cache_size,
+                    ..
+                } => transaction_objects_cache_size.unwrap_or(1000),
+            })
+    }
+
+    pub fn backpressure_threshold(&self) -> u64 {
+        std::env::var("SOMA_BACKPRESSURE_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    backpressure_threshold,
+                    ..
+                } => backpressure_threshold.unwrap_or(100_000),
+            })
+    }
+
+    pub fn backpressure_threshold_for_rpc(&self) -> u64 {
+        std::env::var("SOMA_BACKPRESSURE_THRESHOLD_FOR_RPC")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    backpressure_threshold_for_rpc,
+                    ..
+                } => backpressure_threshold_for_rpc.unwrap_or(self.backpressure_threshold()),
+            })
+    }
+
+    pub fn fastpath_transaction_outputs_cache_size(&self) -> u64 {
+        std::env::var("SOMA_FASTPATH_TRANSACTION_OUTPUTS_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    fastpath_transaction_outputs_cache_size,
+                    ..
+                } => fastpath_transaction_outputs_cache_size.unwrap_or(10_000),
+            })
+    }
+}
+
+/// Configurations which determine how we dump state debug info.
+/// Debug info is dumped when a node forks.
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub struct StateDebugDumpConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dump_file_directory: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ExpensiveSafetyCheckConfig {
+    /// If enabled, at epoch boundary, we will check that the accumulated
+    /// live object state matches the end of epoch root state digest.
+    #[serde(default)]
+    enable_state_consistency_check: bool,
+
+    /// Disable state consistency check even when we are running in debug mode.
+    #[serde(default)]
+    force_disable_state_consistency_check: bool,
+}
+
+impl ExpensiveSafetyCheckConfig {
+    pub fn new_enable_all() -> Self {
+        Self {
+            enable_state_consistency_check: true,
+            force_disable_state_consistency_check: false,
+        }
+    }
+
+    pub fn new_disable_all() -> Self {
+        Self {
+            enable_state_consistency_check: false,
+            force_disable_state_consistency_check: true,
+        }
+    }
+
+    pub fn force_disable_state_consistency_check(&mut self) {
+        self.force_disable_state_consistency_check = true;
+    }
+
+    pub fn enable_state_consistency_check(&self) -> bool {
+        (self.enable_state_consistency_check || cfg!(debug_assertions))
+            && !self.force_disable_state_consistency_check
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ForkCrashBehavior {
+    #[serde(rename = "await-fork-recovery")]
+    #[default]
+    AwaitForkRecovery,
+    /// Return an error instead of blocking forever. This is primarily for testing.
+    #[serde(rename = "return-error")]
+    ReturnError,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ForkRecoveryConfig {
+    /// Map of transaction digest to effects digest overrides
+    /// Used to repoint transactions to correct effects after a fork
+    #[serde(default)]
+    pub transaction_overrides: BTreeMap<String, String>,
+
+    /// Map of checkpoint sequence number to checkpoint digest overrides
+    /// On node start, if we have a locally computed checkpoint with a
+    /// digest mismatch with this table, we will clear any associated local state.
+    #[serde(default)]
+    pub checkpoint_overrides: BTreeMap<u64, String>,
+
+    /// Behavior when a fork is detected after recovery attempts
+    #[serde(default)]
+    pub fork_crash_behavior: ForkCrashBehavior,
 }

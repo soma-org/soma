@@ -1,12 +1,14 @@
 use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::{
-    cache::writeback_cache::{do_fallback_lookup, CacheResult},
-    checkpoints::BuilderCheckpointSummary,
-    checkpoints::{CheckpointHeight, PendingCheckpoint},
+    cache::cache_types::CacheResult,
+    checkpoints::{BuilderCheckpointSummary, CheckpointHeight, PendingCheckpoint},
     consensus_handler::SequencedConsensusTransactionKey,
-    epoch_store::{AuthorityEpochTables, AuthorityPerEpochStore, ExecutionIndicesWithStats},
-    epoch_store::{LAST_CONSENSUS_STATS_ADDR, RECONFIG_STATE_INDEX},
+    epoch_store::{
+        AuthorityEpochTables, AuthorityPerEpochStore, ExecutionIndicesWithStats,
+        LAST_CONSENSUS_STATS_ADDR, RECONFIG_STATE_INDEX,
+    },
+    fallback_fetch::do_fallback_lookup,
     reconfiguration::ReconfigState,
     shared_obj_version_manager::AssignedTxAndVersions,
     start_epoch::EpochStartConfiguration,

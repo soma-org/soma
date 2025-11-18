@@ -17,6 +17,7 @@ pub mod entropy;
 pub mod envelope;
 pub mod error;
 pub mod evaluation;
+pub mod execution;
 pub mod finality;
 pub mod full_checkpoint_content;
 pub mod genesis;
@@ -46,8 +47,8 @@ pub mod temporary_store;
 pub mod tls;
 pub mod transaction;
 pub mod transaction_executor;
+pub mod transaction_outputs;
 pub mod tx_fee;
-pub mod tx_outputs;
 pub mod unit_tests;
 
 use base::SomaAddress;

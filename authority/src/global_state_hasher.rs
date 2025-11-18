@@ -8,7 +8,7 @@ use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::error::SomaResult;
 use types::object::{LiveObject, ObjectID};
 use types::storage::object_store::ObjectStore;
-use types::storage::write_store::TestP2pStore;
+use types::storage::shared_in_memory_store::SharedInMemoryStore;
 
 use crate::epoch_store::AuthorityPerEpochStore;
 
@@ -46,7 +46,7 @@ pub trait GlobalStateHashStore: ObjectStore + Send + Sync {
     }
 }
 
-impl GlobalStateHashStore for TestP2pStore {
+impl GlobalStateHashStore for SharedInMemoryStore {
     fn get_root_state_hash_for_epoch(
         &self,
         _epoch: EpochId,

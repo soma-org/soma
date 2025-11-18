@@ -30,7 +30,7 @@ use types::{
     },
     system_state::{get_system_state, SystemState, SystemStateTrait},
     transaction::{VerifiedSignedTransaction, VerifiedTransaction},
-    tx_outputs::TransactionOutputs,
+    transaction_outputs::TransactionOutputs,
 };
 
 use crate::{

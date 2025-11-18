@@ -15,8 +15,6 @@ use store::{
     DBMapUtils, Map as _,
 };
 
-use super::read_store::ReadCommitteeStore;
-
 pub struct CommitteeStore {
     tables: CommitteeStoreTables,
     cache: RwLock<HashMap<EpochId, Arc<Committee>>>,
@@ -118,31 +116,5 @@ impl CommitteeStore {
             .next()
             .transpose()?
             .is_none())
-    }
-}
-
-impl ReadCommitteeStore for CommitteeStore {
-    fn get_committee(
-        &self,
-        epoch: EpochId,
-    ) -> super::storage_error::Result<Option<Arc<Committee>>> {
-        self.get_committee(&epoch).map_err(Into::into)
-    }
-}
-
-pub struct TestCommitteeStore {}
-
-impl TestCommitteeStore {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl ReadCommitteeStore for TestCommitteeStore {
-    fn get_committee(
-        &self,
-        epoch: EpochId,
-    ) -> super::storage_error::Result<Option<Arc<Committee>>> {
-        todo!()
     }
 }

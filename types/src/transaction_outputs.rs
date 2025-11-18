@@ -6,10 +6,11 @@ use std::{
 use crate::{
     base::FullObjectID,
     effects::{TransactionEffects, TransactionEffectsAPI},
+    full_checkpoint_content::ObjectSet,
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
     storage::{FullObjectKey, MarkerValue, ObjectKey},
     temporary_store::InnerTemporaryStore,
-    transaction::VerifiedTransaction,
+    transaction::{TransactionData, VerifiedTransaction},
 };
 
 pub type ObjectMap = BTreeMap<ObjectID, Object>;
@@ -18,6 +19,8 @@ pub type WrittenObjects = BTreeMap<ObjectID, Object>;
 pub struct TransactionOutputs {
     pub transaction: Arc<VerifiedTransaction>,
     pub effects: TransactionEffects,
+
+    pub unchanged_loaded_runtime_objects: Vec<ObjectKey>,
 
     pub markers: Vec<(FullObjectKey, MarkerValue)>,
 
@@ -34,6 +37,7 @@ impl TransactionOutputs {
         transaction: VerifiedTransaction,
         effects: TransactionEffects,
         inner_temporary_store: InnerTemporaryStore,
+        unchanged_loaded_runtime_objects: Vec<ObjectKey>,
     ) -> TransactionOutputs {
         let InnerTemporaryStore {
             input_objects,
@@ -136,6 +140,29 @@ impl TransactionOutputs {
             written,
             locks_to_delete,
             new_locks_to_init,
+            unchanged_loaded_runtime_objects,
         }
     }
+}
+
+pub fn unchanged_loaded_runtime_objects(
+    _transaction: &TransactionData,
+    effects: &TransactionEffects,
+    loaded_runtime_objects: &ObjectSet,
+) -> Vec<ObjectKey> {
+    let mut unchanged_loaded_runtime_objects: BTreeMap<_, _> = loaded_runtime_objects
+        .iter()
+        .map(|o| (o.id(), o.version()))
+        .collect();
+
+    // Remove any object that is referenced in the changed objects effects set since it would be
+    // redundent to include it again.
+    for change in effects.object_changes() {
+        unchanged_loaded_runtime_objects.remove(&change.id);
+    }
+
+    unchanged_loaded_runtime_objects
+        .into_iter()
+        .map(|(id, v)| ObjectKey(id, v))
+        .collect()
 }

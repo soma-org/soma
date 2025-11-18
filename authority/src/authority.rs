@@ -55,6 +55,7 @@ use types::checkpoints::{
     CheckpointSequenceNumber, CheckpointSummary, CheckpointSummaryResponse, CheckpointTimestamp,
     ECMHLiveObjectSetDigest, VerifiedCheckpoint,
 };
+use types::config::node_config::{ExpensiveSafetyCheckConfig, StateDebugDumpConfig};
 use types::consensus::block::BlockRef;
 use types::digests::{
     CheckpointContentsDigest, CheckpointDigest, ObjectDigest, TransactionEffectsDigest,
@@ -66,6 +67,7 @@ use types::effects::{
 use types::encoder_validator::{FetchCommitteesRequest, FetchCommitteesResponse};
 use types::envelope::Message;
 use types::error::ExecutionError;
+use types::execution::{get_early_execution_error, ExecutionOrEarlyError, ExecutionOutput};
 use types::finality::{
     ConsensusFinality, SignedConsensusFinality, VerifiedSignedConsensusFinality,
 };
@@ -81,7 +83,7 @@ use types::transaction::{
     TransactionKey,
 };
 use types::transaction_executor::{SimulateTransactionResult, TransactionChecks};
-use types::tx_outputs::{TransactionOutputs, WrittenObjects};
+use types::transaction_outputs::{TransactionOutputs, WrittenObjects};
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
     base::AuthorityName,
@@ -1138,7 +1140,7 @@ impl AuthorityState {
         }
 
         let unchanged_loaded_runtime_objects =
-            crate::transaction_outputs::unchanged_loaded_runtime_objects(
+            types::transaction_outputs::unchanged_loaded_runtime_objects(
                 certificate.transaction_data(),
                 &effects,
                 &tracking_store.into_read_objects(),
@@ -1263,7 +1265,7 @@ impl AuthorityState {
 
         let loaded_runtime_objects = tracking_store.into_read_objects();
         let unchanged_loaded_runtime_objects =
-            crate::transaction_outputs::unchanged_loaded_runtime_objects(
+            types::transaction_outputs::unchanged_loaded_runtime_objects(
                 &transaction,
                 &effects,
                 &loaded_runtime_objects,
@@ -1454,10 +1456,6 @@ impl AuthorityState {
 
     pub fn get_global_state_hash_store(&self) -> &Arc<dyn GlobalStateHashStore> {
         &self.execution_cache_trait_pointers.global_state_hash_store
-    }
-
-    pub fn get_checkpoint_cache(&self) -> &Arc<dyn CheckpointCache> {
-        &self.execution_cache_trait_pointers.checkpoint_cache
     }
 
     pub fn get_state_sync_store(&self) -> &Arc<dyn StateSyncAPI> {

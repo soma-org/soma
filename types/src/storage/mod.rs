@@ -1,35 +1,3 @@
-//! # Storage Module
-//!
-//! ## Overview
-//! This module defines the core storage abstractions and types used throughout the Soma blockchain.
-//! It provides interfaces and data structures for storing and retrieving blockchain objects,
-//! transactions, and other state information.
-//!
-//! ## Responsibilities
-//! - Define storage interfaces for different types of blockchain data
-//! - Provide key types and structures for object storage and retrieval
-//! - Support different storage access patterns (read, write, versioned)
-//! - Handle object lifecycle states (active, deleted, wrapped)
-//! - Manage consensus object storage and versioning
-//!
-//! ## Component Relationships
-//! - Used by the Authority module to persist and retrieve blockchain state
-//! - Provides storage abstractions for transaction processing
-//! - Interfaces with the underlying database implementation
-//! - Supports the object model defined in the object module
-//!
-//! ## Key Workflows
-//! 1. Object storage and retrieval with versioning
-//! 2. Transaction input and output object management
-//! 3. Consensus object handling with special sequencing requirements
-//! 4. Object tombstone management for deleted objects
-//!
-//! ## Design Patterns
-//! - Trait-based interfaces for storage operations
-//! - Type-safe key structures for database access
-//! - Enum-based state representation for object lifecycle
-//! - Separation of read and write operations
-
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
@@ -46,11 +14,13 @@ use crate::{
     storage::object_store::ObjectStore,
     transaction::{SenderSignedData, TransactionData},
 };
+use storage_error::Error as StorageError;
 
 pub mod committee_store;
 pub mod consensus;
 pub mod object_store;
 pub mod read_store;
+pub mod shared_in_memory_store;
 pub mod storage_error;
 pub mod write_store;
 
@@ -394,26 +364,23 @@ pub fn transaction_receiving_object_keys(tx: &SenderSignedData) -> Vec<ObjectKey
         .map(|oref| oref.into())
         .collect()
 }
-
 pub fn get_transaction_input_objects(
     object_store: &dyn ObjectStore,
     effects: &TransactionEffects,
-) -> Result<Vec<Object>, storage_error::Error> {
+) -> Result<Vec<Object>, StorageError> {
     let input_object_keys = effects
         .modified_at_versions()
         .into_iter()
         .map(|(object_id, version)| ObjectKey(object_id, version))
         .collect::<Vec<_>>();
 
-    info!("Input object keys are : {:?}", input_object_keys);
-
     let input_objects = object_store
-        .multi_get_objects_by_key(&input_object_keys)?
+        .multi_get_objects_by_key(&input_object_keys)
         .into_iter()
         .enumerate()
         .map(|(idx, maybe_object)| {
             maybe_object.ok_or_else(|| {
-                storage_error::Error::custom(format!(
+                StorageError::custom(format!(
                     "missing input object key {:?} from tx {} effects {}",
                     input_object_keys[idx],
                     effects.transaction_digest(),
@@ -428,23 +395,21 @@ pub fn get_transaction_input_objects(
 pub fn get_transaction_output_objects(
     object_store: &dyn ObjectStore,
     effects: &TransactionEffects,
-) -> Result<Vec<Object>, storage_error::Error> {
+) -> Result<Vec<Object>, StorageError> {
     let output_object_keys = effects
         .all_changed_objects()
         .into_iter()
         .map(|(object_ref, _owner, _kind)| ObjectKey::from(object_ref))
         .collect::<Vec<_>>();
 
-    let ids: Vec<_> = output_object_keys.iter().map(|k| k.0).collect();
-
     let output_objects = object_store
-        .multi_get_objects(&ids)?
+        .multi_get_objects_by_key(&output_object_keys)
         .into_iter()
         .enumerate()
         .map(|(idx, maybe_object)| {
             maybe_object.ok_or_else(|| {
-                storage_error::Error::custom(format!(
-                    "missing output objects {:?} from tx {} effects {}",
+                StorageError::custom(format!(
+                    "missing output object key {:?} from tx {} effects {}",
                     output_object_keys[idx],
                     effects.transaction_digest(),
                     effects.digest()

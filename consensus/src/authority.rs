@@ -23,7 +23,7 @@ use types::crypto::{NetworkKeyPair, ProtocolKeyPair};
 use types::{
     committee::{AuthorityIndex, Committee},
     crypto::AuthorityKeyPair,
-    storage::{committee_store, consensus::ConsensusStore, read_store::ReadCommitteeStore},
+    storage::{committee_store, consensus::ConsensusStore},
 };
 use types::{consensus::EndOfEpochAPI, parameters::Parameters};
 use types::{
@@ -61,7 +61,6 @@ impl ConsensusAuthority {
         commit_consumer: CommitConsumer,
         epoch_store: Arc<dyn EndOfEpochAPI>,
         consensus_store: Arc<dyn ConsensusStore>,
-        committee_store: Arc<dyn ReadCommitteeStore>,
     ) -> Self {
         info!(
             "Starting consensus authority {}\n{:#?}\n{:#?}",
@@ -100,7 +99,6 @@ impl ConsensusAuthority {
         let block_verifier = Arc::new(SignedBlockVerifier::new(
             context.clone(),
             transaction_verifier,
-            Some(committee_store),
         ));
 
         let block_manager = BlockManager::new(dag_state.clone(), block_verifier.clone());
@@ -224,7 +222,6 @@ mod tests {
     use tokio::time::sleep;
     use types::consensus::TestEpochStore;
     use types::parameters::Parameters;
-    use types::storage::committee_store::TestCommitteeStore;
 
     use crate::authority;
 
@@ -265,7 +262,6 @@ mod tests {
             commit_consumer,
             Arc::new(TestEpochStore::new()),
             store.clone(),
-            Arc::new(TestCommitteeStore::new()),
         )
         .await;
 
@@ -552,7 +548,6 @@ mod tests {
             commit_consumer,
             Arc::new(TestEpochStore::new()),
             store.clone(),
-            Arc::new(TestCommitteeStore::new()),
         )
         .await;
         (authority, receiver)

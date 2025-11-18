@@ -99,7 +99,7 @@ impl SignatureVerifier {
 
     pub fn get_committee(&self, epoch: EpochId) -> Arc<Committee> {
         if let Some(committee_store) = &self.committee_store {
-            if let Ok(Some(committee)) = committee_store.get_committee(epoch) {
+            if let Some(committee) = committee_store.get_committee(epoch) {
                 committee
             } else {
                 self.committee.clone()

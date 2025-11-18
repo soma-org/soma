@@ -28,7 +28,10 @@
 //! - Immutable data structures: All effect types are immutable once created
 //! - Verification chain: Effects can be verified against committee signatures
 
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt,
+};
 
 use crate::{base::ExecutionDigests, error::ShardError};
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
@@ -781,12 +784,35 @@ pub enum ExecutionFailureStatus {
     #[error("Report record cannot be undone if not reported.")]
     ReportRecordNotFound,
 
+    #[error(
+        "Certificate cannot be executed due to a dependency on a deleted shared object or an object that was transferred out of consensus"
+    )]
+    InputObjectDeleted,
+
+    #[error("Certificate is on the deny list")]
+    CertificateDenied,
+
+    #[error("Certificate is cancelled due to congestion on shared objects: {congested_objects}")]
+    ExecutionCancelledDueToSharedObjectCongestion { congested_objects: CongestedObjects },
+
     //
     // Post-execution errors
     //
     /// Generic Soma error that wraps other error types
     #[error("Soma Error {0}")]
     SomaError(SomaError),
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub struct CongestedObjects(pub Vec<ObjectID>);
+
+impl fmt::Display for CongestedObjects {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        for obj in &self.0 {
+            write!(f, "{}, ", obj)?;
+        }
+        Ok(())
+    }
 }
 
 /// # InputSharedObject

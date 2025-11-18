@@ -68,16 +68,13 @@ use types::{
         TrustedExecutableTransaction, VerifiedCertificate, VerifiedExecutableTransaction,
         VerifiedSignedTransaction, VerifiedTransaction,
     },
-    tx_outputs::WrittenObjects,
+    transaction_outputs::WrittenObjects,
     SYSTEM_STATE_OBJECT_ID,
 };
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
 
 use crate::{
-    cache::{
-        writeback_cache::{do_fallback_lookup, CacheResult},
-        ObjectCacheRead,
-    },
+    cache::{cache_types::CacheResult, ObjectCacheRead},
     checkpoints::{BuilderCheckpointSummary, CheckpointHeight, PendingCheckpoint},
     consensus_handler::{
         ConsensusCommitInfo, SequencedConsensusTransaction, SequencedConsensusTransactionKey,
@@ -86,6 +83,7 @@ use crate::{
     consensus_quarantine::{
         ConsensusCommitOutput, ConsensusOutputCache, ConsensusOutputQuarantine,
     },
+    fallback_fetch::do_fallback_lookup,
     reconfiguration::ReconfigState,
     shared_obj_version_manager::{
         AssignedTxAndVersions, AssignedVersions, ConsensusSharedObjVerAssignment, Schedulable,
