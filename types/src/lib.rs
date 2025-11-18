@@ -17,7 +17,6 @@ pub mod entropy;
 pub mod envelope;
 pub mod error;
 pub mod evaluation;
-pub mod execution_indices;
 pub mod finality;
 pub mod full_checkpoint_content;
 pub mod genesis;

@@ -19,7 +19,7 @@ use types::{
 };
 
 use crate::{
-    handler::SequencedConsensusTransaction, state::AuthorityState,
+    consensus_handler::SequencedConsensusTransaction, state::AuthorityState,
     state_accumulator::StateAccumulator, test_authority_builder::TestAuthorityBuilder,
 };
 

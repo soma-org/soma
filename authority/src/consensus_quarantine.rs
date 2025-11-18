@@ -15,8 +15,8 @@ use types::{
 
 use crate::{
     cache::writeback_cache::{do_fallback_lookup, CacheResult},
+    consensus_handler::SequencedConsensusTransactionKey,
     epoch_store::{AuthorityEpochTables, AuthorityPerEpochStore},
-    handler::SequencedConsensusTransactionKey,
     reconfiguration::ReconfigState,
     shared_obj_version_manager::AssignedTxAndVersions,
     start_epoch::EpochStartConfiguration,

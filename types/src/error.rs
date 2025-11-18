@@ -400,6 +400,12 @@ pub enum SomaError {
 
     #[error("Failed to perform file operation: {0}")]
     FileIOError(String),
+
+    #[error("Failed to serialize {type_info}, error: {error}")]
+    GrpcMessageSerializeError { type_info: String, error: String },
+
+    #[error("Failed to deserialize {type_info}, error: {error}")]
+    GrpcMessageDeserializeError { type_info: String, error: String },
 }
 
 impl From<Status> for SomaError {

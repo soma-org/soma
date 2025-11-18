@@ -9,6 +9,7 @@ consensus.workspace = true
 types.workspace = true
 utils.workspace = true
 # test-cluster.workspace = true
+enum_dispatch.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true
 tokio.workspace = true

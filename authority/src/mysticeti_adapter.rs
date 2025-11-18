@@ -1,20 +1,9 @@
-use arc_swap::{ArcSwapOption, Guard};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tap::tap::TapFallible;
-use tokio::time::sleep;
-use tracing::warn;
-use types::{
-    consensus::{ConsensusTransaction, ConsensusTransactionKind},
-    error::{SomaError, SomaResult},
-};
+use std::{sync::Arc, time::Duration};
 
-use crate::{
-    adapter::SubmitToConsensus, epoch_store::AuthorityPerEpochStore,
-    handler::SequencedConsensusTransactionKey,
-};
+use arc_swap::{ArcSwapOption, Guard};
+use tap::prelude::*;
+use tokio::time::{sleep, Instant};
+use tracing::{error, info, warn};
 use types::consensus::transaction::TransactionClient;
 
 /// Gets a client to submit transactions to Mysticeti, or waits for one to be available.
@@ -72,45 +61,73 @@ impl LazyMysticetiClient {
 }
 
 #[async_trait::async_trait]
-impl SubmitToConsensus for LazyMysticetiClient {
-    async fn submit_to_consensus(
+impl ConsensusClient for LazyMysticetiClient {
+    async fn submit(
         &self,
         transactions: &[ConsensusTransaction],
         _epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SomaResult {
+    ) -> SuiResult<(Vec<ConsensusPosition>, BlockStatusReceiver)> {
         // TODO(mysticeti): confirm comment is still true
         // The retrieved TransactionClient can be from the past epoch. Submit would fail after
         // Mysticeti shuts down, so there should be no correctness issue.
-        let client = self.get().await;
+        let client_guard = self.get().await;
+        let client = client_guard
+            .as_ref()
+            .expect("Client should always be returned");
         let transactions_bytes = transactions
             .iter()
             .map(|t| bcs::to_bytes(t).expect("Serializing consensus transaction cannot fail"))
             .collect::<Vec<_>>();
-        let block_ref = client
-            .as_ref()
-            .expect("Client should always be returned")
+        let (block_ref, tx_indices, status_waiter) = client
             .submit(transactions_bytes)
             .await
-            .tap_err(|r| {
+            .tap_err(|err| {
                 // Will be logged by caller as well.
-                warn!("Submit transactions failed with: {:?}", r);
+                let msg = format!("Transaction submission failed with: {:?}", err);
+                match err {
+                    ClientError::ConsensusShuttingDown(_) => {
+                        info!("{}", msg);
+                    }
+                    ClientError::OversizedTransaction(_, _)
+                    | ClientError::OversizedTransactionBundleBytes(_, _)
+                    | ClientError::OversizedTransactionBundleCount(_, _) => {
+                        if cfg!(debug_assertions) {
+                            panic!("{}", msg);
+                        } else {
+                            error!("{}", msg);
+                        }
+                    }
+                };
             })
-            .map_err(|err| SomaError::FailedToSubmitToConsensus(err.to_string()))?;
+            .map_err(|err| SuiErrorKind::FailedToSubmitToConsensus(err.to_string()))?;
 
         let is_soft_bundle = transactions.len() > 1;
+        let is_ping = transactions.is_empty();
 
         if !is_soft_bundle
+            && !is_ping
             && matches!(
                 transactions[0].kind,
-                ConsensusTransactionKind::EndOfPublish(_) // | ConsensusTransactionKind::CapabilityNotification(_)
-                                                          // | ConsensusTransactionKind::CapabilityNotificationV2(_)
-                                                          // | ConsensusTransactionKind::RandomnessDkgMessage(_, _)
-                                                          // | ConsensusTransactionKind::RandomnessDkgConfirmation(_, _)
+                ConsensusTransactionKind::EndOfPublish(_)
+                    | ConsensusTransactionKind::CapabilityNotification(_)
+                    | ConsensusTransactionKind::CapabilityNotificationV2(_)
+                    | ConsensusTransactionKind::RandomnessDkgMessage(_, _)
+                    | ConsensusTransactionKind::RandomnessDkgConfirmation(_, _)
             )
         {
             let transaction_key = SequencedConsensusTransactionKey::External(transactions[0].key());
             tracing::info!("Transaction {transaction_key:?} was included in {block_ref}",)
         };
-        Ok(())
+
+        // Calculate consensus tx positions
+        let mut consensus_positions = Vec::new();
+        for index in tx_indices {
+            consensus_positions.push(ConsensusPosition {
+                epoch: client.epoch(),
+                block: block_ref,
+                index,
+            });
+        }
+        Ok((consensus_positions, status_waiter))
     }
 }

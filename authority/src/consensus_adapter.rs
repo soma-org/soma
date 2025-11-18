@@ -1,6 +1,6 @@
 use crate::{
+    consensus_handler::{classify, SequencedConsensusTransactionKey},
     epoch_store::AuthorityPerEpochStore,
-    handler::{classify, SequencedConsensusTransactionKey},
     reconfiguration::{ReconfigState, ReconfigurationInitiator},
     throughput::{ConsensusThroughputProfiler, Level},
 };

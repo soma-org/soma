@@ -36,6 +36,16 @@ pub const GENESIS_ROUND: Round = 0;
 /// Block proposal timestamp in milliseconds.
 pub type BlockTimestampMs = u64;
 
+/// Index of a transaction in a block.
+pub type TransactionIndex = u16;
+
+/// The number of reserved transaction indices.
+pub const NUM_RESERVED_TRANSACTION_INDICES: TransactionIndex = 8;
+
+/// The index of the ping transaction. This is a special type of transaction that is used in order to ping consensus and perform ping requests.
+/// We reserve the max index for this transaction.
+pub const PING_TRANSACTION_INDEX: TransactionIndex = TransactionIndex::MAX;
+
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 pub struct Transaction {
     data: Bytes,

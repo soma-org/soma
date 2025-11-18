@@ -1,5 +1,5 @@
-use crate::adapter::SubmitToConsensus;
 use crate::checkpoints::CheckpointStore;
+use crate::consensus_adapter::SubmitToConsensus;
 use crate::epoch_store::AuthorityPerEpochStore;
 use crate::reconfiguration::ReconfigurationInitiator;
 use crate::state::StableSyncAuthoritySigner;
