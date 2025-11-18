@@ -1,70 +1,97 @@
-use std::collections::{hash_map, BTreeSet, HashMap, VecDeque};
+use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, VecDeque};
 
+use crate::{
+    cache::writeback_cache::{do_fallback_lookup, CacheResult},
+    checkpoints::BuilderCheckpointSummary,
+    checkpoints::{CheckpointHeight, PendingCheckpoint},
+    consensus_handler::SequencedConsensusTransactionKey,
+    epoch_store::{AuthorityEpochTables, AuthorityPerEpochStore, ExecutionIndicesWithStats},
+    epoch_store::{LAST_CONSENSUS_STATS_ADDR, RECONFIG_STATE_INDEX},
+    reconfiguration::ReconfigState,
+    shared_obj_version_manager::AssignedTxAndVersions,
+    start_epoch::EpochStartConfiguration,
+};
 use dashmap::DashMap;
-use store::Map as _;
-use tracing::{info, trace};
+use moka::policy::EvictionPolicy;
+use moka::sync::SegmentedCache as MokaCache;
+use parking_lot::{Mutex, RwLock};
+use store::{rocks::DBBatch, Map as _};
+use tracing::{debug, info, trace};
 use types::{
     base::{AuthorityName, ConsensusObjectSequenceKey},
-    consensus::commit::CommitIndex,
+    checkpoints::{CheckpointContents, CheckpointSequenceNumber},
+    consensus::{block::Round, commit::CommitIndex},
+    crypto::GenericSignature,
     digests::TransactionDigest,
     error::SomaResult,
     object::Version,
     transaction::{TransactionKey, VerifiedExecutableTransaction},
 };
 
-use crate::{
-    cache::writeback_cache::{do_fallback_lookup, CacheResult},
-    consensus_handler::SequencedConsensusTransactionKey,
-    epoch_store::{AuthorityEpochTables, AuthorityPerEpochStore},
-    reconfiguration::ReconfigState,
-    shared_obj_version_manager::AssignedTxAndVersions,
-    start_epoch::EpochStartConfiguration,
-};
-
-/// The key where the latest consensus index is stored in the database.
-// TODO: Make a single table (e.g., called `variables`) storing all our lonely variables in one place.
-pub(crate) const LAST_CONSENSUS_STATS_ADDR: u64 = 0;
-pub(crate) const RECONFIG_STATE_INDEX: u64 = 0;
-
 #[derive(Default)]
 pub(crate) struct ConsensusCommitOutput {
     // Consensus and reconfig state
+    consensus_round: Round,
     consensus_messages_processed: BTreeSet<SequencedConsensusTransactionKey>,
     end_of_publish: BTreeSet<AuthorityName>,
     reconfig_state: Option<ReconfigState>,
-    pending_execution: Vec<VerifiedExecutableTransaction>,
-    consensus_commit_stats: Option<ExecutionIndices>,
+    consensus_commit_stats: Option<ExecutionIndicesWithStats>,
 
     // transaction scheduling state
     next_shared_object_versions: Option<HashMap<ConsensusObjectSequenceKey, Version>>,
-    // TODO: If we delay committing consensus output until after all deferrals have been loaded,
-    // we can move deferred_txns to the ConsensusOutputCache and save disk bandwidth.
-    // deferred_txns: Vec<(DeferralKey, Vec<VerifiedSequencedConsensusTransaction>)>,
-    // deferred txns that have been loaded and can be removed
-    // deleted_deferred_txns: BTreeSet<DeferralKey>,
 
-    // congestion control state
-    // congestion_control_object_debts: Vec<(ObjectID, u64)>,
-    // congestion_control_randomness_object_debts: Vec<(ObjectID, u64)>,
-    // execution_time_observations: Vec<(
-    //     AuthorityIndex,
-    //     u64, /* generation */
-    //     Vec<(ExecutionTimeObservationKey, Duration)>,
-    // )>,
+    // checkpoint state
+    pending_checkpoints: Vec<PendingCheckpoint>,
 }
 
 impl ConsensusCommitOutput {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(consensus_round: Round) -> Self {
+        Self {
+            consensus_round,
+            ..Default::default()
+        }
+    }
+
+    fn get_highest_pending_checkpoint_height(&self) -> Option<CheckpointHeight> {
+        self.pending_checkpoints.last().map(|cp| cp.height())
+    }
+
+    fn get_pending_checkpoints(
+        &self,
+        last: Option<CheckpointHeight>,
+    ) -> impl Iterator<Item = &PendingCheckpoint> {
+        self.pending_checkpoints.iter().filter(move |cp| {
+            if let Some(last) = last {
+                cp.height() > last
+            } else {
+                true
+            }
+        })
+    }
+
+    fn pending_checkpoint_exists(&self, index: &CheckpointHeight) -> bool {
+        self.pending_checkpoints
+            .iter()
+            .any(|cp| cp.height() == *index)
+    }
+
+    fn get_round(&self) -> Option<u64> {
+        self.consensus_commit_stats
+            .as_ref()
+            .map(|stats| stats.index.last_committed_round)
     }
 
     pub fn insert_end_of_publish(&mut self, authority: AuthorityName) {
         self.end_of_publish.insert(authority);
     }
 
-    pub fn insert_pending_execution(&mut self, transactions: &[VerifiedExecutableTransaction]) {
-        self.pending_execution.reserve(transactions.len());
-        self.pending_execution.extend_from_slice(transactions);
+    pub(crate) fn record_consensus_commit_stats(&mut self, stats: ExecutionIndicesWithStats) {
+        self.consensus_commit_stats = Some(stats);
+    }
+
+    // in testing code we often need to write to the db outside of a consensus commit
+    pub(crate) fn set_default_commit_stats_for_testing(&mut self) {
+        self.record_consensus_commit_stats(Default::default());
     }
 
     pub fn store_reconfig_state(&mut self, state: ReconfigState) {
@@ -75,8 +102,10 @@ impl ConsensusCommitOutput {
         self.consensus_messages_processed.insert(key);
     }
 
-    pub fn record_consensus_commit_stats(&mut self, stats: ExecutionIndices) {
-        self.consensus_commit_stats = Some(stats);
+    pub fn get_consensus_messages_processed(
+        &self,
+    ) -> impl Iterator<Item = &SequencedConsensusTransactionKey> {
+        self.consensus_messages_processed.iter()
     }
 
     pub fn set_next_shared_object_versions(
@@ -87,77 +116,65 @@ impl ConsensusCommitOutput {
         self.next_shared_object_versions = Some(next_versions);
     }
 
-    pub fn write_to_batch(self, epoch_store: &AuthorityPerEpochStore) -> SomaResult {
+    pub fn insert_pending_checkpoint(&mut self, checkpoint: PendingCheckpoint) {
+        self.pending_checkpoints.push(checkpoint);
+    }
+
+    pub fn write_to_batch(
+        self,
+        epoch_store: &AuthorityPerEpochStore,
+        batch: &mut DBBatch,
+    ) -> SomaResult {
         let tables = epoch_store.tables()?;
-
-        // Create a batch for all operations
-        let mut batch = tables.consensus_message_processed.batch();
-
-        // Add consensus messages to batch
         batch.insert_batch(
             &tables.consensus_message_processed,
             self.consensus_messages_processed
                 .iter()
-                .map(|key| (key.clone(), true)),
+                .map(|key| (key, true)),
         )?;
 
-        // Add end_of_publish to batch
         batch.insert_batch(
             &tables.end_of_publish,
-            self.end_of_publish.iter().map(|authority| (*authority, ())),
+            self.end_of_publish.iter().map(|authority| (authority, ())),
         )?;
 
-        // Add reconfig state if present
         if let Some(reconfig_state) = &self.reconfig_state {
             batch.insert_batch(
                 &tables.reconfig_state,
-                [(RECONFIG_STATE_INDEX, reconfig_state.clone())],
+                [(RECONFIG_STATE_INDEX, reconfig_state)],
             )?;
         }
 
-        // Add consensus commit stats if present
-        if let Some(consensus_commit_stats) = &self.consensus_commit_stats {
-            batch.insert_batch(
-                &tables.last_consensus_stats,
-                [(LAST_CONSENSUS_STATS_ADDR, consensus_commit_stats.clone())],
-            )?;
-        }
+        let consensus_commit_stats = self
+            .consensus_commit_stats
+            .expect("consensus_commit_stats must be set");
+        let round = consensus_commit_stats.index.last_committed_round;
 
-        // Add pending execution
         batch.insert_batch(
-            &tables.pending_execution,
-            self.pending_execution
-                .into_iter()
-                .map(|tx| (*tx.inner().digest(), tx.serializable())),
+            &tables.last_consensus_stats,
+            [(LAST_CONSENSUS_STATS_ADDR, consensus_commit_stats)],
         )?;
 
-        // Add next shared object versions if present
         if let Some(next_versions) = self.next_shared_object_versions {
-            batch.insert_batch(
-                &tables.next_shared_object_versions,
-                next_versions.into_iter(),
-            )?;
+            batch.insert_batch(&tables.next_shared_object_versions, next_versions)?;
         }
-
-        // Write the batch
-        batch.write()?;
 
         Ok(())
     }
 }
 
 /// ConsensusOutputCache holds outputs of consensus processing that do not need to be committed to disk.
-/// Data quarantining guarantees that all of this data will be used
+/// Data quarantining guarantees that all of this data will be used (e.g. for building checkpoints)
 /// before the consensus commit from which it originated is marked as processed. Therefore we can rely
 /// on replay of consensus commits to recover this data.
 pub(crate) struct ConsensusOutputCache {
-    // shared version assignments is a DashMap because it is read from execution so we don't
-    // want contention.
-    shared_version_assignments: DashMap<TransactionKey, Vec<(ConsensusObjectSequenceKey, Version)>>,
-    // deferred transactions is only used by consensus handler so there should never be lock contention
-    // - hence no need for a DashMap.
-    // pub(super) deferred_transactions:
-    //     Mutex<BTreeMap<DeferralKey, Vec<VerifiedSequencedConsensusTransaction>>>,
+    // user_signatures_for_checkpoints is written to by consensus handler and read from by checkpoint builder
+    // The critical sections are small in both cases so a DashMap is probably not helpful.
+    pub(crate) user_signatures_for_checkpoints:
+        Mutex<HashMap<TransactionDigest, Vec<GenericSignature>>>,
+
+    executed_in_epoch: RwLock<DashMap<TransactionDigest, ()>>,
+    executed_in_epoch_cache: MokaCache<TransactionDigest, ()>,
 }
 
 impl ConsensusOutputCache {
@@ -165,69 +182,46 @@ impl ConsensusOutputCache {
         epoch_start_configuration: &EpochStartConfiguration,
         tables: &AuthorityEpochTables,
     ) -> Self {
-        // let deferred_transactions = tables
-        //     .get_all_deferred_transactions()
-        //     .expect("load deferred transactions cannot fail");
+        let executed_in_epoch_cache_capacity = 50_000;
 
         Self {
-            shared_version_assignments: Default::default(),
-            // deferred_transactions: Mutex::new(deferred_transactions),
+            user_signatures_for_checkpoints: Default::default(),
+            executed_in_epoch: RwLock::new(DashMap::with_shard_amount(2048)),
+            executed_in_epoch_cache: MokaCache::builder(8)
+                // most queries should be for recent transactions
+                .max_capacity(executed_in_epoch_cache_capacity)
+                .eviction_policy(EvictionPolicy::lru())
+                .build(),
         }
     }
 
-    pub fn num_shared_version_assignments(&self) -> usize {
-        self.shared_version_assignments.len()
+    pub fn executed_in_current_epoch(&self, digest: &TransactionDigest) -> bool {
+        self.executed_in_epoch
+            .read()
+            .contains_key(digest) ||
+            // we use get instead of contains key to mark the entry as read
+            self.executed_in_epoch_cache.get(digest).is_some()
     }
 
-    pub fn get_assigned_shared_object_versions(
-        &self,
-        key: &TransactionKey,
-    ) -> Option<Vec<(ConsensusObjectSequenceKey, Version)>> {
-        let output = self
-            .shared_version_assignments
-            .get(key)
-            .map(|locks| locks.clone());
-        info!(
-            "get_assigned_shared_object_versions: {:?} -> {:?}",
-            key, output
+    // Called by execution
+    pub fn insert_executed_in_epoch(&self, tx_digest: TransactionDigest) {
+        assert!(
+            self.executed_in_epoch
+                .read()
+                .insert(tx_digest, ())
+                .is_none(),
+            "transaction already executed"
         );
-        output
+        self.executed_in_epoch_cache.insert(tx_digest, ());
     }
 
-    pub fn insert_shared_object_assignments(&self, versions: &AssignedTxAndVersions) {
-        trace!("insert_shared_object_assignments: {:?}", versions);
-        let mut inserted_count = 0;
-        for (key, value) in versions {
-            if self
-                .shared_version_assignments
-                .insert(*key, value.clone())
-                .is_none()
-            {
-                inserted_count += 1;
-            }
-        }
-    }
-
-    pub fn set_shared_object_versions_for_testing(
-        &self,
-        tx_digest: &TransactionDigest,
-        assigned_versions: &[(ConsensusObjectSequenceKey, Version)],
-    ) {
-        self.shared_version_assignments.insert(
-            TransactionKey::Digest(*tx_digest),
-            assigned_versions.to_owned(),
-        );
-    }
-
-    pub fn remove_shared_object_assignments<'a>(
-        &self,
-        keys: impl IntoIterator<Item = &'a TransactionKey>,
-    ) {
-        let mut removed_count = 0;
-        for tx_key in keys {
-            if self.shared_version_assignments.remove(tx_key).is_some() {
-                removed_count += 1;
-            }
+    // CheckpointExecutor calls this (indirectly) in order to prune the in-memory cache of executed
+    // transactions. By the time this is called, the transaction digests will have been committed to
+    // the `executed_transactions_to_checkpoint` table.
+    pub fn remove_executed_in_epoch(&self, tx_digests: &[TransactionDigest]) {
+        let executed_in_epoch = self.executed_in_epoch.read();
+        for tx_digest in tx_digests {
+            executed_in_epoch.remove(tx_digest);
         }
     }
 }
@@ -238,43 +232,44 @@ pub(crate) struct ConsensusOutputQuarantine {
     // Output from consensus handler
     output_queue: VecDeque<ConsensusCommitOutput>,
 
-    // Highest known commit index
-    highest_executed_commit: CommitIndex,
+    // Highest known certified checkpoint sequence number
+    highest_executed_checkpoint: CheckpointSequenceNumber,
+
+    // Checkpoint Builder output
+    builder_checkpoint_summary:
+        BTreeMap<CheckpointSequenceNumber, (BuilderCheckpointSummary, CheckpointContents)>,
+
+    builder_digest_to_checkpoint: HashMap<TransactionDigest, CheckpointSequenceNumber>,
 
     // Any un-committed next versions are stored here.
     shared_object_next_versions: RefCountedHashMap<ConsensusObjectSequenceKey, Version>,
 
-    // The most recent congestion control debts for objects. Uses a ref-count to track
-    // which objects still exist in some element of output_queue.
-    // congestion_control_randomness_object_debts:
-    //     RefCountedHashMap<ObjectID, CongestionPerObjectDebt>,
-    // congestion_control_object_debts: RefCountedHashMap<ObjectID, CongestionPerObjectDebt>,
     processed_consensus_messages: RefCountedHashMap<SequencedConsensusTransactionKey, ()>,
 }
 
 impl ConsensusOutputQuarantine {
-    pub(super) fn new(highest_executed_commit: CommitIndex) -> Self {
+    pub(super) fn new(highest_executed_checkpoint: CheckpointSequenceNumber) -> Self {
         Self {
-            highest_executed_commit,
+            highest_executed_checkpoint,
 
             output_queue: VecDeque::new(),
+            builder_checkpoint_summary: BTreeMap::new(),
+            builder_digest_to_checkpoint: HashMap::new(),
             shared_object_next_versions: RefCountedHashMap::new(),
             processed_consensus_messages: RefCountedHashMap::new(),
         }
     }
 }
-
 // Write methods - all methods in this block insert new data into the quarantine.
 // There are only two sources! ConsensusHandler and CheckpointBuilder.
 impl ConsensusOutputQuarantine {
     // Push all data gathered from a consensus commit into the quarantine.
-    pub(super) fn push_consensus_output(
+    pub(crate) fn push_consensus_output(
         &mut self,
         output: ConsensusCommitOutput,
         epoch_store: &AuthorityPerEpochStore,
     ) -> SomaResult {
         self.insert_shared_object_next_versions(&output);
-        // self.insert_congestion_control_debts(&output);
         self.insert_processed_consensus_messages(&output);
         self.output_queue.push_back(output);
 
@@ -282,79 +277,142 @@ impl ConsensusOutputQuarantine {
         // ahead of consensus, so there may be data to commit right away.
         self.commit(epoch_store)
     }
+
+    // Record a newly built checkpoint.
+    pub(super) fn insert_builder_summary(
+        &mut self,
+        sequence_number: CheckpointSequenceNumber,
+        summary: BuilderCheckpointSummary,
+        contents: CheckpointContents,
+    ) {
+        debug!(?sequence_number, "inserting builder summary {:?}", summary);
+        for tx in contents.iter() {
+            self.builder_digest_to_checkpoint
+                .insert(tx.transaction, sequence_number);
+        }
+        self.builder_checkpoint_summary
+            .insert(sequence_number, (summary, contents));
+    }
 }
 
 // Commit methods.
 impl ConsensusOutputQuarantine {
-    /// Update the highest commit checkpoint and commit any data which is now
+    /// Update the highest executed checkpoint and commit any data which is now
     /// below the watermark.
-    pub(super) fn update_highest_executed_commit(
+    pub(super) fn update_highest_executed_checkpoint(
         &mut self,
-        commit: CommitIndex,
+        checkpoint: CheckpointSequenceNumber,
         epoch_store: &AuthorityPerEpochStore,
+        batch: &mut DBBatch,
     ) -> SomaResult {
-        self.highest_executed_commit = commit;
-        self.commit_with_batch(epoch_store)
+        self.highest_executed_checkpoint = checkpoint;
+        self.commit_with_batch(epoch_store, batch)
     }
 
     pub(super) fn commit(&mut self, epoch_store: &AuthorityPerEpochStore) -> SomaResult {
-        self.commit_with_batch(epoch_store)?;
+        let mut batch = epoch_store.db_batch()?;
+        self.commit_with_batch(epoch_store, &mut batch)?;
+        batch.write()?;
         Ok(())
     }
 
     /// Commit all data below the watermark.
-    fn commit_with_batch(&mut self, epoch_store: &AuthorityPerEpochStore) -> SomaResult {
+    fn commit_with_batch(
+        &mut self,
+        epoch_store: &AuthorityPerEpochStore,
+        batch: &mut DBBatch,
+    ) -> SomaResult {
         // The commit algorithm is simple:
-        // 1. First commit all  state which is below the watermark.
+        // 1. First commit all checkpoint builder state which is below the watermark.
+        // 2. Determine the consensus commit height that corresponds to the highest committed
+        //    checkpoint.
         // 3. Commit all consensus output at that height or below.
 
         let tables = epoch_store.tables()?;
 
-        // Process all items in the queue that are below or at the watermark
+        let mut highest_committed_height = None;
+
+        while self
+            .builder_checkpoint_summary
+            .first_key_value()
+            .map(|(seq, _)| *seq <= self.highest_executed_checkpoint)
+            == Some(true)
+        {
+            let (seq, (builder_summary, contents)) =
+                self.builder_checkpoint_summary.pop_first().unwrap();
+
+            for tx in contents.iter() {
+                let digest = &tx.transaction;
+                assert_eq!(
+                    self.builder_digest_to_checkpoint
+                        .remove(digest)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "transaction {:?} not found in builder_digest_to_checkpoint",
+                                digest
+                            )
+                        }),
+                    seq
+                );
+            }
+
+            batch.insert_batch(
+                &tables.builder_digest_to_checkpoint,
+                contents.iter().map(|tx| (tx.transaction, seq)),
+            )?;
+
+            batch.insert_batch(
+                &tables.builder_checkpoint_summary,
+                [(seq, &builder_summary)],
+            )?;
+
+            let checkpoint_height = builder_summary
+                .checkpoint_height
+                .expect("non-genesis checkpoint must have height");
+            if let Some(highest) = highest_committed_height {
+                assert!(
+                    checkpoint_height >= highest,
+                    "current checkpoint height {} must be no less than highest committed height {}",
+                    checkpoint_height,
+                    highest
+                );
+            }
+
+            highest_committed_height = Some(checkpoint_height);
+        }
+
+        let Some(highest_committed_height) = highest_committed_height else {
+            return Ok(());
+        };
+
         while !self.output_queue.is_empty() {
-            // Peek at the next output to see if it should be committed
-            // let output_indices = self
-            //     .output_queue
-            //     .front()
-            //     .and_then(|output| output.consensus_commit_stats.as_ref());
+            // A consensus commit can have more than one pending checkpoint (a regular one and a randomnes one).
+            // We can only write the consensus commit if the highest pending checkpoint associated with it has
+            // been processed by the builder.
+            let Some(highest_in_commit) = self
+                .output_queue
+                .front()
+                .unwrap()
+                .get_highest_pending_checkpoint_height()
+            else {
+                // if highest is none, we have already written the pending checkpoint for the final epoch,
+                // so there is no more data that needs to be committed.
+                break;
+            };
 
-            let output = self.output_queue.pop_front().unwrap();
-            // self.remove_shared_object_next_versions(&output);
-            // self.remove_processed_consensus_messages(&output);
-            output.write_to_batch(epoch_store)?;
+            if highest_in_commit <= highest_committed_height {
+                info!(
+                    "committing output with highest pending checkpoint height {:?}",
+                    highest_in_commit
+                );
+                let output = self.output_queue.pop_front().unwrap();
+                self.remove_shared_object_next_versions(&output);
+                self.remove_processed_consensus_messages(&output);
 
-            // if let Some(indices) = output_indices {
-            //     // Compare the output's sub_dag_index (or equivalent) with highest_executed_commit
-            //     // Only commit if the output's index is <= highest_executed_commit
-            //     if indices.sub_dag_index <= self.highest_executed_commit.into() {
-            //         let output = self.output_queue.pop_front().unwrap();
-
-            //         // Remove all tracked state for this output
-            //         self.remove_shared_object_next_versions(&output);
-            //         self.remove_processed_consensus_messages(&output);
-            //         // self.remove_congestion_control_debts(&output);
-
-            //         // Remove shared version assignments if needed
-            //         // Note: Adjust this part based on your implementation
-            //         // epoch_store.remove_shared_version_assignments(
-            //         //     output.pending_execution.iter().map(|tx| tx.inner().digest()),
-            //         // );
-
-            //         // Write the output to storage
-            //         output.write_to_batch(epoch_store)?;
-            //     } else {
-            //         // This output is not eligible for commit yet
-            //         info!("Not eligble for commit in quarantine yet.");
-            //         break;
-            //     }
-            // } else {
-            //     // No consensus indices available, can't make a decision
-            //     // Either commit it anyway or break depending on your requirements
-            //     let output = self.output_queue.pop_front().unwrap();
-            //     self.remove_shared_object_next_versions(&output);
-            //     self.remove_processed_consensus_messages(&output);
-            //     output.write_to_batch(epoch_store)?;
-            // }
+                output.write_to_batch(epoch_store, batch)?;
+            } else {
+                break;
+            }
         }
 
         Ok(())
@@ -370,34 +428,6 @@ impl ConsensusOutputQuarantine {
             }
         }
     }
-
-    // fn insert_congestion_control_debts(&mut self, output: &ConsensusCommitOutput) {
-    //     let current_round = output.consensus_round;
-
-    //     for (object_id, debt) in output.congestion_control_object_debts.iter() {
-    //         self.congestion_control_object_debts.insert(
-    //             *object_id,
-    //             CongestionPerObjectDebt::new(current_round, *debt),
-    //         );
-    //     }
-
-    //     for (object_id, debt) in output.congestion_control_randomness_object_debts.iter() {
-    //         self.congestion_control_randomness_object_debts.insert(
-    //             *object_id,
-    //             CongestionPerObjectDebt::new(current_round, *debt),
-    //         );
-    //     }
-    // }
-
-    // fn remove_congestion_control_debts(&mut self, output: &ConsensusCommitOutput) {
-    //     for (object_id, _) in output.congestion_control_object_debts.iter() {
-    //         self.congestion_control_object_debts.remove(object_id);
-    //     }
-    //     for (object_id, _) in output.congestion_control_randomness_object_debts.iter() {
-    //         self.congestion_control_randomness_object_debts
-    //             .remove(object_id);
-    //     }
-    // }
 
     fn insert_processed_consensus_messages(&mut self, output: &ConsensusCommitOutput) {
         for tx_key in output.consensus_messages_processed.iter() {
@@ -428,6 +458,26 @@ impl ConsensusOutputQuarantine {
 // Read methods - all methods in this block return data from the quarantine which would otherwise
 // be found in the database.
 impl ConsensusOutputQuarantine {
+    pub(super) fn last_built_summary(&self) -> Option<&BuilderCheckpointSummary> {
+        self.builder_checkpoint_summary
+            .values()
+            .last()
+            .map(|(summary, _)| summary)
+    }
+
+    pub(super) fn get_built_summary(
+        &self,
+        sequence: CheckpointSequenceNumber,
+    ) -> Option<&BuilderCheckpointSummary> {
+        self.builder_checkpoint_summary
+            .get(&sequence)
+            .map(|(summary, _)| summary)
+    }
+
+    pub(super) fn included_transaction_in_checkpoint(&self, digest: &TransactionDigest) -> bool {
+        self.builder_digest_to_checkpoint.contains_key(digest)
+    }
+
     pub(super) fn is_consensus_message_processed(
         &self,
         key: &SequencedConsensusTransactionKey,
@@ -441,26 +491,61 @@ impl ConsensusOutputQuarantine {
 
     pub(super) fn get_next_shared_object_versions(
         &self,
-        epoch_start_config: &EpochStartConfiguration,
         tables: &AuthorityEpochTables,
         objects_to_init: &[ConsensusObjectSequenceKey],
     ) -> SomaResult<Vec<Option<Version>>> {
-        do_fallback_lookup(
+        Ok(do_fallback_lookup(
             objects_to_init,
             |object_key| {
                 if let Some(next_version) = self.shared_object_next_versions.get(object_key) {
-                    Ok(CacheResult::Hit(Some(*next_version)))
+                    CacheResult::Hit(Some(*next_version))
                 } else {
-                    Ok(CacheResult::Miss)
+                    CacheResult::Miss
                 }
             },
             |object_keys| {
-                // Use multi_get for batch lookup from DBMap
-                let results = tables.next_shared_object_versions.multi_get(object_keys)?;
-
-                Ok(results.into_iter().collect())
+                tables
+                    .next_shared_object_versions_v2
+                    .multi_get(object_keys)
+                    .expect("db error")
             },
-        )
+        ))
+    }
+
+    pub(super) fn get_highest_pending_checkpoint_height(&self) -> Option<CheckpointHeight> {
+        self.output_queue
+            .back()
+            .and_then(|output| output.get_highest_pending_checkpoint_height())
+    }
+
+    pub(super) fn get_pending_checkpoints(
+        &self,
+        last: Option<CheckpointHeight>,
+    ) -> Vec<(CheckpointHeight, PendingCheckpoint)> {
+        let mut checkpoints = Vec::new();
+        for output in &self.output_queue {
+            checkpoints.extend(
+                output
+                    .get_pending_checkpoints(last)
+                    .map(|cp| (cp.height(), cp.clone())),
+            );
+        }
+        if cfg!(debug_assertions) {
+            let mut prev = None;
+            for (height, _) in &checkpoints {
+                if let Some(prev) = prev {
+                    assert!(prev < *height);
+                }
+                prev = Some(*height);
+            }
+        }
+        checkpoints
+    }
+
+    pub(super) fn pending_checkpoint_exists(&self, index: &CheckpointHeight) -> bool {
+        self.output_queue
+            .iter()
+            .any(|output| output.pending_checkpoint_exists(index))
     }
 }
 

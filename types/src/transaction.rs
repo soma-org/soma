@@ -593,15 +593,11 @@ pub type VerifiedTransaction = VerifiedEnvelope<SenderSignedData, EmptySignInfo>
 pub type TrustedTransaction = TrustedEnvelope<SenderSignedData, EmptySignInfo>;
 
 impl Transaction {
-    pub fn verify_signature_for_testing(&self, current_epoch: EpochId) -> SomaResult {
-        verify_sender_signed_data_message_signatures(self.data(), current_epoch)
+    pub fn verify_signature_for_testing(&self) -> SomaResult {
+        verify_sender_signed_data_message_signatures(self.data())
     }
 
-    pub fn try_into_verified_for_testing(
-        self,
-        current_epoch: EpochId,
-    ) -> SomaResult<VerifiedTransaction> {
-        self.verify_signature_for_testing(current_epoch)?;
+    pub fn try_into_verified_for_testing(self) -> SomaResult<VerifiedTransaction> {
         Ok(VerifiedTransaction::new_from_verified(self))
     }
 }
@@ -1049,7 +1045,7 @@ impl CertifiedTransaction {
     }
 
     pub fn verify_signatures_authenticated(&self, committee: &Committee) -> SomaResult {
-        verify_sender_signed_data_message_signatures(self.data(), committee.epoch())?;
+        verify_sender_signed_data_message_signatures(self.data())?;
         self.auth_sig()
             .verify_secure(self.data(), Intent::soma_transaction(), committee)
     }
@@ -1123,10 +1119,7 @@ impl VerifiedTransaction {
 pub type VerifiedCertificate = VerifiedEnvelope<SenderSignedData, AuthorityStrongQuorumSignInfo>;
 
 /// Does crypto validation for a transaction which may be user-provided, or may be from a checkpoint.
-pub fn verify_sender_signed_data_message_signatures(
-    txn: &SenderSignedData,
-    current_epoch: EpochId,
-) -> SomaResult {
+pub fn verify_sender_signed_data_message_signatures(txn: &SenderSignedData) -> SomaResult {
     let intent_message = txn.intent_message();
     assert_eq!(intent_message.intent, Intent::soma_transaction());
 
@@ -1158,7 +1151,7 @@ pub fn verify_sender_signed_data_message_signatures(
 
     // 4. Every signature must be valid.
     for (signer, signature) in present_sigs {
-        signature.verify_authenticator(intent_message, signer, current_epoch)?;
+        signature.verify_authenticator(intent_message, signer)?;
     }
     Ok(())
 }

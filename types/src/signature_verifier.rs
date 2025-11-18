@@ -120,7 +120,7 @@ impl SignatureVerifier {
         // Verify only the user sigs of certificates that were not cached already, since whenever we
         // insert a certificate into the cache, it is already verified.
         for cert in &certs {
-            self.verify_tx(cert.data(), epoch.unwrap_or_else(|| self.committee.epoch()))?;
+            self.verify_tx(cert.data())?;
         }
 
         let committee = self.get_committee(epoch.unwrap_or_else(|| self.committee.epoch()));
@@ -132,7 +132,7 @@ impl SignatureVerifier {
     /// Verifies one cert asynchronously, in a batch.
     pub async fn verify_cert(&self, cert: CertifiedTransaction) -> SomaResult<VerifiedCertificate> {
         let cert_digest = cert.certificate_digest();
-        self.verify_tx(cert.data(), cert.epoch())?;
+        self.verify_tx(cert.data())?;
         self.verify_cert_skip_cache(cert).await
     }
 
@@ -246,8 +246,8 @@ impl SignatureVerifier {
         });
     }
 
-    pub fn verify_tx(&self, signed_tx: &SenderSignedData, epoch: EpochId) -> SomaResult {
-        verify_sender_signed_data_message_signatures(signed_tx, epoch)
+    pub fn verify_tx(&self, signed_tx: &SenderSignedData) -> SomaResult {
+        verify_sender_signed_data_message_signatures(signed_tx)
     }
 }
 

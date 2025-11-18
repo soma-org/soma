@@ -16,6 +16,7 @@
 //! end of epoch. This allows us to use it as a signal for reconfig.
 
 use crate::authority::{AuthorityState, ExecutionEnv};
+use crate::backpressure_manager::BackpressureManager;
 use crate::cache::{ObjectCacheRead, TransactionCacheRead};
 use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
     load_checkpoint, store_checkpoint_locally,
@@ -483,10 +484,7 @@ impl CheckpointExecutor {
 
         {
             self.transaction_cache_reader
-                .notify_read_executed_effects_digests(
-                    "CheckpointExecutor::notify_read_executed_effects_digests",
-                    &unexecuted_tx_digests,
-                )
+                .notify_read_executed_effects_digests(&unexecuted_tx_digests)
                 .await;
         }
 
@@ -817,10 +815,7 @@ impl CheckpointExecutor {
         );
 
         self.transaction_cache_reader
-            .notify_read_executed_effects_digests(
-                "CheckpointExecutor::notify_read_advance_epoch_tx",
-                &[*change_epoch_tx.digest()],
-            )
+            .notify_read_executed_effects_digests(&[*change_epoch_tx.digest()])
             .await;
     }
 

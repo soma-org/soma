@@ -19,7 +19,6 @@ pub enum TransactionStatus {
     Executed(
         Option<AuthorityStrongQuorumSignInfo>,
         SignedTransactionEffects,
-        Option<SignedConsensusFinality>,
     ),
 }
 
@@ -33,7 +32,7 @@ impl TransactionStatus {
 
     pub fn into_effects_for_testing(self) -> SignedTransactionEffects {
         match self {
-            Self::Executed(_, e, _) => e,
+            Self::Executed(_, e) => e,
             _ => unreachable!("Incorrect response type"),
         }
     }
@@ -46,12 +45,11 @@ impl PartialEq for TransactionStatus {
                 Self::Signed(s2) => s1.epoch == s2.epoch,
                 _ => false,
             },
-            Self::Executed(c1, e1, f1) => match other {
-                Self::Executed(c2, e2, f2) => {
+            Self::Executed(c1, e1) => match other {
+                Self::Executed(c2, e2) => {
                     c1.as_ref().map(|a| a.epoch) == c2.as_ref().map(|a| a.epoch)
                         && e1.epoch() == e2.epoch()
                         && e1.digest() == e2.digest()
-                        && f1 == f2
                 }
                 _ => false,
             },

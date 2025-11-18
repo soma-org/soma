@@ -1,6 +1,7 @@
 pub mod aggregator;
 pub mod authority;
 pub mod authority_test_utils;
+pub mod backpressure_manager;
 pub mod cache;
 pub mod checkpoints;
 pub mod client;

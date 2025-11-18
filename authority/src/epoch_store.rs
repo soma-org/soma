@@ -85,11 +85,11 @@ use crate::{
     },
     consensus_quarantine::{
         ConsensusCommitOutput, ConsensusOutputCache, ConsensusOutputQuarantine,
-        LAST_CONSENSUS_STATS_ADDR, RECONFIG_STATE_INDEX,
     },
     reconfiguration::ReconfigState,
     shared_obj_version_manager::{
-        AssignedTxAndVersions, ConsensusSharedObjVerAssignment, SharedObjVerManager,
+        AssignedTxAndVersions, AssignedVersions, ConsensusSharedObjVerAssignment, Schedulable,
+        SharedObjVerManager,
     },
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
@@ -97,6 +97,9 @@ use crate::{
     store_tables::ENV_VAR_LOCKS_BLOCK_CACHE_SIZE,
 };
 
+pub(crate) const LAST_CONSENSUS_STATS_ADDR: u64 = 0;
+pub(crate) const RECONFIG_STATE_INDEX: u64 = 0;
+const OVERRIDE_PROTOCOL_UPGRADE_BUFFER_STAKE_INDEX: u64 = 0;
 pub const EPOCH_DB_PREFIX: &str = "epoch_";
 
 // CertLockGuard and CertTxGuard are functionally identical right now, but we retain a distinction
@@ -379,7 +382,7 @@ pub struct AuthorityEpochTables {
     transaction_cert_signatures: DBMap<TransactionDigest, AuthorityStrongQuorumSignInfo>,
 
     /// Next available shared object versions for each shared object.
-    next_shared_object_versions: DBMap<ConsensusObjectSequenceKey, Version>,
+    pub(crate) next_shared_object_versions: DBMap<ConsensusObjectSequenceKey, Version>,
 
     /// Track which transactions have been processed in handle_consensus_transaction. We must be
     /// sure to advance next_shared_object_versions exactly once for each transaction we receive from
@@ -389,7 +392,7 @@ pub struct AuthorityEpochTables {
     /// Entries in this table can be garbage collected whenever we can prove that we won't receive
     /// another handle_consensus_transaction call for the given digest. This probably means at
     /// epoch change.
-    consensus_message_processed: DBMap<SequencedConsensusTransactionKey, bool>,
+    pub(crate) consensus_message_processed: DBMap<SequencedConsensusTransactionKey, bool>,
 
     /// Map stores pending transactions that this authority submitted to consensus
     #[default_options_override_fn = "pending_consensus_transactions_table_default_config"]
@@ -399,16 +402,16 @@ pub struct AuthorityEpochTables {
     /// represents the index of the latest consensus message this authority processed, running hash of
     /// transactions, and accumulated stats of consensus output.
     /// This field is written by a single process (consensus handler).
-    last_consensus_stats: DBMap<u64, ExecutionIndicesWithStats>,
+    pub(crate) last_consensus_stats: DBMap<u64, ExecutionIndicesWithStats>,
 
     /// This table contains current reconfiguration state for validator for current epoch
-    reconfig_state: DBMap<u64, ReconfigState>,
+    pub(crate) reconfig_state: DBMap<u64, ReconfigState>,
 
     /// Validators that have sent EndOfPublish message in this epoch
-    end_of_publish: DBMap<AuthorityName, ()>,
+    pub(crate) end_of_publish: DBMap<AuthorityName, ()>,
 
     /// Checkpoint builder maintains internal list of transactions it included in checkpoints here
-    builder_digest_to_checkpoint: DBMap<TransactionDigest, CheckpointSequenceNumber>,
+    pub(crate) builder_digest_to_checkpoint: DBMap<TransactionDigest, CheckpointSequenceNumber>,
 
     /// Maps non-digest TransactionKeys to the corresponding digest after execution, for use
     /// by checkpoint builder.
@@ -420,7 +423,8 @@ pub struct AuthorityEpochTables {
         DBMap<(CheckpointSequenceNumber, u64), CheckpointSignatureMessage>,
 
     /// Maps sequence number to checkpoint summary, used by CheckpointBuilder to build checkpoint within epoch
-    builder_checkpoint_summary_v2: DBMap<CheckpointSequenceNumber, BuilderCheckpointSummary>,
+    pub(crate) builder_checkpoint_summary:
+        DBMap<CheckpointSequenceNumber, BuilderCheckpointSummary>,
 
     // Maps checkpoint sequence number to an accumulator with accumulated state
     // only for the checkpoint that the key references. Append-only, i.e.,
@@ -1786,7 +1790,7 @@ impl AuthorityPerEpochStore {
         Some(VerifiedSequencedConsensusTransaction(transaction))
     }
 
-    fn db_batch(&self) -> SomaResult<DBBatch> {
+    pub(crate) fn db_batch(&self) -> SomaResult<DBBatch> {
         Ok(self.tables()?.last_consensus_stats.batch())
     }
 

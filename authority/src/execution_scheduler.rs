@@ -1,6 +1,7 @@
 use crate::authority::ExecutionEnv;
 use crate::cache::{ObjectCacheRead, TransactionCacheRead};
 use crate::epoch_store::AuthorityPerEpochStore;
+use crate::shared_obj_version_manager::Schedulable;
 use std::collections::{BTreeSet, HashSet};
 use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};

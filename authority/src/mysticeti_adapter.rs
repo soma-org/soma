@@ -4,7 +4,14 @@ use arc_swap::{ArcSwapOption, Guard};
 use tap::prelude::*;
 use tokio::time::{sleep, Instant};
 use tracing::{error, info, warn};
-use types::consensus::transaction::TransactionClient;
+use types::{
+    consensus::{transaction::TransactionClient, ConsensusTransaction, ConsensusTransactionKind},
+    error::{SomaError, SomaResult},
+};
+
+use crate::{
+    consensus_handler::SequencedConsensusTransactionKey, epoch_store::AuthorityPerEpochStore,
+};
 
 /// Gets a client to submit transactions to Mysticeti, or waits for one to be available.
 /// This hides the complexities of async consensus initialization and submitting to different
@@ -66,7 +73,7 @@ impl ConsensusClient for LazyMysticetiClient {
         &self,
         transactions: &[ConsensusTransaction],
         _epoch_store: &Arc<AuthorityPerEpochStore>,
-    ) -> SuiResult<(Vec<ConsensusPosition>, BlockStatusReceiver)> {
+    ) -> SomaResult<(Vec<ConsensusPosition>, BlockStatusReceiver)> {
         // TODO(mysticeti): confirm comment is still true
         // The retrieved TransactionClient can be from the past epoch. Submit would fail after
         // Mysticeti shuts down, so there should be no correctness issue.
@@ -99,7 +106,7 @@ impl ConsensusClient for LazyMysticetiClient {
                     }
                 };
             })
-            .map_err(|err| SuiErrorKind::FailedToSubmitToConsensus(err.to_string()))?;
+            .map_err(|err| SomaError::FailedToSubmitToConsensus(err.to_string()))?;
 
         let is_soft_bundle = transactions.len() > 1;
         let is_ping = transactions.is_empty();
@@ -109,10 +116,6 @@ impl ConsensusClient for LazyMysticetiClient {
             && matches!(
                 transactions[0].kind,
                 ConsensusTransactionKind::EndOfPublish(_)
-                    | ConsensusTransactionKind::CapabilityNotification(_)
-                    | ConsensusTransactionKind::CapabilityNotificationV2(_)
-                    | ConsensusTransactionKind::RandomnessDkgMessage(_, _)
-                    | ConsensusTransactionKind::RandomnessDkgConfirmation(_, _)
             )
         {
             let transaction_key = SequencedConsensusTransactionKey::External(transactions[0].key());
