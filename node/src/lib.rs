@@ -38,10 +38,6 @@ use encoder_validator_api::{
 };
 use futures::TryFutureExt;
 use object_store::memory::InMemory;
-use objects::networking::{
-    external_service::ExternalObjectServiceManager, internal_service::InternalObjectServiceManager,
-    DownloadService, ObjectServiceManager as _,
-};
 use p2p::{
     builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle},
     tonic_gen::p2p_server::P2pServer,
@@ -165,9 +161,6 @@ pub struct SomaNode {
     encoder_validator_server_handle: Mutex<Option<JoinHandle<Result<()>>>>,
     encoder_client_service: Option<Arc<EncoderClientService>>,
     http_servers: HttpServers,
-    object_managers: Option<(InternalObjectServiceManager, ExternalObjectServiceManager)>,
-    allower: AllowPublicKeys,
-
     subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
 
     #[cfg(msim)]
@@ -455,23 +448,17 @@ impl SomaNode {
             None
         };
 
-        let genesis_encoder_committee = genesis.encoder_committee();
-        let mut encoder_committee_keys = BTreeSet::new();
+        // let genesis_encoder_committee = genesis.encoder_committee();
+        // let mut encoder_committee_keys = BTreeSet::new();
 
-        for (key, _) in genesis_encoder_committee.members() {
-            if let Some(metadata) = genesis_encoder_committee.network_metadata.get(&key) {
-                let peer_key = metadata.network_key.clone().into_inner();
-                encoder_committee_keys.insert(peer_key);
-            }
-        }
+        // for (key, _) in genesis_encoder_committee.members() {
+        //     if let Some(metadata) = genesis_encoder_committee.network_metadata.get(&key) {
+        //         let peer_key = metadata.network_key.clone().into_inner();
+        //         encoder_committee_keys.insert(peer_key);
+        //     }
+        // }
 
-        let allower = AllowPublicKeys::new(encoder_committee_keys);
-
-        let object_managers = if is_full_node {
-            Some(Self::start_object_services(&config, allower.clone(), object_storage).await?)
-        } else {
-            None
-        };
+        // let allower = AllowPublicKeys::new(encoder_committee_keys);
 
         let node = Self {
             config,
@@ -487,8 +474,6 @@ impl SomaNode {
             encoder_validator_server_handle: Mutex::new(encoder_validator_server_handle),
             encoder_client_service,
             http_servers,
-            object_managers,
-            allower,
             subscription_service_checkpoint_sender,
             // connection_monitor_status,
             #[cfg(msim)]
@@ -759,35 +744,6 @@ impl SomaNode {
         Ok(grpc_server)
     }
 
-    async fn start_object_services(
-        config: &NodeConfig,
-        allower: AllowPublicKeys,
-        object_storage: Arc<InMemory>,
-    ) -> Result<(InternalObjectServiceManager, ExternalObjectServiceManager)> {
-        // TODO: for production make this configurable to use either Filesystem or Bucket
-        let params = Arc::new(HttpParameters::default());
-
-        let download_service =
-            DownloadService::new(object_storage.clone(), config.network_key_pair().public());
-
-        let mut external_object_manager =
-            ExternalObjectServiceManager::new(config.network_key_pair(), params.clone(), allower)?;
-
-        let mut internal_object_manager =
-            InternalObjectServiceManager::new(config.network_key_pair(), params)?;
-
-        external_object_manager
-            .start(&config.external_object_address, download_service.clone())
-            .await;
-        internal_object_manager
-            .start(&config.internal_object_address, download_service)
-            .await;
-
-        info!("Started internal and external object servers");
-
-        Ok((internal_object_manager, external_object_manager))
-    }
-
     async fn run_epoch(&self, epoch_duration: Duration) -> u64 {
         loop {
             // Wait for the specified epoch duration
@@ -858,18 +814,18 @@ impl SomaNode {
             let next_epoch = next_epoch_committee.epoch();
             assert_eq!(cur_epoch_store.epoch() + 1, next_epoch);
 
-            let new_encoder_committee = latest_system_state.get_current_epoch_encoder_committee();
-            let mut encoder_committee_keys = BTreeSet::new();
+            // let new_encoder_committee = latest_system_state.get_current_epoch_encoder_committee();
+            // let mut encoder_committee_keys = BTreeSet::new();
 
-            for (key, _) in new_encoder_committee.members() {
-                if let Some(metadata) = new_encoder_committee.network_metadata.get(&key) {
-                    let peer_key = metadata.network_key.clone().into_inner();
-                    encoder_committee_keys.insert(peer_key);
-                }
-            }
+            // for (key, _) in new_encoder_committee.members() {
+            //     if let Some(metadata) = new_encoder_committee.network_metadata.get(&key) {
+            //         let peer_key = metadata.network_key.clone().into_inner();
+            //         encoder_committee_keys.insert(peer_key);
+            //     }
+            // }
 
-            // Update the allower with new encoder committee keys
-            self.allower.update(encoder_committee_keys);
+            // // Update the allower with new encoder committee keys
+            // self.allower.update(encoder_committee_keys);
 
             info!(
                 next_epoch,

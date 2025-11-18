@@ -229,6 +229,8 @@ reqwest = { version = "0.12.23", default-features = false, features = [
   "rustls-tls",
   "zstd",
 ] }
+reqwest-retry = "0.7.0"
+reqwest-middleware = "0.4.2"
 axum = { version = "0.8", default-features = false, features = [
   "macros",
   "tokio",
@@ -262,6 +264,7 @@ http-body-util = "0.1"
 
 pin-project-lite = "0.2.15"
 socket2 = { version = "0.5", features = ["all"] }
+axum-extra = { version = "0.12.2", features = ["query"] }
 
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 

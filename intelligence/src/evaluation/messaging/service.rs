@@ -3,24 +3,43 @@ use crate::evaluation::core_processor::EvaluationCoreProcessor;
 use crate::evaluation::EvaluatorClient;
 use async_trait::async_trait;
 use bytes::Bytes;
-use objects::{EphemeralStore, PersistentStore};
+use object_store::ObjectStore;
+use objects::stores::{EphemeralStore, PersistentStore};
 use tokio_util::sync::CancellationToken;
 use types::error::{EvaluationError, EvaluationResult};
 use types::{actors::ActorHandle, evaluation::EvaluationInput};
 
-pub struct EvaluationNetworkService<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> {
-    core_processor: ActorHandle<EvaluationCoreProcessor<P, E, C>>,
+pub struct EvaluationNetworkService<
+    PS: ObjectStore,
+    ES: ObjectStore,
+    P: PersistentStore<PS>,
+    E: EphemeralStore<ES>,
+    C: EvaluatorClient,
+> {
+    core_processor: ActorHandle<EvaluationCoreProcessor<PS, ES, P, E, C>>,
 }
 
-impl<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> EvaluationNetworkService<P, E, C> {
-    pub fn new(core_processor: ActorHandle<EvaluationCoreProcessor<P, E, C>>) -> Self {
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        C: EvaluatorClient,
+    > EvaluationNetworkService<PS, ES, P, E, C>
+{
+    pub fn new(core_processor: ActorHandle<EvaluationCoreProcessor<PS, ES, P, E, C>>) -> Self {
         Self { core_processor }
     }
 }
 
 #[async_trait]
-impl<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> EvaluationService
-    for EvaluationNetworkService<P, E, C>
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        C: EvaluatorClient,
+    > EvaluationService for EvaluationNetworkService<PS, ES, P, E, C>
 {
     async fn handle_evaluation(&self, input_bytes: Bytes) -> EvaluationResult<Bytes> {
         let evaluation_input: EvaluationInput =

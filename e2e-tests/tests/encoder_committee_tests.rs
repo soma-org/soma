@@ -216,8 +216,7 @@ async fn execute_add_encoder_transaction(
                     .unwrap(),
                 internal_network_address: bcs::to_bytes(&encoder_config.internal_network_address)
                     .unwrap(),
-                object_server_address: bcs::to_bytes(&encoder_config.external_object_address)
-                    .unwrap(),
+                object_server_address: bcs::to_bytes(&encoder_config.object_address).unwrap(),
                 // probe_address: bcs::to_bytes(&encoder_config.probe_address).unwrap(),
             }),
             encoder_address,

@@ -22,7 +22,7 @@ use types::{
     finality::{CertifiedConsensusFinality, FinalityProof, VerifiedCertifiedConsensusFinality},
     metadata::{
         self, DownloadMetadata, Metadata, MetadataAPI, MetadataV1, MtlsDownloadMetadata,
-        MtlsDownloadMetadataV1, ObjectPath, SignedParams,
+        MtlsDownloadMetadataV1, ObjectPath,
     },
     multiaddr::Multiaddr,
     object::{Object, ObjectRef},

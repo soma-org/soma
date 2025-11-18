@@ -1441,8 +1441,8 @@ pub enum ObjectError {
     NotFound(String),
     #[error("Verification error: {0}")]
     VerificationError(String),
-    #[error("tus error: {0}")]
-    TusError(String),
+    #[error("url error: {0}")]
+    UrlError(String),
     #[error("Io error: {0}, {1}")]
     Io(String, String),
     #[error("missing header: {0}")]
@@ -1455,6 +1455,8 @@ pub enum ObjectError {
     ObjectStoreError(object_store::Error),
     #[error("Storage failed: {0}")]
     StorageFailure(String),
+    #[error("Timeout hit ")]
+    Timeout,
 }
 pub type ObjectResult<T> = Result<T, ObjectError>;
 

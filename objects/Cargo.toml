@@ -32,8 +32,10 @@ futures.workspace = true
 bcs.workspace = true
 object_store.workspace = true
 memmap2.workspace = true
+reqwest-retry.workspace = true
+reqwest-middleware.workspace = true
+serde_urlencoded.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
 tempdir.workspace = true
-serde_html_form = "0.2.8"

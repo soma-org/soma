@@ -1,13 +1,17 @@
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use async_trait::async_trait;
 use object_store::ObjectStore;
+use objects::{
+    downloader::ObjectDownloader,
+    readers::{
+        store::ObjectStoreReader,
+        url::{ObjectHttpClient, ObjectHttpReader},
+    },
+    stores::{EphemeralStore, PersistentStore},
+};
 use tokio_util::sync::CancellationToken;
 
-use objects::{
-    networking::{downloader::Downloader, transfer::Transfer},
-    EphemeralStore, PersistentStore,
-};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
@@ -20,25 +24,45 @@ use types::{
 
 use crate::evaluation::{EvaluatorClient, EvaluatorInput, EvaluatorInputV1, EvaluatorOutputAPI};
 
-pub struct EvaluationCoreProcessor<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> {
+pub struct EvaluationCoreProcessor<
+    PS: ObjectStore,
+    ES: ObjectStore,
+    P: PersistentStore<PS>,
+    E: EphemeralStore<ES>,
+    C: EvaluatorClient,
+> {
     persistent_store: P,
     ephemeral_store: E,
     evaluator_client: Arc<C>,
-    downloader: ActorHandle<Downloader>,
+    downloader: Arc<ObjectDownloader>,
+    object_http_client: ObjectHttpClient,
+    p_marker: PhantomData<PS>,
+    e_marker: PhantomData<ES>,
 }
 
-impl<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> EvaluationCoreProcessor<P, E, C> {
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        C: EvaluatorClient,
+    > EvaluationCoreProcessor<PS, ES, P, E, C>
+{
     pub fn new(
         persistent_store: P,
         ephemeral_store: E,
         evaluator_client: Arc<C>,
-        downloader: ActorHandle<Downloader>,
+        downloader: Arc<ObjectDownloader>,
+        object_http_client: ObjectHttpClient,
     ) -> Self {
         Self {
             persistent_store,
             ephemeral_store,
             evaluator_client,
             downloader,
+            object_http_client,
+            p_marker: PhantomData,
+            e_marker: PhantomData,
         }
     }
     async fn load_data(
@@ -65,35 +89,49 @@ impl<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> EvaluationCorePr
             .await
             .is_ok()
         {
-            Transfer::transfer(
+            let reader = Arc::new(ObjectStoreReader::new(
                 self.persistent_store.object_store().clone(),
+                object_path.clone(),
+            ));
+            self.downloader
+                .download(
+                    reader,
+                    self.ephemeral_store.object_store().clone(),
+                    object_path.clone(),
+                    download_metadata.metadata().clone(),
+                )
+                .await
+                .map_err(ShardError::ObjectError)?;
+        }
+        let reader = Arc::new(
+            self.object_http_client
+                .get_reader(download_metadata)
+                .await
+                .map_err(ShardError::ObjectError)?,
+        );
+
+        self.downloader
+            .download(
+                reader,
                 self.ephemeral_store.object_store().clone(),
-                object_path,
+                object_path.clone(),
+                download_metadata.metadata().clone(),
             )
             .await
             .map_err(ShardError::ObjectError)?;
-            return Ok(());
-        }
-
-        // Download from remote.
-        self.downloader
-            .process(
-                (
-                    download_metadata.clone(),
-                    object_path.clone(),
-                    self.ephemeral_store.object_store().clone(),
-                ),
-                cancellation,
-            )
-            .await?;
 
         Ok(())
     }
 }
 
 #[async_trait]
-impl<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> Processor
-    for EvaluationCoreProcessor<P, E, C>
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        C: EvaluatorClient,
+    > Processor for EvaluationCoreProcessor<PS, ES, P, E, C>
 {
     type Input = EvaluationInput;
     type Output = EvaluationOutput;
@@ -141,30 +179,48 @@ impl<P: PersistentStore, E: EphemeralStore, C: EvaluatorClient> Processor
                 .await
                 .map_err(ShardError::EvaluationError)?;
 
-            Transfer::transfer(
+            let reader = Arc::new(ObjectStoreReader::new(
                 self.ephemeral_store.object_store().clone(),
-                self.persistent_store.object_store().clone(),
-                &input.input_object_path(),
-            )
-            .await
-            .map_err(ShardError::ObjectError)?;
-
-            Transfer::transfer(
-                self.ephemeral_store.object_store().clone(),
-                self.persistent_store.object_store().clone(),
-                &input.embedding_object_path(),
-            )
-            .await
-            .map_err(ShardError::ObjectError)?;
-
-            for (_encoder, (_download_metadata, object_path)) in input.probe_set_data() {
-                Transfer::transfer(
-                    self.ephemeral_store.object_store().clone(),
+                input.input_object_path().clone(),
+            ));
+            self.downloader
+                .download(
+                    reader,
                     self.persistent_store.object_store().clone(),
-                    &object_path,
+                    input.input_object_path().clone(),
+                    input.input_download_metadata().metadata().clone(),
                 )
                 .await
                 .map_err(ShardError::ObjectError)?;
+
+            let reader = Arc::new(ObjectStoreReader::new(
+                self.ephemeral_store.object_store().clone(),
+                input.embedding_object_path().clone(),
+            ));
+            self.downloader
+                .download(
+                    reader,
+                    self.persistent_store.object_store().clone(),
+                    input.embedding_object_path().clone(),
+                    input.embedding_download_metadata().metadata().clone(),
+                )
+                .await
+                .map_err(ShardError::ObjectError)?;
+
+            for (_encoder, (download_metadata, object_path)) in input.probe_set_data() {
+                let reader = Arc::new(ObjectStoreReader::new(
+                    self.ephemeral_store.object_store().clone(),
+                    object_path.clone(),
+                ));
+                self.downloader
+                    .download(
+                        reader,
+                        self.persistent_store.object_store().clone(),
+                        object_path.clone(),
+                        download_metadata.metadata().clone(),
+                    )
+                    .await
+                    .map_err(ShardError::ObjectError)?;
             }
 
             Ok(EvaluationOutput::V1(EvaluationOutputV1::new(

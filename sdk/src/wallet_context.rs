@@ -439,26 +439,26 @@ impl WalletContext {
         // Get the client (which always has TUS functionality)
         let client = self.get_client().await?;
 
-        // Create upload session
-        info!("Creating upload session for {} bytes", data_size);
-        let upload_uuid = client.create_upload(data_size).await?;
-        info!("Created upload with UUID: {}", upload_uuid);
+        // // Create upload session
+        // info!("Creating upload session for {} bytes", data_size);
+        // let upload_uuid = client.create_upload(data_size).await?;
+        // info!("Created upload with UUID: {}", upload_uuid);
 
-        // Upload the data
-        info!("Starting data upload...");
-        client.upload_data(upload_uuid, data_reader).await?;
+        // // Upload the data
+        // info!("Starting data upload...");
+        // client.upload_data(upload_uuid, data_reader).await?;
 
-        // Verify upload completion
-        let upload_info = client.get_upload_info(upload_uuid).await?;
+        // // Verify upload completion
+        // let upload_info = client.get_upload_info(upload_uuid).await?;
 
-        if upload_info.bytes_uploaded != upload_info.total_size {
-            return Err(anyhow!(
-                "Upload incomplete: {}/{} bytes uploaded",
-                upload_info.bytes_uploaded,
-                upload_info.total_size
-            ));
-        }
-        info!("Upload completed successfully");
+        // if upload_info.bytes_uploaded != upload_info.total_size {
+        //     return Err(anyhow!(
+        //         "Upload incomplete: {}/{} bytes uploaded",
+        //         upload_info.bytes_uploaded,
+        //         upload_info.total_size
+        //     ));
+        // }
+        // info!("Upload completed successfully");
 
         let response = self.execute_transaction_must_succeed(tx).await;
 

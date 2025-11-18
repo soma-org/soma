@@ -272,7 +272,6 @@ impl CommitteeSyncManager {
             self.own_encoder_key.clone(),
             // TODO: should we handle this differently? must work across epochs so both should not be upgradable
             self.context.own_network_keypair(),
-            self.context.internal_object_service_address(),
         );
 
         // Update the context with the new inner context

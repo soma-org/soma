@@ -53,16 +53,6 @@ impl Context {
         }
     }
 
-    pub fn object_server(
-        &self,
-        encoder: &EncoderPublicKey,
-    ) -> Option<(NetworkPublicKey, Multiaddr)> {
-        self.inner.load().object_server(encoder)
-    }
-
-    pub(crate) fn internal_object_service_address(&self) -> Multiaddr {
-        self.inner.load().internal_object_service_address.clone()
-    }
     pub fn network_public_keys(
         &self,
         encoders: Vec<EncoderPublicKey>,
@@ -97,7 +87,6 @@ pub struct InnerContext {
     pub current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
     own_network_keypair: NetworkKeyPair,
-    internal_object_service_address: Multiaddr,
 }
 
 impl InnerContext {
@@ -106,14 +95,12 @@ impl InnerContext {
         current_epoch: Epoch,
         own_encoder_public_key: EncoderPublicKey,
         own_network_keypair: NetworkKeyPair,
-        internal_object_service_address: Multiaddr,
     ) -> Self {
         Self {
             current_epoch,
             own_encoder_public_key,
             committees,
             own_network_keypair,
-            internal_object_service_address,
         }
     }
 
@@ -133,21 +120,6 @@ impl InnerContext {
     }
     pub(crate) fn own_encoder_key(&self) -> &EncoderPublicKey {
         &self.own_encoder_public_key
-    }
-    pub(crate) fn object_server(
-        &self,
-        encoder: &EncoderPublicKey,
-    ) -> Option<(NetworkPublicKey, Multiaddr)> {
-        self.current_committees()
-            .encoder_committee
-            .network_metadata
-            .get(encoder)
-            .map(|networking_details| {
-                (
-                    NetworkPublicKey::new(networking_details.network_key.clone().into_inner()),
-                    networking_details.object_server_address.clone(),
-                )
-            })
     }
 }
 
