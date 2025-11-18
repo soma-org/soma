@@ -1,5 +1,5 @@
+use crate::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
 use crate::rpc_index::RpcIndexStore;
-use crate::store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
 use anyhow::anyhow;
 use bincode::Options;
 use once_cell::sync::Lazy;

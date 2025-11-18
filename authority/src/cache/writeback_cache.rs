@@ -35,6 +35,9 @@
 //! The above design is used for both objects and markers.
 
 use crate::{
+    authority_store::{
+        AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus,
+    },
     backpressure_manager::BackpressureManager,
     cache::{
         cache_types::{IsNewer, MonotonicCache, Ticket},
@@ -44,7 +47,6 @@ use crate::{
     fallback_fetch::{do_fallback_lookup, do_fallback_lookup_fallible},
     global_state_hasher::GlobalStateHashStore,
     start_epoch::EpochStartConfiguration,
-    store::{AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus},
 };
 use core::hash::Hash;
 use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};

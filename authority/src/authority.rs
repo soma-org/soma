@@ -100,6 +100,10 @@ use types::{
     },
 };
 
+use crate::authority_store::{AuthorityStore, ObjectLockStatus};
+#[cfg(test)]
+use crate::authority_store_tables;
+use crate::authority_store_tables::AuthorityPrunerTables;
 use crate::cache::{
     ExecutionCacheCommit, ExecutionCacheReconfigAPI, ExecutionCacheTraitPointers,
     ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TransactionCacheRead,
@@ -115,11 +119,7 @@ use crate::global_state_hasher::{GlobalStateHashStore, GlobalStateHasher};
 use crate::rpc_index::RpcIndexStore;
 use crate::shared_obj_version_manager::{AssignedVersions, Schedulable};
 use crate::start_epoch::EpochStartConfigTrait;
-use crate::store::{AuthorityStore, ObjectLockStatus};
 use crate::store_pruner::{AuthorityStorePruner, PrunerWatermarks, EPOCH_DURATION_MS_FOR_TESTING};
-#[cfg(test)]
-use crate::store_tables;
-use crate::store_tables::AuthorityPrunerTables;
 use crate::tx_input_loader::TransactionInputLoader;
 use crate::{
     client::NetworkAuthorityClient, epoch_store::AuthorityPerEpochStore,

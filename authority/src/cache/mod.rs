@@ -28,11 +28,11 @@ use writeback_cache::WritebackCache;
 
 use crate::{
     authority::ExecutionLockWriteGuard,
+    authority_store::{AuthorityStore, LockResult},
     backpressure_manager::BackpressureManager,
     epoch_store::AuthorityPerEpochStore,
     global_state_hasher::GlobalStateHashStore,
     start_epoch::EpochStartConfiguration,
-    store::{AuthorityStore, LockResult},
 };
 
 pub(crate) mod cache_types;

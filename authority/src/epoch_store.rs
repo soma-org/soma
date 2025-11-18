@@ -74,6 +74,8 @@ use types::{
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
 
 use crate::{
+    authority_store::LockDetails,
+    authority_store_tables::ENV_VAR_LOCKS_BLOCK_CACHE_SIZE,
     cache::{cache_types::CacheResult, ObjectCacheRead},
     checkpoints::{BuilderCheckpointSummary, CheckpointHeight, PendingCheckpoint},
     consensus_handler::{
@@ -91,8 +93,6 @@ use crate::{
     },
     stake_aggregator::StakeAggregator,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    store::LockDetails,
-    store_tables::ENV_VAR_LOCKS_BLOCK_CACHE_SIZE,
 };
 
 pub(crate) const LAST_CONSENSUS_STATS_ADDR: u64 = 0;

@@ -18,15 +18,15 @@ use types::{
 
 use crate::{
     authority::AuthorityState,
+    authority_store::AuthorityStore,
+    authority_store_tables::{
+        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
+    },
     cache::build_execution_cache,
     epoch_store::AuthorityPerEpochStore,
     rpc_index::RpcIndexStore,
     start_epoch::EpochStartConfiguration,
-    store::AuthorityStore,
     store_pruner::{ObjectsCompactionFilter, PrunerWatermarks},
-    store_tables::{
-        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
-    },
 };
 
 #[derive(Default, Clone)]

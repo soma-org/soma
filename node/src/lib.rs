@@ -4,6 +4,9 @@ use authority::{
     adapter::{ConsensusAdapter, SubmitToConsensus},
     aggregator::AuthorityAggregator,
     authority::{self, AuthorityState},
+    authority_store_tables::{
+        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
+    },
     cache::build_execution_cache,
     checkpoints::{executor::CommitExecutor, CommitStore},
     client::NetworkAuthorityClient,
@@ -23,9 +26,6 @@ use authority::{
     state_sync_store::StateSyncStore,
     store::AuthorityStore,
     store_pruner::{ObjectsCompactionFilter, PrunerWatermarks},
-    store_tables::{
-        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
-    },
     throughput::{
         ConsensusThroughputCalculator, ConsensusThroughputProfiler, ThroughputProfileRanges,
     },

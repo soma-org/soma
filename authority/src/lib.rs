@@ -1,5 +1,7 @@
 pub mod aggregator;
 pub mod authority;
+pub mod authority_store;
+pub mod authority_store_tables;
 pub mod authority_test_utils;
 pub mod backpressure_manager;
 pub mod cache;
@@ -31,9 +33,7 @@ pub mod shared_obj_version_manager;
 pub mod stake_aggregator;
 pub mod start_epoch;
 pub mod state_sync_store;
-pub mod store;
 pub mod store_pruner;
-pub mod store_tables;
 pub mod test_authority_builder;
 pub mod throughput;
 pub mod tx_input_loader;

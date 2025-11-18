@@ -16,6 +16,7 @@ use store::{DbIterator, Map as _};
 use tracing::{error, info};
 use types::{
     base::SomaAddress,
+    checkpoints::{CheckpointSequenceNumber, GlobalStateHash},
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     effects::TransactionEffects,
@@ -27,8 +28,8 @@ use types::{
 };
 
 use crate::{
+    authority_store::LockDetails,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    store::LockDetails,
     store_pruner::ObjectsCompactionFilter,
 };
 
@@ -108,16 +109,20 @@ pub struct AuthorityPerpetualTables {
     /// tables.
     pub(crate) executed_effects: DBMap<TransactionDigest, TransactionEffectsDigest>,
 
+    // Loaded (and unchanged) runtime object references.
+    pub(crate) unchanged_loaded_runtime_objects: DBMap<TransactionDigest, Vec<ObjectKey>>,
+
+    // Finalized root state hash for epoch, to be included in CheckpointSummary
+    // of last checkpoint of epoch. These values should only ever be written once
+    // and never changed
+    pub(crate) root_state_hash_by_epoch:
+        DBMap<EpochId, (CheckpointSequenceNumber, GlobalStateHash)>,
+
     /// Parameters of the system fixed at the epoch start
     pub(crate) epoch_start_configuration: DBMap<(), EpochStartConfiguration>,
 
-    /// A singleton table that stores latest pruned commit. Used to keep objects pruner progress
-    pub(crate) pruned_commit: DBMap<(), CommitIndex>,
-
-    // Finalized root state accumulator for epoch, to be included in
-    // of last commit of epoch. These values should only ever be written once
-    // and never changed
-    pub(crate) root_state_hash_by_epoch: DBMap<EpochId, (CommitIndex, Accumulator)>,
+    /// A singleton table that stores latest pruned checkpoint. Used to keep objects pruner progress
+    pub(crate) pruned_checkpoint: DBMap<(), CheckpointSequenceNumber>,
 
     /// Table that stores the set of received objects and deleted objects and the version at
     /// which they were received. This is used to prevent possible race conditions around receiving
@@ -289,16 +294,46 @@ impl AuthorityPerpetualTables {
         Ok(())
     }
 
-    pub fn get_highest_pruned_commit(&self) -> Result<Option<CommitIndex>, TypedStoreError> {
-        self.pruned_commit.get(&())
+    pub fn get_highest_pruned_checkpoint(
+        &self,
+    ) -> Result<Option<CheckpointSequenceNumber>, TypedStoreError> {
+        self.pruned_checkpoint.get(&())
     }
 
-    pub fn set_highest_pruned_commit(
+    pub fn set_highest_pruned_checkpoint(
         &self,
         wb: &mut DBBatch,
-        commit_index: CommitIndex,
+        checkpoint_number: CheckpointSequenceNumber,
     ) -> SomaResult {
-        wb.insert_batch(&self.pruned_commit, [((), commit_index)])?;
+        wb.insert_batch(&self.pruned_checkpoint, [((), checkpoint_number)])?;
+        Ok(())
+    }
+
+    pub fn set_highest_pruned_checkpoint_without_wb(
+        &self,
+        checkpoint_number: CheckpointSequenceNumber,
+    ) -> SomaResult {
+        let mut wb = self.pruned_checkpoint.batch();
+        self.set_highest_pruned_checkpoint(&mut wb, checkpoint_number)?;
+        wb.write()?;
+        Ok(())
+    }
+
+    pub fn get_root_state_hash(
+        &self,
+        epoch: EpochId,
+    ) -> SomaResult<Option<(CheckpointSequenceNumber, GlobalStateHash)>> {
+        Ok(self.root_state_hash_by_epoch.get(&epoch)?)
+    }
+
+    pub fn insert_root_state_hash(
+        &self,
+        epoch: EpochId,
+        last_checkpoint_of_epoch: CheckpointSequenceNumber,
+        hash: GlobalStateHash,
+    ) -> SomaResult {
+        self.root_state_hash_by_epoch
+            .insert(&epoch, &(last_checkpoint_of_epoch, hash))?;
         Ok(())
     }
 

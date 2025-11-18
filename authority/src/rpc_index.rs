@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::store::AuthorityStore;
+use crate::authority_store::AuthorityStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use store::rocks::{DBMap, DBMapTableConfigMap};
