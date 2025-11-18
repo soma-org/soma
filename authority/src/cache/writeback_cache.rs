@@ -35,6 +35,7 @@
 //! The above design is used for both objects and markers.
 
 use crate::{
+    authority_per_epoch_store::AuthorityPerEpochStore,
     authority_store::{
         AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus,
     },
@@ -43,7 +44,6 @@ use crate::{
         cache_types::{IsNewer, MonotonicCache, Ticket},
         implement_passthrough_traits, Batch,
     },
-    epoch_store::AuthorityPerEpochStore,
     fallback_fetch::{do_fallback_lookup, do_fallback_lookup_fallible},
     global_state_hasher::GlobalStateHashStore,
     start_epoch::EpochStartConfiguration,

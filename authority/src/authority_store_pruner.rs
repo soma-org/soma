@@ -1,4 +1,5 @@
 use crate::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
+use crate::checkpoints::{CheckpointStore, CheckpointWatermark};
 use crate::rpc_index::RpcIndexStore;
 use anyhow::anyhow;
 use bincode::Options;
@@ -15,11 +16,11 @@ use store::{Map, TypedStoreError};
 use tokio::sync::oneshot::{self, Sender};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
+use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
 use types::committee::EpochId;
 use types::config::node_config::AuthorityStorePruningConfig;
-use types::consensus::commit::{CommitDigest, CommitIndex, CommittedSubDag};
 use types::consensus::output::ConsensusOutputAPI;
-use types::consensus::ConsensusTransactionKind;
+use types::digests::CheckpointDigest;
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::envelope::Message as _;
 use types::object::{ObjectID, Version};
@@ -62,7 +63,7 @@ impl AuthorityStorePruner {
         transaction_effects: Vec<TransactionEffects>,
         perpetual_db: &Arc<AuthorityPerpetualTables>,
         pruner_db: Option<&Arc<AuthorityPrunerTables>>,
-        commit_index: CommitIndex,
+        checkpoint_number: CheckpointSequenceNumber,
         enable_pruning_tombstones: bool,
     ) -> anyhow::Result<()> {
         let mut wb = perpetual_db.objects.batch();
@@ -133,7 +134,7 @@ impl AuthorityStorePruner {
             wb.delete_batch(&perpetual_db.objects, object_keys_to_delete)?;
         }
 
-        perpetual_db.set_highest_pruned_commit(&mut wb, commit_index)?;
+        perpetual_db.set_highest_pruned_checkpoint(&mut wb, checkpoint_number)?;
 
         if let Some(batch) = pruner_db_wb {
             batch.write()?;
@@ -142,107 +143,101 @@ impl AuthorityStorePruner {
         Ok(())
     }
 
-    fn prune_commits(
+    fn prune_checkpoints(
         perpetual_db: &Arc<AuthorityPerpetualTables>,
-        commit_db: &Arc<CommitStore>,
+        checkpoint_db: &Arc<CheckpointStore>,
         rpc_index: Option<&RpcIndexStore>,
-        commit_index: CommitIndex,
-        commits_to_prune: Vec<CommitDigest>,
-        commit_content_to_prune: Vec<CommittedSubDag>,
+        checkpoint_number: CheckpointSequenceNumber,
+        checkpoints_to_prune: Vec<CheckpointDigest>,
+        checkpoint_content_to_prune: Vec<CheckpointContents>,
         effects_to_prune: &Vec<TransactionEffects>,
     ) -> anyhow::Result<()> {
         let mut perpetual_batch = perpetual_db.objects.batch();
-        let transactions: Vec<_> = commit_content_to_prune
+        let transactions: Vec<_> = checkpoint_content_to_prune
             .iter()
-            .flat_map(|content| {
-                content
-                    .transactions()
-                    .iter()
-                    .flat_map(|(_, authority_transactions)| {
-                        authority_transactions
-                            .iter()
-                            .filter_map(|(_, transaction)| {
-                                if let ConsensusTransactionKind::UserTransaction(cert_tx) =
-                                    &transaction.kind
-                                {
-                                    Some(*cert_tx.digest())
-                                } else {
-                                    None
-                                }
-                            })
-                    })
-                    .collect::<Vec<_>>()
-            })
+            .flat_map(|content| content.iter().map(|tx| tx.transaction))
             .collect();
 
         perpetual_batch.delete_batch(&perpetual_db.transactions, transactions.iter())?;
         perpetual_batch.delete_batch(&perpetual_db.executed_effects, transactions.iter())?;
+        perpetual_batch.delete_batch(
+            &perpetual_db.executed_transactions_to_checkpoint,
+            transactions.iter(),
+        )?;
 
         let mut effect_digests = vec![];
         for effects in effects_to_prune {
             let effects_digest = effects.digest();
             debug!("Pruning effects {:?}", effects_digest);
             effect_digests.push(effects_digest);
+
+            if effects.events_digest().is_some() {
+                perpetual_batch
+                    .delete_batch(&perpetual_db.events_2, [effects.transaction_digest()])?;
+            }
         }
+        perpetual_batch.delete_batch(
+            &perpetual_db.unchanged_loaded_runtime_objects,
+            transactions.iter(),
+        )?;
         perpetual_batch.delete_batch(&perpetual_db.effects, effect_digests)?;
 
-        let mut commits_batch = commit_db.certified_commits.batch();
+        let mut checkpoints_batch = checkpoint_db.tables.certified_checkpoints.batch();
 
-        let commit_content_digests = commit_content_to_prune
-            .iter()
-            .map(|ckpt| ckpt.commit_ref.digest);
-        let commit_content_indices = commit_content_to_prune
-            .iter()
-            .map(|ckpt| ckpt.commit_ref.index);
-        commits_batch.delete_batch(&commit_db.certified_commits, commit_content_indices)?;
-        commits_batch.delete_batch(
-            &commit_db.commit_index_by_digest,
-            commit_content_digests.clone(),
+        let checkpoint_content_digests =
+            checkpoint_content_to_prune.iter().map(|ckpt| ckpt.digest());
+        checkpoints_batch.delete_batch(
+            &checkpoint_db.tables.checkpoint_content,
+            checkpoint_content_digests.clone(),
         )?;
-        commits_batch.delete_batch(&commit_db.commit_by_digest, commits_to_prune)?;
-        commits_batch.delete_batch(
-            &commit_db.effects_digests_by_commit_digest,
-            commit_content_digests,
+        checkpoints_batch.delete_batch(
+            &checkpoint_db.tables.checkpoint_sequence_by_contents_digest,
+            checkpoint_content_digests,
         )?;
 
-        commits_batch.insert_batch(
-            &commit_db.watermarks,
+        checkpoints_batch.delete_batch(
+            &checkpoint_db.tables.checkpoint_by_digest,
+            checkpoints_to_prune,
+        )?;
+
+        checkpoints_batch.insert_batch(
+            &checkpoint_db.tables.watermarks,
             [(
-                &CommitWatermark::HighestPruned,
-                &(commit_index, CommitDigest::random()),
+                &CheckpointWatermark::HighestPruned,
+                &(checkpoint_number, CheckpointDigest::random()),
             )],
         )?;
 
         if let Some(rpc_index) = rpc_index {
-            rpc_index.prune(commit_index.into(), &transactions)?;
+            rpc_index.prune(checkpoint_number, &checkpoint_content_to_prune)?;
         }
         perpetual_batch.write()?;
-        commits_batch.write()?;
+        checkpoints_batch.write()?;
 
         Ok(())
     }
 
-    /// Prunes old data based on effects from all commits from epochs eligible for pruning
+    /// Prunes old data based on effects from all checkpoints from epochs eligible for pruning
     pub async fn prune_objects_for_eligible_epochs(
         perpetual_db: &Arc<AuthorityPerpetualTables>,
-        commit_store: &Arc<CommitStore>,
+        checkpoint_store: &Arc<CheckpointStore>,
         rpc_index: Option<&RpcIndexStore>,
         pruner_db: Option<&Arc<AuthorityPrunerTables>>,
         config: AuthorityStorePruningConfig,
         epoch_duration_ms: u64,
     ) -> anyhow::Result<()> {
-        let (mut max_eligible_commit_index, epoch_id) = commit_store
-            .get_highest_executed_commit()?
-            .map(|c| (c.commit_ref.index, c.epoch()))
+        let (mut max_eligible_checkpoint_number, epoch_id) = checkpoint_store
+            .get_highest_executed_checkpoint()?
+            .map(|c| (*c.sequence_number(), c.epoch))
             .unwrap_or_default();
-        let pruned_commit_index = perpetual_db
-            .get_highest_pruned_commit()?
+        let pruned_checkpoint_number = perpetual_db
+            .get_highest_pruned_checkpoint()?
             .unwrap_or_default();
         if config.smooth && config.num_epochs_to_retain > 0 {
-            max_eligible_commit_index = Self::smoothed_max_eligible_commit_index(
-                commit_store,
-                max_eligible_commit_index,
-                pruned_commit_index,
+            max_eligible_checkpoint_number = Self::smoothed_max_eligible_checkpoint_number(
+                checkpoint_store,
+                max_eligible_checkpoint_number,
+                pruned_checkpoint_number,
                 epoch_id,
                 epoch_duration_ms,
                 config.num_epochs_to_retain,
@@ -250,136 +245,142 @@ impl AuthorityStorePruner {
         }
         Self::prune_for_eligible_epochs(
             perpetual_db,
-            commit_store,
+            checkpoint_store,
             rpc_index,
             pruner_db,
             PruningMode::Objects,
             config.num_epochs_to_retain,
-            pruned_commit_index,
-            max_eligible_commit_index,
+            pruned_checkpoint_number,
+            max_eligible_checkpoint_number,
             config,
         )
         .await
     }
 
-    pub async fn prune_commits_for_eligible_epochs(
+    pub async fn prune_checkpoints_for_eligible_epochs(
         perpetual_db: &Arc<AuthorityPerpetualTables>,
-        commit_store: &Arc<CommitStore>,
+        checkpoint_store: &Arc<CheckpointStore>,
         rpc_index: Option<&RpcIndexStore>,
         pruner_db: Option<&Arc<AuthorityPrunerTables>>,
         config: AuthorityStorePruningConfig,
+
         epoch_duration_ms: u64,
         pruner_watermarks: &Arc<PrunerWatermarks>,
     ) -> anyhow::Result<()> {
-        let pruned_commit_index = commit_store.get_highest_pruned_commit_index()?.unwrap_or(0);
-        let (mut max_eligible_commit, epoch_id) = commit_store
-            .get_highest_executed_commit()?
-            .map(|c| (c.commit_ref.index, c.epoch()))
+        let pruned_checkpoint_number = checkpoint_store
+            .get_highest_pruned_checkpoint_seq_number()?
+            .unwrap_or(0);
+        let (mut max_eligible_checkpoint, epoch_id) = checkpoint_store
+            .get_highest_executed_checkpoint()?
+            .map(|c| (*c.sequence_number(), c.epoch))
             .unwrap_or_default();
         if config.num_epochs_to_retain != u64::MAX {
-            max_eligible_commit = min(
-                max_eligible_commit,
+            max_eligible_checkpoint = min(
+                max_eligible_checkpoint,
                 perpetual_db
-                    .get_highest_pruned_commit()?
+                    .get_highest_pruned_checkpoint()?
                     .unwrap_or_default(),
             );
         }
         if config.smooth {
-            if let Some(num_epochs_to_retain) = config.num_epochs_to_retain_for_commits {
-                max_eligible_commit = Self::smoothed_max_eligible_commit_index(
-                    commit_store,
-                    max_eligible_commit,
-                    pruned_commit_index,
+            if let Some(num_epochs_to_retain) = config.num_epochs_to_retain_for_checkpoints {
+                max_eligible_checkpoint = Self::smoothed_max_eligible_checkpoint_number(
+                    checkpoint_store,
+                    max_eligible_checkpoint,
+                    pruned_checkpoint_number,
                     epoch_id,
                     epoch_duration_ms,
                     num_epochs_to_retain,
                 )?;
             }
         }
-        debug!("Max eligible commit {}", max_eligible_commit);
+        debug!("Max eligible checkpoint {}", max_eligible_checkpoint);
         Self::prune_for_eligible_epochs(
             perpetual_db,
-            commit_store,
+            checkpoint_store,
             rpc_index,
             pruner_db,
-            PruningMode::Commits,
+            PruningMode::Checkpoints,
             config
-                .num_epochs_to_retain_for_commits
+                .num_epochs_to_retain_for_checkpoints()
                 .ok_or_else(|| anyhow!("config value not set"))?,
-            pruned_commit_index,
-            max_eligible_commit,
+            pruned_checkpoint_number,
+            max_eligible_checkpoint,
             config.clone(),
         )
         .await?;
 
-        if let Some(num_epochs_to_retain) = config.num_epochs_to_retain_for_commits {
-            Self::update_pruning_watermarks(commit_store, num_epochs_to_retain, pruner_watermarks)?;
+        if let Some(num_epochs_to_retain) = config.num_epochs_to_retain_for_checkpoints() {
+            Self::update_pruning_watermarks(
+                checkpoint_store,
+                num_epochs_to_retain,
+                pruner_watermarks,
+            )?;
         }
         Ok(())
     }
 
-    /// Prunes old object versions based on effects from all commits from epochs eligible for pruning
+    /// Prunes old object versions based on effects from all checkpoints from epochs eligible for pruning
     pub async fn prune_for_eligible_epochs(
         perpetual_db: &Arc<AuthorityPerpetualTables>,
-        commit_store: &Arc<CommitStore>,
+        checkpoint_store: &Arc<CheckpointStore>,
         rpc_index: Option<&RpcIndexStore>,
         pruner_db: Option<&Arc<AuthorityPrunerTables>>,
         mode: PruningMode,
         num_epochs_to_retain: u64,
-        starting_commit_index: CommitIndex,
-        max_eligible_commit: CommitIndex,
+        starting_checkpoint_number: CheckpointSequenceNumber,
+        max_eligible_checkpoint: CheckpointSequenceNumber,
         config: AuthorityStorePruningConfig,
     ) -> anyhow::Result<()> {
-        let mut commit_index = starting_commit_index;
-        let current_epoch = commit_store
-            .get_highest_executed_commit()?
+        let mut checkpoint_number = starting_checkpoint_number;
+        let current_epoch = checkpoint_store
+            .get_highest_executed_checkpoint()?
             .map(|c| c.epoch())
             .unwrap_or_default();
 
-        let mut commits_to_prune = vec![];
-        let mut commit_content_to_prune = vec![];
+        let mut checkpoints_to_prune = vec![];
+        let mut checkpoint_content_to_prune = vec![];
         let mut effects_to_prune = vec![];
 
         loop {
-            let Some(commit) = commit_store.certified_commits.get(&(commit_index + 1))? else {
+            let Some(ckpt) = checkpoint_store
+                .tables
+                .certified_checkpoints
+                .get(&(checkpoint_number + 1))?
+            else {
                 break;
             };
-            // Skipping because  commit's epoch or commit number is too new.
-            // We have to respect the highest executed commit watermark (including the watermark itself)
+            let checkpoint = ckpt.into_inner();
+            // Skipping because  checkpoint's epoch or checkpoint number is too new.
+            // We have to respect the highest executed checkpoint watermark (including the watermark itself)
             // because there might be parts of the system that still require access to old object versions
             // (i.e. state accumulator).
-            if (current_epoch < commit.epoch() + num_epochs_to_retain)
-                || (commit.commit_ref.index >= max_eligible_commit)
+            if (current_epoch < checkpoint.epoch() + num_epochs_to_retain)
+                || (*checkpoint.sequence_number() >= max_eligible_checkpoint)
             {
                 break;
             }
-            commit_index = commit.commit_ref.index;
+            checkpoint_number = *checkpoint.sequence_number();
 
-            let content = commit_store
-                .get_commit_by_digest(&commit.commit_ref.digest)?
+            let content = checkpoint_store
+                .get_checkpoint_contents(&checkpoint.content_digest)?
                 .ok_or_else(|| {
                     anyhow::anyhow!(
-                        "commit content data is missing: {}",
-                        commit.commit_ref.index
+                        "checkpoint content data is missing: {}",
+                        checkpoint.sequence_number
                     )
                 })?;
-            let content_effects = commit_store
-                .get_effects_by_commit_digest(&commit.commit_ref.digest)?
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "commit effects data is missing: {}",
-                        commit.commit_ref.index
-                    )
-                })?;
-            let effects = perpetual_db.effects.multi_get(content_effects)?;
+            let effects = perpetual_db
+                .effects
+                .multi_get(content.iter().map(|tx| tx.effects))?;
 
-            info!("scheduling pruning for commit {:?}", commit_index);
-            commits_to_prune.push(commit.commit_ref.digest);
-            commit_content_to_prune.push(content);
+            info!("scheduling pruning for checkpoint {:?}", checkpoint_number);
+            checkpoints_to_prune.push(*checkpoint.digest());
+            checkpoint_content_to_prune.push(content);
             effects_to_prune.extend(effects.into_iter().flatten());
 
             if effects_to_prune.len() >= config.max_transactions_in_batch
-                || commits_to_prune.len() >= config.max_commits_in_batch
+                || checkpoints_to_prune.len() >= config.max_checkpoints_in_batch
             {
                 match mode {
                     PruningMode::Objects => {
@@ -387,48 +388,48 @@ impl AuthorityStorePruner {
                             effects_to_prune,
                             perpetual_db,
                             pruner_db,
-                            commit_index,
+                            checkpoint_number,
                             !config.killswitch_tombstone_pruning,
                         )
                         .await?
                     }
-                    PruningMode::Commits => Self::prune_commits(
+                    PruningMode::Checkpoints => Self::prune_checkpoints(
                         perpetual_db,
-                        commit_store,
+                        checkpoint_store,
                         rpc_index,
-                        commit_index,
-                        commits_to_prune,
-                        commit_content_to_prune,
+                        checkpoint_number,
+                        checkpoints_to_prune,
+                        checkpoint_content_to_prune,
                         &effects_to_prune,
                     )?,
                 };
-                commits_to_prune = vec![];
-                commit_content_to_prune = vec![];
+                checkpoints_to_prune = vec![];
+                checkpoint_content_to_prune = vec![];
                 effects_to_prune = vec![];
                 // yield back to the tokio runtime. Prevent potential halt of other tasks
                 tokio::task::yield_now().await;
             }
         }
 
-        if !commits_to_prune.is_empty() {
+        if !checkpoints_to_prune.is_empty() {
             match mode {
                 PruningMode::Objects => {
                     Self::prune_objects(
                         effects_to_prune,
                         perpetual_db,
                         pruner_db,
-                        commit_index,
+                        checkpoint_number,
                         !config.killswitch_tombstone_pruning,
                     )
                     .await?
                 }
-                PruningMode::Commits => Self::prune_commits(
+                PruningMode::Checkpoints => Self::prune_checkpoints(
                     perpetual_db,
-                    commit_store,
+                    checkpoint_store,
                     rpc_index,
-                    commit_index,
-                    commits_to_prune,
-                    commit_content_to_prune,
+                    checkpoint_number,
+                    checkpoints_to_prune,
+                    checkpoint_content_to_prune,
                     &effects_to_prune,
                 )?,
             };
@@ -437,21 +438,22 @@ impl AuthorityStorePruner {
     }
 
     fn update_pruning_watermarks(
-        commit_store: &Arc<CommitStore>,
+        checkpoint_store: &Arc<CheckpointStore>,
         num_epochs_to_retain: u64,
         pruning_watermark: &Arc<PrunerWatermarks>,
     ) -> anyhow::Result<bool> {
         use std::sync::atomic::Ordering;
         let current_watermark = pruning_watermark.epoch_id.load(Ordering::Relaxed);
-        let current_epoch_id = commit_store
-            .get_highest_executed_commit()?
-            .map(|c| c.epoch())
+        let current_epoch_id = checkpoint_store
+            .get_highest_executed_checkpoint()?
+            .map(|c| c.epoch)
             .unwrap_or_default();
         if current_epoch_id < num_epochs_to_retain {
             return Ok(false);
         }
         let target_epoch_id = current_epoch_id - num_epochs_to_retain;
-        let commit = commit_store.get_epoch_last_commit(target_epoch_id)?;
+        let checkpoint_id =
+            checkpoint_store.get_epoch_last_checkpoint_seq_number(target_epoch_id)?;
 
         let new_watermark = target_epoch_id + 1;
         if current_watermark == new_watermark {
@@ -461,12 +463,14 @@ impl AuthorityStorePruner {
         pruning_watermark
             .epoch_id
             .store(new_watermark, Ordering::Relaxed);
-        if let Some(commit) = commit {
-            let commit_id = commit.commit_ref.index;
-            info!("relocation: setting commit watermark to {}", commit_id);
+        if let Some(checkpoint_id) = checkpoint_id {
+            info!(
+                "relocation: setting checkpoint watermark to {}",
+                checkpoint_id
+            );
             pruning_watermark
-                .commit_id
-                .store(commit_id.into(), Ordering::Relaxed);
+                .checkpoint_id
+                .store(checkpoint_id, Ordering::Relaxed);
         }
         Ok(true)
     }
@@ -522,45 +526,45 @@ impl AuthorityStorePruner {
         min(epoch_duration_ms / 2, MIN_PRUNING_TICK_DURATION_MS)
     }
 
-    fn smoothed_max_eligible_commit_index(
-        commit_store: &Arc<CommitStore>,
-        mut max_eligible_commit: CommitIndex,
-        pruned_commit: CommitIndex,
+    fn smoothed_max_eligible_checkpoint_number(
+        checkpoint_store: &Arc<CheckpointStore>,
+        mut max_eligible_checkpoint: CheckpointSequenceNumber,
+        pruned_checkpoint: CheckpointSequenceNumber,
         epoch_id: EpochId,
         epoch_duration_ms: u64,
         num_epochs_to_retain: u64,
-    ) -> anyhow::Result<CommitIndex> {
+    ) -> anyhow::Result<CheckpointSequenceNumber> {
         if epoch_id < num_epochs_to_retain {
             return Ok(0);
         }
-        let last_commit_in_epoch = commit_store
-            .get_epoch_last_commit(epoch_id - num_epochs_to_retain)?
-            .map(|commit| commit.commit_ref.index)
+        let last_checkpoint_in_epoch = checkpoint_store
+            .get_epoch_last_checkpoint(epoch_id - num_epochs_to_retain)?
+            .map(|checkpoint| checkpoint.sequence_number)
             .unwrap_or_default();
-        max_eligible_commit = max_eligible_commit.min(last_commit_in_epoch);
-        if max_eligible_commit == 0 {
-            return Ok(max_eligible_commit);
+        max_eligible_checkpoint = max_eligible_checkpoint.min(last_checkpoint_in_epoch);
+        if max_eligible_checkpoint == 0 {
+            return Ok(max_eligible_checkpoint);
         }
-        let num_intervals: u32 = epoch_duration_ms
+        let num_intervals = epoch_duration_ms
             .checked_div(Self::pruning_tick_duration_ms(epoch_duration_ms))
-            .unwrap_or(1)
-            .try_into()
             .unwrap_or(1);
-        let delta = max_eligible_commit
-            .checked_sub(pruned_commit)
+        let delta = max_eligible_checkpoint
+            .checked_sub(pruned_checkpoint)
             .unwrap_or_default()
             .checked_div(num_intervals)
             .unwrap_or(1);
-        Ok(pruned_commit + delta)
+        Ok(pruned_checkpoint + delta)
     }
 
     fn setup_pruning(
         config: AuthorityStorePruningConfig,
         epoch_duration_ms: u64,
         perpetual_db: Arc<AuthorityPerpetualTables>,
-        commit_store: Arc<CommitStore>,
+        checkpoint_store: Arc<CheckpointStore>,
         rpc_index: Option<Arc<RpcIndexStore>>,
+
         pruner_db: Option<Arc<AuthorityPrunerTables>>,
+
         pruner_watermarks: Arc<PrunerWatermarks>,
     ) -> Sender<()> {
         let (sender, mut recv) = tokio::sync::oneshot::channel();
@@ -579,60 +583,58 @@ impl AuthorityStorePruner {
         let mut objects_prune_interval =
             tokio::time::interval_at(Instant::now() + pruning_initial_delay, tick_duration);
 
-        {
-            let mut commits_prune_interval =
-                tokio::time::interval_at(Instant::now() + pruning_initial_delay, tick_duration);
-            let mut indexes_prune_interval =
-                tokio::time::interval_at(Instant::now() + pruning_initial_delay, tick_duration);
+        let mut checkpoints_prune_interval =
+            tokio::time::interval_at(Instant::now() + pruning_initial_delay, tick_duration);
 
-            let perpetual_db_for_compaction = perpetual_db.clone();
-            if let Some(delay_days) = config.periodic_compaction_threshold_days {
-                tokio::spawn(async move {
-                    let last_processed = Arc::new(Mutex::new(HashMap::new()));
-                    loop {
-                        let db = perpetual_db_for_compaction.clone();
-                        let state = Arc::clone(&last_processed);
-                        let result = tokio::task::spawn_blocking(move || {
-                            Self::compact_next_sst_file(db, delay_days, state)
-                        })
-                        .await;
-                        let mut sleep_interval_secs = 1;
-                        match result {
-                            Err(err) => error!("Failed to compact sst file: {:?}", err),
-                            Ok(Err(err)) => error!("Failed to compact sst file: {:?}", err),
-                            Ok(Ok(None)) => {
-                                sleep_interval_secs = 3600;
-                            }
-                            _ => {}
-                        }
-                        tokio::time::sleep(Duration::from_secs(sleep_interval_secs)).await;
-                    }
-                });
-            }
-            tokio::task::spawn(async move {
+        let perpetual_db_for_compaction = perpetual_db.clone();
+        if let Some(delay_days) = config.periodic_compaction_threshold_days {
+            tokio::spawn(async move {
+                let last_processed = Arc::new(Mutex::new(HashMap::new()));
                 loop {
-                    tokio::select! {
-                        _ = objects_prune_interval.tick(), if config.num_epochs_to_retain != u64::MAX => {
-                            if let Err(err) = Self::prune_objects_for_eligible_epochs(&perpetual_db, &commit_store, rpc_index.as_deref(), pruner_db.as_ref(), config.clone(), epoch_duration_ms).await {
-                                error!("Failed to prune objects: {:?}", err);
-                            }
-                        },
-                        _ = commits_prune_interval.tick(), if !matches!(config.num_epochs_to_retain_for_commits, None | Some(u64::MAX) | Some(0)) => {
-                            if let Err(err) = Self::prune_commits_for_eligible_epochs(&perpetual_db, &commit_store, rpc_index.as_deref(), pruner_db.as_ref(), config.clone(), epoch_duration_ms, &pruner_watermarks).await {
-                                error!("Failed to prune commits: {:?}", err);
-                            }
-                        },
-                        _ = &mut recv => break,
+                    let db = perpetual_db_for_compaction.clone();
+                    let state = Arc::clone(&last_processed);
+                    let result = tokio::task::spawn_blocking(move || {
+                        Self::compact_next_sst_file(db, delay_days, state)
+                    })
+                    .await;
+                    let mut sleep_interval_secs = 1;
+                    match result {
+                        Err(err) => error!("Failed to compact sst file: {:?}", err),
+                        Ok(Err(err)) => error!("Failed to compact sst file: {:?}", err),
+                        Ok(Ok(None)) => {
+                            sleep_interval_secs = 3600;
+                        }
+                        _ => {}
                     }
+                    tokio::time::sleep(Duration::from_secs(sleep_interval_secs)).await;
                 }
             });
         }
+        tokio::task::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = objects_prune_interval.tick(), if config.num_epochs_to_retain != u64::MAX => {
+                        if let Err(err) = Self::prune_objects_for_eligible_epochs(&perpetual_db, &checkpoint_store, rpc_index.as_deref(), pruner_db.as_ref(), config.clone(),  epoch_duration_ms).await {
+                            error!("Failed to prune objects: {:?}", err);
+                        }
+                    },
+                    _ = checkpoints_prune_interval.tick(), if !matches!(config.num_epochs_to_retain_for_checkpoints(), None | Some(u64::MAX) | Some(0)) => {
+                        if let Err(err) = Self::prune_checkpoints_for_eligible_epochs(&perpetual_db, &checkpoint_store, rpc_index.as_deref(), pruner_db.as_ref(), config.clone(),  epoch_duration_ms, &pruner_watermarks).await {
+                            error!("Failed to prune checkpoints: {:?}", err);
+                        }
+                    },
+
+                    _ = &mut recv => break,
+                }
+            }
+        });
+
         sender
     }
 
     pub fn new(
         perpetual_db: Arc<AuthorityPerpetualTables>,
-        commit_store: Arc<CommitStore>,
+        checkpoint_store: Arc<CheckpointStore>,
         rpc_index: Option<Arc<RpcIndexStore>>,
         mut pruning_config: AuthorityStorePruningConfig,
         is_validator: bool,
@@ -642,7 +644,10 @@ impl AuthorityStorePruner {
     ) -> Self {
         if pruning_config.num_epochs_to_retain > 0 && pruning_config.num_epochs_to_retain < u64::MAX
         {
-            warn!("Using objects pruner with num_epochs_to_retain = {} can lead to performance issues", pruning_config.num_epochs_to_retain);
+            warn!(
+                "Using objects pruner with num_epochs_to_retain = {} can lead to performance issues",
+                pruning_config.num_epochs_to_retain
+            );
             if is_validator {
                 warn!("Resetting to aggressive pruner.");
                 pruning_config.num_epochs_to_retain = 0;
@@ -655,7 +660,7 @@ impl AuthorityStorePruner {
                 pruning_config,
                 epoch_duration_ms,
                 perpetual_db,
-                commit_store,
+                checkpoint_store,
                 rpc_index,
                 pruner_db,
                 pruner_watermarks,

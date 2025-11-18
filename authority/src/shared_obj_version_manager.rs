@@ -15,8 +15,8 @@ use types::{
 };
 
 use crate::{
+    authority_per_epoch_store::{AuthorityPerEpochStore, CancelConsensusCertificateReason},
     cache::ObjectCacheRead,
-    epoch_store::{AuthorityPerEpochStore, CancelConsensusCertificateReason},
 };
 
 pub struct SharedObjVerManager {}

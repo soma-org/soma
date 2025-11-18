@@ -7,7 +7,7 @@ use types::committee::Epoch;
 use types::consensus::transaction::{TransactionVerifier, ValidationError};
 use types::consensus::{ConsensusTransaction, ConsensusTransactionKind};
 
-use crate::epoch_store::AuthorityPerEpochStore;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 
 /// Allows verifying the validity of transactions
 #[derive(Clone)]

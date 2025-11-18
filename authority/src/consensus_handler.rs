@@ -1,13 +1,13 @@
-use crate::adapter::ConsensusAdapter;
 use crate::authority;
 use crate::cache::ObjectCacheRead;
+use crate::consensus_adapter::ConsensusAdapter;
 use crate::reconfiguration::ReconfigurationInitiator;
 use crate::{
-    authority::AuthorityState, epoch_store::AuthorityPerEpochStore,
-    throughput::ConsensusThroughputCalculator, tx_manager::TransactionManager,
+    authority::AuthorityState, authority_per_epoch_store::AuthorityPerEpochStore,
+    throughput::ConsensusThroughputCalculator,
 };
 use lru::LruCache;
-use p2p::builder::StateSyncHandle;
+// use p2p::builder::StateSyncHandle;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::{collections::HashSet, num::NonZeroUsize, sync::Arc};

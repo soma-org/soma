@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::authority_store::AuthorityStore;
+use crate::checkpoints::CheckpointStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use store::rocks::{DBMap, DBMapTableConfigMap};
@@ -11,7 +12,9 @@ use store::rocksdb::{compaction_filter::Decision, MergeOperands, WriteOptions};
 use store::{DBMapUtils, Map as _, TypedStoreError};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
-use types::checkpoints::{CheckpointData, CheckpointTransaction};
+use types::checkpoints::CheckpointSequenceNumber;
+use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
+
 use types::committee::EpochId;
 use types::consensus::output::ConsensusOutputAPI;
 use types::consensus::ConsensusTransactionKind;
@@ -238,7 +241,7 @@ struct IndexStoreTables {
     /// This is useful to help know the highest checkpoint that was indexed in the event that the
     /// node was running with indexes enabled, then run for a period of time with indexes disabled,
     /// and then run with them enabled again so that the tables can be reinitialized.
-    watermark: DBMap<Watermark, CommitIndex>,
+    watermark: DBMap<Watermark, CheckpointSequenceNumber>,
 
     /// An index of extra metadata for Epochs.
     ///
@@ -304,46 +307,46 @@ impl IndexStoreTables {
         IndexStoreTables::open_tables_read_write(path.into(), Some(options), table_options)
     }
 
-    fn needs_to_do_initialization(&self, commit_store: &CommitStore) -> bool {
+    fn needs_to_do_initialization(&self, checkpoint_store: &CheckpointStore) -> bool {
         (match self.meta.get(&()) {
             Ok(Some(metadata)) => metadata.version != CURRENT_DB_VERSION,
             Ok(None) => true,
             Err(_) => true,
-        }) || self.is_indexed_watermark_out_of_date(commit_store)
+        }) || self.is_indexed_watermark_out_of_date(checkpoint_store)
     }
 
     // Check if the index watermark is behind the highets_executed watermark.
-    fn is_indexed_watermark_out_of_date(&self, commit_store: &CommitStore) -> bool {
-        let highest_executed_checkpoint = commit_store
-            .get_highest_executed_commit_index()
+    fn is_indexed_watermark_out_of_date(&self, checkpoint_store: &CheckpointStore) -> bool {
+        let highest_executed_checkpint = checkpoint_store
+            .get_highest_executed_checkpoint_seq_number()
             .ok()
             .flatten();
         let watermark = self.watermark.get(&Watermark::Indexed).ok().flatten();
-        watermark < highest_executed_checkpoint
+        watermark < highest_executed_checkpint
     }
 
     #[tracing::instrument(skip_all)]
     fn init(
         &mut self,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
+        checkpoint_store: &CheckpointStore,
         batch_size_limit: usize,
     ) -> Result<(), StorageError> {
         info!("Initializing RPC indexes");
 
-        let highest_executed_checkpoint = commit_store.get_highest_executed_commit_index()?;
-
-        let lowest_available_checkpoint = commit_store
-            .get_highest_synced_commit()?
-            .map(|c| c.commit_ref.index.saturating_add(1))
+        let highest_executed_checkpoint =
+            checkpoint_store.get_highest_executed_checkpoint_seq_number()?;
+        let lowest_available_checkpoint = checkpoint_store
+            .get_highest_pruned_checkpoint_seq_number()?
+            .map(|c| c.saturating_add(1))
             .unwrap_or(0);
         let lowest_available_checkpoint_objects = authority_store
             .perpetual_tables
-            .get_highest_pruned_commit()?
+            .get_highest_pruned_checkpoint()?
             .map(|c| c.saturating_add(1))
             .unwrap_or(0);
-        // // Doing backfill requires processing objects so we have to restrict our backfill range
-        // // to the range of checkpoints that we have objects for.
+        // Doing backfill requires processing objects so we have to restrict our backfill range
+        // to the range of checkpoints that we have objects for.
         let lowest_available_checkpoint =
             lowest_available_checkpoint.max(lowest_available_checkpoint_objects);
 
@@ -352,10 +355,10 @@ impl IndexStoreTables {
         });
 
         if let Some(checkpoint_range) = checkpoint_range {
-            self.index_existing_transactions(authority_store, commit_store, checkpoint_range)?;
+            self.index_existing_transactions(authority_store, checkpoint_store, checkpoint_range)?;
         }
 
-        self.initialize_current_epoch(authority_store, commit_store)?;
+        self.initialize_current_epoch(authority_store, checkpoint_store)?;
 
         // Only index live objects if genesis checkpoint has been executed.
         // If genesis hasn't been executed yet, the objects will be properly indexed
@@ -386,11 +389,11 @@ impl IndexStoreTables {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, authority_store, commit_store))]
+    #[tracing::instrument(skip(self, authority_store, checkpoint_store))]
     fn index_existing_transactions(
         &mut self,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
+        checkpoint_store: &CheckpointStore,
         checkpoint_range: std::ops::RangeInclusive<u32>,
     ) -> Result<(), StorageError> {
         info!(
@@ -401,7 +404,7 @@ impl IndexStoreTables {
 
         checkpoint_range.into_iter().try_for_each(|seq| {
             let checkpoint_data =
-                sparse_checkpoint_data_for_backfill(authority_store, commit_store, seq)?;
+                sparse_checkpoint_data_for_backfill(authority_store, checkpoint_store, seq)?;
 
             let mut batch = self.transactions.batch();
 
@@ -494,12 +497,11 @@ impl IndexStoreTables {
     fn initialize_current_epoch(
         &mut self,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
+        checkpoint_store: &CheckpointStore,
     ) -> Result<(), StorageError> {
-        let Some(checkpoint) = commit_store.get_highest_executed_commit()? else {
+        let Some(checkpoint) = checkpoint_store.get_highest_executed_checkpoint()? else {
             return Ok(());
         };
-
         let system_state = types::system_state::get_system_state(authority_store)
             .map_err(|e| StorageError::custom(format!("Failed to find system state: {e}")))?;
 
@@ -691,35 +693,22 @@ impl IndexStoreTables {
 
 fn sparse_checkpoint_data_for_backfill(
     authority_store: &AuthorityStore,
-    commit_store: &CommitStore,
+    checkpoint_store: &CheckpointStore,
     checkpoint: u32,
 ) -> Result<CheckpointData, StorageError> {
-    let committed_subdag = commit_store
-        .get_commit_by_index(checkpoint)?
+    let summary = checkpoint_store
+        .get_checkpoint_by_sequence_number(checkpoint)?
         .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
-    // let contents = commit_store
-    //     .get_checkpoint_contents(&summary.content_digest)?
-    //     .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
+    let contents = checkpoint_store
+        .get_checkpoint_contents(&summary.content_digest)?
+        .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
 
-    let all_tx_digests: HashSet<_> = committed_subdag
-        .transactions()
+    let transaction_digests = contents
         .iter()
-        .flat_map(|(_, authority_transactions)| {
-            authority_transactions
-                .iter()
-                .filter_map(|(_, transaction)| {
-                    if let ConsensusTransactionKind::UserTransaction(cert_tx) = &transaction.kind {
-                        Some(*cert_tx.digest())
-                    } else {
-                        None
-                    }
-                })
-        })
-        .collect();
-
-    let all_tx_digests: Vec<_> = all_tx_digests.into_iter().collect();
+        .map(|execution_digests| execution_digests.transaction)
+        .collect::<Vec<_>>();
     let transactions = authority_store
-        .multi_get_transaction_blocks(&all_tx_digests)?
+        .multi_get_transaction_blocks(&transaction_digests)?
         .into_iter()
         .map(|maybe_transaction| {
             maybe_transaction.ok_or_else(|| StorageError::custom("missing transaction"))
@@ -727,7 +716,7 @@ fn sparse_checkpoint_data_for_backfill(
         .collect::<Result<Vec<_>, _>>()?;
 
     let effects = authority_store
-        .multi_get_executed_effects(&all_tx_digests)?
+        .multi_get_executed_effects(&transaction_digests)?
         .into_iter()
         .map(|maybe_effects| maybe_effects.ok_or_else(|| StorageError::custom("missing effects")))
         .collect::<Result<Vec<_>, _>>()?;
@@ -749,8 +738,8 @@ fn sparse_checkpoint_data_for_backfill(
     }
 
     let checkpoint_data = CheckpointData {
-        committed_subdag: committed_subdag,
-        // checkpoint_contents: contents,
+        checkpoint_summary: summary.into(),
+        checkpoint_contents: contents,
         transactions: full_transactions,
     };
 
@@ -771,8 +760,7 @@ impl RpcIndexStore {
     pub async fn new(
         dir: &Path,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
-        // index_config: Option<&RpcIndexInitConfig>,
+        checkpoint_store: &CheckpointStore,
     ) -> Self {
         let path = Self::db_path(dir);
 
@@ -781,7 +769,7 @@ impl RpcIndexStore {
 
             // If the index tables are uninitialized or on an older version then we need to
             // populate them
-            if tables.needs_to_do_initialization(commit_store) {
+            if tables.needs_to_do_initialization(checkpoint_store) {
                 let batch_size_limit;
 
                 let mut tables = {
@@ -938,7 +926,7 @@ impl RpcIndexStore {
                 };
 
                 tables
-                    .init(authority_store, commit_store, batch_size_limit)
+                    .init(authority_store, checkpoint_store, batch_size_limit)
                     .expect("unable to initialize rpc index from live object set");
 
                 // Flush all data to disk before dropping tables.

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
 
-use crate::epoch_store::AuthorityPerEpochStore;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ReconfigCertStatus {

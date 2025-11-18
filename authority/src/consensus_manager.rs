@@ -19,15 +19,15 @@ use types::{
     crypto::{NetworkKeyPair, ProtocolKeyPair},
     error::SomaResult,
     protocol::ProtocolVersion,
-    storage::{consensus::ConsensusStore, read_store::ReadCommitteeStore},
+    storage::consensus::ConsensusStore,
 };
 
 use crate::consensus_handler::MysticetiConsensusHandler;
 use crate::mysticeti_adapter::LazyMysticetiClient;
 use crate::{
+    authority_per_epoch_store::AuthorityPerEpochStore,
     consensus_adapter::{ConsensusAdapter, SubmitToConsensus},
     consensus_handler::ConsensusHandlerInitializer,
-    epoch_store::AuthorityPerEpochStore,
     tx_validator::TxValidator,
 };
 #[derive(PartialEq)]

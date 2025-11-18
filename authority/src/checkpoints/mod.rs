@@ -1,14 +1,14 @@
 use crate::authority::AuthorityState;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::authority_store_pruner::PrunerWatermarks;
 use crate::cache::TransactionCacheRead;
 use crate::checkpoints::causal_order::CausalOrder;
 use crate::checkpoints::checkpoint_output::{CertifiedCheckpointOutput, CheckpointOutput};
 use crate::client::make_network_authority_clients_with_network_config;
 use crate::consensus_handler::SequencedConsensusTransactionKey;
 use crate::consensus_manager::ReplayWaiter;
-use crate::epoch_store::AuthorityPerEpochStore;
 use crate::global_state_hasher::GlobalStateHasher;
 use crate::stake_aggregator::{InsertResult, MultiStakeAggregator};
-use crate::store_pruner::PrunerWatermarks;
 use diffy::create_patch;
 use itertools::Itertools as _;
 use nonempty::NonEmpty;

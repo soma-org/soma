@@ -29,8 +29,8 @@ use types::{
 
 use crate::{
     authority_store::LockDetails,
+    authority_store_pruner::ObjectsCompactionFilter,
     start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    store_pruner::ObjectsCompactionFilter,
 };
 
 const ENV_VAR_OBJECTS_BLOCK_CACHE_SIZE: &str = "OBJECTS_BLOCK_CACHE_MB";

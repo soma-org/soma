@@ -37,13 +37,13 @@ use types::{
 };
 
 use crate::{
+    authority_per_epoch_store::AuthorityPerEpochStore,
+    authority_store_pruner::{AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING},
     authority_store_tables::{get_store_object, AuthorityPerpetualTables, StoreObject},
     checkpoints::CheckpointStore,
-    epoch_store::AuthorityPerEpochStore,
     global_state_hasher::GlobalStateHashStore,
     rpc_index::RpcIndexStore,
     start_epoch::EpochStartConfiguration,
-    store_pruner::{AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING},
 };
 
 const NUM_SHARDS: usize = 4096;

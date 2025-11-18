@@ -10,7 +10,7 @@ use types::object::{LiveObject, ObjectID};
 use types::storage::object_store::ObjectStore;
 use types::storage::shared_in_memory_store::SharedInMemoryStore;
 
-use crate::epoch_store::AuthorityPerEpochStore;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 
 pub struct GlobalStateHasher {
     store: Arc<dyn GlobalStateHashStore>,

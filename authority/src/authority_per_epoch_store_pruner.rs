@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 use tracing::log::{info, warn};
 use types::config::node_config::AuthorityStorePruningConfig;
 
-use crate::epoch_store::EPOCH_DB_PREFIX;
+use crate::authority_per_epoch_store::EPOCH_DB_PREFIX;
 
 pub struct AuthorityPerEpochStorePruner {
     _cancel_handle: oneshot::Sender<()>,
@@ -78,7 +78,7 @@ impl AuthorityPerEpochStorePruner {
 
 #[cfg(test)]
 mod tests {
-    use crate::epoch_store_pruner::AuthorityPerEpochStorePruner;
+    use crate::authority_per_epoch_store_pruner::AuthorityPerEpochStorePruner;
     use std::fs;
 
     #[tokio::test]

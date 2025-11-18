@@ -1,37 +1,3 @@
-//! # Authority State
-//!
-//! ## Overview
-//! The Authority State module is the core state management component of the Soma blockchain validator.
-//! It manages the validator's view of the blockchain state, processes transactions, and handles
-//! epoch transitions.
-//!
-//! ## Responsibilities
-//! - Maintaining the validator's state (objects, transactions, effects)
-//! - Processing and executing transactions and certificates
-//! - Managing epoch transitions and reconfiguration
-//! - Coordinating transaction execution with consensus
-//! - Providing transaction status and effects
-//! - Ensuring thread-safe access to state
-//!
-//! ## Component Relationships
-//! - Interacts with Consensus module to process ordered transactions
-//! - Uses TransactionManager to track and execute pending transactions
-//! - Manages AuthorityPerEpochStore for epoch-specific state
-//! - Coordinates with StateAccumulator for state verification
-//! - Provides interfaces for external services to query state
-//!
-//! ## Key Workflows
-//! 1. Transaction processing: validation, execution, and effects generation
-//! 2. Certificate execution: processing verified certificates from consensus
-//! 3. Epoch reconfiguration: transitioning between epochs with validator set changes
-//! 4. State synchronization: ensuring consistent state across validators
-//!
-//! ## Design Patterns
-//! - Thread-safe state access via Arc<RwLock<>> and ArcSwap patterns
-//! - Epoch-based isolation for reconfiguration safety
-//! - Transactional execution with atomic commits
-//! - Lock-based concurrency control for shared objects
-
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self, File};
 use std::ops::Add;
@@ -100,7 +66,12 @@ use types::{
     },
 };
 
+use crate::authority_per_epoch_store::{CertLockGuard, CertTxGuard};
+use crate::authority_per_epoch_store_pruner::AuthorityPerEpochStorePruner;
 use crate::authority_store::{AuthorityStore, ObjectLockStatus};
+use crate::authority_store_pruner::{
+    AuthorityStorePruner, PrunerWatermarks, EPOCH_DURATION_MS_FOR_TESTING,
+};
 #[cfg(test)]
 use crate::authority_store_tables;
 use crate::authority_store_tables::AuthorityPrunerTables;
@@ -110,8 +81,6 @@ use crate::cache::{
 };
 use crate::checkpoints::{CheckpointBuilderError, CheckpointBuilderResult, CheckpointStore};
 use crate::consensus_quarantine;
-use crate::epoch_store::{CertLockGuard, CertTxGuard};
-use crate::epoch_store_pruner::AuthorityPerEpochStorePruner;
 use crate::execution::execute_transaction;
 use crate::execution_driver::execution_process;
 use crate::execution_scheduler::{ExecutionScheduler, SchedulingSource};
@@ -119,11 +88,10 @@ use crate::global_state_hasher::{GlobalStateHashStore, GlobalStateHasher};
 use crate::rpc_index::RpcIndexStore;
 use crate::shared_obj_version_manager::{AssignedVersions, Schedulable};
 use crate::start_epoch::EpochStartConfigTrait;
-use crate::store_pruner::{AuthorityStorePruner, PrunerWatermarks, EPOCH_DURATION_MS_FOR_TESTING};
 use crate::tx_input_loader::TransactionInputLoader;
 use crate::{
-    client::NetworkAuthorityClient, epoch_store::AuthorityPerEpochStore,
-    start_epoch::EpochStartConfiguration, tx_manager::TransactionManager,
+    authority_per_epoch_store::AuthorityPerEpochStore, client::NetworkAuthorityClient,
+    start_epoch::EpochStartConfiguration,
 };
 use types::storage::committee_store::CommitteeStore;
 
@@ -1476,7 +1444,7 @@ impl AuthorityState {
         &self,
         config: NodeConfig,
     ) -> anyhow::Result<()> {
-        use crate::store_pruner::PrunerWatermarks;
+        use crate::authority_store_pruner::PrunerWatermarks;
         let watermarks = Arc::new(PrunerWatermarks::default());
         AuthorityStorePruner::prune_checkpoints_for_eligible_epochs(
             &self.database_for_testing().perpetual_tables,

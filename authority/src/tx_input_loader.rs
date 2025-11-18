@@ -17,8 +17,8 @@ use types::{
 };
 
 use crate::{
+    authority_per_epoch_store::{AuthorityPerEpochStore, CertLockGuard},
     cache::ObjectCacheRead,
-    epoch_store::{AuthorityPerEpochStore, CertLockGuard},
 };
 
 pub(crate) struct TransactionInputLoader {

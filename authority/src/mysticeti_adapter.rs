@@ -10,7 +10,8 @@ use types::{
 };
 
 use crate::{
-    consensus_handler::SequencedConsensusTransactionKey, epoch_store::AuthorityPerEpochStore,
+    authority_per_epoch_store::AuthorityPerEpochStore,
+    consensus_handler::SequencedConsensusTransactionKey,
 };
 
 /// Gets a client to submit transactions to Mysticeti, or waits for one to be available.

@@ -1,6 +1,6 @@
 use core::panic;
 
-use crate::epoch_store::AuthorityPerEpochStore;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use dashmap::mapref::entry::Entry as DashMapEntry;
 use dashmap::DashMap;
 use tracing::{debug, error, info, instrument, trace};
