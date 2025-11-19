@@ -191,8 +191,8 @@ pub struct AuthorityStorePruningConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pruning_run_delay_seconds: Option<u64>,
     /// maximum number of commits in the pruning batch. Can be adjusted to increase performance
-    #[serde(default = "default_max_commits_in_batch")]
-    pub max_commits_in_batch: usize,
+    #[serde(default = "default_max_checkpoints_in_batch")]
+    pub max_checkpoints_in_batch: usize,
     /// maximum number of transaction in the pruning batch
     #[serde(default = "default_max_transactions_in_batch")]
     pub max_transactions_in_batch: usize,
@@ -206,7 +206,7 @@ pub struct AuthorityStorePruningConfig {
     pub periodic_compaction_threshold_days: Option<usize>,
     /// number of epochs to keep the latest version of transactions and effects for
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub num_epochs_to_retain_for_commits: Option<u64>,
+    pub num_epochs_to_retain_for_checkpoints: Option<u64>,
     /// disables object tombstone pruning. We don't serialize it if it is the default value, false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub killswitch_tombstone_pruning: bool,
@@ -235,7 +235,7 @@ fn default_max_transactions_in_batch() -> usize {
     1000
 }
 
-fn default_max_commits_in_batch() -> usize {
+fn default_max_checkpoints_in_batch() -> usize {
     10
 }
 
@@ -258,10 +258,10 @@ impl Default for AuthorityStorePruningConfig {
             epoch_db_pruning_period_secs: default_epoch_db_pruning_period_secs(),
             num_epochs_to_retain: 0,
             pruning_run_delay_seconds: if cfg!(msim) { Some(2) } else { None },
-            max_commits_in_batch: default_max_commits_in_batch(),
+            max_checkpoints_in_batch: default_max_checkpoints_in_batch(),
             max_transactions_in_batch: default_max_transactions_in_batch(),
             periodic_compaction_threshold_days: None,
-            num_epochs_to_retain_for_commits: if cfg!(msim) { Some(2) } else { None },
+            num_epochs_to_retain_for_checkpoints: if cfg!(msim) { Some(2) } else { None },
             killswitch_tombstone_pruning: false,
             smooth: true,
             enable_compaction_filter: cfg!(test) || cfg!(msim),
@@ -275,12 +275,12 @@ impl AuthorityStorePruningConfig {
         self.num_epochs_to_retain = num_epochs_to_retain;
     }
 
-    pub fn set_num_epochs_to_retain_for_commits(&mut self, num_epochs_to_retain: Option<u64>) {
-        self.num_epochs_to_retain_for_commits = num_epochs_to_retain;
+    pub fn set_num_epochs_to_retain_for_checkpoints(&mut self, num_epochs_to_retain: Option<u64>) {
+        self.num_epochs_to_retain_for_checkpoints = num_epochs_to_retain;
     }
 
-    pub fn num_epochs_to_retain_for_commits(&self) -> Option<u64> {
-        self.num_epochs_to_retain_for_commits
+    pub fn num_epochs_to_retain_for_checkpoints(&self) -> Option<u64> {
+        self.num_epochs_to_retain_for_checkpoints
             // if n less than 2, coerce to 2 and log
             .map(|n| {
                 if n < 2 {

@@ -494,13 +494,13 @@ impl CheckpointExecutor {
             self.execute_change_epoch_tx(&tx_data).await;
         }
 
-        if self.state.is_fullnode(&self.epoch_store) {
-            self.state.congestion_tracker.process_checkpoint_effects(
-                &*self.transaction_cache_reader,
-                &ckpt_state.data.checkpoint,
-                &tx_data.effects,
-            );
-        }
+        // if self.state.is_fullnode(&self.epoch_store) {
+        //     self.state.congestion_tracker.process_checkpoint_effects(
+        //         &*self.transaction_cache_reader,
+        //         &ckpt_state.data.checkpoint,
+        //         &tx_data.effects,
+        //     );
+        // }
 
         self.insert_finalized_transactions(&ckpt_state.data.tx_digests, sequence_number);
 
@@ -536,17 +536,6 @@ impl CheckpointExecutor {
         self.epoch_store
             .insert_finalized_transactions(tx_digests, sequence_number)
             .expect("failed to insert finalized transactions");
-
-        if self.state.is_fullnode(&self.epoch_store) {
-            // TODO remove once we no longer need to support this table for read RPC
-            self.state
-                .get_checkpoint_cache()
-                .deprecated_insert_finalized_transactions(
-                    tx_digests,
-                    self.epoch_store.epoch(),
-                    sequence_number,
-                );
-        }
     }
 
     #[instrument(level = "info", skip_all)]
@@ -729,7 +718,7 @@ impl CheckpointExecutor {
                             &*self.transaction_cache_reader,
                         );
                         None
-                    } else if txn.transaction_data().is_end_of_epoch_tx() {
+                    } else if txn.transaction_data().kind.is_end_of_epoch_tx() {
                         None
                     } else {
                         let assigned_versions = self
@@ -768,7 +757,7 @@ impl CheckpointExecutor {
             change_epoch_fx.transaction_digest()
         );
         assert!(
-            change_epoch_tx.transaction_data().is_end_of_epoch_tx(),
+            change_epoch_tx.transaction_data().kind.is_end_of_epoch_tx(),
             "final txn must be an end of epoch txn"
         );
 

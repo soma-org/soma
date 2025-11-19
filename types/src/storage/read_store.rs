@@ -127,11 +127,6 @@ pub trait ReadStore: ObjectStore {
         digest: &TransactionDigest,
     ) -> Option<Vec<ObjectKey>>;
 
-    fn get_transaction_checkpoint(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<CheckpointSequenceNumber>;
-
     //
     // Extra Checkpoint fetching apis
     //
@@ -306,13 +301,6 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
         (*self).get_unchanged_loaded_runtime_objects(digest)
     }
 
-    fn get_transaction_checkpoint(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<CheckpointSequenceNumber> {
-        (*self).get_transaction_checkpoint(digest)
-    }
-
     fn get_full_checkpoint_contents(
         &self,
         sequence_number: Option<CheckpointSequenceNumber>,
@@ -411,13 +399,6 @@ impl<T: ReadStore + ?Sized> ReadStore for Box<T> {
         digest: &TransactionDigest,
     ) -> Option<Vec<ObjectKey>> {
         (**self).get_unchanged_loaded_runtime_objects(digest)
-    }
-
-    fn get_transaction_checkpoint(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<CheckpointSequenceNumber> {
-        (**self).get_transaction_checkpoint(digest)
     }
 
     fn get_full_checkpoint_contents(
@@ -520,13 +501,6 @@ impl<T: ReadStore + ?Sized> ReadStore for Arc<T> {
         (**self).get_unchanged_loaded_runtime_objects(digest)
     }
 
-    fn get_transaction_checkpoint(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<CheckpointSequenceNumber> {
-        (**self).get_transaction_checkpoint(digest)
-    }
-
     fn get_full_checkpoint_contents(
         &self,
         sequence_number: Option<CheckpointSequenceNumber>,
@@ -573,7 +547,7 @@ pub trait RpcIndexes: Send + Sync {
         cursor: Option<OwnedObjectInfo>,
     ) -> Result<Box<dyn Iterator<Item = Result<OwnedObjectInfo, TypedStoreError>> + '_>>;
 
-    fn get_balance(&self, owner: &SomaAddress) -> Result<Option<u64>>;
+    fn get_balance(&self, owner: &SomaAddress) -> Result<Option<BalanceInfo>>;
 
     fn get_highest_indexed_checkpoint_seq_number(&self)
         -> Result<Option<CheckpointSequenceNumber>>;
@@ -590,7 +564,7 @@ pub struct OwnedObjectInfo {
 
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub struct TransactionInfo {
-    pub commit: u64,
+    pub checkpoint: u64,
     pub balance_changes: Vec<BalanceChange>,
     pub object_types: HashMap<ObjectID, ObjectType>,
 }
@@ -600,7 +574,7 @@ impl TransactionInfo {
         effects: &TransactionEffects,
         input_objects: &[Object],
         output_objects: &[Object],
-        commit: u64,
+        checkpoint: u64,
     ) -> TransactionInfo {
         let balance_changes = derive_balance_changes(effects, input_objects, output_objects);
 
@@ -611,7 +585,7 @@ impl TransactionInfo {
             .collect();
 
         TransactionInfo {
-            commit,
+            checkpoint,
             balance_changes,
             object_types,
         }

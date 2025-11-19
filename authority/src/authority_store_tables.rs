@@ -431,21 +431,13 @@ impl AuthorityPerpetualTables {
 
 impl ObjectStore for AuthorityPerpetualTables {
     /// Read an object and return it, or Ok(None) if the object was not found.
-    fn get_object(
-        &self,
-        object_id: &ObjectID,
-    ) -> Result<Option<Object>, types::storage::storage_error::Error> {
-        self.get_object_fallible(object_id)
-            .map_err(types::storage::storage_error::Error::custom)
+    fn get_object(&self, object_id: &ObjectID) -> Option<Object> {
+        self.get_object_fallible(object_id).expect("db error")
     }
 
-    fn get_object_by_key(
-        &self,
-        object_id: &ObjectID,
-        version: Version,
-    ) -> Result<Option<Object>, types::storage::storage_error::Error> {
+    fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Option<Object> {
         self.get_object_by_key_fallible(object_id, version)
-            .map_err(types::storage::storage_error::Error::custom)
+            .expect("db error")
     }
 }
 

@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use futures::future::Either;
+use either::Either;
 use tracing::trace;
 use types::{
     base::ConsensusObjectSequenceKey,
     digests::TransactionDigest,
-    effects::TransactionEffects,
+    effects::{TransactionEffects, TransactionEffectsAPI as _},
     error::SomaResult,
     object::Version,
     storage::{
@@ -114,7 +114,7 @@ impl<T> Schedulable<T> {
         T: AsTx,
     {
         match self {
-            Schedulable::Transaction(tx) => Either::Left(tx.as_tx().shared_input_objects()),
+            Schedulable::Transaction(tx) => tx.as_tx().shared_input_objects(),
         }
     }
 
@@ -173,12 +173,6 @@ impl SharedObjVerManager {
         )?;
         let mut assigned_versions = Vec::new();
         for assignable in assignables {
-            assert!(
-                !matches!(assignable, Schedulable::AccumulatorSettlement(_, _))
-                    || epoch_store.accumulators_enabled(),
-                "AccumulatorSettlement should not be scheduled when accumulators are disabled"
-            );
-
             let cert_assigned_versions = Self::assign_versions_for_certificate(
                 epoch_store,
                 assignable,
@@ -207,9 +201,9 @@ impl SharedObjVerManager {
         // This must be done before we mutate it the first time, otherwise we would be initializing
         // it with the wrong version.
         let _ = get_or_init_versions(
-            certs_and_effects.iter().flat_map(|(cert, _, _)| {
-                cert.transaction_data().shared_input_objects().into_iter()
-            }),
+            certs_and_effects
+                .iter()
+                .flat_map(|(cert, _)| cert.transaction_data().shared_input_objects().into_iter()),
             epoch_store,
             cache_reader,
         );
@@ -222,7 +216,7 @@ impl SharedObjVerManager {
                 .map(|input| input.into_id_and_version())
                 .collect();
             let cert_assigned_versions: Vec<_> = effects
-                .input_consensus_objects()
+                .input_shared_objects()
                 .into_iter()
                 .map(|iso| {
                     let (id, version) = iso.id_and_version();
@@ -340,7 +334,7 @@ impl SharedObjVerManager {
                     "Assigned version must be a valid version."
                 );
                 shared_input_next_versions
-                    .insert(id, version)
+                    .insert(*id, *version)
                     .expect("Object must exist in shared_input_next_versions.");
             });
         }

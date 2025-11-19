@@ -1,0 +1,12 @@
+[package]
+name = "protocol-config-macros"
+edition = "2024"
+version.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.95"
+syn = "2.0.104"
+quote = "1.0.40"

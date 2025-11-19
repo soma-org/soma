@@ -151,12 +151,7 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
 impl<K: Eq + Hash + Clone + Unpin + std::fmt::Debug + Send + Sync + 'static, V: Clone + Unpin>
     NotifyRead<K, V>
 {
-    pub async fn read(
-        &self,
-        task_name: &'static str,
-        keys: &[K],
-        fetch: impl FnOnce(&[K]) -> Vec<Option<V>>,
-    ) -> Vec<V> {
+    pub async fn read(&self, keys: &[K], fetch: impl FnOnce(&[K]) -> Vec<Option<V>>) -> Vec<V> {
         let registrations = self.register_all(keys);
 
         let results = fetch(keys);
@@ -174,7 +169,6 @@ impl<K: Eq + Hash + Clone + Unpin + std::fmt::Debug + Send + Sync + 'static, V: 
         let _log_handle_guard = if has_waiting_keys {
             let waiting_keys_clone = waiting_keys.clone();
             let start_time = Instant::now();
-            let task_name = task_name.to_string();
 
             let handle = tokio::spawn(async move {
                 // Only start logging after the first interval.
@@ -196,15 +190,14 @@ impl<K: Eq + Hash + Clone + Unpin + std::fmt::Debug + Send + Sync + 'static, V: 
                     let elapsed_secs = start_time.elapsed().as_secs();
 
                     warn!(
-                        "[{}] Still waiting for {}s for {} keys: {:?}",
-                        task_name,
+                        "Still waiting for {}s for {} keys: {:?}",
                         elapsed_secs,
                         keys_vec.len(),
                         keys_vec
                     );
 
-                    if task_name == CHECKPOINT_BUILDER_NOTIFY_READ_TASK_NAME && elapsed_secs >= 60 {
-                        debug!("{} is stuck", task_name);
+                    if elapsed_secs >= 60 {
+                        debug!("Task is stuck");
                     }
                 }
             });

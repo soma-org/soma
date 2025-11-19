@@ -753,3 +753,21 @@ impl fmt::Display for CheckpointArtifactsDigest {
         fmt::Display::fmt(&self.0, f)
     }
 }
+
+/// A digest of a SenderSignedData, which commits to the signatures as well as the tx.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SenderSignedDataDigest(Digest);
+
+impl SenderSignedDataDigest {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+}
+
+impl fmt::Debug for SenderSignedDataDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("SenderSignedDataDigest")
+            .field(&self.0)
+            .finish()
+    }
+}

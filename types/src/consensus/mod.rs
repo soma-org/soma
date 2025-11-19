@@ -233,6 +233,10 @@ impl ConsensusTransaction {
         )
     }
 
+    pub fn is_mfp_transaction(&self) -> bool {
+        matches!(self.kind, ConsensusTransactionKind::UserTransaction(_))
+    }
+
     pub fn is_end_of_publish(&self) -> bool {
         matches!(self.kind, ConsensusTransactionKind::EndOfPublish(_))
     }

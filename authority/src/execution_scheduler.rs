@@ -314,13 +314,17 @@ impl ExecutionScheduler {
         for (cert, execution_env) in pending_certs {
             let scheduler = self.clone();
             let epoch_store = epoch_store.clone();
-            tokio::spawn(
-                epoch_store.within_alive_epoch(scheduler.schedule_transaction(
-                    cert,
-                    execution_env,
-                    &epoch_store,
-                )),
-            );
+
+            tokio::spawn(async move {
+                let epoch_store_ref = epoch_store.clone();
+                let _ = epoch_store
+                    .within_alive_epoch(scheduler.schedule_transaction(
+                        cert,
+                        execution_env,
+                        &epoch_store_ref,
+                    ))
+                    .await;
+            });
         }
     }
 }

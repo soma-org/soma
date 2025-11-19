@@ -28,6 +28,8 @@ members = [
   "store",
   "store-derive",
   "data-ingestion",
+  "protocol-config",
+  "protocol-config-macros",
 ]
 
 
@@ -109,6 +111,8 @@ python-sdk = { path = "python-sdk" }
 store-derive = { path = "store-derive" }
 store = { path = "store" }
 data-ingestion = { path = "data-ingestion" }
+protocol-config-macros = { path = "protocol-config-macros" }
+protocol-config = { path = "protocol-config" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim-macros" }
@@ -152,7 +156,7 @@ bytes = { version = "1.10.1", features = [
 async-trait = "0.1.88" # async-trait = "0.1.81"
 bcs = "0.1.6"
 eyre = "0.6.12"
-parking_lot = "0.12.3"
+parking_lot = { version = "0.12.3", features = ["arc_lock"] }
 rand = "0.8.5" # rand = "0.8"
 serde = { version = "1.0.204", features = [
   "derive",

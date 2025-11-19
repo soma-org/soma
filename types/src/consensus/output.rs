@@ -1,11 +1,11 @@
 use std::fmt::Display;
 
+use protocol_config::ProtocolConfig;
+
 use crate::committee::AuthorityIndex;
 use crate::consensus::block::BlockRef;
 use crate::consensus::{block::BlockAPI, commit::CommittedSubDag};
-use crate::{
-    consensus::ConsensusTransaction, digests::ConsensusCommitDigest, protocol::ProtocolConfig,
-};
+use crate::{consensus::ConsensusTransaction, digests::ConsensusCommitDigest};
 
 /// A list of tuples of:
 /// (certificate origin authority index, all transactions corresponding to the certificate).

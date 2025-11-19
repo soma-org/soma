@@ -3,12 +3,9 @@ use std::sync::Arc;
 use tap::TapFallible;
 use tracing::warn;
 use types::committee::Epoch;
-use types::{
-    consensus::{
-        transaction::{TransactionVerifier, ValidationError},
-        ConsensusTransaction, ConsensusTransactionKind,
-    },
-    signature_verifier::SignatureVerifier,
+use types::consensus::{
+    transaction::{TransactionVerifier, ValidationError},
+    ConsensusTransaction, ConsensusTransactionKind,
 }; // Assuming this is where SignatureVerifier is defined
 
 pub struct TxVerifier {

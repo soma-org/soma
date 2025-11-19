@@ -301,7 +301,7 @@ where
         effects_cert: &VerifiedCertifiedTransactionEffects,
     ) -> SomaResult {
         let tx_digest = transaction.digest();
-        if validator_state.is_tx_already_executed(tx_digest)? {
+        if validator_state.is_tx_already_executed(tx_digest) {
             return Ok(());
         }
 

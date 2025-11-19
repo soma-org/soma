@@ -340,21 +340,15 @@ fn load_shared_objects(
 ) -> SomaResult<()> {
     for object_id in shared_objects_to_load {
         match store.get_object(object_id) {
-            Ok(Some(object)) => {
+            Some(object) => {
                 // Add to temporary store - directly overwriting the placeholder
                 temporary_store.input_objects.insert(*object_id, object);
             }
-            Ok(None) => {
+            None => {
                 // Any required shared object not found is an error
                 return Err(SomaError::from(format!(
                     "Required shared object {} not found in store",
                     object_id
-                )));
-            }
-            Err(err) => {
-                return Err(SomaError::from(format!(
-                    "Failed to fetch shared object {}: {}",
-                    object_id, err
                 )));
             }
         }

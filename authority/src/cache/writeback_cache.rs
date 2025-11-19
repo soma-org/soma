@@ -53,6 +53,7 @@ use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};
 use futures::{future::BoxFuture, FutureExt};
 use moka::sync::SegmentedCache as MokaCache;
 use parking_lot::Mutex;
+use protocol_config::ProtocolVersion;
 use std::{
     collections::{BTreeMap, HashSet},
     sync::{atomic::AtomicU64, Arc},
@@ -69,7 +70,6 @@ use types::{
     envelope::Message,
     error::{SomaError, SomaResult},
     object::{LiveObject, Object, ObjectID, ObjectRef, ObjectType, Version},
-    protocol::ProtocolVersion,
     storage::{
         object_store::ObjectStore, FullObjectKey, InputKey, MarkerValue, ObjectKey,
         ObjectOrTombstone,
@@ -412,10 +412,8 @@ pub struct WritebackCache {
 
 macro_rules! check_cache_entry_by_version {
     ($self: ident, $table: expr, $level: expr, $cache: expr, $version: expr) => {
-        $self.metrics.record_cache_request($table, $level);
         if let Some(cache) = $cache {
             if let Some(entry) = cache.get(&$version) {
-                $self.metrics.record_cache_hit($table, $level);
                 return CacheResult::Hit(entry.clone());
             }
 
@@ -423,27 +421,23 @@ macro_rules! check_cache_entry_by_version {
                 if least_version.0 < $version {
                     // If the version is greater than the least version in the cache, then we know
                     // that the object does not exist anywhere
-                    $self.metrics.record_cache_negative_hit($table, $level);
+
                     return CacheResult::NegativeHit;
                 }
             }
         }
-        $self.metrics.record_cache_miss($table, $level);
     };
 }
 
 macro_rules! check_cache_entry_by_latest {
     ($self: ident, $table: expr, $level: expr, $cache: expr) => {
-        $self.metrics.record_cache_request($table, $level);
         if let Some(cache) = $cache {
             if let Some((version, entry)) = cache.get_highest() {
-                $self.metrics.record_cache_hit($table, $level);
                 return CacheResult::Hit((*version, entry.clone()));
             } else {
                 panic!("empty CachedVersionMap should have been removed");
             }
         }
-        $self.metrics.record_cache_miss($table, $level);
     };
 }
 
@@ -453,9 +447,6 @@ impl WritebackCache {
         store: Arc<AuthorityStore>,
         backpressure_manager: Arc<BackpressureManager>,
     ) -> Self {
-        let packages = MokaCache::builder(8)
-            .max_capacity(config.package_cache_size())
-            .build();
         Self {
             dirty: UncommittedData::new(config),
             cached: CachedCommittedData::new(config),
@@ -525,18 +516,13 @@ impl WritebackCache {
         entry.insert(version, object.clone());
 
         if let ObjectEntry::Object(object) = &object {
-            if object.is_package() {
-                self.object_notify_read
-                    .notify(&InputKey::Package { id: *object_id }, &());
-            } else if !object.is_child_object() {
-                self.object_notify_read.notify(
-                    &InputKey::VersionedObject {
-                        id: object.full_id(),
-                        version: object.version(),
-                    },
-                    &(),
-                );
-            }
+            self.object_notify_read.notify(
+                &InputKey::VersionedObject {
+                    id: object.full_id(),
+                    version: object.version(),
+                },
+                &(),
+            );
         }
     }
 
@@ -558,7 +544,7 @@ impl WritebackCache {
         // object in the input, hence we must notify that it is now available
         // at the assigned version, so that any transaction waiting for this
         // object version can start execution.
-        if matches!(marker_value, MarkerValue::ConsensusStreamEnded(_)) {
+        if matches!(marker_value, MarkerValue::SharedDeleted(_)) {
             self.object_notify_read.notify(
                 &InputKey::VersionedObject {
                     id: object_key.id(),
@@ -694,17 +680,14 @@ impl WritebackCache {
             let entry = entry.lock();
             match &*entry {
                 LatestObjectCacheEntry::Object(latest_version, latest_object) => {
-                    self.metrics.record_cache_hit(request_type, "object_by_id");
                     return CacheResult::Hit((*latest_version, latest_object.clone()));
                 }
                 LatestObjectCacheEntry::NonExistent => {
-                    self.metrics
-                        .record_cache_negative_hit(request_type, "object_by_id");
                     return CacheResult::NegativeHit;
                 }
             }
         } else {
-            self.metrics.record_cache_miss(request_type, "object_by_id");
+            // Miss
         }
 
         Self::with_locked_cache_entries(
@@ -986,12 +969,6 @@ impl WritebackCache {
     fn set_backpressure(&self, pending_count: u64) {
         let backpressure = pending_count > self.backpressure_threshold;
         let backpressure_changed = self.backpressure_manager.set_backpressure(backpressure);
-        if backpressure_changed {
-            self.metrics.backpressure_toggles.inc();
-        }
-        self.metrics
-            .backpressure_status
-            .set(if backpressure { 1 } else { 0 });
     }
 
     fn flush_transactions_from_dirty_to_cached(
@@ -1044,11 +1021,6 @@ impl WritebackCache {
             .transaction_effects
             .remove(&effects_digest)
             .expect("effects must exist");
-
-        self.dirty
-            .transaction_events
-            .remove(&tx_digest)
-            .expect("events must exist");
 
         self.dirty
             .unchanged_loaded_runtime_objects
@@ -1173,17 +1145,13 @@ impl WritebackCache {
                 outputs.transaction.digest()
             );
             for (object_id, object) in outputs.written.iter() {
-                if object.is_package() {
-                    info!("removing non-finalized package from cache: {:?}", object_id);
-                    self.packages.invalidate(object_id);
-                }
                 self.object_by_id_cache.invalidate(object_id);
                 self.cached.object_cache.invalidate(object_id);
             }
 
-            for ObjectKey(object_id, _) in outputs.deleted.iter().chain(outputs.wrapped.iter()) {
-                self.object_by_id_cache.invalidate(object_id);
-                self.cached.object_cache.invalidate(object_id);
+            for ObjectKey(object_id, _) in outputs.deleted.iter() {
+                self.object_by_id_cache.invalidate(&object_id);
+                self.cached.object_cache.invalidate(&object_id);
             }
         }
 
@@ -1218,8 +1186,6 @@ impl WritebackCache {
         self.cached.clear_and_assert_empty();
         self.object_by_id_cache.invalidate_all();
         assert!(&self.object_by_id_cache.is_empty());
-        self.packages.invalidate_all();
-        assert_empty(&self.packages);
     }
 }
 impl ExecutionCacheAPI for WritebackCache {}
@@ -1370,7 +1336,6 @@ impl ObjectCacheRead for WritebackCache {
                                 CacheResult::Hit(_)
                             )
                         }
-                        InputKey::Package { id } => self.packages.contains_key(id),
                     }
                 }
             })
@@ -1525,7 +1490,7 @@ impl ObjectCacheRead for WritebackCache {
         )
     }
 
-    fn get_system_state_object_unsafe(&self) -> SomaResult<SystemState> {
+    fn get_system_state_object(&self) -> SomaResult<SystemState> {
         get_system_state(self)
     }
 
@@ -1578,10 +1543,7 @@ impl ObjectCacheRead for WritebackCache {
                             .get_transaction_lock(&obj_ref, epoch_store)?
                         {
                             Some(tx_digest) => ObjectLockStatus::LockedToTx {
-                                locked_by_tx: LockDetails {
-                                    epoch: cur_epoch,
-                                    tx_digest,
-                                },
+                                locked_by_tx: tx_digest.tx_digest,
                             },
                             None => ObjectLockStatus::Initialized,
                         },
@@ -1653,16 +1615,12 @@ impl ObjectCacheRead for WritebackCache {
         epoch: EpochId,
     ) -> BoxFuture<'a, ()> {
         self.object_notify_read
-            .read(
-                "notify_read_input_objects",
-                input_and_receiving_keys,
-                move |keys| {
-                    self.multi_input_objects_available(keys, receiving_keys, epoch)
-                        .into_iter()
-                        .map(|available| if available { Some(()) } else { None })
-                        .collect::<Vec<_>>()
-                },
-            )
+            .read(input_and_receiving_keys, move |keys| {
+                self.multi_input_objects_available(keys, receiving_keys, epoch)
+                    .into_iter()
+                    .map(|available| if available { Some(()) } else { None })
+                    .collect::<Vec<_>>()
+            })
             .map(|_| ())
             .boxed()
     }
@@ -1680,18 +1638,9 @@ impl TransactionCacheRead for WritebackCache {
         do_fallback_lookup(
             &digests_and_tickets,
             |(digest, _)| {
-                self.metrics
-                    .record_cache_request("transaction_block", "uncommitted");
                 if let Some(tx) = self.dirty.pending_transaction_writes.get(digest) {
-                    self.metrics
-                        .record_cache_hit("transaction_block", "uncommitted");
                     return CacheResult::Hit(Some(tx.transaction.clone()));
                 }
-                self.metrics
-                    .record_cache_miss("transaction_block", "uncommitted");
-
-                self.metrics
-                    .record_cache_request("transaction_block", "committed");
 
                 match self
                     .cached
@@ -1699,18 +1648,9 @@ impl TransactionCacheRead for WritebackCache {
                     .get(digest)
                     .map(|l| l.lock().clone())
                 {
-                    Some(PointCacheItem::Some(tx)) => {
-                        self.metrics
-                            .record_cache_hit("transaction_block", "committed");
-                        CacheResult::Hit(Some(tx))
-                    }
+                    Some(PointCacheItem::Some(tx)) => CacheResult::Hit(Some(tx)),
                     Some(PointCacheItem::None) => CacheResult::NegativeHit,
-                    None => {
-                        self.metrics
-                            .record_cache_miss("transaction_block", "committed");
-
-                        CacheResult::Miss
-                    }
+                    None => CacheResult::Miss,
                 }
             },
             |remaining| {
@@ -1831,11 +1771,10 @@ impl TransactionCacheRead for WritebackCache {
 
     fn notify_read_executed_effects_digests<'a>(
         &'a self,
-        task_name: &'static str,
         digests: &'a [TransactionDigest],
     ) -> BoxFuture<'a, Vec<TransactionEffectsDigest>> {
         self.executed_effects_digests_notify_read
-            .read(task_name, digests, |digests| {
+            .read(digests, |digests| {
                 self.multi_get_executed_effects_digests(digests)
             })
             .boxed()
@@ -1868,16 +1807,12 @@ impl TransactionCacheRead for WritebackCache {
         tx_digests: &'a [TransactionDigest],
     ) -> BoxFuture<'a, Vec<Arc<TransactionOutputs>>> {
         self.fastpath_transaction_outputs_notify_read
-            .read(
-                "notify_read_fastpath_transaction_outputs",
-                tx_digests,
-                |tx_digests| {
-                    tx_digests
-                        .iter()
-                        .map(|tx_digest| self.get_mysticeti_fastpath_outputs(tx_digest))
-                        .collect()
-                },
-            )
+            .read(tx_digests, |tx_digests| {
+                tx_digests
+                    .iter()
+                    .map(|tx_digest| self.get_mysticeti_fastpath_outputs(tx_digest))
+                    .collect()
+            })
             .boxed()
     }
 }
@@ -1946,10 +1881,7 @@ impl GlobalStateHashStore for WritebackCache {
             .insert_state_hash_for_epoch(epoch, checkpoint_seq_num, acc)
     }
 
-    fn iter_live_object_set(
-        &self,
-        include_wrapped_tombstone: bool,
-    ) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
         // The only time it is safe to iterate the live object set is at an epoch boundary,
         // at which point the db is consistent and the dirty cache is empty. So this does
         // read the cache
@@ -1957,7 +1889,7 @@ impl GlobalStateHashStore for WritebackCache {
             self.dirty.is_empty(),
             "cannot iterate live object set with dirty data"
         );
-        self.store.iter_live_object_set(include_wrapped_tombstone)
+        self.store.iter_live_object_set()
     }
 
     // A version of iter_live_object_set that reads the cache. Only use for testing. If used
@@ -1972,7 +1904,7 @@ impl GlobalStateHashStore for WritebackCache {
         let mut dirty_objects = BTreeMap::new();
 
         // add everything from the store
-        for obj in self.store.iter_live_object_set(include_wrapped_tombstone) {
+        for obj in self.store.iter_live_object_set() {
             dirty_objects.insert(obj.object_id(), obj);
         }
 
@@ -1985,11 +1917,7 @@ impl GlobalStateHashStore for WritebackCache {
                     dirty_objects.insert(id, LiveObject::Normal(object.clone()));
                 }
                 (version, ObjectEntry::Wrapped) => {
-                    if include_wrapped_tombstone {
-                        dirty_objects.insert(id, LiveObject::Wrapped(ObjectKey(id, *version)));
-                    } else {
-                        dirty_objects.remove(&id);
-                    }
+                    dirty_objects.remove(&id);
                 }
                 (_, ObjectEntry::Deleted) => {
                     dirty_objects.remove(&id);

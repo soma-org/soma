@@ -1,4 +1,5 @@
 use fastcrypto::hash::MultisetHash as _;
+use protocol_config::ProtocolConfig;
 use std::sync::Arc;
 use tracing::debug;
 use types::checkpoints::{CheckpointSequenceNumber, ECMHLiveObjectSetDigest, GlobalStateHash};
@@ -33,16 +34,13 @@ pub trait GlobalStateHashStore: ObjectStore + Send + Sync {
         acc: &GlobalStateHash,
     ) -> SomaResult;
 
-    fn iter_live_object_set(
-        &self,
-        include_wrapped_tombstone: bool,
-    ) -> Box<dyn Iterator<Item = LiveObject> + '_>;
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_>;
 
     fn iter_cached_live_object_set_for_testing(
         &self,
         include_wrapped_tombstone: bool,
     ) -> Box<dyn Iterator<Item = LiveObject> + '_> {
-        self.iter_live_object_set(include_wrapped_tombstone)
+        self.iter_live_object_set()
     }
 }
 
@@ -69,19 +67,12 @@ impl GlobalStateHashStore for SharedInMemoryStore {
         unreachable!("not used for testing")
     }
 
-    fn iter_live_object_set(
-        &self,
-        _include_wrapped_tombstone: bool,
-    ) -> Box<dyn Iterator<Item = LiveObject> + '_> {
+    fn iter_live_object_set(&self) -> Box<dyn Iterator<Item = LiveObject> + '_> {
         unreachable!("not used for testing")
     }
 }
 
-pub fn accumulate_effects<T, S>(effects: &[TransactionEffects]) -> GlobalStateHash
-where
-    S: std::ops::Deref<Target = T>,
-    T: GlobalStateHashStore + ?Sized,
-{
+pub fn accumulate_effects(effects: &[TransactionEffects]) -> GlobalStateHash {
     let mut acc = GlobalStateHash::default();
 
     // process insertions to the set
@@ -151,9 +142,7 @@ impl GlobalStateHasher {
 
     /// Returns the result of accumulating the live object set, without side effects
     pub fn accumulate_live_object_set(&self, include_wrapped_tombstone: bool) -> GlobalStateHash {
-        Self::accumulate_live_object_set_impl(
-            self.store.iter_live_object_set(include_wrapped_tombstone),
-        )
+        Self::accumulate_live_object_set_impl(self.store.iter_live_object_set())
     }
 
     fn accumulate_live_object_set_impl(iter: impl Iterator<Item = LiveObject>) -> GlobalStateHash {
@@ -311,5 +300,13 @@ impl GlobalStateHasher {
             last_checkpoint_of_epoch
         );
         Ok(running_root.clone())
+    }
+
+    pub fn accumulate_effects(
+        &self,
+        effects: &[TransactionEffects],
+        protocol_config: &ProtocolConfig,
+    ) -> GlobalStateHash {
+        accumulate_effects(effects)
     }
 }

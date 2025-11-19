@@ -36,7 +36,6 @@ use types::{
         PeerEvent,
     },
     parameters::Parameters,
-    signature_verifier::SignatureVerifier,
     state_sync::{self},
     storage::{
         consensus::{mem_store::MemStore, ConsensusStore},

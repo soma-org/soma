@@ -77,7 +77,7 @@ pub type CheckpointHeight = u64;
 pub struct EpochStats {
     pub checkpoint_count: u64,
     pub transaction_count: u64,
-    pub total_gas_reward: u64,
+    // pub total_gas_reward: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -664,7 +664,7 @@ impl CheckpointStore {
         F: Fn() -> Option<CheckpointSequenceNumber>,
     {
         notify_read
-            .read("notify_read_checkpoint_watermark", &[seq], |seqs| {
+            .read(&[seq], |seqs| {
                 let seq = seqs[0];
                 let Some(highest) = get_watermark() else {
                     return vec![None];
@@ -870,9 +870,6 @@ impl CheckpointStore {
             checkpoint_count: last_checkpoint.sequence_number - first_checkpoint + 1,
             transaction_count: last_checkpoint.network_total_transactions
                 - prev_epoch_network_transactions,
-            total_gas_reward: last_checkpoint
-                .epoch_rolling_gas_cost_summary
-                .computation_cost,
         })
     }
 
@@ -1149,8 +1146,7 @@ impl CheckpointBuilder {
         let min_checkpoint_interval_ms = self
             .epoch_store
             .protocol_config()
-            .min_checkpoint_interval_ms()
-            .unwrap_or_default();
+            .min_checkpoint_interval_ms();
         let mut grouped_pending_checkpoints = Vec::new();
         let mut checkpoints_iter = self
             .epoch_store
@@ -1592,7 +1588,7 @@ impl CheckpointBuilder {
                     .unwrap_or_else(|| panic!("Could not find executed transaction {:?}", effects));
                 match transaction.inner().transaction_data().kind() {
                     TransactionKind::ConsensusCommitPrologue(_) => {
-                        // ConsensusCommitPrologue and AuthenticatorStateUpdate are guaranteed to be
+                        // ConsensusCommitPrologue  are guaranteed to be
                         // processed before we reach here.
                     }
 
@@ -1603,7 +1599,7 @@ impl CheckpointBuilder {
                         );
                     }
 
-                    TransactionKind::ProgrammableTransaction(_) => {
+                    _ => {
                         // Only transactions that are not roots should be included in the call to
                         // `consensus_messages_processed_notify`. roots come directly from the consensus
                         // commit and so are known to be processed already.
@@ -1773,10 +1769,6 @@ impl CheckpointBuilder {
                     checkpoint_seq = sequence_number,
                     "creating last checkpoint of epoch {}", epoch
                 );
-                if let Some(stats) = self.store.get_epoch_stats(epoch, &summary) {
-                    self.epoch_store
-                        .report_epoch_metrics_at_last_checkpoint(stats);
-                }
             }
             last_checkpoint = Some((sequence_number, summary.clone()));
             checkpoints.push((summary, contents));

@@ -1,9 +1,18 @@
 use crate::authority::AuthorityState;
 use crate::cache::ExecutionCacheTraitPointers;
 use crate::checkpoints::CheckpointStore;
+use crate::rpc_index::OwnerIndexInfo;
+use crate::rpc_index::OwnerIndexKey;
 use crate::rpc_index::RpcIndexStore;
 use parking_lot::Mutex;
+use store::TypedStoreError;
+use tap::Pipe as _;
+use tap::TapFallible as _;
+use types::base::SomaAddress;
 use types::checkpoints::EndOfEpochData;
+use types::object::ObjectType;
+use types::storage::read_store::BalanceInfo;
+use types::storage::read_store::OwnedObjectInfo;
 use types::storage::read_store::RpcIndexes;
 use types::storage::read_store::RpcStateReader;
 
@@ -217,16 +226,6 @@ impl ReadStore for RocksDbStore {
         self.cache_traits
             .transaction_cache_reader
             .get_unchanged_loaded_runtime_objects(digest)
-    }
-
-    fn get_transaction_checkpoint(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<CheckpointSequenceNumber> {
-        self.cache_traits
-            .checkpoint_cache
-            .deprecated_get_transaction_checkpoint(digest)
-            .map(|(_epoch, checkpoint)| checkpoint)
     }
 
     fn get_latest_checkpoint(&self) -> types::storage::storage_error::Result<VerifiedCheckpoint> {
@@ -458,13 +457,6 @@ impl ReadStore for RestReadStore {
     ) -> Option<Vec<ObjectKey>> {
         self.rocks.get_unchanged_loaded_runtime_objects(digest)
     }
-
-    fn get_transaction_checkpoint(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<CheckpointSequenceNumber> {
-        self.rocks.get_transaction_checkpoint(digest)
-    }
 }
 
 impl RpcStateReader for RestReadStore {
@@ -481,5 +473,85 @@ impl RpcStateReader for RestReadStore {
 
     fn indexes(&self) -> Option<&dyn RpcIndexes> {
         Some(self)
+    }
+}
+
+impl RpcIndexes for RestReadStore {
+    fn get_epoch_info(
+        &self,
+        epoch: EpochId,
+    ) -> Result<Option<types::storage::read_store::EpochInfo>> {
+        self.index()?
+            .get_epoch_info(epoch)
+            .map_err(StorageError::custom)
+    }
+
+    fn get_transaction_info(
+        &self,
+        digest: &TransactionDigest,
+    ) -> types::storage::storage_error::Result<Option<types::storage::read_store::TransactionInfo>>
+    {
+        self.index()?
+            .get_transaction_info(digest)
+            .map_err(StorageError::custom)
+    }
+
+    fn owned_objects_iter(
+        &self,
+        owner: SomaAddress,
+        object_type: Option<ObjectType>,
+        cursor: Option<OwnedObjectInfo>,
+    ) -> Result<Box<dyn Iterator<Item = Result<OwnedObjectInfo, TypedStoreError>> + '_>> {
+        let cursor = cursor.map(|cursor| OwnerIndexKey {
+            owner: cursor.owner,
+            object_type: cursor.object_type,
+            inverted_balance: cursor.balance.map(std::ops::Not::not),
+            object_id: cursor.object_id,
+        });
+
+        let iter = self
+            .index()?
+            .owner_iter(owner, object_type, cursor)?
+            .map(|result| {
+                result.map(
+                    |(
+                        OwnerIndexKey {
+                            owner,
+                            object_id,
+                            object_type,
+                            inverted_balance,
+                        },
+                        OwnerIndexInfo { version },
+                    )| {
+                        OwnedObjectInfo {
+                            owner,
+                            object_type,
+                            balance: inverted_balance.map(std::ops::Not::not),
+                            object_id,
+                            version,
+                        }
+                    },
+                )
+            });
+
+        Ok(Box::new(iter) as _)
+    }
+
+    fn get_balance(
+        &self,
+        owner: &SomaAddress,
+    ) -> types::storage::storage_error::Result<Option<BalanceInfo>> {
+        self.index()?
+            .get_balance(owner)?
+            .map(|info| info.into())
+            .pipe(Ok)
+    }
+
+    fn get_highest_indexed_checkpoint_seq_number(
+        &self,
+    ) -> types::storage::storage_error::Result<Option<CheckpointSequenceNumber>> {
+        self.index()?
+            .get_highest_indexed_checkpoint_seq_number()
+            .map_err(Into::into)
     }
 }

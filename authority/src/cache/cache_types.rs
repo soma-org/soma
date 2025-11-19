@@ -48,7 +48,7 @@ impl<V> CachedVersionMap<V> {
             let back = self.values.back().unwrap().0;
             if back >= version {
                 panic!(
-                    "version must be monotonically increasing ({} < {})",
+                    "version must be monotonically increasing ({:?} < {:?})",
                     back, version
                 );
             }

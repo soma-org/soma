@@ -46,7 +46,7 @@ pub struct AuthorityStorePruner {
 #[derive(Default)]
 pub struct PrunerWatermarks {
     pub epoch_id: Arc<AtomicU64>,
-    pub commit_id: Arc<AtomicU64>,
+    pub checkpoint_id: Arc<AtomicU64>,
 }
 
 static MIN_PRUNING_TICK_DURATION_MS: u64 = 10 * 1000;
@@ -54,7 +54,7 @@ static MIN_PRUNING_TICK_DURATION_MS: u64 = 10 * 1000;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PruningMode {
     Objects,
-    Commits,
+    Checkpoints,
 }
 
 impl AuthorityStorePruner {
@@ -160,21 +160,12 @@ impl AuthorityStorePruner {
 
         perpetual_batch.delete_batch(&perpetual_db.transactions, transactions.iter())?;
         perpetual_batch.delete_batch(&perpetual_db.executed_effects, transactions.iter())?;
-        perpetual_batch.delete_batch(
-            &perpetual_db.executed_transactions_to_checkpoint,
-            transactions.iter(),
-        )?;
 
         let mut effect_digests = vec![];
         for effects in effects_to_prune {
             let effects_digest = effects.digest();
             debug!("Pruning effects {:?}", effects_digest);
             effect_digests.push(effects_digest);
-
-            if effects.events_digest().is_some() {
-                perpetual_batch
-                    .delete_batch(&perpetual_db.events_2, [effects.transaction_digest()])?;
-            }
         }
         perpetual_batch.delete_batch(
             &perpetual_db.unchanged_loaded_runtime_objects,

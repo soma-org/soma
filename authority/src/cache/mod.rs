@@ -1,9 +1,18 @@
 use std::{collections::HashSet, path::Path, sync::Arc};
 
+use crate::{
+    authority::ExecutionLockWriteGuard,
+    authority_per_epoch_store::AuthorityPerEpochStore,
+    authority_store::{AuthorityStore, LockResult},
+    backpressure_manager::BackpressureManager,
+    global_state_hasher::GlobalStateHashStore,
+    start_epoch::EpochStartConfiguration,
+};
 use futures::{
     future::{BoxFuture, Either},
     FutureExt,
 };
+use protocol_config::ProtocolVersion;
 use store::rocks::DBBatch;
 use tracing::{debug, instrument};
 use types::{
@@ -15,7 +24,6 @@ use types::{
     effects::TransactionEffects,
     error::{SomaError, SomaResult},
     object::{Object, ObjectID, ObjectRef, Version},
-    protocol::ProtocolVersion,
     storage::{
         object_store::ObjectStore, FullObjectKey, InputKey, MarkerValue, ObjectKey,
         ObjectOrTombstone,
@@ -25,15 +33,6 @@ use types::{
     transaction_outputs::TransactionOutputs,
 };
 use writeback_cache::WritebackCache;
-
-use crate::{
-    authority::ExecutionLockWriteGuard,
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    authority_store::{AuthorityStore, LockResult},
-    backpressure_manager::BackpressureManager,
-    global_state_hasher::GlobalStateHashStore,
-    start_epoch::EpochStartConfiguration,
-};
 
 pub(crate) mod cache_types;
 pub(crate) mod object_locks;
@@ -201,15 +200,15 @@ pub trait ObjectCacheRead: Send + Sync {
                 true
             }
         });
-        let (move_object_keys, package_object_keys): (Vec<_>, Vec<_>) = non_canceled_keys
-            .partition_map(|(idx, key)| match key {
-                InputKey::VersionedObject { id, version } => Either::Left((idx, (id, version))),
-                InputKey::Package { id } => Either::Right((idx, id)),
-            });
+        let object_keys: Vec<_> = non_canceled_keys
+            .map(|(idx, key)| match key {
+                InputKey::VersionedObject { id, version } => (idx, (id, version)),
+            })
+            .collect();
 
-        for ((idx, (id, version)), has_key) in move_object_keys.iter().zip(
+        for ((idx, (id, version)), has_key) in object_keys.iter().zip(
             self.multi_object_exists_by_key(
-                &move_object_keys
+                &object_keys
                     .iter()
                     .map(|(_, k)| ObjectKey(k.0.id(), *k.1))
                     .collect::<Vec<_>>(),
@@ -245,12 +244,6 @@ pub trait ObjectCacheRead: Send + Sync {
             }
         }
 
-        package_object_keys.into_iter().for_each(|(idx, id)| {
-            // get_package_object() only errors when the object is not a package, so returning false on error.
-            // Error is possible when this gets called on uncertified transactions.
-            results[idx] = self.get_package_object(id).is_ok_and(|p| p.is_some());
-        });
-
         results
     }
 
@@ -272,7 +265,7 @@ pub trait ObjectCacheRead: Send + Sync {
     // safety check before execution, and could potentially be deleted or changed to a debug_assert
     fn check_owned_objects_are_live(&self, owned_object_refs: &[ObjectRef]) -> SomaResult;
 
-    fn get_system_state_object_unsafe(&self) -> SomaResult<SystemState>;
+    fn get_system_state_object(&self) -> SomaResult<SystemState>;
 
     // Marker methods
 
@@ -295,7 +288,7 @@ pub trait ObjectCacheRead: Send + Sync {
         epoch_id: EpochId,
     ) -> Option<(Version, TransactionDigest)> {
         match self.get_latest_marker(object_id, epoch_id) {
-            Some((version, MarkerValue::ConsensusStreamEnded(digest))) => Some((version, digest)),
+            Some((version, MarkerValue::SharedDeleted(digest))) => Some((version, digest)),
             _ => None,
         }
     }
@@ -308,7 +301,7 @@ pub trait ObjectCacheRead: Send + Sync {
         epoch_id: EpochId,
     ) -> Option<TransactionDigest> {
         match self.get_marker_value(object_key, epoch_id) {
-            Some(MarkerValue::ConsensusStreamEnded(digest)) => Some(digest),
+            Some(MarkerValue::SharedDeleted(digest)) => Some(digest),
             _ => None,
         }
     }
@@ -333,7 +326,7 @@ pub trait ObjectCacheRead: Send + Sync {
         let full_id = FullObjectID::Fastpath(object_id); // function explicitly assumes "fastpath"
         matches!(
             self.get_latest_marker(full_id, epoch_id),
-            Some((marker_version, MarkerValue::FastpathStreamEnded)) if marker_version >= version
+            Some((marker_version, MarkerValue::OwnedDeleted)) if marker_version >= version
         )
     }
 
@@ -542,13 +535,7 @@ pub trait ExecutionCacheReconfigAPI: Send + Sync {
 
     fn clear_state_end_of_epoch(&self, execution_guard: &ExecutionLockWriteGuard<'_>);
 
-    fn checkpoint_db(&self, path: &Path) -> SomaResult;
-
-    fn maybe_reaccumulate_state_hash(
-        &self,
-        cur_epoch_store: &AuthorityPerEpochStore,
-        new_protocol_version: ProtocolVersion,
-    );
+    // fn checkpoint_db(&self, path: &Path) -> SomaResult;
 
     /// Reconfigure the cache itself.
     /// TODO: this is only needed for ProxyCache to switch between cache impls. It can be removed
@@ -619,18 +606,9 @@ macro_rules! implement_passthrough_traits {
                 self.clear_state_end_of_epoch_impl(execution_guard)
             }
 
-            fn checkpoint_db(&self, path: &std::path::Path) -> SomaResult {
-                self.store.perpetual_tables.checkpoint_db(path)
-            }
-
-            fn maybe_reaccumulate_state_hash(
-                &self,
-                cur_epoch_store: &AuthorityPerEpochStore,
-                new_protocol_version: ProtocolVersion,
-            ) {
-                self.store
-                    .maybe_reaccumulate_state_hash(cur_epoch_store, new_protocol_version)
-            }
+            // fn checkpoint_db(&self, path: &std::path::Path) -> SomaResult {
+            //     self.store.perpetual_tables.checkpoint_db(path)
+            // }
 
             fn reconfigure_cache<'a>(
                 &'a self,

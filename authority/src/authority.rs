@@ -9,6 +9,7 @@ use arc_swap::{ArcSwap, Guard};
 use fastcrypto::encoding::Base58;
 use fastcrypto::hash::MultisetHash;
 use parking_lot::Mutex;
+use protocol_config::{ProtocolConfig, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 use tap::TapFallible;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
@@ -38,7 +39,6 @@ use types::finality::{
     ConsensusFinality, SignedConsensusFinality, VerifiedSignedConsensusFinality,
 };
 use types::object::{Object, ObjectID, ObjectRef, Version, OBJECT_START_VERSION};
-use types::protocol::{ProtocolConfig, ProtocolVersion};
 use types::storage::object_store::ObjectStore;
 use types::storage::InputKey;
 use types::system_state::get_system_state;
@@ -647,8 +647,6 @@ impl AuthorityState {
     ) -> SomaResult<TransactionEffects> {
         trace!("execute_transaction");
 
-        self.metrics.total_cert_attempts.inc();
-
         if !transaction.is_consensus_tx() {
             // Shared object transactions need to be sequenced by the consensus before enqueueing
             // for execution, done in AuthorityPerEpochStore::handle_consensus_transaction().
@@ -679,7 +677,6 @@ impl AuthorityState {
         digest: TransactionDigest,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult<TransactionEffects> {
-        let _metrics_guard = self.metrics.await_transaction_latency.start_timer();
         debug!("await_transaction");
 
         epoch_store
@@ -783,14 +780,13 @@ impl AuthorityState {
             );
             (outputs, None, None)
         } else {
-            let (transaction_outputs, timings, execution_error_opt) = match self
-                .process_certificate(
-                    &tx_guard,
-                    &execution_guard,
-                    certificate,
-                    execution_env,
-                    epoch_store,
-                ) {
+            let (transaction_outputs, execution_error_opt) = match self.process_certificate(
+                &tx_guard,
+                &execution_guard,
+                certificate,
+                execution_env,
+                epoch_store,
+            ) {
                 ExecutionOutput::Success(result) => result,
                 output => return output.unwrap_err(),
             };
@@ -1742,8 +1738,7 @@ impl AuthorityState {
 
     // This function is only used for testing.
     pub fn get_system_state_object_for_testing(&self) -> SomaResult<SystemState> {
-        self.get_object_cache_reader()
-            .get_system_state_object_unsafe()
+        self.get_object_cache_reader().get_system_state_object()
     }
 
     #[instrument(level = "trace", skip_all)]

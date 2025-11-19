@@ -35,6 +35,7 @@ use std::{
 
 use crate::{
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
+    digests::SenderSignedDataDigest,
     metadata::Metadata,
     shard::Shard,
     shard_crypto::{
@@ -779,6 +780,14 @@ impl TransactionData {
         self.kind.is_system_tx()
     }
 
+    pub fn is_consensus_commit_prologue(&self) -> bool {
+        match &self.kind {
+            TransactionKind::ConsensusCommitPrologue(_) => true,
+
+            _ => false,
+        }
+    }
+
     pub fn execution_parts(&self) -> (TransactionKind, SomaAddress, Vec<ObjectRef>) {
         (self.kind().clone(), self.sender(), self.gas())
     }
@@ -888,6 +897,22 @@ impl SenderSignedData {
 
     pub fn tx_signatures(&self) -> &[GenericSignature] {
         &self.inner().tx_signatures
+    }
+
+    pub fn full_message_digest(&self) -> SenderSignedDataDigest {
+        let mut digest = DefaultHash::default();
+        bcs::serialize_into(&mut digest, self).expect("serialization should not fail");
+        let hash = digest.finalize();
+        SenderSignedDataDigest::new(hash.into())
+    }
+
+    pub fn serialized_size(&self) -> SomaResult<usize> {
+        bcs::serialized_size(self).map_err(|e| {
+            SomaError::TransactionSerializationError {
+                error: e.to_string(),
+            }
+            .into()
+        })
     }
 }
 
@@ -1180,6 +1205,13 @@ impl TransactionKey {
         match self {
             TransactionKey::Digest(d) => d,
             _ => panic!("called expect_digest on a non-Digest TransactionKey: {self:?}"),
+        }
+    }
+
+    pub fn as_digest(&self) -> Option<&TransactionDigest> {
+        match self {
+            TransactionKey::Digest(d) => Some(d),
+            _ => None,
         }
     }
 }

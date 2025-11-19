@@ -12,7 +12,7 @@ use store::rocksdb::{compaction_filter::Decision, MergeOperands, WriteOptions};
 use store::{DBMapUtils, Map as _, TypedStoreError};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
-use types::checkpoints::CheckpointSequenceNumber;
+use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
 use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
 
 use types::committee::EpochId;
@@ -394,7 +394,7 @@ impl IndexStoreTables {
         &mut self,
         authority_store: &AuthorityStore,
         checkpoint_store: &CheckpointStore,
-        checkpoint_range: std::ops::RangeInclusive<u32>,
+        checkpoint_range: std::ops::RangeInclusive<u64>,
     ) -> Result<(), StorageError> {
         info!(
             "Indexing {} checkpoints in range {checkpoint_range:?}",
@@ -423,12 +423,17 @@ impl IndexStoreTables {
         Ok(())
     }
 
+    /// Prune data from this Index
     fn prune(
         &self,
-        pruned_checkpoint_watermark: u32,
-        transactions_to_prune: &[TransactionDigest],
+        pruned_checkpoint_watermark: u64,
+        checkpoint_contents_to_prune: &[CheckpointContents],
     ) -> Result<(), TypedStoreError> {
         let mut batch = self.transactions.batch();
+
+        let transactions_to_prune = checkpoint_contents_to_prune
+            .iter()
+            .flat_map(|contents| contents.iter().map(|digests| digests.transaction));
 
         batch.delete_batch(&self.transactions, transactions_to_prune)?;
         batch.insert_batch(
@@ -445,7 +450,7 @@ impl IndexStoreTables {
         checkpoint: &CheckpointData,
     ) -> Result<store::rocks::DBBatch, StorageError> {
         debug!(
-            checkpoint = checkpoint.committed_subdag.commit_ref.index,
+            checkpoint = checkpoint.checkpoint_summary.sequence_number,
             "indexing checkpoint"
         );
 
@@ -459,12 +464,12 @@ impl IndexStoreTables {
             &self.watermark,
             [(
                 Watermark::Indexed,
-                checkpoint.committed_subdag.commit_ref.index,
+                checkpoint.checkpoint_summary.sequence_number,
             )],
         )?;
 
         debug!(
-            checkpoint = checkpoint.committed_subdag.commit_ref.index,
+            checkpoint = checkpoint.checkpoint_summary.sequence_number,
             "finished indexing checkpoint"
         );
 
@@ -531,7 +536,7 @@ impl IndexStoreTables {
                 &tx.effects,
                 &tx.input_objects,
                 &tx.output_objects,
-                checkpoint.committed_subdag.commit_ref.index.into(),
+                checkpoint.checkpoint_summary.sequence_number,
             );
 
             let digest = tx.transaction.digest();
@@ -694,7 +699,7 @@ impl IndexStoreTables {
 fn sparse_checkpoint_data_for_backfill(
     authority_store: &AuthorityStore,
     checkpoint_store: &CheckpointStore,
-    checkpoint: u32,
+    checkpoint: u64,
 ) -> Result<CheckpointData, StorageError> {
     let summary = checkpoint_store
         .get_checkpoint_by_sequence_number(checkpoint)?
@@ -991,11 +996,11 @@ impl RpcIndexStore {
 
     pub fn prune(
         &self,
-        pruned_checkpoint_watermark: u32,
-        tx_digests_to_prune: &[TransactionDigest],
+        pruned_checkpoint_watermark: u64,
+        checkpoint_contents_to_prune: &[CheckpointContents],
     ) -> Result<(), TypedStoreError> {
         self.tables
-            .prune(pruned_checkpoint_watermark, tx_digests_to_prune)
+            .prune(pruned_checkpoint_watermark, checkpoint_contents_to_prune)
     }
 
     /// Index a checkpoint and stage the index updated in `pending_updates`.
@@ -1004,10 +1009,10 @@ impl RpcIndexStore {
     /// called.
     #[tracing::instrument(
         skip_all,
-        fields(checkpoint = checkpoint.committed_subdag.commit_ref.index)
+        fields(checkpoint = checkpoint.checkpoint_summary.sequence_number)
     )]
     pub fn index_checkpoint(&self, checkpoint: &CheckpointData) {
-        let sequence_number = checkpoint.committed_subdag.commit_ref.index;
+        let sequence_number = checkpoint.checkpoint_summary.sequence_number;
         let batch = self.tables.index_checkpoint(checkpoint).expect("db error");
 
         self.pending_updates
@@ -1076,6 +1081,12 @@ impl RpcIndexStore {
         TypedStoreError,
     > {
         self.tables.balance_iter(owner, cursor)
+    }
+
+    pub fn get_highest_indexed_checkpoint_seq_number(
+        &self,
+    ) -> Result<Option<CheckpointSequenceNumber>, TypedStoreError> {
+        self.tables.watermark.get(&Watermark::Indexed)
     }
 }
 

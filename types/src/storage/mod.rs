@@ -24,17 +24,6 @@ pub mod shared_in_memory_store;
 pub mod storage_error;
 pub mod write_store;
 
-/// # InputKey
-///
-/// Represents a key for looking up potential inputs to a transaction.
-///
-/// ## Purpose
-/// Provides a standardized way to reference objects that may be used as inputs
-/// to transactions, with versioning information to ensure the correct object
-/// version is used.
-///
-/// ## Usage
-/// Used during transaction validation and execution to look up and verify
 /// the existence and state of input objects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum InputKey {
@@ -71,68 +60,30 @@ impl From<&Object> for InputKey {
     }
 }
 
-/// # WriteKind
-///
-/// Indicates how an object was written to storage during a transaction.
-///
-/// ## Purpose
-/// Tracks the origin and modification type of objects written to storage,
-/// which is important for correctly processing transaction effects and
-/// maintaining object history.
-///
-/// ## Usage
-/// Used in transaction effects to indicate how objects were modified,
-/// which affects how they are processed by the storage layer.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum WriteKind {
     /// The object was in storage already but has been modified
     Mutate,
-
     /// The object was created in this transaction
     Create,
-
     /// The object was previously wrapped in another object, but has been restored to storage
     Unwrap,
 }
 
-/// # MarkerValue
-///
-/// Represents different states that can be marked for an object in storage.
-///
-/// ## Purpose
-/// Tracks special states of objects that affect their availability for future
-/// transactions, such as being received, deleted, or consumed.
-///
-/// ## Usage
-/// Used by the storage layer to maintain object state and prevent double-spending
-/// or use of deleted objects.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum MarkerValue {
     /// An object was received at the given version in the transaction and is no longer able
-    /// to be received at that version in subsequent transactions
+    /// to be received at that version in subequent transactions.
     Received,
-
-    /// An owned object was deleted at the given version, and is no longer able to be
-    /// accessed or used in subsequent transactions
+    /// A fastpath object was deleted, wrapped, or transferred to consensus at the given
+    /// version, and is no longer able to be accessed or used in subsequent transactions via
+    /// fastpath unless/until it is returned to fastpath.
     OwnedDeleted,
-
-    /// A shared object was deleted by the transaction and is no longer able to be accessed or
-    /// used in subsequent transactions
-    /// Includes the digest of the transaction that deleted it
+    /// A shared object was deleted or removed from consensus by the transaction and is no longer
+    /// able to be accessed or used in subsequent transactions with the same initial shared version.
     SharedDeleted(TransactionDigest),
 }
 
-/// # ObjectKey
-///
-/// The primary key type for object storage, combining an object ID and version.
-///
-/// ## Purpose
-/// Provides a unique identifier for objects in storage that includes both the
-/// object ID and its version, allowing for versioned storage and retrieval.
-///
-/// ## Usage
-/// Used as the primary key in object storage tables and for referencing
-/// specific versions of objects throughout the system.
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct ObjectKey(pub ObjectID, pub Version);

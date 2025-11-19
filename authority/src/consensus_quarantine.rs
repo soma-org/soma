@@ -507,7 +507,7 @@ impl ConsensusOutputQuarantine {
             },
             |object_keys| {
                 tables
-                    .next_shared_object_versions_v2
+                    .next_shared_object_versions
                     .multi_get(object_keys)
                     .expect("db error")
             },

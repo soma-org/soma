@@ -22,6 +22,7 @@ use store::{
     rocks::{default_db_options, read_size_from_env, DBMap, DBOptions, ReadWriteOptions},
     DBMapUtils, Map as _,
 };
+use crate::signature_verifier::SignatureVerifier
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     base::{
@@ -53,8 +54,6 @@ use types::{
     finality::{ConsensusFinality, VerifiedSignedConsensusFinality},
     mutex_table::{MutexGuard, MutexTable},
     object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    protocol::{Chain, ProtocolConfig},
-    signature_verifier::SignatureVerifier,
     storage::{object_store::ObjectStore, InputKey},
     system_state::{
         self,
@@ -72,7 +71,7 @@ use types::{
     SYSTEM_STATE_OBJECT_ID,
 };
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
-
+use protocol_config::{Chain, ProtocolConfig, ProtocolVersion};
 use crate::{
     authority_store::LockDetails,
     authority_store_tables::ENV_VAR_LOCKS_BLOCK_CACHE_SIZE,
@@ -277,6 +276,10 @@ pub struct AuthorityPerEpochStore {
     /// In-memory cache of the content from the reconfig_state db table.
     reconfig_state_mem: RwLock<ReconfigState>,
     consensus_notify_read: NotifyRead<SequencedConsensusTransactionKey, ()>,
+
+      // Subscribers will get notified when a transaction is executed via checkpoint execution.
+    executed_transactions_to_checkpoint_notify_read:
+        NotifyRead<TransactionDigest, CheckpointSequenceNumber>,
 
     /// Batch verifier for certificates - also caches certificates and tx sigs that are known to have
     /// valid signatures. Lives in per-epoch store because the caching/batching is only valid
@@ -496,48 +499,55 @@ impl AuthorityEpochTables {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
-    pub fn get_last_consensus_stats(&self) -> SomaResult<Option<ExecutionIndices>> {
+    pub fn get_last_consensus_index(&self) -> SomaResult<Option<ExecutionIndices>> {
+        Ok(self
+            .last_consensus_stats
+            .get(&LAST_CONSENSUS_STATS_ADDR)?
+            .map(|s| s.index))
+    }
+
+     pub fn get_last_consensus_stats(&self) -> SomaResult<Option<ExecutionIndicesWithStats>> {
         Ok(self.last_consensus_stats.get(&LAST_CONSENSUS_STATS_ADDR)?)
     }
 
-    pub fn get_locked_transaction(
-        &self,
-        obj_ref: &ObjectRef,
-    ) -> SomaResult<Option<TransactionDigest>> {
-        Ok(self.object_locked_transactions.get(obj_ref)?.map(|l| l))
+    pub fn get_locked_transaction(&self, obj_ref: &ObjectRef) -> SomaResult<Option<LockDetails>> {
+        Ok(self
+            .object_locked_transactions
+            .get(obj_ref)?
+        )
     }
 
     pub fn multi_get_locked_transactions(
         &self,
         owned_input_objects: &[ObjectRef],
-    ) -> SomaResult<Vec<Option<TransactionDigest>>> {
+    ) -> SomaResult<Vec<Option<LockDetails>>> {
         Ok(self
             .object_locked_transactions
             .multi_get(owned_input_objects)?
             .into_iter()
-            .map(|l| l.map(|l| l))
+            
             .collect())
     }
 
-    pub fn write_transaction_locks(
+   pub fn write_transaction_locks(
         &self,
-        signed_transaction: VerifiedSignedTransaction,
-        locks_to_write: impl Iterator<Item = (ObjectRef, TransactionDigest)>,
+        signed_transaction: Option<VerifiedSignedTransaction>,
+        locks_to_write: impl Iterator<Item = (ObjectRef, LockDetails)>,
     ) -> SomaResult {
         let mut batch = self.object_locked_transactions.batch();
         batch.insert_batch(
             &self.object_locked_transactions,
             locks_to_write.map(|(obj_ref, lock)| (obj_ref, lock)),
         )?;
-
-        batch.insert_batch(
-            &self.signed_transactions,
-            std::iter::once((
-                *signed_transaction.digest(),
-                signed_transaction.serializable_ref(),
-            )),
-        )?;
-
+        if let Some(signed_transaction) = signed_transaction {
+            batch.insert_batch(
+                &self.signed_transactions,
+                std::iter::once((
+                    *signed_transaction.digest(),
+                    signed_transaction.serializable_ref(),
+                )),
+            )?;
+        }
         batch.write()?;
         Ok(())
     }
@@ -583,10 +593,29 @@ impl AuthorityPerEpochStore {
             epoch_id
         );
         let epoch_start_configuration = Arc::new(epoch_start_configuration);
+  
+        let protocol_version = ProtocolVersion::MIN;
+        let chain = Chain::Mainnet;
+        // TODO: derive protocol version from epoch start config
+        // let protocol_version = epoch_start_configuration
+        //     .epoch_start_state()
+        //     .protocol_version();
 
-        let protocol_config = ProtocolConfig::default();
+        // let chain_from_id = chain.0.chain();
+        // if chain_from_id == Chain::Mainnet || chain_from_id == Chain::Testnet {
+        //     assert_eq!(
+        //         chain_from_id, chain.1,
+        //         "cannot override chain on production networks!"
+        //     );
+        // }
+        // info!(
+        //     "initializing epoch store from chain id {:?} to chain id {:?}",
+        //     chain_from_id, chain.1
+        // );
 
-        let signature_verifier = SignatureVerifier::new(committee.clone(), None);
+        let protocol_config = ProtocolConfig::get_for_version(protocol_version, chain);
+
+        let signature_verifier = SignatureVerifier::new(committee.clone());
 
         let consensus_output_cache = ConsensusOutputCache::new(&epoch_start_configuration, &tables);
 
@@ -603,6 +632,7 @@ impl AuthorityPerEpochStore {
             db_options,
             reconfig_state_mem: RwLock::new(reconfig_state),
             epoch_alive_notify,
+            executed_transactions_to_checkpoint_notify_read: NotifyRead::new(),
             user_certs_closed_notify: NotifyOnce::new(),
             epoch_alive: tokio::sync::RwLock::new(true),
             consensus_notify_read: NotifyRead::new(),
@@ -617,7 +647,6 @@ impl AuthorityPerEpochStore {
             epoch_close_time: Default::default(),
             epoch_start_configuration,
             checkpoint_state_notify_read: NotifyRead::new(),
-            running_root_notify_read: NotifyRead::new(),
         });
         Ok(s)
     }
@@ -851,7 +880,7 @@ impl AuthorityPerEpochStore {
         for object in objects {
             self.tables()
                 .expect("test should not cross epoch boundary")
-                .owned_object_locked_transactions
+                .object_locked_transactions
                 .remove(object)
                 .unwrap();
         }
@@ -999,7 +1028,7 @@ impl AuthorityPerEpochStore {
             .iter()
             .map(|kind| {
                 match kind {
-                    InputObjectKind::SharedMoveObject {
+                    InputObjectKind::SharedObject {
                         id,
                         initial_shared_version,
                         ..
@@ -1018,8 +1047,8 @@ impl AuthorityPerEpochStore {
                             version: *version,
                         }
                     }
-                    InputObjectKind::MovePackage(id) => InputKey::Package { id: *id },
-                    InputObjectKind::ImmOrOwnedMoveObject(objref) => InputKey::VersionedObject {
+                    
+                    InputObjectKind::ImmOrOwnedObject(objref) => InputKey::VersionedObject {
                         id: FullObjectID::new(objref.0, None),
                         version: objref.1,
                     },
@@ -1071,7 +1100,6 @@ impl AuthorityPerEpochStore {
         Ok(self
             .checkpoint_state_notify_read
             .read(
-                "notify_read_checkpoint_state_hasher",
                 checkpoints,
                 |checkpoints| {
                     tables
@@ -1110,7 +1138,7 @@ impl AuthorityPerEpochStore {
             Ok(tables) => tables,
             // After Epoch ends, it is no longer necessary to remove pending transactions
             // because the table will not be used anymore and be deleted eventually.
-            Err(e) if matches!(e.as_inner(), SomaError::EpochEnded(_)) => return Ok(()),
+            Err(e) if matches!(e, SomaError::EpochEnded(_)) => return Ok(()),
             Err(e) => return Err(e),
         };
         let mut batch = tables.signed_effects_digests.batch();
@@ -1304,7 +1332,7 @@ impl AuthorityPerEpochStore {
             "initializing next_shared_object_versions"
         );
         tables
-            .next_shared_object_versions_v2
+            .next_shared_object_versions
             .multi_insert(versions_to_write)?;
 
         Ok(ret)
@@ -1595,13 +1623,7 @@ impl AuthorityPerEpochStore {
     ) -> Vec<Vec<GenericSignature>> {
         assert_eq!(transactions.len(), digests.len());
 
-        fn is_signature_expected(transaction: &VerifiedTransaction) -> bool {
-            !matches!(
-                transaction.inner().transaction_data().kind(),
-                TransactionKind::RandomnessStateUpdate(_)
-                    | TransactionKind::ProgrammableSystemTransaction(_)
-            )
-        }
+       
 
         let result: Vec<_> = {
             let mut user_sigs = self
@@ -1612,22 +1634,23 @@ impl AuthorityPerEpochStore {
                 .iter()
                 .zip(transactions.iter())
                 .map(|(d, t)| {
-                    // Some transactions (RandomnessStateUpdate and settlement transactions) don't go through
-                    // consensus, but have system-generated signatures that are guaranteed to be the same,
-                    // so we can just pull them from the transaction.
-                    if is_signature_expected(t) {
-                        // Expect is safe as long as consensus_message_processed_notify is called
+                     // Expect is safe as long as consensus_message_processed_notify is called
                         // before this call, to ensure that all canonical user signatures are
                         // available.
                         user_sigs.remove(d).expect("signature should be available")
-                    } else {
-                        t.tx_signatures().to_vec()
-                    }
                 })
                 .collect()
         };
 
         result
+    }
+
+    #[cfg(test)]
+    pub(crate) fn push_consensus_output_for_tests(&self, output: ConsensusCommitOutput) {
+        self.consensus_quarantine
+            .write()
+            .push_consensus_output(output, self)
+            .expect("push_consensus_output should not fail");
     }
 
     pub(crate) fn process_user_signatures<'a>(
@@ -1639,8 +1662,7 @@ impl AuthorityPerEpochStore {
                 Schedulable::Transaction(certificate) => {
                     Some((*certificate.digest(), certificate.tx_signatures().to_vec()))
                 }
-                Schedulable::RandomnessStateUpdate(_, _) => None,
-                Schedulable::AccumulatorSettlement(_, _) => None,
+               
             })
             .collect();
 
@@ -1898,10 +1920,10 @@ impl AuthorityPerEpochStore {
 
         // EOP can only be sent after finalizing remaining transactions.
         self.pending_consensus_certificates_empty()
-            && self
-                .consensus_tx_status_cache
-                .as_ref()
-                .is_none_or(|c| c.get_num_fastpath_certified() == 0)
+            //TODO: && self
+            //     .consensus_tx_status_cache
+            //     .as_ref()
+            //     .is_none_or(|c| c.get_num_fastpath_certified() == 0)
     }
 
     pub(crate) fn write_pending_checkpoint(
@@ -1994,7 +2016,7 @@ impl AuthorityPerEpochStore {
             position_in_commit: 0,
         };
         self.tables()?
-            .builder_checkpoint_summary_v2
+            .builder_checkpoint_summary
             .insert(summary.sequence_number(), &builder_summary)?;
         Ok(())
     }
@@ -2008,7 +2030,7 @@ impl AuthorityPerEpochStore {
 
         Ok(self
             .tables()?
-            .builder_checkpoint_summary_v2
+            .builder_checkpoint_summary
             .reversed_safe_iter_with_bounds(None, None)?
             .next()
             .transpose()?
@@ -2030,7 +2052,7 @@ impl AuthorityPerEpochStore {
         } else {
             let seq = self
                 .tables()?
-                .builder_checkpoint_summary_v2
+                .builder_checkpoint_summary
                 .reversed_safe_iter_with_bounds(None, None)?
                 .next()
                 .transpose()?
@@ -2055,7 +2077,7 @@ impl AuthorityPerEpochStore {
 
         Ok(self
             .tables()?
-            .builder_checkpoint_summary_v2
+            .builder_checkpoint_summary
             .get(&sequence)?
             .map(|s| s.summary))
     }
@@ -2065,7 +2087,7 @@ impl AuthorityPerEpochStore {
     ) -> SomaResult<Option<CheckpointSummary>> {
         for result in self
             .tables()?
-            .builder_checkpoint_summary_v2
+            .builder_checkpoint_summary
             .safe_iter_with_bounds(None, None)
         {
             let (seq, bcs) = result?;
@@ -2131,45 +2153,5 @@ impl AuthorityPerEpochStore {
     /// Whether this node is a validator in this epoch.
     pub fn is_validator(&self) -> bool {
         self.committee.authority_exists(&self.name)
-    }
-}
-
-impl EndOfEpochAPI for AuthorityPerEpochStore {
-    fn get_next_epoch_state(
-        &self,
-    ) -> Option<(
-        ValidatorSet,
-        EncoderCommittee,
-        NetworkingCommittee,
-        ECMHLiveObjectSetDigest,
-        u64,
-    )> {
-        self.next_epoch_state
-            .read()
-            .as_ref()
-            .map(|(state, digest)| {
-                let enc = state.get_current_epoch_encoder_committee();
-                info!("NEW ENCODER COMMITTEE: {:?}", enc);
-                (
-                    ValidatorSet(
-                        state
-                            .get_current_epoch_committee()
-                            .validators()
-                            .iter()
-                            .map(|(authority_name, (voting_power, network_metadata))| {
-                                (
-                                    authority_name.clone(),
-                                    *voting_power,
-                                    network_metadata.clone(),
-                                )
-                            })
-                            .collect(),
-                    ),
-                    state.get_current_epoch_encoder_committee(),
-                    state.get_current_epoch_networking_committee(),
-                    digest.clone(),
-                    state.epoch_start_timestamp_ms,
-                )
-            })
     }
 }

@@ -40,8 +40,7 @@ pub async fn execution_process(
                 if let Some(pending_cert) = result {
                     certificate = pending_cert.certificate;
                     execution_env = pending_cert.execution_env;
-                    txn_ready_time = pending_cert.stats.ready_time.unwrap();
-                    _executing_guard = pending_cert.executing_guard;
+                 
                 } else {
                     // Should only happen after the AuthorityState has shut down and tx_ready_certificate
                     // has been dropped by ExecutionScheduler.
