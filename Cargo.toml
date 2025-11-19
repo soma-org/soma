@@ -252,8 +252,9 @@ mockall = "0.13.1"
 quick_cache = "0.6.10"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = { git = "https://github.com/tracel-ai/burn.git" }
+burn = { git = "https://github.com/tracel-ai/burn.git", features = ["metal"] }
 burn-ndarray = { git = "https://github.com/tracel-ai/burn.git" }
+burn-wgpu = { git = "https://github.com/tracel-ai/burn.git" }
 burn-store = { git = "https://github.com/tracel-ai/burn.git", features = [
   "safetensors",
 ] }
