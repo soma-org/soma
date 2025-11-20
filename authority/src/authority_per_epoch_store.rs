@@ -22,7 +22,7 @@ use store::{
     rocks::{default_db_options, read_size_from_env, DBMap, DBOptions, ReadWriteOptions},
     DBMapUtils, Map as _,
 };
-use crate::signature_verifier::SignatureVerifier
+use crate::signature_verifier::SignatureVerifier;
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
     base::{
@@ -1682,6 +1682,17 @@ impl AuthorityPerEpochStore {
             );
         }
     }
+
+    pub fn acquire_tx_guard(&self, cert: &VerifiedExecutableTransaction) -> CertTxGuard {
+        let digest = cert.digest();
+        CertTxGuard(self.acquire_tx_lock(digest))
+    }
+
+    /// Acquire the lock for a tx without writing to the WAL.
+    pub fn acquire_tx_lock(&self, digest: &TransactionDigest) -> CertLockGuard {
+        CertLockGuard(self.mutex_table.acquire_lock(*digest))
+    }
+
 
     pub fn get_reconfig_state_read_lock_guard(&self) -> RwLockReadGuard<'_, ReconfigState> {
         self.reconfig_state_mem.read()

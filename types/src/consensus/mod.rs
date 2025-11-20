@@ -95,6 +95,28 @@ pub struct ConsensusTransaction {
     pub kind: ConsensusTransactionKind,
 }
 
+impl ConsensusTransaction {
+    /// Displays a ConsensusTransaction created locally by the validator, for example during submission to consensus.
+    pub fn local_display(&self) -> String {
+        match &self.kind {
+            ConsensusTransactionKind::CertifiedTransaction(cert) => {
+                format!("Certified({})", cert.digest())
+            }
+            ConsensusTransactionKind::CheckpointSignature(data) => {
+                format!(
+                    "CkptSig({}, {})",
+                    data.summary.sequence_number,
+                    data.summary.digest()
+                )
+            }
+            ConsensusTransactionKind::EndOfPublish(..) => "EOP".to_string(),
+            ConsensusTransactionKind::UserTransaction(tx) => {
+                format!("User({})", tx.digest())
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ConsensusTransactionKind {
     /// A user-submitted transaction that has been certified by a quorum of validators

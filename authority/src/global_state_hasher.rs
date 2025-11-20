@@ -141,7 +141,7 @@ impl GlobalStateHasher {
     }
 
     /// Returns the result of accumulating the live object set, without side effects
-    pub fn accumulate_live_object_set(&self, include_wrapped_tombstone: bool) -> GlobalStateHash {
+    pub fn accumulate_live_object_set(&self) -> GlobalStateHash {
         Self::accumulate_live_object_set_impl(self.store.iter_live_object_set())
     }
 
@@ -161,11 +161,8 @@ impl GlobalStateHasher {
         }
     }
 
-    pub fn digest_live_object_set(
-        &self,
-        include_wrapped_tombstone: bool,
-    ) -> ECMHLiveObjectSetDigest {
-        let acc = self.accumulate_live_object_set(include_wrapped_tombstone);
+    pub fn digest_live_object_set(&self) -> ECMHLiveObjectSetDigest {
+        let acc = self.accumulate_live_object_set();
         acc.digest().into()
     }
 

@@ -59,71 +59,11 @@ use crate::{
     peer_id::PeerId,
 };
 
-/// Standard Result type for Soma operations.
-///
-/// This type alias provides a consistent Result type used throughout the codebase,
-/// with SomaError as the error type. The generic parameter T allows specifying
-/// the success type, defaulting to () for operations that don't return a value.
-///
-/// # Examples
-///
-/// ```
-/// # use crate::types::error::{SomaResult, SomaError};
-/// fn operation_that_may_fail() -> SomaResult<u64> {
-///     // If successful, return a value
-///     Ok(42)
-///     
-///     // If failure, return an error
-///     // Err(SomaError::Storage("Failed to read value".into()))
-/// }
-///
-/// fn operation_with_no_return_value() -> SomaResult {
-///     // For operations that just need to indicate success/failure
-///     Ok(())
-/// }
-/// ```
+pub const TRANSACTION_NOT_FOUND_MSG_PREFIX: &str = "Could not find the referenced transaction";
+pub const TRANSACTIONS_NOT_FOUND_MSG_PREFIX: &str = "Could not find the referenced transactions";
+
 pub type SomaResult<T = ()> = Result<T, SomaError>;
 
-/// Primary error type for the Soma blockchain.
-///
-/// This enum represents all possible errors that can occur within the system.
-/// It provides detailed contextual information about each error to facilitate
-/// debugging and proper error handling.
-///
-/// The errors are grouped into related categories:
-/// - Committee and validator related errors
-/// - Cryptographic and signature errors
-/// - Epoch management errors
-/// - Execution and transaction processing errors
-/// - Consensus and authority errors
-/// - Object and storage errors
-/// - Network and RPC errors
-///
-/// ## Thread Safety
-/// This type is immutable and can be safely shared across threads.
-///
-/// ## Examples
-///
-/// ```
-/// # use crate::types::error::SomaError;
-/// # use crate::types::base::AuthorityName;
-/// # fn example() {
-/// // Creating a simple error
-/// let error = SomaError::InvalidAddress;
-///
-/// // Creating an error with context
-/// let error_with_context = SomaError::InvalidCommittee(
-///     "Committee members do not have sufficient voting power".to_string()
-/// );
-///
-/// // Creating an error with structured data
-/// let validator_name = AuthorityName::default();
-/// let authority_error = SomaError::FailedToVerifyTxCertWithExecutedEffects {
-///     validator_name,
-///     error: "Signature verification failed".to_string(),
-/// };
-/// # }
-/// ```
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Error, Hash)]
 pub enum SomaError {
     /// Error when the committee configuration is invalid
@@ -395,8 +335,19 @@ pub enum SomaError {
     #[error("Checkpoint contents not found for digest: {0}")]
     CheckpointContentsNotFound(CheckpointContentsDigest),
 
+    // Errors returned by authority and client read API's
     #[error("Failure serializing transaction in the requested format: {error}")]
     TransactionSerializationError { error: String },
+    #[error("Failure deserializing transaction from the provided format: {error}")]
+    TransactionDeserializationError { error: String },
+    #[error("Failure serializing transaction effects from the provided format: {error}")]
+    TransactionEffectsSerializationError { error: String },
+    #[error("Failure deserializing transaction effects from the provided format: {error}")]
+    TransactionEffectsDeserializationError { error: String },
+    #[error("Failure serializing object in the requested format: {error}")]
+    ObjectSerializationError { error: String },
+    #[error("Failure deserializing object in the requested format: {error}")]
+    ObjectDeserializationError { error: String },
 
     #[error("Failed to perform file operation: {0}")]
     FileIOError(String),
@@ -406,6 +357,43 @@ pub enum SomaError {
 
     #[error("Failed to deserialize {type_info}, error: {error}")]
     GrpcMessageDeserializeError { type_info: String, error: String },
+
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+
+    #[error(
+        "Total transactions size ({size}) bytes exceeds the maximum allowed ({limit}) bytes in a Soft Bundle"
+    )]
+    TotalTransactionSizeTooLargeInBatch { size: usize, limit: u64 },
+
+    #[error("Use of disabled feature: {error}")]
+    UnsupportedFeatureError { error: String },
+
+    #[error("Too many requests")]
+    TooManyRequests,
+
+    #[error("Transaction was not signed by the correct sender: {}", error)]
+    IncorrectUserSignature { error: String },
+
+    #[error("Genesis transaction not found")]
+    GenesisTransactionNotFound,
+
+    #[error("unknown error: {0}")]
+    Unknown(String),
+
+    #[error("{TRANSACTION_NOT_FOUND_MSG_PREFIX} [{:?}].", digest)]
+    TransactionNotFound { digest: TransactionDigest },
+    #[error("{TRANSACTIONS_NOT_FOUND_MSG_PREFIX} [{:?}].", digests)]
+    TransactionsNotFound { digests: Vec<TransactionDigest> },
+}
+
+impl SomaError {
+    pub fn individual_error_indicates_epoch_change(&self) -> bool {
+        matches!(
+            self,
+            SomaError::ValidatorHaltedAtEpochEnd | SomaError::MissingCommitteeAtEpoch(_)
+        )
+    }
 }
 
 impl From<Status> for SomaError {

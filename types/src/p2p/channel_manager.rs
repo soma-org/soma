@@ -5,6 +5,7 @@ use futures_util::future;
 use http::{Request, Response};
 use http_body::Body;
 use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::BodyExt as _;
 use hyper_util::{rt::TokioIo, service::TowerToHyperService};
 use parking_lot::RwLock;
 use std::pin::Pin;
@@ -183,12 +184,11 @@ where
         let own_address = to_socket_addr(&self.own_address)?;
 
         // Create server service with your GRPC service implementation
-        let server = Server::builder()
-            .initial_connection_window_size(64 << 20)
-            .initial_stream_window_size(32 << 20)
-            .add_service(self.service.clone())
-            .into_router();
-        // self.server_service = Some(Arc::new(server));
+        // let server = Server::builder()
+        //     .initial_connection_window_size(64 << 20)
+        //     .initial_stream_window_size(32 << 20)
+        //     .add_service(self.service.clone())
+        //     .into_router();
 
         // Setup TLS acceptor
         let tls_server_config = create_rustls_server_config(
@@ -250,72 +250,51 @@ where
         };
         info!("Server listening on {}", own_address);
 
-        // Create HTTP builder
-        let http = Arc::new(
+        // Create HTTP/2 connection builder
+        let http_builder = Arc::new(
             hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
                 .http2_only(),
         );
 
-        // Create a channel for sending new connection handler tasks
-        let (task_tx, mut task_rx) = mpsc::channel(100);
+        // Clone what we need for the spawn
+        let service = self.service.clone();
+        let active_peers = self.active_peers.clone();
 
         // Spawn server accept loop
-        let server_handle = tokio::spawn({
-            let tls_acceptor = tls_acceptor.clone();
-            let server = server.clone();
-            let http = http.clone();
-            let active_peers = self.active_peers.clone();
-
-            async move {
-                loop {
-                    let (tcp_stream, peer_addr) = match listener.accept().await {
-                        Ok(conn) => conn,
-                        Err(e) => {
-                            warn!("Failed to accept connection: {}", e);
-                            continue;
-                        }
-                    };
-
-                    trace!("Accepted new connection from {}", peer_addr);
-
-                    let tls_acceptor = tls_acceptor.clone();
-                    let server = server.clone();
-                    let http = http.clone();
-                    let active_peers = active_peers.clone();
-
-                    let task = async move {
-                        if let Err(e) = handle_connection(
-                            tcp_stream,
-                            peer_addr,
-                            tls_acceptor,
-                            server,
-                            http,
-                            active_peers,
-                        )
-                        .await
-                        {
-                            warn!("Connection handler error for {}: {}", peer_addr, e);
-                        }
-                    };
-
-                    if let Err(e) = task_tx.send(task).await {
-                        warn!("Failed to send connection handler task: {}", e);
+        let server_handle = tokio::spawn(async move {
+            loop {
+                let (tcp_stream, peer_addr) = match listener.accept().await {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        warn!("Failed to accept connection: {}", e);
+                        continue;
                     }
-                }
+                };
+
+                trace!("Accepted new connection from {}", peer_addr);
+
+                let tls_acceptor = tls_acceptor.clone();
+                let service = service.clone();
+                let http = http_builder.clone();
+                let active_peers = active_peers.clone();
+
+                tokio::spawn(async move {
+                    if let Err(e) = handle_connection(
+                        tcp_stream,
+                        peer_addr,
+                        tls_acceptor,
+                        service,
+                        http,
+                        active_peers,
+                    )
+                    .await
+                    {
+                        warn!("Connection handler error for {}: {}", peer_addr, e);
+                    }
+                });
             }
         });
 
-        // Spawn task to receive and spawn connection handlers
-        tokio::spawn({
-            let mut connection_handlers = std::mem::take(&mut self.connection_handlers);
-            async move {
-                while let Some(task) = task_rx.recv().await {
-                    connection_handlers.spawn(task);
-                }
-            }
-        });
-
-        // Store server handle
         self.server_handle = Some(server_handle);
 
         Ok(())
@@ -499,14 +478,21 @@ where
     }
 }
 
-async fn handle_connection(
+async fn handle_connection<S>(
     tcp_stream: tokio::net::TcpStream,
     peer_addr: std::net::SocketAddr,
     tls_acceptor: TlsAcceptor,
-    service: Router,
+    service: S,
     http: Arc<hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor>>,
     active_peers: ActivePeers,
-) -> SomaResult<()> {
+) -> SomaResult<()>
+where
+    S: Service<Request<BoxBody>, Response = Response<BoxBody>, Error = Infallible>
+        + Clone
+        + Send
+        + 'static,
+    S::Future: Send + 'static,
+{
     // Accept TLS connection
     let tls_stream = tls_acceptor
         .accept(tcp_stream)
@@ -515,24 +501,42 @@ async fn handle_connection(
 
     // Extract peer certificate and public key
     let (peer_id, client_public_key) = extract_peer_info_from_tls(&tls_stream)?;
-    // TODO: check that client_public_key is in the list of allowed peers
 
-    // Setup service stack
-    let svc = ServiceBuilder::new()
-        .map_request(move |mut request: http::Request<_>| {
+    // Create a service that:
+    // 1. Maps the incoming body to BoxBody
+    // 2. Adds peer info to the request
+    let svc = tower::ServiceBuilder::new()
+        .map_request(move |mut request: http::Request<hyper::body::Incoming>| {
+            // Convert the body type
+            let (parts, body) = request.into_parts();
+
+            // Convert Incoming to BoxBody
+            let boxed_body = body
+                .map_err(|e| Status::internal(format!("Body error: {}", e)))
+                .map_frame(|frame| frame.map_data(|data| data.into()))
+                .boxed_unsync();
+
+            // Reconstruct the request with the new body type
+            let mut request = http::Request::from_parts(parts, boxed_body);
+
+            // Add peer info
             request.extensions_mut().insert(PeerInfo { peer_id });
             request
         })
-        .service(service.clone());
+        .service(service);
 
-    pin! {
-        let connection = http.serve_connection(TokioIo::new(tls_stream), TowerToHyperService::new(svc));
-    }
-    let mut has_shutdown = false;
+    // Convert service for hyper
+    let hyper_service = hyper_util::service::TowerToHyperService::new(svc);
+
+    // Serve the connection
+    let io = hyper_util::rt::TokioIo::new(tls_stream);
+    let connection = http.serve_connection(io, hyper_service);
+
+    tokio::pin!(connection);
+
     loop {
         tokio::select! {
             result = &mut connection => {
-                // Remove peer - ActivePeers will handle the event emission internally
                 active_peers.remove(&peer_id, DisconnectReason::ConnectionLost);
                 match result {
                     Ok(()) => {
@@ -546,13 +550,6 @@ async fn handle_connection(
                     }
                 }
             }
-            // Optional: Handle graceful shutdown
-            // _ = shutdown_signal.recv() => {
-            //     if !has_shutdown {
-            //         connection.graceful_shutdown();
-            //         has_shutdown = true;
-            //     }
-            // }
         }
     }
 

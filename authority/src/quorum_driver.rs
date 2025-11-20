@@ -3,7 +3,7 @@ use crate::{
         AggregatorProcessCertificateError, AggregatorProcessTransactionError, AuthorityAggregator,
         ProcessTransactionResult,
     },
-    client::{AuthorityAPI, NetworkAuthorityClient},
+    authority_client::{AuthorityAPI, NetworkAuthorityClient},
 };
 use arc_swap::ArcSwap;
 use std::fmt::Write;
@@ -32,7 +32,7 @@ use types::{
     committee::{Committee, EpochId, VotingPower},
     digests::TransactionDigest,
     error::{SomaError, SomaResult},
-    grpc::HandleCertificateRequest,
+    messages_grpc::HandleCertificateRequest,
     quorum_driver::{
         ExecuteTransactionRequest, PlainTransactionInfoResponse, QuorumDriverEffectsQueueResult,
         QuorumDriverError, QuorumDriverResponse, QuorumDriverResult,

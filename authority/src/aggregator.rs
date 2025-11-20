@@ -1,5 +1,5 @@
 use crate::{
-    client::{
+    authority_client::{
         make_network_authority_clients_with_network_config, AuthorityAPI, NetworkAuthorityClient,
     },
     safe_client::SafeClient,
@@ -28,7 +28,7 @@ use types::{
     envelope::Message,
     error::{SomaError, SomaResult},
     finality::{SignedConsensusFinality, VerifiedCertifiedConsensusFinality},
-    grpc::{HandleCertificateRequest, HandleCertificateResponse},
+    messages_grpc::{HandleCertificateRequest, HandleCertificateResponse},
     object::Object,
     quorum_driver::{PlainTransactionInfoResponse, QuorumDriverResponse},
     system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
@@ -504,13 +504,13 @@ where
                 debug!(?tx_digest, name=?name.concise(), weight, "Received signed transaction from validator handle_transaction");
                 self.handle_transaction_response_with_signed(state, signed)
             }
-            Ok(PlainTransactionInfoResponse::ExecutedWithCert(cert, effects, finality)) => {
+            Ok(PlainTransactionInfoResponse::ExecutedWithCert(cert, effects)) => {
                 debug!(?tx_digest, name=?name.concise(), weight, "Received prev certificate and effects from validator handle_transaction");
-                self.handle_transaction_response_with_executed(state, Some(cert), effects, finality)
+                self.handle_transaction_response_with_executed(state, Some(cert), effects)
             }
-            Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(_, effects, finality)) => {
+            Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(_, effects)) => {
                 debug!(?tx_digest, name=?name.concise(), weight, "Received prev effects from validator handle_transaction");
-                self.handle_transaction_response_with_executed(state, None, effects, finality)
+                self.handle_transaction_response_with_executed(state, None, effects)
             }
             Err(err) => {
                 debug!(
@@ -569,7 +569,6 @@ where
         state: &mut ProcessTransactionState,
         certificate: Option<CertifiedTransaction>,
         plain_tx_effects: SignedTransactionEffects,
-        plain_tx_finality: Option<SignedConsensusFinality>,
     ) -> SomaResult<Option<ProcessTransactionResult>> {
         match certificate {
             Some(certificate) if certificate.epoch() == self.committee.epoch => {
@@ -921,18 +920,11 @@ where
     ) -> SomaResult<Option<QuorumDriverResponse>> {
         match response {
             Ok(HandleCertificateResponse {
-                signed_effects,
-                signed_finality,
+                effects: signed_effects,
+                // signed_finality,
                 input_objects,
                 output_objects,
             }) => {
-                debug!(
-                    ?tx_digest,
-                    name = ?name.concise(),
-                    has_finality = signed_finality.is_some(),
-                    "Validator handled certificate successfully",
-                );
-
                 if input_objects.is_some() && state.input_objects.is_none() {
                     state.input_objects = input_objects;
                 }

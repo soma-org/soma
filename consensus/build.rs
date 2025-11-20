@@ -1,7 +1,7 @@
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() -> Result<()> {
-    let codec_path = "tonic::codec::ProstCodec";
+    let codec_path = "tonic_prost::ProstCodec";
 
     let service = tonic_build::manual::Service::builder()
         .name("ConsensusService")

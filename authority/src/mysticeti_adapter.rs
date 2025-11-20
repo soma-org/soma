@@ -5,7 +5,10 @@ use tap::prelude::*;
 use tokio::time::{sleep, Instant};
 use tracing::{error, info, warn};
 use types::{
-    consensus::{transaction::TransactionClient, ConsensusTransaction, ConsensusTransactionKind},
+    consensus::{
+        transaction::{ClientError, TransactionClient},
+        ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind,
+    },
     error::{SomaError, SomaResult},
 };
 

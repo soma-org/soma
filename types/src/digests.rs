@@ -226,6 +226,20 @@ impl TryFrom<Vec<u8>> for Digest {
     }
 }
 
+impl std::str::FromStr for TransactionDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(TransactionDigest::new(result))
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct TransactionEffectsDigest(Digest);
 
@@ -304,6 +318,20 @@ impl fmt::Debug for TransactionEffectsDigest {
         f.debug_tuple("TransactionEffectsDigest")
             .field(&self.0)
             .finish()
+    }
+}
+
+impl std::str::FromStr for TransactionEffectsDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(TransactionEffectsDigest::new(result))
     }
 }
 

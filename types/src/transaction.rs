@@ -846,6 +846,25 @@ impl TransactionData {
     pub fn receiving_objects(&self) -> Vec<ObjectRef> {
         self.kind.receiving_objects()
     }
+
+    // Dependency (input, package & receiving) objects that already have a version,
+    // and do not require version assignment from consensus.
+    // Returns objects and receiving objects.
+    pub fn fastpath_dependency_objects(&self) -> SomaResult<(Vec<ObjectRef>, Vec<ObjectRef>)> {
+        let mut objects = vec![];
+
+        let mut receiving_objects = vec![];
+        self.input_objects()?.iter().for_each(|o| match o {
+            InputObjectKind::ImmOrOwnedObject(object_ref) => {
+                objects.push(*object_ref);
+            }
+            InputObjectKind::SharedObject { .. } => {}
+        });
+        self.receiving_objects().iter().for_each(|object_ref| {
+            receiving_objects.push(*object_ref);
+        });
+        Ok((objects, receiving_objects))
+    }
 }
 
 /// # SenderSignedData
@@ -952,6 +971,10 @@ impl<S> Envelope<SenderSignedData, S> {
             .value
             .shared_input_objects()
             .into_iter()
+    }
+
+    pub fn is_consensus_tx(&self) -> bool {
+        self.shared_input_objects().next().is_some()
     }
 }
 

@@ -14,20 +14,6 @@ use crate::{
 
 use super::PublicKey;
 
-/// # EpochStartSystemState
-///
-/// A snapshot of the system state at the beginning of an epoch.
-///
-/// ## Purpose
-/// Provides an immutable view of the system state at the start of an epoch,
-/// including the active validators and epoch information. This is used by
-/// components that need a consistent view of the system state throughout
-/// an epoch, even as the mutable system state may change.
-///
-/// ## Usage
-/// This struct is created from a SystemState at the beginning of an epoch
-/// and is used by various components to access epoch-specific information
-/// without needing to access the full SystemState.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct EpochStartSystemState {
     /// The epoch number
@@ -46,20 +32,6 @@ pub struct EpochStartSystemState {
 }
 
 impl EpochStartSystemState {
-    /// # Create a new epoch start system state
-    ///
-    /// Creates a new epoch start system state with the specified epoch information
-    /// and active validators.
-    ///
-    /// ## Arguments
-    /// * `epoch` - The epoch number
-    /// * `epoch_start_timestamp_ms` - The timestamp when the epoch started (in milliseconds)
-    /// * `epoch_duration_ms` - The duration of the epoch (in milliseconds)
-    /// * `active_validators` - The active validators at the start of the epoch
-    ///
-    /// ## Returns
-    /// A new EpochStartSystemState instance with the specified epoch information
-    /// and active validators
     pub fn new(
         epoch: EpochId,
         epoch_start_timestamp_ms: u64,
@@ -76,28 +48,10 @@ impl EpochStartSystemState {
         }
     }
 
-    /// # Create a new epoch start system state for testing
-    ///
-    /// Creates a new epoch start system state with default values for testing.
-    ///
-    /// ## Returns
-    /// A new EpochStartSystemState instance with epoch 0, timestamp 0,
-    /// duration 1000ms, and no active validators
     pub fn new_for_testing() -> Self {
         Self::new_for_testing_with_epoch(0)
     }
 
-    /// # Create a new epoch start system state for testing with a specific epoch
-    ///
-    /// Creates a new epoch start system state with default values for testing,
-    /// but with the specified epoch number.
-    ///
-    /// ## Arguments
-    /// * `epoch` - The epoch number to use
-    ///
-    /// ## Returns
-    /// A new EpochStartSystemState instance with the specified epoch, timestamp 0,
-    /// duration 1000ms, and no active validators
     pub fn new_for_testing_with_epoch(epoch: EpochId) -> Self {
         Self {
             epoch,
@@ -215,19 +169,6 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
     }
 }
 
-/// # EpochStartSystemStateTrait
-///
-/// A trait defining the interface for accessing epoch start system state information.
-///
-/// ## Purpose
-/// Provides a common interface for accessing epoch information and committee
-/// data from an epoch start system state. This allows components to work with
-/// the immutable epoch state without depending on the specific implementation.
-///
-/// ## Usage
-/// This trait is implemented by EpochStartSystemState and can be used by components
-/// that need to access epoch-specific information without depending on the
-/// full system state.
 pub trait EpochStartSystemStateTrait {
     /// Get the epoch number
     fn epoch(&self) -> EpochId;
@@ -257,19 +198,6 @@ pub trait EpochStartSystemStateTrait {
     fn reference_byte_price(&self) -> u64;
 }
 
-/// # EpochStartValidatorInfo
-///
-/// Information about a validator at the start of an epoch.
-///
-/// ## Purpose
-/// Stores the essential information about a validator that is needed during
-/// an epoch, including its cryptographic keys, network addresses, and voting power.
-/// This is a snapshot of the validator's state at the beginning of the epoch.
-///
-/// ## Usage
-/// This struct is stored in the EpochStartSystemState and is used to form
-/// the committee for the epoch and to provide information about validators
-/// to various components.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct EpochStartValidatorInfo {
     /// The Soma blockchain address of the validator
@@ -303,12 +231,6 @@ pub struct EpochStartValidatorInfo {
 }
 
 impl EpochStartValidatorInfo {
-    /// # Get the authority name
-    ///
-    /// Derives the authority name from the validator's protocol public key.
-    ///
-    /// ## Returns
-    /// The authority name derived from the protocol public key
     pub fn authority_name(&self) -> AuthorityName {
         (&self.protocol_pubkey).into()
     }

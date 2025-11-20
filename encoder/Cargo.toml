@@ -33,6 +33,7 @@ aes.workspace = true
 ctr.workspace = true
 crypto-common.workspace = true
 store.workspace = true
+tonic-prost.workspace = true
 # pyo3.workspace = true
 numpy.workspace = true
 ndarray.workspace = true
@@ -67,6 +68,7 @@ arbtest.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
+tonic-prost-build.workspace = true
 pyo3-build-config.workspace = true
 
 [lints]

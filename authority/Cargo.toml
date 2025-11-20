@@ -40,7 +40,13 @@ object_store.workspace = true
 url.workspace = true
 pin-project-lite.workspace = true
 rand.workspace = true
+soma-http.workspace = true
 serde_json.workspace = true
+tokio-rustls.workspace = true
+tower-http.workspace = true
+http.workspace = true
+soma-tls.workspace = true
+tonic-prost.workspace = true
 strum = { version = "0.27.1", features = ["derive"] }
 strum_macros = "0.27.1"
 dashmap = "6.0.1"
@@ -59,3 +65,4 @@ either = "1.8.0"
 
 [build-dependencies]
 tonic-build.workspace = true
+tonic-prost-build.workspace = true

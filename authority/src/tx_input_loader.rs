@@ -45,7 +45,6 @@ impl TransactionInputLoader {
         receiving_objects: &[ObjectRef],
         epoch_id: EpochId,
     ) -> SomaResult<(InputObjects, ReceivingObjects)> {
-        // Length of input_object_kinds have been checked via validity_check() for ProgrammableTransaction.
         let mut input_results = vec![None; input_object_kinds.len()];
         let mut object_refs = Vec::with_capacity(input_object_kinds.len());
         let mut fetch_indices = Vec::with_capacity(input_object_kinds.len());

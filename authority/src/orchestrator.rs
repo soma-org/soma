@@ -47,8 +47,8 @@ use utils::notify_read::NotifyRead;
 use crate::{
     aggregator::AuthorityAggregator,
     authority::AuthorityState,
+    authority_client::{AuthorityAPI, NetworkAuthorityClient},
     authority_per_epoch_store::AuthorityPerEpochStore,
-    client::{AuthorityAPI, NetworkAuthorityClient},
     encoder_client::EncoderClientService,
     quorum_driver::{
         OnsiteReconfigObserver, QuorumDriverHandler, QuorumDriverHandlerBuilder, ReconfigObserver,

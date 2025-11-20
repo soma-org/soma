@@ -143,24 +143,16 @@ pub type GroupedErrors = Vec<(SomaError, VotingPower, Vec<ConciseAuthorityPublic
 #[derive(Clone, Debug)]
 pub enum PlainTransactionInfoResponse {
     Signed(SignedTransaction),
-    ExecutedWithCert(
-        CertifiedTransaction,
-        SignedTransactionEffects,
-        Option<SignedConsensusFinality>,
-    ),
-    ExecutedWithoutCert(
-        Transaction,
-        SignedTransactionEffects,
-        Option<SignedConsensusFinality>,
-    ),
+    ExecutedWithCert(CertifiedTransaction, SignedTransactionEffects),
+    ExecutedWithoutCert(Transaction, SignedTransactionEffects),
 }
 
 impl PlainTransactionInfoResponse {
     pub fn is_executed(&self) -> bool {
         match self {
             PlainTransactionInfoResponse::Signed(_) => false,
-            PlainTransactionInfoResponse::ExecutedWithCert(_, _, _) => true,
-            PlainTransactionInfoResponse::ExecutedWithoutCert(_, _, _) => true,
+            PlainTransactionInfoResponse::ExecutedWithCert(_, _) => true,
+            PlainTransactionInfoResponse::ExecutedWithoutCert(_, _) => true,
         }
     }
 }

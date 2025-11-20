@@ -16,7 +16,7 @@ fn main() -> Result<()> {
 /// builds the tonic services
 #[allow(clippy::too_many_lines)]
 fn build_tonic_services(out_dir: &Path) {
-    let codec_path = "tonic::codec::ProstCodec";
+    let codec_path = "tonic_prost::ProstCodec";
     let inference_tonic_service = tonic_build::manual::Service::builder()
         .name("InferenceTonicService")
         .package("soma")

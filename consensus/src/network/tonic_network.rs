@@ -568,25 +568,23 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
             .committee
             .authority_by_authority_index(own_index)
             .unwrap();
-        // By default, bind to the unspecified address to allow the actual address to be assigned.
-        // But bind to localhost if it is requested.
-        // let own_address = if authority.address.is_localhost_ip() {
-        //     authority.address.clone()
-        // } else {
-        //     authority.address.with_zero_ip()
-        // };
 
         let own_address = to_socket_addr(&authority.address).unwrap();
         info!("Binding to address: {0}", own_address);
-        // panic!();
+
         let service = TonicServiceProxy::new(self.context.clone(), service);
 
-        // TODO: Add tracing middleware, keepalive and message size limits
-        let consensus_service = Server::builder()
-            .initial_connection_window_size(64 << 20)
-            .initial_stream_window_size(32 << 20)
-            .add_service(ConsensusServiceServer::new(service))
-            .into_router();
+        // Create the tonic service server with configuration
+        let consensus_service_server = ConsensusServiceServer::new(service)
+            .max_encoding_message_size(usize::MAX) // or your preferred limit
+            .max_decoding_message_size(usize::MAX); // or your preferred limit
+                                                    // You can add compression here if needed:
+                                                    // .send_compressed(CompressionEncoding::Zstd)
+                                                    // .accept_compressed(CompressionEncoding::Zstd);
+
+        // Convert to axum router
+        let consensus_service =
+            tonic::service::Routes::new(consensus_service_server).into_axum_router();
 
         let http =
             hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())

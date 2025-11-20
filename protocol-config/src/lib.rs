@@ -156,6 +156,14 @@ pub struct ProtocolConfig {
 
     /// Minimum interval of commit timestamps between consecutive checkpoints.
     min_checkpoint_interval_ms: Option<u64>,
+
+    /// The maximum serialised transaction size (in bytes) accepted by consensus. That should be bigger than the
+    /// `max_tx_size_bytes` with some additional headroom.
+    consensus_max_transaction_size_bytes: Option<u64>,
+    /// The maximum size of transactions included in a consensus block.
+    consensus_max_transactions_in_block_bytes: Option<u64>,
+    /// The maximum number of transactions included in a consensus block.
+    consensus_max_num_transactions_in_block: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -203,6 +211,14 @@ impl ProtocolConfig {
             feature_flags: Default::default(),
 
             min_checkpoint_interval_ms: Some(200),
+
+            consensus_max_transaction_size_bytes: Some(256 * 1024), // 256KB
+
+            // Assume 1KB per transaction and 500 transactions per block.
+            consensus_max_transactions_in_block_bytes: Some(512 * 1024),
+            // Assume 20_000 TPS * 5% max stake per validator / (minimum) 4 blocks per round = 250 transactions per block maximum
+            // Using a higher limit that is 512, to account for bursty traffic and system transactions.
+            consensus_max_num_transactions_in_block: Some(512),
             // // For now, perform upgrades with a bare quorum of validators.
             // // MUSTFIX: This number should be increased to at least 2000 (20%) for mainnet.
             // buffer_stake_for_protocol_upgrade_bps: Some(0),
@@ -249,5 +265,29 @@ impl ProtocolConfig {
         }
 
         cfg
+    }
+}
+
+impl ProtocolConfig {
+    pub fn max_transaction_size_bytes(&self) -> u64 {
+        self.consensus_max_transaction_size_bytes
+            .unwrap_or(256 * 1024)
+    }
+
+    pub fn max_transactions_in_block_bytes(&self) -> u64 {
+        if cfg!(msim) {
+            256 * 1024
+        } else {
+            self.consensus_max_transactions_in_block_bytes
+                .unwrap_or(512 * 1024)
+        }
+    }
+
+    pub fn max_num_transactions_in_block(&self) -> u64 {
+        if cfg!(msim) {
+            8
+        } else {
+            self.consensus_max_num_transactions_in_block.unwrap_or(512)
+        }
     }
 }

@@ -1,12 +1,14 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self, File};
+use std::io::Write as _;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::str::FromStr as _;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{pin::Pin, sync::Arc};
 
 use arc_swap::{ArcSwap, Guard};
-use fastcrypto::encoding::Base58;
+use fastcrypto::encoding::{Base58, Encoding as _};
 use fastcrypto::hash::MultisetHash;
 use parking_lot::Mutex;
 use protocol_config::{ProtocolConfig, ProtocolVersion};
@@ -38,6 +40,7 @@ use types::execution::{get_early_execution_error, ExecutionOrEarlyError, Executi
 use types::finality::{
     ConsensusFinality, SignedConsensusFinality, VerifiedSignedConsensusFinality,
 };
+use types::messages_grpc::TransactionInfoRequest;
 use types::object::{Object, ObjectID, ObjectRef, Version, OBJECT_START_VERSION};
 use types::storage::object_store::ObjectStore;
 use types::storage::InputKey;
@@ -58,8 +61,11 @@ use types::{
     crypto::{AuthoritySignInfo, AuthoritySignature, Signer},
     digests::TransactionDigest,
     error::{SomaError, SomaResult},
-    grpc::{HandleTransactionResponse, TransactionStatus},
     intent::{Intent, IntentScope},
+    messages_grpc::{
+        HandleTransactionResponse, ObjectInfoRequest, ObjectInfoResponse, TransactionInfoResponse,
+        TransactionStatus,
+    },
     transaction::{
         VerifiedCertificate, VerifiedExecutableTransaction, VerifiedSignedTransaction,
         VerifiedTransaction,
@@ -89,8 +95,9 @@ use crate::rpc_index::RpcIndexStore;
 use crate::shared_obj_version_manager::{AssignedVersions, Schedulable};
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::tx_input_loader::TransactionInputLoader;
+use crate::validator_tx_finalizer::ValidatorTxFinalizer;
 use crate::{
-    authority_per_epoch_store::AuthorityPerEpochStore, client::NetworkAuthorityClient,
+    authority_client::NetworkAuthorityClient, authority_per_epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration,
 };
 use types::storage::committee_store::CommitteeStore;
@@ -98,6 +105,9 @@ use types::storage::committee_store::CommitteeStore;
 #[cfg(test)]
 #[path = "unit_tests/authority_tests.rs"]
 pub mod authority_tests;
+
+pub const WAIT_FOR_FASTPATH_INPUT_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// a Trait object for `Signer` that is:
 /// - Pin, i.e. confined to one place in memory (we don't want to copy private keys).
 /// - Sync, i.e. can be safely shared between threads.
@@ -541,10 +551,10 @@ impl AuthorityState {
         epoch: EpochId,
     ) -> SomaResult<bool> {
         let txn_data = transaction.data().transaction_data();
-        let (move_objects, receiving_objects) = txn_data.fastpath_dependency_objects()?;
+        let (objects, receiving_objects) = txn_data.fastpath_dependency_objects()?;
 
         // Gather and filter input objects to wait for.
-        let fastpath_dependency_objects: Vec<_> = move_objects
+        let fastpath_dependency_objects: Vec<_> = objects
             .into_iter()
             .filter_map(|obj_ref| self.should_wait_for_dependency_object(obj_ref))
             .collect();
@@ -757,14 +767,9 @@ impl AuthorityState {
         }
 
         let scheduling_source = execution_env.scheduling_source;
-        let mysticeti_fp_outputs = if epoch_store.protocol_config().mysticeti_fastpath() {
-            tx_cache_reader.get_mysticeti_fastpath_outputs(tx_digest)
-        } else {
-            None
-        };
+        let mysticeti_fp_outputs = tx_cache_reader.get_mysticeti_fastpath_outputs(tx_digest);
 
-        let (transaction_outputs, timings, execution_error_opt) = if let Some(outputs) =
-            mysticeti_fp_outputs
+        let (transaction_outputs, execution_error_opt) = if let Some(outputs) = mysticeti_fp_outputs
         {
             assert!(
                 !certificate.is_consensus_tx(),
@@ -778,7 +783,7 @@ impl AuthorityState {
                 ?tx_digest,
                 "Mysticeti fastpath certified transaction outputs found in cache, skipping execution and committing"
             );
-            (outputs, None, None)
+            (outputs, None)
         } else {
             let (transaction_outputs, execution_error_opt) = match self.process_certificate(
                 &tx_guard,
@@ -790,11 +795,7 @@ impl AuthorityState {
                 ExecutionOutput::Success(result) => result,
                 output => return output.unwrap_err(),
             };
-            (
-                Arc::new(transaction_outputs),
-                Some(timings),
-                execution_error_opt,
-            )
+            (Arc::new(transaction_outputs), execution_error_opt)
         };
 
         let effects = transaction_outputs.effects.clone();
@@ -1002,9 +1003,6 @@ impl AuthorityState {
 
         // TODO: We need to move this to a more appropriate place to avoid redundant checks.
         let tx_data = certificate.data().transaction_data();
-        if let Err(e) = tx_data.validity_check(epoch_store.protocol_config()) {
-            return ExecutionOutput::Fatal(e.into());
-        }
 
         // The cost of partially re-auditing a transaction before execution is tolerated.
         // This step is required for correctness because, for example, ConsensusAddressOwner
@@ -1139,9 +1137,6 @@ impl AuthorityState {
             }
             .into());
         }
-
-        // Cheap validity checks for a transaction, including input size limits.
-        transaction.validity_check_no_gas_check(epoch_store.protocol_config())?;
 
         let input_object_kinds = transaction.input_objects()?;
         let receiving_object_refs = transaction.receiving_objects();
@@ -1278,6 +1273,60 @@ impl AuthorityState {
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> bool {
         self.get_transaction_cache_reader()
             .is_tx_already_executed(digest)
+    }
+
+    pub fn unixtime_now_ms() -> u64 {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
+        u64::try_from(now).expect("Travelling in time machine")
+    }
+
+    // TODO(fastpath): update this handler for Mysticeti fastpath.
+    // There will no longer be validator quorum signed transactions or effects.
+    // The proof of finality needs to come from checkpoints.
+    #[instrument(level = "trace", skip_all)]
+    pub async fn handle_transaction_info_request(
+        &self,
+        request: TransactionInfoRequest,
+    ) -> SomaResult<TransactionInfoResponse> {
+        let epoch_store = self.load_epoch_store_one_call_per_task();
+        let (transaction, status) = self
+            .get_transaction_status(&request.transaction_digest, &epoch_store)?
+            .ok_or(SomaError::TransactionNotFound {
+                digest: request.transaction_digest,
+            })?;
+        Ok(TransactionInfoResponse {
+            transaction,
+            status,
+        })
+    }
+
+    #[instrument(level = "trace", skip_all)]
+    pub async fn handle_object_info_request(
+        &self,
+        request: ObjectInfoRequest,
+    ) -> SomaResult<ObjectInfoResponse> {
+        let epoch_store = self.load_epoch_store_one_call_per_task();
+
+        let (_, requested_object_seq, _) = self
+            .get_object_or_tombstone(request.object_id)
+            .await
+            .ok_or_else(|| SomaError::ObjectNotFound {
+                object_id: request.object_id,
+                version: None,
+            })?;
+
+        let object = self
+            .get_object_store()
+            .get_object_by_key(&request.object_id, requested_object_seq)
+            .ok_or_else(|| SomaError::ObjectNotFound {
+                object_id: request.object_id,
+                version: Some(requested_object_seq),
+            })?;
+
+        Ok(ObjectInfoResponse { object })
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -1498,6 +1547,7 @@ impl AuthorityState {
         expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
         epoch_last_checkpoint: CheckpointSequenceNumber,
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
+        // TODO: check protocol version
         // Self::check_protocol_version(
         //     supported_protocol_versions,
         //     epoch_start_configuration
@@ -1533,33 +1583,30 @@ impl AuthorityState {
         self.get_reconfig_api()
             .clear_state_end_of_epoch(&execution_lock);
         self.check_system_consistency(cur_epoch_store, state_hasher, expensive_safety_check_config);
-        self.maybe_reaccumulate_state_hash(
-            cur_epoch_store,
-            epoch_start_configuration
-                .epoch_start_state()
-                .protocol_version(),
-        );
+
         self.get_reconfig_api()
             .set_epoch_start_configuration(&epoch_start_configuration);
-        if let Some(checkpoint_path) = &self.db_checkpoint_config.checkpoint_path {
-            if self
-                .db_checkpoint_config
-                .perform_db_checkpoints_at_epoch_end
-            {
-                let checkpoint_indexes = self
-                    .db_checkpoint_config
-                    .perform_index_db_checkpoints_at_epoch_end
-                    .unwrap_or(false);
-                let current_epoch = cur_epoch_store.epoch();
-                let epoch_checkpoint_path =
-                    checkpoint_path.join(format!("epoch_{}", current_epoch));
-                self.checkpoint_all_dbs(
-                    &epoch_checkpoint_path,
-                    cur_epoch_store,
-                    checkpoint_indexes,
-                )?;
-            }
-        }
+
+        // TODO: consider checkpointing dbs on reconfig
+        // if let Some(checkpoint_path) = &self.db_checkpoint_config.checkpoint_path {
+        //     if self
+        //         .db_checkpoint_config
+        //         .perform_db_checkpoints_at_epoch_end
+        //     {
+        //         let checkpoint_indexes = self
+        //             .db_checkpoint_config
+        //             .perform_index_db_checkpoints_at_epoch_end
+        //             .unwrap_or(false);
+        //         let current_epoch = cur_epoch_store.epoch();
+        //         let epoch_checkpoint_path =
+        //             checkpoint_path.join(format!("epoch_{}", current_epoch));
+        //         self.checkpoint_all_dbs(
+        //             &epoch_checkpoint_path,
+        //             cur_epoch_store,
+        //             checkpoint_indexes,
+        //         )?;
+        //     }
+        // }
 
         self.get_reconfig_api()
             .reconfigure_cache(&epoch_start_configuration)
@@ -1575,25 +1622,12 @@ impl AuthorityState {
             )
             .await?;
         assert_eq!(new_epoch_store.epoch(), new_epoch);
-        self.execution_scheduler
-            .reconfigure(&new_epoch_store, self.get_child_object_resolver());
+
         *execution_lock = new_epoch;
         // drop execution_lock after epoch store was updated
         // see also assert in AuthorityState::process_certificate
         // on the epoch store and execution lock epoch match
         Ok(new_epoch_store)
-    }
-
-    /// This is a temporary method to be used when we enable simplified_unwrap_then_delete.
-    /// It re-accumulates state hash for the new epoch if simplified_unwrap_then_delete is enabled.
-    #[instrument(level = "error", skip_all)]
-    fn maybe_reaccumulate_state_hash(
-        &self,
-        cur_epoch_store: &AuthorityPerEpochStore,
-        new_protocol_version: ProtocolVersion,
-    ) {
-        self.get_reconfig_api()
-            .maybe_reaccumulate_state_hash(cur_epoch_store, new_protocol_version);
     }
 
     #[instrument(level = "error", skip_all)]
@@ -1607,21 +1641,6 @@ impl AuthorityState {
             "Performing soma conservation consistency check for epoch {}",
             cur_epoch_store.epoch()
         );
-
-        if let Err(err) = self
-            .get_reconfig_api()
-            .expensive_check_soma_conservation(cur_epoch_store)
-        {
-            if cfg!(debug_assertions) {
-                panic!("{}", err);
-            } else {
-                // We cannot panic in production yet because it is known that there are some
-                // inconsistencies in testnet. We will enable this once we make it balanced again in testnet.
-                warn!("Soma conservation consistency check failed: {}", err);
-            }
-        } else {
-            info!("Soma conservation consistency check passed");
-        }
 
         // check for root state hash consistency with live object set
         if expensive_safety_check_config.enable_state_consistency_check() {
@@ -1638,11 +1657,7 @@ impl AuthorityState {
         state_hasher: Arc<GlobalStateHasher>,
         cur_epoch_store: &AuthorityPerEpochStore,
     ) {
-        let live_object_set_hash = state_hasher.digest_live_object_set(
-            !cur_epoch_store
-                .protocol_config()
-                .simplified_unwrap_then_delete(),
-        );
+        let live_object_set_hash = state_hasher.digest_live_object_set();
 
         let root_state_hash: ECMHLiveObjectSetDigest = self
             .get_global_state_hash_store()
@@ -1662,8 +1677,6 @@ impl AuthorityState {
         } else {
             info!("State consistency check passed");
         }
-
-        state_hasher.set_inconsistent_state(is_inconsistent);
     }
 
     pub fn current_epoch_for_testing(&self) -> EpochId {
@@ -1702,11 +1715,12 @@ impl AuthorityState {
         self.checkpoint_store
             .checkpoint_db(&checkpoint_path_tmp.join("checkpoints"))?;
 
-        self.get_reconfig_api()
-            .checkpoint_db(&store_checkpoint_path_tmp.join("perpetual"))?;
+        // TODO: checkpoint dbs
+        // self.get_reconfig_api()
+        //     .checkpoint_db(&store_checkpoint_path_tmp.join("perpetual"))?;
 
-        self.committee_store
-            .checkpoint_db(&checkpoint_path_tmp.join("epochs"))?;
+        // self.committee_store
+        //     .checkpoint_db(&checkpoint_path_tmp.join("epochs"))?;
 
         fs::rename(checkpoint_path_tmp, checkpoint_path)
             .map_err(|e| SomaError::FileIOError(e.to_string()))?;
@@ -2111,7 +2125,7 @@ impl AuthorityState {
             ObjectLockStatus::LockedToTx { locked_by_tx } => locked_by_tx,
         };
 
-        epoch_store.get_signed_transaction(&lock_info.tx_digest)
+        epoch_store.get_signed_transaction(&lock_info)
     }
 
     pub async fn get_objects(&self, objects: &[ObjectID]) -> Vec<Option<Object>> {
@@ -2158,7 +2172,7 @@ impl AuthorityState {
 
         let config = epoch_store.protocol_config();
 
-        let tx = VerifiedTransaction::new_change_epoch(
+        let tx = VerifiedTransaction::new_change_epoch_transaction(
             next_epoch,
             // next_epoch_protocol_version,
             epoch_start_timestamp_ms,
@@ -2212,7 +2226,7 @@ impl AuthorityState {
             epoch_store,
         )?;
 
-        let (transaction_outputs, _timings, _execution_error_opt) = self
+        let (transaction_outputs, _execution_error_opt) = self
             .execute_certificate(
                 &execution_guard,
                 &executable_tx,
@@ -2270,12 +2284,8 @@ impl AuthorityState {
     pub(crate) fn iter_live_object_set_for_testing(
         &self,
     ) -> impl Iterator<Item = types::object::LiveObject> + '_ {
-        let include_wrapped_object = !self
-            .epoch_store_for_testing()
-            .protocol_config()
-            .simplified_unwrap_then_delete();
         self.get_global_state_hash_store()
-            .iter_cached_live_object_set_for_testing(include_wrapped_object)
+            .iter_cached_live_object_set_for_testing(false)
     }
 
     #[cfg(test)]
