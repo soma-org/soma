@@ -1,5 +1,5 @@
 use crate::{
-    authority::{AuthorityState, ExecutionEnv}, authority_per_epoch_store::AuthorityPerEpochStore, consensus_adapter::ConsensusAdapter, execution_scheduler::SchedulingSource, mysticeti_adapter::LazyMysticetiClient, server::TLS_SERVER_NAME, shared_obj_version_manager::Schedulable, tonic_gen::validator_server::{Validator, ValidatorServer}
+    authority::{AuthorityState, ExecutionEnv}, authority_per_epoch_store::AuthorityPerEpochStore, checkpoints::CheckpointStore, consensus_adapter::ConsensusAdapter, consensus_tx_status_cache::{ConsensusTxStatus, NotifyReadConsensusTxStatusResult}, execution_scheduler::SchedulingSource, mysticeti_adapter::LazyMysticetiClient, server::TLS_SERVER_NAME, shared_obj_version_manager::Schedulable, tonic_gen::validator_server::{Validator, ValidatorServer}
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -79,7 +79,7 @@ impl AuthorityServer {
     pub fn new_for_test(state: Arc<AuthorityState>) -> Self {
         let consensus_adapter = Arc::new(ConsensusAdapter::new(
             Arc::new(LazyMysticetiClient::new()),
-            // CheckpointStore::new_for_tests(),
+            CheckpointStore::new_for_tests(),
             state.name,
             // Arc::new(ConnectionMonitorStatusForTests {}),
             100_000,
@@ -1422,8 +1422,8 @@ impl Validator for ValidatorService {
             // to prevent an attacker from subverting traffic control by severing the connection
             // handle_with_decoration!(validator_service, handle_submit_transaction_impl, request)
 
-            let wrapped_response = self.handle_submit_transaction_impl(request).await;
-            self.handle_traffic_resp(None, wrapped_response)
+            let wrapped_response = validator_service.handle_submit_transaction_impl(request).await;
+            validator_service.handle_traffic_resp(None, wrapped_response)
         })
         .await
         .unwrap()
@@ -1442,8 +1442,8 @@ impl Validator for ValidatorService {
             // to prevent an attacker from subverting traffic control by severing the connection
             // handle_with_decoration!(validator_service, transaction_impl, request)
 
-            let wrapped_response = self.transaction_impl(request).await;
-            self.handle_traffic_resp(None, wrapped_response)
+            let wrapped_response = validator_service.transaction_impl(request).await;
+            validator_service.handle_traffic_resp(None, wrapped_response)
         })
         .await
         .unwrap()

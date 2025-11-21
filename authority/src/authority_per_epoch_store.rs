@@ -22,53 +22,35 @@ use store::{
     rocks::{default_db_options, read_size_from_env, DBMap, DBOptions, ReadWriteOptions},
     DBMapUtils, Map as _,
 };
-use crate::signature_verifier::SignatureVerifier;
+use super::consensus_tx_status_cache::{ConsensusTxStatus, ConsensusTxStatusCache};
+use super::submitted_transaction_cache::{
+    SubmittedTransactionCache, 
+};
+use super::transaction_reject_reason_cache::TransactionRejectReasonCache;
+use crate::{signature_verifier::SignatureVerifier};
 use tracing::{debug, info, instrument, trace, warn};
 use types::{
-    base::{
+    SYSTEM_STATE_OBJECT_ID, base::{
         AuthorityName, ConciseableName, ConsensusObjectSequenceKey, FullObjectID, Round,
         SomaAddress,
-    },
-    checkpoints::{
+    }, checkpoints::{
         CheckpointContents, CheckpointSequenceNumber, CheckpointSignatureMessage,
         CheckpointSummary, ECMHLiveObjectSetDigest, GlobalStateHash,
-    },
-    committee::{Authority, Committee, EpochId, NetworkingCommittee},
-    consensus::{
-        block::BlockRef, validator_set::ValidatorSet, ConsensusCommitPrologue,
-        ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
-    },
-    crypto::{
+    }, committee::{Authority, Committee, EpochId, NetworkingCommittee}, consensus::{
+        ConsensusCommitPrologue, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI, block::BlockRef, validator_set::ValidatorSet
+    }, crypto::{
         AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo,
         GenericSignature, Signer,
-    },
-    digests::{TransactionDigest, TransactionEffectsDigest},
-    effects::{
-        self,
-        object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut},
-        ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind,
-    },
-    encoder_committee::EncoderCommittee,
-    envelope::TrustedEnvelope,
-    error::{ExecutionError, SomaError, SomaResult},
-    finality::{ConsensusFinality, VerifiedSignedConsensusFinality},
-    mutex_table::{MutexGuard, MutexTable},
-    object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    storage::{object_store::ObjectStore, InputKey},
-    system_state::{
-        self,
-        epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
-        get_system_state, SystemState, SystemStateTrait,
-    },
-    temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore},
-    transaction::{
+    }, digests::{TransactionDigest, TransactionEffectsDigest}, effects::{
+        self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind, object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut}
+    }, encoder_committee::EncoderCommittee, envelope::TrustedEnvelope, error::{ExecutionError, SomaError, SomaResult}, finality::{ConsensusFinality, VerifiedSignedConsensusFinality}, mutex_table::{MutexGuard, MutexTable}, object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version}, storage::{InputKey, object_store::ObjectStore}, system_state::{
+        self, SystemState, SystemStateTrait, epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, get_system_state
+    }, temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore}, transaction::{
         self, CertifiedTransaction, InputObjectKind, InputObjects, ObjectReadResult,
         ObjectReadResultKind, SenderSignedData, Transaction, TransactionKey, TransactionKind,
         TrustedExecutableTransaction, VerifiedCertificate, VerifiedExecutableTransaction,
         VerifiedSignedTransaction, VerifiedTransaction,
-    },
-    transaction_outputs::WrittenObjects,
-    SYSTEM_STATE_OBJECT_ID,
+    }, transaction_outputs::WrittenObjects
 };
 use utils::{notify_once::NotifyOnce, notify_read::NotifyRead};
 use protocol_config::{Chain, ProtocolConfig, ProtocolVersion};
@@ -328,32 +310,16 @@ pub struct AuthorityPerEpochStore {
     epoch_close_time: RwLock<Option<Instant>>,
     epoch_start_configuration: Arc<EpochStartConfiguration>,
     // chain_identifier: ChainIdentifier,
-    // TODO: pub(crate) consensus_tx_status_cache: Option<ConsensusTxStatusCache>,
+    pub(crate) consensus_tx_status_cache: Option<ConsensusTxStatusCache>,
 
-    // /// A cache that maintains the reject vote reason for a transaction.
-    // TODO: pub(crate) tx_reject_reason_cache: Option<TransactionRejectReasonCache>,
+    /// A cache that maintains the reject vote reason for a transaction.
+    pub(crate) tx_reject_reason_cache: Option<TransactionRejectReasonCache>,
 
-    // /// A cache that tracks submitted transactions to prevent DoS through excessive resubmissions.
-    // TODO: pub(crate) submitted_transaction_cache: SubmittedTransactionCache,
+    /// A cache that tracks submitted transactions to prevent DoS through excessive resubmissions.
+    pub(crate) submitted_transaction_cache: SubmittedTransactionCache,
 }
 
-/// # AuthorityEpochTables
-///
-/// Contains tables that store epoch-specific data that is only valid within a single epoch.
-///
-/// ## Purpose
-/// Provides a clean separation of data between epochs, ensuring that data from previous epochs
-/// doesn't interfere with the current epoch's operation. This isolation is critical for
-/// maintaining consistency during epoch transitions.
-///
-/// ## Lifecycle
-/// - Created at the beginning of an epoch
-/// - Used throughout the epoch for transaction processing and state management
-/// - Discarded or archived at the end of the epoch
-///
-/// ## Thread Safety
-/// Most tables are protected by RwLocks to allow concurrent access while maintaining
-/// consistency. The lock ordering must be carefully maintained to prevent deadlocks.
+
 #[derive(DBMapUtils)]
 pub struct AuthorityEpochTables {
     /// This is map between the transaction digest and transactions found in the `transaction_lock`.
@@ -619,6 +585,13 @@ impl AuthorityPerEpochStore {
 
         let consensus_output_cache = ConsensusOutputCache::new(&epoch_start_configuration, &tables);
 
+        let consensus_tx_status_cache =  Some(ConsensusTxStatusCache::new(protocol_config.gc_depth()));
+
+        let tx_reject_reason_cache = Some(TransactionRejectReasonCache::new(None, epoch_id));
+
+        let submitted_transaction_cache =
+            SubmittedTransactionCache::new(None);
+
         let s = Arc::new(Self {
             name,
             committee,
@@ -647,6 +620,9 @@ impl AuthorityPerEpochStore {
             epoch_close_time: Default::default(),
             epoch_start_configuration,
             checkpoint_state_notify_read: NotifyRead::new(),
+            consensus_tx_status_cache,
+            tx_reject_reason_cache,
+            submitted_transaction_cache,
         });
         Ok(s)
     }
@@ -1353,7 +1329,6 @@ impl AuthorityPerEpochStore {
             self,
             cache_reader,
             assignables,
-            &BTreeMap::new(),
         )?
         .assigned_versions)
     }
@@ -1841,12 +1816,10 @@ impl AuthorityPerEpochStore {
     pub(crate) fn process_consensus_transaction_shared_object_versions<'a>(
         &'a self,
         cache_reader: &dyn ObjectCacheRead,
-        non_randomness_transactions: impl Iterator<Item = &'a Schedulable> + Clone,
-        randomness_transactions: impl Iterator<Item = &'a Schedulable> + Clone,
-        cancelled_txns: &BTreeMap<TransactionDigest, CancelConsensusCertificateReason>,
+        transactions: impl Iterator<Item = &'a Schedulable> + Clone,
         output: &mut ConsensusCommitOutput,
     ) -> SomaResult<AssignedTxAndVersions> {
-        let all_certs = non_randomness_transactions.chain(randomness_transactions);
+        let all_certs = transactions;
 
         let ConsensusSharedObjVerAssignment {
             shared_input_next_versions,
@@ -1855,7 +1828,6 @@ impl AuthorityPerEpochStore {
             self,
             cache_reader,
             all_certs,
-            cancelled_txns,
         )?;
         debug!(
             "Assigned versions from consensus processing: {:?}",
@@ -1898,8 +1870,6 @@ impl AuthorityPerEpochStore {
         let assigned_versions = self.process_consensus_transaction_shared_object_versions(
             cache_reader,
             transactions.iter(),
-            std::iter::empty(),
-            &BTreeMap::new(),
             &mut output,
         )?;
         let mut batch = self.db_batch()?;
@@ -1931,10 +1901,10 @@ impl AuthorityPerEpochStore {
 
         // EOP can only be sent after finalizing remaining transactions.
         self.pending_consensus_certificates_empty()
-            //TODO: && self
-            //     .consensus_tx_status_cache
-            //     .as_ref()
-            //     .is_none_or(|c| c.get_num_fastpath_certified() == 0)
+            && self
+                .consensus_tx_status_cache
+                .as_ref()
+                .is_none_or(|c| c.get_num_fastpath_certified() == 0)
     }
 
     pub(crate) fn write_pending_checkpoint(
@@ -2159,6 +2129,33 @@ impl AuthorityPerEpochStore {
 
     pub fn clear_signature_cache(&self) {
         self.signature_verifier.clear_signature_cache();
+    }
+
+     pub(crate) fn set_consensus_tx_status(
+        &self,
+        position: ConsensusPosition,
+        status: ConsensusTxStatus,
+    ) {
+        if let Some(cache) = self.consensus_tx_status_cache.as_ref() {
+            cache.set_transaction_status(position, status);
+        }
+    }
+
+    pub(crate) fn set_rejection_vote_reason(&self, position: ConsensusPosition, reason: &SomaError) {
+        if let Some(tx_reject_reason_cache) = self.tx_reject_reason_cache.as_ref() {
+            tx_reject_reason_cache.set_rejection_vote_reason(position, reason);
+        }
+    }
+
+    pub(crate) fn get_rejection_vote_reason(
+        &self,
+        position: ConsensusPosition,
+    ) -> Option<SomaError> {
+        if let Some(tx_reject_reason_cache) = self.tx_reject_reason_cache.as_ref() {
+            tx_reject_reason_cache.get_rejection_vote_reason(position)
+        } else {
+            None
+        }
     }
 
     /// Whether this node is a validator in this epoch.

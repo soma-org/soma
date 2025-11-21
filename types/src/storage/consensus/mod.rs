@@ -1,17 +1,18 @@
-use crate::committee::{AuthorityIndex, Epoch};
+pub mod mem_store;
+pub mod rocksdb_store;
+
+use std::collections::BTreeMap;
+
+use crate::committee::AuthorityIndex;
+use crate::consensus::block::{BlockRef, Round, TransactionIndex};
 use crate::consensus::{
-    block::{BlockRef, Round, Slot, VerifiedBlock},
+    block::VerifiedBlock,
     commit::{CommitIndex, CommitInfo, CommitRange, CommitRef, TrustedCommit},
 };
 use crate::error::ConsensusResult;
 
-pub mod mem_store;
-pub mod rocksdb_store;
-#[cfg(test)]
-mod store_tests;
-
 /// A common interface for consensus storage.
-pub trait ConsensusStore: Send + Sync {
+pub trait Store: Send + Sync {
     /// Writes blocks, consensus commits and other data to store atomically.
     fn write(&self, write_batch: WriteBatch) -> ConsensusResult<()>;
 
@@ -26,7 +27,6 @@ pub trait ConsensusStore: Send + Sync {
         &self,
         authority: AuthorityIndex,
         start_round: Round,
-        epoch: Epoch,
     ) -> ConsensusResult<Vec<VerifiedBlock>>;
 
     // The method returns the last `num_of_rounds` rounds blocks by author in round ascending order.
@@ -37,7 +37,6 @@ pub trait ConsensusStore: Send + Sync {
         author: AuthorityIndex,
         num_of_rounds: u64,
         before_round: Option<Round>,
-        epoch: Epoch,
     ) -> ConsensusResult<Vec<VerifiedBlock>>;
 
     /// Reads the last commit.
@@ -49,22 +48,26 @@ pub trait ConsensusStore: Send + Sync {
     /// Reads all blocks voting on a particular commit.
     fn read_commit_votes(&self, commit_index: CommitIndex) -> ConsensusResult<Vec<BlockRef>>;
 
-    // Reads the last commit info, written atomically with the last commit.
+    /// Reads the last commit info, written atomically with the last commit.
     fn read_last_commit_info(&self) -> ConsensusResult<Option<(CommitRef, CommitInfo)>>;
 
-    /// Prunes all data from epochs before the given epoch.
-    /// This removes blocks, commits, commit votes, and commit info for old epochs.
-    fn prune_epochs_before(&self, epoch: Epoch) -> ConsensusResult<()>;
+    /// Reads the last finalized commit.
+    fn read_last_finalized_commit(&self) -> ConsensusResult<Option<CommitRef>>;
 
-    fn get_highest_pruned_commit_index(&self) -> ConsensusResult<Option<CommitIndex>>;
+    // Reads rejected transactions by block for a given commit.
+    fn read_rejected_transactions(
+        &self,
+        commit_ref: CommitRef,
+    ) -> ConsensusResult<Option<BTreeMap<BlockRef, Vec<TransactionIndex>>>>;
 }
 
 /// Represents data to be written to the store together atomically.
 #[derive(Debug, Default)]
 pub struct WriteBatch {
-    pub(crate) blocks: Vec<VerifiedBlock>,
-    pub(crate) commits: Vec<TrustedCommit>,
-    pub(crate) commit_info: Vec<(CommitRef, CommitInfo)>,
+    pub blocks: Vec<VerifiedBlock>,
+    pub commits: Vec<TrustedCommit>,
+    pub commit_info: Vec<(CommitRef, CommitInfo)>,
+    pub finalized_commits: Vec<(CommitRef, BTreeMap<BlockRef, Vec<TransactionIndex>>)>,
 }
 
 impl WriteBatch {
@@ -72,30 +75,32 @@ impl WriteBatch {
         blocks: Vec<VerifiedBlock>,
         commits: Vec<TrustedCommit>,
         commit_info: Vec<(CommitRef, CommitInfo)>,
+        finalized_commits: Vec<(CommitRef, BTreeMap<BlockRef, Vec<TransactionIndex>>)>,
     ) -> Self {
         WriteBatch {
             blocks,
             commits,
             commit_info,
+            finalized_commits,
         }
     }
 
     // Test setters.
 
-    // #[cfg(test)]
+    #[cfg(test)]
     pub fn blocks(mut self, blocks: Vec<VerifiedBlock>) -> Self {
         self.blocks = blocks;
         self
     }
 
     #[cfg(test)]
-    pub(crate) fn commits(mut self, commits: Vec<TrustedCommit>) -> Self {
+    pub fn commits(mut self, commits: Vec<TrustedCommit>) -> Self {
         self.commits = commits;
         self
     }
 
     #[cfg(test)]
-    pub(crate) fn commit_info(mut self, commit_info: Vec<(CommitRef, CommitInfo)>) -> Self {
+    pub fn commit_info(mut self, commit_info: Vec<(CommitRef, CommitInfo)>) -> Self {
         self.commit_info = commit_info;
         self
     }

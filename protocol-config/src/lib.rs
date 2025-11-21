@@ -14,8 +14,8 @@ use serde_with::skip_serializing_none;
 use tracing::{info, warn};
 
 /// The minimum and maximum protocol versions supported by this build.
-const MIN_PROTOCOL_VERSION: u64 = 1;
-const MAX_PROTOCOL_VERSION: u64 = 1;
+pub const MIN_PROTOCOL_VERSION: u64 = 1;
+pub const MAX_PROTOCOL_VERSION: u64 = 1;
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -164,6 +164,20 @@ pub struct ProtocolConfig {
     consensus_max_transactions_in_block_bytes: Option<u64>,
     /// The maximum number of transactions included in a consensus block.
     consensus_max_num_transactions_in_block: Option<u64>,
+
+    /// Configures the garbage collection depth for consensus. When is unset or `0` then the garbage collection
+    /// is disabled.
+    consensus_gc_depth: Option<u32>,
+
+    /// The number of commits to consider when computing a deterministic commit rate.
+    consensus_commit_rate_estimation_window_size: Option<u32>,
+
+    // Dictates the threshold (percentage of stake) that is used to calculate the "bad" nodes to be
+    // swapped when creating the consensus schedule. The values should be of the range [0 - 33]. Anything
+    // above 33 (f) will not be allowed.
+    consensus_bad_nodes_stake_threshold: Option<u64>,
+
+    mysticeti_num_leaders_per_round: Option<usize>,
 }
 
 // Instantiations for each protocol version.
@@ -219,6 +233,16 @@ impl ProtocolConfig {
             // Assume 20_000 TPS * 5% max stake per validator / (minimum) 4 blocks per round = 250 transactions per block maximum
             // Using a higher limit that is 512, to account for bursty traffic and system transactions.
             consensus_max_num_transactions_in_block: Some(512),
+
+            // Assuming a round rate of max 15/sec, then using a gc depth of 60 allow blocks within a window of ~4 seconds
+            // to be included before be considered garbage collected.
+            consensus_gc_depth: Some(60),
+
+            consensus_commit_rate_estimation_window_size: Some(10),
+
+            consensus_bad_nodes_stake_threshold: Some(30),
+
+            mysticeti_num_leaders_per_round: Some(1),
             // // For now, perform upgrades with a bare quorum of validators.
             // // MUSTFIX: This number should be increased to at least 2000 (20%) for mainnet.
             // buffer_stake_for_protocol_upgrade_bps: Some(0),
@@ -260,8 +284,8 @@ impl ProtocolConfig {
 
         // Simtest specific overrides.
         if cfg!(msim) {
-            // // Trigger GC more often.
-            // cfg.consensus_gc_depth = Some(5);
+            // Trigger GC more often.
+            cfg.consensus_gc_depth = Some(5);
         }
 
         cfg
@@ -289,5 +313,23 @@ impl ProtocolConfig {
         } else {
             self.consensus_max_num_transactions_in_block.unwrap_or(512)
         }
+    }
+
+    pub fn gc_depth(&self) -> u32 {
+        self.consensus_gc_depth.unwrap_or(0)
+    }
+
+    pub fn get_consensus_commit_rate_estimation_window_size(&self) -> u32 {
+        self.consensus_commit_rate_estimation_window_size
+            .unwrap_or(0)
+    }
+
+    pub fn consensus_num_requested_prior_commits_at_startup(&self) -> u32 {
+        // Currently there is only one parameter driving this value. If there are multiple
+        // things computed from prior consensus commits, this function must return the max
+        // of all of them.
+        let window_size = self.get_consensus_commit_rate_estimation_window_size();
+
+        window_size
     }
 }

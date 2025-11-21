@@ -799,3 +799,27 @@ impl fmt::Debug for SenderSignedDataDigest {
             .finish()
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct AdditionalConsensusStateDigest(Digest);
+
+impl AdditionalConsensusStateDigest {
+    pub const ZERO: Self = Self(Digest::ZERO);
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+}
+
+impl fmt::Display for AdditionalConsensusStateDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for AdditionalConsensusStateDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("AdditionalConsensusStateDigest")
+            .field(&self.0)
+            .finish()
+    }
+}

@@ -1,10 +1,20 @@
 use std::time::Instant;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use crate::consensus_adapter::{BlockStatusReceiver, ConsensusClient};
+use crate::consensus_handler::{ConsensusBlockHandler, MysticetiConsensusHandler};
+use crate::mysticeti_adapter::LazyMysticetiClient;
+use crate::{
+    authority_per_epoch_store::AuthorityPerEpochStore,
+    consensus_adapter::{ConsensusAdapter, SubmitToConsensus},
+    consensus_handler::ConsensusHandlerInitializer,
+    tx_validator::TxValidator,
+};
 use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
 use consensus::ConsensusAuthority;
 use fastcrypto::traits::KeyPair as _;
+use protocol_config::ProtocolVersion;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::{sleep, timeout};
 use tracing::{error, info};
@@ -12,23 +22,14 @@ use types::committee::Committee;
 use types::consensus::commit::CommitIndex;
 use types::consensus::context::Clock;
 use types::consensus::ConsensusPosition;
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::{
     committee::EpochId,
     config::node_config::{ConsensusConfig, NodeConfig},
     consensus::ConsensusTransaction,
     crypto::{NetworkKeyPair, ProtocolKeyPair},
     error::SomaResult,
-    protocol::ProtocolVersion,
     storage::consensus::ConsensusStore,
-};
-
-use crate::consensus_handler::MysticetiConsensusHandler;
-use crate::mysticeti_adapter::LazyMysticetiClient;
-use crate::{
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    consensus_adapter::{ConsensusAdapter, SubmitToConsensus},
-    consensus_handler::ConsensusHandlerInitializer,
-    tx_validator::TxValidator,
 };
 #[derive(PartialEq)]
 enum Running {
@@ -69,8 +70,12 @@ impl ConsensusManager {
         let (consumer_monitor_sender, _) = broadcast::channel(1);
         Self {
             consensus_config: consensus_config.clone(),
-            protocol_keypair: ProtocolKeyPair::new(node_config.worker_key_pair().copy()),
-            network_keypair: NetworkKeyPair::new(node_config.network_key_pair().copy()),
+            protocol_keypair: ProtocolKeyPair::new(
+                node_config.worker_key_pair().clone().into_inner(),
+            ),
+            network_keypair: NetworkKeyPair::new(
+                node_config.network_key_pair().clone().into_inner(),
+            ),
             storage_base_path: consensus_config.db_path().to_path_buf(),
             authority: ArcSwapOption::empty(),
             client,
@@ -91,7 +96,7 @@ impl ConsensusManager {
         tx_validator: TxValidator,
     ) {
         let system_state = epoch_store.epoch_start_state();
-        let committee: Committee = system_state.get_consensus_committee();
+        let committee: Committee = system_state.get_committee();
         let epoch = epoch_store.epoch();
         let protocol_config = epoch_store.protocol_config();
 
@@ -145,7 +150,6 @@ impl ConsensusManager {
             epoch_store.clone(),
             consensus_handler.execution_scheduler_sender().clone(),
             consensus_handler_initializer.backpressure_subscriber(),
-            consensus_handler_initializer.metrics().clone(),
         );
         let handler = MysticetiConsensusHandler::new(
             last_processed_commit_index,
@@ -242,7 +246,7 @@ impl ConsensusManager {
 
         // swap with empty to ensure there is no other reference to authority and we can safely do Arc unwrap
         let r = self.authority.swap(None).unwrap();
-        let Ok((authority, registry_id)) = Arc::try_unwrap(r) else {
+        let Ok(authority) = Arc::try_unwrap(r) else {
             panic!("Failed to retrieve the Mysticeti authority");
         };
 
@@ -255,13 +259,9 @@ impl ConsensusManager {
             handler.abort().await;
         }
 
-        // unregister the registry id
-        self.registry_service.remove(registry_id);
-
         self.consensus_client.clear();
 
         let elapsed = start_time.elapsed().as_secs_f64();
-        self.metrics.shutdown_latency.set(elapsed as i64);
 
         tracing::info!(
             "Consensus stopped for epoch {shutdown_epoch:?} & protocol version {shutdown_version:?} is complete - took {} seconds",

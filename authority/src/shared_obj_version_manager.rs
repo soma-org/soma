@@ -159,7 +159,6 @@ impl SharedObjVerManager {
         epoch_store: &AuthorityPerEpochStore,
         cache_reader: &dyn ObjectCacheRead,
         assignables: impl Iterator<Item = &'a Schedulable<T>> + Clone,
-        cancelled_txns: &BTreeMap<TransactionDigest, CancelConsensusCertificateReason>,
     ) -> SomaResult<ConsensusSharedObjVerAssignment>
     where
         T: AsTx + 'a,
@@ -177,7 +176,6 @@ impl SharedObjVerManager {
                 epoch_store,
                 assignable,
                 &mut shared_input_next_versions,
-                cancelled_txns,
             );
             assigned_versions.push((assignable.key(), cert_assigned_versions));
         }
@@ -241,7 +239,6 @@ impl SharedObjVerManager {
         epoch_store: &AuthorityPerEpochStore,
         assignable: &Schedulable<impl AsTx>,
         shared_input_next_versions: &mut HashMap<ConsensusObjectSequenceKey, Version>,
-        cancelled_txns: &BTreeMap<TransactionDigest, CancelConsensusCertificateReason>,
     ) -> AssignedVersions {
         let shared_input_objects: Vec<_> = assignable.shared_input_objects(epoch_store).collect();
 
@@ -252,20 +249,6 @@ impl SharedObjVerManager {
 
         let tx_key = assignable.key();
 
-        // Check if the transaction is cancelled due to congestion.
-        let cancellation_info = tx_key
-            .as_digest()
-            .and_then(|tx_digest| cancelled_txns.get(tx_digest));
-        let congested_objects_info: Option<HashSet<_>> =
-            if let Some(CancelConsensusCertificateReason::CongestionOnObjects(congested_objects)) =
-                &cancellation_info
-            {
-                Some(congested_objects.iter().cloned().collect())
-            } else {
-                None
-            };
-        let txn_cancelled = cancellation_info.is_some();
-
         let mut input_object_keys = assignable.non_shared_input_object_keys();
         let mut assigned_versions = Vec::with_capacity(shared_input_objects.len());
 
@@ -273,50 +256,23 @@ impl SharedObjVerManager {
         let receiving_object_keys = assignable.receiving_object_keys();
         input_object_keys.extend(receiving_object_keys);
 
-        if txn_cancelled {
-            // For cancelled transaction due to congestion, assign special versions to all shared objects.
-            // Note that new lamport version does not depend on any shared objects.
-            for SharedInputObject {
+        for (
+            SharedInputObject {
                 id,
                 initial_shared_version,
-                ..
-            } in shared_input_objects.iter()
-            {
-                let assigned_version = match cancellation_info {
-                    Some(CancelConsensusCertificateReason::CongestionOnObjects(_)) => {
-                        if congested_objects_info
-                            .as_ref()
-                            .is_some_and(|info| info.contains(id))
-                        {
-                            Version::CONGESTED
-                        } else {
-                            Version::CANCELLED_READ
-                        }
-                    }
-
-                    None => unreachable!("cancelled transaction should have cancellation info"),
-                };
-                assigned_versions.push(((*id, *initial_shared_version), assigned_version));
-            }
-        } else {
-            for (
-                SharedInputObject {
-                    id,
-                    initial_shared_version,
-                    mutable,
-                },
-                assigned_version,
-            ) in shared_input_objects.iter().map(|obj| {
-                (
-                    obj,
-                    *shared_input_next_versions
-                        .get(&obj.id_and_version())
-                        .unwrap(),
-                )
-            }) {
-                assigned_versions.push(((*id, *initial_shared_version), assigned_version));
-                input_object_keys.push(ObjectKey(*id, assigned_version));
-            }
+                mutable,
+            },
+            assigned_version,
+        ) in shared_input_objects.iter().map(|obj| {
+            (
+                obj,
+                *shared_input_next_versions
+                    .get(&obj.id_and_version())
+                    .unwrap(),
+            )
+        }) {
+            assigned_versions.push(((*id, *initial_shared_version), assigned_version));
+            input_object_keys.push(ObjectKey(*id, assigned_version));
         }
 
         let next_version = Version::lamport_increment(input_object_keys.iter().map(|obj| obj.1));
@@ -326,24 +282,21 @@ impl SharedObjVerManager {
             next_version
         );
 
-        if !txn_cancelled {
-            // Update the next version for the shared objects.
-            assigned_versions.iter().for_each(|(id, version)| {
-                assert!(
-                    version.is_valid(),
-                    "Assigned version must be a valid version."
-                );
-                shared_input_next_versions
-                    .insert(*id, *version)
-                    .expect("Object must exist in shared_input_next_versions.");
-            });
-        }
+        // Update the next version for the shared objects.
+        assigned_versions.iter().for_each(|(id, version)| {
+            assert!(
+                version.is_valid(),
+                "Assigned version must be a valid version."
+            );
+            shared_input_next_versions
+                .insert(*id, *version)
+                .expect("Object must exist in shared_input_next_versions.");
+        });
 
         trace!(
             ?tx_key,
             ?assigned_versions,
             ?next_version,
-            ?txn_cancelled,
             "locking shared objects"
         );
 

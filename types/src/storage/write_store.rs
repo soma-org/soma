@@ -19,8 +19,6 @@ use parking_lot::RwLock;
 use tap::Pipe as _;
 
 use super::{
-    consensus::ConsensusStore,
-    object_store::ObjectStore,
     read_store::ReadStore,
     storage_error::{self, Error, Result},
 };

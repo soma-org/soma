@@ -348,7 +348,7 @@ where
     }
 
     /// Execute a certificate.
-    pub async fn handle_certificate_v3(
+    pub async fn handle_certificate(
         &self,
         request: HandleCertificateRequest,
         client_addr: Option<SocketAddr>,

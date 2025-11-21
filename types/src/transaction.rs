@@ -35,7 +35,7 @@ use std::{
 
 use crate::{
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
-    digests::SenderSignedDataDigest,
+    digests::{AdditionalConsensusStateDigest, SenderSignedDataDigest},
     metadata::Metadata,
     shard::Shard,
     shard_crypto::{
@@ -1124,6 +1124,7 @@ impl VerifiedTransaction {
         round: u64,
         commit_timestamp_ms: CheckpointTimestamp,
         consensus_commit_digest: ConsensusCommitDigest,
+        additional_state_digest: AdditionalConsensusStateDigest,
     ) -> Self {
         ConsensusCommitPrologue {
             epoch,
@@ -1132,6 +1133,7 @@ impl VerifiedTransaction {
             sub_dag_index: None,
             commit_timestamp_ms,
             consensus_commit_digest,
+            additional_state_digest,
         }
         .pipe(TransactionKind::ConsensusCommitPrologue)
         .pipe(Self::new_system_transaction)

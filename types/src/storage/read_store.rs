@@ -13,17 +13,12 @@ use crate::{
         CheckpointContents, CheckpointSequenceNumber, FullCheckpointContents, VerifiedCheckpoint,
     },
     committee::{Committee, EpochId},
-    consensus::{
-        commit::{CommitAPI as _, CommitDigest, CommitIndex, CommittedSubDag},
-        output::ConsensusOutputAPI as _,
-        ConsensusTransactionKind,
-    },
     digests::{CheckpointContentsDigest, CheckpointDigest, TransactionDigest},
     effects::TransactionEffects,
     full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet},
     object::{Object, ObjectID, ObjectType, Version},
     storage::ObjectKey,
-    transaction::{TransactionData, VerifiedTransaction},
+    transaction::VerifiedTransaction,
 };
 
 use super::{object_store::ObjectStore, storage_error::Result};

@@ -4,7 +4,9 @@ use crate::{
     committee::{EpochId, NetworkingCommittee},
     consensus::block::{BlockRef, TransactionIndex, PING_TRANSACTION_INDEX},
     crypto::AuthorityPublicKeyBytes,
-    digests::{CheckpointDigest, ConsensusCommitDigest, TransactionDigest},
+    digests::{
+        AdditionalConsensusStateDigest, CheckpointDigest, ConsensusCommitDigest, TransactionDigest,
+    },
     encoder_committee::EncoderCommittee,
     error::SomaError,
     transaction::{CertifiedTransaction, Transaction},
@@ -16,13 +18,10 @@ use std::{collections::hash_map::DefaultHasher, hash::Hash as _, hash::Hasher as
 use validator_set::ValidatorSet;
 
 pub mod block;
-pub mod block_verifier;
 pub mod commit;
-pub mod committee;
 pub mod context;
-pub mod output;
+pub mod leader_scoring;
 pub mod stake_aggregator;
-pub mod transaction;
 pub mod validator_set;
 
 /// The position of a transaction in consensus.
@@ -281,6 +280,10 @@ pub struct ConsensusCommitPrologue {
 
     /// Digest of consensus output for verification
     pub consensus_commit_digest: ConsensusCommitDigest,
+
+    /// Digest of any additional state computed by the consensus handler.
+    /// Used to detect forking bugs as early as possible.
+    pub additional_state_digest: AdditionalConsensusStateDigest,
 }
 
 pub trait EndOfEpochAPI: Send + Sync + 'static {

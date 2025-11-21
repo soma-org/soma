@@ -129,7 +129,8 @@ impl ShardAuthToken {
     }
 
     pub fn epoch(&self) -> u64 {
-        self.finality_proof.consensus_finality.leader_block.epoch
+        // TODO: change this to use checkpoints instead
+        self.finality_proof.consensus_finality.epoch()
     }
 }
 

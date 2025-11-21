@@ -1,38 +1,6 @@
-//! # Committee Management
-//!
-//! ## Overview
-//! This module defines the structures and logic for managing validator committees in the
-//! Soma blockchain. Committees are responsible for consensus, transaction validation, and
-//! network operations, with voting power distributed among validators.
-//!
-//! ## Responsibilities
-//! - Define the validator committee structure and membership
-//! - Manage validator voting power and stake distribution
-//! - Provide committee-related constants like quorum thresholds
-//! - Support authority selection based on stake weight
-//! - Handle epoch transitions and committee reconfiguration
-//!
-//! ## Component Relationships
-//! - Used by consensus module to determine leader selection and voting rights
-//! - Used by authority module to validate transaction certificates
-//! - Used by node module for validator discovery and networking
-//! - Provides the foundation for Byzantine Fault Tolerance in the system
-//!
-//! ## Key Workflows
-//! 1. Committee creation at genesis and during epoch transitions
-//! 2. Validator selection weighted by stake for leader election
-//! 3. Threshold verification for transaction commit certificates
-//! 4. Authority identity and metadata management
-//!
-//! ## Design Patterns
-//! - Immutable committee structure for thread safety
-//! - Caching of derived data like authority indices for performance
-//! - Fixed total voting power with normalized stake distribution
-//! - Deterministic stake-weighted authority selection
-
 use crate::base::{AuthorityName, ConciseableName};
 use crate::checksum::Checksum;
-use crate::consensus::committee::get_available_local_address;
+
 use crate::crypto::{
     get_key_pair_from_rng, random_committee_key_pairs_of_size, AuthorityKeyPair,
     AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair, ProtocolPublicKey,
@@ -60,6 +28,8 @@ use std::fmt::{Display, Formatter, Write};
 use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
 use tracing::info;
+
+use std::net::{TcpListener, TcpStream};
 
 /// Identifier for a specific epoch in the blockchain's history.
 ///
@@ -215,41 +185,6 @@ pub struct Committee {
 }
 
 impl Committee {
-    /// Creates a new committee with the specified epoch, voting rights, and authorities.
-    ///
-    /// # Arguments
-    /// * `epoch` - The epoch ID for this committee
-    /// * `voting_rights` - Mapping of authority names to their voting power
-    /// * `authorities` - Mapping of authority names to their detailed information
-    ///
-    /// # Returns
-    /// A new Committee instance
-    ///
-    /// # Panics
-    /// This function will panic if:
-    /// - The voting rights collection is empty
-    /// - All authorities have zero voting power
-    /// - The total voting power doesn't equal TOTAL_VOTING_POWER (10,000)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::collections::BTreeMap;
-    /// # type AuthorityName = [u8; 32];
-    /// # type VotingPower = u64;
-    /// # struct Authority {}
-    /// # struct Committee { epoch: u64 }
-    /// # impl Committee {
-    /// #     fn new(epoch: u64, _: BTreeMap<AuthorityName, VotingPower>, _: BTreeMap<AuthorityName, Authority>) -> Self {
-    /// #         Committee { epoch }
-    /// #     }
-    /// # }
-    /// # let mut voting_rights = BTreeMap::new();
-    /// # let mut authorities = BTreeMap::new();
-    /// # voting_rights.insert([0; 32], 5000);
-    /// # voting_rights.insert([1; 32], 5000);
-    /// let committee = Committee::new(1, voting_rights, authorities);
-    /// ```
     pub fn new(
         epoch: EpochId,
         voting_rights: BTreeMap<AuthorityName, VotingPower>,
@@ -264,7 +199,7 @@ impl Committee {
 
         voting_rights_vec.sort_by_key(|(a, _)| *a);
         let total_votes: VotingPower = voting_rights_vec.iter().map(|(_, votes)| *votes).sum();
-        // TODO: assert_eq!(total_votes, TOTAL_VOTING_POWER);
+        assert_eq!(total_votes, TOTAL_VOTING_POWER);
 
         let (expanded_keys, index_map) = Self::load_inner(&voting_rights_vec);
 
@@ -872,4 +807,120 @@ pub fn to_networking_committee_intent(
         Intent::consensus_app(IntentScope::NetworkingCommittee),
         digest,
     )
+}
+
+/// Creates a committee for local testing, and the corresponding key pairs for the authorities.
+pub fn local_committee_and_keys(
+    epoch: Epoch,
+    authorities_stake: Vec<Stake>,
+) -> (
+    Committee,
+    Vec<(NetworkKeyPair, ProtocolKeyPair)>,
+    Vec<AuthorityKeyPair>,
+) {
+    let mut authorities = BTreeMap::new();
+    let mut voting_weights = BTreeMap::new();
+    let mut key_pairs = vec![];
+    let mut authority_key_pairs = vec![];
+    let mut rng = StdRng::from_seed([0; 32]);
+
+    for (i, stake) in authorities_stake.into_iter().enumerate() {
+        let authority_keypair = AuthorityKeyPair::generate(&mut rng);
+        let protocol_keypair = ProtocolKeyPair::generate(&mut rng);
+        let network_keypair = NetworkKeyPair::generate(&mut rng);
+
+        let name = AuthorityName::from(authority_keypair.public());
+
+        authorities.insert(
+            name,
+            Authority {
+                stake,
+                address: get_available_local_address(),
+                hostname: format!("test_host_{i}").to_string(),
+                authority_key: authority_keypair.public().clone(),
+                protocol_key: protocol_keypair.public(),
+                network_key: network_keypair.public(),
+            },
+        );
+
+        voting_weights.insert(name, stake);
+        key_pairs.push((network_keypair, protocol_keypair));
+        authority_key_pairs.push(authority_keypair);
+    }
+
+    let committee = Committee::new(epoch, voting_weights, authorities);
+    (committee, key_pairs, authority_key_pairs)
+}
+
+/// Returns a local address with an ephemeral port.
+pub fn get_available_local_address() -> Multiaddr {
+    let host = "127.0.0.1";
+    let port = get_available_port(host);
+    format!("/ip4/{}/tcp/{}", host, port).parse().unwrap()
+}
+
+/// Returns an ephemeral, available port. On unix systems, the port returned will be in the
+/// TIME_WAIT state ensuring that the OS won't hand out this port for some grace period.
+/// Callers should be able to bind to this port given they use SO_REUSEADDR.
+fn get_available_port(host: &str) -> u16 {
+    const MAX_PORT_RETRIES: u32 = 1000;
+
+    for _ in 0..MAX_PORT_RETRIES {
+        if let Ok(port) = get_ephemeral_port(host) {
+            return port;
+        }
+    }
+
+    panic!("Error: could not find an available port");
+}
+
+fn get_ephemeral_port(host: &str) -> std::io::Result<u16> {
+    // Request a random available port from the OS
+    let listener = TcpListener::bind((host, 0))?;
+    let addr = listener.local_addr()?;
+
+    // Create and accept a connection (which we'll promptly drop) in order to force the port
+    // into the TIME_WAIT state, ensuring that the port will be reserved from some limited
+    // amount of time (roughly 60s on some Linux systems)
+    let _sender = TcpStream::connect(addr)?;
+    let _incoming = listener.accept()?;
+
+    Ok(addr.port())
+}
+
+pub fn local_committee_and_keys_with_test_options(
+    epoch: Epoch,
+    authorities_stake: Vec<Stake>,
+    unused_port: bool,
+) -> (Committee, Vec<(NetworkKeyPair, ProtocolKeyPair)>) {
+    let mut authorities = BTreeMap::new();
+    let mut voting_weights = BTreeMap::new();
+    let mut key_pairs = vec![];
+    let mut rng = StdRng::from_seed([0; 32]);
+    for (i, stake) in authorities_stake.into_iter().enumerate() {
+        let authority_keypair = AuthorityKeyPair::generate(&mut rng);
+        let protocol_keypair = ProtocolKeyPair::generate(&mut rng);
+        let network_keypair = NetworkKeyPair::generate(&mut rng);
+        let name = AuthorityName::from(authority_keypair.public());
+        authorities.insert(
+            name,
+            Authority {
+                stake,
+                address: if unused_port {
+                    get_available_local_address()
+                } else {
+                    "/ip4/127.0.0.1/udp/8081".parse().unwrap()
+                },
+                hostname: format!("test_host_{i}").to_string(),
+                authority_key: authority_keypair.public().clone(),
+                protocol_key: protocol_keypair.public(),
+                network_key: network_keypair.public(),
+            },
+        );
+        voting_weights.insert(name, stake);
+        key_pairs.push((network_keypair, protocol_keypair));
+    }
+
+    let committee = Committee::new(epoch, voting_weights, authorities);
+    (committee, key_pairs)
 }

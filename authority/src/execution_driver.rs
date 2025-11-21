@@ -33,8 +33,7 @@ pub async fn execution_process(
 
         let certificate;
         let execution_env;
-        let txn_ready_time;
-        let _executing_guard;
+        
         tokio::select! {
             result = rx_ready_certificates.recv() => {
                 if let Some(pending_cert) = result {
@@ -84,35 +83,35 @@ pub async fn execution_process(
         // the semaphore in this context.
         let permit = limit.acquire_owned().await.unwrap();
 
-
         // Certificate execution can take significant time, so run it in a separate task.
         let epoch_store_clone = epoch_store.clone();
-        tokio::spawn(epoch_store.within_alive_epoch(async move {
-            let _guard = permit;
-            if authority.is_tx_already_executed(&digest) {
-                return;
-            }
+        tokio::spawn(async move {
+            let result = epoch_store_clone.within_alive_epoch(async {
+                let _guard = permit;
+                if authority.is_tx_already_executed(&digest) {
+                    return;
+                }
 
-
-            match authority.try_execute_immediately(
-                &certificate,
-                execution_env,
-                &epoch_store_clone,
-            ).await {
-                ExecutionOutput::Success(_) => {
-                   
+                match authority.try_execute_immediately(
+                    &certificate,
+                    execution_env,
+                    &epoch_store_clone,
+                ).await {
+                    ExecutionOutput::Success(_) => {
+                    
+                    }
+                    ExecutionOutput::EpochEnded => {
+                        warn!("Could not execute transaction {digest:?} because validator is halted at epoch end. certificate={certificate:?}");
+                    }
+                    ExecutionOutput::Fatal(e) => {
+                        panic!("Failed to execute certified transaction {digest:?}! error={e} certificate={certificate:?}");
+                    }
+                    ExecutionOutput::RetryLater => {
+                        // Transaction will be retried later and auto-rescheduled, so we ignore it here
+                    }
                 }
-                ExecutionOutput::EpochEnded => {
-                    warn!("Could not execute transaction {digest:?} because validator is halted at epoch end. certificate={certificate:?}");
-                }
-                ExecutionOutput::Fatal(e) => {
-                    panic!("Failed to execute certified transaction {digest:?}! error={e} certificate={certificate:?}");
-                }
-                ExecutionOutput::RetryLater => {
-                    // Transaction will be retried later and auto-rescheduled, so we ignore it here
-                
-                }
-            }
-        }.instrument(error_span!("execution_driver", tx_digest = ?digest))));
+            }).await;
+            result
+        }.instrument(error_span!("execution_driver", tx_digest = ?digest)));
     }
 }

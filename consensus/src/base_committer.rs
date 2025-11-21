@@ -1,17 +1,27 @@
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 
-use parking_lot::RwLock;
+use types::committee::{AuthorityIndex, Stake};
 
-use crate::dag_state::DagState;
-use crate::leader_schedule::LeaderSchedule;
-use types::committee::{AuthorityIndex, Committee, EpochId, Stake};
+use crate::{dag_state::DagState, leader_schedule::LeaderSchedule};
+use parking_lot::RwLock;
+use tracing::warn;
 use types::consensus::{
-    block::{BlockAPI as _, BlockRef, Round, Slot, VerifiedBlock},
-    commit::{LeaderStatus, WaveNumber, DEFAULT_WAVE_LENGTH, MINIMUM_WAVE_LENGTH},
+    block::{BlockAPI, BlockRef, Round, Slot, VerifiedBlock},
+    commit::{LeaderStatus, WaveNumber, DEFAULT_WAVE_LENGTH},
     context::Context,
     stake_aggregator::{QuorumThreshold, StakeAggregator},
 };
+
+// #[cfg(test)]
+// #[path = "tests/base_committer_tests.rs"]
+// mod base_committer_tests;
+
+// #[cfg(test)]
+// #[path = "tests/base_committer_declarative_tests.rs"]
+// mod base_committer_declarative_tests;
+
 pub(crate) struct BaseCommitterOptions {
+    /// TODO: Re-evaluate if we want this to be configurable after running experiments.
     /// The length of a wave (minimum 3)
     pub wave_length: u32,
     /// The offset used in the leader-election protocol. This is used by the
@@ -57,7 +67,6 @@ impl BaseCommitter {
         dag_state: Arc<RwLock<DagState>>,
         options: BaseCommitterOptions,
     ) -> Self {
-        assert!(options.wave_length >= MINIMUM_WAVE_LENGTH);
         Self {
             context,
             leader_schedule,
@@ -92,7 +101,9 @@ impl BaseCommitter {
         // There can be at most one leader with enough support for each round, otherwise it means
         // the BFT assumption is broken.
         if leaders_with_enough_support.len() > 1 {
-            panic!("[{self}] More than one certified block for {leader}")
+            panic!(
+                "[{self}] More than one candidate for {leader}: {leaders_with_enough_support:?}"
+            );
         }
 
         leaders_with_enough_support
@@ -218,17 +229,28 @@ impl BaseCommitter {
         leader_block: &VerifiedBlock,
         all_votes: &mut HashMap<BlockRef, bool>,
     ) -> bool {
+        let gc_round = self.dag_state.read().gc_round();
+
         let mut votes_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for reference in potential_certificate.ancestors() {
             let is_vote = if let Some(is_vote) = all_votes.get(reference) {
                 *is_vote
             } else {
-                let potential_vote = self
-                    .dag_state
-                    .read()
-                    .get_block(reference)
-                    .unwrap_or_else(|| panic!("Block not found in storage: {:?}", reference));
-                let is_vote = self.is_vote(&potential_vote, leader_block);
+                let potential_vote = self.dag_state.read().get_block(reference);
+
+                let is_vote = {
+                    if let Some(potential_vote) = potential_vote {
+                        self.is_vote(&potential_vote, leader_block)
+                    } else {
+                        assert!(
+                            reference.round <= gc_round,
+                            "Block not found in storage: {:?} , and is not below gc_round: {gc_round}",
+                            reference
+                        );
+                        false
+                    }
+                };
+
                 all_votes.insert(*reference, is_vote);
                 is_vote
             };
@@ -237,8 +259,7 @@ impl BaseCommitter {
                 tracing::trace!("[{self}] {reference} is a vote for {leader_block}");
                 if votes_stake_aggregator.add(reference.author, &self.context.committee) {
                     tracing::trace!(
-                        "[{self}] {potential_certificate} is a certificate for leader \
-                         {leader_block}"
+                        "[{self}] {potential_certificate} is a certificate for leader {leader_block}"
                     );
                     return true;
                 }
@@ -294,7 +315,9 @@ impl BaseCommitter {
 
         // There can be at most one certified leader, otherwise it means the BFT assumption is broken.
         if certified_leader_blocks.len() > 1 {
-            panic!("More than one certified block at wave {wave} from leader {leader_slot}")
+            panic!(
+                "More than one certified leader at wave {wave} in {leader_slot}: {certified_leader_blocks:?}"
+            );
         }
 
         // We commit the target leader if it has a certificate that is an ancestor of the anchor.
@@ -352,7 +375,7 @@ impl BaseCommitter {
             .map(|b| self.context.committee.stake_by_index(b.author()))
             .sum();
         if !self.context.committee.reached_quorum(total_stake) {
-            tracing::debug!(
+            tracing::trace!(
                 "Not enough support for {leader_block}. Stake not enough: {total_stake} < {}",
                 self.context.committee.quorum_threshold()
             );
@@ -387,8 +410,9 @@ impl Display for BaseCommitter {
 /// that has no leader or round offset. Which indicates single leader & pipelining
 /// disabled.
 #[cfg(test)]
-pub(crate) mod base_committer_builder {
+mod base_committer_builder {
     use super::*;
+    use crate::leader_schedule::LeaderSwapTable;
 
     pub(crate) struct BaseCommitterBuilder {
         context: Arc<Context>,
@@ -435,7 +459,10 @@ pub(crate) mod base_committer_builder {
             };
             BaseCommitter::new(
                 self.context.clone(),
-                Arc::new(LeaderSchedule::new(self.context)),
+                Arc::new(LeaderSchedule::new(
+                    self.context,
+                    LeaderSwapTable::default(),
+                )),
                 self.dag_state,
                 options,
             )

@@ -14,6 +14,7 @@ use types::{
 
 use crate::{
     authority_per_epoch_store::AuthorityPerEpochStore,
+    consensus_adapter::{BlockStatusReceiver, ConsensusClient},
     consensus_handler::SequencedConsensusTransactionKey,
 };
 
