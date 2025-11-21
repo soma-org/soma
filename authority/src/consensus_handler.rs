@@ -19,6 +19,7 @@ use crate::{
     start_epoch::EpochStartConfigTrait,
 };
 use arc_swap::ArcSwap;
+use consensus::CommitConsumerMonitor;
 use itertools::Itertools as _;
 use lru::LruCache;
 use parking_lot::RwLockWriteGuard;
@@ -37,8 +38,8 @@ use tokio::{
 };
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::committee::Committee as ConsensusCommittee;
-use types::consensus::block::TransactionIndex;
-use types::consensus::{commit::CommitIndex, CertifiedBlocksOutput, CommitConsumerMonitor};
+use types::consensus::block::{CertifiedBlocksOutput, TransactionIndex};
+use types::consensus::commit::CommitIndex;
 use types::{
     base::{AuthorityName, ConciseableName, ConsensusObjectSequenceKey, SequenceNumber},
     checkpoints::CheckpointSignatureMessage,
@@ -1218,7 +1219,7 @@ impl MysticetiConsensusHandler {
         mut consensus_handler: ConsensusHandler<CheckpointService>,
         consensus_block_handler: ConsensusBlockHandler,
         mut commit_receiver: mpsc::UnboundedReceiver<types::consensus::commit::CommittedSubDag>,
-        mut block_receiver: mpsc::UnboundedReceiver<consensus_core::CertifiedBlocksOutput>,
+        mut block_receiver: mpsc::UnboundedReceiver<types::consensus::block::CertifiedBlocksOutput>,
         commit_consumer_monitor: Arc<CommitConsumerMonitor>,
     ) -> Self {
         let mut tasks = JoinSet::new();

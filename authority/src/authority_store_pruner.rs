@@ -19,7 +19,6 @@ use tracing::{debug, error, info, warn};
 use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
 use types::committee::EpochId;
 use types::config::node_config::AuthorityStorePruningConfig;
-use types::consensus::output::ConsensusOutputAPI;
 use types::digests::CheckpointDigest;
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::envelope::Message as _;

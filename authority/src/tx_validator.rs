@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use consensus::{TransactionVerifier, ValidationError};
 use eyre::Context;
 use tap::TapFallible;
 use tracing::{info, warn};
 use types::committee::Epoch;
-use types::consensus::transaction::{TransactionVerifier, ValidationError};
 use types::consensus::{ConsensusTransaction, ConsensusTransactionKind};
 
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;

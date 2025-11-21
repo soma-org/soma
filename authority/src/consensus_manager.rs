@@ -12,7 +12,7 @@ use crate::{
 };
 use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
-use consensus::ConsensusAuthority;
+use consensus::{CommitConsumerArgs, CommitConsumerMonitor, ConsensusAuthority};
 use fastcrypto::traits::KeyPair as _;
 use protocol_config::ProtocolVersion;
 use tokio::sync::{broadcast, Mutex};
@@ -22,6 +22,7 @@ use types::committee::Committee;
 use types::consensus::commit::CommitIndex;
 use types::consensus::context::Clock;
 use types::consensus::ConsensusPosition;
+use types::parameters::Parameters;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::{
     committee::EpochId,
@@ -29,7 +30,7 @@ use types::{
     consensus::ConsensusTransaction,
     crypto::{NetworkKeyPair, ProtocolKeyPair},
     error::SomaResult,
-    storage::consensus::ConsensusStore,
+    storage::consensus::Store,
 };
 #[derive(PartialEq)]
 enum Running {
@@ -187,6 +188,7 @@ impl ConsensusManager {
         }
 
         let authority = ConsensusAuthority::start(
+            consensus::NetworkType::Tonic,
             epoch_store.epoch_start_config().epoch_start_timestamp_ms(),
             own_index,
             committee.clone(),

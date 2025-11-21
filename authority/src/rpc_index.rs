@@ -16,7 +16,6 @@ use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
 use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
 
 use types::committee::EpochId;
-use types::consensus::output::ConsensusOutputAPI;
 use types::consensus::ConsensusTransactionKind;
 use types::digests::TransactionDigest;
 use types::object::LiveObject;

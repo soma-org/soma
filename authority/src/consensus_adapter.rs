@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use arc_swap::{ArcSwap, ArcSwapOption};
-use consensus_core::BlockStatus;
+use consensus::BlockStatus;
 use dashmap::DashMap;
 use dashmap::try_result::TryResult;
 use futures::FutureExt;
