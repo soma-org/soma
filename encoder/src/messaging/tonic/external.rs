@@ -10,11 +10,11 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use types::{
     crypto::{NetworkKeyPair, NetworkPublicKey},
     multiaddr::Multiaddr,
-    p2p::to_socket_addr,
     shard_networking::{
         external::{GetDataRequest, GetDataResponse},
         CERTIFICATE_NAME,
     },
+    sync::to_socket_addr,
 };
 
 use crate::messaging::{EncoderExternalNetworkManager, EncoderExternalNetworkService};

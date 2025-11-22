@@ -7,7 +7,7 @@ members = [
   "node",
   "test-cluster",
   "e2e-tests",
-  "p2p",
+  "sync",
   "cli",
   "encoder",
   "intelligence",
@@ -100,7 +100,7 @@ authority = { path = "authority" }
 utils = { path = "utils" }
 node = { path = "node" }
 test-cluster = { path = "test-cluster" }
-p2p = { path = "p2p" }
+sync = { path = "sync" }
 encoder-validator-api = { path = "encoder-validator-api" }
 bin-version = { path = "bin-version" }
 soma-config = { path = "soma-config" }

@@ -27,7 +27,7 @@ use types::error::{ShardError, ShardResult};
 use types::parameters::Parameters;
 use types::shard_crypto::verified::Verified;
 use types::shard_networking::EncoderNetworkingInfo;
-use types::{multiaddr::Multiaddr, p2p::to_socket_addr, shard_networking::CERTIFICATE_NAME};
+use types::{multiaddr::Multiaddr, shard_networking::CERTIFICATE_NAME, sync::to_socket_addr};
 
 use types::shard_networking::channel_pool::{Channel, ChannelPool};
 

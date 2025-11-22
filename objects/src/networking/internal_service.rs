@@ -15,8 +15,8 @@ use std::{
 use tracing::{info, warn};
 use types::{
     checksum::Checksum, committee::Epoch, crypto::NetworkKeyPair, error::ObjectResult,
-    metadata::ObjectPath, multiaddr::Multiaddr, p2p::to_socket_addr, parameters::HttpParameters,
-    shard::Shard, shard_crypto::digest::Digest,
+    metadata::ObjectPath, multiaddr::Multiaddr, parameters::HttpParameters, shard::Shard,
+    shard_crypto::digest::Digest, sync::to_socket_addr,
 };
 
 pub struct InternalObjectServiceManager {

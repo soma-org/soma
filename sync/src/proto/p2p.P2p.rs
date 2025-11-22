@@ -91,9 +91,9 @@ pub mod p2p_client {
         }
         pub async fn get_known_peers(
             &mut self,
-            request: impl tonic::IntoRequest<types::discovery::GetKnownPeersRequest>,
+            request: impl tonic::IntoRequest<types::sync::GetKnownPeersRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::discovery::GetKnownPeersResponse>,
+            tonic::Response<types::sync::GetKnownPeersResponse>,
             tonic::Status,
         > {
             self.inner
@@ -110,13 +110,13 @@ pub mod p2p_client {
             req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "GetKnownPeers"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn get_commit_availability(
+        pub async fn get_checkpoint_availability(
             &mut self,
             request: impl tonic::IntoRequest<
-                types::state_sync::GetCommitAvailabilityRequest,
+                types::sync::GetCheckpointAvailabilityRequest,
             >,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::GetCommitAvailabilityResponse>,
+            tonic::Response<types::sync::GetCheckpointAvailabilityResponse>,
             tonic::Status,
         > {
             self.inner
@@ -129,18 +129,18 @@ pub mod p2p_client {
                 })?;
             let codec = utils::codec::BcsCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/p2p.P2p/GetCommitAvailability",
+                "/p2p.P2p/GetCheckpointAvailability",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("p2p.P2p", "GetCommitAvailability"));
+                .insert(GrpcMethod::new("p2p.P2p", "GetCheckpointAvailability"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn push_commit(
+        pub async fn push_checkpoint_summary(
             &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::PushCommitRequest>,
+            request: impl tonic::IntoRequest<types::sync::PushCheckpointSummaryRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::PushCommitResponse>,
+            tonic::Response<types::sync::PushCheckpointSummaryResponse>,
             tonic::Status,
         > {
             self.inner
@@ -152,16 +152,19 @@ pub mod p2p_client {
                     )
                 })?;
             let codec = utils::codec::BcsCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/p2p.P2p/PushCommit");
+            let path = http::uri::PathAndQuery::from_static(
+                "/p2p.P2p/PushCheckpointSummary",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "PushCommit"));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("p2p.P2p", "PushCheckpointSummary"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn get_commit_info(
+        pub async fn get_checkpoint_summary(
             &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::GetCommitInfoRequest>,
+            request: impl tonic::IntoRequest<types::sync::GetCheckpointSummaryRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::GetCommitInfoResponse>,
+            tonic::Response<types::sync::GetCheckpointSummaryResponse>,
             tonic::Status,
         > {
             self.inner
@@ -173,18 +176,19 @@ pub mod p2p_client {
                     )
                 })?;
             let codec = utils::codec::BcsCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/p2p.P2p/GetCommitInfo");
+            let path = http::uri::PathAndQuery::from_static(
+                "/p2p.P2p/GetCheckpointSummary",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "GetCommitInfo"));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("p2p.P2p", "GetCheckpointSummary"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn fetch_blocks(
+        pub async fn get_checkpoint_contents(
             &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::FetchBlocksRequest>,
+            request: impl tonic::IntoRequest<types::sync::GetCheckpointContentsRequest>,
         ) -> std::result::Result<
-            tonic::Response<
-                tonic::codec::Streaming<types::state_sync::FetchBlocksResponse>,
-            >,
+            tonic::Response<types::sync::GetCheckpointContentsResponse>,
             tonic::Status,
         > {
             self.inner
@@ -196,30 +200,12 @@ pub mod p2p_client {
                     )
                 })?;
             let codec = utils::codec::BcsCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/p2p.P2p/FetchBlocks");
+            let path = http::uri::PathAndQuery::from_static(
+                "/p2p.P2p/GetCheckpointContents",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "FetchBlocks"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-        pub async fn fetch_commits(
-            &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::FetchCommitsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<types::state_sync::FetchCommitsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = utils::codec::BcsCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/p2p.P2p/FetchCommits");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("p2p.P2p", "FetchCommits"));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("p2p.P2p", "GetCheckpointContents"));
             self.inner.unary(req, path, codec).await
         }
     }
@@ -239,53 +225,37 @@ pub mod p2p_server {
     pub trait P2p: std::marker::Send + std::marker::Sync + 'static {
         async fn get_known_peers(
             &self,
-            request: tonic::Request<types::discovery::GetKnownPeersRequest>,
+            request: tonic::Request<types::sync::GetKnownPeersRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::discovery::GetKnownPeersResponse>,
+            tonic::Response<types::sync::GetKnownPeersResponse>,
             tonic::Status,
         >;
-        async fn get_commit_availability(
+        async fn get_checkpoint_availability(
             &self,
-            request: tonic::Request<types::state_sync::GetCommitAvailabilityRequest>,
+            request: tonic::Request<types::sync::GetCheckpointAvailabilityRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::GetCommitAvailabilityResponse>,
+            tonic::Response<types::sync::GetCheckpointAvailabilityResponse>,
             tonic::Status,
         >;
-        async fn push_commit(
+        async fn push_checkpoint_summary(
             &self,
-            request: tonic::Request<types::state_sync::PushCommitRequest>,
+            request: tonic::Request<types::sync::PushCheckpointSummaryRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::PushCommitResponse>,
+            tonic::Response<types::sync::PushCheckpointSummaryResponse>,
             tonic::Status,
         >;
-        async fn get_commit_info(
+        async fn get_checkpoint_summary(
             &self,
-            request: tonic::Request<types::state_sync::GetCommitInfoRequest>,
+            request: tonic::Request<types::sync::GetCheckpointSummaryRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::GetCommitInfoResponse>,
+            tonic::Response<types::sync::GetCheckpointSummaryResponse>,
             tonic::Status,
         >;
-        /// Server streaming response type for the FetchBlocks method.
-        type FetchBlocksStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<
-                    types::state_sync::FetchBlocksResponse,
-                    tonic::Status,
-                >,
-            >
-            + std::marker::Send
-            + 'static;
-        async fn fetch_blocks(
+        async fn get_checkpoint_contents(
             &self,
-            request: tonic::Request<types::state_sync::FetchBlocksRequest>,
+            request: tonic::Request<types::sync::GetCheckpointContentsRequest>,
         ) -> std::result::Result<
-            tonic::Response<Self::FetchBlocksStream>,
-            tonic::Status,
-        >;
-        async fn fetch_commits(
-            &self,
-            request: tonic::Request<types::state_sync::FetchCommitsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<types::state_sync::FetchCommitsResponse>,
+            tonic::Response<types::sync::GetCheckpointContentsResponse>,
             tonic::Status,
         >;
     }
@@ -370,18 +340,16 @@ pub mod p2p_server {
                     struct GetKnownPeersSvc<T: P2p>(pub Arc<T>);
                     impl<
                         T: P2p,
-                    > tonic::server::UnaryService<types::discovery::GetKnownPeersRequest>
+                    > tonic::server::UnaryService<types::sync::GetKnownPeersRequest>
                     for GetKnownPeersSvc<T> {
-                        type Response = types::discovery::GetKnownPeersResponse;
+                        type Response = types::sync::GetKnownPeersResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<
-                                types::discovery::GetKnownPeersRequest,
-                            >,
+                            request: tonic::Request<types::sync::GetKnownPeersRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
@@ -412,15 +380,15 @@ pub mod p2p_server {
                     };
                     Box::pin(fut)
                 }
-                "/p2p.P2p/GetCommitAvailability" => {
+                "/p2p.P2p/GetCheckpointAvailability" => {
                     #[allow(non_camel_case_types)]
-                    struct GetCommitAvailabilitySvc<T: P2p>(pub Arc<T>);
+                    struct GetCheckpointAvailabilitySvc<T: P2p>(pub Arc<T>);
                     impl<
                         T: P2p,
                     > tonic::server::UnaryService<
-                        types::state_sync::GetCommitAvailabilityRequest,
-                    > for GetCommitAvailabilitySvc<T> {
-                        type Response = types::state_sync::GetCommitAvailabilityResponse;
+                        types::sync::GetCheckpointAvailabilityRequest,
+                    > for GetCheckpointAvailabilitySvc<T> {
+                        type Response = types::sync::GetCheckpointAvailabilityResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -428,12 +396,13 @@ pub mod p2p_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::GetCommitAvailabilityRequest,
+                                types::sync::GetCheckpointAvailabilityRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as P2p>::get_commit_availability(&inner, request).await
+                                <T as P2p>::get_checkpoint_availability(&inner, request)
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -444,7 +413,7 @@ pub mod p2p_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = GetCommitAvailabilitySvc(inner);
+                        let method = GetCheckpointAvailabilitySvc(inner);
                         let codec = utils::codec::BcsCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -460,60 +429,15 @@ pub mod p2p_server {
                     };
                     Box::pin(fut)
                 }
-                "/p2p.P2p/PushCommit" => {
+                "/p2p.P2p/PushCheckpointSummary" => {
                     #[allow(non_camel_case_types)]
-                    struct PushCommitSvc<T: P2p>(pub Arc<T>);
-                    impl<
-                        T: P2p,
-                    > tonic::server::UnaryService<types::state_sync::PushCommitRequest>
-                    for PushCommitSvc<T> {
-                        type Response = types::state_sync::PushCommitResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<types::state_sync::PushCommitRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as P2p>::push_commit(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = PushCommitSvc(inner);
-                        let codec = utils::codec::BcsCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/p2p.P2p/GetCommitInfo" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetCommitInfoSvc<T: P2p>(pub Arc<T>);
+                    struct PushCheckpointSummarySvc<T: P2p>(pub Arc<T>);
                     impl<
                         T: P2p,
                     > tonic::server::UnaryService<
-                        types::state_sync::GetCommitInfoRequest,
-                    > for GetCommitInfoSvc<T> {
-                        type Response = types::state_sync::GetCommitInfoResponse;
+                        types::sync::PushCheckpointSummaryRequest,
+                    > for PushCheckpointSummarySvc<T> {
+                        type Response = types::sync::PushCheckpointSummaryResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -521,12 +445,12 @@ pub mod p2p_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::GetCommitInfoRequest,
+                                types::sync::PushCheckpointSummaryRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as P2p>::get_commit_info(&inner, request).await
+                                <T as P2p>::push_checkpoint_summary(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -537,7 +461,7 @@ pub mod p2p_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = GetCommitInfoSvc(inner);
+                        let method = PushCheckpointSummarySvc(inner);
                         let codec = utils::codec::BcsCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -553,29 +477,28 @@ pub mod p2p_server {
                     };
                     Box::pin(fut)
                 }
-                "/p2p.P2p/FetchBlocks" => {
+                "/p2p.P2p/GetCheckpointSummary" => {
                     #[allow(non_camel_case_types)]
-                    struct FetchBlocksSvc<T: P2p>(pub Arc<T>);
+                    struct GetCheckpointSummarySvc<T: P2p>(pub Arc<T>);
                     impl<
                         T: P2p,
-                    > tonic::server::ServerStreamingService<
-                        types::state_sync::FetchBlocksRequest,
-                    > for FetchBlocksSvc<T> {
-                        type Response = types::state_sync::FetchBlocksResponse;
-                        type ResponseStream = T::FetchBlocksStream;
+                    > tonic::server::UnaryService<
+                        types::sync::GetCheckpointSummaryRequest,
+                    > for GetCheckpointSummarySvc<T> {
+                        type Response = types::sync::GetCheckpointSummaryResponse;
                         type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
+                            tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::FetchBlocksRequest,
+                                types::sync::GetCheckpointSummaryRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as P2p>::fetch_blocks(&inner, request).await
+                                <T as P2p>::get_checkpoint_summary(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -586,7 +509,7 @@ pub mod p2p_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = FetchBlocksSvc(inner);
+                        let method = GetCheckpointSummarySvc(inner);
                         let codec = utils::codec::BcsCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -597,19 +520,20 @@ pub mod p2p_server {
                                 max_decoding_message_size,
                                 max_encoding_message_size,
                             );
-                        let res = grpc.server_streaming(method, req).await;
+                        let res = grpc.unary(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)
                 }
-                "/p2p.P2p/FetchCommits" => {
+                "/p2p.P2p/GetCheckpointContents" => {
                     #[allow(non_camel_case_types)]
-                    struct FetchCommitsSvc<T: P2p>(pub Arc<T>);
+                    struct GetCheckpointContentsSvc<T: P2p>(pub Arc<T>);
                     impl<
                         T: P2p,
-                    > tonic::server::UnaryService<types::state_sync::FetchCommitsRequest>
-                    for FetchCommitsSvc<T> {
-                        type Response = types::state_sync::FetchCommitsResponse;
+                    > tonic::server::UnaryService<
+                        types::sync::GetCheckpointContentsRequest,
+                    > for GetCheckpointContentsSvc<T> {
+                        type Response = types::sync::GetCheckpointContentsResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -617,12 +541,12 @@ pub mod p2p_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::FetchCommitsRequest,
+                                types::sync::GetCheckpointContentsRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as P2p>::fetch_commits(&inner, request).await
+                                <T as P2p>::get_checkpoint_contents(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -633,7 +557,7 @@ pub mod p2p_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = FetchCommitsSvc(inner);
+                        let method = GetCheckpointContentsSvc(inner);
                         let codec = utils::codec::BcsCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

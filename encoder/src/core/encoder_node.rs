@@ -32,9 +32,9 @@ use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
 use types::crypto::NetworkKeyPair;
 use types::evaluation::{Score, ScoreV1};
 use types::multiaddr::Multiaddr;
-use types::p2p::to_host_port_str;
 use types::parameters::HttpParameters;
 use types::shard_crypto::keys::EncoderPublicKey;
+use types::sync::to_host_port_str;
 use types::{
     config::{encoder_config::EncoderConfig, Config},
     system_state::SystemStateTrait,

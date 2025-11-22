@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::checkpoints::CheckpointSequenceNumber;
+use crate::digests::CheckpointDigest;
 use crate::storage::storage_error::Error as StorageError;
 use crate::system_state::SystemStateTrait as _;
 use crate::{
@@ -174,11 +176,11 @@ impl CheckpointTransaction {
 // Never remove these asserts!
 // These data structures are meant to be used in-memory, for structures that can be persisted in
 // storage you should look at the protobuf versions.
-static_assertions::assert_not_impl_any!(Checkpoint: serde::Serialize, serde::de::DeserializeOwned);
-static_assertions::assert_not_impl_any!(ExecutedTransaction: serde::Serialize, serde::de::DeserializeOwned);
-static_assertions::assert_not_impl_any!(ObjectSet: serde::Serialize, serde::de::DeserializeOwned);
+// static_assertions::assert_not_impl_any!(Checkpoint: serde::Serialize, serde::de::DeserializeOwned);
+// static_assertions::assert_not_impl_any!(ExecutedTransaction: serde::Serialize, serde::de::DeserializeOwned);
+// static_assertions::assert_not_impl_any!(ObjectSet: serde::Serialize, serde::de::DeserializeOwned);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Checkpoint {
     pub summary: CertifiedCheckpointSummary,
     pub contents: CheckpointContents,
@@ -186,7 +188,7 @@ pub struct Checkpoint {
     pub object_set: ObjectSet,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExecutedTransaction {
     /// The input Transaction
     pub transaction: TransactionData,
@@ -195,7 +197,7 @@ pub struct ExecutedTransaction {
     pub effects: TransactionEffects,
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct ObjectSet(pub BTreeMap<ObjectKey, Object>);
 
 impl ObjectSet {

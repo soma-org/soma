@@ -1,5 +1,5 @@
 [package]
-name = "p2p"
+name = "sync"
 edition = "2021"
 version.workspace = true
 

@@ -39,8 +39,8 @@ use crate::{
     crypto::{NetworkKeyPair, NetworkPublicKey},
     error::{SomaError, SomaResult},
     multiaddr::Multiaddr,
-    p2p::{to_host_port_str, to_socket_addr},
     peer_id::PeerId,
+    sync::{to_host_port_str, to_socket_addr},
     tls::{
         create_rustls_client_config, create_rustls_server_config, public_key_from_certificate,
         verifier::AllowAll,

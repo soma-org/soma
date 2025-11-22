@@ -18,8 +18,8 @@ use tracing::{debug, info, trace, warn};
 use types::error::{EvaluationError, EvaluationResult};
 use types::evaluation::{EvaluationInput, EvaluationOutput};
 use types::multiaddr::Multiaddr;
-use types::p2p::{to_host_port_str, to_socket_addr};
 use types::parameters::TonicParameters;
+use types::sync::{to_host_port_str, to_socket_addr};
 
 const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 

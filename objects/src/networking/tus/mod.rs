@@ -29,7 +29,7 @@ use types::{
     crypto::DefaultHash,
     error::{ObjectError, ObjectResult},
     multiaddr::Multiaddr,
-    p2p::to_socket_addr,
+    sync::to_socket_addr,
 };
 use uuid::Uuid;
 

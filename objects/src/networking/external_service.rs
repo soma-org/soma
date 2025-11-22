@@ -31,7 +31,7 @@ use types::{
     error::{ObjectError, ObjectResult},
     metadata::SignedParams,
 };
-use types::{multiaddr::Multiaddr, p2p::to_socket_addr};
+use types::{multiaddr::Multiaddr, sync::to_socket_addr};
 
 use crate::networking::{DownloadService, ObjectServiceManager};
 

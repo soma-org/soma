@@ -1,20 +1,25 @@
-use std::collections::BTreeSet;
-
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use tracing::info;
-
 use crate::{
     base::{ConsensusObjectSequenceKey, FullObjectID, FullObjectRef},
+    checkpoints::{CertifiedCheckpointSummary, CheckpointSequenceNumber, VerifiedCheckpoint},
+    committee::Committee,
     digests::TransactionDigest,
     effects::{TransactionEffects, TransactionEffectsAPI},
     envelope::Message,
     error::SomaResult,
     object::{Object, ObjectID, ObjectRef, Version},
-    storage::object_store::ObjectStore,
+    storage::{object_store::ObjectStore, write_store::WriteStore},
     transaction::{SenderSignedData, TransactionData},
 };
+use futures::StreamExt as _;
+use itertools::Itertools as _;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use std::collections::BTreeSet;
+use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use storage_error::Error as StorageError;
+use tracing::debug;
 
 pub mod committee_store;
 pub mod consensus;
@@ -113,18 +118,6 @@ impl From<&ObjectRef> for ObjectKey {
     }
 }
 
-/// # ObjectOrTombstone
-///
-/// Represents either a full object or a tombstone reference for a deleted object.
-///
-/// ## Purpose
-/// Allows the storage system to handle both active objects and references to
-/// deleted objects (tombstones) in a unified way, which is important for
-/// maintaining object history and preventing object resurrection.
-///
-/// ## Usage
-/// Used when retrieving objects from storage, where the result might be
-/// either a full object or just a reference to a deleted object.
 #[derive(Clone)]
 pub enum ObjectOrTombstone {
     /// A complete object with all its data
@@ -149,36 +142,10 @@ impl From<Object> for ObjectOrTombstone {
     }
 }
 
-/// # ConsensusObjectKey
-///
-/// A key type for consensus objects that includes sequence information.
-///
-/// ## Purpose
-/// Provides a unique identifier for consensus objects that includes both
-/// the sequence key and version, allowing for proper ordering and retrieval.
-///
-/// ## Usage
-/// Used for storing and retrieving consensus objects that require special
-/// sequencing and versioning.
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct ConsensusObjectKey(pub ConsensusObjectSequenceKey, pub Version);
 
-/// # FullObjectKey
-///
-/// Represents a unique object at a specific version, handling both fastpath and consensus objects.
-///
-/// ## Purpose
-/// Provides a unified key type that can reference both regular (fastpath) objects
-/// and consensus objects, which have different storage requirements and versioning.
-///
-/// ## Usage
-/// Used as a comprehensive key type for object storage and retrieval that can
-/// handle all object types in the system.
-///
-/// ## Variants
-/// - Fastpath: Regular objects with simple ID and version
-/// - Consensus: Consensus objects that include sequence information
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum FullObjectKey {
@@ -258,23 +225,6 @@ impl From<&FullObjectRef> for FullObjectKey {
     }
 }
 
-/// # transaction_non_shared_input_object_keys
-///
-/// Fetches the ObjectKeys for non-shared input objects in a transaction.
-///
-/// ## Purpose
-/// Extracts keys for owned and immutable objects used as inputs in a transaction,
-/// which is useful for transaction validation and execution.
-///
-/// ## Arguments
-/// * `tx` - The sender-signed transaction data to extract input object keys from
-///
-/// ## Returns
-/// A Result containing a vector of ObjectKeys for non-shared input objects
-///
-/// ## Behavior
-/// Includes owned and immutable objects as well as gas objects, but excludes
-/// move packages and shared objects.
 pub fn transaction_non_shared_input_object_keys(
     tx: &SenderSignedData,
 ) -> SomaResult<Vec<ObjectKey>> {
@@ -291,23 +241,6 @@ pub fn transaction_non_shared_input_object_keys(
         .collect())
 }
 
-/// # transaction_receiving_object_keys
-///
-/// Extracts the ObjectKeys for objects being received in a transaction.
-///
-/// ## Purpose
-/// Identifies objects that are being received by the transaction, which is
-/// important for tracking object transfers and preventing double-spending.
-///
-/// ## Arguments
-/// * `tx` - The sender-signed transaction data to extract receiving object keys from
-///
-/// ## Returns
-/// A vector of ObjectKeys for objects being received in the transaction
-///
-/// ## Usage
-/// Used during transaction processing to mark objects as received and
-/// prevent them from being received again in other transactions.
 pub fn transaction_receiving_object_keys(tx: &SenderSignedData) -> Vec<ObjectKey> {
     tx.intent_message()
         .value
@@ -425,4 +358,139 @@ pub fn get_transaction_object_set(
         .chain(modified_set)
         .chain(unchanged_consensus)
         .collect()
+}
+
+pub fn verify_checkpoint_with_committee(
+    committee: Arc<Committee>,
+    current: &VerifiedCheckpoint,
+    checkpoint: CertifiedCheckpointSummary,
+) -> Result<VerifiedCheckpoint, Box<CertifiedCheckpointSummary>> {
+    assert_eq!(
+        *checkpoint.sequence_number(),
+        current.sequence_number().checked_add(1).unwrap()
+    );
+
+    if Some(*current.digest()) != checkpoint.previous_digest {
+        debug!(
+            current_checkpoint_seq = current.sequence_number(),
+            current_digest =% current.digest(),
+            checkpoint_seq = checkpoint.sequence_number(),
+            checkpoint_digest =% checkpoint.digest(),
+            checkpoint_previous_digest =? checkpoint.previous_digest,
+            "checkpoint not on same chain"
+        );
+        return Err(Box::new(checkpoint));
+    }
+
+    let current_epoch = current.epoch();
+    if checkpoint.epoch() != current_epoch
+        && checkpoint.epoch() != current_epoch.checked_add(1).unwrap()
+    {
+        debug!(
+            checkpoint_seq = checkpoint.sequence_number(),
+            checkpoint_epoch = checkpoint.epoch(),
+            current_checkpoint_seq = current.sequence_number(),
+            current_epoch = current_epoch,
+            "cannot verify checkpoint with too high of an epoch",
+        );
+        return Err(Box::new(checkpoint));
+    }
+
+    if checkpoint.epoch() == current_epoch.checked_add(1).unwrap()
+        && current.next_epoch_committee().is_none()
+    {
+        debug!(
+            checkpoint_seq = checkpoint.sequence_number(),
+            checkpoint_epoch = checkpoint.epoch(),
+            current_checkpoint_seq = current.sequence_number(),
+            current_epoch = current_epoch,
+            "next checkpoint claims to be from the next epoch but the latest verified \
+            checkpoint does not indicate that it is the last checkpoint of an epoch"
+        );
+        return Err(Box::new(checkpoint));
+    }
+
+    checkpoint
+        .verify_authority_signatures(&committee)
+        .map_err(|e| {
+            debug!("error verifying checkpoint: {e}");
+            checkpoint.clone()
+        })?;
+    Ok(VerifiedCheckpoint::new_unchecked(checkpoint))
+}
+
+pub fn verify_checkpoint<S>(
+    current: &VerifiedCheckpoint,
+    store: S,
+    checkpoint: CertifiedCheckpointSummary,
+) -> Result<VerifiedCheckpoint, Box<CertifiedCheckpointSummary>>
+where
+    S: WriteStore,
+{
+    let committee = store.get_committee(checkpoint.epoch()).unwrap_or_else(|| {
+        panic!(
+            "BUG: should have committee for epoch {} before we try to verify checkpoint {}",
+            checkpoint.epoch(),
+            checkpoint.sequence_number()
+        )
+    });
+
+    verify_checkpoint_with_committee(committee, current, checkpoint)
+}
+
+pub async fn verify_checkpoint_range<S>(
+    checkpoint_range: Range<CheckpointSequenceNumber>,
+    store: S,
+    checkpoint_counter: Arc<AtomicU64>,
+    max_concurrency: usize,
+) where
+    S: WriteStore + Clone,
+{
+    let range_clone = checkpoint_range.clone();
+    futures::stream::iter(range_clone.into_iter().tuple_windows())
+        .map(|(a, b)| {
+            let current = store
+                .get_checkpoint_by_sequence_number(a)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Checkpoint {} should exist in store after summary sync but does not",
+                        a
+                    );
+                });
+            let next = store
+                .get_checkpoint_by_sequence_number(b)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Checkpoint {} should exist in store after summary sync but does not",
+                        a
+                    );
+                });
+            let committee = store.get_committee(next.epoch()).unwrap_or_else(|| {
+                panic!(
+                    "BUG: should have committee for epoch {} before we try to verify checkpoint {}",
+                    next.epoch(),
+                    next.sequence_number()
+                )
+            });
+            tokio::spawn(async move {
+                verify_checkpoint_with_committee(committee, &current, next.clone().into())
+                    .expect("Checkpoint verification failed");
+            })
+        })
+        .buffer_unordered(max_concurrency)
+        .for_each(|result| {
+            result.expect("Checkpoint verification task failed");
+            checkpoint_counter.fetch_add(1, Ordering::Relaxed);
+            futures::future::ready(())
+        })
+        .await;
+    let last = checkpoint_range
+        .last()
+        .expect("Received empty checkpoint range");
+    let final_checkpoint = store
+        .get_checkpoint_by_sequence_number(last)
+        .expect("Expected end of checkpoint range to exist in store");
+    store
+        .update_highest_verified_checkpoint(&final_checkpoint)
+        .expect("Failed to update highest verified checkpoint");
 }

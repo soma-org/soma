@@ -16,12 +16,12 @@ use crate::{
     crypto::{NetworkKeyPair, NetworkPublicKey, NetworkSignature},
     error::{ShardError, ShardResult, SharedError, SharedResult},
     multiaddr::Multiaddr,
-    p2p::to_host_port_str,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
         scope::{Scope, ScopedMessage},
     },
+    sync::to_host_port_str,
 };
 
 type SizeInBytes = u64;

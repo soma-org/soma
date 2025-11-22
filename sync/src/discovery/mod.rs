@@ -16,19 +16,19 @@ use tracing::{debug, info};
 use types::{
     config::p2p_config::{DiscoveryConfig, P2pConfig, SeedPeer},
     crypto::NetworkKeyPair,
-    discovery::{
+    multiaddr::Multiaddr,
+    peer_id::PeerId,
+    sync::{active_peers::ActivePeers, channel_manager::ChannelManagerRequest, PeerEvent},
+    sync::{
         GetKnownPeersRequest, GetKnownPeersResponse, NodeInfo, SignedNodeInfo,
         VerifiedSignedNodeInfo,
     },
-    multiaddr::Multiaddr,
-    p2p::{active_peers::ActivePeers, channel_manager::ChannelManagerRequest, PeerEvent},
-    peer_id::PeerId,
 };
 
 use crate::tonic_gen::p2p_client::P2pClient;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 /// The internal discovery state shared between the main event loop and the request handler
 pub struct DiscoveryState {

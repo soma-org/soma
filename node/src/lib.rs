@@ -75,10 +75,6 @@ use types::{
     encoder_committee::EncoderCommittee,
     error::{SomaError, SomaResult},
     object::ObjectRef,
-    p2p::{
-        active_peers::{self, ActivePeers},
-        channel_manager::{ChannelManager, ChannelManagerRequest},
-    },
     parameters::{HttpParameters, Parameters},
     peer_id::PeerId,
     protocol::ProtocolConfig,
@@ -88,6 +84,10 @@ use types::{
         committee_store::CommitteeStore,
         consensus::{mem_store::MemStore, rocksdb_store::RocksDBStore, ConsensusStore},
         write_store::WriteStore,
+    },
+    sync::{
+        active_peers::{self, ActivePeers},
+        channel_manager::{ChannelManager, ChannelManagerRequest},
     },
     system_state::{
         epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},

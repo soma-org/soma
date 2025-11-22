@@ -156,32 +156,32 @@ impl CertifiedCheckpointOutput for LogCheckpointOutput {
     }
 }
 
-// TODO: pub struct SendCheckpointToStateSync {
-//     handle: p2p::state_sync::Handle,
-// }
+pub struct SendCheckpointToStateSync {
+    handle: sync::builder::StateSyncHandle,
+}
 
-// impl SendCheckpointToStateSync {
-//     pub fn new(handle: p2p::state_sync::Handle) -> Self {
-//         Self { handle }
-//     }
-// }
+impl SendCheckpointToStateSync {
+    pub fn new(handle: sync::builder::StateSyncHandle) -> Self {
+        Self { handle }
+    }
+}
 
-// #[async_trait]
-// impl CertifiedCheckpointOutput for SendCheckpointToStateSync {
-//     #[instrument(level = "debug", skip_all)]
-//     async fn certified_checkpoint_created(
-//         &self,
-//         summary: &CertifiedCheckpointSummary,
-//     ) -> SomaResult {
-//         info!(
-//             "Certified checkpoint with sequence {} and digest {}",
-//             summary.sequence_number,
-//             summary.digest()
-//         );
-//         self.handle
-//             .send_checkpoint(VerifiedCheckpoint::new_unchecked(summary.to_owned()))
-//             .await;
+#[async_trait]
+impl CertifiedCheckpointOutput for SendCheckpointToStateSync {
+    #[instrument(level = "debug", skip_all)]
+    async fn certified_checkpoint_created(
+        &self,
+        summary: &CertifiedCheckpointSummary,
+    ) -> SomaResult {
+        info!(
+            "Certified checkpoint with sequence {} and digest {}",
+            summary.sequence_number,
+            summary.digest()
+        );
+        self.handle
+            .send_checkpoint(VerifiedCheckpoint::new_unchecked(summary.to_owned()))
+            .await;
 
-//         Ok(())
-//     }
-// }
+        Ok(())
+    }
+}

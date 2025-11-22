@@ -1,45 +1,29 @@
 use std::{
     collections::HashMap,
-    marker::PhantomData,
     sync::{Arc, Weak},
 };
 
 use crate::{
     server::P2pService,
-    state_sync::{tx_verifier::TxVerifier, PeerHeights, StateSyncEventLoop, StateSyncMessage},
+    state_sync::{PeerHeights, StateSyncEventLoop, StateSyncMessage},
     tonic_gen::p2p_server::{P2p, P2pServer},
 };
-use fastcrypto::traits::ToFromBytes;
 use parking_lot::RwLock;
 use tap::Pipe;
 use tokio::{
     sync::{broadcast, mpsc, oneshot},
     task::JoinSet,
 };
-use tracing::{debug, info};
 use types::{
-    accumulator::{self, AccumulatorStore},
+    checkpoints::VerifiedCheckpoint,
     config::{
         node_config::ArchiveReaderConfig, p2p_config::P2pConfig, state_sync_config::StateSyncConfig,
     },
-    consensus::{
-        block_verifier::{BlockVerifier, SignedBlockVerifier},
-        commit::CommittedSubDag,
-        context::{Clock, Context},
-        transaction,
-    },
     crypto::NetworkKeyPair,
-    discovery::SignedNodeInfo,
-    p2p::{
-        active_peers::{self, ActivePeers},
-        channel_manager::{self, ChannelManager, ChannelManagerRequest},
-        PeerEvent,
-    },
-    parameters::Parameters,
-    state_sync::{self},
-    storage::{
-        consensus::{mem_store::MemStore, ConsensusStore},
-        write_store::WriteStore,
+    storage::write_store::WriteStore,
+    sync::{
+        active_peers::ActivePeers, channel_manager::ChannelManagerRequest, PeerEvent,
+        SignedNodeInfo,
     },
 };
 
@@ -125,39 +109,28 @@ impl UnstartedDiscovery {
 #[derive(Clone, Debug)]
 pub struct StateSyncHandle {
     sender: mpsc::Sender<StateSyncMessage>,
-    commit_event_sender: broadcast::Sender<CommittedSubDag>,
+    checkpoint_event_sender: broadcast::Sender<VerifiedCheckpoint>,
 }
 
 impl StateSyncHandle {
-    /// Send a newly minted commit from Consensus to StateSync so that it can be disseminated
+    /// Send a newly minted checkpoint from Consensus to StateSync so that it can be disseminated
     /// to other nodes on the network.
     ///
     /// # Invariant
     ///
-    /// Consensus must only notify StateSync of new commits that have been fully committed to
-    /// persistent storage. This includes CommitContents and all Transactions and
+    /// Consensus must only notify StateSync of new checkpoints that have been fully committed to
+    /// persistent storage. This includes CheckpointContents and all Transactions and
     /// TransactionEffects included therein.
-    pub async fn send_commit(&self, commit: CommittedSubDag) {
-        debug!("Sending commit from consensus to state sync: {}", commit);
+    pub async fn send_checkpoint(&self, checkpoint: VerifiedCheckpoint) {
         self.sender
-            .send(StateSyncMessage::VerifiedCommit(Box::new(commit)))
+            .send(StateSyncMessage::VerifiedCheckpoint(Box::new(checkpoint)))
             .await
-            .expect("Could not send state sync handle commit")
+            .unwrap()
     }
 
-    /// Subscribe to the stream of commits that have been fully synchronized and downloaded.
-    pub fn subscribe_to_synced_commits(&self) -> broadcast::Receiver<CommittedSubDag> {
-        self.commit_event_sender.subscribe()
-    }
-
-    pub fn new_for_testing() -> Self {
-        let (sender, _) = mpsc::channel(50);
-        let (commit_event_sender, _) = broadcast::channel(50);
-
-        Self {
-            sender,
-            commit_event_sender,
-        }
+    /// Subscribe to the stream of checkpoints that have been fully synchronized and downloaded.
+    pub fn subscribe_to_synced_checkpoints(&self) -> broadcast::Receiver<VerifiedCheckpoint> {
+        self.checkpoint_event_sender.subscribe()
     }
 }
 
@@ -167,14 +140,13 @@ pub struct UnstartedStateSync<S> {
     pub(super) mailbox: mpsc::Receiver<StateSyncMessage>,
     pub(super) store: S,
     pub(super) peer_heights: Arc<RwLock<PeerHeights>>,
-    pub(super) commit_event_sender: broadcast::Sender<CommittedSubDag>,
-    pub(super) block_verifier: Arc<SignedBlockVerifier>,
+    pub(super) checkpoint_event_sender: broadcast::Sender<VerifiedCheckpoint>,
     pub(super) archive_config: Option<ArchiveReaderConfig>,
 }
 
 impl<S> UnstartedStateSync<S>
 where
-    S: ConsensusStore + WriteStore + Clone + Send + Sync + 'static,
+    S: WriteStore + Clone + Send + Sync + 'static,
 {
     pub(super) fn build(
         self,
@@ -187,24 +159,27 @@ where
             mailbox,
             store,
             peer_heights,
-            commit_event_sender,
-            block_verifier,
+            checkpoint_event_sender,
             archive_config,
         } = self;
 
         (
-            StateSyncEventLoop::new(
+            StateSyncEventLoop {
                 config,
                 mailbox,
-                handle.sender.downgrade(),
+                weak_sender: handle.sender.downgrade(),
+                tasks: JoinSet::new(),
+                sync_checkpoint_summaries_task: None,
+                sync_checkpoint_contents_task: None,
+
                 store,
                 peer_heights,
-                commit_event_sender,
+                checkpoint_event_sender,
                 active_peers,
-                peer_event_receiver,
-                block_verifier,
+
+                sync_checkpoint_from_archive_task: None,
                 archive_config,
-            ),
+            },
             handle,
         )
     }
@@ -262,7 +237,7 @@ impl<S> P2pBuilder<S> {
 
 impl<S> P2pBuilder<S>
 where
-    S: ConsensusStore + WriteStore + AccumulatorStore + Clone + Send + Sync + 'static,
+    S: WriteStore + Clone + Send + Sync + 'static,
 {
     pub fn build(
         self,
@@ -293,19 +268,23 @@ where
         let (state_sync_sender, mailbox) = mpsc::channel(state_sync_config.mailbox_capacity());
         let (their_info_sender, their_info_receiver) =
             mpsc::channel(state_sync_config.mailbox_capacity());
-        let (commit_event_sender, _receiver) = broadcast::channel(
-            state_sync_config.synced_commit_broadcast_channel_capacity() as usize,
-        );
-        // let weak_state_sync_sender = state_sync_sender.downgrade();
+        let (checkpoint_event_sender, _receiver) =
+            broadcast::channel(state_sync_config.synced_checkpoint_broadcast_channel_capacity());
+        let weak_sender = state_sync_sender.downgrade();
 
         let state_sync_handle = StateSyncHandle {
             sender: state_sync_sender.clone(),
-            commit_event_sender: commit_event_sender.clone(),
+            checkpoint_event_sender: checkpoint_event_sender.clone(),
         };
-        let peer_heights =
-            PeerHeights::new(state_sync_config.wait_interval_when_no_peer_to_sync_content())
-                .pipe(RwLock::new)
-                .pipe(Arc::new);
+        let peer_heights = PeerHeights {
+            peers: HashMap::new(),
+            unprocessed_checkpoints: HashMap::new(),
+            sequence_number_to_digest: HashMap::new(),
+            wait_interval_when_no_peer_to_sync_content: state_sync_config
+                .wait_interval_when_no_peer_to_sync_content(),
+        }
+        .pipe(RwLock::new)
+        .pipe(Arc::new);
 
         let discovery_state = DiscoveryState {
             our_info: None,
@@ -314,32 +293,11 @@ where
         .pipe(RwLock::new)
         .pipe(Arc::new);
 
-        // Dummy context with genesis committee
-        let parameters = Parameters {
-            ..Default::default()
-        };
-        let context = Arc::new(Context::new(
-            None,
-            (*store_ref.get_committee(0).unwrap().unwrap()).clone(),
-            parameters,
-            Arc::new(Clock::new()),
-        ));
-
-        let signature_verifier =
-            SignatureVerifier::new(Arc::new(context.committee.clone()), Some(store_ref.clone()));
-        let transaction_verifier = TxVerifier::new(Arc::new(signature_verifier));
-        let block_verifier = Arc::new(SignedBlockVerifier::new(
-            context.clone(),
-            Arc::new(transaction_verifier),
-            store_ref.clone(),
-            Some(store_ref.clone()),
-        ));
-
         let server = P2pService {
             discovery_state: discovery_state.clone(),
             store: store.clone(),
             peer_heights: peer_heights.clone(),
-            state_sync_sender,
+            state_sync_sender: weak_sender,
             discovery_sender: their_info_sender,
         };
 
@@ -357,8 +315,7 @@ where
                 mailbox,
                 store,
                 peer_heights,
-                commit_event_sender,
-                block_verifier,
+                checkpoint_event_sender,
                 archive_config: self.archive_config,
             },
             server,
