@@ -250,6 +250,9 @@ pub struct TonicParameters {
     /// If unspecified, this will default to 1GiB.
     #[serde(default = "TonicParameters::default_message_size_limit")]
     pub message_size_limit: usize,
+
+    #[serde(default = "TonicParameters::default_connect_timeout")]
+    pub connect_timeout: Duration,
 }
 
 impl TonicParameters {
@@ -268,6 +271,10 @@ impl TonicParameters {
     fn default_message_size_limit() -> usize {
         64 << 20
     }
+
+    fn default_connect_timeout() -> Duration {
+        Duration::from_secs(1)
+    }
 }
 
 impl Default for TonicParameters {
@@ -277,6 +284,7 @@ impl Default for TonicParameters {
             connection_buffer_size: TonicParameters::default_connection_buffer_size(),
             excessive_message_size: TonicParameters::default_excessive_message_size(),
             message_size_limit: TonicParameters::default_message_size_limit(),
+            connect_timeout: TonicParameters::default_connect_timeout(),
         }
     }
 }

@@ -3,7 +3,7 @@ use crate::{
         AuthorityName, ExecutionData, ExecutionDigests, FullObjectRef, SequenceNumber,
         VerifiedExecutionData,
     },
-    committee::{Committee, EpochId, StakeUnit},
+    committee::{Committee, EpochId, NetworkingCommittee, StakeUnit},
     crypto::{
         default_hash, get_key_pair, AggregateAuthoritySignature, AuthoritySignInfo,
         AuthoritySignInfoTrait as _, AuthorityStrongQuorumSignInfo, GenericSignature, SomaKeyPair,
@@ -12,6 +12,7 @@ use crate::{
         CheckpointArtifactsDigest, CheckpointContentsDigest, CheckpointDigest, Digest, ObjectDigest,
     },
     effects::{TransactionEffects, TransactionEffectsAPI as _},
+    encoder_committee::EncoderCommittee,
     envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
     error::{SomaError, SomaResult},
     full_checkpoint_content::CheckpointData,
@@ -257,7 +258,7 @@ impl From<CheckpointArtifactsDigest> for CheckpointCommitment {
 }
 
 // #[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EndOfEpochData {
     /// next_epoch_committee is `Some` if and only if the current checkpoint is
@@ -265,11 +266,15 @@ pub struct EndOfEpochData {
     /// Therefore next_epoch_committee can be used to pick the last checkpoint of an epoch,
     /// which is often useful to get epoch level summary stats like total gas cost of an epoch,
     /// or the total number of transactions from genesis to the end of an epoch.
-    /// The committee is stored as a vector of validator pub key and stake pairs. The vector
-    /// should be sorted based on the Committee data structure.
-    #[schemars(with = "Vec<(AuthorityName, StakeUnit)>")]
-    // #[serde_as(as = "Vec<(_, Readable<StakeUnit, _>)>")]
-    pub next_epoch_committee: Vec<(AuthorityName, StakeUnit)>, // TODO: make this the end of epoch data from the block
+
+    /// The validator committee for the next epoch, including network metadata
+    pub next_epoch_validator_committee: Committee,
+
+    /// The encoder committee for the next epoch
+    pub next_epoch_encoder_committee: EncoderCommittee,
+
+    /// The networking committee for the next epoch
+    pub next_epoch_networking_committee: NetworkingCommittee,
 
     /// TODO: The protocol version that is in effect during the epoch that starts immediately after this
     /// checkpoint.
@@ -364,10 +369,10 @@ impl CheckpointSummary {
         UNIX_EPOCH + Duration::from_millis(self.timestamp_ms)
     }
 
-    pub fn next_epoch_committee(&self) -> Option<&[(AuthorityName, StakeUnit)]> {
+    pub fn next_epoch_committee(&self) -> Option<&Committee> {
         self.end_of_epoch_data
             .as_ref()
-            .map(|e| e.next_epoch_committee.as_slice())
+            .map(|e| &e.next_epoch_validator_committee)
     }
 
     pub fn is_last_checkpoint_of_epoch(&self) -> bool {

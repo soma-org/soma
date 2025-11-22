@@ -270,15 +270,11 @@ impl WriteStore for RocksDbStore {
         checkpoint: &VerifiedCheckpoint,
     ) -> Result<(), types::storage::storage_error::Error> {
         if let Some(EndOfEpochData {
-            next_epoch_committee,
+            next_epoch_validator_committee,
             ..
         }) = checkpoint.end_of_epoch_data.as_ref()
         {
-            // TODO: fix this when end of epoch data is defined
-            let next_committee = next_epoch_committee.iter().cloned().collect();
-            let committee =
-                Committee::new(checkpoint.epoch().checked_add(1).unwrap(), next_committee);
-            self.insert_committee(committee)?;
+            self.insert_committee(next_epoch_validator_committee.clone())?;
         }
 
         self.checkpoint_store

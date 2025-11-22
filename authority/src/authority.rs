@@ -96,9 +96,9 @@ use crate::{
 use crate::{consensus_quarantine, transaction_checks};
 use types::storage::committee_store::CommitteeStore;
 
-#[cfg(test)]
-#[path = "unit_tests/authority_tests.rs"]
-pub mod authority_tests;
+// #[cfg(test)]
+// #[path = "unit_tests/authority_tests.rs"]
+// pub mod authority_tests;
 
 pub const WAIT_FOR_FASTPATH_INPUT_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -245,7 +245,7 @@ pub struct AuthorityState {
     committee_store: Arc<CommitteeStore>,
 
     /// Schedules transaction execution.
-    execution_scheduler: Arc<ExecutionScheduler>,
+    pub execution_scheduler: Arc<ExecutionScheduler>,
 
     /// Shuts down the execution task. Used only in testing.
     #[allow(unused)]

@@ -1688,6 +1688,10 @@ impl CheckpointBuilder {
                     .committee()
                     .clone();
 
+                let encoder_committee = system_state_obj.get_current_epoch_encoder_committee();
+                let networking_committee =
+                    system_state_obj.get_current_epoch_networking_committee();
+
                 // This must happen after the call to augment_epoch_last_checkpoint,
                 // otherwise we will not capture the change_epoch tx.
                 let root_state_digest = {
@@ -1720,7 +1724,9 @@ impl CheckpointBuilder {
                 let epoch_commitments = vec![root_state_digest.into()];
 
                 Some(EndOfEpochData {
-                    next_epoch_committee: committee.voting_rights,
+                    next_epoch_validator_committee: committee,
+                    next_epoch_encoder_committee: encoder_committee,
+                    next_epoch_networking_committee: networking_committee,
                     // TODO: next_epoch_protocol_version: ProtocolVersion::new(
                     //     system_state_obj.protocol_version(),
                     // ),
