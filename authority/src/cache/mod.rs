@@ -440,11 +440,6 @@ pub trait TransactionCacheRead: Send + Sync {
             .expect("multi-get must return correct number of items")
     }
 
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>>;
-
     fn notify_read_executed_effects_digests<'a>(
         &'a self,
         digests: &'a [TransactionDigest],

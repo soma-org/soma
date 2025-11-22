@@ -1,30 +1,27 @@
 use std::fs;
-use std::sync::Arc;
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
+use std::time::Duration;
 use store::rocks::safe_drop_db;
 use tokio::{sync::mpsc, time::Instant};
 use tracing::{error, info, warn};
 use types::committee::Epoch;
-use types::storage::consensus::ConsensusStore;
 
 pub struct ConsensusStorePruner {
-    tx_prune: mpsc::Sender<Epoch>,
+    tx_remove: mpsc::Sender<Epoch>,
     _handle: tokio::task::JoinHandle<()>,
 }
 
 impl ConsensusStorePruner {
-    pub fn new(
-        consensus_store: Arc<dyn ConsensusStore>,
-        epoch_retention: u64,
-        epoch_prune_period: Duration,
-    ) -> Self {
-        let (tx_prune, mut rx_prune) = mpsc::channel(1);
+    pub fn new(base_path: PathBuf, epoch_retention: u64, epoch_prune_period: Duration) -> Self {
+        let (tx_remove, mut rx_remove) = mpsc::channel(1);
 
-        let _handle = tokio::task::spawn(async move {
-            info!("Starting consensus store pruner with epoch retention {epoch_retention} and prune period {epoch_prune_period:?}");
+        let _handle = tokio::spawn(async move {
+            info!(
+                "Starting consensus store pruner with epoch retention {epoch_retention} and prune period {epoch_prune_period:?}"
+            );
 
             let mut timeout = tokio::time::interval_at(
-                Instant::now() + Duration::from_secs(60), // allow some time for the node to boot
+                Instant::now() + Duration::from_secs(60), // allow some time for the node to boot etc before attempting to prune
                 epoch_prune_period,
             );
 
@@ -32,28 +29,27 @@ impl ConsensusStorePruner {
             loop {
                 tokio::select! {
                     _ = timeout.tick() => {
-                        if latest_epoch > 0 {
-                            Self::prune_old_epoch_data(&consensus_store, latest_epoch, epoch_retention).await;
-                        }
+                        Self::prune_old_epoch_data(&base_path, latest_epoch, epoch_retention).await;
                     }
-                    result = rx_prune.recv() => {
+                    result = rx_remove.recv() => {
                         if result.is_none() {
                             info!("Closing consensus store pruner");
                             break;
                         }
                         latest_epoch = result.unwrap();
-                        Self::prune_old_epoch_data(&consensus_store, latest_epoch, epoch_retention).await;
+                        Self::prune_old_epoch_data(&base_path, latest_epoch, epoch_retention).await;
                     }
                 }
             }
         });
 
-        Self { tx_prune, _handle }
+        Self { tx_remove, _handle }
     }
 
-    /// This method will remove all epoch data that is older than the current epoch minus the epoch retention.
+    /// This method will remove all epoch data stores and directories that are older than the current epoch minus the epoch retention. The method ensures
+    /// that always the `current_epoch` data is retained.
     pub async fn prune(&self, current_epoch: Epoch) {
-        let result = self.tx_prune.send(current_epoch).await;
+        let result = self.tx_remove.send(current_epoch).await;
         if result.is_err() {
             error!(
                 "Error sending message to data removal task for epoch {:?}",
@@ -63,25 +59,92 @@ impl ConsensusStorePruner {
     }
 
     async fn prune_old_epoch_data(
-        consensus_store: &Arc<dyn ConsensusStore>,
+        storage_base_path: &PathBuf,
         current_epoch: Epoch,
         epoch_retention: u64,
     ) {
         let drop_boundary = current_epoch.saturating_sub(epoch_retention);
 
         info!(
-            "Consensus store pruning for current epoch {}. Will remove epochs < {:?}",
+            "Consensus store prunning for current epoch {}. Will remove epochs < {:?}",
             current_epoch, drop_boundary
         );
 
-        // Call the new prune_epochs method on the consensus store
-        if let Err(e) = consensus_store.prune_epochs_before(drop_boundary) {
-            error!("Failed to prune old epochs from consensus store: {:?}", e);
-        } else {
-            info!(
-                "Successfully pruned epochs < {} from consensus store",
-                drop_boundary
-            );
+        // Get all the epoch stores in the base path directory
+        let files = match fs::read_dir(storage_base_path) {
+            Ok(f) => f,
+            Err(e) => {
+                error!(
+                    "Can not read the files in the storage path directory for epoch cleanup: {:?}",
+                    e
+                );
+                return;
+            }
+        };
+
+        // Look for any that are less than the drop boundary and drop
+        for file_res in files {
+            let f = match file_res {
+                Ok(f) => f,
+                Err(e) => {
+                    error!(
+                        "Error while cleaning up storage of previous epochs: {:?}",
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let name = f.file_name();
+            let file_epoch_string = match name.to_str() {
+                Some(f) => f,
+                None => continue,
+            };
+
+            let file_epoch = match file_epoch_string.to_owned().parse::<u64>() {
+                Ok(f) => f,
+                Err(e) => {
+                    error!(
+                        "Could not parse file \"{file_epoch_string}\" in storage path into epoch for cleanup: {:?}",
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            if file_epoch < drop_boundary {
+                const WAIT_BEFORE_FORCE_DELETE: Duration = Duration::from_secs(5);
+                if let Err(e) = safe_drop_db(f.path(), WAIT_BEFORE_FORCE_DELETE).await {
+                    warn!(
+                        "Could not prune old consensus storage \"{:?}\" directory with safe approach. Will fallback to force delete: {:?}",
+                        f.path(),
+                        e
+                    );
+
+                    if let Err(err) = fs::remove_dir_all(f.path()) {
+                        error!(
+                            "Could not prune old consensus storage \"{:?}\" directory with force delete: {:?}",
+                            f.path(),
+                            err
+                        );
+                    } else {
+                        info!(
+                            "Successfully pruned consensus epoch storage directory with force delete: {:?}",
+                            f.path()
+                        );
+                    }
+                } else {
+                    info!(
+                        "Successfully pruned consensus epoch storage directory: {:?}",
+                        f.path()
+                    );
+                }
+            }
         }
+
+        info!(
+            "Completed old epoch data removal process for epoch {:?}",
+            current_epoch
+        );
     }
 }

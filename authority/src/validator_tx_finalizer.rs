@@ -1,4 +1,4 @@
-use crate::aggregator::AuthorityAggregator;
+use crate::authority_aggregator::AuthorityAggregator;
 use crate::authority_client::AuthorityAPI;
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::cache::TransactionCacheRead;

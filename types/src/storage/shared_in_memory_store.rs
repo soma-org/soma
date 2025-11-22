@@ -89,13 +89,6 @@ impl ReadStore for SharedInMemoryStore {
         self.inner().get_transaction_effects(digest).cloned()
     }
 
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        _digest: &TransactionDigest,
-    ) -> Option<Vec<crate::storage::ObjectKey>> {
-        todo!()
-    }
-
     fn get_latest_checkpoint(&self) -> Result<VerifiedCheckpoint> {
         todo!()
     }
@@ -504,13 +497,6 @@ impl ReadStore for SingleCheckpointSharedInMemoryStore {
 
     fn get_transaction_effects(&self, digest: &TransactionDigest) -> Option<TransactionEffects> {
         self.0.get_transaction_effects(digest)
-    }
-
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        _digest: &TransactionDigest,
-    ) -> Option<Vec<crate::storage::ObjectKey>> {
-        todo!()
     }
 
     fn get_latest_checkpoint(&self) -> Result<VerifiedCheckpoint> {

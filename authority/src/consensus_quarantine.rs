@@ -22,7 +22,7 @@ use tracing::{debug, info, trace};
 use types::{
     base::{AuthorityName, ConsensusObjectSequenceKey},
     checkpoints::{CheckpointContents, CheckpointSequenceNumber},
-    consensus::{block::Round, commit::CommitIndex},
+    consensus::{commit::CommitIndex, Round},
     crypto::GenericSignature,
     digests::TransactionDigest,
     error::SomaResult,

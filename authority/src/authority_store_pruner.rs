@@ -166,10 +166,7 @@ impl AuthorityStorePruner {
             debug!("Pruning effects {:?}", effects_digest);
             effect_digests.push(effects_digest);
         }
-        perpetual_batch.delete_batch(
-            &perpetual_db.unchanged_loaded_runtime_objects,
-            transactions.iter(),
-        )?;
+
         perpetual_batch.delete_batch(&perpetual_db.effects, effect_digests)?;
 
         let mut checkpoints_batch = checkpoint_db.tables.certified_checkpoints.batch();

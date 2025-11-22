@@ -22,6 +22,7 @@ pub mod object_store;
 pub mod read_store;
 pub mod shared_in_memory_store;
 pub mod storage_error;
+pub mod write_path_pending_tx_log;
 pub mod write_store;
 
 /// the existence and state of input objects.
@@ -375,7 +376,6 @@ pub fn get_transaction_output_objects(
 pub fn get_transaction_object_set(
     transaction: &TransactionData,
     effects: &TransactionEffects,
-    unchanged_loaded_runtime_objects: &[ObjectKey],
 ) -> BTreeSet<ObjectKey> {
     // enumerate the full set of input objects in order to properly capture immutable objects that
     // may not appear in the effects.
@@ -424,6 +424,5 @@ pub fn get_transaction_object_set(
     input_objects
         .chain(modified_set)
         .chain(unchanged_consensus)
-        .chain(unchanged_loaded_runtime_objects.iter().copied())
         .collect()
 }

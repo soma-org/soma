@@ -8,7 +8,7 @@ use crate::{
     authority_per_epoch_store::AuthorityPerEpochStore,
     consensus_adapter::{ConsensusAdapter, SubmitToConsensus},
     consensus_handler::ConsensusHandlerInitializer,
-    tx_validator::TxValidator,
+    consensus_validator::TxValidator,
 };
 use arc_swap::ArcSwapOption;
 use async_trait::async_trait;

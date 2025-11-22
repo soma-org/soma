@@ -10,8 +10,9 @@ use tonic::{metadata::KeyAndValueRef, IntoRequest};
 use tracing::info;
 use types::crypto::NetworkPublicKey;
 use types::messages_grpc::{
-    ObjectInfoRequest, ObjectInfoResponse, RawWaitForEffectsRequest, SubmitTxRequest,
-    SubmitTxResponse, SystemStateRequest, TransactionInfoRequest, TransactionInfoResponse,
+    ObjectInfoRequest, ObjectInfoResponse, RawValidatorHealthRequest, RawWaitForEffectsRequest,
+    SubmitTxRequest, SubmitTxResponse, SystemStateRequest, TransactionInfoRequest,
+    TransactionInfoResponse, ValidatorHealthRequest, ValidatorHealthResponse,
     WaitForEffectsRequest, WaitForEffectsResponse,
 };
 use types::system_state::SystemState;
@@ -83,6 +84,12 @@ pub trait AuthorityAPI {
         &self,
         request: SystemStateRequest,
     ) -> Result<SystemState, SomaError>;
+
+    /// Get validator health metrics (for latency measurement)
+    async fn validator_health(
+        &self,
+        request: ValidatorHealthRequest,
+    ) -> Result<ValidatorHealthResponse, SomaError>;
 }
 
 #[derive(Clone)]
@@ -252,6 +259,20 @@ impl AuthorityAPI for NetworkAuthorityClient {
             .await
             .map(tonic::Response::into_inner)
             .map_err(Into::into)
+    }
+
+    async fn validator_health(
+        &self,
+        request: ValidatorHealthRequest,
+    ) -> Result<ValidatorHealthResponse, SomaError> {
+        let raw_request: RawValidatorHealthRequest = request.try_into()?;
+
+        self.client()?
+            .validator_health(raw_request)
+            .await
+            .map(tonic::Response::into_inner)
+            .map_err(Into::<SomaError>::into)?
+            .try_into()
     }
 }
 

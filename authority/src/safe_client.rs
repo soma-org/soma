@@ -14,8 +14,8 @@ use types::finality::SignedConsensusFinality;
 use types::intent::Intent;
 use types::messages_grpc::{
     ExecutedData, ObjectInfoRequest, ObjectInfoResponse, SubmitTxRequest, SubmitTxResponse,
-    SystemStateRequest, TransactionInfoRequest, VerifiedObjectInfoResponse, WaitForEffectsRequest,
-    WaitForEffectsResponse,
+    SystemStateRequest, TransactionInfoRequest, ValidatorHealthRequest, ValidatorHealthResponse,
+    VerifiedObjectInfoResponse, WaitForEffectsRequest, WaitForEffectsResponse,
 };
 use types::object::{Object, ObjectID, ObjectRef};
 use types::storage::committee_store::CommitteeStore;
@@ -486,5 +486,14 @@ where
         self.authority_client
             .handle_system_state_object(SystemStateRequest { _unused: false })
             .await
+    }
+
+    /// Handle validator health check requests (for latency measurement)
+    #[instrument(level = "trace", skip_all, fields(authority = ?self.address.concise()))]
+    pub async fn validator_health(
+        &self,
+        request: ValidatorHealthRequest,
+    ) -> Result<ValidatorHealthResponse, SomaError> {
+        self.authority_client.validator_health(request).await
     }
 }

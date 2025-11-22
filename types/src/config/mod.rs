@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::trace;
 
+pub mod certificate_deny_config;
 pub mod encoder_config;
 pub mod genesis_config;
 pub mod local_ip_utils;
@@ -15,6 +16,8 @@ pub mod object_store_config;
 pub mod p2p_config;
 pub mod rpc_config;
 pub mod state_sync_config;
+pub mod transaction_deny_config;
+pub mod validator_client_monitor_config;
 
 const SOMA_DIR: &str = ".soma";
 pub const SOMA_CONFIG_DIR: &str = "soma_config";

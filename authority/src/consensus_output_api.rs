@@ -38,7 +38,7 @@ impl ConsensusCommitAPI for types::consensus::commit::CommittedSubDag {
             Some(
                 self.reputation_scores_desc
                     .iter()
-                    .map(|(id, score)| (id.value() as AuthorityIndex, *score))
+                    .map(|(id, score)| (*id, *score))
                     .collect(),
             )
         } else {

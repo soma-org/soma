@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::ops::Add;
@@ -11,13 +11,11 @@ use arc_swap::{ArcSwap, Guard};
 use fastcrypto::encoding::{Base58, Encoding as _};
 use fastcrypto::hash::MultisetHash;
 use parking_lot::Mutex;
-use protocol_config::{ProtocolConfig, ProtocolVersion};
 use serde::{Deserialize, Serialize};
-use tap::TapFallible;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio::time::timeout;
-use tracing::{debug, error, info, instrument, trace, warn, Instrument};
+use tracing::{debug, error, info, instrument, trace, warn};
 use types::base::FullObjectID;
 use types::checkpoints::{
     CheckpointCommitment, CheckpointContents, CheckpointRequest, CheckpointResponse,
@@ -25,23 +23,19 @@ use types::checkpoints::{
     ECMHLiveObjectSetDigest, VerifiedCheckpoint,
 };
 use types::config::node_config::{ExpensiveSafetyCheckConfig, StateDebugDumpConfig};
-use types::consensus::block::BlockRef;
 use types::digests::{
     CheckpointContentsDigest, CheckpointDigest, ObjectDigest, TransactionEffectsDigest,
 };
 use types::effects::{
-    self, ExecutionStatus, InputSharedObject, SignedTransactionEffects, TransactionEffects,
-    TransactionEffectsAPI, VerifiedCertifiedTransactionEffects, VerifiedSignedTransactionEffects,
+    InputSharedObject, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
+    VerifiedSignedTransactionEffects,
 };
-use types::encoder_validator::{FetchCommitteesRequest, FetchCommitteesResponse};
 use types::envelope::Message;
-use types::error::ExecutionError;
+use types::error::{ExecutionError, ExecutionResult};
 use types::execution::{get_early_execution_error, ExecutionOrEarlyError, ExecutionOutput};
-use types::finality::{
-    ConsensusFinality, SignedConsensusFinality, VerifiedSignedConsensusFinality,
-};
+use types::full_checkpoint_content::ObjectSet;
 use types::messages_grpc::TransactionInfoRequest;
-use types::object::{Object, ObjectID, ObjectRef, Version, OBJECT_START_VERSION};
+use types::object::{Object, ObjectID, ObjectRef, Owner, Version, OBJECT_START_VERSION};
 use types::storage::object_store::ObjectStore;
 use types::storage::InputKey;
 use types::system_state::get_system_state;
@@ -86,7 +80,6 @@ use crate::cache::{
     ExecutionCacheWrite, ObjectCacheRead, StateSyncAPI, TransactionCacheRead,
 };
 use crate::checkpoints::{CheckpointBuilderError, CheckpointBuilderResult, CheckpointStore};
-use crate::consensus_quarantine;
 use crate::execution::execute_transaction;
 use crate::execution_driver::execution_process;
 use crate::execution_scheduler::{ExecutionScheduler, SchedulingSource};
@@ -94,12 +87,13 @@ use crate::global_state_hasher::{GlobalStateHashStore, GlobalStateHasher};
 use crate::rpc_index::RpcIndexStore;
 use crate::shared_obj_version_manager::{AssignedVersions, Schedulable};
 use crate::start_epoch::EpochStartConfigTrait;
-use crate::tx_input_loader::TransactionInputLoader;
+use crate::transaction_input_loader::TransactionInputLoader;
 use crate::validator_tx_finalizer::ValidatorTxFinalizer;
 use crate::{
     authority_client::NetworkAuthorityClient, authority_per_epoch_store::AuthorityPerEpochStore,
     start_epoch::EpochStartConfiguration,
 };
+use crate::{consensus_quarantine, transaction_checks};
 use types::storage::committee_store::CommitteeStore;
 
 #[cfg(test)]
@@ -107,6 +101,8 @@ use types::storage::committee_store::CommitteeStore;
 pub mod authority_tests;
 
 pub const WAIT_FOR_FASTPATH_INPUT_TIMEOUT: Duration = Duration::from_secs(2);
+
+pub const DEV_INSPECT_GAS_COIN_VALUE: u64 = 1_000_000_000_000_000_000;
 
 /// a Trait object for `Signer` that is:
 /// - Pin, i.e. confined to one place in memory (we don't want to copy private keys).
@@ -308,7 +304,7 @@ impl AuthorityState {
         // Note: the deny checks may do redundant package loads but:
         // - they only load packages when there is an active package deny map
         // - the loads are cached anyway
-        transaction_checks::deny::check_transaction_for_signing(
+        transaction_checks::check_transaction_for_signing(
             tx_data,
             transaction.tx_signatures(),
             &input_object_kinds,
@@ -323,13 +319,11 @@ impl AuthorityState {
             epoch_store.epoch(),
         )?;
 
-        let (_gas_status, checked_input_objects) = transaction_checks::check_transaction_input(
+        let checked_input_objects = transaction_checks::check_transaction_input(
             epoch_store.protocol_config(),
-            epoch_store.reference_gas_price(),
             tx_data,
             input_objects,
             &receiving_objects,
-            &self.config.verifier_signing_config,
         )?;
 
         Ok(checked_input_objects)
@@ -420,9 +414,15 @@ impl AuthorityState {
                         let validator_tx_finalizer = validator_tx_finalizer.clone();
                         let cache_reader = self.get_transaction_cache_reader().clone();
                         let epoch_store = epoch_store.clone();
-                        tokio::spawn(epoch_store.within_alive_epoch(
-                            validator_tx_finalizer.track_signed_tx(cache_reader, &epoch_store, tx),
-                        ));
+                        tokio::spawn(async move {
+                            epoch_store
+                                .within_alive_epoch(validator_tx_finalizer.track_signed_tx(
+                                    cache_reader,
+                                    &epoch_store,
+                                    tx,
+                                ))
+                                .await
+                        });
                     }
                 }
                 Ok(HandleTransactionResponse {
@@ -999,19 +999,13 @@ impl AuthorityState {
         expected_effects_digest: Option<TransactionEffectsDigest>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> ExecutionOutput<(TransactionOutputs, Option<ExecutionError>)> {
-        let prepare_certificate_start_time = tokio::time::Instant::now();
-
-        // TODO: We need to move this to a more appropriate place to avoid redundant checks.
-        let tx_data = certificate.data().transaction_data();
-
         // The cost of partially re-auditing a transaction before execution is tolerated.
         // This step is required for correctness because, for example, ConsensusAddressOwner
         // object owner may have changed between signing and execution.
-        let (gas_status, input_objects) = match transaction_checks::check_certificate_input(
+        let input_objects = match transaction_checks::check_certificate_input(
             certificate,
             input_objects,
             epoch_store.protocol_config(),
-            epoch_store.reference_gas_price(),
         ) {
             Ok(result) => result,
             Err(e) => return ExecutionOutput::Fatal(e),
@@ -1024,7 +1018,7 @@ impl AuthorityState {
         let tx_digest = *certificate.digest();
         let protocol_config = epoch_store.protocol_config();
         let transaction_data = &certificate.data().intent_message().value;
-        let (kind, signer, gas_data) = transaction_data.execution_parts();
+        let (kind, signer, gas_payment) = transaction_data.execution_parts();
         let early_execution_error = get_early_execution_error(
             &tx_digest,
             &input_objects,
@@ -1035,26 +1029,17 @@ impl AuthorityState {
             None => ExecutionOrEarlyError::Ok(()),
         };
 
-        let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
-
         #[allow(unused_mut)]
-        let (inner_temp_store, _, mut effects, execution_error_opt) =
-            epoch_store.executor().execute_transaction_to_effects(
-                &tracking_store,
-                protocol_config,
-                execution_params,
-                &epoch_store.epoch_start_config().epoch_data().epoch_id(),
-                epoch_store
-                    .epoch_start_config()
-                    .epoch_data()
-                    .epoch_start_timestamp(),
-                input_objects,
-                gas_data,
-                kind,
-                signer,
-                tx_digest,
-                &mut None,
-            );
+        let (inner, effects, execution_error_opt) = execute_transaction(
+            epoch_store.epoch(),
+            self.get_object_store().as_ref(),
+            tx_digest,
+            kind,
+            signer,
+            gas_payment,
+            input_objects,
+            execution_params,
+        );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
             if effects.digest() != expected_effects_digest {
@@ -1063,7 +1048,7 @@ impl AuthorityState {
                     &tx_digest,
                     &effects,
                     expected_effects_digest,
-                    &inner_temp_store,
+                    &inner,
                     certificate,
                     &self.config.state_debug_dump_config,
                 ) {
@@ -1101,21 +1086,13 @@ impl AuthorityState {
             }
         }
 
-        let unchanged_loaded_runtime_objects =
-            types::transaction_outputs::unchanged_loaded_runtime_objects(
-                certificate.transaction_data(),
-                &effects,
-                &tracking_store.into_read_objects(),
-            );
-
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
             effects,
-            inner_temp_store,
-            unchanged_loaded_runtime_objects,
+            inner,
         );
 
-        ExecutionOutput::Success((transaction_outputs, execution_error_opt.err()))
+        ExecutionOutput::Success((transaction_outputs, execution_error_opt))
     }
 
     pub fn simulate_transaction(
@@ -1141,13 +1118,12 @@ impl AuthorityState {
         let input_object_kinds = transaction.input_objects()?;
         let receiving_object_refs = transaction.receiving_objects();
 
-        transaction_checks::deny::check_transaction_for_signing(
+        transaction_checks::check_transaction_for_signing(
             &transaction,
             &[],
             &input_object_kinds,
             &receiving_object_refs,
             &self.config.transaction_deny_config,
-            self.get_backing_package_store().as_ref(),
         )?;
 
         let (mut input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
@@ -1160,37 +1136,28 @@ impl AuthorityState {
 
         // mock a gas object if one was not provided
         let mock_gas_id = if transaction.gas().is_empty() {
-            let mock_gas_object = Object::new_gas_coin(
-                OBJECT_START_VERSION,
+            let mock_gas_object = Object::new_coin(
                 ObjectID::MAX,
                 DEV_INSPECT_GAS_COIN_VALUE,
+                Owner::AddressOwner(transaction.sender()),
+                TransactionDigest::genesis_marker(),
             );
             let mock_gas_object_ref = mock_gas_object.compute_object_reference();
-            transaction.gas_data_mut().payment = vec![mock_gas_object_ref];
+            *transaction.gas_mut() = vec![mock_gas_object_ref];
             input_objects.push(ObjectReadResult::new_from_gas_object(&mock_gas_object));
             Some(mock_gas_object.id())
         } else {
             None
         };
 
-        let protocol_config = epoch_store.protocol_config();
-
-        let (gas_status, checked_input_objects) = transaction_checks::check_transaction_input(
+        let checked_input_objects = transaction_checks::check_transaction_input(
             epoch_store.protocol_config(),
-            epoch_store.reference_gas_price(),
             &transaction,
             input_objects,
             &receiving_objects,
         )?;
 
-        // TODO see if we can spin up a VM once and reuse it
-        let executor = sui_execution::executor(
-            protocol_config,
-            true, // silent
-        )
-        .expect("Creating an executor should not fail here");
-
-        let (kind, signer, gas_data) = transaction.execution_parts();
+        let (kind, signer, gas_payment) = transaction.execution_parts();
         let early_execution_error = get_early_execution_error(
             &transaction.digest(),
             &checked_input_objects,
@@ -1201,43 +1168,30 @@ impl AuthorityState {
             None => ExecutionOrEarlyError::Ok(()),
         };
 
-        let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
-
-        let (inner_temp_store, _, effects, execution_result) = executor.dev_inspect_transaction(
-            &tracking_store,
-            protocol_config,
-            false, // expensive_checks
-            execution_params,
-            &epoch_store.epoch_start_config().epoch_data().epoch_id(),
-            epoch_store
-                .epoch_start_config()
-                .epoch_data()
-                .epoch_start_timestamp(),
-            checked_input_objects,
-            gas_data,
-            gas_status,
+        let (inner, effects, execution_error_opt) = execute_transaction(
+            epoch_store.epoch(),
+            self.get_object_store().as_ref(),
+            transaction.digest(),
             kind,
             signer,
-            transaction.digest(),
-            checks.disabled(),
+            gas_payment,
+            checked_input_objects,
+            execution_params,
         );
 
-        let loaded_runtime_objects = tracking_store.into_read_objects();
-        let unchanged_loaded_runtime_objects =
-            types::transaction_outputs::unchanged_loaded_runtime_objects(
-                &transaction,
-                &effects,
-                &loaded_runtime_objects,
-            );
+        let execution_result: ExecutionResult = match execution_error_opt {
+            None => Ok(()),
+            Some(error) => Err(error.to_execution_status()),
+        };
 
         let object_set = {
             let objects = {
-                let mut objects = loaded_runtime_objects;
+                let mut objects = ObjectSet(BTreeMap::new());
 
-                for o in inner_temp_store
+                for o in inner
                     .input_objects
                     .into_values()
-                    .chain(inner_temp_store.written.into_values())
+                    .chain(inner.written.into_values())
                 {
                     objects.insert(o);
                 }
@@ -1245,11 +1199,7 @@ impl AuthorityState {
                 objects
             };
 
-            let object_keys = types::storage::get_transaction_object_set(
-                &transaction,
-                &effects,
-                &unchanged_loaded_runtime_objects,
-            );
+            let object_keys = types::storage::get_transaction_object_set(&transaction, &effects);
 
             let mut set = types::full_checkpoint_content::ObjectSet::default();
             for k in object_keys {
@@ -1266,7 +1216,6 @@ impl AuthorityState {
             effects,
             execution_result,
             mock_gas_id,
-            unchanged_loaded_runtime_objects,
         })
     }
 
@@ -1308,8 +1257,6 @@ impl AuthorityState {
         &self,
         request: ObjectInfoRequest,
     ) -> SomaResult<ObjectInfoResponse> {
-        let epoch_store = self.load_epoch_store_one_call_per_task();
-
         let (_, requested_object_seq, _) = self
             .get_object_or_tombstone(request.object_id)
             .await

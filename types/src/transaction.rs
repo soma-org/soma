@@ -1,39 +1,10 @@
-//! # Transaction Module
-//!
-//! ## Overview
-//! This module defines the core transaction types and structures used throughout the Soma blockchain.
-//! It provides the foundation for transaction creation, validation, execution, and certification.
-//!
-//! ## Responsibilities
-//! - Define transaction data structures and their serialization formats
-//! - Implement transaction signing and verification mechanisms
-//! - Provide utilities for transaction input/output management
-//! - Define the transaction lifecycle from creation to certification
-//! - Support different transaction types (system, user, consensus)
-//!
-//! ## Component Relationships
-//! - Interacts with Authority module for transaction execution and validation
-//! - Provides transaction structures to Consensus module for ordering
-//! - Consumes cryptographic primitives for transaction signing and verification
-//! - Defines input/output structures for the object model
-//!
-//! ## Key Workflows
-//! 1. Transaction creation, signing, and submission
-//! 2. Transaction certification through validator signatures
-//! 3. Input object resolution and validation
-//! 4. Transaction execution and effects generation
-//!
-//! ## Design Patterns
-//! - Envelope Pattern: Separates transaction data from signatures
-//! - Type-safe verification: Uses type system to enforce verification state
-//! - Immutable data structures: Ensures transaction integrity throughout lifecycle
-
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     iter,
 };
 
 use crate::{
+    base::FullObjectID,
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
     digests::{AdditionalConsensusStateDigest, SenderSignedDataDigest},
     metadata::Metadata,
@@ -768,7 +739,7 @@ impl TransactionData {
         TransactionDigest::new(default_hash(self))
     }
 
-    fn signers(&self) -> NonEmpty<SomaAddress> {
+    pub fn signers(&self) -> NonEmpty<SomaAddress> {
         let mut signers = nonempty![self.sender];
         // if self.gas_owner() != self.sender {
         //     signers.push(self.gas_owner());
@@ -776,8 +747,12 @@ impl TransactionData {
         signers
     }
 
-    fn is_system_tx(&self) -> bool {
+    pub fn is_system_tx(&self) -> bool {
         self.kind.is_system_tx()
+    }
+
+    pub fn is_genesis_tx(&self) -> bool {
+        matches!(self.kind, TransactionKind::Genesis(_))
     }
 
     pub fn is_consensus_commit_prologue(&self) -> bool {
@@ -802,6 +777,10 @@ impl TransactionData {
 
     pub fn gas(&self) -> Vec<ObjectRef> {
         self.gas_payment.clone()
+    }
+
+    pub fn gas_mut(&mut self) -> &mut Vec<ObjectRef> {
+        &mut self.gas_payment
     }
 
     fn contains_shared_object(&self) -> bool {
@@ -1346,6 +1325,17 @@ impl InputObjectKind {
         match self {
             Self::ImmOrOwnedObject((_, _, _)) => true,
             Self::SharedObject { mutable, .. } => *mutable,
+        }
+    }
+
+    pub fn full_object_id(&self) -> FullObjectID {
+        match self {
+            Self::ImmOrOwnedObject((id, _, _)) => FullObjectID::Fastpath(*id),
+            Self::SharedObject {
+                id,
+                initial_shared_version,
+                ..
+            } => FullObjectID::Consensus((*id, *initial_shared_version)),
         }
     }
 }

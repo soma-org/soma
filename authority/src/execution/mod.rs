@@ -18,10 +18,13 @@ use types::{
         ExecutionFailureStatus, ExecutionStatus, TransactionEffects,
     },
     error::{ExecutionError, ExecutionResult, SomaError, SomaResult},
+    execution::ExecutionOrEarlyError,
     object::{Object, ObjectID, ObjectRef, Version},
     storage::object_store::ObjectStore,
     temporary_store::{self, InnerTemporaryStore, SharedInput, TemporaryStore},
-    transaction::{InputObjectKind, InputObjects, ObjectReadResultKind, TransactionKind},
+    transaction::{
+        CheckedInputObjects, InputObjectKind, InputObjects, ObjectReadResultKind, TransactionKind,
+    },
     tx_fee::TransactionFee,
 };
 use validator::ValidatorExecutor;
@@ -81,12 +84,14 @@ pub fn execute_transaction(
     kind: TransactionKind,
     signer: SomaAddress,
     gas_payment: Vec<ObjectRef>,
-    input_objects: InputObjects,
+    input_objects: CheckedInputObjects,
+    execution_params: ExecutionOrEarlyError,
 ) -> (
     InnerTemporaryStore,
     TransactionEffects,
     Option<ExecutionError>,
 ) {
+    let input_objects = input_objects.into_inner();
     // Extract common information
     let shared_object_refs = input_objects.filter_shared_objects();
     let transaction_dependencies = input_objects.transaction_dependencies();
@@ -123,7 +128,25 @@ pub fn execute_transaction(
         }
     };
 
-    // Phase 2: Check for assigned shared versions and handle them specially
+    // Phase 2: Check for early validation errors AFTER gas is prepared
+    if let Err(early_error) = execution_params {
+        // Simply use the temporary store's built-in conversion
+        // The gas object changes from prepare_gas are already in the store
+        let (inner, effects) = temporary_store.into_effects(
+            shared_object_refs,
+            &tx_digest,
+            transaction_dependencies,
+            ExecutionStatus::Failure {
+                error: early_error.clone(),
+            },
+            epoch_id,
+            gas_result.transaction_fee.clone(),
+        );
+
+        return (inner, effects, Some(ExecutionError::new(early_error, None)));
+    }
+
+    // Phase 3: Check for assigned shared versions and handle them specially
     let (has_assigned_shared_versions, shared_objects_to_load, shared_object_versions) =
         has_assigned_shared_versions(store, &input_objects);
 

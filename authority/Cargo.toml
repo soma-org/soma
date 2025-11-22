@@ -51,7 +51,7 @@ mockall = "0.11.4"
 strum = { version = "0.27.1", features = ["derive"] }
 strum_macros = "0.27.1"
 dashmap = "6.0.1"
-lru = "0.12.4"
+lru = "0.10"
 num_cpus = "1.16.0"
 moka = { version = "0.12", default-features = false, features = [
     "sync",

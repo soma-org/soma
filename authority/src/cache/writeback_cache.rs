@@ -207,8 +207,6 @@ struct UncommittedData {
 
     transaction_effects: DashMap<TransactionEffectsDigest, TransactionEffects>,
 
-    unchanged_loaded_runtime_objects: DashMap<TransactionDigest, Vec<ObjectKey>>,
-
     executed_effects_digests: DashMap<TransactionDigest, TransactionEffectsDigest>,
 
     // Transaction outputs that have not yet been written to the DB. Items are removed from this
@@ -245,7 +243,6 @@ impl UncommittedData {
                 .max_capacity(config.fastpath_transaction_outputs_cache_size())
                 .build(),
 
-            unchanged_loaded_runtime_objects: DashMap::with_shard_amount(2048),
             total_transaction_inserts: AtomicU64::new(0),
             total_transaction_commits: AtomicU64::new(0),
         }
@@ -259,7 +256,6 @@ impl UncommittedData {
         self.pending_transaction_writes.clear();
         self.fastpath_transaction_outputs.invalidate_all();
 
-        self.unchanged_loaded_runtime_objects.clear();
         self.total_transaction_inserts
             .store(0, std::sync::atomic::Ordering::Relaxed);
         self.total_transaction_commits
@@ -274,7 +270,6 @@ impl UncommittedData {
                     && self.markers.is_empty()
                     && self.transaction_effects.is_empty()
                     && self.executed_effects_digests.is_empty()
-                    && self.unchanged_loaded_runtime_objects.is_empty()
                     && self
                         .total_transaction_inserts
                         .load(std::sync::atomic::Ordering::Relaxed)
@@ -818,7 +813,6 @@ impl WritebackCache {
             markers,
             written,
             deleted,
-            unchanged_loaded_runtime_objects,
             ..
         } = &*tx_outputs;
 
@@ -860,10 +854,6 @@ impl WritebackCache {
         self.dirty
             .transaction_effects
             .insert(effects_digest, effects.clone());
-
-        self.dirty
-            .unchanged_loaded_runtime_objects
-            .insert(tx_digest, unchanged_loaded_runtime_objects.clone());
 
         self.dirty
             .executed_effects_digests
@@ -1021,11 +1011,6 @@ impl WritebackCache {
             .transaction_effects
             .remove(&effects_digest)
             .expect("effects must exist");
-
-        self.dirty
-            .unchanged_loaded_runtime_objects
-            .remove(&tx_digest)
-            .expect("unchanged_loaded_runtime_objects must exist");
 
         self.dirty
             .executed_effects_digests
@@ -1778,21 +1763,6 @@ impl TransactionCacheRead for WritebackCache {
                 self.multi_get_executed_effects_digests(digests)
             })
             .boxed()
-    }
-
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>> {
-        self.dirty
-            .unchanged_loaded_runtime_objects
-            .get(digest)
-            .map(|b| b.clone())
-            .or_else(|| {
-                self.store
-                    .get_unchanged_loaded_runtime_objects(digest)
-                    .expect("db error")
-            })
     }
 
     fn get_mysticeti_fastpath_outputs(

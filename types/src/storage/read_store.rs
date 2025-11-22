@@ -117,11 +117,6 @@ pub trait ReadStore: ObjectStore {
             .collect()
     }
 
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>>;
-
     //
     // Extra Checkpoint fetching apis
     //
@@ -170,10 +165,6 @@ pub trait ReadStore: ObjectStore {
                 transaction: tx.transaction_data().clone(),
                 signatures: tx.tx_signatures().to_vec(),
                 effects: fx.clone(),
-                unchanged_loaded_runtime_objects: self
-                    .get_unchanged_loaded_runtime_objects(tx.digest())
-                    //TODO Do we throw an error or just stub in an empty vector?
-                    .unwrap_or_default(),
             };
             transactions.push(transaction);
         }
@@ -182,11 +173,7 @@ pub trait ReadStore: ObjectStore {
             let refs = transactions
                 .iter()
                 .flat_map(|tx| {
-                    crate::storage::get_transaction_object_set(
-                        &tx.transaction,
-                        &tx.effects,
-                        &tx.unchanged_loaded_runtime_objects,
-                    )
+                    crate::storage::get_transaction_object_set(&tx.transaction, &tx.effects)
                 })
                 .collect::<BTreeSet<_>>()
                 .into_iter()
@@ -289,13 +276,6 @@ impl<T: ReadStore + ?Sized> ReadStore for &T {
         (*self).multi_get_transaction_effects(tx_digests)
     }
 
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>> {
-        (*self).get_unchanged_loaded_runtime_objects(digest)
-    }
-
     fn get_full_checkpoint_contents(
         &self,
         sequence_number: Option<CheckpointSequenceNumber>,
@@ -389,13 +369,6 @@ impl<T: ReadStore + ?Sized> ReadStore for Box<T> {
         (**self).multi_get_transaction_effects(tx_digests)
     }
 
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>> {
-        (**self).get_unchanged_loaded_runtime_objects(digest)
-    }
-
     fn get_full_checkpoint_contents(
         &self,
         sequence_number: Option<CheckpointSequenceNumber>,
@@ -487,13 +460,6 @@ impl<T: ReadStore + ?Sized> ReadStore for Arc<T> {
         tx_digests: &[TransactionDigest],
     ) -> Vec<Option<TransactionEffects>> {
         (**self).multi_get_transaction_effects(tx_digests)
-    }
-
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>> {
-        (**self).get_unchanged_loaded_runtime_objects(digest)
     }
 
     fn get_full_checkpoint_contents(

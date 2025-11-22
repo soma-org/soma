@@ -557,7 +557,7 @@ impl ConsensusAdapter {
                 "System transactions should have been submitted individually"
             );
             let transaction_keys = transaction_keys.clone();
-            Some(CancelOnDrop(tokio::spawn(async {
+            Some(CancelOnDrop(tokio::spawn(async move {
                 let mut i = 0u64;
                 loop {
                     i += 1;
@@ -1016,7 +1016,9 @@ impl SubmitToConsensus for Arc<ConsensusAdapter> {
         };
 
         let epoch_store = epoch_store.clone();
-        tokio::spawn(epoch_store.within_alive_epoch(async_stage));
+        tokio::spawn(async move {
+            epoch_store.within_alive_epoch(async_stage).await
+        });
         Ok(())
     }
 }

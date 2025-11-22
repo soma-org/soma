@@ -226,7 +226,7 @@ mod additional_consensus_state {
                 _phantom: PhantomData,
                 round: commit_round,
                 timestamp: commit_timestamp,
-                leader_author: 0,
+                leader_author: AuthorityIndex(0),
                 sub_dag_index: 0,
                 consensus_commit_digest: ConsensusCommitDigest::default(),
                 additional_state_digest: Some(AdditionalConsensusStateDigest::ZERO),
@@ -287,7 +287,7 @@ mod additional_consensus_state {
                 indirect_state_observer.fold_with(d1)
             };
 
-            self.consensus_commit_prologue_v4_transaction(epoch, additional_state_digest)
+            self.consensus_commit_prologue_transaction(epoch, additional_state_digest)
         }
     }
 
@@ -605,6 +605,9 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
         self.epoch_store.process_notifications(notifications.iter());
 
+        // pass lock by value to ensure that it is held until this point
+        self.log_final_round(lock, final_round);
+
         let mut schedulables = schedulables;
 
         self.execution_scheduler_sender.send(
@@ -628,6 +631,18 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             (lock.should_accept_tx(), Some(lock), final_round)
         } else {
             (true, None, false)
+        }
+    }
+
+    fn log_final_round(&self, lock: Option<RwLockWriteGuard<ReconfigState>>, final_round: bool) {
+        if final_round {
+            let epoch = self.epoch_store.epoch();
+            info!(
+                ?epoch,
+                lock=?lock.as_ref(),
+                final_round=?final_round,
+                "Notified last checkpoint"
+            );
         }
     }
 

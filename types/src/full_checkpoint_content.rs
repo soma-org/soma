@@ -193,11 +193,10 @@ pub struct ExecutedTransaction {
     pub signatures: Vec<GenericSignature>,
     /// The effects produced by executing this transaction
     pub effects: TransactionEffects,
-    pub unchanged_loaded_runtime_objects: Vec<ObjectKey>,
 }
 
 #[derive(Default, Clone, Debug)]
-pub struct ObjectSet(BTreeMap<ObjectKey, Object>);
+pub struct ObjectSet(pub BTreeMap<ObjectKey, Object>);
 
 impl ObjectSet {
     pub fn get(&self, key: &ObjectKey) -> Option<&Object> {
@@ -344,9 +343,6 @@ impl From<CheckpointData> for Checkpoint {
                     transaction: sender_signed.intent_message.value,
                     signatures: sender_signed.tx_signatures,
                     effects: tx.effects,
-
-                    // lossy
-                    unchanged_loaded_runtime_objects: Vec::new(),
                 }
             })
             .collect();

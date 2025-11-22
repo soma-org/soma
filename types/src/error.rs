@@ -365,6 +365,38 @@ pub enum SomaError {
         round: u32,
         last_committed_round: u32,
     },
+
+    #[error("Error executing {0}")]
+    ExecutionError(String),
+
+    #[error("Transaction is already finalized but with different user signatures")]
+    TxAlreadyFinalizedWithDifferentUserSigs,
+
+    #[error("Transaction is denied: {error}")]
+    TransactionDenied { error: String },
+
+    #[error("Wrong initial version given for shared object")]
+    SharedObjectStartingVersionMismatch,
+
+    #[error("Object used as shared is not shared")]
+    NotSharedObjectError,
+
+    #[error("Versions above the maximal value are not usable for transfers")]
+    InvalidSequenceNumber,
+
+    #[error("Object used as owned is not owned")]
+    NotOwnedObjectError,
+
+    #[error("Mutable object {object_id} cannot appear more than one in one transaction")]
+    MutableObjectUsedMoreThanOnce { object_id: ObjectID },
+    #[error("Wrong number of parameters for the transaction")]
+    ObjectInputArityViolation,
+
+    #[error("Immutable parameter provided, mutable parameter expected")]
+    MutableParameterExpected { object_id: ObjectID },
+
+    #[error("Gas payment error {0}")]
+    GasPaymentError(String),
 }
 
 impl SomaError {
@@ -373,6 +405,112 @@ impl SomaError {
             self,
             SomaError::ValidatorHaltedAtEpochEnd | SomaError::MissingCommitteeAtEpoch(_)
         )
+    }
+
+    /// Returns if the error is retryable and if the error's retryability is
+    /// explicitly categorized.
+    /// There should be only a handful of retryable errors. For now we list common
+    /// non-retryable error below to help us find more retryable errors in logs.
+    pub fn is_retryable(&self) -> (bool, bool) {
+        let retryable = match self {
+            // Network error
+            SomaError::RpcError { .. } => true,
+
+            // Reconfig error
+            SomaError::ValidatorHaltedAtEpochEnd => true,
+            SomaError::MissingCommitteeAtEpoch(..) => true,
+            SomaError::WrongEpoch { .. } => true,
+            SomaError::EpochEnded(..) => true,
+
+            SomaError::ObjectNotFound { .. } => true,
+
+            // SomaError::PotentiallyTemporarilyInvalidSignature { .. } => true,
+
+            // Overload errors
+            // SomaError::TooManyTransactionsPendingExecution { .. } => true,
+            // SomaError::TooManyTransactionsPendingOnObject { .. } => true,
+            // SomaError::TooOldTransactionPendingOnObject { .. } => true,
+            // SomaError::TooManyTransactionsPendingConsensus => true,
+            // SomaError::ValidatorOverloadedRetryAfter { .. } => true,
+
+            // Non retryable error
+            SomaError::ExecutionError(..) => false,
+            SomaError::ByzantineAuthoritySuspicion { .. } => false,
+            SomaError::QuorumFailedToGetEffectsQuorumWhenProcessingTransaction { .. } => false,
+            SomaError::TxAlreadyFinalizedWithDifferentUserSigs => false,
+            SomaError::FailedToVerifyTxCertWithExecutedEffects { .. } => false,
+            SomaError::ObjectLockConflict { .. } => false,
+
+            // NB: This is not an internal overload, but instead an imposed rate
+            // limit / blocking of a client. It must be non-retryable otherwise
+            // we will make the threat worse through automatic retries.
+            SomaError::TooManyRequests => false,
+
+            // For all un-categorized errors, return here with categorized = false.
+            _ => return (false, false),
+        };
+
+        (retryable, true)
+    }
+
+    pub fn is_object_not_found(&self) -> bool {
+        match self {
+            SomaError::ObjectNotFound { .. } => true,
+            _ => false,
+        }
+    }
+
+    // pub fn is_overload(&self) -> bool {
+    //     matches!(
+    //         self,
+    //         SomaError::TooManyTransactionsPendingExecution { .. }
+    //             | SomaError::TooManyTransactionsPendingOnObject { .. }
+    //             | SomaError::TooOldTransactionPendingOnObject { .. }
+    //             | SomaError::TooManyTransactionsPendingConsensus
+    //     )
+    // }
+
+    // pub fn is_retryable_overload(&self) -> bool {
+    //     matches!(self, SomaError::ValidatorOverloadedRetryAfter { .. })
+    // }
+
+    // pub fn retry_after_secs(&self) -> u64 {
+    //     match self {
+    //         SomaError::ValidatorOverloadedRetryAfter { retry_after_secs } => *retry_after_secs,
+    //         _ => 0,
+    //     }
+    // }
+
+    /// Categorizes SuiError into ErrorCategory.
+    pub fn categorize(&self) -> ErrorCategory {
+        match self {
+            SomaError::ObjectNotFound { .. } => ErrorCategory::Aborted,
+
+            SomaError::InvalidSignature { .. }
+            | SomaError::SignerSignatureAbsent { .. }
+            | SomaError::SignerSignatureNumberMismatch { .. }
+            | SomaError::IncorrectSigner { .. }
+            | SomaError::UnknownSigner { .. } => ErrorCategory::InvalidTransaction,
+
+            SomaError::ObjectLockConflict { .. } => ErrorCategory::LockConflict,
+
+            SomaError::Unknown { .. }
+            | SomaError::GrpcMessageSerializeError { .. }
+            | SomaError::GrpcMessageDeserializeError { .. }
+            | SomaError::ByzantineAuthoritySuspicion { .. }
+            | SomaError::UnsupportedFeatureError { .. }
+            | SomaError::InvalidRequest { .. } => ErrorCategory::Internal,
+
+            // SomaError::TooManyTransactionsPendingExecution { .. }
+            // | SomaError::TooManyTransactionsPendingOnObject { .. }
+            // | SomaError::TooOldTransactionPendingOnObject { .. }
+            // | SomaError::TooManyTransactionsPendingConsensus
+            // | SomaError::ValidatorOverloadedRetryAfter { .. } => ErrorCategory::ValidatorOverloaded,
+            SomaError::TimeoutError => ErrorCategory::Unavailable,
+
+            // Other variants are assumed to be retriable with new transaction submissions.
+            _ => ErrorCategory::Aborted,
+        }
     }
 }
 
@@ -1282,4 +1420,34 @@ pub enum IntelligenceError {
     ReqwestError(reqwest::Error),
     #[error("Parse error: {0}")]
     ParseError(String),
+}
+
+/// Types of SomaError.
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, IntoStaticStr)]
+pub enum ErrorCategory {
+    // A generic error that is retriable with new transaction resubmissions.
+    Aborted,
+    // Any validator or full node can check if a transaction is valid.
+    InvalidTransaction,
+    // Lock conflict on the transaction input.
+    LockConflict,
+    // Unexpected client error, for example generating invalid request or entering into invalid state.
+    // And unexpected error from the remote peer. The validator may be malicious or there is a software bug.
+    Internal,
+    // Validator is overloaded.
+    // ValidatorOverloaded,
+    // Target validator is down or there are network issues.
+    Unavailable,
+}
+
+impl ErrorCategory {
+    // Whether the failure is retriable with new transaction submission.
+    pub fn is_submission_retriable(&self) -> bool {
+        matches!(
+            self,
+            ErrorCategory::Aborted
+                // | ErrorCategory::ValidatorOverloaded
+                | ErrorCategory::Unavailable
+        )
+    }
 }

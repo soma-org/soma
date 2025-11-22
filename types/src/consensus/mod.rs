@@ -11,6 +11,7 @@ use crate::{
     error::SomaError,
     transaction::{CertifiedTransaction, Transaction},
 };
+use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
@@ -23,6 +24,10 @@ pub mod context;
 pub mod leader_scoring;
 pub mod stake_aggregator;
 pub mod validator_set;
+
+// TODO: Switch to using consensus_types::block::Round?
+/// Consensus round number in u64 instead of u32.
+pub type Round = u64;
 
 /// The position of a transaction in consensus.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -220,6 +225,12 @@ impl ConsensusTransaction {
             tracking_id,
             kind: ConsensusTransactionKind::CertifiedTransaction(Box::new(certificate)),
         }
+    }
+
+    pub fn get_tracking_id(&self) -> u64 {
+        (&self.tracking_id[..])
+            .read_u64::<BigEndian>()
+            .unwrap_or_default()
     }
 
     pub fn key(&self) -> ConsensusTransactionKey {

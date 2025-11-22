@@ -4,14 +4,18 @@ use crate::{
     serde::Readable,
 };
 use fastcrypto::{
-    encoding::{Base58, Encoding},
+    encoding::{Base58, Encoding, Hex},
     hash::{Blake2b256, HashFunction as _, MultisetHash},
 };
+use once_cell::sync::{Lazy, OnceCell};
+use protocol_config::Chain;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
+use std::env;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use tracing::info;
 /// A representation of a 32 byte digest
 #[serde_as]
 #[derive(
@@ -527,6 +531,133 @@ impl std::str::FromStr for ObjectDigest {
         }
         result.copy_from_slice(&buffer);
         Ok(ObjectDigest::new(result))
+    }
+}
+
+/// Representation of a network's identifier by the genesis checkpoint's digest
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+)]
+pub struct ChainIdentifier(CheckpointDigest);
+
+pub const MAINNET_CHAIN_IDENTIFIER_BASE58: &str = "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S";
+pub const TESTNET_CHAIN_IDENTIFIER_BASE58: &str = "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD";
+
+pub static MAINNET_CHAIN_IDENTIFIER: OnceCell<ChainIdentifier> = OnceCell::new();
+pub static TESTNET_CHAIN_IDENTIFIER: OnceCell<ChainIdentifier> = OnceCell::new();
+
+/// For testing purposes or bootstrapping regenesis chain configuration, you can set
+/// this environment variable to force protocol config to use a specific Chain.
+pub const SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE_ENV_VAR_NAME: &str =
+    "SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE";
+
+static SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE: Lazy<Option<Chain>> = Lazy::new(|| {
+    if let Ok(s) = env::var(SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE_ENV_VAR_NAME) {
+        info!("SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE: {:?}", s);
+        match s.as_str() {
+            "mainnet" => Some(Chain::Mainnet),
+            "testnet" => Some(Chain::Testnet),
+            "" => None,
+            _ => panic!("unrecognized SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE: {s:?}"),
+        }
+    } else {
+        None
+    }
+});
+
+impl ChainIdentifier {
+    /// take a short 4 byte identifier and convert it into a ChainIdentifier
+    /// short ids come from the JSON RPC getChainIdentifier and are encoded in hex
+    pub fn from_chain_short_id(short_id: &String) -> Option<Self> {
+        if Hex::from_bytes(&Base58::decode(MAINNET_CHAIN_IDENTIFIER_BASE58).ok()?)
+            .encoded_with_format()
+            .starts_with(&format!("0x{}", short_id))
+        {
+            Some(get_mainnet_chain_identifier())
+        } else if Hex::from_bytes(&Base58::decode(TESTNET_CHAIN_IDENTIFIER_BASE58).ok()?)
+            .encoded_with_format()
+            .starts_with(&format!("0x{}", short_id))
+        {
+            Some(get_testnet_chain_identifier())
+        } else {
+            None
+        }
+    }
+
+    pub fn chain(&self) -> Chain {
+        let mainnet_id = get_mainnet_chain_identifier();
+        let testnet_id = get_testnet_chain_identifier();
+
+        let chain = match self {
+            id if *id == mainnet_id => Chain::Mainnet,
+            id if *id == testnet_id => Chain::Testnet,
+            _ => Chain::Unknown,
+        };
+        if let Some(override_chain) = *SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE {
+            if chain != Chain::Unknown {
+                panic!("not allowed to override real chain {chain:?}");
+            }
+            return override_chain;
+        }
+
+        chain
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+}
+
+pub fn get_mainnet_chain_identifier() -> ChainIdentifier {
+    let digest = MAINNET_CHAIN_IDENTIFIER.get_or_init(|| {
+        let digest = CheckpointDigest::new(
+            Base58::decode(MAINNET_CHAIN_IDENTIFIER_BASE58)
+                .expect("mainnet genesis checkpoint digest literal is invalid")
+                .try_into()
+                .expect("Mainnet genesis checkpoint digest literal has incorrect length"),
+        );
+        ChainIdentifier::from(digest)
+    });
+    *digest
+}
+
+pub fn get_testnet_chain_identifier() -> ChainIdentifier {
+    let digest = TESTNET_CHAIN_IDENTIFIER.get_or_init(|| {
+        let digest = CheckpointDigest::new(
+            Base58::decode(TESTNET_CHAIN_IDENTIFIER_BASE58)
+                .expect("testnet genesis checkpoint digest literal is invalid")
+                .try_into()
+                .expect("Testnet genesis checkpoint digest literal has incorrect length"),
+        );
+        ChainIdentifier::from(digest)
+    });
+    *digest
+}
+
+impl fmt::Display for ChainIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in self.0 .0 .0[0..4].iter() {
+            write!(f, "{:02x}", byte)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl From<CheckpointDigest> for ChainIdentifier {
+    fn from(digest: CheckpointDigest) -> Self {
+        Self(digest)
     }
 }
 

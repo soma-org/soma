@@ -82,6 +82,15 @@ fn main() -> Result<()> {
                 .codec_path(codec_path)
                 .build(),
         )
+        .method(
+            Method::builder()
+                .name("validator_health")
+                .route_name("ValidatorHealth")
+                .input_type("types::messages_grpc::RawValidatorHealthRequest")
+                .output_type("types::messages_grpc::RawValidatorHealthResponse")
+                .codec_path(prost_codec_path)
+                .build(),
+        )
         .build();
 
     tonic_build::manual::Builder::new()

@@ -55,11 +55,6 @@ pub(crate) fn load_checkpoint(
             transaction: tx.transaction_data().clone(),
             signatures: tx.tx_signatures().to_vec(),
             effects: fx.clone(),
-            unchanged_loaded_runtime_objects: transaction_cache_reader
-                .get_unchanged_loaded_runtime_objects(tx.digest())
-                // We don't write empty sets to the DB to save space, so if this load went through
-                // the writeback cache to the DB itself it wouldn't find an entry.
-                .unwrap_or_default(),
         };
         transactions.push(transaction);
     }
@@ -67,13 +62,7 @@ pub(crate) fn load_checkpoint(
     let object_set = {
         let refs = transactions
             .iter()
-            .flat_map(|tx| {
-                types::storage::get_transaction_object_set(
-                    &tx.transaction,
-                    &tx.effects,
-                    &tx.unchanged_loaded_runtime_objects,
-                )
-            })
+            .flat_map(|tx| types::storage::get_transaction_object_set(&tx.transaction, &tx.effects))
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();

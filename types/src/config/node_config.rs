@@ -2,7 +2,12 @@ use crate::{
     base::SomaAddress,
     checkpoints::CheckpointSequenceNumber,
     committee::EpochId,
-    config::{local_ip_utils, object_store_config::ObjectStoreConfig, rpc_config::RpcConfig},
+    config::{
+        certificate_deny_config::CertificateDenyConfig, local_ip_utils,
+        object_store_config::ObjectStoreConfig, rpc_config::RpcConfig,
+        transaction_deny_config::TransactionDenyConfig,
+        validator_client_monitor_config::ValidatorClientMonitorConfig,
+    },
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
     genesis::Genesis,
     multiaddr::Multiaddr,
@@ -93,13 +98,23 @@ pub struct NodeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fork_recovery: Option<ForkRecoveryConfig>,
 
-    // #[serde(default)]
-    // pub transaction_deny_config: TransactionDenyConfig,
+    #[serde(default)]
+    pub transaction_deny_config: TransactionDenyConfig,
 
-    // #[serde(default)]
-    // pub certificate_deny_config: CertificateDenyConfig,
+    #[serde(default)]
+    pub certificate_deny_config: CertificateDenyConfig,
+
     #[serde(default)]
     pub expensive_safety_check_config: ExpensiveSafetyCheckConfig,
+
+    /// Configuration for validator client monitoring from the client perspective.
+    /// When enabled, tracks client-observed performance metrics for validators.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validator_client_monitor_config: Option<ValidatorClientMonitorConfig>,
+
+    /// Configuration for the transaction driver.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transaction_driver_config: Option<TransactionDriverConfig>,
 }
 
 impl NodeConfig {
@@ -656,10 +671,14 @@ impl ValidatorConfigBuilder {
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,
             state_debug_dump_config: Default::default(),
+            validator_client_monitor_config: None,
             // By default, expensive checks will be enabled in debug build, but not in release build.
             expensive_safety_check_config: ExpensiveSafetyCheckConfig::default(),
             execution_cache: ExecutionCacheConfig::default(),
             fork_recovery: None,
+            transaction_driver_config: Some(TransactionDriverConfig::default()),
+            transaction_deny_config: Default::default(),
+            certificate_deny_config: Default::default(),
         }
     }
 
@@ -1118,4 +1137,39 @@ pub struct ForkRecoveryConfig {
     /// Behavior when a fork is detected after recovery attempts
     #[serde(default)]
     pub fork_crash_behavior: ForkCrashBehavior,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct TransactionDriverConfig {
+    /// The list of validators that are allowed to submit MFP transactions to (via the transaction driver).
+    /// Each entry is a validator display name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_submission_validators: Vec<String>,
+
+    /// The list of validators that are blocked from submitting block transactions to (via the transaction driver).
+    /// Each entry is a validator display name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_submission_validators: Vec<String>,
+
+    /// Enable early transaction validation before submission to consensus.
+    /// This checks for non-retriable errors (like old object versions) and rejects
+    /// transactions early to provide fast feedback to clients.
+    /// Note: Currently used in TransactionOrchestrator, but may be moved to TransactionDriver in future.
+    #[serde(default = "bool_true")]
+    pub enable_early_validation: bool,
+}
+
+impl Default for TransactionDriverConfig {
+    fn default() -> Self {
+        Self {
+            allowed_submission_validators: vec![],
+            blocked_submission_validators: vec![],
+            enable_early_validation: true,
+        }
+    }
+}
+
+pub fn bool_true() -> bool {
+    true
 }

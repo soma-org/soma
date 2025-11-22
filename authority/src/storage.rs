@@ -219,15 +219,6 @@ impl ReadStore for RocksDbStore {
             .get_executed_effects(digest)
     }
 
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>> {
-        self.cache_traits
-            .transaction_cache_reader
-            .get_unchanged_loaded_runtime_objects(digest)
-    }
-
     fn get_latest_checkpoint(&self) -> types::storage::storage_error::Result<VerifiedCheckpoint> {
         self.checkpoint_store
             .get_highest_executed_checkpoint()
@@ -449,13 +440,6 @@ impl ReadStore for RestReadStore {
     ) -> Option<FullCheckpointContents> {
         self.rocks
             .get_full_checkpoint_contents(sequence_number, digest)
-    }
-
-    fn get_unchanged_loaded_runtime_objects(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Option<Vec<ObjectKey>> {
-        self.rocks.get_unchanged_loaded_runtime_objects(digest)
     }
 }
 
