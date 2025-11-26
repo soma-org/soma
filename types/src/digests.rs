@@ -325,6 +325,18 @@ impl fmt::Debug for TransactionEffectsDigest {
     }
 }
 
+impl fmt::LowerHex for TransactionEffectsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerHex::fmt(&self.0, f)
+    }
+}
+
+impl fmt::UpperHex for TransactionEffectsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
+    }
+}
+
 impl std::str::FromStr for TransactionEffectsDigest {
     type Err = anyhow::Error;
 
@@ -937,6 +949,20 @@ pub struct AdditionalConsensusStateDigest(Digest);
 impl AdditionalConsensusStateDigest {
     pub const ZERO: Self = Self(Digest::ZERO);
     pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for AdditionalConsensusStateDigest {
+    fn from(digest: [u8; 32]) -> Self {
         Self(Digest::new(digest))
     }
 }

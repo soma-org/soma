@@ -129,15 +129,16 @@ impl SomaEnv {
             builder = builder.request_timeout(request_timeout);
         }
 
-        if let Some(basic_auth) = &self.basic_auth {
-            let fields: Vec<_> = basic_auth.split(':').collect();
-            if fields.len() != 2 {
-                return Err(anyhow!(
-                    "Basic auth should be in the format `username:password`"
-                ));
-            }
-            builder = builder.basic_auth(fields[0], fields[1]);
-        }
+        // TODO: add auth
+        // if let Some(basic_auth) = &self.basic_auth {
+        //     let fields: Vec<_> = basic_auth.split(':').collect();
+        //     if fields.len() != 2 {
+        //         return Err(anyhow!(
+        //             "Basic auth should be in the format `username:password`"
+        //         ));
+        //     }
+        //     builder = builder.basic_auth(fields[0], fields[1]);
+        // }
 
         Ok(builder
             .build(&self.rpc, &self.internal_object_address)

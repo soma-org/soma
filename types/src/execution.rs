@@ -79,11 +79,7 @@ pub fn get_early_execution_error(
     if let Some((cancelled_objects, reason)) = cancelled_objects {
         match reason {
             Version::CONGESTED => {
-                return Some(
-                    ExecutionErrorKind::ExecutionCancelledDueToSharedObjectCongestion {
-                        congested_objects: CongestedObjects(cancelled_objects),
-                    },
-                );
+                return Some(ExecutionErrorKind::ExecutionCancelledDueToSharedObjectCongestion);
             }
 
             _ => panic!("invalid cancellation reason Version: {:?}", reason),

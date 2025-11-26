@@ -5,6 +5,7 @@ package soma.rpc;
 import "google/protobuf/timestamp.proto";
 import "soma/rpc/signature.proto";
 import "soma/rpc/system_state.proto";
+import "soma/rpc/protocol_config.proto";
 
 message Epoch {
   optional uint64 epoch = 1;
@@ -17,11 +18,14 @@ message Epoch {
   // current epoch.
   optional SystemState system_state = 3;
 
+  optional uint64 first_checkpoint = 4;
+  optional uint64 last_checkpoint = 5;
+
   optional google.protobuf.Timestamp start = 6;
   optional google.protobuf.Timestamp end = 7;
 
-  // Reference byte price
-//   optional uint64 reference_byte_price = 8;
+  // TODO: Reference byte price
+  // optional uint64 reference_byte_price = 8;
 
-//   optional ProtocolConfig protocol_config = 9;
+  optional ProtocolConfig protocol_config = 9;
 }

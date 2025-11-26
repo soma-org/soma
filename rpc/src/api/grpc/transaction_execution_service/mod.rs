@@ -1,26 +1,28 @@
+use crate::api::RpcService;
+use crate::api::error::RpcError;
+use crate::proto::google::rpc::bad_request::FieldViolation;
+use crate::proto::soma::ErrorReason;
+use crate::proto::soma::ExecuteTransactionRequest;
+use crate::proto::soma::ExecuteTransactionResponse;
+use crate::proto::soma::ExecutedTransaction;
+use crate::proto::soma::Object;
+use crate::proto::soma::ObjectSet;
+use crate::proto::soma::SimulateTransactionRequest;
+use crate::proto::soma::SimulateTransactionResponse;
+use crate::proto::soma::Transaction;
+use crate::proto::soma::TransactionEffects;
+use crate::proto::soma::UserSignature;
+use crate::proto::soma::transaction_execution_service_server::TransactionExecutionService;
+use crate::types::Address;
+use crate::utils::field::FieldMaskTree;
+use crate::utils::field::FieldMaskUtil;
+use crate::utils::merge::Merge;
 use prost_types::FieldMask;
 use tap::Pipe;
-use tracing::info;
-use types::{balance_change::derive_balance_changes, transaction_executor::TransactionExecutor};
+use types::balance_change::derive_balance_changes;
+use types::transaction_executor::TransactionExecutor;
 
-use crate::{
-    api::{RpcService, error::RpcError},
-    proto::{
-        google::rpc::bad_request::FieldViolation,
-        soma::{
-            ErrorReason, ExecuteTransactionRequest, ExecuteTransactionResponse,
-            ExecutedTransaction, Object, Transaction, TransactionEffects, TransactionFinality,
-            UserSignature, ValidatorAggregatedSignature,
-            transaction_execution_service_server::TransactionExecutionService,
-            transaction_finality::Finality,
-        },
-    },
-    types::Address,
-    utils::{
-        field::{FieldMaskTree, FieldMaskUtil},
-        merge::Merge,
-    },
-};
+mod simulate;
 
 #[tonic::async_trait]
 impl TransactionExecutionService for RpcService {
@@ -38,9 +40,18 @@ impl TransactionExecutionService for RpcService {
             .map(tonic::Response::new)
             .map_err(Into::into)
     }
+
+    async fn simulate_transaction(
+        &self,
+        request: tonic::Request<SimulateTransactionRequest>,
+    ) -> Result<tonic::Response<SimulateTransactionResponse>, tonic::Status> {
+        simulate::simulate_transaction(self, request.into_inner())
+            .map(tonic::Response::new)
+            .map_err(Into::into)
+    }
 }
 
-pub const EXECUTE_TRANSACTION_READ_MASK_DEFAULT: &str = "finality";
+pub const EXECUTE_TRANSACTION_READ_MASK_DEFAULT: &str = "effects";
 
 #[tracing::instrument(skip(service, executor))]
 pub async fn execute_transaction(
@@ -76,77 +87,55 @@ pub async fn execute_transaction(
         transaction: transaction.clone(),
         signatures: signatures.clone(),
     };
+
     let read_mask = {
         let read_mask = request
             .read_mask
             .unwrap_or_else(|| FieldMask::from_str(EXECUTE_TRANSACTION_READ_MASK_DEFAULT));
-
         read_mask
-            .validate::<ExecuteTransactionResponse>()
+            .validate::<ExecutedTransaction>()
             .map_err(|path| {
                 FieldViolation::new("read_mask")
                     .with_description(format!("invalid read_mask path: {path}"))
                     .with_reason(ErrorReason::FieldInvalid)
             })?;
-
         FieldMaskTree::from(read_mask)
     };
 
-    let request = {
-        let mask = read_mask
-            .subtree(ExecuteTransactionResponse::TRANSACTION_FIELD.name)
-            .unwrap_or_default();
-
-        let executor_transaction = signed_transaction.try_into().map_err(|e| e)?;
-
-        types::quorum_driver::ExecuteTransactionRequest {
-            transaction: executor_transaction,
-            include_input_objects: mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
-                || mask.contains(ExecutedTransaction::INPUT_OBJECTS_FIELD.name)
-                || mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
-            include_output_objects: mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
-                || mask.contains(ExecutedTransaction::OUTPUT_OBJECTS_FIELD.name)
-                || mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
-        }
+    let request = types::quorum_driver::ExecuteTransactionRequest {
+        transaction: signed_transaction.try_into()?,
+        include_input_objects: read_mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
+            || read_mask.contains(ExecutedTransaction::OBJECTS_FIELD.name)
+            || read_mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
+        include_output_objects: read_mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
+            || read_mask.contains(ExecutedTransaction::OBJECTS_FIELD.name)
+            || read_mask.contains(ExecutedTransaction::EFFECTS_FIELD.name),
     };
 
     let types::quorum_driver::ExecuteTransactionResponse {
         effects:
             types::quorum_driver::FinalizedEffects {
                 effects,
-                finality_info,
+                finality_info: _,
             },
-        shard,
         input_objects,
         output_objects,
     } = executor.execute_transaction(request, None).await?;
 
-    let finality = {
-        let finality = match finality_info.clone() {
-            types::quorum_driver::EffectsFinalityInfo::Certified(sig) => {
-                Finality::Certified(ValidatorAggregatedSignature::from(sig).into())
-            }
-        };
-        let mut message = TransactionFinality::default();
-        message.finality = Some(finality);
-        message
-    };
-
-    let executed_transaction = if let Some(mask) =
-        read_mask.subtree(ExecuteTransactionResponse::TRANSACTION_FIELD.name)
-    {
+    let executed_transaction = {
         let input_objects = input_objects.unwrap_or_default();
         let output_objects = output_objects.unwrap_or_default();
 
-        let balance_changes = mask
-            .contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
-            .then(|| {
-                derive_balance_changes(&effects, &input_objects, &output_objects)
-                    .into_iter()
-                    .map(Into::into)
-                    .collect()
-            })
-            .unwrap_or_default();
+        let balance_changes = if read_mask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
+        {
+            derive_balance_changes(&effects, &input_objects, &output_objects)
+                .into_iter()
+                .map(Into::into)
+                .collect()
+        } else {
+            vec![]
+        };
+
         let input_objects = input_objects
             .into_iter()
             .map(crate::types::Object::try_from)
@@ -156,20 +145,8 @@ pub async fn execute_transaction(
             .map(crate::types::Object::try_from)
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Convert effects with debugging
-        info!("Converting effects to crate::types::TransactionEffects");
-        let effects = match crate::types::TransactionEffects::try_from(effects) {
-            Ok(e) => {
-                info!("Successfully converted effects");
-                e
-            }
-            Err(e) => {
-                info!("ERROR converting effects: {:?}", e);
-                return Err(e.into());
-            }
-        };
-
-        let effects = mask
+        let effects = crate::types::TransactionEffects::try_from(effects)?;
+        let effects = read_mask
             .subtree(ExecutedTransaction::EFFECTS_FIELD.name)
             .map(|mask| {
                 let mut effects = TransactionEffects::merge_from(&effects, &mask);
@@ -180,7 +157,6 @@ pub async fn execute_transaction(
                             continue;
                         };
 
-                        // Rest of the logic...
                         if let Some(object) = input_objects
                             .iter()
                             .chain(&output_objects)
@@ -192,8 +168,9 @@ pub async fn execute_transaction(
                 }
 
                 if mask.contains(TransactionEffects::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
-                    for unchanged_shared_object in effects.unchanged_shared_objects.iter_mut() {
-                        let Ok(object_id) = unchanged_shared_object.object_id().parse::<Address>()
+                    for unchanged_consensus_object in effects.unchanged_shared_objects.iter_mut() {
+                        let Ok(object_id) =
+                            unchanged_consensus_object.object_id().parse::<Address>()
                         else {
                             continue;
                         };
@@ -201,7 +178,7 @@ pub async fn execute_transaction(
                         if let Some(object) =
                             input_objects.iter().find(|o| o.object_id() == object_id)
                         {
-                            unchanged_shared_object.object_type =
+                            unchanged_consensus_object.object_type =
                                 Some(object.object_type.clone().into());
                         }
                     }
@@ -210,26 +187,14 @@ pub async fn execute_transaction(
                 effects
             });
 
-        let proto_shard = mask
-            .contains(ExecutedTransaction::SHARD_FIELD.name)
-            .then(|| {
-                shard.as_ref().and_then(|domain_shard| {
-                    // Domain → SDK → Proto
-                    let sdk_shard: crate::types::Shard = domain_shard.clone().try_into().ok()?; // Handle error gracefully
-                    let proto_shard: crate::proto::soma::Shard = sdk_shard.into();
-                    Some(proto_shard)
-                })
-            })
-            .flatten();
-
         let mut message = ExecutedTransaction::default();
-        message.digest = mask
+        message.digest = read_mask
             .contains(ExecutedTransaction::DIGEST_FIELD.name)
             .then(|| transaction.digest().to_string());
-        message.transaction = mask
+        message.transaction = read_mask
             .subtree(ExecutedTransaction::TRANSACTION_FIELD.name)
             .map(|mask| Transaction::merge_from(transaction, &mask));
-        message.signatures = mask
+        message.signatures = read_mask
             .subtree(ExecutedTransaction::SIGNATURES_FIELD.name)
             .map(|mask| {
                 signatures
@@ -240,35 +205,27 @@ pub async fn execute_transaction(
             .unwrap_or_default();
         message.effects = effects;
         message.balance_changes = balance_changes;
-        message.input_objects = mask
-            .subtree(ExecutedTransaction::INPUT_OBJECTS_FIELD.name)
+        message.objects = read_mask
+            .subtree(
+                ExecutedTransaction::path_builder()
+                    .objects()
+                    .objects()
+                    .finish(),
+            )
             .map(|mask| {
-                input_objects
+                let set: std::collections::BTreeMap<_, _> = input_objects
                     .into_iter()
-                    .map(|o| Object::merge_from(o, &mask))
-                    .collect()
-            })
-            .unwrap_or_default();
-        message.output_objects = mask
-            .subtree(ExecutedTransaction::OUTPUT_OBJECTS_FIELD.name)
-            .map(|mask| {
-                output_objects
-                    .into_iter()
-                    .map(|o| Object::merge_from(o, &mask))
-                    .collect()
-            })
-            .unwrap_or_default();
-        message.shard = proto_shard;
-        Some(message)
-    } else {
-        None
+                    .chain(output_objects.into_iter())
+                    .map(|object| ((object.object_id(), object.version()), object))
+                    .collect();
+                ObjectSet::default().with_objects(
+                    set.into_values()
+                        .map(|o| Object::merge_from(o, &mask))
+                        .collect(),
+                )
+            });
+        message
     };
 
-    let mut message = ExecuteTransactionResponse::default();
-    message.finality = read_mask
-        .contains(ExecuteTransactionResponse::FINALITY_FIELD.name)
-        .then_some(finality);
-    message.transaction = executed_transaction;
-
-    Ok(message)
+    Ok(ExecuteTransactionResponse::default().with_transaction(executed_transaction))
 }

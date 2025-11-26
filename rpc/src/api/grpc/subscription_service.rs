@@ -1,26 +1,27 @@
 use std::pin::Pin;
 
 use crate::api::RpcService;
-use crate::proto::soma::Commit;
-use crate::proto::soma::SubscribeCommitsRequest;
-use crate::proto::soma::SubscribeCommitsResponse;
+use crate::proto::soma::Checkpoint;
+use crate::proto::soma::SubscribeCheckpointsRequest;
+use crate::proto::soma::SubscribeCheckpointsResponse;
 use crate::proto::soma::subscription_service_server::SubscriptionService;
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
 
 #[tonic::async_trait]
 impl SubscriptionService for RpcService {
-    /// Server streaming response type for the SubscribeCommits method.
-    type SubscribeCommitsStream = Pin<
+    /// Server streaming response type for the SubscribeCheckpoints method.
+    type SubscribeCheckpointsStream = Pin<
         Box<
-            dyn tokio_stream::Stream<Item = Result<SubscribeCommitsResponse, tonic::Status>> + Send,
+            dyn tokio_stream::Stream<Item = Result<SubscribeCheckpointsResponse, tonic::Status>>
+                + Send,
         >,
     >;
 
-    async fn subscribe_commits(
+    async fn subscribe_checkpoints(
         &self,
-        request: tonic::Request<SubscribeCommitsRequest>,
-    ) -> Result<tonic::Response<Self::SubscribeCommitsStream>, tonic::Status> {
+        request: tonic::Request<SubscribeCheckpointsRequest>,
+    ) -> Result<tonic::Response<Self::SubscribeCheckpointsStream>, tonic::Status> {
         let subscription_service_handle = self
             .subscription_service_handle
             .as_ref()
@@ -37,9 +38,9 @@ impl SubscriptionService for RpcService {
         let store = self.reader.clone();
         let response = Box::pin(async_stream::stream! {
             while let Some(checkpoint) = receiver.recv().await {
-                let cursor = checkpoint.commit_index;
+                let cursor = checkpoint.summary.sequence_number;
 
-                let mut checkpoint_message = Commit::merge_from(
+                let mut checkpoint_message = Checkpoint::merge_from(
                     checkpoint.as_ref(),
                     &read_mask
                 );
@@ -61,10 +62,9 @@ impl SubscriptionService for RpcService {
                     }
                 }
 
-
-                let mut response = SubscribeCommitsResponse::default();
-                response.cursor = Some(cursor.into());
-                response.commit = Some(checkpoint_message);
+                let mut response = SubscribeCheckpointsResponse::default();
+                response.cursor = Some(cursor);
+                response.checkpoint = Some(checkpoint_message);
 
                 yield Ok(response);
             }

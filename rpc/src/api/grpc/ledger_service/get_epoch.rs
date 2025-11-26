@@ -8,6 +8,7 @@ use crate::proto::soma::Epoch;
 use crate::proto::soma::ErrorReason;
 use crate::proto::soma::GetEpochRequest;
 use crate::proto::soma::GetEpochResponse;
+use crate::proto::soma::ProtocolConfig;
 // use crate::proto::soma::ProtocolConfig;
 use crate::proto::timestamp_ms_to_proto;
 use crate::types::EpochId;
@@ -15,6 +16,7 @@ use crate::utils::field::FieldMaskTree;
 use crate::utils::field::FieldMaskUtil;
 use crate::utils::merge::Merge;
 use prost_types::FieldMask;
+use protocol_config::ProtocolConfigValue;
 
 pub const READ_MASK_DEFAULT: &str = "epoch,committee,first_checkpoint,last_checkpoint,start,end,reference_gas_price,protocol_config.protocol_version";
 
@@ -34,7 +36,7 @@ pub fn get_epoch(service: &RpcService, request: GetEpochRequest) -> Result<GetEp
 
     let mut message = Epoch::default();
 
-    let current_epoch = service.reader.inner().get_highest_synced_commit()?.epoch();
+    let current_epoch = service.reader.inner().get_latest_checkpoint()?.epoch();
     let epoch = request.epoch.unwrap_or(current_epoch);
 
     let mut system_state =
@@ -54,6 +56,14 @@ pub fn get_epoch(service: &RpcService, request: GetEpochRequest) -> Result<GetEp
         .indexes()
         .and_then(|indexes| indexes.get_epoch_info(epoch).ok().flatten())
     {
+        if read_mask.contains(Epoch::FIRST_CHECKPOINT_FIELD.name) {
+            message.first_checkpoint = epoch_info.start_checkpoint;
+        }
+
+        if read_mask.contains(Epoch::LAST_CHECKPOINT_FIELD.name) {
+            message.last_checkpoint = epoch_info.end_checkpoint;
+        }
+
         if read_mask.contains(Epoch::START_FIELD.name) {
             message.start = epoch_info.start_timestamp_ms.map(timestamp_ms_to_proto);
         }
@@ -62,6 +72,22 @@ pub fn get_epoch(service: &RpcService, request: GetEpochRequest) -> Result<GetEp
             message.end = epoch_info.end_timestamp_ms.map(timestamp_ms_to_proto);
         }
 
+        // if read_mask.contains(Epoch::REFERENCE_GAS_PRICE_FIELD.name) {
+        //     message.reference_gas_price = epoch_info.reference_gas_price;
+        // }
+
+        // TODO: set protocol config after implementing chain identifier
+        // if let Some(submask) = read_mask.subtree(Epoch::PROTOCOL_CONFIG_FIELD.name) {
+        //     // let chain = service.reader.inner().get_chain_identifier()?.chain();
+        //     // TODO: let protocol_config = epoch_info
+        //     //     .protocol_version
+        //     //     .map(|version| get_protocol_config(version, chain))
+        //     //     .transpose()?;
+
+        //     message.protocol_config =
+        //         protocol_config.map(|config| ProtocolConfig::merge_from(config, &submask));
+        // }
+
         // If we're not loading the current epoch then grab the indexed snapshot of the system
         // state at the start of the epoch.
         if system_state.is_none() {
@@ -69,14 +95,10 @@ pub fn get_epoch(service: &RpcService, request: GetEpochRequest) -> Result<GetEp
         }
     }
 
-    if let Some(system_state) = system_state {
-        if read_mask.contains(Epoch::SYSTEM_STATE_FIELD.name) {
-            message.system_state = Some(Box::new(
-                system_state
-                    .try_into()
-                    .map_err(|e| SystemStateNotFoundError::new(epoch, e))?,
-            ));
-        }
+    if let Some(system_state) = system_state
+        && read_mask.contains(Epoch::SYSTEM_STATE_FIELD.name)
+    {
+        message.system_state = system_state.try_into().ok().map(Box::new);
     }
 
     if read_mask.contains(Epoch::COMMITTEE_FIELD.name) {
@@ -142,32 +164,40 @@ impl From<ProtocolVersionNotFoundError> for crate::api::error::RpcError {
     }
 }
 
-#[derive(Debug)]
-struct SystemStateNotFoundError {
-    epoch: EpochId,
-    error: String,
+fn get_protocol_config(
+    version: u64,
+    chain: protocol_config::Chain,
+) -> Result<ProtocolConfig, ProtocolVersionNotFoundError> {
+    let config =
+       // TODO: protocol_config::ProtocolConfig::get_for_version_if_supported(version.into(), chain)
+        // .ok_or_else(|| ProtocolVersionNotFoundError::new(version))?;
+       protocol_config::ProtocolConfig::get_for_version(version.into(), chain);
+
+    Ok(protocol_config_to_proto(config))
 }
 
-impl SystemStateNotFoundError {
-    pub fn new(epoch: EpochId, error: String) -> Self {
-        Self { epoch, error }
-    }
-}
-
-impl std::fmt::Display for SystemStateNotFoundError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "SystemState not found for epoch {}: {}",
-            self.epoch, self.error
-        )
-    }
-}
-
-impl std::error::Error for SystemStateNotFoundError {}
-
-impl From<SystemStateNotFoundError> for crate::api::error::RpcError {
-    fn from(value: SystemStateNotFoundError) -> Self {
-        Self::new(tonic::Code::NotFound, value.to_string())
-    }
+pub fn protocol_config_to_proto(config: protocol_config::ProtocolConfig) -> ProtocolConfig {
+    let protocol_version = config.version.as_u64();
+    let attributes = config
+        .attr_map()
+        .into_iter()
+        .filter_map(|(k, maybe_v)| {
+            maybe_v.map(move |v| {
+                let v = match v {
+                    // TODO: ProtocolConfigValue::u16(x) => x.to_string(),
+                    ProtocolConfigValue::u32(y) => y.to_string(),
+                    ProtocolConfigValue::u64(z) => z.to_string(),
+                    ProtocolConfigValue::usize(u) => u.to_string(),
+                    // TODO: ProtocolConfigValue::bool(b) => b.to_string(),
+                };
+                (k, v)
+            })
+        })
+        .collect();
+    let feature_flags = config.feature_map().into_iter().collect();
+    let mut message = ProtocolConfig::default();
+    message.protocol_version = Some(protocol_version);
+    message.feature_flags = feature_flags;
+    message.attributes = attributes;
+    message
 }

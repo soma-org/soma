@@ -88,6 +88,9 @@ pub struct NodeConfig {
     #[serde(default)]
     pub checkpoint_executor_config: CheckpointExecutorConfig,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_with_range: Option<RunWithRange>,
+
     #[serde(default)]
     pub execution_cache: ExecutionCacheConfig,
 
@@ -672,6 +675,7 @@ impl ValidatorConfigBuilder {
             p2p_config,
             state_debug_dump_config: Default::default(),
             validator_client_monitor_config: None,
+            run_with_range: None,
             // By default, expensive checks will be enabled in debug build, but not in release build.
             expensive_safety_check_config: ExpensiveSafetyCheckConfig::default(),
             execution_cache: ExecutionCacheConfig::default(),

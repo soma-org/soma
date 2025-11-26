@@ -792,8 +792,8 @@ pub enum ExecutionFailureStatus {
     #[error("Certificate is on the deny list")]
     CertificateDenied,
 
-    #[error("Certificate is cancelled due to congestion on shared objects: {congested_objects}")]
-    ExecutionCancelledDueToSharedObjectCongestion { congested_objects: CongestedObjects },
+    #[error("Certificate is cancelled due to congestion on shared object")]
+    ExecutionCancelledDueToSharedObjectCongestion, //{ congested_objects: CongestedObjects },
 
     //
     // Post-execution errors

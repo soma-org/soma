@@ -1,3 +1,5 @@
+use prost_types::FieldMask;
+
 use crate::types::Address;
 use crate::types::Digest;
 
@@ -100,6 +102,46 @@ impl GetTransactionResult {
     }
 }
 
+impl GetCheckpointRequest {
+    pub fn latest() -> Self {
+        Self {
+            read_mask: None,
+            checkpoint_id: None,
+        }
+    }
+
+    pub fn by_sequence_number(checkpoint: u64) -> Self {
+        Self {
+            read_mask: None,
+            checkpoint_id: Some(get_checkpoint_request::CheckpointId::SequenceNumber(
+                checkpoint,
+            )),
+        }
+    }
+
+    pub fn by_digest(digest: &Digest) -> Self {
+        Self {
+            read_mask: None,
+            checkpoint_id: Some(get_checkpoint_request::CheckpointId::Digest(
+                digest.to_string(),
+            )),
+        }
+    }
+
+    pub fn with_read_mask(mut self, read_mask: FieldMask) -> Self {
+        self.read_mask = Some(read_mask);
+        self
+    }
+}
+
+impl GetCheckpointResponse {
+    pub fn new(checkpoint: Checkpoint) -> Self {
+        Self {
+            checkpoint: Some(checkpoint),
+        }
+    }
+}
+
 impl GetEpochRequest {
     pub fn latest() -> Self {
         Self {
@@ -119,36 +161,5 @@ impl GetEpochRequest {
 impl GetEpochResponse {
     pub fn new(epoch: Epoch) -> Self {
         Self { epoch: Some(epoch) }
-    }
-}
-
-impl GetCommitRequest {
-    pub fn latest() -> Self {
-        Self {
-            read_mask: None,
-            commit_id: None,
-        }
-    }
-
-    pub fn by_index(commit: u32) -> Self {
-        Self {
-            read_mask: None,
-            commit_id: Some(get_commit_request::CommitId::Index(commit)),
-        }
-    }
-
-    pub fn by_digest(digest: &Digest) -> Self {
-        Self {
-            read_mask: None,
-            commit_id: Some(get_commit_request::CommitId::Digest(digest.to_string())),
-        }
-    }
-}
-
-impl GetCommitResponse {
-    pub fn new(commit: Commit) -> Self {
-        Self {
-            commit: Some(commit),
-        }
     }
 }

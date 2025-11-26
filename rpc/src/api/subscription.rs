@@ -1,11 +1,10 @@
-use rand::seq;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tracing::info;
 use tracing::trace;
-use types::checkpoint::Checkpoint;
-use types::consensus::commit::CommitIndex;
+use types::checkpoints::CheckpointSequenceNumber;
+use types::full_checkpoint_content::Checkpoint;
 
 const CHECKPOINT_MAILBOX_SIZE: usize = 1024;
 const MAILBOX_SIZE: usize = 128;
@@ -32,13 +31,13 @@ impl SubscriptionServiceHandle {
 }
 
 pub struct SubscriptionService {
-    // Mailbox for recieving `Checkpoint` from the Commit Executor
+    // Mailbox for recieving `Checkpoint` from the Checkpoint Executor
     //
-    // Expectation is that commits are recieved in-order
+    // Expectation is that checkpoints are recieved in-order
     checkpoint_mailbox: mpsc::Receiver<Checkpoint>,
     mailbox: mpsc::Receiver<SubscriptionRequest>,
     subscribers: Vec<mpsc::Sender<Arc<Checkpoint>>>,
-    last_received_checkpoint: CommitIndex,
+    last_sequence_number: CheckpointSequenceNumber,
 }
 
 impl SubscriptionService {
@@ -51,7 +50,7 @@ impl SubscriptionService {
                 checkpoint_mailbox,
                 mailbox,
                 subscribers: Vec::new(),
-                last_received_checkpoint: 0,
+                last_sequence_number: 0,
             }
             .start(),
         );
@@ -95,8 +94,8 @@ impl SubscriptionService {
     fn handle_checkpoint(&mut self, checkpoint: Checkpoint) {
         // Check that we recieved checkpoints in-order
         {
-            let last_sequence_number = self.last_received_checkpoint;
-            let sequence_number = checkpoint.commit_index;
+            let last_sequence_number = self.last_sequence_number;
+            let sequence_number = *checkpoint.summary.sequence_number() as u64;
 
             if last_sequence_number != 0 && (last_sequence_number + 1) != sequence_number {
                 panic!(
@@ -105,9 +104,7 @@ impl SubscriptionService {
                     sequence_number
                 );
             }
-
-            // Update the metric marking the latest checkpoint we've seen
-            self.last_received_checkpoint = sequence_number;
+            self.last_sequence_number = sequence_number;
         }
 
         let checkpoint = Arc::new(checkpoint);
@@ -117,12 +114,13 @@ impl SubscriptionService {
         self.subscribers.retain(|subscriber| {
             match subscriber.try_send(Arc::clone(&checkpoint)) {
                 Ok(()) => {
-                    trace!("succesfully enqueued checkpoint for subscriber");
+                    trace!("successfully enqueued checkpont for subscriber");
                     true // Retain this subscriber
                 }
                 Err(e) => {
                     // It does not matter what the error is - channel full or closed, we drop the subscriber.
                     trace!("unable to enqueue checkpoint for subscriber: {e}");
+
                     false // Drop this subscriber
                 }
             }
@@ -142,7 +140,8 @@ impl SubscriptionService {
         let (sender, reciever) = mpsc::channel(SUBSCRIPTION_CHANNEL_SIZE);
         match request.sender.send(reciever) {
             Ok(()) => {
-                trace!("succesfully registered new subscriber");
+                trace!("successfully registered new subscriber");
+
                 self.subscribers.push(sender);
             }
             Err(e) => {

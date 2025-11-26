@@ -93,7 +93,7 @@ pub fn list_owned_objects(
         .map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
     {
         let object = if should_load_object {
-            let Ok(Some(object)) = service
+            let Some(object) = service
                 .reader
                 .inner()
                 .get_object_by_key(&object_info.object_id, object_info.version)
@@ -112,7 +112,7 @@ pub fn list_owned_objects(
             //     message.json =
             //         crate::api::grpc::render_object_to_json(service, &object).map(Box::new);
             // }
-            crate::utils::merge::Merge::merge(&mut message, object, &read_mask);
+            crate::utils::merge::Merge::merge(&mut message, &object, &read_mask);
             message
         } else {
             owned_object_to_proto(object_info, &read_mask)

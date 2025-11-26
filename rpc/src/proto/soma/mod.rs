@@ -11,7 +11,9 @@ include!("../generated/soma.rpc.serde.rs");
 include!("..//generated/soma.rpc.getters.rs");
 
 mod balance_change;
+mod checkpoint;
 mod effects;
+mod epoch;
 mod executed_transaction;
 mod execution_status;
 mod ledger_service;

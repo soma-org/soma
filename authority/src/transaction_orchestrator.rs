@@ -655,6 +655,18 @@ where
     pub fn load_all_pending_transactions_in_test(&self) -> SomaResult<Vec<VerifiedTransaction>> {
         self.pending_tx_log.load_all_pending_transactions()
     }
+
+    pub fn authority_state(&self) -> &Arc<AuthorityState> {
+        &self.validator_state
+    }
+
+    pub fn transaction_driver(&self) -> &Arc<TransactionDriver<A>> {
+        &self.transaction_driver
+    }
+
+    pub fn clone_authority_aggregator(&self) -> Arc<AuthorityAggregator<A>> {
+        self.transaction_driver.authority_aggregator().load_full()
+    }
 }
 
 #[async_trait::async_trait]

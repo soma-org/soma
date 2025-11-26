@@ -178,6 +178,23 @@ pub struct ProtocolConfig {
     consensus_bad_nodes_stake_threshold: Option<u64>,
 
     mysticeti_num_leaders_per_round: Option<usize>,
+
+    // === Core Protocol ===
+    /// Max number of transactions per checkpoint.
+    /// Note that this is a protocol constant and not a config as validators must have this set to
+    /// the same value, otherwise they *will* fork.
+    max_transactions_per_checkpoint: Option<u64>,
+
+    /// Max size of a checkpoint in bytes.
+    /// Note that this is a protocol constant and not a config as validators must have this set to
+    /// the same value, otherwise they *will* fork.
+    max_checkpoint_size_bytes: Option<u64>,
+
+    /// A protocol upgrade always requires 2f+1 stake to agree. We support a buffer of additional
+    /// stake (as a fraction of f, expressed in basis points) that is required before an upgrade
+    /// can happen automatically. 10000bps would indicate that complete unanimity is required (all
+    /// 3f+1 must vote), while 0bps would indicate that 2f+1 is sufficient.
+    buffer_stake_for_protocol_upgrade_bps: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -243,9 +260,11 @@ impl ProtocolConfig {
             consensus_bad_nodes_stake_threshold: Some(30),
 
             mysticeti_num_leaders_per_round: Some(1),
-            // // For now, perform upgrades with a bare quorum of validators.
-            // // MUSTFIX: This number should be increased to at least 2000 (20%) for mainnet.
-            // buffer_stake_for_protocol_upgrade_bps: Some(0),
+
+            max_transactions_per_checkpoint: Some(20_000),
+            max_checkpoint_size_bytes: Some(30 * 1024 * 1024),
+
+            buffer_stake_for_protocol_upgrade_bps: Some(5000),
             // When adding a new constant, set it to None in the earliest version, like this:
             // new_constant: None,
 

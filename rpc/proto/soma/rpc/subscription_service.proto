@@ -3,36 +3,36 @@ syntax = "proto3";
 package soma.rpc;
 
 import "google/protobuf/field_mask.proto";
-import "soma/rpc/commit.proto";
+import "soma/rpc/checkpoint.proto";
 
 service SubscriptionService {
-  // Subscribe to the stream of commits.
+  // Subscribe to the stream of checkpoints.
   //
-  // This API provides a subscription to the commit stream for the
+  // This API provides a subscription to the checkpoint stream for the Sui
   // blockchain. When a subscription is initialized the stream will begin with
-  // the latest executed commit as seen by the server. Responses are
-  // guaranteed to return commits in-order and without gaps. This enables
-  // clients to know exactly the last commit they have processed and in the
+  // the latest executed checkpoint as seen by the server. Responses are
+  // guaranteed to return checkpoints in-order and without gaps. This enables
+  // clients to know exactly the last checkpoint they have processed and in the
   // event the subscription terminates (either by the client/server or by the
   // connection breaking), clients will be able to reinitialize a subscription
-  // and then leverage other APIs in order to request data for the commits
+  // and then leverage other APIs in order to request data for the checkpoints
   // they missed.
-  rpc SubscribeCommits(SubscribeCommitsRequest) returns (stream SubscribeCommitsResponse);
+  rpc SubscribeCheckpoints(SubscribeCheckpointsRequest) returns (stream SubscribeCheckpointsResponse);
 }
 
-// Request message for SubscriptionService.SubscribeCommits
-message SubscribeCommitsRequest {
+// Request message for SubscriptionService.SubscribeCheckpoints
+message SubscribeCheckpointsRequest {
   // Optional. Mask for specifying which parts of the
-  // SubscribeCommitsResponse should be returned.
+  // SubscribeCheckpointsResponse should be returned.
   optional google.protobuf.FieldMask read_mask = 1;
 }
 
-// Response message for SubscriptionService.SubscribeCommits
-message SubscribeCommitsResponse {
-  // Required. The commit index and value of the current cursor
-  // into the commit stream
+// Response message for SubscriptionService.SubscribeCheckpoints
+message SubscribeCheckpointsResponse {
+  // Required. The checkpoint sequence number and value of the current cursor
+  // into the checkpoint stream
   optional uint64 cursor = 1;
 
-  // The requested data for this commit
-  optional Commit commit = 2;
+  // The requested data for this checkpoint
+  optional Checkpoint checkpoint = 2;
 }

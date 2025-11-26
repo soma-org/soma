@@ -1,21 +1,30 @@
 use crate::api::RpcService;
 use crate::api::error::Result;
 use crate::api::error::RpcError;
+use crate::api::reader::StateReader;
 use crate::proto::google::rpc::bad_request::FieldViolation;
 use crate::proto::soma::ErrorReason;
-use crate::utils::field::FieldMaskTree;
-use crate::utils::merge::Merge;
-
 use crate::proto::soma::ExecutedTransaction;
 use crate::proto::soma::Object;
+use crate::proto::soma::ObjectSet;
 use crate::proto::soma::SimulateTransactionRequest;
 use crate::proto::soma::SimulateTransactionResponse;
 use crate::proto::soma::Transaction;
 use crate::proto::soma::TransactionEffects;
-use types::balance_change::derive_balance_changes;
+use crate::utils::field::FieldMaskTree;
+use crate::utils::merge::Merge;
+use itertools::Itertools;
+use protocol_config::ProtocolConfig;
+use types::balance_change::derive_balance_changes_2;
+use types::base::SomaAddress;
+use types::effects::TransactionEffectsAPI;
 use types::object::ObjectID;
+use types::object::ObjectRef;
+use types::object::ObjectType;
 use types::transaction_executor::SimulateTransactionResult;
 use types::transaction_executor::TransactionChecks;
+
+const GAS_COIN_SIZE_BYTES: u64 = 40;
 
 pub fn simulate_transaction(
     service: &RpcService,
@@ -39,10 +48,28 @@ pub fn simulate_transaction(
 
     let checks = TransactionChecks::from(request.checks());
 
+    // TODO: get protocol config
+    // let protocol_config = {
+    //     let system_state = service.reader.get_system_state()?;
+    //     let protocol_config = ProtocolConfig::get_for_version_if_supported(
+    //         system_state.protocol_version.into(),
+    //         service.reader.inner().get_chain_identifier()?.chain(),
+    //     )
+    //     .ok_or_else(|| {
+    //         RpcError::new(
+    //             tonic::Code::Internal,
+    //             "unable to get current protocol config",
+    //         )
+    //     })?;
+
+    //     protocol_config
+    // };
+
     // Try to parse out a fully-formed transaction. If one wasn't provided then we will attempt to
     // perform transaction resolution.
     let mut transaction = match crate::types::Transaction::try_from(transaction_proto) {
         Ok(transaction) => types::transaction::TransactionData::try_from(transaction)?,
+
         Err(e) => {
             return Err(FieldViolation::new("transaction")
                 .with_description(format!("invalid transaction: {e}"))
@@ -51,10 +78,32 @@ pub fn simulate_transaction(
         }
     };
 
+    if checks.enabled() {
+        if transaction.gas().is_empty() {
+            let input_objects = transaction
+                .input_objects()
+                .map_err(anyhow::Error::from)?
+                .iter()
+                .flat_map(|obj| match obj {
+                    types::transaction::InputObjectKind::ImmOrOwnedObject((id, _, _)) => Some(*id),
+                    _ => None,
+                })
+                .collect_vec();
+            let gas_coins = select_gas(
+                &service.reader,
+                transaction.sender(),
+                100, // TODO: protocol_config.max_gas_payment_objects(),
+                &input_objects,
+            )?;
+            *transaction.gas_mut() = gas_coins;
+        }
+    }
+
     let SimulateTransactionResult {
-        input_objects,
-        output_objects,
         effects,
+        objects,
+        execution_result,
+        mock_gas_id: _,
     } = executor
         .simulate_transaction(transaction.clone(), checks)
         .map_err(anyhow::Error::from)?;
@@ -63,18 +112,15 @@ pub fn simulate_transaction(
         let mut message = ExecutedTransaction::default();
         let transaction = crate::types::Transaction::try_from(transaction)?;
 
-        let input_objects = input_objects.into_values().collect::<Vec<_>>();
-        let output_objects = output_objects.into_values().collect::<Vec<_>>();
-
-        message.balance_changes = read_mask
-            .contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name)
-            .then(|| {
-                derive_balance_changes(&effects, &input_objects, &output_objects)
+        message.balance_changes =
+            if submask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name) {
+                derive_balance_changes_2(&effects, &objects)
                     .into_iter()
                     .map(Into::into)
                     .collect()
-            })
-            .unwrap_or_default();
+            } else {
+                vec![]
+            };
 
         message.effects = {
             let effects = crate::types::TransactionEffects::try_from(effects)?;
@@ -90,11 +136,7 @@ pub fn simulate_transaction(
                                 continue;
                             };
 
-                            if let Some(object) = input_objects
-                                .iter()
-                                .chain(&output_objects)
-                                .find(|o| o.id() == object_id)
-                            {
+                            if let Some(object) = objects.iter().find(|o| o.id() == object_id) {
                                 changed_object.object_type = Some((*object.type_()).to_string());
                             }
                         }
@@ -110,8 +152,7 @@ pub fn simulate_transaction(
                                 continue;
                             };
 
-                            if let Some(object) = input_objects.iter().find(|o| o.id() == object_id)
-                            {
+                            if let Some(object) = objects.iter().find(|o| o.id() == object_id) {
                                 unchanged_consensus_object.object_type =
                                     Some((*object.type_()).to_string());
                             }
@@ -126,34 +167,21 @@ pub fn simulate_transaction(
             .subtree(ExecutedTransaction::TRANSACTION_FIELD.name)
             .map(|mask| Transaction::merge_from(transaction, &mask));
 
-        let input_objects = input_objects
-            .into_iter()
-            .map(crate::types::Object::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let output_objects = output_objects
-            .into_iter()
-            .map(crate::types::Object::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        message.input_objects = submask
-            .subtree(ExecutedTransaction::INPUT_OBJECTS_FIELD)
+        message.objects = submask
+            .subtree(
+                ExecutedTransaction::path_builder()
+                    .objects()
+                    .objects()
+                    .finish(),
+            )
             .map(|mask| {
-                input_objects
-                    .into_iter()
-                    .map(|o| Object::merge_from(o, &mask))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        message.output_objects = submask
-            .subtree(ExecutedTransaction::OUTPUT_OBJECTS_FIELD)
-            .map(|mask| {
-                output_objects
-                    .into_iter()
-                    .map(|o| Object::merge_from(o, &mask))
-                    .collect()
-            })
-            .unwrap_or_default();
+                ObjectSet::default().with_objects(
+                    objects
+                        .iter()
+                        .map(|o| Object::merge_from(o, &mask))
+                        .collect(),
+                )
+            });
 
         Some(message)
     } else {
@@ -162,6 +190,41 @@ pub fn simulate_transaction(
 
     let mut response = SimulateTransactionResponse::default();
     response.transaction = transaction;
-
     Ok(response)
+}
+
+fn select_gas(
+    reader: &StateReader,
+    owner: SomaAddress,
+    max_gas_payment_objects: u32,
+    input_objects: &[ObjectID],
+) -> Result<Vec<ObjectRef>> {
+    let gas_coins = reader
+        .inner()
+        .indexes()
+        .ok_or_else(RpcError::not_found)?
+        .owned_objects_iter(owner, Some(ObjectType::Coin), None)?
+        .filter_ok(|info| !input_objects.contains(&info.object_id))
+        .filter_map_ok(|info| reader.inner().get_object(&info.object_id))
+        // filter for objects which are not ConsensusAddress owned,
+        // since only Address owned can be used for gas payments today
+        .filter_ok(|object| !object.is_shared())
+        .filter_map_ok(|object| {
+            object
+                .as_coin()
+                .map(|coin| (object.compute_object_reference(), coin))
+        })
+        .take(max_gas_payment_objects as usize);
+
+    let mut selected_gas = vec![];
+    let mut selected_gas_value = 0;
+
+    for maybe_coin in gas_coins {
+        let (object_ref, value) =
+            maybe_coin.map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?;
+        selected_gas.push(object_ref);
+        selected_gas_value += value;
+    }
+
+    Ok(selected_gas)
 }

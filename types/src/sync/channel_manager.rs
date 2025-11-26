@@ -1,10 +1,8 @@
-use axum::{http, Router};
+use axum::http;
 use bytes::Bytes;
 use fastcrypto::ed25519::Ed25519PublicKey;
-use futures_util::future;
 use http::{Request, Response};
-use http_body::Body;
-use http_body_util::combinators::UnsyncBoxBody;
+use http_body::Body as HttpBody;
 use http_body_util::BodyExt as _;
 use hyper_util::{rt::TokioIo, service::TowerToHyperService};
 use parking_lot::RwLock;
@@ -33,7 +31,7 @@ use tower::ServiceBuilder;
 use tower_http::ServiceBuilderExt;
 use tracing::{debug, error, info, trace, warn};
 
-type BoxBody = UnsyncBoxBody<Bytes, Status>;
+use tonic::body::Body as TonicBody;
 
 use crate::{
     crypto::{NetworkKeyPair, NetworkPublicKey},
@@ -73,26 +71,17 @@ type Channel = tonic::transport::Channel;
 pub struct ChannelManager<S> {
     own_address: Multiaddr,
     network_keypair: NetworkKeyPair,
-
-    // Mailbox for external requests
     mailbox: mpsc::Receiver<ChannelManagerRequest>,
-
-    // Active peer connections and state
     active_peers: ActivePeers,
-
-    // Server connection management
     connection_handlers: JoinSet<()>,
     server_handle: Option<tokio::task::JoinHandle<()>>,
-
-    // Service factory for peer handlers
     service: S,
-    // event_sender: broadcast::Sender<PeerEvent>,
 }
 
 impl<S> ChannelManager<S>
 where
     S: Clone + Send + Sync + 'static,
-    S: Service<Request<BoxBody>, Response = Response<BoxBody>, Error = Infallible>,
+    S: Service<Request<hyper::body::Incoming>, Response = Response<TonicBody>, Error = Infallible>,
     S::Future: Send + 'static,
     S: NamedService,
 {
@@ -103,7 +92,6 @@ where
         active_peers: ActivePeers,
     ) -> (Self, mpsc::Sender<ChannelManagerRequest>) {
         let (sender, receiver) = mpsc::channel(1000);
-        // let (event_sender, _) = broadcast::channel(1000);
         (
             Self {
                 own_address,
@@ -113,7 +101,6 @@ where
                 connection_handlers: JoinSet::new(),
                 server_handle: None,
                 service,
-                // event_sender,
             },
             sender,
         )
@@ -126,7 +113,6 @@ where
     pub async fn start(mut self) {
         info!("ChannelManager started");
 
-        // Initialize server
         if let Err(e) = self.setup_server().await {
             error!("Failed to setup server: {}", e);
             return;
@@ -183,14 +169,6 @@ where
 
         let own_address = to_socket_addr(&self.own_address)?;
 
-        // Create server service with your GRPC service implementation
-        // let server = Server::builder()
-        //     .initial_connection_window_size(64 << 20)
-        //     .initial_stream_window_size(32 << 20)
-        //     .add_service(self.service.clone())
-        //     .into_router();
-
-        // Setup TLS acceptor
         let tls_server_config = create_rustls_server_config(
             AllowAll::default(),
             certificate_server_name(),
@@ -198,7 +176,6 @@ where
         );
         let tls_acceptor = TlsAcceptor::from(Arc::new(tls_server_config));
 
-        // Create and bind TCP listener
         let deadline = Instant::now() + Duration::from_secs(20);
         let listener = loop {
             if Instant::now() > deadline {
@@ -207,7 +184,6 @@ where
 
             cfg_if::cfg_if!(
                 if #[cfg(msim)] {
-                    // msim does not have a working stub for TcpSocket. So create TcpListener directly.
                     match tokio::net::TcpListener::bind(own_address).await {
                         Ok(listener) => {
                             info!("Successfully bound p2p tonic server to address {:?}", own_address);
@@ -221,8 +197,6 @@ where
                     }
                 } else {
                     info!("Binding tonic server to address {:?}", own_address);
-                    // TODO: Try creating an ephemeral port to test the highest allowed send and recv buffer sizes.
-                    // Create TcpListener via TCP socket.
                     let socket = create_socket(&own_address);
                     match socket.bind(own_address) {
                         Ok(_) => {
@@ -250,17 +224,14 @@ where
         };
         info!("Server listening on {}", own_address);
 
-        // Create HTTP/2 connection builder
         let http_builder = Arc::new(
             hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
                 .http2_only(),
         );
 
-        // Clone what we need for the spawn
         let service = self.service.clone();
         let active_peers = self.active_peers.clone();
 
-        // Spawn server accept loop
         let server_handle = tokio::spawn(async move {
             loop {
                 let (tcp_stream, peer_addr) = match listener.accept().await {
@@ -307,14 +278,8 @@ where
         channel: Channel,
         public_key: NetworkPublicKey,
     ) -> SomaResult<bool> {
-        // Add the new connection
         self.active_peers
             .insert(peer_id, address.clone(), channel, public_key);
-
-        // let _ = self
-        //     .event_sender
-        //     .send(PeerEvent::NewPeer { peer_id, address });
-
         Ok(true)
     }
 
@@ -323,14 +288,10 @@ where
         peer_id: PeerId,
         response: oneshot::Sender<SomaResult<()>>,
     ) {
-        let result = if let Some(channel) = self
+        let result = if let Some(_channel) = self
             .active_peers
             .remove(&peer_id, DisconnectReason::RequestedDisconnect)
         {
-            // let _ = self.event_sender.send(PeerEvent::LostPeer {
-            //     peer_id,
-            //     reason: DisconnectReason::RequestedDisconnect,
-            // });
             Ok(())
         } else {
             Err(SomaError::PeerNotFound(peer_id))
@@ -345,28 +306,23 @@ where
         peer_id: PeerId,
         response: oneshot::Sender<SomaResult<PeerId>>,
     ) {
-        // Check if we already have an active connection for this peer
-        if let Some(state) = self.active_peers.get_state(&peer_id) {
+        if let Some(_state) = self.active_peers.get_state(&peer_id) {
             let _ = response.send(Ok(peer_id));
             return;
         }
 
-        // Attempt to dial peer
         let result = self.dial_peer(address, peer_id).await;
         let _ = response.send(result);
     }
 
     async fn dial_peer(&mut self, address: Multiaddr, peer_id: PeerId) -> SomaResult<PeerId> {
-        // Convert address to host:port string
         let address_str = to_host_port_str(&address).map_err(|e| {
             SomaError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address_str = format!("https://{address_str}");
 
-        // Get target public key if we have peer_id
         let target_pubkey: Ed25519PublicKey = peer_id.into();
 
-        // Create endpoint configuration
         let endpoint = tonic::transport::Channel::from_shared(address_str.clone())
             .map_err(|e| {
                 SomaError::NetworkConfig(format!("Invalid address {}: {}", address_str, e))
@@ -376,7 +332,6 @@ where
             .user_agent("soma-p2p")
             .map_err(|e| SomaError::NetworkConfig(format!("Failed to create endpoint: {}", e)))?;
 
-        // Setup TLS config
         let client_tls_config = create_rustls_client_config(
             target_pubkey.clone(),
             certificate_server_name(),
@@ -389,7 +344,6 @@ where
             .enable_http2()
             .build();
 
-        // Attempt connection with retries until timeout
         let deadline = tokio::time::Instant::now() + CONNECT_TIMEOUT;
         let channel = loop {
             trace!("Connecting to endpoint at {address_str}");
@@ -411,7 +365,6 @@ where
         };
         trace!("Connected to {address_str}");
 
-        // Attempt to add the peer
         match self.add_peer(peer_id, address, channel, target_pubkey.into())? {
             true => {
                 debug!(
@@ -430,7 +383,6 @@ where
     async fn shutdown(&mut self) {
         info!("Starting ChannelManager shutdown");
 
-        // Stop accepting new connections by shutting down the server
         if let Some(handle) = self.server_handle.take() {
             info!("Shutting down server accept loop");
             handle.abort();
@@ -440,23 +392,17 @@ where
             }
         }
 
-        // Close all active peer connections
         let peers_to_disconnect: Vec<PeerId> = self.active_peers.peers();
         for peer_id in peers_to_disconnect {
             debug!("Closing connection to peer {}", peer_id);
-            if let Some(channel) = self
+            if let Some(_channel) = self
                 .active_peers
                 .remove(&peer_id, DisconnectReason::Shutdown)
             {
-                // let _ = self.event_sender.send(PeerEvent::LostPeer {
-                //     peer_id,
-                //     reason: DisconnectReason::Shutdown,
-                // });
                 debug!("Removed peer {} from active peers", peer_id);
             }
         }
 
-        // Wait for all connection handlers to complete
         info!(
             "Waiting for {} connection handlers to complete",
             self.connection_handlers.len()
@@ -464,7 +410,6 @@ where
         self.connection_handlers.shutdown().await;
         debug!("All connection handlers completed");
 
-        // Verify cleanup
         debug_assert!(
             self.active_peers.is_empty(),
             "ActivePeers should be empty after shutdown"
@@ -487,48 +432,29 @@ async fn handle_connection<S>(
     active_peers: ActivePeers,
 ) -> SomaResult<()>
 where
-    S: Service<Request<BoxBody>, Response = Response<BoxBody>, Error = Infallible>
+    S: Service<Request<hyper::body::Incoming>, Response = Response<TonicBody>, Error = Infallible>
         + Clone
         + Send
         + 'static,
     S::Future: Send + 'static,
 {
-    // Accept TLS connection
     let tls_stream = tls_acceptor
         .accept(tcp_stream)
         .await
         .map_err(|e| SomaError::NetworkServerConnection(format!("TLS accept error: {}", e)))?;
 
-    // Extract peer certificate and public key
-    let (peer_id, client_public_key) = extract_peer_info_from_tls(&tls_stream)?;
+    let (peer_id, _client_public_key) = extract_peer_info_from_tls(&tls_stream)?;
 
-    // Create a service that:
-    // 1. Maps the incoming body to BoxBody
-    // 2. Adds peer info to the request
+    // Add peer info to requests without changing the body type
     let svc = tower::ServiceBuilder::new()
         .map_request(move |mut request: http::Request<hyper::body::Incoming>| {
-            // Convert the body type
-            let (parts, body) = request.into_parts();
-
-            // Convert Incoming to BoxBody
-            let boxed_body = body
-                .map_err(|e| Status::internal(format!("Body error: {}", e)))
-                .map_frame(|frame| frame.map_data(|data| data.into()))
-                .boxed_unsync();
-
-            // Reconstruct the request with the new body type
-            let mut request = http::Request::from_parts(parts, boxed_body);
-
-            // Add peer info
             request.extensions_mut().insert(PeerInfo { peer_id });
             request
         })
         .service(service);
 
-    // Convert service for hyper
     let hyper_service = hyper_util::service::TowerToHyperService::new(svc);
 
-    // Serve the connection
     let io = hyper_util::rt::TokioIo::new(tls_stream);
     let connection = http.serve_connection(io, hyper_service);
 
@@ -556,7 +482,6 @@ where
     Ok(())
 }
 
-// Helper function for extracting peer info from TLS stream
 fn extract_peer_info_from_tls(
     tls_stream: &tokio_rustls::server::TlsStream<tokio::net::TcpStream>,
 ) -> SomaResult<(PeerId, NetworkPublicKey)> {
@@ -581,13 +506,13 @@ fn extract_peer_info_from_tls(
     })?;
 
     let client_public_key = NetworkPublicKey::new(certificate_public_key);
-    let peer_id = PeerId::from(&client_public_key); // Assuming you have this conversion
+    let peer_id = PeerId::from(&client_public_key);
 
     Ok((peer_id, client_public_key))
 }
 
 fn certificate_server_name() -> String {
-    format!("p2p")
+    "p2p".to_string()
 }
 
 fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
@@ -599,9 +524,7 @@ fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
         panic!("Invalid own address: {address:?}");
     }
     .unwrap_or_else(|e| panic!("Cannot create TCP socket: {e:?}"));
-    // if let Err(e) = socket.set_nodelay(true) {
-    //     info!("Failed to set TCP_NODELAY: {e:?}");
-    // }
+
     if let Err(e) = socket.set_reuseaddr(true) {
         info!("Failed to set SO_REUSEADDR: {e:?}");
     }

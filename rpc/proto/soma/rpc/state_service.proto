@@ -9,10 +9,9 @@ import "soma/rpc/object.proto";
 import "soma/rpc/transaction.proto";
 
 
-service LiveDataService {
+service StateService {
   rpc ListOwnedObjects(ListOwnedObjectsRequest) returns (ListOwnedObjectsResponse);
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
-  rpc SimulateTransaction(SimulateTransactionRequest) returns (SimulateTransactionResponse);
 }
 
 // Request message for `LiveDataService.GetBalance`.
@@ -25,26 +24,6 @@ message GetBalanceRequest {
 // Return the total coin balance for coin, owned by the address owner.
 message GetBalanceResponse {
   optional uint64 balance = 1;
-}
-
-message SimulateTransactionRequest {
-  optional Transaction transaction = 1;
-
-  // Mask specifying which fields to read.
-  optional google.protobuf.FieldMask read_mask = 2;
-
-  // buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
-  enum TransactionChecks {
-    ENABLED = 0;
-    DISABLED = 1;
-  }
-
-  // Specify whether checks should be ENABLED (default) or DISABLED while executing the transaction
-  optional TransactionChecks checks = 3;
-}
-
-message SimulateTransactionResponse {
-  optional ExecutedTransaction transaction = 1;
 }
 
 message ListOwnedObjectsRequest {

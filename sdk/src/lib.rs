@@ -1,13 +1,12 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
+use futures::Stream;
 use objects::networking::tus::client::{ServerInfo, TusClient, UploadInfo};
-use rpc::{
-    api::client::{AuthInterceptor, Client, Result, TransactionExecutionResponse},
-    proto::soma::{
-        ledger_service_client::LedgerServiceClient, live_data_service_client::LiveDataServiceClient,
-    },
-};
+use rpc::proto::soma::ListOwnedObjectsRequest;
+use rpc::{api::client::Client, proto::soma::ledger_service_client::LedgerServiceClient};
+use std::pin::Pin;
+use std::{sync::Arc, time::Duration};
 use tokio::io::{AsyncRead, AsyncSeek};
+use tokio::sync::RwLock;
+use types::object::{Object, ObjectID, Version};
 use types::transaction::Transaction;
 use url::Url;
 use uuid::Uuid;
@@ -25,7 +24,6 @@ pub const SOMA_MAINNET_URL: &str = "https://fullnode.mainnet.soma.org:443";
 /// Builder for configuring a SomaClient
 pub struct SomaClientBuilder {
     request_timeout: Duration,
-    auth: Option<AuthInterceptor>,
     tus_chunk_size: Option<usize>,
 }
 
@@ -33,7 +31,6 @@ impl Default for SomaClientBuilder {
     fn default() -> Self {
         Self {
             request_timeout: Duration::from_secs(60),
-            auth: None,
             tus_chunk_size: None,
         }
     }
@@ -43,15 +40,6 @@ impl SomaClientBuilder {
     /// Set the request timeout
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
-        self
-    }
-
-    /// Set basic auth credentials
-    pub fn basic_auth(mut self, username: impl AsRef<str>, password: impl AsRef<str>) -> Self {
-        self.auth = Some(AuthInterceptor::basic(
-            username.as_ref(),
-            Some(password.as_ref()),
-        ));
         self
     }
 
@@ -68,12 +56,8 @@ impl SomaClientBuilder {
         object_storage_url: impl AsRef<str>,
     ) -> Result<SomaClient, error::Error> {
         // Create gRPC client
-        let mut client = Client::new(rpc_url.as_ref())
+        let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
-
-        if let Some(auth) = self.auth.clone() {
-            client = client.with_auth(auth);
-        }
 
         // Create TUS client
         let tus_url = Url::parse(object_storage_url.as_ref())
@@ -81,7 +65,7 @@ impl SomaClientBuilder {
         let tus_client = TusClient::new(tus_url, self.tus_chunk_size);
 
         Ok(SomaClient {
-            inner: Arc::new(client),
+            inner: Arc::new(RwLock::new(client)),
             tus_client: Arc::new(tus_client),
         })
     }
@@ -108,7 +92,7 @@ impl SomaClientBuilder {
 /// The main Soma client for interacting with the Soma network via gRPC and TUS
 #[derive(Clone)]
 pub struct SomaClient {
-    inner: Arc<Client>,
+    inner: Arc<RwLock<Client>>,
     tus_client: Arc<TusClient>,
 }
 
@@ -118,35 +102,39 @@ impl SomaClient {
         SomaClientBuilder::default()
     }
 
-    /// Get the underlying gRPC client
-    pub fn inner(&self) -> &Client {
-        &self.inner
-    }
-
     /// Execute a transaction
     pub async fn execute_transaction(
         &self,
-        transaction: &Transaction,
-    ) -> Result<TransactionExecutionResponse> {
-        self.inner.execute_transaction(transaction).await
+        transaction: &types::transaction::Transaction,
+    ) -> Result<rpc::api::client::TransactionExecutionResponse, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.execute_transaction(transaction).await
     }
 
-    /// Get the live data service client
-    pub fn live_data_client(
-        &self,
-    ) -> LiveDataServiceClient<
-        tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
-    > {
-        self.inner.live_data_client()
+    /// Get an object by ID
+    pub async fn get_object(&self, object_id: ObjectID) -> Result<Object, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_object(object_id).await
     }
 
-    /// Get the ledger service client
-    pub fn ledger_client(
+    /// Get an object by ID and version
+    pub async fn get_object_with_version(
         &self,
-    ) -> LedgerServiceClient<
-        tonic::service::interceptor::InterceptedService<tonic::transport::Channel, AuthInterceptor>,
-    > {
-        self.inner.raw_client()
+        object_id: ObjectID,
+        version: Version,
+    ) -> Result<Object, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_object_with_version(object_id, version).await
+    }
+
+    /// Stream objects owned by an address
+    ///
+    /// Returns a stream that automatically handles pagination.
+    pub async fn list_owned_objects(
+        &self,
+        request: impl tonic::IntoRequest<ListOwnedObjectsRequest>,
+    ) -> Pin<Box<dyn Stream<Item = Result<Object, tonic::Status>> + Send + 'static>> {
+        self.inner.read().await.clone().list_owned_objects(request)
     }
 
     // ========== TUS Upload Methods ==========

@@ -111,18 +111,18 @@ fn get_object_impl(
         service
             .reader
             .inner()
-            .get_object_by_key(&object_id.into(), types::object::Version::from_u64(version))?
+            .get_object_by_key(&object_id.into(), types::object::Version::from_u64(version))
             .ok_or_else(|| ObjectNotFoundError::new_with_version(object_id, version))?
     } else {
         service
             .reader
             .inner()
-            .get_object(&object_id.into())?
+            .get_object(&object_id.into())
             .ok_or_else(|| ObjectNotFoundError::new(object_id))?
     };
 
     let mut message = Object::default();
-    message.merge(object, read_mask);
+    message.merge(&object, read_mask);
 
     Ok(message)
 }

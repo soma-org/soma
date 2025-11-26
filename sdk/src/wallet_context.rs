@@ -1,6 +1,7 @@
 use crate::SomaClient;
 use crate::client_config::{SomaClientConfig, SomaEnv};
 use anyhow::anyhow;
+use futures::TryStreamExt as _;
 use rpc::api::client::TransactionExecutionResponse;
 use rpc::proto::soma::owner::OwnerKind;
 use rpc::types::ObjectType;
@@ -187,43 +188,15 @@ impl WalletContext {
         ]));
 
         // Call the live data service
-        let response = client
-            .inner()
-            .live_data_client()
-            .list_owned_objects(request)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to list owned objects: {}", e))?;
+        let stream = client.list_owned_objects(request).await;
 
-        let response = response.into_inner();
+        let object_refs: Vec<ObjectRef> = Vec::new();
+        tokio::pin!(stream);
 
         // Convert the objects to ObjectRef
         let mut object_refs = Vec::new();
-        for proto_object in response.objects {
-            // Convert proto Object to ObjectRef
-            let object_id = proto_object
-                .object_id
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Object missing ID"))?;
-
-            let object_id = ObjectID::from_str(object_id)
-                .map_err(|e| anyhow::anyhow!("Invalid object ID: {}", e))?;
-
-            let version = proto_object
-                .version
-                .ok_or_else(|| anyhow::anyhow!("Object missing version"))?;
-
-            let digest = proto_object
-                .digest
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Object missing digest"))?;
-
-            // Create ObjectDigest from the digest string
-            let object_digest = ObjectDigest::from_str(digest)
-                .map_err(|e| anyhow::anyhow!("Invalid object digest: {}", e))?;
-
-            let object_ref = (object_id, Version::from_u64(version), object_digest);
-
-            object_refs.push(object_ref);
+        while let Some(object) = stream.try_next().await? {
+            object_refs.push(object.compute_object_reference());
 
             // Stop if we've reached the limit
             if let Some(limit) = limit {
@@ -239,33 +212,18 @@ impl WalletContext {
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {
         let client = self.get_client().await?;
 
-        // Create request to get the object
-        let mut request = rpc::proto::soma::GetObjectRequest::default();
-        request.object_id = Some(id.to_hex_literal());
-        request.read_mask = Some(FieldMask::from_paths(["owner", "object_id", "version"]));
-
-        // Call the ledger service
-        let response = client
-            .inner()
-            .raw_client() // This is the LedgerServiceClient
-            .get_object(request)
+        let object = client
+            .get_object(id.clone())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get object: {}", e))?;
-
-        let response = response.into_inner();
-
-        let object = response
-            .object
-            .ok_or_else(|| anyhow::anyhow!("No object returned"))?;
 
         // Extract owner from the proto object
         let owner = object
             .owner
-            .ok_or_else(|| anyhow::anyhow!("Object has no owner"))?;
+            .get_owner_address()
+            .map_err(|e| anyhow::anyhow!("Failed to get object: {}", e))?;
 
-        let owner_address = SomaAddress::from_bytes(owner.address().to_string().as_bytes())?;
-
-        Ok(owner_address)
+        Ok(owner)
     }
 
     /// Returns all the account addresses managed by the wallet and their owned gas objects.

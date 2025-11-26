@@ -243,7 +243,7 @@ impl TestCluster {
         timeout(timeout_dur, async {
             let epoch = handle.with(|node| node.state().epoch_store_for_testing().epoch());
             if Some(epoch) == target_epoch {
-                return handle.with(|node| node.state().get_system_state_object_for_testing());
+                return handle.with(|node| node.state().get_system_state_object_for_testing().unwrap());
             }
             while let Ok(system_state) = epoch_rx.recv().await {
                 info!("received epoch {}", system_state.epoch());
@@ -264,11 +264,7 @@ impl TestCluster {
         .unwrap_or_else(|_| {
             error!("Timed out waiting for cluster to reach epoch {target_epoch:?}");
             if let Some(state) = state {
-                panic!(
-                    "Timed out waiting for cluster to reach epoch {target_epoch:?}. Current \
-                     epoch: {}",
-                    state.epoch()
-                );
+                panic!("Timed out waiting for cluster to reach epoch {target_epoch:?}. Current epoch: {}", state.epoch());
             }
             panic!("Timed out waiting for cluster to target epoch {target_epoch:?}")
         })
@@ -449,16 +445,6 @@ impl TestCluster {
         config.epoch_duration_ms = epoch_duration;
 
         config
-    }
-
-    pub fn get_encoder_committee_size(&self) -> usize {
-        self.fullnode_handle.soma_node.with(|node| {
-            let system_state = node.state().get_system_state_object_for_testing();
-            system_state
-                .get_current_epoch_encoder_committee()
-                .members()
-                .len()
-        })
     }
 }
 

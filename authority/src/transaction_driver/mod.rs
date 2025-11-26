@@ -204,6 +204,11 @@ where
         }
     }
 
+    /// Returns the authority aggregator wrapper which upgrades on epoch changes.
+    pub fn authority_aggregator(&self) -> &Arc<ArcSwap<AuthorityAggregator<A>>> {
+        &self.authority_aggregator
+    }
+
     /// Drives transaction to submission and effects certification. Ping requests are derived from the submitted payload.
     #[instrument(level = "error", skip_all, fields(tx_digest = ?request.transaction.as_ref().map(|t| t.digest()), ping = %request.ping_type.is_some()))]
     pub async fn drive_transaction(

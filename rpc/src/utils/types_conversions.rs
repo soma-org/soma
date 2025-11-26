@@ -230,6 +230,9 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     epoch: prologue.epoch,
                     round: prologue.round,
                     commit_timestamp_ms: prologue.commit_timestamp_ms,
+                    sub_dag_index: prologue.sub_dag_index,
+                    consensus_commit_digest: prologue.consensus_commit_digest.into_inner().into(),
+                    additional_state_digest: prologue.additional_state_digest.into_inner().into(),
                 })
             }
 
@@ -413,10 +416,10 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 TK::ConsensusCommitPrologue(types::consensus::ConsensusCommitPrologue {
                     epoch: prologue.epoch,
                     round: prologue.round,
+                    sub_dag_index: prologue.sub_dag_index,
                     commit_timestamp_ms: prologue.commit_timestamp_ms,
-                    // These fields may need to be set based on your requirements
-                    sub_dag_index: None,
-                    consensus_commit_digest: types::digests::ConsensusCommitDigest::default(),
+                    consensus_commit_digest: prologue.consensus_commit_digest.into_inner().into(),
+                    additional_state_digest: prologue.additional_state_digest.into_inner().into(),
                 })
             }
 
@@ -848,7 +851,25 @@ impl From<types::consensus::commit::CommitDigest> for Digest {
     }
 }
 
-impl From<Digest> for types::consensus::commit::CommitDigest {
+impl From<types::digests::CheckpointDigest> for Digest {
+    fn from(value: types::digests::CheckpointDigest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+impl From<Digest> for types::digests::CheckpointDigest {
+    fn from(value: Digest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+impl From<types::digests::CheckpointArtifactsDigest> for Digest {
+    fn from(value: types::digests::CheckpointArtifactsDigest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+impl From<Digest> for types::digests::CheckpointArtifactsDigest {
     fn from(value: Digest) -> Self {
         Self::new(value.into_inner())
     }
@@ -1183,6 +1204,15 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::ReportRecordNotFound => {
                 Self::ReportRecordNotFound
             }
+            types::effects::ExecutionFailureStatus::InputObjectDeleted => {
+                Self::InputObjectDeleted
+            }
+            types::effects::ExecutionFailureStatus::CertificateDenied => {
+                Self::CertificateDenied
+            }
+            types::effects::ExecutionFailureStatus::ExecutionCancelledDueToSharedObjectCongestion => {
+                Self::SharedObjectCongestion
+            }
             types::effects::ExecutionFailureStatus::SomaError(soma_error) => {
                 Self::OtherError(soma_error.to_string())
             }
@@ -1259,6 +1289,23 @@ impl From<ExecutionStatus> for types::effects::ExecutionStatus {
             ExecutionStatus::Failure { error } => Self::Failure {
                 error: error.into(),
             },
+        }
+    }
+}
+
+impl From<types::checkpoints::CheckpointCommitment> for CheckpointCommitment {
+    fn from(value: types::checkpoints::CheckpointCommitment) -> Self {
+        match value {
+            types::checkpoints::CheckpointCommitment::ECMHLiveObjectSetDigest(digest) => {
+                Self::EcmhLiveObjectSet {
+                    digest: digest.digest.into(),
+                }
+            }
+            types::checkpoints::CheckpointCommitment::CheckpointArtifactsDigest(digest) => {
+                Self::CheckpointArtifacts {
+                    digest: digest.into(),
+                }
+            }
         }
     }
 }
@@ -1392,5 +1439,346 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
                 ))
             }
         }
+    }
+}
+
+// ============================================================================
+// TransactionEffectsDigest conversions
+// ============================================================================
+
+impl From<types::digests::TransactionEffectsDigest> for Digest {
+    fn from(value: types::digests::TransactionEffectsDigest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+impl From<Digest> for types::digests::TransactionEffectsDigest {
+    fn from(value: Digest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+// ============================================================================
+// CheckpointContentsDigest conversions
+// ============================================================================
+
+impl From<types::digests::CheckpointContentsDigest> for Digest {
+    fn from(value: types::digests::CheckpointContentsDigest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+impl From<Digest> for types::digests::CheckpointContentsDigest {
+    fn from(value: Digest) -> Self {
+        Self::new(value.into_inner())
+    }
+}
+
+// ============================================================================
+// CheckpointCommitment: SDK -> Domain
+// ============================================================================
+
+impl From<crate::types::CheckpointCommitment> for types::checkpoints::CheckpointCommitment {
+    fn from(value: crate::types::CheckpointCommitment) -> Self {
+        match value {
+            crate::types::CheckpointCommitment::EcmhLiveObjectSet { digest } => {
+                Self::ECMHLiveObjectSetDigest(types::checkpoints::ECMHLiveObjectSetDigest {
+                    digest: digest.into(),
+                })
+            }
+            crate::types::CheckpointCommitment::CheckpointArtifacts { digest } => {
+                Self::CheckpointArtifactsDigest(digest.into())
+            }
+        }
+    }
+}
+
+// ============================================================================
+// EndOfEpochData conversions
+// ============================================================================
+
+impl TryFrom<types::checkpoints::EndOfEpochData> for crate::types::EndOfEpochData {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: types::checkpoints::EndOfEpochData) -> Result<Self, Self::Error> {
+        Ok(Self {
+            next_epoch_validator_committee: value.next_epoch_validator_committee.into(),
+            epoch_commitments: value
+                .epoch_commitments
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        })
+    }
+}
+
+impl TryFrom<crate::types::EndOfEpochData> for types::checkpoints::EndOfEpochData {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: crate::types::EndOfEpochData) -> Result<Self, Self::Error> {
+        let next_epoch_validator_committee: types::committee::Committee = value
+            .next_epoch_validator_committee
+            .try_into()
+            .map_err(|e: ConversionError| SdkTypeConversionError(e.to_string()))?;
+
+        // TODO: SDK EndOfEpochData doesn't include encoder/networking committees yet
+        // Using empty committees as placeholders
+        let next_epoch_encoder_committee = types::encoder_committee::EncoderCommittee::new(
+            next_epoch_validator_committee.epoch,
+            Vec::new(),
+            5,
+            3,
+            BTreeMap::new(),
+        );
+        let next_epoch_networking_committee = types::committee::NetworkingCommittee::new(
+            next_epoch_validator_committee.epoch,
+            BTreeMap::new(),
+        );
+
+        Ok(Self {
+            next_epoch_validator_committee,
+            next_epoch_encoder_committee,
+            next_epoch_networking_committee,
+            epoch_commitments: value
+                .epoch_commitments
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        })
+    }
+}
+
+// ============================================================================
+// CheckpointSummary conversions
+// ============================================================================
+
+impl TryFrom<types::checkpoints::CheckpointSummary> for crate::types::CheckpointSummary {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: types::checkpoints::CheckpointSummary) -> Result<Self, Self::Error> {
+        Ok(Self {
+            epoch: value.epoch,
+            sequence_number: value.sequence_number,
+            network_total_transactions: value.network_total_transactions,
+            content_digest: value.content_digest.into(),
+            previous_digest: value.previous_digest.map(Into::into),
+            timestamp_ms: value.timestamp_ms,
+            checkpoint_commitments: value
+                .checkpoint_commitments
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            end_of_epoch_data: value.end_of_epoch_data.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+impl TryFrom<crate::types::CheckpointSummary> for types::checkpoints::CheckpointSummary {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: crate::types::CheckpointSummary) -> Result<Self, Self::Error> {
+        Ok(Self {
+            epoch: value.epoch,
+            sequence_number: value.sequence_number,
+            network_total_transactions: value.network_total_transactions,
+            content_digest: value.content_digest.into(),
+            previous_digest: value.previous_digest.map(Into::into),
+            timestamp_ms: value.timestamp_ms,
+            checkpoint_commitments: value
+                .checkpoint_commitments
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            end_of_epoch_data: value.end_of_epoch_data.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+// ============================================================================
+// SignedCheckpointSummary (CertifiedCheckpointSummary) conversions
+// ============================================================================
+
+impl TryFrom<types::checkpoints::CertifiedCheckpointSummary>
+    for crate::types::SignedCheckpointSummary
+{
+    type Error = SdkTypeConversionError;
+
+    fn try_from(
+        value: types::checkpoints::CertifiedCheckpointSummary,
+    ) -> Result<Self, Self::Error> {
+        let checkpoint: crate::types::CheckpointSummary = value.data().clone().try_into()?;
+        let signature: ValidatorAggregatedSignature = value.auth_sig().clone().into();
+
+        Ok(Self {
+            checkpoint,
+            signature,
+        })
+    }
+}
+
+impl TryFrom<crate::types::SignedCheckpointSummary>
+    for types::checkpoints::CertifiedCheckpointSummary
+{
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: crate::types::SignedCheckpointSummary) -> Result<Self, Self::Error> {
+        let checkpoint: types::checkpoints::CheckpointSummary = value.checkpoint.try_into()?;
+        let auth_sig: types::crypto::AuthorityStrongQuorumSignInfo = value.signature.into();
+
+        Ok(
+            types::checkpoints::CertifiedCheckpointSummary::new_from_data_and_sig(
+                checkpoint, auth_sig,
+            ),
+        )
+    }
+}
+
+// ============================================================================
+// CheckpointContents conversions
+// ============================================================================
+
+impl TryFrom<types::checkpoints::CheckpointContents> for crate::types::CheckpointContents {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: types::checkpoints::CheckpointContents) -> Result<Self, Self::Error> {
+        let transactions: Vec<crate::types::CheckpointTransactionInfo> = value
+            .into_iter_with_signatures()
+            .map(|(digests, signatures)| {
+                let user_signatures: Result<Vec<_>, _> =
+                    signatures.into_iter().map(TryInto::try_into).collect();
+
+                Ok(crate::types::CheckpointTransactionInfo {
+                    transaction: digests.transaction.into(),
+                    effects: digests.effects.into(),
+                    signatures: user_signatures?,
+                })
+            })
+            .collect::<Result<_, SdkTypeConversionError>>()?;
+
+        Ok(crate::types::CheckpointContents::new(transactions))
+    }
+}
+
+impl TryFrom<crate::types::CheckpointContents> for types::checkpoints::CheckpointContents {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: crate::types::CheckpointContents) -> Result<Self, Self::Error> {
+        let transactions = value.transactions();
+
+        let execution_digests: Vec<types::base::ExecutionDigests> = transactions
+            .iter()
+            .map(|info| types::base::ExecutionDigests {
+                transaction: info.transaction.into(),
+                effects: info.effects.into(),
+            })
+            .collect();
+
+        let user_signatures: Result<Vec<Vec<types::crypto::GenericSignature>>, _> = transactions
+            .iter()
+            .map(|info| {
+                info.signatures
+                    .iter()
+                    .cloned()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect();
+
+        Ok(
+            types::checkpoints::CheckpointContents::new_with_digests_and_signatures(
+                execution_digests,
+                user_signatures?,
+            ),
+        )
+    }
+}
+
+// ============================================================================
+// CheckpointTransaction conversions
+// ============================================================================
+
+impl TryFrom<types::full_checkpoint_content::CheckpointTransaction>
+    for crate::types::CheckpointTransaction
+{
+    type Error = SdkTypeConversionError;
+
+    fn try_from(
+        value: types::full_checkpoint_content::CheckpointTransaction,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            transaction: value.transaction.try_into()?,
+            effects: value.effects.try_into()?,
+            input_objects: value
+                .input_objects
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, _>>()?,
+            output_objects: value
+                .output_objects
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
+impl TryFrom<crate::types::CheckpointTransaction>
+    for types::full_checkpoint_content::CheckpointTransaction
+{
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: crate::types::CheckpointTransaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            transaction: value.transaction.try_into()?,
+            effects: value.effects.try_into()?,
+            input_objects: value
+                .input_objects
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, _>>()?,
+            output_objects: value
+                .output_objects
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
+// ============================================================================
+// CheckpointData conversions
+// ============================================================================
+
+impl TryFrom<types::full_checkpoint_content::CheckpointData> for crate::types::CheckpointData {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(
+        value: types::full_checkpoint_content::CheckpointData,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            checkpoint_summary: value.checkpoint_summary.try_into()?,
+            checkpoint_contents: value.checkpoint_contents.try_into()?,
+            transactions: value
+                .transactions
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
+impl TryFrom<crate::types::CheckpointData> for types::full_checkpoint_content::CheckpointData {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: crate::types::CheckpointData) -> Result<Self, Self::Error> {
+        Ok(Self {
+            checkpoint_summary: value.checkpoint_summary.try_into()?,
+            checkpoint_contents: value.checkpoint_contents.try_into()?,
+            transactions: value
+                .transactions
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, _>>()?,
+        })
     }
 }

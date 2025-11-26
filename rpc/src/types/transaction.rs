@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::Digest;
 use crate::types::{Address, CommitTimestamp, EpochId, Object, ObjectReference, UserSignature};
 use serde::ser::SerializeSeq;
 
@@ -214,8 +215,19 @@ pub struct ConsensusCommitPrologue {
     /// Consensus round of the commit
     pub round: u64,
 
+    /// The sub DAG index of the consensus commit
+    /// This field will be populated if there are multiple consensus commits per round
+    pub sub_dag_index: Option<u64>,
+
     /// Unix timestamp from consensus
     pub commit_timestamp_ms: CommitTimestamp,
+
+    /// Digest of consensus output for verification
+    pub consensus_commit_digest: Digest,
+
+    /// Digest of any additional state computed by the consensus handler.
+    /// Used to detect forking bugs as early as possible.
+    pub additional_state_digest: Digest,
 }
 
 /// System transaction used to change the epoch

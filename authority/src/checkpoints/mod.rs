@@ -72,6 +72,10 @@ mod causal_order;
 pub mod checkpoint_executor;
 mod checkpoint_output;
 
+pub use crate::checkpoints::checkpoint_output::{
+    SendCheckpointToStateSync, SubmitCheckpointToConsensus,
+};
+
 const TRANSACTION_FORK_DETECTED_KEY: u8 = 0;
 
 pub type CheckpointHeight = u64;

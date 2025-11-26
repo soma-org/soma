@@ -5,6 +5,11 @@ use axum::{
 };
 
 use crate::api::RpcService;
+use crate::api::rpc_client::headers::{
+    X_SOMA_CHAIN, X_SOMA_CHAIN_ID, X_SOMA_CHECKPOINT_HEIGHT, X_SOMA_EPOCH,
+    X_SOMA_LOWEST_AVAILABLE_CHECKPOINT, X_SOMA_LOWEST_AVAILABLE_CHECKPOINT_OBJECTS,
+    X_SOMA_TIMESTAMP, X_SOMA_TIMESTAMP_MS,
+};
 
 pub async fn append_info_headers(
     State(state): State<RpcService>,
@@ -12,6 +17,7 @@ pub async fn append_info_headers(
 ) -> impl IntoResponse {
     let mut headers = HeaderMap::new();
 
+    // TODO: add chain headers
     // if let Ok(chain_id) = state.chain_id().to_string().try_into() {
     //     headers.insert(X_SOMA_CHAIN_ID, chain_id);
     // }
@@ -20,42 +26,43 @@ pub async fn append_info_headers(
     //     headers.insert(X_SOMA_CHAIN, chain);
     // }
 
-    // if let Ok(latest_checkpoint) = state.reader.inner().get_latest_checkpoint() {
-    //     headers.insert(X_SOMA_EPOCH, latest_checkpoint.epoch().into());
-    //     headers.insert(
-    //         X_SOMA_CHECKPOINT_HEIGHT,
-    //         latest_checkpoint.sequence_number.into(),
-    //     );
-    //     headers.insert(X_SOMA_TIMESTAMP_MS, latest_checkpoint.timestamp_ms.into());
+    if let Ok(latest_checkpoint) = state.reader.inner().get_latest_checkpoint() {
+        headers.insert(X_SOMA_EPOCH, latest_checkpoint.epoch().into());
+        headers.insert(
+            X_SOMA_CHECKPOINT_HEIGHT,
+            latest_checkpoint.sequence_number.into(),
+        );
+        headers.insert(X_SOMA_TIMESTAMP_MS, latest_checkpoint.timestamp_ms.into());
 
-    //     headers.insert(
-    //         X_SOMA_TIMESTAMP,
-    //         crate::proto::timestamp_ms_to_proto(latest_checkpoint.timestamp_ms)
-    //             .to_string()
-    //             .try_into()
-    //             .expect("timestamp is a valid HeaderValue"),
-    //     );
-    // }
+        headers.insert(
+            X_SOMA_TIMESTAMP,
+            crate::proto::timestamp_ms_to_proto(latest_checkpoint.timestamp_ms)
+                .to_string()
+                .try_into()
+                .expect("timestamp is a valid HeaderValue"),
+        );
+    }
 
-    // if let Ok(lowest_available_checkpoint) = state.reader.inner().get_lowest_available_checkpoint()
-    // {
-    //     headers.insert(
-    //         X_SOMA_LOWEST_AVAILABLE_CHECKPOINT,
-    //         lowest_available_checkpoint.into(),
-    //     );
-    // }
+    if let Ok(lowest_available_checkpoint) = state.reader.inner().get_lowest_available_checkpoint()
+    {
+        headers.insert(
+            X_SOMA_LOWEST_AVAILABLE_CHECKPOINT,
+            lowest_available_checkpoint.into(),
+        );
+    }
 
-    // if let Ok(lowest_available_checkpoint_objects) = state
-    //     .reader
-    //     .inner()
-    //     .get_lowest_available_checkpoint_objects()
-    // {
-    //     headers.insert(
-    //         X_SOMA_LOWEST_AVAILABLE_CHECKPOINT_OBJECTS,
-    //         lowest_available_checkpoint_objects.into(),
-    //     );
-    // }
+    if let Ok(lowest_available_checkpoint_objects) = state
+        .reader
+        .inner()
+        .get_lowest_available_checkpoint_objects()
+    {
+        headers.insert(
+            X_SOMA_LOWEST_AVAILABLE_CHECKPOINT_OBJECTS,
+            lowest_available_checkpoint_objects.into(),
+        );
+    }
 
+    // TODO: add server version
     // if let Some(server_version) = state
     //     .server_version()
     //     .and_then(|version| version.to_string().try_into().ok())

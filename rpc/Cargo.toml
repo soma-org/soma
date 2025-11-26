@@ -8,6 +8,8 @@ build = "build.rs"
 bcs.workspace = true
 serde.workspace = true
 bytes.workspace = true
+protocol-config.workspace = true
+futures.workspace = true
 tonic = { version = "0.13", default-features = false, features = [
     "channel",
     "codegen",

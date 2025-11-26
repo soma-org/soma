@@ -5,7 +5,7 @@ package soma.rpc;
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
-import "soma/rpc/commit.proto";
+import "soma/rpc/checkpoint.proto";
 import "soma/rpc/epoch.proto";
 import "soma/rpc/executed_transaction.proto";
 import "soma/rpc/object.proto";
@@ -13,7 +13,7 @@ import "soma/rpc/object.proto";
 
 service LedgerService {
   // Query the service for general information about its current state.
-//   rpc GetServiceInfo(GetServiceInfoRequest) returns (GetServiceInfoResponse);
+  rpc GetServiceInfo(GetServiceInfoRequest) returns (GetServiceInfoResponse);
 
   rpc GetObject(GetObjectRequest) returns (GetObjectResponse);
   rpc BatchGetObjects(BatchGetObjectsRequest) returns (BatchGetObjectsResponse);
@@ -21,43 +21,43 @@ service LedgerService {
   rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   rpc BatchGetTransactions(BatchGetTransactionsRequest) returns (BatchGetTransactionsResponse);
 
-  rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
+  rpc GetCheckpoint(GetCheckpointRequest) returns (GetCheckpointResponse);
 
   rpc GetEpoch(GetEpochRequest) returns (GetEpochResponse);
 }
 
-// message GetServiceInfoRequest {}
+message GetServiceInfoRequest {}
 
-// message GetServiceInfoResponse {
-//   // The chain identifier of the chain that this node is on.
-//   //
-//   // The chain identifier is the digest of the genesis checkpoint, the
-//   // checkpoint with sequence number 0.
-// //   optional string chain_id = 1;
+message GetServiceInfoResponse {
+  // The chain identifier of the chain that this node is on.
+  //
+  // The chain identifier is the digest of the genesis checkpoint, the
+  // checkpoint with sequence number 0.
+  optional string chain_id = 1;
 
-//   // Human-readable name of the chain that this node is on.
-//   //
-//   // This is intended to be a human-readable name like `mainnet`, `testnet`, and so on.
-// //   optional string chain = 2;
+  // Human-readable name of the chain that this node is on.
+  //
+  // This is intended to be a human-readable name like `mainnet`, `testnet`, and so on.
+  optional string chain = 2;
 
-//   // Current epoch of the node based on its highest executed checkpoint.
-//   optional uint64 epoch = 1;
+  // Current epoch of the node based on its highest executed checkpoint.
+  optional uint64 epoch = 3;
 
-//   // Commit height of the most recently executed commit.
-//   optional uint64 commit_height = 2;
+  // Checkpoint height of the most recently executed checkpoint.
+  optional uint64 checkpoint_height = 4;
 
-//   // Unix timestamp of the most recently executed checkpoint.
-//   optional google.protobuf.Timestamp timestamp = 3;
+  // Unix timestamp of the most recently executed checkpoint.
+  optional google.protobuf.Timestamp timestamp = 5;
 
-//   // The lowest checkpoint for which checkpoints and transaction data are available.
-//   optional uint64 lowest_available_commit = 4;
+  // The lowest checkpoint for which checkpoints and transaction data are available.
+  optional uint64 lowest_available_checkpoint = 6;
 
-//   // The lowest checkpoint for which object data is available.
-// //   optional uint64 lowest_available_checkpoint_objects = 7;
+  // The lowest checkpoint for which object data is available.
+  optional uint64 lowest_available_checkpoint_objects = 7;
 
-//   // Software version of the service. Similar to the `server` http header.
-//   optional string server = 5;
-// }
+  // Software version of the service. Similar to the `server` http header.
+  optional string server = 8;
+}
 
 message GetObjectRequest {
   // Required. The `ObjectId` of the requested object.
@@ -129,23 +129,23 @@ message GetTransactionResult {
   }
 }
 
-message GetCommitRequest {
+message GetCheckpointRequest {
   // If neither is provided, return the latest
-  oneof commit_id {
-    // The index of the requested commit.
-    uint32 index = 1;
+  oneof checkpoint_id {
+    // The sequence number of the requested checkpoint.
+    uint64 sequence_number = 1;
 
-    // The digest of the requested commit.
+    // The digest of the requested checkpoint.
     string digest = 2;
   }
 
   // Mask specifying which fields to read.
-  // If no mask is specified, defaults to `index,digest`.
+  // If no mask is specified, defaults to `sequence_number,digest`.
   optional google.protobuf.FieldMask read_mask = 3;
 }
 
-message GetCommitResponse {
-  optional Commit commit = 1;
+message GetCheckpointResponse {
+  optional Checkpoint checkpoint = 1;
 }
 
 message GetEpochRequest {

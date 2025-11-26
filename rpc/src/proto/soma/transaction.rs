@@ -715,8 +715,9 @@ impl From<crate::types::ConsensusCommitPrologue> for ConsensusCommitPrologue {
             commit_timestamp: Some(crate::proto::timestamp_ms_to_proto(
                 value.commit_timestamp_ms,
             )),
-            consensus_commit_digest: None,
-            sub_dag_index: None,
+            consensus_commit_digest: Some(value.consensus_commit_digest.to_string()),
+            additional_state_digest: Some(value.additional_state_digest.to_string()),
+            sub_dag_index: value.sub_dag_index,
         }
     }
 }
@@ -735,11 +736,26 @@ impl TryFrom<&ConsensusCommitPrologue> for crate::types::ConsensusCommitPrologue
             .commit_timestamp
             .ok_or_else(|| TryFromProtoError::missing("commit_timestamp"))?
             .pipe(crate::proto::proto_to_timestamp_ms)?;
+        let consensus_commit_digest = value
+            .consensus_commit_digest
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("consensus_commit_digest"))?
+            .parse()
+            .map_err(|e| TryFromProtoError::invalid("consensus_commit_digest", e))?;
+        let additional_state_digest = value
+            .additional_state_digest
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("additional_state_digest"))?
+            .parse()
+            .map_err(|e| TryFromProtoError::invalid("additional_state_digest", e))?;
 
         Ok(Self {
             epoch,
             round,
             commit_timestamp_ms,
+            sub_dag_index: value.sub_dag_index,
+            consensus_commit_digest,
+            additional_state_digest,
         })
     }
 }
