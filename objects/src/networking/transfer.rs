@@ -37,7 +37,7 @@ impl Transfer {
             return Ok(());
         }
 
-        if meta.size <= MIN_PART_SIZE as u64 {
+        if meta.size <= MIN_PART_SIZE {
             // Small: Collect full bytes and direct put (memory-efficient for small).
             let bytes = src
                 .get(&object_path.path())
@@ -66,7 +66,7 @@ impl Transfer {
 
             loop {
                 // Fill buffer up to PART_SIZE from stream.
-                while (buffer.len() as u64) < MIN_PART_SIZE {
+                while buffer.len() < MIN_PART_SIZE {
                     if let Some(chunk_res) = stream.next().await {
                         let chunk = chunk_res.map_err(ObjectError::ObjectStoreError)?;
                         buffer.extend_from_slice(&chunk);

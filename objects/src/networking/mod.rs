@@ -29,9 +29,9 @@ use types::error::ObjectResult;
 use crate::networking::download::Download;
 
 /// Cloud providers typically require a minimum multipart part size except for the last part
-const MIN_PART_SIZE: u64 = 5 * 1024 * 1024;
+const MIN_PART_SIZE: usize = 5 * 1024 * 1024;
 /// Cloud providers typically have a max multipart part size
-const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
+const MAX_PART_SIZE: usize = 5 * 1024 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct DownloadClient {
@@ -114,8 +114,8 @@ impl DownloadClient {
             storage.clone(),
             path,
             download_metadata.metadata().clone(),
-            self.parameters.nanoseconds_per_byte,
-            self.max_size,
+            self.parameters.nanoseconds_per_byte as usize,
+            self.max_size as usize,
         )
         .await
     }

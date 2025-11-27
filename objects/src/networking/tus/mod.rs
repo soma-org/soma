@@ -295,10 +295,10 @@ impl<S: ObjectStore> Tus<S> {
             return (StatusCode::PAYLOAD_TOO_LARGE, headers);
         }
         let is_final = new_offset == state_opt.length;
-        if chunk_size > MAX_PART_SIZE {
+        if bytes.len() > MAX_PART_SIZE {
             return (StatusCode::PAYLOAD_TOO_LARGE, headers);
         }
-        if chunk_size < MIN_PART_SIZE && !is_final {
+        if bytes.len() < MIN_PART_SIZE && !is_final {
             return (StatusCode::PRECONDITION_FAILED, headers);
         }
         let mut checksum: Option<Checksum> = None;

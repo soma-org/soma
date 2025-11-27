@@ -444,6 +444,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             .collect();
 
         let validator_sync_address = all_validators[0].encoder_validator_address.clone(); // TODO: Temporarily using first validator as RPC address
+        let validator_sync_network_key = all_validators[0].network_key_pair.public().clone();
         let rpc_address = all_validators[0].rpc_address.clone();
 
         let validator_configs = all_validators
@@ -478,6 +479,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     PathBuf::from("/project/root"), // Default path, should be configurable
                     PathBuf::from("/entry/point.py"), // Default path, should be configurable
                     validator_sync_address.clone(),
+                    validator_sync_network_key.clone(),
                     genesis.clone(),
                     db_path
                         .clone()

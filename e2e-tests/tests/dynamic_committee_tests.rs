@@ -98,6 +98,7 @@ impl StressTestRunner {
             .soma_node
             .state()
             .get_system_state_object_for_testing()
+            .expect("Should be able to get system state")
     }
 
     pub fn pick_random_active_validator(&mut self) -> Validator {
@@ -182,7 +183,7 @@ impl StressTestRunner {
         let found: Vec<_> = effects
             .iter()
             .filter_map(|(obj_ref, _)| {
-                let object = db.get_object(&obj_ref.0).unwrap().unwrap();
+                let object = db.get_object(&obj_ref.0).unwrap();
 
                 if object.type_() == &object_type {
                     Some(object)

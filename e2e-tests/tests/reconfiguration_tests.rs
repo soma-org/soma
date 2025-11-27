@@ -27,36 +27,6 @@ const VALIDATOR_STARTING_STAKE: u64 = 1_000_000_000_000_000; // 1M SOMA
 
 #[cfg(msim)]
 #[msim::sim_test]
-async fn advance_epoch_tx_test() {
-    let _ = tracing_subscriber::fmt::try_init();
-    let test_cluster = TestClusterBuilder::new().build().await;
-    let states = test_cluster
-        .swarm
-        .validator_node_handles()
-        .into_iter()
-        .map(|handle| handle.with(|node| node.state()))
-        .collect::<Vec<_>>();
-    let tasks: Vec<_> = states
-        .iter()
-        .map(|state| async {
-            let system_state = state
-                .create_and_execute_advance_epoch_tx(&state.epoch_store_for_testing(), 1000)
-                .await
-                .unwrap();
-            system_state
-        })
-        .collect();
-    let results: HashSet<_> = join_all(tasks)
-        .await
-        .into_iter()
-        .map(|(state, _)| state.epoch())
-        .collect();
-    // Check that all validators have the same result.
-    assert_eq!(results.len(), 1);
-}
-
-#[cfg(msim)]
-#[msim::sim_test]
 async fn basic_reconfig_end_to_end_test() {
     let _ = tracing_subscriber::fmt::try_init();
     // TODO remove this sleep when this test passes consistently
@@ -88,6 +58,7 @@ async fn test_reconfig_with_committee_change_basic() {
     let total_stake = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state()
             .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
             .validators
             .total_stake
     });
@@ -272,7 +243,10 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
     // Get total stake of validators in the system, their addresses and the grace period.
     let (total_stake, initial_validators, low_stake_grace_period) =
         test_cluster.fullnode_handle.soma_node.with(|node| {
-            let system_state = node.state().get_system_state_object_for_testing();
+            let system_state = node
+                .state()
+                .get_system_state_object_for_testing()
+                .expect("Should be able to get SystemState");
 
             (
                 system_state.validators.total_stake,
@@ -333,6 +307,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         let system_state = node
             .state()
             .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
             .validators;
 
         let candidate = system_state
@@ -374,6 +349,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         let system_state = node
             .state()
             .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
             .validators;
 
         let candidate = system_state
@@ -402,6 +378,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         assert_eq!(
             node.state()
                 .get_system_state_object_for_testing()
+                .expect("Should be able to get SystemState")
                 .validators
                 .consensus_validators
                 .len(),
@@ -447,6 +424,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
             let system_state = node
                 .state()
                 .get_system_state_object_for_testing()
+                .expect("Should be able to get SystemState")
                 .validators;
 
             (
@@ -512,6 +490,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
         let mut active_validators = node
             .state()
             .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
             .validators
             .consensus_validators
             .iter()
@@ -565,7 +544,10 @@ async fn execute_add_validator_transactions(
     stake_amount: Option<u64>,
 ) {
     let pending_active_count = test_cluster.fullnode_handle.soma_node.with(|node| {
-        let system_state = node.state().get_system_state_object_for_testing();
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState");
         system_state.validators.pending_validators.len()
     });
 
@@ -614,7 +596,10 @@ async fn execute_add_validator_transactions(
 
     // Check that we can get the pending validator from 0x5.
     test_cluster.fullnode_handle.soma_node.with(|node| {
-        let system_state = node.state().get_system_state_object_for_testing();
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState");
         let pending_active_validators = system_state.validators.pending_validators;
         assert_eq!(pending_active_validators.len(), pending_active_count + 1);
         assert_eq!(

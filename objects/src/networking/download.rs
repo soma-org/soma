@@ -21,11 +21,11 @@ pub struct Download {
     storage: Arc<dyn ObjectStore>,
     storage_path: ObjectPath,
     metadata: Metadata,
-    ns_per_byte: u64,
-    max_size: u64,
+    ns_per_byte: usize,
+    max_size: usize,
     backoff: Duration,
     max_retries: usize,
-    downloaded_bytes: u64,
+    downloaded_bytes: usize,
     hasher: DefaultHashFunction,
     multipart_upload: Option<Box<dyn MultipartUpload>>,
     buffer: Vec<u8>,
@@ -38,8 +38,8 @@ impl Download {
         storage: Arc<dyn ObjectStore>,
         storage_path: ObjectPath,
         metadata: Metadata,
-        ns_per_byte: u64,
-        max_size: u64,
+        ns_per_byte: usize,
+        max_size: usize,
     ) -> ObjectResult<()> {
         if storage_path.checksum() != metadata.checksum() {
             return Err(ObjectError::VerificationError(
@@ -104,7 +104,8 @@ impl Download {
 
     async fn download_and_upload(&mut self) -> ObjectResult<()> {
         let bytes_to_download = self.metadata.size().saturating_sub(self.downloaded_bytes);
-        let timeout = Duration::from_nanos(self.ns_per_byte * bytes_to_download);
+        let timeout =
+            Duration::from_nanos((self.ns_per_byte * bytes_to_download).try_into().unwrap()); // TODO: make this cleaner
 
         let mut req = self.client.get(self.url.clone()).timeout(timeout);
         if self.downloaded_bytes > 0 {
@@ -166,14 +167,12 @@ impl Download {
             .map_err(|e| ObjectError::ObjectStorage(e.to_string()))?;
 
         self.hasher.update(&part);
-        self.downloaded_bytes += part.len() as u64;
+        self.downloaded_bytes += part.len();
         Ok(())
     }
 
     fn validate_size_before_upload(&self, part: &Bytes) -> ObjectResult<()> {
-        if self.downloaded_bytes + part.len() as u64 + self.buffer.len() as u64
-            > self.metadata.size()
-        {
+        if self.downloaded_bytes + part.len() + self.buffer.len() > self.metadata.size() {
             return Err(ObjectError::VerificationError(
                 "Oversized response".to_string(),
             ));

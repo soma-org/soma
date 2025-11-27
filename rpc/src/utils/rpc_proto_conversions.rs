@@ -1880,7 +1880,7 @@ impl From<types::metadata::Metadata> for Metadata {
             types::metadata::Metadata::V1(v1) => {
                 let mut proto_v1 = MetadataV1::default();
                 proto_v1.checksum = Some(v1.checksum().as_bytes().to_vec().into());
-                proto_v1.size = Some(v1.size());
+                proto_v1.size = Some(v1.size() as u64);
                 message.version = Some(crate::proto::soma::metadata::Version::V1(proto_v1));
             }
         }
@@ -1911,7 +1911,11 @@ impl TryFrom<&Metadata> for types::metadata::Metadata {
                 let checksum = types::checksum::Checksum::from_bytes(checksum_bytes)
                     .map_err(|e| TryFromProtoError::invalid("checksum", e))?;
 
-                let size = v1.size.ok_or_else(|| TryFromProtoError::missing("size"))?;
+                let size = v1
+                    .size
+                    .ok_or_else(|| TryFromProtoError::missing("size"))?
+                    .try_into()
+                    .map_err(|e| TryFromProtoError::invalid("size", e))?;
 
                 Ok(types::metadata::Metadata::V1(
                     types::metadata::MetadataV1::new(checksum, size),

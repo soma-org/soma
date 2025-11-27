@@ -24,7 +24,7 @@ use crate::{
     sync::to_host_port_str,
 };
 
-type SizeInBytes = u64;
+type SizeInBytes = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ObjectPath {

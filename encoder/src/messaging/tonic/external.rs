@@ -29,6 +29,8 @@ use types::{
     },
 };
 
+const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// Proxies Tonic requests to `NetworkService` with actual handler implementation.
 struct EncoderExternalTonicServiceProxy<S: EncoderExternalNetworkService> {
     /// Encoder Network Service - this is typically the same even between different networking stacks. The trait
@@ -173,7 +175,10 @@ impl<S: EncoderExternalNetworkService> EncoderExternalNetworkManager<S>
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
             .layer_fn(|service| {
-                types::shard_networking::grpc_timeout::GrpcTimeout::new(service, None)
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(
+                    service,
+                    DEFAULT_GRPC_REQUEST_TIMEOUT,
+                )
             });
         let encoder_external_service_server = EncoderExternalTonicServiceServer::new(service)
             .max_encoding_message_size(config.message_size_limit)

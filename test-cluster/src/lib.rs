@@ -407,6 +407,11 @@ impl TestCluster {
             .soma_node
             .with(|node| node.get_config().encoder_validator_address.clone());
 
+        let validator_sync_network_key = self
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.get_config().network_key_pair().public().clone());
+
         // Get genesis
         let genesis = self.get_genesis();
         let epoch_duration = genesis.system_object().parameters.epoch_duration_ms;
@@ -437,6 +442,7 @@ impl TestCluster {
             project_root,
             entry_point,
             validator_sync_address,
+            validator_sync_network_key,
             genesis,
             db_path,
         );

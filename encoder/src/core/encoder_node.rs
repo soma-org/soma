@@ -47,6 +47,7 @@ use super::{
 };
 use crate::datastore::rocksdb_store::RocksDBStore;
 use crate::pipelines::clean_up::CleanUpProcessor;
+use crate::sync::utils::extract_network_info_from_committees;
 use crate::{
     datastore::Store,
     messaging::{
@@ -412,6 +413,7 @@ impl EncoderNode {
         let validator_client = match EncoderValidatorClient::new(
             &config.validator_sync_address,
             config.genesis.committee().unwrap(),
+            config.validator_sync_network_key.clone(),
         )
         .await
         {
@@ -576,41 +578,34 @@ fn create_context_from_genesis(
     let networking_info = EncoderNetworkingInfo::default();
     let allower = AllowPublicKeys::default();
 
-    // Extract validator committee from genesis
     let authority_committee = match config.genesis.committee() {
         Ok(committee) => committee,
         Err(e) => {
-            warn!("Failed to extract committee from genesis: {}", e);
             panic!("Failed to extract committee from genesis: {}", e);
         }
     };
 
-    // Convert EncoderCommittee from genesis to our internal ShardCommittee format
     let genesis_encoder_committee = config.genesis.encoder_committee();
 
-    // Extract peer keys and network addresses for network info
-    let (initial_networking_info, object_servers) =
-        EncoderValidatorClient::extract_network_info(&config.genesis.encoder_committee(), None);
+    let (initial_networking_info, _object_servers) =
+        extract_network_info_from_committees(&genesis_encoder_committee, None);
 
-    // Create committees struct with proper genesis parameters
     let committees = Committees::new(
-        0, // Genesis epoch
+        0,
         authority_committee,
         genesis_encoder_committee,
         config.genesis.networking_committee(),
-        1, // TODO: Default VDF iterations, adjust as needed
+        1,
     );
 
-    // Create inner context with our committees
     let inner_context = InnerContext::new(
-        [committees.clone(), committees], // Same committee for current and previous in genesis
-        0,                                // Genesis epoch
+        [committees.clone(), committees],
+        0,
         own_encoder_key,
         own_network_keypair,
         internal_object_service_address,
     );
 
-    // Update the NetworkingInfo
     if !initial_networking_info.is_empty() {
         info!(
             "Initializing networking info with {} entries from genesis",
@@ -619,10 +614,9 @@ fn create_context_from_genesis(
         networking_info.update(initial_networking_info.clone());
     }
 
-    // Update allowed public keys
     let mut allowed_keys = BTreeSet::new();
-    for (encoder_public_key, (peer_key, address)) in initial_networking_info {
-        allowed_keys.insert(peer_key.clone().into_inner());
+    for (_encoder_public_key, (peer_key, _address)) in initial_networking_info {
+        allowed_keys.insert(peer_key.into_inner());
     }
 
     if !allowed_keys.is_empty() {
@@ -633,7 +627,6 @@ fn create_context_from_genesis(
         allower.update(allowed_keys);
     }
 
-    // Create and return the context
     (Context::new(inner_context), networking_info, allower)
 }
 

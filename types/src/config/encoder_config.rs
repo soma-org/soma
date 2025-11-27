@@ -61,6 +61,8 @@ pub struct EncoderConfig {
     /// Address of the validator node for fetching committees
     pub validator_sync_address: Multiaddr,
 
+    pub validator_sync_network_key: NetworkPublicKey,
+
     pub rpc_address: SocketAddr,
 
     /// Genesis for blockchain, including validator and encoder committees
@@ -87,6 +89,7 @@ impl EncoderConfig {
         project_root: PathBuf,
         entry_point: PathBuf,
         validator_sync_address: Multiaddr,
+        validator_sync_network_key: NetworkPublicKey,
         genesis: Genesis,
         db_path: PathBuf,
     ) -> Self {
@@ -114,6 +117,7 @@ impl EncoderConfig {
             project_root,
             entry_point,
             validator_sync_address,
+            validator_sync_network_key,
             rpc_address,
             genesis,
             epoch_duration_ms: 1000, //TODO: Default epoch duration

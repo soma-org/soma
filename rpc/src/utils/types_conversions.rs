@@ -1419,7 +1419,7 @@ impl From<types::metadata::Metadata> for Metadata {
                     .as_bytes()
                     .try_into()
                     .expect("checksum should be 32 bytes"),
-                size: v1.size(),
+                size: v1.size() as u64,
             }),
         }
     }
@@ -1434,8 +1434,13 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
                 let checksum = types::checksum::Checksum::from_bytes(&v1.checksum)
                     .map_err(|e| SdkTypeConversionError(format!("Invalid checksum: {}", e)))?;
 
+                let size = v1
+                    .size
+                    .try_into()
+                    .map_err(|e| SdkTypeConversionError(format!("Invalid size: {}", e)))?;
+
                 Ok(types::metadata::Metadata::V1(
-                    types::metadata::MetadataV1::new(checksum, v1.size),
+                    types::metadata::MetadataV1::new(checksum, size),
                 ))
             }
         }

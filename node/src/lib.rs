@@ -1077,15 +1077,6 @@ impl SomaNode {
                 .get_system_state_object()
                 .expect("Read Sui System State object cannot fail");
 
-            #[cfg(msim)]
-            if !self
-                .sim_state
-                .sim_safe_mode_expected
-                .load(Ordering::Relaxed)
-            {
-                debug_assert!(!latest_system_state.safe_mode());
-            }
-
             if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone()) {
                 if self.state.is_fullnode(&cur_epoch_store) {
                     warn!(

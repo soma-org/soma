@@ -78,7 +78,7 @@ impl ShardExecutor {
         let current_epoch = state.epoch;
 
         // Calculate total price for the data size
-        let embed_price = byte_price.saturating_mul(metadata.size());
+        let embed_price = byte_price.saturating_mul(metadata.size() as u64);
 
         if embed_price == 0 {
             return Err(ExecutionFailureStatus::InvalidArguments {
@@ -499,7 +499,7 @@ impl FeeCalculator for ShardExecutor {
                         bcs::from_bytes::<SystemState>(state_obj.as_inner().data.contents())
                     {
                         let byte_price = state.encoders.reference_byte_price;
-                        let embed_cost = byte_price.saturating_mul(metadata.size());
+                        let embed_cost = byte_price.saturating_mul(metadata.size() as u64);
 
                         // Fee is 0.05% (5 basis points) of the embedding cost
                         let fee = (embed_cost * 5) / 10000;
