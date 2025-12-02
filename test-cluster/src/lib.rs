@@ -335,7 +335,10 @@ impl TestCluster {
     /// This function is recommended for transaction execution since it most resembles the
     /// production path.
     pub async fn execute_transaction(&self, tx: Transaction) -> TransactionExecutionResponse {
-        self.wallet.execute_transaction_must_succeed(tx).await
+        self.wallet
+            .execute_transaction_and_wait_for_indexing(tx) // TODO: set good default
+            .await
+            .expect("Transaction must succeed")
     }
 
     // Get all encoder configs

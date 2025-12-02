@@ -800,7 +800,7 @@ async fn get_latest_from_peer(
 
 /// Queries a peer for their highest_synced_checkpoint and low checkpoint watermark
 async fn query_peer_for_latest_info(
-  client: &mut P2pClient<Channel>,
+  client: &mut P2pClient<tonic_rustls::Channel>,
     timeout: Duration,
 ) -> Option<(Checkpoint, Option<CheckpointSequenceNumber>)> {
     let mut request = Request::new(GetCheckpointAvailabilityRequest {

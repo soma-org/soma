@@ -111,6 +111,18 @@ impl SomaClient {
         client.execute_transaction(transaction).await
     }
 
+    /// Execute a transaction
+    pub async fn execute_transaction_and_wait_for_checkpoint(
+        &self,
+        transaction: &types::transaction::Transaction,
+        timeout: Duration,
+    ) -> Result<rpc::api::client::TransactionExecutionResponse, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client
+            .execute_transaction_and_wait_for_checkpoint(transaction, timeout)
+            .await
+    }
+
     /// Get an object by ID
     pub async fn get_object(&self, object_id: ObjectID) -> Result<Object, tonic::Status> {
         let mut client = self.inner.write().await;

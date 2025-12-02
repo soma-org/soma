@@ -25,6 +25,7 @@ itertools.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 data-ingestion.workspace = true
+tonic-rustls.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

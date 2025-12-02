@@ -285,9 +285,13 @@ impl Merge<&types::object::Object> for Object {
             self.previous_transaction = Some(source.previous_transaction.to_string());
         }
 
-        // if mask.contains(Self::BALANCE_FIELD) {
-        //     self.balance = source.as_coin_maybe().map(|coin| coin.balance.value());
-        // }
+        if mask.contains(Self::OBJECT_TYPE_FIELD.name) {
+            self.object_type = Some(source.data.object_type().to_string());
+        }
+
+        if mask.contains(Self::CONTENTS_FIELD.name) {
+            self.contents = Some(source.data.contents().to_vec().into());
+        }
     }
 }
 

@@ -27,6 +27,7 @@ use tonic::{
     Status,
 };
 use tonic::{server::NamedService, transport::Server};
+use tonic_rustls::Channel;
 use tower::ServiceBuilder;
 use tower_http::ServiceBuilderExt;
 use tracing::{debug, error, info, trace, warn};
@@ -65,8 +66,6 @@ pub enum ChannelManagerRequest {
         response: oneshot::Sender<()>,
     },
 }
-
-type Channel = tonic::transport::Channel;
 
 pub struct ChannelManager<S> {
     own_address: Multiaddr,
@@ -323,34 +322,27 @@ where
 
         let target_pubkey: Ed25519PublicKey = peer_id.into();
 
-        let endpoint = tonic::transport::Channel::from_shared(address_str.clone())
-            .map_err(|e| {
-                SomaError::NetworkConfig(format!("Invalid address {}: {}", address_str, e))
-            })?
-            .connect_timeout(CONNECT_TIMEOUT)
-            .keep_alive_while_idle(true)
-            .user_agent("soma-p2p")
-            .map_err(|e| SomaError::NetworkConfig(format!("Failed to create endpoint: {}", e)))?;
-
         let client_tls_config = create_rustls_client_config(
             target_pubkey.clone(),
             certificate_server_name(),
             self.network_keypair.clone(),
         );
 
-        let https_connector = hyper_rustls::HttpsConnectorBuilder::new()
-            .with_tls_config(client_tls_config)
-            .https_only()
-            .enable_http2()
-            .build();
+        let endpoint = tonic_rustls::Channel::from_shared(address_str.clone())
+            .map_err(|e| {
+                SomaError::NetworkConfig(format!("Invalid address {}: {}", address_str, e))
+            })?
+            .connect_timeout(CONNECT_TIMEOUT)
+            .keep_alive_while_idle(true)
+            .user_agent("soma-p2p")
+            .map_err(|e| SomaError::NetworkConfig(format!("Failed to set user agent: {}", e)))?
+            .tls_config(client_tls_config)
+            .map_err(|e| SomaError::NetworkConfig(format!("Faileded to configure tls: {}", e)))?;
 
         let deadline = tokio::time::Instant::now() + CONNECT_TIMEOUT;
         let channel = loop {
             trace!("Connecting to endpoint at {address_str}");
-            match endpoint
-                .connect_with_connector(https_connector.clone())
-                .await
-            {
+            match endpoint.connect().await {
                 Ok(channel) => break channel,
                 Err(e) => {
                     warn!("Failed to connect to endpoint at {address_str}: {e:?}");

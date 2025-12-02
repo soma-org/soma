@@ -2,8 +2,10 @@ use super::Client;
 use super::Result;
 use crate::proto::soma::ListOwnedObjectsRequest;
 use crate::proto::soma::Object;
+use crate::utils::field::FieldMaskUtil as _;
 use futures::stream;
 use futures::stream::Stream;
+use prost_types::FieldMask;
 
 impl Client {
     /// Creates a stream of objects based on the provided request.
@@ -22,7 +24,20 @@ impl Client {
         request: impl tonic::IntoRequest<ListOwnedObjectsRequest>,
     ) -> impl Stream<Item = Result<Object>> + 'static {
         let client = self.clone();
-        let request = request.into_request();
+        let mut request = request.into_request();
+
+        // Ensure read_mask includes all required fields for conversion
+        if request.get_ref().read_mask.is_none() {
+            request.get_mut().read_mask = Some(FieldMask::from_paths([
+                "object_id",
+                "version",
+                "digest",
+                "object_type",
+                "owner",
+                "contents",
+                "previous_transaction",
+            ]));
+        }
 
         stream::unfold(
             (

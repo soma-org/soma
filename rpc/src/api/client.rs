@@ -1,9 +1,11 @@
 use std::pin::Pin;
+use std::time::Duration;
 
 use futures::Stream;
 use futures::StreamExt;
 use tap::Pipe;
 use tonic::metadata::MetadataMap;
+use tracing::info;
 
 use crate::api::rpc_client;
 use crate::api::rpc_client::HeadersInterceptor;
@@ -47,6 +49,7 @@ impl Client {
     ) -> Pin<Box<dyn Stream<Item = Result<Object>> + Send + 'static>> {
         Box::pin(self.0.clone().list_owned_objects(request).map(|o| {
             let object = o?;
+            info!("Getting object (gas) : {object:?}");
             object_try_from_proto(&object).map_err(|e| Status::from_error(e.into()))
         }))
     }
@@ -173,6 +176,43 @@ impl Client {
             .await?
             .into_parts();
 
+        execute_transaction_response_try_from_proto(&response)
+            .map_err(|e| status_from_error_with_metadata(e, metadata))
+    }
+
+    /// Execute transaction and wait for it to be checkpointed (indexes updated)
+    pub async fn execute_transaction_and_wait_for_checkpoint(
+        &mut self,
+        transaction: &Transaction,
+        timeout: Duration,
+    ) -> Result<TransactionExecutionResponse> {
+        let tx_data = transaction.inner().intent_message.value.clone();
+        let proto_transaction: proto::Transaction = tx_data.into();
+
+        let signatures: Vec<proto::UserSignature> = transaction
+            .inner()
+            .tx_signatures
+            .clone()
+            .into_iter()
+            .map(|signature| signature.into())
+            .collect();
+
+        let request = proto::ExecuteTransactionRequest::new(proto_transaction)
+            .with_signatures(signatures)
+            .with_read_mask(FieldMask::from_paths([
+                "effects",
+                "balance_changes",
+                "objects",
+            ]));
+
+        let response = self
+            .0
+            .clone()
+            .execute_transaction_and_wait_for_checkpoint(request, timeout)
+            .await
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
+
+        let (metadata, response, _) = response.into_parts();
         execute_transaction_response_try_from_proto(&response)
             .map_err(|e| status_from_error_with_metadata(e, metadata))
     }

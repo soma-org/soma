@@ -62,7 +62,7 @@ impl EncoderValidatorClient {
         // Create TLS config targeting the validator's network key
         let tls_config = soma_tls::create_rustls_client_config(
             validator_network_key.into_inner(),
-            soma_tls::SERVER_NAME.to_string(),
+            soma_tls::SERVER_NAME.to_string(), // TODO: change this server name
             None,
         );
 

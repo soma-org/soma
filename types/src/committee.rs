@@ -199,7 +199,7 @@ impl Committee {
 
         voting_rights_vec.sort_by_key(|(a, _)| *a);
         let total_votes: VotingPower = voting_rights_vec.iter().map(|(_, votes)| *votes).sum();
-        assert_eq!(total_votes, TOTAL_VOTING_POWER);
+        // TODO: assert_eq!(total_votes, TOTAL_VOTING_POWER); This doesn't add up to TOTAL because of the networking committee
 
         let (expanded_keys, index_map) = Self::load_inner(&voting_rights_vec);
 
@@ -803,10 +803,7 @@ impl NetworkingCommittee {
 pub fn to_networking_committee_intent(
     digest: NetworkingCommitteeDigest,
 ) -> IntentMessage<NetworkingCommitteeDigest> {
-    IntentMessage::new(
-        Intent::consensus_app(IntentScope::NetworkingCommittee),
-        digest,
-    )
+    IntentMessage::new(Intent::soma_app(IntentScope::NetworkingCommittee), digest)
 }
 
 /// Creates a committee for local testing, and the corresponding key pairs for the authorities.

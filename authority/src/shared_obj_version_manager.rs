@@ -289,7 +289,7 @@ impl SharedObjVerManager {
                 "Assigned version must be a valid version."
             );
             shared_input_next_versions
-                .insert(*id, *version)
+                .insert(*id, next_version)
                 .expect("Object must exist in shared_input_next_versions.");
         });
 

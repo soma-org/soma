@@ -10,7 +10,7 @@ use tokio::{
     sync::oneshot,
     time::{timeout, Duration},
 };
-use tracing::debug;
+use tracing::{debug, info};
 use types::checkpoints::SignedCheckpointSummary;
 use types::committee::Committee;
 use types::crypto::{AuthoritySignInfoTrait as _, VerificationObligation};
@@ -302,21 +302,13 @@ fn batch_verify(
     let mut obligation = VerificationObligation::default();
 
     for cert in certs {
-        let idx = obligation.add_message(
-            cert.data(),
-            cert.epoch(),
-            Intent::consensus_app(cert.scope()),
-        );
+        let idx = obligation.add_message(cert.data(), cert.epoch(), Intent::soma_app(cert.scope()));
         cert.auth_sig()
             .add_to_verification_obligation(committee, &mut obligation, idx)?;
     }
 
     for ckpt in checkpoints {
-        let idx = obligation.add_message(
-            ckpt.data(),
-            ckpt.epoch(),
-            Intent::consensus_app(ckpt.scope()),
-        );
+        let idx = obligation.add_message(ckpt.data(), ckpt.epoch(), Intent::soma_app(ckpt.scope()));
         ckpt.auth_sig()
             .add_to_verification_obligation(committee, &mut obligation, idx)?;
     }

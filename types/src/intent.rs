@@ -124,6 +124,14 @@ impl FromStr for Intent {
 }
 
 impl Intent {
+    pub fn soma_app(scope: IntentScope) -> Self {
+        Self {
+            version: IntentVersion::V0,
+            scope,
+            app_id: AppId::Soma,
+        }
+    }
+
     pub fn consensus_app(scope: IntentScope) -> Self {
         Self {
             scope,

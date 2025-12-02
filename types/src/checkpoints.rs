@@ -430,7 +430,7 @@ impl CertifiedCheckpointSummary {
         self.data().verify_epoch(self.auth_sig().epoch)?;
         self.auth_sig().verify_secure(
             self.data(),
-            Intent::consensus_app(IntentScope::CheckpointSummary),
+            Intent::soma_app(IntentScope::CheckpointSummary),
             committee,
         )
     }
@@ -472,7 +472,7 @@ impl SignedCheckpointSummary {
         self.data().verify_epoch(self.auth_sig().epoch)?;
         self.auth_sig().verify_secure(
             self.data(),
-            Intent::consensus_app(IntentScope::CheckpointSummary),
+            Intent::soma_app(IntentScope::CheckpointSummary),
             committee,
         )
     }

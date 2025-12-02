@@ -1,8 +1,8 @@
 use protocol_config::ProtocolConfig;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
-use tracing::error;
 use tracing::instrument;
+use tracing::{error, info};
 use types::config::transaction_deny_config::TransactionDenyConfig;
 use types::crypto::GenericSignature;
 use types::error::{SomaError, SomaResult};
@@ -258,7 +258,7 @@ fn check_objects(transaction: &TransactionData, objects: &InputObjects) -> SomaR
         }
     }
 
-    if !transaction.is_genesis_tx() && objects.is_empty() {
+    if !(transaction.is_genesis_tx() || transaction.is_system_tx()) && objects.is_empty() {
         return Err(SomaError::ObjectInputArityViolation);
     }
 

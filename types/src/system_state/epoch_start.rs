@@ -131,7 +131,7 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
                     v.authority_name(),
                     Authority {
                         stake: v.voting_power,
-                        address: v.primary_address.clone(),
+                        address: v.p2p_address.clone(), // TODO: review the naming to clear up these address names
                         hostname: v.hostname.clone(),
                         protocol_key: ProtocolPublicKey::new(v.worker_pubkey.clone().into_inner()),
                         network_key: v.network_pubkey.clone(),

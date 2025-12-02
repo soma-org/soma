@@ -414,6 +414,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             .collect();
 
         let all_validators: Vec<ValidatorGenesisConfig> = networking_configs
+            .clone()
             .into_iter()
             .chain(consensus_configs.clone().into_iter())
             .collect();
@@ -422,6 +423,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         let mut genesis_builder = GenesisBuilder::new()
             .with_parameters(genesis_config.clone())
             .with_validators(consensus_configs.clone())
+            .with_networking_validators(networking_configs.clone())
             .with_encoders(encoders.clone())
             .with_token_distribution_schedule(token_distribution_schedule);
 

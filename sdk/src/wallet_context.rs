@@ -12,6 +12,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncSeek};
 use tokio::sync::RwLock;
@@ -185,6 +186,9 @@ impl WalletContext {
             "version",
             "digest",
             "object_type",
+            "owner",
+            "contents",
+            "previous_transaction",
         ]));
 
         // Call the live data service
@@ -381,6 +385,19 @@ impl WalletContext {
     ) -> anyhow::Result<TransactionExecutionResponse> {
         let client = self.get_client().await?;
         Ok(client.execute_transaction(&tx).await?)
+    }
+
+    /// Execute a transaction and wait for it to be indexed (checkpointed)
+    /// This ensures "read your writes" consistency for subsequent queries
+    pub async fn execute_transaction_and_wait_for_indexing(
+        &self,
+        tx: Transaction,
+    ) -> anyhow::Result<TransactionExecutionResponse> {
+        let mut client = self.get_client().await?;
+        client
+            .execute_transaction_and_wait_for_checkpoint(&tx, Duration::from_secs(30))
+            .await
+            .map_err(|e| anyhow::anyhow!("Transaction execution failed: {}", e))
     }
 
     pub async fn upload_data_and_submit_tx<R>(

@@ -679,11 +679,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let protocol_config = self.epoch_store.protocol_config();
         let epoch = self.epoch_store.epoch();
 
-        // Get the ordered set of all transactions to process, which includes newly arrived transactions.
-        // No gas price ordering.
-        let ordered_txns = user_transactions;
-
-        let mut transactions_to_schedule = Vec::with_capacity(ordered_txns.len());
+        let transactions_to_schedule = user_transactions;
 
         let consensus_commit_prologue = self.add_consensus_commit_prologue_transaction(
             state,

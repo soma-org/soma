@@ -862,13 +862,16 @@ fn to_host_port_str(addr: &Multiaddr) -> Result<String, String> {
     let mut iter = addr.iter();
 
     match (iter.next(), iter.next()) {
-        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port))) => {
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
             Ok(format!("{}:{}", ipaddr, port))
         }
-        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port))) => {
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
             Ok(format!("{}:{}", ipaddr, port))
         }
-        (Some(Protocol::Dns(hostname)), Some(Protocol::Udp(port))) => {
+        (Some(Protocol::Dns(hostname)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Dns(hostname)), Some(Protocol::Tcp(port))) => {
             Ok(format!("{}:{}", hostname, port))
         }
 

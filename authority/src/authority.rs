@@ -12,6 +12,7 @@ use fastcrypto::encoding::{Base58, Encoding as _};
 use fastcrypto::hash::MultisetHash;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use tap::TapFallible as _;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio::time::timeout;
@@ -1086,6 +1087,13 @@ impl AuthorityState {
             }
         }
 
+        // index certificate
+        let _ = self
+            .post_process_one_tx(certificate, &effects, &inner, epoch_store)
+            .tap_err(|e| {
+                error!(?tx_digest, "tx post processing failed: {e}");
+            });
+
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
             effects,
@@ -1222,6 +1230,32 @@ impl AuthorityState {
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> bool {
         self.get_transaction_cache_reader()
             .is_tx_already_executed(digest)
+    }
+
+    #[instrument(level = "trace", skip_all, err(level = "debug"))]
+    fn post_process_one_tx(
+        &self,
+        certificate: &VerifiedExecutableTransaction,
+        effects: &TransactionEffects,
+        inner_temporary_store: &InnerTemporaryStore,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+    ) -> SomaResult {
+        let Some(rpc_index) = &self.rpc_index else {
+            return Ok(());
+        };
+
+        let tx_digest = certificate.digest();
+
+        // Index the transaction's object changes immediately
+        rpc_index
+            .index_executed_tx(
+                effects,
+                &inner_temporary_store.written,
+                &inner_temporary_store.input_objects,
+            )
+            .tap_err(|e| error!(?tx_digest, "Post processing - Couldn't index tx: {e}"))?;
+
+        Ok(())
     }
 
     pub fn unixtime_now_ms() -> u64 {
@@ -2021,7 +2055,7 @@ impl AuthorityState {
                 let sig = AuthoritySignInfo::new(
                     epoch_store.epoch(),
                     &effects,
-                    Intent::consensus_app(IntentScope::TransactionEffects),
+                    Intent::soma_app(IntentScope::TransactionEffects),
                     self.name,
                     &*self.secret,
                 );
@@ -2166,12 +2200,19 @@ impl AuthorityState {
         assert_eq!(assigned_versions.0.len(), 1);
         let assigned_versions = assigned_versions.0.into_iter().next().unwrap().1;
 
+        info!(
+            "Assigned versions for advance epoch: {:?}",
+            assigned_versions
+        );
+
         let input_objects = self.read_objects_for_execution(
             &tx_lock,
             &executable_tx,
             assigned_versions,
             epoch_store,
         )?;
+
+        info!("Input objects for advance epoch: {:?}", input_objects);
 
         let (transaction_outputs, _execution_error_opt) = self
             .execute_certificate(

@@ -97,7 +97,7 @@ impl GenesisBuilder {
         let checkpoint_signature = AuthoritySignInfo::new(
             unsigned_genesis.checkpoint.epoch,
             &unsigned_genesis.checkpoint,
-            Intent::consensus_app(IntentScope::CheckpointSummary),
+            Intent::soma_app(IntentScope::CheckpointSummary),
             name,
             keypair,
         );

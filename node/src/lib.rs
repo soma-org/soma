@@ -1014,7 +1014,6 @@ impl SomaNode {
         server_builder =
             server_builder.add_service(EncoderValidatorApiServer::new(encoder_validator_service));
 
-        // TODO: use different server name
         let tls_config = soma_tls::create_rustls_server_config(
             config.network_key_pair().clone().private_key().into_inner(),
             TLS_SERVER_NAME.to_string(),

@@ -13,7 +13,10 @@ use store::{DBMapUtils, Map as _, TypedStoreError};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
 use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
+use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
+use types::storage::WriteKind;
+use types::transaction_outputs::WrittenObjects;
 
 use types::committee::EpochId;
 use types::consensus::ConsensusTransactionKind;
@@ -693,6 +696,104 @@ impl IndexStoreTables {
                 }
             }))
     }
+
+    /// Index a single executed transaction's object changes immediately after execution.
+    /// This mirrors the checkpoint-based `index_objects` but for a single transaction.
+    fn index_executed_tx_objects(
+        &self,
+        effects: &TransactionEffects,
+        written: &WrittenObjects,
+        input_objects: &BTreeMap<ObjectID, Object>,
+    ) -> Result<(), StorageError> {
+        let mut batch = self.owner.batch();
+        let mut balance_changes: HashMap<BalanceKey, BalanceIndexInfo> = HashMap::new();
+
+        let modified_at_versions: HashMap<ObjectID, Version> =
+            effects.modified_at_versions().into_iter().collect();
+
+        // Process deleted (removals)
+        for (id, _, _) in effects.deleted().into_iter() {
+            if let Some(old_version) = modified_at_versions.get(&id) {
+                if let Some(old_object) = input_objects.get(&id) {
+                    // Verify version matches what we expect
+                    if old_object.version() == *old_version {
+                        match old_object.owner() {
+                            Owner::AddressOwner(owner) => {
+                                Self::track_coin_balance_change(
+                                    old_object,
+                                    owner,
+                                    true, // is_removal
+                                    &mut balance_changes,
+                                )?;
+                                let owner_key = OwnerIndexKey::from_object(old_object);
+                                batch.delete_batch(&self.owner, [owner_key])?;
+                            }
+                            Owner::Shared { .. } | Owner::Immutable => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process all changed objects
+        for (oref, owner, kind) in effects.all_changed_objects() {
+            let id = &oref.0;
+
+            // For mutated objects, handle old owner removal if owner changed
+            if matches!(kind, WriteKind::Mutate) {
+                if let Some(old_version) = modified_at_versions.get(id) {
+                    if let Some(old_object) = input_objects.get(id) {
+                        if old_object.version() == *old_version {
+                            // Check if owner changed
+                            let old_owner_changed = match old_object.owner() {
+                                Owner::AddressOwner(old_addr) => {
+                                    !matches!(owner, Owner::AddressOwner(new_addr) if *old_addr == new_addr)
+                                }
+                                _ => false,
+                            };
+
+                            if old_owner_changed {
+                                if let Owner::AddressOwner(old_owner) = old_object.owner() {
+                                    Self::track_coin_balance_change(
+                                        old_object,
+                                        old_owner,
+                                        true,
+                                        &mut balance_changes,
+                                    )?;
+                                    let owner_key = OwnerIndexKey::from_object(old_object);
+                                    batch.delete_batch(&self.owner, [owner_key])?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle new/updated owner entry
+            match owner {
+                Owner::AddressOwner(addr) => {
+                    if let Some(new_object) = written.get(id) {
+                        Self::track_coin_balance_change(
+                            new_object,
+                            &addr,
+                            false, // not a removal
+                            &mut balance_changes,
+                        )?;
+                        let owner_key = OwnerIndexKey::from_object(new_object);
+                        let owner_info = OwnerIndexInfo::new(new_object);
+                        batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
+                    }
+                }
+                Owner::Shared { .. } | Owner::Immutable => {}
+            }
+        }
+
+        // Apply balance changes via merge operator
+        batch.partial_merge_batch(&self.balance, balance_changes)?;
+        batch.write()?;
+
+        Ok(())
+    }
 }
 
 fn sparse_checkpoint_data_for_backfill(
@@ -1086,6 +1187,18 @@ impl RpcIndexStore {
         &self,
     ) -> Result<Option<CheckpointSequenceNumber>, TypedStoreError> {
         self.tables.watermark.get(&Watermark::Indexed)
+    }
+
+    /// Index a transaction immediately after execution (before checkpoint finalization).
+    /// This updates the owner and balance indexes in real-time.
+    pub fn index_executed_tx(
+        &self,
+        effects: &TransactionEffects,
+        written: &WrittenObjects,
+        input_objects: &BTreeMap<ObjectID, Object>,
+    ) -> Result<(), StorageError> {
+        self.tables
+            .index_executed_tx_objects(effects, written, input_objects)
     }
 }
 

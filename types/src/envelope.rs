@@ -126,7 +126,7 @@ where
         secret: &dyn Signer<AuthoritySignature>,
         authority: AuthorityName,
     ) -> AuthoritySignInfo {
-        AuthoritySignInfo::new(epoch, &data, Intent::soma_transaction(), authority, secret)
+        AuthoritySignInfo::new(epoch, &data, Intent::soma_app(T::SCOPE), authority, secret)
     }
 
     pub fn epoch(&self) -> EpochId {
@@ -142,8 +142,11 @@ impl<T: Message + PartialEq, S: PartialEq> PartialEq for Envelope<T, S> {
 
 impl Envelope<SenderSignedData, AuthoritySignInfo> {
     pub fn verify_committee_sigs_only(&self, committee: &Committee) -> SomaResult {
-        self.auth_signature
-            .verify_secure(self.data(), Intent::soma_transaction(), committee)
+        self.auth_signature.verify_secure(
+            self.data(),
+            Intent::soma_app(IntentScope::SenderSignedTransaction),
+            committee,
+        )
     }
 }
 
@@ -178,7 +181,7 @@ where
                 AuthoritySignInfo::new(
                     committee.epoch(),
                     &data,
-                    Intent::soma_transaction(),
+                    Intent::soma_app(T::SCOPE),
                     keypair.public().into(),
                     keypair,
                 )

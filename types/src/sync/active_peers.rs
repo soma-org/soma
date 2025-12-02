@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
-use tonic::transport::Channel;
+use tonic_rustls::Channel;
 
 use crate::{crypto::NetworkPublicKey, multiaddr::Multiaddr, peer_id::PeerId};
 
