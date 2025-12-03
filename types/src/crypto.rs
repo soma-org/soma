@@ -881,12 +881,10 @@ impl GenericSignature {
         &self,
         value: &IntentMessage<T>,
         author: SomaAddress,
-        epoch: EpochId,
     ) -> SomaResult
     where
         T: Serialize,
     {
-        self.verify_user_authenticator_epoch(epoch)?;
         self.verify_claims(value, author)
     }
 }
@@ -952,18 +950,12 @@ impl<'de> ::serde::Deserialize<'de> for GenericSignature {
 
 #[enum_dispatch]
 pub trait AuthenticatorTrait {
-    fn verify_user_authenticator_epoch(&self, epoch: EpochId) -> SomaResult;
-
     fn verify_claims<T>(&self, value: &IntentMessage<T>, author: SomaAddress) -> SomaResult
     where
         T: Serialize;
 }
 
 impl AuthenticatorTrait for Signature {
-    fn verify_user_authenticator_epoch(&self, _: EpochId) -> SomaResult {
-        Ok(())
-    }
-
     fn verify_claims<T>(&self, value: &IntentMessage<T>, author: SomaAddress) -> SomaResult
     where
         T: Serialize,
@@ -1008,6 +1000,8 @@ mod bcs_signable {
     impl BcsSignable for crate::committee::Committee {}
     impl BcsSignable for crate::effects::TransactionEffects {}
     impl BcsSignable for crate::object::ObjectInner {}
+    impl BcsSignable for crate::checkpoints::CheckpointSummary {}
+    impl BcsSignable for crate::checkpoints::CheckpointContents {}
 }
 
 impl<T, W> Signable<W> for T

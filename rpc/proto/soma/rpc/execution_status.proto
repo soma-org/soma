@@ -99,8 +99,19 @@ message ExecutionError {
     // Unreported record cannot be undone
     REPORT_RECORD_NOT_FOUND = 20;
 
+
+    //
+    // Other errors.
+    //
+
+    INPUT_OBJECT_DELETED = 21;
+
+    CERTIFICATE_DENIED = 22;
+
+    SHARED_OBJECT_CONGESTION = 23;
+
     // Other error.
-    OTHER_ERROR = 21;
+    OTHER_ERROR = 24;
   }
 
   optional ExecutionErrorKind kind = 2;

@@ -1,34 +1,38 @@
 use serde::{Deserialize, Serialize};
 use types::{
-    state_sync::CommitTimestamp,
+    checkpoints::{CheckpointSummary, CheckpointTimestamp},
+    committee::EpochId,
+    digests::CheckpointDigest,
+    envelope::Message as _,
     system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
 };
 
 pub trait EpochStartConfigTrait {
     fn epoch_start_state(&self) -> &EpochStartSystemState;
+    fn epoch_digest(&self) -> CheckpointDigest;
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct EpochStartConfiguration {
     system_state: EpochStartSystemState,
-    // epoch_digest is defined as following
-    // (1) For the genesis epoch it is set to 0
-    // (2) For all other epochs it is a digest of the last commit of a previous epoch
-    // Note that this is in line with how epoch start timestamp is defined
-    // epoch_digest: CheckpointDigest,
+    epoch_digest: CheckpointDigest,
 }
 
 impl EpochStartConfiguration {
-    pub fn new(system_state: EpochStartSystemState) -> Self {
-        EpochStartConfiguration { system_state }
+    pub fn new(system_state: EpochStartSystemState, epoch_digest: CheckpointDigest) -> Self {
+        EpochStartConfiguration {
+            system_state,
+            epoch_digest,
+        }
     }
 
-    // pub fn epoch_data(&self) -> EpochData {
-    //     EpochData::new(
-    //         self.epoch_start_state().epoch(),
-    //         self.epoch_start_state().epoch_start_timestamp_ms(),
-    //     )
-    // }
+    pub fn epoch_data(&self) -> EpochData {
+        EpochData::new(
+            self.epoch_start_state().epoch(),
+            self.epoch_start_state().epoch_start_timestamp_ms(),
+            self.epoch_digest(),
+        )
+    }
 
     pub fn new_at_next_epoch_for_testing(&self) -> Self {
         // We only need to implement this function for the latest version.
@@ -37,6 +41,7 @@ impl EpochStartConfiguration {
         match self {
             config => EpochStartConfiguration {
                 system_state: config.system_state.clone(),
+                epoch_digest: config.epoch_digest,
             },
             _ => panic!(
                 "This function is only implemented for the latest version of \
@@ -45,7 +50,7 @@ impl EpochStartConfiguration {
         }
     }
 
-    pub fn epoch_start_timestamp_ms(&self) -> CommitTimestamp {
+    pub fn epoch_start_timestamp_ms(&self) -> CheckpointTimestamp {
         self.epoch_start_state().epoch_start_timestamp_ms()
     }
 }
@@ -53,5 +58,66 @@ impl EpochStartConfiguration {
 impl EpochStartConfigTrait for EpochStartConfiguration {
     fn epoch_start_state(&self) -> &EpochStartSystemState {
         &self.system_state
+    }
+
+    fn epoch_digest(&self) -> CheckpointDigest {
+        self.epoch_digest
+    }
+}
+
+/// The static epoch information that is accessible to move smart contracts
+#[derive(Default)]
+pub struct EpochData {
+    epoch_id: EpochId,
+    epoch_start_timestamp: CheckpointTimestamp,
+    epoch_digest: CheckpointDigest,
+}
+
+impl EpochData {
+    pub fn new(
+        epoch_id: EpochId,
+        epoch_start_timestamp: CheckpointTimestamp,
+        epoch_digest: CheckpointDigest,
+    ) -> Self {
+        Self {
+            epoch_id,
+            epoch_start_timestamp,
+            epoch_digest,
+        }
+    }
+
+    pub fn new_genesis(epoch_start_timestamp: CheckpointTimestamp) -> Self {
+        Self {
+            epoch_id: 0,
+            epoch_start_timestamp,
+            epoch_digest: Default::default(),
+        }
+    }
+
+    pub fn new_from_epoch_checkpoint(
+        epoch_id: EpochId,
+        epoch_checkpoint: &CheckpointSummary,
+    ) -> Self {
+        Self {
+            epoch_id,
+            epoch_start_timestamp: epoch_checkpoint.timestamp_ms,
+            epoch_digest: epoch_checkpoint.digest(),
+        }
+    }
+
+    pub fn new_test() -> Self {
+        Default::default()
+    }
+
+    pub fn epoch_id(&self) -> EpochId {
+        self.epoch_id
+    }
+
+    pub fn epoch_start_timestamp(&self) -> CheckpointTimestamp {
+        self.epoch_start_timestamp
+    }
+
+    pub fn epoch_digest(&self) -> CheckpointDigest {
+        self.epoch_digest
     }
 }

@@ -164,8 +164,8 @@ fn transaction_to_response(
         message.effects = Some(effects);
     }
 
-    if mask.contains(ExecutedTransaction::COMMIT_FIELD.name) {
-        message.commit = source.commit;
+    if mask.contains(ExecutedTransaction::CHECKPOINT_FIELD.name) {
+        message.checkpoint = source.checkpoint;
     }
 
     if mask.contains(ExecutedTransaction::TIMESTAMP_FIELD.name) {

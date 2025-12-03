@@ -14,9 +14,9 @@ rpc.workspace = true
 bcs.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-objects.workspace = true
 url.workspace = true
 uuid.workspace = true
+futures.workspace = true
 tonic = { version = "0.13", default-features = false, features = [
     "channel",
     "codegen",

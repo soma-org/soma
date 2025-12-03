@@ -27,7 +27,7 @@ pub mod consensus_service_client {
     }
     impl<T> ConsensusServiceClient<T>
     where
-        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T: tonic::client::GrpcService<tonic::body::Body>,
         T::Error: Into<StdError>,
         T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
         <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
@@ -48,13 +48,13 @@ pub mod consensus_service_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
+                http::Request<tonic::body::Body>,
                 Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
                 >,
             >,
             <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
+                http::Request<tonic::body::Body>,
             >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             ConsensusServiceClient::new(InterceptedService::new(inner, interceptor))
@@ -107,7 +107,7 @@ pub mod consensus_service_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/consensus.ConsensusService/SendBlock",
             );
@@ -116,12 +116,16 @@ pub mod consensus_service_client {
                 .insert(GrpcMethod::new("consensus.ConsensusService", "SendBlock"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn fetch_blocks(
+        pub async fn subscribe_blocks(
             &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::FetchBlocksRequest>,
+            request: impl tonic::IntoStreamingRequest<
+                Message = crate::network::tonic_network::SubscribeBlocksRequest,
+            >,
         ) -> std::result::Result<
             tonic::Response<
-                tonic::codec::Streaming<types::state_sync::FetchBlocksResponse>,
+                tonic::codec::Streaming<
+                    crate::network::tonic_network::SubscribeBlocksResponse,
+                >,
             >,
             tonic::Status,
         > {
@@ -133,20 +137,28 @@ pub mod consensus_service_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/consensus.ConsensusService/FetchBlocks",
+                "/consensus.ConsensusService/SubscribeBlocks",
             );
-            let mut req = request.into_request();
+            let mut req = request.into_streaming_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("consensus.ConsensusService", "FetchBlocks"));
-            self.inner.server_streaming(req, path, codec).await
+                .insert(
+                    GrpcMethod::new("consensus.ConsensusService", "SubscribeBlocks"),
+                );
+            self.inner.streaming(req, path, codec).await
         }
-        pub async fn fetch_commits(
+        pub async fn fetch_blocks(
             &mut self,
-            request: impl tonic::IntoRequest<types::state_sync::FetchCommitsRequest>,
+            request: impl tonic::IntoRequest<
+                crate::network::tonic_network::FetchBlocksRequest,
+            >,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::FetchCommitsResponse>,
+            tonic::Response<
+                tonic::codec::Streaming<
+                    crate::network::tonic_network::FetchBlocksResponse,
+                >,
+            >,
             tonic::Status,
         > {
             self.inner
@@ -157,7 +169,33 @@ pub mod consensus_service_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/consensus.ConsensusService/FetchBlocks",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("consensus.ConsensusService", "FetchBlocks"));
+            self.inner.server_streaming(req, path, codec).await
+        }
+        pub async fn fetch_commits(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                crate::network::tonic_network::FetchCommitsRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<crate::network::tonic_network::FetchCommitsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/consensus.ConsensusService/FetchCommits",
             );
@@ -187,7 +225,7 @@ pub mod consensus_service_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/consensus.ConsensusService/FetchLatestBlocks",
             );
@@ -197,6 +235,34 @@ pub mod consensus_service_client {
                     GrpcMethod::new("consensus.ConsensusService", "FetchLatestBlocks"),
                 );
             self.inner.server_streaming(req, path, codec).await
+        }
+        pub async fn get_latest_rounds(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                crate::network::tonic_network::GetLatestRoundsRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<crate::network::tonic_network::GetLatestRoundsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/consensus.ConsensusService/GetLatestRounds",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("consensus.ConsensusService", "GetLatestRounds"),
+                );
+            self.inner.unary(req, path, codec).await
         }
     }
 }
@@ -220,10 +286,28 @@ pub mod consensus_service_server {
             tonic::Response<crate::network::tonic_network::SendBlockResponse>,
             tonic::Status,
         >;
+        /// Server streaming response type for the SubscribeBlocks method.
+        type SubscribeBlocksStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<
+                    crate::network::tonic_network::SubscribeBlocksResponse,
+                    tonic::Status,
+                >,
+            >
+            + std::marker::Send
+            + 'static;
+        async fn subscribe_blocks(
+            &self,
+            request: tonic::Request<
+                tonic::Streaming<crate::network::tonic_network::SubscribeBlocksRequest>,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<Self::SubscribeBlocksStream>,
+            tonic::Status,
+        >;
         /// Server streaming response type for the FetchBlocks method.
         type FetchBlocksStream: tonic::codegen::tokio_stream::Stream<
                 Item = std::result::Result<
-                    types::state_sync::FetchBlocksResponse,
+                    crate::network::tonic_network::FetchBlocksResponse,
                     tonic::Status,
                 >,
             >
@@ -231,16 +315,16 @@ pub mod consensus_service_server {
             + 'static;
         async fn fetch_blocks(
             &self,
-            request: tonic::Request<types::state_sync::FetchBlocksRequest>,
+            request: tonic::Request<crate::network::tonic_network::FetchBlocksRequest>,
         ) -> std::result::Result<
             tonic::Response<Self::FetchBlocksStream>,
             tonic::Status,
         >;
         async fn fetch_commits(
             &self,
-            request: tonic::Request<types::state_sync::FetchCommitsRequest>,
+            request: tonic::Request<crate::network::tonic_network::FetchCommitsRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::state_sync::FetchCommitsResponse>,
+            tonic::Response<crate::network::tonic_network::FetchCommitsResponse>,
             tonic::Status,
         >;
         /// Server streaming response type for the FetchLatestBlocks method.
@@ -259,6 +343,15 @@ pub mod consensus_service_server {
             >,
         ) -> std::result::Result<
             tonic::Response<Self::FetchLatestBlocksStream>,
+            tonic::Status,
+        >;
+        async fn get_latest_rounds(
+            &self,
+            request: tonic::Request<
+                crate::network::tonic_network::GetLatestRoundsRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<crate::network::tonic_network::GetLatestRoundsResponse>,
             tonic::Status,
         >;
     }
@@ -328,7 +421,7 @@ pub mod consensus_service_server {
         B: Body + std::marker::Send + 'static,
         B::Error: Into<StdError> + std::marker::Send + 'static,
     {
-        type Response = http::Response<tonic::body::BoxBody>;
+        type Response = http::Response<tonic::body::Body>;
         type Error = std::convert::Infallible;
         type Future = BoxFuture<Self::Response, Self::Error>;
         fn poll_ready(
@@ -372,7 +465,7 @@ pub mod consensus_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = SendBlockSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
+                        let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
                                 accept_compression_encodings,
@@ -387,15 +480,67 @@ pub mod consensus_service_server {
                     };
                     Box::pin(fut)
                 }
+                "/consensus.ConsensusService/SubscribeBlocks" => {
+                    #[allow(non_camel_case_types)]
+                    struct SubscribeBlocksSvc<T: ConsensusService>(pub Arc<T>);
+                    impl<
+                        T: ConsensusService,
+                    > tonic::server::StreamingService<
+                        crate::network::tonic_network::SubscribeBlocksRequest,
+                    > for SubscribeBlocksSvc<T> {
+                        type Response = crate::network::tonic_network::SubscribeBlocksResponse;
+                        type ResponseStream = T::SubscribeBlocksStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                tonic::Streaming<
+                                    crate::network::tonic_network::SubscribeBlocksRequest,
+                                >,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ConsensusService>::subscribe_blocks(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SubscribeBlocksSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 "/consensus.ConsensusService/FetchBlocks" => {
                     #[allow(non_camel_case_types)]
                     struct FetchBlocksSvc<T: ConsensusService>(pub Arc<T>);
                     impl<
                         T: ConsensusService,
                     > tonic::server::ServerStreamingService<
-                        types::state_sync::FetchBlocksRequest,
+                        crate::network::tonic_network::FetchBlocksRequest,
                     > for FetchBlocksSvc<T> {
-                        type Response = types::state_sync::FetchBlocksResponse;
+                        type Response = crate::network::tonic_network::FetchBlocksResponse;
                         type ResponseStream = T::FetchBlocksStream;
                         type Future = BoxFuture<
                             tonic::Response<Self::ResponseStream>,
@@ -404,7 +549,7 @@ pub mod consensus_service_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::FetchBlocksRequest,
+                                crate::network::tonic_network::FetchBlocksRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
@@ -421,7 +566,7 @@ pub mod consensus_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = FetchBlocksSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
+                        let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
                                 accept_compression_encodings,
@@ -441,9 +586,10 @@ pub mod consensus_service_server {
                     struct FetchCommitsSvc<T: ConsensusService>(pub Arc<T>);
                     impl<
                         T: ConsensusService,
-                    > tonic::server::UnaryService<types::state_sync::FetchCommitsRequest>
-                    for FetchCommitsSvc<T> {
-                        type Response = types::state_sync::FetchCommitsResponse;
+                    > tonic::server::UnaryService<
+                        crate::network::tonic_network::FetchCommitsRequest,
+                    > for FetchCommitsSvc<T> {
+                        type Response = crate::network::tonic_network::FetchCommitsResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -451,7 +597,7 @@ pub mod consensus_service_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::state_sync::FetchCommitsRequest,
+                                crate::network::tonic_network::FetchCommitsRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
@@ -469,7 +615,7 @@ pub mod consensus_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = FetchCommitsSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
+                        let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
                                 accept_compression_encodings,
@@ -522,7 +668,7 @@ pub mod consensus_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = FetchLatestBlocksSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
+                        let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
                                 accept_compression_encodings,
@@ -537,9 +683,60 @@ pub mod consensus_service_server {
                     };
                     Box::pin(fut)
                 }
+                "/consensus.ConsensusService/GetLatestRounds" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetLatestRoundsSvc<T: ConsensusService>(pub Arc<T>);
+                    impl<
+                        T: ConsensusService,
+                    > tonic::server::UnaryService<
+                        crate::network::tonic_network::GetLatestRoundsRequest,
+                    > for GetLatestRoundsSvc<T> {
+                        type Response = crate::network::tonic_network::GetLatestRoundsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                crate::network::tonic_network::GetLatestRoundsRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ConsensusService>::get_latest_rounds(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetLatestRoundsSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 _ => {
                     Box::pin(async move {
-                        let mut response = http::Response::new(empty_body());
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
                         let headers = response.headers_mut();
                         headers
                             .insert(

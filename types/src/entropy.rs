@@ -1,5 +1,6 @@
 use crate::{
     consensus::block::BlockRef,
+    digests::CheckpointDigest,
     error::{SomaError, SomaResult},
 };
 use bytes::Bytes;
@@ -13,17 +14,17 @@ use vdf::{
 type Iterations = u64;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub struct BlockEntropy(pub Bytes);
+pub struct CheckpointEntropy(pub Bytes);
 
-impl BlockEntropy {
+impl CheckpointEntropy {
     pub fn new(bytes: Bytes) -> Self {
         Self(bytes)
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub struct BlockEntropyProof(pub Bytes);
-impl BlockEntropyProof {
+pub struct CheckpointEntropyProof(pub Bytes);
+impl CheckpointEntropyProof {
     pub fn new(bytes: Bytes) -> Self {
         Self(bytes)
     }
@@ -32,15 +33,15 @@ impl BlockEntropyProof {
 pub trait EntropyAPI: Send + Sync + Sized + 'static {
     fn get_entropy(
         &mut self,
-        block_ref: &BlockRef,
+        checkpoint_digest: &CheckpointDigest,
         iterations: Iterations,
-    ) -> SomaResult<(BlockEntropy, BlockEntropyProof)>;
+    ) -> SomaResult<(CheckpointEntropy, CheckpointEntropyProof)>;
 
     fn verify_entropy(
         &mut self,
-        block_ref: &BlockRef,
-        block_entropy: &BlockEntropy,
-        block_entropy_proof: &BlockEntropyProof,
+        checkpoint_digest: &CheckpointDigest,
+        entropy: &CheckpointEntropy,
+        proof: &CheckpointEntropyProof,
         iterations: Iterations,
     ) -> SomaResult<()>;
 }
@@ -58,11 +59,13 @@ impl SimpleVDF {
 
     pub fn get_entropy(
         &self,
-        block_ref: BlockRef,
-    ) -> SomaResult<(BlockEntropy, BlockEntropyProof)> {
-        let seed = bcs::to_bytes(&(block_ref)).expect("BCS serialization should not fail");
-        let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
-            .map_err(|e| SomaError::FailedVDF(e.to_string()))?;
+        checkpoint_digest: &CheckpointDigest,
+    ) -> SomaResult<(CheckpointEntropy, CheckpointEntropyProof)> {
+        let input = QuadraticForm::hash_to_group_with_default_parameters(
+            checkpoint_digest.inner(),
+            &DISCRIMINANT_3072,
+        )
+        .map_err(|e| SomaError::FailedVDF(e.to_string()))?;
 
         let (output, proof) = self
             .vdf
@@ -71,28 +74,30 @@ impl SimpleVDF {
 
         let entropy_bytes = bcs::to_bytes(&output).expect("BCS serialization should not fail");
 
-        let entropy = BlockEntropy::new(Bytes::copy_from_slice(&entropy_bytes));
+        let entropy = CheckpointEntropy::new(Bytes::copy_from_slice(&entropy_bytes));
         let proof_bytes = bcs::to_bytes(&proof).expect("BCS serialization should not fail");
 
-        let proof = BlockEntropyProof::new(Bytes::copy_from_slice(&proof_bytes));
+        let proof = CheckpointEntropyProof::new(Bytes::copy_from_slice(&proof_bytes));
         Ok((entropy, proof))
     }
 
     pub fn verify_entropy(
         &self,
-        block_ref: BlockRef,
-        tx_entropy: &BlockEntropy,
-        tx_entropy_proof: &BlockEntropyProof,
+        checkpoint_digest: &CheckpointDigest,
+        entropy: &CheckpointEntropy,
+        proof: &CheckpointEntropyProof,
     ) -> SomaResult<()> {
-        let seed = bcs::to_bytes(&(block_ref)).expect("BCS serialization should not fail");
-        let input = QuadraticForm::hash_to_group_with_default_parameters(&seed, &DISCRIMINANT_3072)
-            .map_err(|e| SomaError::FailedVDF(e.to_string()))?;
+        let input = QuadraticForm::hash_to_group_with_default_parameters(
+            checkpoint_digest.inner(),
+            &DISCRIMINANT_3072,
+        )
+        .map_err(|e| SomaError::FailedVDF(e.to_string()))?;
 
         let entropy: QuadraticForm =
-            bcs::from_bytes(&tx_entropy.0).expect("BCS serialization should not fail");
+            bcs::from_bytes(&entropy.0).expect("BCS serialization should not fail");
 
         let proof: QuadraticForm =
-            bcs::from_bytes(&tx_entropy_proof.0).expect("BCS serialization should not fail");
+            bcs::from_bytes(&proof.0).expect("BCS serialization should not fail");
 
         self.vdf
             .verify(&input, &entropy, &proof)

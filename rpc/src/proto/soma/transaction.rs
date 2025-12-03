@@ -54,6 +54,124 @@ impl TryFrom<&Metadata> for crate::types::Metadata {
     }
 }
 
+impl From<crate::types::DownloadMetadata> for DownloadMetadata {
+    fn from(value: crate::types::DownloadMetadata) -> Self {
+        use download_metadata::Kind;
+
+        let kind = match value {
+            crate::types::DownloadMetadata::Default(dm) => Kind::Default(dm.into()),
+            crate::types::DownloadMetadata::Mtls(dm) => Kind::Mtls(dm.into()),
+        };
+
+        DownloadMetadata { kind: Some(kind) }
+    }
+}
+
+impl From<crate::types::DefaultDownloadMetadata> for DefaultDownloadMetadata {
+    fn from(value: crate::types::DefaultDownloadMetadata) -> Self {
+        use default_download_metadata::Version;
+
+        match value {
+            crate::types::DefaultDownloadMetadata::V1(v1) => DefaultDownloadMetadata {
+                version: Some(Version::V1(DefaultDownloadMetadataV1 {
+                    url: Some(v1.url),
+                    metadata: Some(v1.metadata.into()),
+                })),
+            },
+        }
+    }
+}
+
+impl From<crate::types::MtlsDownloadMetadata> for MtlsDownloadMetadata {
+    fn from(value: crate::types::MtlsDownloadMetadata) -> Self {
+        use mtls_download_metadata::Version;
+
+        match value {
+            crate::types::MtlsDownloadMetadata::V1(v1) => MtlsDownloadMetadata {
+                version: Some(Version::V1(MtlsDownloadMetadataV1 {
+                    peer: Some(v1.peer.into()),
+                    url: Some(v1.url),
+                    metadata: Some(v1.metadata.into()),
+                })),
+            },
+        }
+    }
+}
+
+impl TryFrom<&DownloadMetadata> for crate::types::DownloadMetadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &DownloadMetadata) -> Result<Self, Self::Error> {
+        use download_metadata::Kind;
+
+        match value
+            .kind
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("kind"))?
+        {
+            Kind::Default(dm) => Ok(Self::Default(dm.try_into()?)),
+            Kind::Mtls(dm) => Ok(Self::Mtls(dm.try_into()?)),
+        }
+    }
+}
+
+impl TryFrom<&DefaultDownloadMetadata> for crate::types::DefaultDownloadMetadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &DefaultDownloadMetadata) -> Result<Self, Self::Error> {
+        use default_download_metadata::Version;
+
+        match value
+            .version
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("version"))?
+        {
+            Version::V1(v1) => Ok(Self::V1(crate::types::DefaultDownloadMetadataV1 {
+                url: v1
+                    .url
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?,
+                metadata: v1
+                    .metadata
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .try_into()?,
+            })),
+        }
+    }
+}
+
+impl TryFrom<&MtlsDownloadMetadata> for crate::types::MtlsDownloadMetadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &MtlsDownloadMetadata) -> Result<Self, Self::Error> {
+        use mtls_download_metadata::Version;
+
+        match value
+            .version
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("version"))?
+        {
+            Version::V1(v1) => Ok(Self::V1(crate::types::MtlsDownloadMetadataV1 {
+                peer: v1
+                    .peer
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("peer"))?
+                    .to_vec(),
+                url: v1
+                    .url
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?,
+                metadata: v1
+                    .metadata
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .try_into()?,
+            })),
+        }
+    }
+}
+
 //
 // Transaction
 //
@@ -238,9 +356,16 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
 
             // Shard operations
-            EmbedData { metadata, coin_ref } => {
-                Kind::EmbedData(EmbedDataArgs { metadata, coin_ref }.into())
-            }
+            EmbedData {
+                download_metadata,
+                coin_ref,
+            } => Kind::EmbedData(
+                EmbedDataArgs {
+                    download_metadata,
+                    coin_ref,
+                }
+                .into(),
+            ),
             ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(shard_input_ref.into()),
             ReportWinner {
                 shard_input_ref,
@@ -427,10 +552,10 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
 
             // Shard operations
             Kind::EmbedData(embed) => Self::EmbedData {
-                metadata: embed
-                    .metadata
+                download_metadata: embed
+                    .download_metadata
                     .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .ok_or_else(|| TryFromProtoError::missing("download_metadata"))?
                     .try_into()?,
                 coin_ref: embed
                     .coin_ref
@@ -715,8 +840,9 @@ impl From<crate::types::ConsensusCommitPrologue> for ConsensusCommitPrologue {
             commit_timestamp: Some(crate::proto::timestamp_ms_to_proto(
                 value.commit_timestamp_ms,
             )),
-            consensus_commit_digest: None,
-            sub_dag_index: None,
+            consensus_commit_digest: Some(value.consensus_commit_digest.to_string()),
+            additional_state_digest: Some(value.additional_state_digest.to_string()),
+            sub_dag_index: value.sub_dag_index,
         }
     }
 }
@@ -735,11 +861,26 @@ impl TryFrom<&ConsensusCommitPrologue> for crate::types::ConsensusCommitPrologue
             .commit_timestamp
             .ok_or_else(|| TryFromProtoError::missing("commit_timestamp"))?
             .pipe(crate::proto::proto_to_timestamp_ms)?;
+        let consensus_commit_digest = value
+            .consensus_commit_digest
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("consensus_commit_digest"))?
+            .parse()
+            .map_err(|e| TryFromProtoError::invalid("consensus_commit_digest", e))?;
+        let additional_state_digest = value
+            .additional_state_digest
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("additional_state_digest"))?
+            .parse()
+            .map_err(|e| TryFromProtoError::invalid("additional_state_digest", e))?;
 
         Ok(Self {
             epoch,
             round,
             commit_timestamp_ms,
+            sub_dag_index: value.sub_dag_index,
+            consensus_commit_digest,
+            additional_state_digest,
         })
     }
 }
@@ -967,14 +1108,14 @@ impl From<crate::types::ObjectReference> for WithdrawStake {
 
 // EmbedData conversions
 pub struct EmbedDataArgs {
-    pub metadata: crate::types::Metadata,
+    pub download_metadata: crate::types::DownloadMetadata,
     pub coin_ref: crate::types::ObjectReference,
 }
 
 impl From<EmbedDataArgs> for EmbedData {
     fn from(args: EmbedDataArgs) -> Self {
         Self {
-            metadata: Some(args.metadata.into()),
+            download_metadata: Some(args.download_metadata.into()),
             coin_ref: Some(args.coin_ref.into()),
         }
     }

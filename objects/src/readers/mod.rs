@@ -8,5 +8,5 @@ pub mod url;
 #[async_trait]
 pub trait ObjectReader: Send + Sync {
     async fn get_full(&self, timeout: Duration) -> ObjectResult<Bytes>;
-    async fn get_range(&self, range: Range<u64>, timeout: Duration) -> ObjectResult<Bytes>;
+    async fn get_range(&self, range: Range<usize>, timeout: Duration) -> ObjectResult<Bytes>;
 }

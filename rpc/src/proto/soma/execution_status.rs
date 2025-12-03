@@ -70,6 +70,10 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::CannotReportOneself => (ExecutionErrorKind::CannotReportOneself, None),
             E::ReportRecordNotFound => (ExecutionErrorKind::ReportRecordNotFound, None),
 
+            E::InputObjectDeleted => (ExecutionErrorKind::InputObjectDeleted, None),
+            E::CertificateDenied => (ExecutionErrorKind::CertificateDenied, None),
+            E::SharedObjectCongestion => (ExecutionErrorKind::SharedObjectCongestion, None),
+
             E::OtherError(msg) => (
                 ExecutionErrorKind::OtherError,
                 Some(ErrorDetails::OtherError(msg)),
@@ -199,6 +203,10 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::StakingPoolNotFound => Ok(Self::StakingPoolNotFound),
             K::CannotReportOneself => Ok(Self::CannotReportOneself),
             K::ReportRecordNotFound => Ok(Self::ReportRecordNotFound),
+
+            K::InputObjectDeleted => Ok(Self::InputObjectDeleted),
+            K::CertificateDenied => Ok(Self::CertificateDenied),
+            K::SharedObjectCongestion => Ok(Self::SharedObjectCongestion),
 
             K::OtherError => {
                 let msg = if let Some(ErrorDetails::OtherError(msg)) = &value.error_details {

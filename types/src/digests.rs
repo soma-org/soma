@@ -1,13 +1,21 @@
-use crate::{accumulator::Accumulator, crypto::DIGEST_LENGTH, error::SomaError, serde::Readable};
-use fastcrypto::{
-    encoding::{Base58, Encoding},
-    hash::MultisetHash,
+use crate::{
+    crypto::DIGEST_LENGTH,
+    error::{SomaError, SomaResult},
+    serde::Readable,
 };
+use fastcrypto::{
+    encoding::{Base58, Encoding, Hex},
+    hash::{Blake2b256, HashFunction as _, MultisetHash},
+};
+use once_cell::sync::{Lazy, OnceCell};
+use protocol_config::Chain;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
+use std::env;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use tracing::info;
 /// A representation of a 32 byte digest
 #[serde_as]
 #[derive(
@@ -91,6 +99,34 @@ impl fmt::Display for Digest {
 impl fmt::Debug for Digest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
+    }
+}
+
+impl fmt::LowerHex for Digest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            write!(f, "0x")?;
+        }
+
+        for byte in self.0 {
+            write!(f, "{:02x}", byte)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::UpperHex for Digest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            write!(f, "0x")?;
+        }
+
+        for byte in self.0 {
+            write!(f, "{:02X}", byte)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -194,6 +230,20 @@ impl TryFrom<Vec<u8>> for Digest {
     }
 }
 
+impl std::str::FromStr for TransactionDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(TransactionDigest::new(result))
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct TransactionEffectsDigest(Digest);
 
@@ -272,6 +322,32 @@ impl fmt::Debug for TransactionEffectsDigest {
         f.debug_tuple("TransactionEffectsDigest")
             .field(&self.0)
             .finish()
+    }
+}
+
+impl fmt::LowerHex for TransactionEffectsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerHex::fmt(&self.0, f)
+    }
+}
+
+impl fmt::UpperHex for TransactionEffectsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
+    }
+}
+
+impl std::str::FromStr for TransactionEffectsDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(TransactionEffectsDigest::new(result))
     }
 }
 
@@ -470,23 +546,437 @@ impl std::str::FromStr for ObjectDigest {
     }
 }
 
-/// The Sha256 digest of an EllipticCurveMultisetHash committing to the live object set.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
-pub struct ECMHLiveObjectSetDigest {
-    #[schemars(with = "[u8; 32]")]
-    pub digest: Digest,
-}
+/// Representation of a network's identifier by the genesis checkpoint's digest
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+)]
+pub struct ChainIdentifier(CheckpointDigest);
 
-impl From<fastcrypto::hash::Digest<32>> for ECMHLiveObjectSetDigest {
-    fn from(digest: fastcrypto::hash::Digest<32>) -> Self {
-        Self {
-            digest: Digest::new(digest.digest),
+pub const MAINNET_CHAIN_IDENTIFIER_BASE58: &str = "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S";
+pub const TESTNET_CHAIN_IDENTIFIER_BASE58: &str = "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD";
+
+pub static MAINNET_CHAIN_IDENTIFIER: OnceCell<ChainIdentifier> = OnceCell::new();
+pub static TESTNET_CHAIN_IDENTIFIER: OnceCell<ChainIdentifier> = OnceCell::new();
+
+/// For testing purposes or bootstrapping regenesis chain configuration, you can set
+/// this environment variable to force protocol config to use a specific Chain.
+pub const SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE_ENV_VAR_NAME: &str =
+    "SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE";
+
+static SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE: Lazy<Option<Chain>> = Lazy::new(|| {
+    if let Ok(s) = env::var(SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE_ENV_VAR_NAME) {
+        info!("SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE: {:?}", s);
+        match s.as_str() {
+            "mainnet" => Some(Chain::Mainnet),
+            "testnet" => Some(Chain::Testnet),
+            "" => None,
+            _ => panic!("unrecognized SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE: {s:?}"),
         }
+    } else {
+        None
+    }
+});
+
+impl ChainIdentifier {
+    /// take a short 4 byte identifier and convert it into a ChainIdentifier
+    /// short ids come from the JSON RPC getChainIdentifier and are encoded in hex
+    pub fn from_chain_short_id(short_id: &String) -> Option<Self> {
+        if Hex::from_bytes(&Base58::decode(MAINNET_CHAIN_IDENTIFIER_BASE58).ok()?)
+            .encoded_with_format()
+            .starts_with(&format!("0x{}", short_id))
+        {
+            Some(get_mainnet_chain_identifier())
+        } else if Hex::from_bytes(&Base58::decode(TESTNET_CHAIN_IDENTIFIER_BASE58).ok()?)
+            .encoded_with_format()
+            .starts_with(&format!("0x{}", short_id))
+        {
+            Some(get_testnet_chain_identifier())
+        } else {
+            None
+        }
+    }
+
+    pub fn chain(&self) -> Chain {
+        let mainnet_id = get_mainnet_chain_identifier();
+        let testnet_id = get_testnet_chain_identifier();
+
+        let chain = match self {
+            id if *id == mainnet_id => Chain::Mainnet,
+            id if *id == testnet_id => Chain::Testnet,
+            _ => Chain::Unknown,
+        };
+        if let Some(override_chain) = *SOMA_PROTOCOL_CONFIG_CHAIN_OVERRIDE {
+            if chain != Chain::Unknown {
+                panic!("not allowed to override real chain {chain:?}");
+            }
+            return override_chain;
+        }
+
+        chain
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        self.0.inner()
     }
 }
 
-impl Default for ECMHLiveObjectSetDigest {
-    fn default() -> Self {
-        Accumulator::default().digest().into()
+pub fn get_mainnet_chain_identifier() -> ChainIdentifier {
+    let digest = MAINNET_CHAIN_IDENTIFIER.get_or_init(|| {
+        let digest = CheckpointDigest::new(
+            Base58::decode(MAINNET_CHAIN_IDENTIFIER_BASE58)
+                .expect("mainnet genesis checkpoint digest literal is invalid")
+                .try_into()
+                .expect("Mainnet genesis checkpoint digest literal has incorrect length"),
+        );
+        ChainIdentifier::from(digest)
+    });
+    *digest
+}
+
+pub fn get_testnet_chain_identifier() -> ChainIdentifier {
+    let digest = TESTNET_CHAIN_IDENTIFIER.get_or_init(|| {
+        let digest = CheckpointDigest::new(
+            Base58::decode(TESTNET_CHAIN_IDENTIFIER_BASE58)
+                .expect("testnet genesis checkpoint digest literal is invalid")
+                .try_into()
+                .expect("Testnet genesis checkpoint digest literal has incorrect length"),
+        );
+        ChainIdentifier::from(digest)
+    });
+    *digest
+}
+
+impl fmt::Display for ChainIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in self.0 .0 .0[0..4].iter() {
+            write!(f, "{:02x}", byte)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl From<CheckpointDigest> for ChainIdentifier {
+    fn from(digest: CheckpointDigest) -> Self {
+        Self(digest)
+    }
+}
+
+/// Representation of a Checkpoint's digest
+#[derive(
+    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub struct CheckpointDigest(Digest);
+
+impl CheckpointDigest {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn generate<R: rand::RngCore + rand::CryptoRng>(rng: R) -> Self {
+        Self(Digest::generate(rng))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+
+    pub fn next_lexicographical(&self) -> Option<Self> {
+        self.0.next_lexicographical().map(Self)
+    }
+}
+
+impl AsRef<[u8]> for CheckpointDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for CheckpointDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<CheckpointDigest> for [u8; 32] {
+    fn from(digest: CheckpointDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for CheckpointDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl TryFrom<Vec<u8>> for CheckpointDigest {
+    type Error = SomaError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+        Digest::try_from(bytes).map(CheckpointDigest)
+    }
+}
+
+impl fmt::Display for CheckpointDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for CheckpointDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CheckpointDigest").field(&self.0).finish()
+    }
+}
+
+impl fmt::LowerHex for CheckpointDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerHex::fmt(&self.0, f)
+    }
+}
+
+impl fmt::UpperHex for CheckpointDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
+    }
+}
+
+impl std::str::FromStr for CheckpointDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(CheckpointDigest::new(result))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct CheckpointContentsDigest(Digest);
+
+impl CheckpointContentsDigest {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn generate<R: rand::RngCore + rand::CryptoRng>(rng: R) -> Self {
+        Self(Digest::generate(rng))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+
+    pub fn next_lexicographical(&self) -> Option<Self> {
+        self.0.next_lexicographical().map(Self)
+    }
+}
+
+impl AsRef<[u8]> for CheckpointContentsDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for CheckpointContentsDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<Vec<u8>> for CheckpointContentsDigest {
+    type Error = SomaError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
+        Digest::try_from(bytes).map(CheckpointContentsDigest)
+    }
+}
+
+impl From<CheckpointContentsDigest> for [u8; 32] {
+    fn from(digest: CheckpointContentsDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for CheckpointContentsDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for CheckpointContentsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for CheckpointContentsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CheckpointContentsDigest")
+            .field(&self.0)
+            .finish()
+    }
+}
+
+impl std::str::FromStr for CheckpointContentsDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(CheckpointContentsDigest::new(result))
+    }
+}
+
+impl fmt::LowerHex for CheckpointContentsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::LowerHex::fmt(&self.0, f)
+    }
+}
+
+impl fmt::UpperHex for CheckpointContentsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
+    }
+}
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub struct CheckpointArtifactsDigest(Digest);
+
+impl CheckpointArtifactsDigest {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+
+    pub fn from_artifact_digests(digests: Vec<Digest>) -> SomaResult<Self> {
+        let bytes =
+            bcs::to_bytes(&digests).map_err(|e| SomaError::from(format!("BCS error: {}", e)))?;
+        Ok(Self(Digest::new(Blake2b256::digest(&bytes).into())))
+    }
+}
+
+impl From<[u8; 32]> for CheckpointArtifactsDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+}
+
+impl fmt::Display for CheckpointArtifactsDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+/// A digest of a SenderSignedData, which commits to the signatures as well as the tx.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SenderSignedDataDigest(Digest);
+
+impl SenderSignedDataDigest {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+}
+
+impl fmt::Debug for SenderSignedDataDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("SenderSignedDataDigest")
+            .field(&self.0)
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct AdditionalConsensusStateDigest(Digest);
+
+impl AdditionalConsensusStateDigest {
+    pub const ZERO: Self = Self(Digest::ZERO);
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for AdditionalConsensusStateDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+}
+
+impl fmt::Display for AdditionalConsensusStateDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for AdditionalConsensusStateDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("AdditionalConsensusStateDigest")
+            .field(&self.0)
+            .finish()
     }
 }

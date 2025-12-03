@@ -27,9 +27,11 @@ use types::error::{ShardError, ShardResult};
 use types::parameters::Parameters;
 use types::shard_crypto::verified::Verified;
 use types::shard_networking::EncoderNetworkingInfo;
-use types::{multiaddr::Multiaddr, p2p::to_socket_addr, shard_networking::CERTIFICATE_NAME};
+use types::{multiaddr::Multiaddr, shard_networking::CERTIFICATE_NAME, sync::to_socket_addr};
 
 use types::shard_networking::channel_pool::{Channel, ChannelPool};
+
+const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
 // Implements Tonic RPC client for Encoders.
 pub(crate) struct EncoderInternalTonicClient {
@@ -286,6 +288,8 @@ pub struct EncoderInternalTonicManager {
     server: Option<ServerHandle>,
 }
 
+const DEFAULT_CHANNEL_POOL_CAPACITY: usize = 256;
+
 /// Implementation of the encoder tonic manager that contains a new fn to create the type
 // TODO: switch this to type state pattern
 impl EncoderInternalTonicManager {
@@ -297,7 +301,6 @@ impl EncoderInternalTonicManager {
         address: Multiaddr,
         allower: AllowPublicKeys,
     ) -> Self {
-        let channel_pool_capacaity = parameters.tonic.channel_pool_capacity;
         Self {
             parameters: parameters.clone(),
             peer_keypair: peer_keypair.clone(),
@@ -308,7 +311,7 @@ impl EncoderInternalTonicManager {
                 networking_info,
                 peer_keypair,
                 parameters,
-                channel_pool_capacaity,
+                DEFAULT_CHANNEL_POOL_CAPACITY,
             )),
             server: None,
         }
@@ -374,7 +377,10 @@ impl<S: EncoderInternalNetworkService> EncoderInternalNetworkManager<S>
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
             .layer_fn(|service| {
-                types::shard_networking::grpc_timeout::GrpcTimeout::new(service, None)
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(
+                    service,
+                    DEFAULT_GRPC_REQUEST_TIMEOUT,
+                )
             });
 
         let encoder_internal_service_server = EncoderInternalTonicServiceServer::new(service)

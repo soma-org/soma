@@ -2,8 +2,8 @@
 use crate::crypto::{NetworkKeyPair, NetworkPublicKey};
 use crate::error::{ShardError, ShardResult};
 use crate::multiaddr::Multiaddr;
-use crate::p2p::to_host_port_str;
 use crate::shard_networking::CERTIFICATE_NAME;
+use crate::sync::to_host_port_str;
 use quick_cache::sync::Cache;
 use std::time::Duration;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};

@@ -42,7 +42,7 @@ impl ObjectReader for ObjectStoreReader {
             Err(_) => Err(ObjectError::Timeout), // elapsed
         }
     }
-    async fn get_range(&self, range: Range<u64>, timeout: Duration) -> ObjectResult<Bytes> {
+    async fn get_range(&self, range: Range<usize>, timeout: Duration) -> ObjectResult<Bytes> {
         let path = self.object_path.path().clone();
         tokio::time::timeout(timeout, self.store.get_range(&path, range))
             .await

@@ -1,29 +1,58 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
+use crate::dag_state::DagState;
+use itertools::Itertools;
 use parking_lot::RwLock;
-use tracing::info;
-
-use super::dag_state::DagState;
-use super::leader_schedule::LeaderSchedule;
+use types::committee::Stake;
 use types::consensus::{
-    block::{BlockAPI, VerifiedBlock},
-    commit::{sort_sub_dag_blocks, Commit, CommitAPI, CommittedSubDag, TrustedCommit},
+    block::{BlockAPI, BlockRef, BlockTimestampMs, Round, VerifiedBlock},
+    commit::{sort_sub_dag_blocks, Commit, CommittedSubDag, TrustedCommit},
+    context::Context,
 };
 
-/// Expand a committed sequence of leaders into a sequence of sub-dags.
+/// The `StorageAPI` trait provides an interface for the block store and has been
+/// mostly introduced for allowing to inject the test store in `DagBuilder`.
+pub(crate) trait BlockStoreAPI {
+    fn get_blocks(&self, refs: &[BlockRef]) -> Vec<Option<VerifiedBlock>>;
+
+    fn gc_round(&self) -> Round;
+
+    fn set_committed(&mut self, block_ref: &BlockRef) -> bool;
+
+    fn is_committed(&self, block_ref: &BlockRef) -> bool;
+}
+
+impl BlockStoreAPI
+    for parking_lot::lock_api::RwLockWriteGuard<'_, parking_lot::RawRwLock, DagState>
+{
+    fn get_blocks(&self, refs: &[BlockRef]) -> Vec<Option<VerifiedBlock>> {
+        DagState::get_blocks(self, refs)
+    }
+
+    fn gc_round(&self) -> Round {
+        DagState::gc_round(self)
+    }
+
+    fn set_committed(&mut self, block_ref: &BlockRef) -> bool {
+        DagState::set_committed(self, block_ref)
+    }
+
+    fn is_committed(&self, block_ref: &BlockRef) -> bool {
+        DagState::is_committed(self, block_ref)
+    }
+}
+
+/// Expand a committed sequence of leader into a sequence of sub-dags.
 #[derive(Clone)]
 pub struct Linearizer {
     /// In memory block store representing the dag state
+    context: Arc<Context>,
     dag_state: Arc<RwLock<DagState>>,
-    leader_schedule: Arc<LeaderSchedule>,
 }
 
 impl Linearizer {
-    pub fn new(dag_state: Arc<RwLock<DagState>>, leader_schedule: Arc<LeaderSchedule>) -> Self {
-        Self {
-            dag_state,
-            leader_schedule,
-        }
+    pub fn new(context: Arc<Context>, dag_state: Arc<RwLock<DagState>>) -> Self {
+        Self { context, dag_state }
     }
 
     /// Collect the sub-dag and the corresponding commit from a specific leader excluding any duplicates or
@@ -33,20 +62,104 @@ impl Linearizer {
         leader_block: VerifiedBlock,
     ) -> (CommittedSubDag, TrustedCommit) {
         // Grab latest commit state from dag state
-        let dag_state = self.dag_state.read();
+        let mut dag_state = self.dag_state.write();
         let last_commit_index = dag_state.last_commit_index();
         let last_commit_digest = dag_state.last_commit_digest();
         let last_commit_timestamp_ms = dag_state.last_commit_timestamp_ms();
-        let last_committed_rounds = dag_state.last_committed_rounds();
 
-        let mut to_commit = Vec::new();
-        let mut committed = HashSet::new();
+        // Now linearize the sub-dag starting from the leader block
+        let to_commit = Self::linearize_sub_dag(leader_block.clone(), &mut dag_state);
 
-        let timestamp_ms = leader_block.timestamp_ms().max(last_commit_timestamp_ms);
-        let epoch = leader_block.epoch();
+        let timestamp_ms = Self::calculate_commit_timestamp(
+            &self.context,
+            &mut dag_state,
+            &leader_block,
+            last_commit_timestamp_ms,
+        );
+
+        drop(dag_state);
+
+        // Create the Commit.
+        let commit = Commit::new(
+            last_commit_index + 1,
+            last_commit_digest,
+            timestamp_ms,
+            leader_block.reference(),
+            to_commit
+                .iter()
+                .map(|block| block.reference())
+                .collect::<Vec<_>>(),
+        );
+        let serialized = commit
+            .serialize()
+            .unwrap_or_else(|e| panic!("Failed to serialize commit: {}", e));
+        let commit = TrustedCommit::new_trusted(commit, serialized);
+
+        // Create the corresponding committed sub dag
+        let sub_dag = CommittedSubDag::new(
+            leader_block.reference(),
+            to_commit,
+            timestamp_ms,
+            commit.reference(),
+        );
+
+        (sub_dag, commit)
+    }
+
+    /// Calculates the commit's timestamp. The timestamp will be calculated as the median of leader's parents (leader.round - 1)
+    /// timestamps by stake. To ensure that commit timestamp monotonicity is respected it is compared against the `last_commit_timestamp_ms`
+    /// and the maximum of the two is returned.
+    pub(crate) fn calculate_commit_timestamp(
+        context: &Context,
+        dag_state: &mut impl BlockStoreAPI,
+        leader_block: &VerifiedBlock,
+        last_commit_timestamp_ms: BlockTimestampMs,
+    ) -> BlockTimestampMs {
+        let timestamp_ms = {
+            // Select leaders' parent blocks.
+            let block_refs = leader_block
+                .ancestors()
+                .iter()
+                .filter(|block_ref| block_ref.round == leader_block.round() - 1)
+                .cloned()
+                .collect::<Vec<_>>();
+            // Get the blocks from dag state which should not fail.
+            let blocks = dag_state
+                .get_blocks(&block_refs)
+                .into_iter()
+                .map(|block_opt| block_opt.expect("We should have all blocks in dag state."));
+            median_timestamp_by_stake(context, blocks).unwrap_or_else(|e| {
+                panic!(
+                    "Cannot compute median timestamp for leader block {:?} ancestors: {}",
+                    leader_block, e
+                )
+            })
+        };
+
+        // Always make sure that commit timestamps are monotonic, so override if necessary.
+        timestamp_ms.max(last_commit_timestamp_ms)
+    }
+
+    pub(crate) fn linearize_sub_dag(
+        leader_block: VerifiedBlock,
+        dag_state: &mut impl BlockStoreAPI,
+    ) -> Vec<VerifiedBlock> {
+        // The GC round here is calculated based on the last committed round of the leader block. The algorithm will attempt to
+        // commit blocks up to this GC round. Once this commit has been processed and written to DagState, then gc round will update
+        // and on the processing of the next commit we'll have it already updated, so no need to do any gc_round recalculations here.
+        // We just use whatever is currently in DagState.
+        let gc_round: Round = dag_state.gc_round();
         let leader_block_ref = leader_block.reference();
         let mut buffer = vec![leader_block];
-        assert!(committed.insert(leader_block_ref));
+        let mut to_commit = Vec::new();
+
+        // Perform the recursion without stopping at the highest round round that has been committed per authority. Instead it will
+        // allow to commit blocks that are lower than the highest committed round for an authority but higher than gc_round.
+        assert!(
+            dag_state.set_committed(&leader_block_ref),
+            "Leader block with reference {:?} attempted to be committed twice",
+            leader_block_ref
+        );
 
         while let Some(x) = buffer.pop() {
             to_commit.push(x.clone());
@@ -57,10 +170,7 @@ impl Linearizer {
                         .iter()
                         .copied()
                         .filter(|ancestor| {
-                            // We skip the block if we already committed it or we reached a
-                            // round that we already committed.
-                            !committed.contains(ancestor)
-                                && last_committed_rounds[ancestor.author] < ancestor.round
+                            ancestor.round > gc_round && !dag_state.is_committed(ancestor)
                         })
                         .collect::<Vec<_>>(),
                 )
@@ -72,42 +182,26 @@ impl Linearizer {
 
             for ancestor in ancestors {
                 buffer.push(ancestor.clone());
-                assert!(committed.insert(ancestor.reference()));
+                assert!(
+                    dag_state.set_committed(&ancestor.reference()),
+                    "Block with reference {:?} attempted to be committed twice",
+                    ancestor.reference()
+                );
             }
         }
 
-        drop(dag_state);
+        // The above code should have not yielded any blocks that are <= gc_round, but just to make sure that we'll never
+        // commit anything that should be garbage collected we attempt to prune here as well.
+        assert!(
+            to_commit.iter().all(|block| block.round() > gc_round),
+            "No blocks <= {gc_round} should be committed. Leader round {}, blocks {to_commit:?}.",
+            leader_block_ref
+        );
 
         // Sort the blocks of the sub-dag blocks
         sort_sub_dag_blocks(&mut to_commit);
 
-        // Create the Commit.
-        let commit = Commit::new(
-            last_commit_index + 1,
-            last_commit_digest,
-            timestamp_ms,
-            leader_block_ref,
-            to_commit
-                .iter()
-                .map(|block| block.reference())
-                .collect::<Vec<_>>(),
-            epoch,
-        );
-        let serialized = commit
-            .serialize()
-            .unwrap_or_else(|e| panic!("Failed to serialize commit: {}", e));
-        let commit = TrustedCommit::new_trusted(commit, serialized);
-
-        // Create the corresponding committed sub dag
-        let sub_dag = CommittedSubDag::new(
-            leader_block_ref,
-            to_commit,
-            timestamp_ms,
-            commit.reference(),
-            commit.previous_digest(),
-        );
-
-        (sub_dag, commit)
+        to_commit
     }
 
     // This function should be called whenever a new commit is observed. This will
@@ -119,7 +213,7 @@ impl Linearizer {
         }
 
         let mut committed_sub_dags = vec![];
-        for (i, leader_block) in committed_leaders.into_iter().enumerate() {
+        for leader_block in committed_leaders {
             // Collect the sub-dag generated using each of these leaders and the corresponding commit.
             let (sub_dag, commit) = self.collect_sub_dag_and_commit(leader_block);
 
@@ -130,174 +224,53 @@ impl Linearizer {
             committed_sub_dags.push(sub_dag);
         }
 
-        // Committed blocks must be persisted to storage before sending them and executing
-        // their transactions.
-        // Commit metadata can be persisted more lazily because they are recoverable. Uncommitted
-        // blocks can wait to persist too.
-        // But for simplicity, all unpersisted blocks and commits are flushed to storage.
-        self.dag_state.write().flush(false);
-
         committed_sub_dags
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::leader_schedule::LeaderSchedule;
-    use crate::test_dag::DagBuilder;
-    use types::consensus::{
-        commit::{CommitAPI as _, CommitDigest, CommitIndex, TrustedCommit, DEFAULT_WAVE_LENGTH},
-        context::Context,
-    };
-    use types::storage::consensus::mem_store::MemStore;
+/// Computes the median timestamp of the blocks weighted by the stake of their authorities.
+/// This function assumes each block comes from a different authority of the same round.
+/// Error is returned if no blocks are provided or total stake is less than quorum threshold.
+pub(crate) fn median_timestamp_by_stake(
+    context: &Context,
+    blocks: impl Iterator<Item = VerifiedBlock>,
+) -> Result<BlockTimestampMs, String> {
+    let mut total_stake = 0;
+    let mut timestamps = vec![];
+    for block in blocks {
+        let stake = context.committee.stake_by_index(block.author());
+        timestamps.push((block.timestamp_ms(), stake));
+        total_stake += stake;
+    }
 
-    #[tokio::test]
-    async fn test_handle_commit() {
-        let _ = tracing_subscriber::fmt::try_init();
-        let num_authorities = 4;
-        let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
-        let mut linearizer = Linearizer::new(dag_state.clone(), leader_schedule);
+    if timestamps.is_empty() {
+        return Err("No blocks provided".to_string());
+    }
+    if total_stake < context.committee.quorum_threshold() {
+        return Err(format!(
+            "Total stake {} < quorum threshold {}",
+            total_stake,
+            context.committee.quorum_threshold()
+        )
+        .to_string());
+    }
 
-        // Populate fully connected test blocks for round 0 ~ 10, authorities 0 ~ 3.
-        let num_rounds: u32 = 10;
-        let mut dag_builder = DagBuilder::new(context.clone());
-        dag_builder
-            .layers(1..=num_rounds)
-            .build()
-            .persist_layers(dag_state.clone());
+    Ok(median_timestamps_by_stake_inner(timestamps, total_stake))
+}
 
-        let leaders = dag_builder
-            .leader_blocks(1..=num_rounds)
-            .into_iter()
-            .map(Option::unwrap)
-            .collect::<Vec<_>>();
+fn median_timestamps_by_stake_inner(
+    mut timestamps: Vec<(BlockTimestampMs, Stake)>,
+    total_stake: Stake,
+) -> BlockTimestampMs {
+    timestamps.sort_by_key(|(ts, _)| *ts);
 
-        let commits = linearizer.handle_commit(leaders.clone());
-        for (idx, subdag) in commits.into_iter().enumerate() {
-            tracing::info!("{subdag:?}");
-            assert_eq!(subdag.leader, leaders[idx].reference());
-            assert_eq!(subdag.timestamp_ms, leaders[idx].timestamp_ms());
-            if idx == 0 {
-                // First subdag includes the leader block only
-                assert_eq!(subdag.blocks.len(), 1);
-            } else {
-                // Every subdag after will be missing the leader block from the previous
-                // committed subdag
-                assert_eq!(subdag.blocks.len(), num_authorities);
-            }
-            for block in subdag.blocks.iter() {
-                assert!(block.round() <= leaders[idx].round());
-            }
-            assert_eq!(subdag.commit_ref.index, idx as CommitIndex + 1);
+    let mut cumulative_stake = 0;
+    for (ts, stake) in &timestamps {
+        cumulative_stake += stake;
+        if cumulative_stake > total_stake / 2 {
+            return *ts;
         }
     }
 
-    #[tokio::test]
-    async fn test_handle_already_committed() {
-        let _ = tracing_subscriber::fmt::try_init();
-        let num_authorities = 4;
-        let context = Arc::new(Context::new_for_test(num_authorities).0);
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
-        let leader_schedule = Arc::new(LeaderSchedule::new(context.clone()));
-        let mut linearizer = Linearizer::new(dag_state.clone(), leader_schedule.clone());
-        let wave_length = DEFAULT_WAVE_LENGTH;
-
-        let leader_round_wave_1 = 3;
-        let leader_round_wave_2 = leader_round_wave_1 + wave_length;
-
-        // Build a Dag from round 1..=6
-        let mut dag_builder = DagBuilder::new(context.clone());
-        dag_builder.layers(1..=leader_round_wave_2).build();
-
-        // Now retrieve all the blocks up to round leader_round_wave_1 - 1
-        // And then only the leader of round leader_round_wave_1
-        // Also store those to DagState
-        let mut blocks = dag_builder.blocks(0..=leader_round_wave_1 - 1);
-        blocks.push(
-            dag_builder
-                .leader_block(leader_round_wave_1)
-                .expect("Leader block should have been found"),
-        );
-        dag_state.write().accept_blocks(blocks.clone());
-
-        let first_leader = dag_builder
-            .leader_block(leader_round_wave_1)
-            .expect("Wave 1 leader round block should exist");
-        let mut last_commit_index = 1;
-        let first_commit_data = TrustedCommit::new_for_test(
-            last_commit_index,
-            CommitDigest::MIN,
-            0,
-            first_leader.reference(),
-            blocks.into_iter().map(|block| block.reference()).collect(),
-            first_leader.epoch(),
-        );
-        dag_state.write().add_commit(first_commit_data);
-
-        // Now take all the blocks from round `leader_round_wave_1` up to round `leader_round_wave_2-1`
-        let mut blocks = dag_builder.blocks(leader_round_wave_1..=leader_round_wave_2 - 1);
-        // Filter out leader block of round `leader_round_wave_1`
-        blocks.retain(|block| {
-            !(block.round() == leader_round_wave_1
-                && block.author() == leader_schedule.elect_leader(leader_round_wave_1, 0))
-        });
-        // Add the leader block of round `leader_round_wave_2`
-        blocks.push(
-            dag_builder
-                .leader_block(leader_round_wave_2)
-                .expect("Leader block should have been found"),
-        );
-        // Write them in dag state
-        dag_state.write().accept_blocks(blocks.clone());
-
-        let mut blocks: Vec<_> = blocks.into_iter().map(|block| block.reference()).collect();
-
-        // Now get the latest leader which is the leader round of wave 2
-        let leader = dag_builder
-            .leader_block(leader_round_wave_2)
-            .expect("Leader block should exist");
-
-        last_commit_index += 1;
-        let expected_second_commit = TrustedCommit::new_for_test(
-            last_commit_index,
-            CommitDigest::MIN,
-            0,
-            leader.reference(),
-            blocks.clone(),
-            leader.epoch(),
-        );
-
-        let commit = linearizer.handle_commit(vec![leader.clone()]);
-        assert_eq!(commit.len(), 1);
-
-        let subdag = &commit[0];
-        tracing::info!("{subdag:?}");
-        assert_eq!(subdag.leader, leader.reference());
-        assert_eq!(subdag.timestamp_ms, leader.timestamp_ms());
-        assert_eq!(subdag.commit_ref.index, expected_second_commit.index());
-
-        // Using the same sorting as used in CommittedSubDag::sort
-        blocks.sort_by(|a, b| a.round.cmp(&b.round).then_with(|| a.author.cmp(&b.author)));
-        assert_eq!(
-            subdag
-                .blocks
-                .clone()
-                .into_iter()
-                .map(|b| b.reference())
-                .collect::<Vec<_>>(),
-            blocks
-        );
-        for block in subdag.blocks.iter() {
-            assert!(block.round() <= expected_second_commit.leader().round);
-        }
-    }
+    timestamps.last().unwrap().0
 }

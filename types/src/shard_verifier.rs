@@ -67,43 +67,13 @@ impl ShardVerifier {
                 }
             };
         }
-        let result: ShardResult<Shard> = {
-            let _ = token
-                .finality_proof
-                .verify(&authority_committee)
-                .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
 
-            if let TransactionKind::EmbedData {
-                metadata,
-                coin_ref: _coin_ref, // Use `_coin_ref` if you don’t need this field
-            } = token.finality_proof.transaction.transaction_data().kind()
-            {
-                if metadata.to_owned() != token.metadata() {
-                    return Err(ShardError::InvalidShardToken(
-                        "metadata does not match transaction".to_string(),
-                    ));
-                }
-            } else {
-                return Err(ShardError::InvalidShardToken(
-                    "incorrect transaction kind for shard auth token".to_string(),
-                ));
-            }
-            let vdf = SimpleVDF::new(vdf_iterations);
-            let _ = vdf
-                .verify_entropy(
-                    token.finality_proof.consensus_finality.leader_block,
-                    &token.block_entropy,
-                    &token.block_entropy_proof,
-                )
-                .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
-
-            let shard_entropy_input =
-                ShardEntropy::new(token.metadata.clone(), token.block_entropy.clone());
-            let shard_seed = Digest::new(&shard_entropy_input)
-                .map_err(|e| ShardError::InvalidShardToken(e.to_string()))?;
-            let shard = encoder_committee.sample_shard(shard_seed)?;
-            Ok(shard)
-        };
+        let result = self.verify_inner(
+            &authority_committee,
+            &encoder_committee,
+            vdf_iterations,
+            token,
+        );
 
         match result {
             Ok(shard) => {
@@ -127,8 +97,63 @@ impl ShardVerifier {
             }
         }
     }
+
+    fn verify_inner(
+        &self,
+        authority_committee: &Committee,
+        encoder_committee: &EncoderCommittee,
+        vdf_iterations: u64,
+        token: &ShardAuthToken,
+    ) -> ShardResult<Shard> {
+        // 1. Verify the finality proof (checkpoint certification, inclusion, effects)
+        token
+            .finality_proof
+            .verify(authority_committee)
+            .map_err(|e| ShardError::InvalidShardToken(format!("finality proof invalid: {}", e)))?;
+
+        // 2. Verify the transaction is an EmbedData transaction with matching metadata
+        let tx_kind = token.finality_proof.transaction.transaction_data().kind();
+
+        if let TransactionKind::EmbedData {
+            download_metadata, ..
+        } = tx_kind
+        {
+            if *download_metadata.metadata() != token.metadata {
+                return Err(ShardError::InvalidShardToken(
+                    "metadata does not match transaction".to_string(),
+                ));
+            }
+        } else {
+            return Err(ShardError::InvalidShardToken(
+                "transaction is not EmbedData type".to_string(),
+            ));
+        }
+
+        // 3. Verify VDF entropy was correctly computed from checkpoint digest
+        let vdf = SimpleVDF::new(vdf_iterations);
+        let checkpoint_digest = token.finality_proof.checkpoint_digest();
+
+        vdf.verify_entropy(
+            checkpoint_digest,
+            &token.checkpoint_entropy,
+            &token.checkpoint_entropy_proof,
+        )
+        .map_err(|e| ShardError::InvalidShardToken(format!("VDF verification failed: {}", e)))?;
+
+        // 4. Compute shard selection using the verified entropy
+        let shard_entropy =
+            ShardEntropy::new(token.metadata.clone(), token.checkpoint_entropy.clone());
+        let shard_seed = Digest::new(&shard_entropy).map_err(|e| {
+            ShardError::InvalidShardToken(format!("failed to compute shard seed: {}", e))
+        })?;
+
+        let shard = encoder_committee.sample_shard(shard_seed)?;
+
+        Ok(shard)
+    }
 }
 
+// TODO: write shard verifier tests
 // #[cfg(test)]
 // mod tests {
 //     use super::{Context, ShardAuthToken, ShardVerifier, VerificationStatus};

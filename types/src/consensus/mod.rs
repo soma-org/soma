@@ -1,119 +1,162 @@
-//! # Consensus Types Module
-//!
-//! ## Overview
-//! This module defines the core data structures and types used by the Soma blockchain's consensus
-//! mechanism. It provides the foundation for Byzantine Fault Tolerant (BFT) agreement between
-//! validators in the network.
-//!
-//! ## Responsibilities
-//! - Define consensus transaction types and their serialization formats
-//! - Provide structures for consensus blocks and commits
-//! - Define interfaces for epoch management and validator set changes
-//! - Support verification of consensus messages and state transitions
-//! - Facilitate communication between consensus and other system components
-//!
-//! ## Component Relationships
-//! - Used by the Consensus module to structure and process consensus messages
-//! - Consumed by the Authority module to execute transactions in consensus order
-//! - Provides input to the Node module for epoch transitions and reconfiguration
-//! - Interfaces with the P2P module for network message propagation
-//!
-//! ## Key Workflows
-//! 1. Consensus transaction submission and processing
-//! 2. Block creation, verification, and commitment
-//! 3. Epoch transitions and validator set changes
-//! 4. Consensus state synchronization between nodes
-//!
-//! ## Design Patterns
-//! - Type-safe enums for different consensus message types
-//! - Trait-based interfaces for component interaction
-//! - Immutable data structures for consensus state representation
-//! - Test utilities for consensus verification
-
 use crate::{
-    accumulator::Accumulator,
-    base::{AuthorityName, ConciseableName},
-    committee::NetworkingCommittee,
+    base::{AuthorityName, ConciseableName, TimestampMs},
+    checkpoints::{CheckpointSequenceNumber, CheckpointSignatureMessage, ECMHLiveObjectSetDigest},
+    committee::{EpochId, NetworkingCommittee},
+    consensus::block::{BlockRef, TransactionIndex, PING_TRANSACTION_INDEX},
     crypto::AuthorityPublicKeyBytes,
-    digests::{ConsensusCommitDigest, ECMHLiveObjectSetDigest, TransactionDigest},
+    digests::{
+        AdditionalConsensusStateDigest, CheckpointDigest, ConsensusCommitDigest, TransactionDigest,
+    },
     encoder_committee::EncoderCommittee,
-    state_sync::CommitTimestamp,
-    transaction::CertifiedTransaction,
+    error::SomaError,
+    transaction::{CertifiedTransaction, Transaction},
 };
+use byteorder::{BigEndian, ReadBytesExt};
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
+use std::{collections::hash_map::DefaultHasher, hash::Hash as _, hash::Hasher as _};
 use validator_set::ValidatorSet;
 
 pub mod block;
-pub mod block_verifier;
 pub mod commit;
-pub mod committee;
 pub mod context;
-pub mod output;
+pub mod leader_scoring;
 pub mod stake_aggregator;
-pub mod transaction;
 pub mod validator_set;
 
-/// # ConsensusTransaction
-///
-/// Represents a transaction that is processed by the consensus mechanism.
-///
-/// ## Purpose
-/// Wraps different types of consensus messages (user transactions, end-of-publish markers)
-/// in a common structure that can be processed by the consensus protocol.
-///
-/// ## Lifecycle
-/// 1. Created by authorities when submitting transactions to consensus
-/// 2. Processed by the consensus protocol to establish a total order
-/// 3. Executed by the authority state after consensus commitment
+// TODO: Switch to using consensus_types::block::Round?
+/// Consensus round number in u64 instead of u32.
+pub type Round = u64;
+
+/// The position of a transaction in consensus.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ConsensusPosition {
+    // Epoch of the consensus instance.
+    pub epoch: EpochId,
+    // Block containing a transaction.
+    pub block: BlockRef,
+    // Index of the transaction in the block.
+    pub index: TransactionIndex,
+}
+
+impl ConsensusPosition {
+    pub fn into_raw(self) -> Result<Bytes, SomaError> {
+        bcs::to_bytes(&self)
+            .map_err(|e| {
+                SomaError::GrpcMessageSerializeError {
+                    type_info: "ConsensusPosition".to_string(),
+                    error: e.to_string(),
+                }
+                .into()
+            })
+            .map(Bytes::from)
+    }
+
+    // We reserve the max index for the "ping" transaction. This transaction is not included in the block, but we are
+    // simulating by assuming its position in the block as the max index.
+    pub fn ping(epoch: EpochId, block: BlockRef) -> Self {
+        Self {
+            epoch,
+            block,
+            index: PING_TRANSACTION_INDEX,
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for ConsensusPosition {
+    type Error = SomaError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        bcs::from_bytes(bytes).map_err(|e| {
+            SomaError::GrpcMessageDeserializeError {
+                type_info: "ConsensusPosition".to_string(),
+                error: e.to_string(),
+            }
+            .into()
+        })
+    }
+}
+
+impl std::fmt::Display for ConsensusPosition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "P(E{}, {}, {})", self.epoch, self.block, self.index)
+    }
+}
+
+impl std::fmt::Debug for ConsensusPosition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "P(E{}, {:?}, {})", self.epoch, self.block, self.index)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ConsensusTransaction {
+    /// Encodes an u64 unique tracking id to allow us trace a message between Sui and consensus.
+    /// Use an byte array instead of u64 to ensure stable serialization.
+    pub tracking_id: [u8; 8],
     /// The specific type of consensus transaction
     pub kind: ConsensusTransactionKind,
 }
 
-/// # ConsensusTransactionKind
-///
-/// Defines the different types of transactions that can be processed by the consensus mechanism.
-///
-/// ## Purpose
-/// Distinguishes between user-submitted transactions and system-generated messages
-/// that are needed for consensus operation.
+impl ConsensusTransaction {
+    /// Displays a ConsensusTransaction created locally by the validator, for example during submission to consensus.
+    pub fn local_display(&self) -> String {
+        match &self.kind {
+            ConsensusTransactionKind::CertifiedTransaction(cert) => {
+                format!("Certified({})", cert.digest())
+            }
+            ConsensusTransactionKind::CheckpointSignature(data) => {
+                format!(
+                    "CkptSig({}, {})",
+                    data.summary.sequence_number,
+                    data.summary.digest()
+                )
+            }
+            ConsensusTransactionKind::EndOfPublish(..) => "EOP".to_string(),
+            ConsensusTransactionKind::UserTransaction(tx) => {
+                format!("User({})", tx.digest())
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ConsensusTransactionKind {
     /// A user-submitted transaction that has been certified by a quorum of validators
-    UserTransaction(Box<CertifiedTransaction>),
+    CertifiedTransaction(Box<CertifiedTransaction>),
+
+    UserTransaction(Box<Transaction>),
 
     /// A message indicating that an authority has no more transactions to publish in this epoch
     /// Used for consensus liveness and epoch boundary detection
     EndOfPublish(AuthorityName),
-    // CheckpointSignature(Box<CheckpointSignatureMessage>),
+
+    CheckpointSignature(Box<CheckpointSignatureMessage>),
 }
 
-/// # ConsensusTransactionKey
-///
-/// A unique identifier for consensus transactions that can be used for deduplication and lookup.
-///
-/// ## Purpose
-/// Provides a way to uniquely identify and reference consensus transactions,
-/// which is essential for tracking transaction status and preventing duplicates.
 #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub enum ConsensusTransactionKey {
     /// Key for a user transaction certificate, identified by its digest
     Certificate(TransactionDigest),
 
+    CheckpointSignature(AuthorityName, CheckpointSequenceNumber, CheckpointDigest),
+
     /// Key for an end-of-publish message, identified by the authority that sent it
     EndOfPublish(AuthorityName),
-    // CheckpointSignature(AuthorityName, CheckpointSequenceNumber),
 }
 
 impl Debug for ConsensusTransactionKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Certificate(digest) => write!(f, "Certificate({:?})", digest),
-            // Self::CheckpointSignature(name, seq) => {
-            //     write!(f, "CheckpointSignature({:?}, {:?})", name.concise(), seq)
-            // }
+            Self::CheckpointSignature(name, seq, digest) => write!(
+                f,
+                "CheckpointSignature({:?}, {:?}, {:?})",
+                name.concise(),
+                seq,
+                digest
+            ),
             Self::EndOfPublish(name) => write!(f, "EndOfPublish({:?})", name.concise()),
         }
     }
@@ -121,22 +164,48 @@ impl Debug for ConsensusTransactionKey {
 
 impl ConsensusTransaction {
     pub fn new_certificate_message(
-        // authority: &AuthorityName,
+        authority: &AuthorityName,
         certificate: CertifiedTransaction,
     ) -> Self {
+        let mut hasher = DefaultHasher::new();
+        let tx_digest = certificate.digest();
+        tx_digest.hash(&mut hasher);
+        authority.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
         Self {
-            kind: ConsensusTransactionKind::UserTransaction(Box::new(certificate)),
+            tracking_id,
+            kind: ConsensusTransactionKind::CertifiedTransaction(Box::new(certificate)),
         }
     }
 
-    // pub fn new_checkpoint_signature_message(data: CheckpointSignatureMessage) -> Self {
-    //     Self {
-    //         kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)),
-    //     }
-    // }
+    pub fn new_user_transaction_message(authority: &AuthorityName, tx: Transaction) -> Self {
+        let mut hasher = DefaultHasher::new();
+        let tx_digest = tx.digest();
+        tx_digest.hash(&mut hasher);
+        authority.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
+        Self {
+            tracking_id,
+            kind: ConsensusTransactionKind::UserTransaction(Box::new(tx)),
+        }
+    }
+
+    pub fn new_checkpoint_signature_message(data: CheckpointSignatureMessage) -> Self {
+        let mut hasher = DefaultHasher::new();
+        data.summary.auth_sig().signature.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
+        Self {
+            tracking_id,
+            kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)),
+        }
+    }
 
     pub fn new_end_of_publish(authority: AuthorityName) -> Self {
+        let mut hasher = DefaultHasher::new();
+        authority.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
         Self {
+            tracking_id,
             kind: ConsensusTransactionKind::EndOfPublish(authority),
         }
     }
@@ -146,29 +215,57 @@ impl ConsensusTransaction {
         offset: u64,
         certificate: CertifiedTransaction,
     ) -> Self {
+        let mut hasher = DefaultHasher::new();
+        let tx_digest = certificate.digest();
+        tx_digest.hash(&mut hasher);
+        round.hash(&mut hasher);
+        offset.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
         Self {
-            kind: ConsensusTransactionKind::UserTransaction(Box::new(certificate)),
+            tracking_id,
+            kind: ConsensusTransactionKind::CertifiedTransaction(Box::new(certificate)),
         }
+    }
+
+    pub fn get_tracking_id(&self) -> u64 {
+        (&self.tracking_id[..])
+            .read_u64::<BigEndian>()
+            .unwrap_or_default()
     }
 
     pub fn key(&self) -> ConsensusTransactionKey {
         match &self.kind {
-            ConsensusTransactionKind::UserTransaction(cert) => {
+            ConsensusTransactionKind::CertifiedTransaction(cert) => {
                 ConsensusTransactionKey::Certificate(*cert.digest())
             }
-            // ConsensusTransactionKind::CheckpointSignature(data) => {
-            //     ConsensusTransactionKey::CheckpointSignature(
-            //         data.summary.auth_sig().authority,
-            //         data.summary.sequence_number,
-            //     )
-            // }
+            ConsensusTransactionKind::CheckpointSignature(data) => {
+                ConsensusTransactionKey::CheckpointSignature(
+                    data.summary.auth_sig().authority,
+                    data.summary.sequence_number,
+                    *data.summary.digest(),
+                )
+            }
             ConsensusTransactionKind::EndOfPublish(authority) => {
                 ConsensusTransactionKey::EndOfPublish(*authority)
+            }
+            ConsensusTransactionKind::UserTransaction(tx) => {
+                // Use the same key format as ConsensusTransactionKind::CertifiedTransaction,
+                // because existing usages of ConsensusTransactionKey should not differentiate
+                // between CertifiedTransaction and UserTransaction.
+                ConsensusTransactionKey::Certificate(*tx.digest())
             }
         }
     }
 
-    pub fn is_user_certificate(&self) -> bool {
+    pub fn is_user_transaction(&self) -> bool {
+        matches!(
+            self.kind,
+            ConsensusTransactionKind::UserTransaction(_)
+                | ConsensusTransactionKind::CertifiedTransaction(_)
+        )
+    }
+
+    pub fn is_mfp_transaction(&self) -> bool {
         matches!(self.kind, ConsensusTransactionKind::UserTransaction(_))
     }
 
@@ -177,18 +274,6 @@ impl ConsensusTransaction {
     }
 }
 
-/// # ConsensusCommitPrologue
-///
-/// Contains metadata about a consensus commit that is used to establish
-/// the context for transaction execution.
-///
-/// ## Purpose
-/// Provides essential information about the consensus state at the time of commit,
-/// including timing information and cryptographic verification data.
-///
-/// ## Usage
-/// Used by the authority state to properly sequence and timestamp transactions
-/// during execution after consensus commitment.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct ConsensusCommitPrologue {
     /// Epoch of the commit prologue transaction
@@ -202,28 +287,17 @@ pub struct ConsensusCommitPrologue {
     pub sub_dag_index: Option<u64>,
 
     /// Unix timestamp from consensus (in milliseconds)
-    pub commit_timestamp_ms: CommitTimestamp,
+    pub commit_timestamp_ms: TimestampMs,
 
     /// Digest of consensus output for verification
     pub consensus_commit_digest: ConsensusCommitDigest,
+
+    /// Digest of any additional state computed by the consensus handler.
+    /// Used to detect forking bugs as early as possible.
+    pub additional_state_digest: AdditionalConsensusStateDigest,
 }
 
-/// # EndOfEpochAPI
-///
-/// Interface for accessing information about the next epoch during epoch transitions.
-///
-/// ## Purpose
-/// Provides a way for the consensus mechanism to access information about the next epoch,
-/// which is essential for coordinating epoch transitions and validator set changes.
-///
-/// ## Implementation
-/// Implemented by components that manage epoch state, such as AuthorityPerEpochStore.
 pub trait EndOfEpochAPI: Send + Sync + 'static {
-    /// Returns the committee for the next epoch if one has been computed, along with the epoch state digest
-    ///
-    /// ## Returns
-    /// - `Some((validator_set, digest, epoch))` if the next epoch state has been computed
-    /// - `None` if the next epoch state has not yet been computed
     fn get_next_epoch_state(
         &self,
     ) -> Option<(
@@ -235,13 +309,6 @@ pub trait EndOfEpochAPI: Send + Sync + 'static {
     )>;
 }
 
-/// # TestEpochStore
-///
-/// A simple implementation of EndOfEpochAPI for testing purposes.
-///
-/// ## Purpose
-/// Provides a way to test epoch transition logic without requiring a full
-/// implementation of the authority state and epoch store.
 pub struct TestEpochStore {
     /// The next epoch state, if one has been computed
     pub next_epoch_state: Option<(

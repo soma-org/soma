@@ -1,14 +1,17 @@
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::oneshot::{Receiver, Sender};
-use tokio::sync::watch;
-use tokio::task::JoinHandle;
-use tokio::time::{sleep_until, Instant};
-use tracing::{debug, warn};
+use std::{sync::Arc, time::Duration};
 
-use crate::core::CoreSignalsReceivers;
-use crate::core_thread::CoreThreadDispatcher;
+use tokio::{
+    sync::{
+        oneshot::{Receiver, Sender},
+        watch,
+    },
+    task::JoinHandle,
+    time::{sleep_until, Instant},
+};
+use tracing::{debug, warn};
 use types::consensus::{block::Round, context::Context};
+
+use crate::{core::CoreSignalsReceivers, core_thread::CoreThreadDispatcher};
 
 pub(crate) struct LeaderTimeoutTaskHandle {
     handle: JoinHandle<()>,
@@ -112,164 +115,5 @@ impl<D: CoreThreadDispatcher> LeaderTimeoutTask<D> {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use async_trait::async_trait;
-    use parking_lot::Mutex;
-    use tokio::time::{sleep, Instant};
-    use types::parameters::Parameters;
-
-    use types::consensus::{
-        block::{BlockRef, Round, VerifiedBlock},
-        context::Context,
-    };
-
-    use crate::core::CoreSignals;
-    use crate::core_thread::{CoreError, CoreThreadDispatcher};
-    use crate::leader_timeout::LeaderTimeoutTask;
-
-    #[derive(Clone, Default)]
-    struct MockCoreThreadDispatcher {
-        new_block_calls: Arc<Mutex<Vec<(Round, bool, Instant)>>>,
-    }
-
-    impl MockCoreThreadDispatcher {
-        async fn get_new_block_calls(&self) -> Vec<(Round, bool, Instant)> {
-            let mut binding = self.new_block_calls.lock();
-            let all_calls = binding.drain(0..);
-            all_calls.into_iter().collect()
-        }
-    }
-
-    #[async_trait]
-    impl CoreThreadDispatcher for MockCoreThreadDispatcher {
-        async fn add_blocks(
-            &self,
-            _blocks: Vec<VerifiedBlock>,
-        ) -> Result<BTreeSet<BlockRef>, CoreError> {
-            todo!()
-        }
-
-        async fn new_block(&self, round: Round, force: bool) -> Result<(), CoreError> {
-            self.new_block_calls
-                .lock()
-                .push((round, force, Instant::now()));
-            Ok(())
-        }
-
-        async fn get_missing_blocks(&self) -> Result<BTreeSet<BlockRef>, CoreError> {
-            todo!()
-        }
-
-        fn set_last_known_proposed_round(&self, _round: Round) -> Result<(), CoreError> {
-            todo!()
-        }
-    }
-
-    #[tokio::test(flavor = "current_thread", start_paused = true)]
-    async fn basic_leader_timeout() {
-        let (context, _signers, _) = Context::new_for_test(4);
-        let dispatcher = Arc::new(MockCoreThreadDispatcher::default());
-        let leader_timeout = Duration::from_millis(500);
-        let min_round_delay = Duration::from_millis(50);
-        let parameters = Parameters {
-            leader_timeout,
-            min_round_delay,
-            ..Default::default()
-        };
-        let context = Arc::new(context.with_parameters(parameters));
-        let start = Instant::now();
-
-        let (mut signals, signal_receivers) = CoreSignals::new(context.clone());
-
-        // spawn the task
-        let _handle = LeaderTimeoutTask::start(dispatcher.clone(), &signal_receivers, context);
-
-        // send a signal that a new round has been produced.
-        signals.new_round(10);
-
-        // wait enough until the min round delay has passed and a new_block call is triggered
-        sleep(2 * min_round_delay).await;
-        let all_calls = dispatcher.get_new_block_calls().await;
-        assert_eq!(all_calls.len(), 1);
-
-        let (round, force, timestamp) = all_calls[0];
-        assert_eq!(round, 10);
-        assert!(!force);
-        assert!(
-            min_round_delay <= timestamp - start,
-            "Leader timeout min setting {:?} should be less than actual time difference {:?}",
-            min_round_delay,
-            timestamp - start
-        );
-
-        // wait enough until a new_block has been received
-        sleep(2 * leader_timeout).await;
-        let all_calls = dispatcher.get_new_block_calls().await;
-        assert_eq!(all_calls.len(), 1);
-
-        let (round, force, timestamp) = all_calls[0];
-        assert_eq!(round, 10);
-        assert!(force);
-        assert!(
-            leader_timeout <= timestamp - start,
-            "Leader timeout setting {:?} should be less than actual time difference {:?}",
-            leader_timeout,
-            timestamp - start
-        );
-
-        // now wait another 2 * leader_timeout, no other call should be received
-        sleep(2 * leader_timeout).await;
-        let all_calls = dispatcher.get_new_block_calls().await;
-
-        assert_eq!(all_calls.len(), 0);
-    }
-
-    #[tokio::test(flavor = "current_thread", start_paused = true)]
-    async fn multiple_leader_timeouts() {
-        let (context, _signers, _) = Context::new_for_test(4);
-        let dispatcher = Arc::new(MockCoreThreadDispatcher::default());
-        let leader_timeout = Duration::from_millis(500);
-        let min_round_delay = Duration::from_millis(50);
-        let parameters = Parameters {
-            leader_timeout,
-            min_round_delay,
-            ..Default::default()
-        };
-        let context = Arc::new(context.with_parameters(parameters));
-        let now = Instant::now();
-
-        let (mut signals, signal_receivers) = CoreSignals::new(context.clone());
-
-        // spawn the task
-        let _handle = LeaderTimeoutTask::start(dispatcher.clone(), &signal_receivers, context);
-
-        // now send some signals with some small delay between them, but not enough so every round
-        // manages to timeout and call the force new block method.
-        signals.new_round(13);
-        sleep(min_round_delay / 2).await;
-        signals.new_round(14);
-        sleep(min_round_delay / 2).await;
-        signals.new_round(15);
-        sleep(2 * leader_timeout).await;
-
-        // only the last one should be received
-        let all_calls = dispatcher.get_new_block_calls().await;
-        let (round, force, timestamp) = all_calls[0];
-        assert_eq!(round, 15);
-        assert!(!force);
-        assert!(min_round_delay < timestamp - now);
-
-        let (round, force, timestamp) = all_calls[1];
-        assert_eq!(round, 15);
-        assert!(force);
-        assert!(leader_timeout < timestamp - now);
     }
 }

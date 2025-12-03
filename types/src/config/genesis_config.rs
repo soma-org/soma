@@ -9,6 +9,7 @@ use crate::{
     multiaddr::Multiaddr,
 };
 use anyhow::Result;
+use fastcrypto::traits::KeyPair as _;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -32,6 +33,27 @@ pub struct ValidatorGenesisConfig {
     pub is_networking_only: bool,
 }
 
+impl Clone for ValidatorGenesisConfig {
+    fn clone(&self) -> Self {
+        Self {
+            key_pair: self.key_pair.copy(),
+            worker_key_pair: self.worker_key_pair.clone(),
+            account_key_pair: self.account_key_pair.copy(),
+            network_key_pair: self.network_key_pair.clone(),
+            network_address: self.network_address.clone(),
+            consensus_address: self.consensus_address.clone(),
+            p2p_address: self.p2p_address.clone(),
+            encoder_validator_address: self.encoder_validator_address.clone(),
+            internal_object_address: self.internal_object_address.clone(),
+            external_object_address: self.external_object_address.clone(),
+            rpc_address: self.rpc_address.clone(),
+            stake: self.stake.clone(),
+            commission_rate: self.commission_rate.clone(),
+            is_networking_only: self.is_networking_only.clone(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AccountConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -40,13 +62,13 @@ pub struct AccountConfig {
 }
 
 // All information needed to build a NodeConfig for a state sync fullnode.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SsfnGenesisConfig {
     pub p2p_address: Multiaddr,
     pub network_key_pair: Option<NetworkKeyPair>,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct GenesisConfig {
     pub ssfn_config_info: Option<Vec<SsfnGenesisConfig>>,
     pub validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
@@ -241,7 +263,7 @@ impl ValidatorGenesisConfigBuilder {
 }
 
 /// Initial set of parameters for a chain.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GenesisCeremonyParameters {
     #[serde(default = "GenesisCeremonyParameters::default_timestamp_ms")]
     pub chain_start_timestamp_ms: u64,

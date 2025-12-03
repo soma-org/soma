@@ -2,11 +2,13 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
+use object_store::memory::InMemory;
 use rand::rngs::OsRng;
 use rpc::api::client::TransactionExecutionResponse;
 use sdk::{
@@ -36,6 +38,7 @@ use types::{
     effects::TransactionEffects,
     error::SomaResult,
     genesis::Genesis,
+    metadata::{DownloadMetadata, Metadata},
     object::ObjectRef,
     peer_id::PeerId,
     shard::{Shard, ShardAuthToken},
@@ -43,6 +46,8 @@ use types::{
     system_state::{SystemState, SystemStateTrait},
     transaction::{Transaction, TransactionData},
 };
+
+use crate::test_object_server::TestObjectServer;
 
 #[cfg(msim)]
 #[path = "./container-sim.rs"]
@@ -54,6 +59,7 @@ mod container;
 
 mod swarm;
 mod swarm_node;
+mod test_object_server;
 
 const NUM_VALIDATORS: usize = 4;
 
@@ -90,6 +96,7 @@ pub struct TestCluster {
     pub swarm: Swarm,
     pub wallet: WalletContext,
     pub fullnode_handle: FullNodeHandle,
+    pub object_server: TestObjectServer,
 }
 
 impl TestCluster {
@@ -243,7 +250,7 @@ impl TestCluster {
         timeout(timeout_dur, async {
             let epoch = handle.with(|node| node.state().epoch_store_for_testing().epoch());
             if Some(epoch) == target_epoch {
-                return handle.with(|node| node.state().get_system_state_object_for_testing());
+                return handle.with(|node| node.state().get_system_state_object_for_testing().unwrap());
             }
             while let Ok(system_state) = epoch_rx.recv().await {
                 info!("received epoch {}", system_state.epoch());
@@ -264,11 +271,7 @@ impl TestCluster {
         .unwrap_or_else(|_| {
             error!("Timed out waiting for cluster to reach epoch {target_epoch:?}");
             if let Some(state) = state {
-                panic!(
-                    "Timed out waiting for cluster to reach epoch {target_epoch:?}. Current \
-                     epoch: {}",
-                    state.epoch()
-                );
+                panic!("Timed out waiting for cluster to reach epoch {target_epoch:?}. Current epoch: {}", state.epoch());
             }
             panic!("Timed out waiting for cluster to target epoch {target_epoch:?}")
         })
@@ -339,7 +342,10 @@ impl TestCluster {
     /// This function is recommended for transaction execution since it most resembles the
     /// production path.
     pub async fn execute_transaction(&self, tx: Transaction) -> TransactionExecutionResponse {
-        self.wallet.execute_transaction_must_succeed(tx).await
+        self.wallet
+            .execute_transaction_and_wait_for_indexing(tx) // TODO: set good default
+            .await
+            .expect("Transaction must succeed")
     }
 
     // Get all encoder configs
@@ -410,6 +416,11 @@ impl TestCluster {
             .soma_node
             .with(|node| node.get_config().encoder_validator_address.clone());
 
+        let validator_sync_network_key = self
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.get_config().network_key_pair().public().clone());
+
         // Get genesis
         let genesis = self.get_genesis();
         let epoch_duration = genesis.system_object().parameters.epoch_duration_ms;
@@ -439,6 +450,7 @@ impl TestCluster {
             project_root,
             entry_point,
             validator_sync_address,
+            validator_sync_network_key,
             genesis,
             db_path,
         );
@@ -451,12 +463,25 @@ impl TestCluster {
 
     pub fn get_encoder_committee_size(&self) -> usize {
         self.fullnode_handle.soma_node.with(|node| {
-            let system_state = node.state().get_system_state_object_for_testing();
+            let system_state = node
+                .state()
+                .get_system_state_object_for_testing()
+                .expect("Should be able to get SystemState");
             system_state
                 .get_current_epoch_encoder_committee()
                 .members()
                 .len()
         })
+    }
+
+    /// Upload test data to the object server and return metadata for transaction
+    pub async fn upload_test_data(&self, data: &[u8]) -> (Metadata, DownloadMetadata) {
+        self.object_server.upload_data(data).await
+    }
+
+    /// Get the object store for direct access
+    pub fn object_store(&self) -> Arc<InMemory> {
+        self.object_server.store.clone()
     }
 }
 
@@ -527,6 +552,8 @@ impl TestClusterBuilder {
     }
 
     pub async fn build(mut self) -> TestCluster {
+        // Start the test object server first
+        let object_server = TestObjectServer::new().await;
         let swarm = self.start_swarm().await.unwrap();
         let working_dir = swarm.dir();
 
@@ -577,6 +604,7 @@ impl TestClusterBuilder {
             wallet,
             fullnode_handle,
             swarm,
+            object_server,
         }
     }
 

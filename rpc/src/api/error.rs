@@ -1,6 +1,8 @@
-use crate::proto::google::rpc::{BadRequest, ErrorInfo, RetryInfo};
-use std::fmt;
 use tonic::Code;
+use types::error::ErrorCategory;
+
+use crate::proto::google::rpc::{BadRequest, ErrorInfo, RetryInfo};
+pub use crate::proto::soma::ErrorReason;
 
 pub type Result<T, E = RpcError> = std::result::Result<T, E>;
 
@@ -60,8 +62,15 @@ impl From<RpcError> for tonic::Status {
 
 impl From<types::storage::storage_error::Error> for RpcError {
     fn from(value: types::storage::storage_error::Error) -> Self {
+        use types::storage::storage_error::Kind;
+
+        let code = match value.kind() {
+            Kind::Missing => Code::NotFound,
+            _ => Code::Internal,
+        };
+
         Self {
-            code: Code::Internal,
+            code,
             message: Some(value.to_string()),
             details: None,
         }
@@ -100,101 +109,106 @@ impl From<bcs::Error> for RpcError {
 
 impl From<types::quorum_driver::QuorumDriverError> for RpcError {
     fn from(error: types::quorum_driver::QuorumDriverError) -> Self {
+        use itertools::Itertools;
         use types::quorum_driver::QuorumDriverError::*;
 
         match error {
             InvalidUserSignature(err) => {
-                // Since you don't have UserInputError, just use the error directly
-                let message = format!("Invalid user signature: {}", err);
+                let message = {
+                    let err = err.to_string();
+                    format!("Invalid user signature: {err}")
+                };
+
                 RpcError::new(Code::InvalidArgument, message)
             }
-
             QuorumDriverInternalError(err) => RpcError::new(Code::Internal, err.to_string()),
-
-            ObjectsDoubleUsed {
-                conflicting_txes,
-                retried_tx,
-                retried_tx_success,
-            } => {
-                // Transform the conflicting_txes similar to reference, but include your additional fields
-                let conflicts: Vec<String> = conflicting_txes
+            ObjectsDoubleUsed { conflicting_txes } => {
+                let new_map = conflicting_txes
                     .into_iter()
-                    .map(|(digest, (validators, stake))| {
-                        format!(
-                            "{}: {} validators (stake: {})",
+                    .map(|(digest, (pairs, _))| {
+                        (
                             digest,
-                            validators.len(),
-                            stake
+                            pairs.into_iter().map(|(_, obj_ref)| obj_ref).collect(),
                         )
                     })
-                    .collect();
+                    .collect::<std::collections::BTreeMap<_, Vec<_>>>();
 
-                let mut message = format!(
-                    "Failed to sign transaction by a quorum of validators because of locked objects. \
-                     Conflicting Transactions: [{}]",
-                    conflicts.join(", ")
+                let message = format!(
+                    "Failed to sign transaction by a quorum of validators because of locked objects. Conflicting Transactions:\n{new_map:#?}",
                 );
-
-                // Add retry information if available
-                if let Some(tx) = retried_tx {
-                    message.push_str(&format!(". Retried transaction: {}", tx));
-                    if let Some(success) = retried_tx_success {
-                        message.push_str(&format!(" (success: {})", success));
-                    }
-                }
 
                 RpcError::new(Code::FailedPrecondition, message)
             }
-
-            TimeoutBeforeFinality => RpcError::new(
-                Code::Unavailable,
-                "Transaction timed out before finality could be reached",
-            ),
-
-            FailedWithTransientErrorAfterMaximumAttempts { total_attempts } => RpcError::new(
-                Code::Unavailable,
-                format!(
-                    "Failed with transient error after {} attempts",
-                    total_attempts
-                ),
-            ),
-
-            NonRecoverableTransactionError { errors } => {
-                // Since you don't have the same error handling as reference,
-                // just format the errors directly
-                let error_msg = format!(
-                    "Transaction execution failed due to issues with transaction inputs: {:?}",
-                    errors
-                );
-                RpcError::new(Code::InvalidArgument, error_msg)
+            TimeoutBeforeFinality | FailedWithTransientErrorAfterMaximumAttempts { .. } => {
+                // TODO add a Retry-After header
+                RpcError::new(
+                    Code::Unavailable,
+                    "timed-out before finality could be reached",
+                )
             }
-
-            SystemOverload {
-                overloaded_stake, ..
-            } => RpcError::new(
-                Code::Unavailable,
-                format!(
-                    "System is overloaded: {} validators by stake are overloaded",
-                    overloaded_stake
-                ),
-            ),
-
-            SystemOverloadRetryAfter {
-                retry_after_secs, ..
+            TimeoutBeforeFinalityWithErrors {
+                last_error,
+                attempts,
+                timeout,
             } => {
-                // TODO: Add Retry-After header when your RpcError supports it
+                // TODO add a Retry-After header
                 RpcError::new(
                     Code::Unavailable,
                     format!(
-                        "System is overloaded, retry after {} seconds",
-                        retry_after_secs
+                        "Transaction timed out before finality could be reached. Attempts: {attempts} & timeout: {timeout:?}. Last error: {last_error}"
                     ),
                 )
             }
+            NonRecoverableTransactionError { errors } => {
+                let new_errors: Vec<String> = errors
+                    .into_iter()
+                    // sort by total stake, descending, so users see the most prominent one first
+                    .sorted_by(|(_, a, _), (_, b, _)| b.cmp(a))
+                    .filter_map(|(err, _, _)| {
+                        if err.is_retryable().0 {
+                            None
+                        } else {
+                            Some(err.to_string())
+                        }
+                    })
+                    .collect();
 
+                assert!(
+                    !new_errors.is_empty(),
+                    "NonRecoverableTransactionError should have at least one non-retryable error"
+                );
+
+                let error_list = new_errors.join(", ");
+                let error_msg = format!(
+                    "Transaction execution failed due to issues with transaction inputs, please review the errors and try again: {}.",
+                    error_list
+                );
+
+                RpcError::new(Code::InvalidArgument, error_msg)
+            }
             TxAlreadyFinalizedWithDifferentUserSignatures => RpcError::new(
                 Code::Aborted,
                 "The transaction is already finalized but with different user signatures",
+            ),
+            // SystemOverload { .. } | SystemOverloadRetryAfter { .. } => {
+            //     // TODO add a Retry-After header
+            //     RpcError::new(Code::Unavailable, "system is overloaded")
+            // }
+            TransactionFailed { category, details } => RpcError::new(
+                // TODO(fastpath): add a Retry-After header.
+                match category {
+                    ErrorCategory::Internal => Code::Internal,
+                    ErrorCategory::Aborted => Code::Aborted,
+                    ErrorCategory::InvalidTransaction => Code::InvalidArgument,
+                    ErrorCategory::LockConflict => Code::FailedPrecondition,
+                    // ErrorCategory::ValidatorOverloaded => Code::ResourceExhausted,
+                    ErrorCategory::Unavailable => Code::Unavailable,
+                },
+                details,
+            ),
+            PendingExecutionInTransactionOrchestrator => RpcError::new(
+                Code::AlreadyExists,
+                "Transaction is already being processed in transaction orchestrator (most likely by quorum driver), wait for results",
             ),
         }
     }
@@ -319,110 +333,39 @@ impl std::fmt::Display for ObjectNotFoundError {
 
 impl std::error::Error for ObjectNotFoundError {}
 
-impl From<ObjectNotFoundError> for RpcError {
+impl From<ObjectNotFoundError> for crate::api::error::RpcError {
     fn from(value: ObjectNotFoundError) -> Self {
         Self::new(tonic::Code::NotFound, value.to_string())
     }
 }
 
-impl fmt::Display for RpcError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Start with the gRPC status code
-        write!(f, "RpcError[{}]", self.code)?;
-
-        // Add the message if present
-        if let Some(ref message) = self.message {
-            write!(f, ": {}", message)?;
-        }
-
-        // Add details if present
-        if let Some(ref details) = self.details {
-            write!(f, " | Details: {}", details)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for ErrorDetails {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut details = Vec::new();
-
-        // Add error_info if present
-        if let Some(ref error_info) = self.error_info {
-            details.push(format!(
-                "ErrorInfo(domain: {}, reason: {}, metadata: {:?})",
-                error_info.domain, error_info.reason, error_info.metadata
-            ));
-        }
-
-        // Add bad_request if present
-        if let Some(ref bad_request) = self.bad_request {
-            let violations: Vec<String> = bad_request
-                .field_violations
-                .iter()
-                .map(|v| format!("{}: {}", v.field, v.description))
-                .collect();
-
-            if !violations.is_empty() {
-                details.push(format!("BadRequest[{}]", violations.join(", ")));
-            }
-        }
-
-        // Add retry_info if present
-        if let Some(ref retry_info) = self.retry_info {
-            let retry_after = retry_info
-                .retry_delay
-                .as_ref()
-                .map(|d| format!("{}s", d.seconds))
-                .unwrap_or_else(|| "unspecified".to_string());
-
-            details.push(format!("RetryInfo(retry_after: {})", retry_after));
-        }
-
-        // Join all details or show "none" if empty
-        if details.is_empty() {
-            write!(f, "none")
-        } else {
-            write!(f, "{}", details.join(" | "))
-        }
-    }
-}
-
-// Also implement std::error::Error for RpcError if not already present
-impl std::error::Error for RpcError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
 #[derive(Debug)]
-pub struct CommitNotFoundError {
-    index: Option<u32>,
+pub struct CheckpointNotFoundError {
+    sequence_number: Option<u64>,
     digest: Option<crate::types::Digest>,
 }
 
-impl CommitNotFoundError {
-    pub fn index(index: u32) -> Self {
+impl CheckpointNotFoundError {
+    pub fn sequence_number(sequence_number: u64) -> Self {
         Self {
-            index: Some(index),
+            sequence_number: Some(sequence_number),
             digest: None,
         }
     }
 
     pub fn digest(digest: crate::types::Digest) -> Self {
         Self {
-            index: None,
+            sequence_number: None,
             digest: Some(digest),
         }
     }
 }
 
-impl std::fmt::Display for CommitNotFoundError {
+impl std::fmt::Display for CheckpointNotFoundError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Commit ")?;
+        write!(f, "Checkpoint ")?;
 
-        if let Some(s) = self.index {
+        if let Some(s) = self.sequence_number {
             write!(f, "{s} ")?;
         }
 
@@ -434,10 +377,21 @@ impl std::fmt::Display for CommitNotFoundError {
     }
 }
 
-impl std::error::Error for CommitNotFoundError {}
+impl std::error::Error for CheckpointNotFoundError {}
 
-impl From<CommitNotFoundError> for RpcError {
-    fn from(value: CommitNotFoundError) -> Self {
+impl From<CheckpointNotFoundError> for crate::api::error::RpcError {
+    fn from(value: CheckpointNotFoundError) -> Self {
         Self::new(tonic::Code::NotFound, value.to_string())
     }
 }
+
+impl std::fmt::Display for RpcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.message {
+            Some(msg) => write!(f, "{}: {}", self.code, msg),
+            None => write!(f, "{}", self.code),
+        }
+    }
+}
+
+impl std::error::Error for RpcError {}

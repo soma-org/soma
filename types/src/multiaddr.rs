@@ -177,6 +177,20 @@ impl Multiaddr {
 
         new
     }
+
+    pub fn rewrite_http_to_https(&self) -> Self {
+        let mut new = Self::empty();
+
+        for component in self.iter() {
+            if let Protocol::Http = component {
+                new.push(Protocol::Https);
+            } else {
+                new.push(component);
+            }
+        }
+
+        new
+    }
 }
 
 pub(crate) fn parse_tcp<'a, T: Iterator<Item = Protocol<'a>>>(protocols: &mut T) -> Result<u16> {
@@ -311,6 +325,36 @@ impl<'de> serde::Deserialize<'de> for Multiaddr {
         s.parse()
             .map(Self)
             .map_err(|e| serde::de::Error::custom(e.to_string()))
+    }
+}
+
+impl std::net::ToSocketAddrs for Multiaddr {
+    type Iter = Box<dyn Iterator<Item = SocketAddr>>;
+
+    fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
+        let mut iter = self.iter();
+
+        match (iter.next(), iter.next()) {
+            (Some(Protocol::Ip4(ip4)), Some(Protocol::Tcp(port) | Protocol::Udp(port))) => {
+                (ip4, port)
+                    .to_socket_addrs()
+                    .map(|iter| Box::new(iter) as _)
+            }
+            (Some(Protocol::Ip6(ip6)), Some(Protocol::Tcp(port) | Protocol::Udp(port))) => {
+                (ip6, port)
+                    .to_socket_addrs()
+                    .map(|iter| Box::new(iter) as _)
+            }
+            (Some(Protocol::Dns(hostname)), Some(Protocol::Tcp(port) | Protocol::Udp(port))) => {
+                (hostname.as_ref(), port)
+                    .to_socket_addrs()
+                    .map(|iter| Box::new(iter) as _)
+            }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "unable to convert Multiaddr to SocketAddr",
+            )),
+        }
     }
 }
 

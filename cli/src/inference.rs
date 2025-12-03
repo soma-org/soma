@@ -18,14 +18,14 @@ use tokio::fs;
 use tracing::info;
 use types::{
     checksum::Checksum,
-    consensus::committee::get_available_local_address,
+    committee::get_available_local_address,
     crypto::NetworkKeyPair,
     evaluation::ProbeSet,
     metadata::{Metadata, MetadataV1, ObjectPath},
-    p2p::to_host_port_str,
     parameters::HttpParameters,
     shard::Shard,
     shard_crypto::digest::Digest,
+    sync::to_host_port_str,
 };
 
 #[allow(clippy::large_enum_variant)]

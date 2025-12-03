@@ -6,9 +6,10 @@ use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
 use crate::utils::types_conversions::SdkTypeConversionError;
 use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
-use fastcrypto::traits::ToFromBytes as _;
+use fastcrypto::traits::ToFromBytes;
 use types::base::SomaAddress;
 use types::crypto::SomaSignature;
+use types::envelope::Message as _;
 use types::metadata::MetadataAPI as _;
 
 //
@@ -93,6 +94,11 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::StakingPoolNotFound => (ExecutionErrorKind::StakingPoolNotFound, None),
             E::CannotReportOneself => (ExecutionErrorKind::CannotReportOneself, None),
             E::ReportRecordNotFound => (ExecutionErrorKind::ReportRecordNotFound, None),
+            E::InputObjectDeleted => (ExecutionErrorKind::InputObjectDeleted, None),
+            E::CertificateDenied => (ExecutionErrorKind::CertificateDenied, None),
+            E::ExecutionCancelledDueToSharedObjectCongestion => {
+                (ExecutionErrorKind::SharedObjectCongestion, None)
+            }
             E::SomaError(e) => (ExecutionErrorKind::OtherError, Some(e.to_string())),
         };
 
@@ -125,13 +131,27 @@ impl From<types::committee::Committee> for ValidatorCommittee {
     fn from(value: types::committee::Committee) -> Self {
         let mut message = Self::default();
         message.epoch = Some(value.epoch);
-        message.members = value
-            .voting_rights
+
+        let authorities: Vec<_> = value.authorities().collect();
+
+        message.members = authorities
             .into_iter()
-            .map(|(name, weight)| {
+            .map(|(i, authority)| {
+                let network_key = authority.network_key.clone();
+                let authority_key_bytes = authority.authority_key.as_bytes().to_vec();
+                let protocol_key_bytes = authority.protocol_key.to_bytes().to_vec();
+                let network_key_bytes = network_key.into_inner().as_bytes().to_vec();
+
                 let mut member = ValidatorCommitteeMember::default();
-                member.authority_key = Some(name.0.to_vec().into());
-                member.weight = Some(weight);
+                member.authority_key = Some(authority_key_bytes.into());
+                member.weight = Some(authority.stake);
+
+                member.network_metadata = Some(ValidatorNetworkMetadata {
+                    consensus_address: Some(authority.address.to_string()),
+                    hostname: Some(authority.hostname.clone()),
+                    protocol_key: Some(protocol_key_bytes.into()),
+                    network_key: Some(network_key_bytes.into()),
+                });
                 member
             })
             .collect();
@@ -178,19 +198,19 @@ impl From<types::crypto::Signature> for SimpleSignature {
 
 impl From<types::crypto::GenericSignature> for UserSignature {
     fn from(value: types::crypto::GenericSignature) -> Self {
-        Self::merge_from(value, &FieldMaskTree::new_wildcard())
+        Self::merge_from(&value, &FieldMaskTree::new_wildcard())
     }
 }
 
-impl Merge<types::crypto::GenericSignature> for UserSignature {
-    fn merge(&mut self, source: types::crypto::GenericSignature, mask: &FieldMaskTree) {
+impl Merge<&types::crypto::GenericSignature> for UserSignature {
+    fn merge(&mut self, source: &types::crypto::GenericSignature, mask: &FieldMaskTree) {
         use user_signature::Signature;
 
         let scheme = match source {
             types::crypto::GenericSignature::Signature(signature) => {
                 let scheme = signature.scheme().into();
                 if mask.contains(Self::SIMPLE_FIELD) {
-                    self.signature = Some(Signature::Simple(signature.into()));
+                    self.signature = Some(Signature::Simple(signature.clone().into()));
                 }
                 scheme
             }
@@ -215,14 +235,36 @@ impl From<types::balance_change::BalanceChange> for BalanceChange {
     }
 }
 
-impl From<types::object::Object> for Object {
-    fn from(value: types::object::Object) -> Self {
-        Self::merge_from_types(value, &FieldMaskTree::new_wildcard())
+impl TryFrom<&BalanceChange> for types::balance_change::BalanceChange {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &BalanceChange) -> Result<Self, Self::Error> {
+        let address = value
+            .address
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("address"))?
+            .parse()
+            .map_err(|e| TryFromProtoError::invalid("address", e))?;
+
+        let amount: i128 = value
+            .amount
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("amount"))?
+            .parse()
+            .map_err(|e| TryFromProtoError::invalid("amount", e))?;
+
+        Ok(types::balance_change::BalanceChange { address, amount })
     }
 }
 
-impl Merge<types::object::Object> for Object {
-    fn merge(&mut self, source: types::object::Object, mask: &FieldMaskTree) {
+impl From<types::object::Object> for Object {
+    fn from(value: types::object::Object) -> Self {
+        Self::merge_from(&value, &FieldMaskTree::new_wildcard())
+    }
+}
+
+impl Merge<&types::object::Object> for Object {
+    fn merge(&mut self, source: &types::object::Object, mask: &FieldMaskTree) {
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = Some(source.digest().to_string());
         }
@@ -243,9 +285,13 @@ impl Merge<types::object::Object> for Object {
             self.previous_transaction = Some(source.previous_transaction.to_string());
         }
 
-        // if mask.contains(Self::BALANCE_FIELD) {
-        //     self.balance = source.as_coin_maybe().map(|coin| coin.balance.value());
-        // }
+        if mask.contains(Self::OBJECT_TYPE_FIELD.name) {
+            self.object_type = Some(source.data.object_type().to_string());
+        }
+
+        if mask.contains(Self::CONTENTS_FIELD.name) {
+            self.contents = Some(source.data.contents().to_vec().into());
+        }
     }
 }
 
@@ -298,18 +344,18 @@ impl From<types::object::Owner> for Owner {
 
 impl From<types::transaction::TransactionData> for Transaction {
     fn from(value: types::transaction::TransactionData) -> Self {
-        Self::merge_from(value, &FieldMaskTree::new_wildcard())
+        Self::merge_from(&value, &FieldMaskTree::new_wildcard())
     }
 }
 
-impl Merge<types::transaction::TransactionData> for Transaction {
-    fn merge(&mut self, source: types::transaction::TransactionData, mask: &FieldMaskTree) {
+impl Merge<&types::transaction::TransactionData> for Transaction {
+    fn merge(&mut self, source: &types::transaction::TransactionData, mask: &FieldMaskTree) {
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = Some(source.digest().to_string());
         }
 
         if mask.contains(Self::KIND_FIELD.name) {
-            self.kind = Some(source.kind.into());
+            self.kind = Some(source.kind.clone().into());
         }
 
         if mask.contains(Self::SENDER_FIELD.name) {
@@ -319,6 +365,7 @@ impl Merge<types::transaction::TransactionData> for Transaction {
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
             self.gas_payment = source
                 .gas_payment
+                .clone()
                 .into_iter()
                 .map(|g| object_ref_to_proto(g))
                 .collect();
@@ -418,8 +465,11 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {
                 staked_soma: Some(object_ref_to_proto(staked_soma)),
             }),
-            K::EmbedData { metadata, coin_ref } => Kind::EmbedData(EmbedData {
-                metadata: Some(metadata.into()),
+            K::EmbedData {
+                download_metadata,
+                coin_ref,
+            } => Kind::EmbedData(EmbedData {
+                download_metadata: Some(download_metadata.into()),
                 coin_ref: Some(object_ref_to_proto(coin_ref)),
             }),
             K::ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(ClaimEscrow {
@@ -1365,8 +1415,8 @@ impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
 
     fn try_from(proto_shard: ShardResult) -> Result<Self, Self::Error> {
         // Convert proto Metadata to domain Metadata
-        let metadata = proto_shard
-            .metadata
+        let download_metadata = proto_shard
+            .download_metadata
             .as_ref()
             .ok_or("Missing metadata")?
             .try_into()
@@ -1379,7 +1429,7 @@ impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
             .map_err(|e| format!("Failed to deserialize report: {}", e))?;
 
         Ok(types::system_state::shard::ShardResult {
-            metadata,
+            download_metadata,
             amount: proto_shard.amount.ok_or("Missing amount")?,
             report,
         })
@@ -1768,14 +1818,14 @@ impl TryFrom<types::system_state::shard::ShardResult> for ShardResult {
         use bytes::Bytes;
 
         // Convert domain Metadata to proto Metadata
-        let metadata: crate::proto::soma::Metadata = domain_shard.metadata.into();
+        let download_metadata: DownloadMetadata = domain_shard.download_metadata.into();
 
         // Serialize the report to bytes
         let report_bytes = bcs::to_bytes(&domain_shard.report)
             .map_err(|e| format!("Failed to serialize report: {}", e))?;
 
         Ok(ShardResult {
-            metadata: Some(metadata),
+            download_metadata: Some(download_metadata),
             amount: Some(domain_shard.amount),
             report: Some(Bytes::from(report_bytes)),
         })
@@ -1830,103 +1880,6 @@ impl From<simulate_transaction_request::TransactionChecks>
     }
 }
 
-impl Merge<&types::checkpoint::Checkpoint> for Commit {
-    fn merge(&mut self, source: &types::checkpoint::Checkpoint, mask: &FieldMaskTree) {
-        if let Some(submask) = mask.subtree(Commit::TRANSACTIONS_FIELD.name) {
-            self.transactions = source
-                .transactions
-                .iter()
-                .map(|t| {
-                    let mut transaction = ExecutedTransaction::merge_from(t, &submask);
-                    transaction.commit = submask
-                        .contains(ExecutedTransaction::COMMIT_FIELD)
-                        .then_some(source.commit_index.into());
-                    transaction.timestamp = submask
-                        .contains(ExecutedTransaction::TIMESTAMP_FIELD)
-                        .then(|| crate::proto::timestamp_ms_to_proto(source.timestamp_ms));
-                    transaction
-                })
-                .collect();
-        }
-    }
-}
-
-impl Merge<&types::checkpoint::ExecutedTransaction> for ExecutedTransaction {
-    fn merge(&mut self, source: &types::checkpoint::ExecutedTransaction, mask: &FieldMaskTree) {
-        if mask.contains(ExecutedTransaction::DIGEST_FIELD) {
-            self.digest = Some(source.transaction.digest().to_string());
-        }
-
-        if let Some(submask) = mask.subtree(ExecutedTransaction::TRANSACTION_FIELD) {
-            self.transaction = Some(Transaction::merge_from(
-                source.transaction.clone(),
-                &submask,
-            ));
-        }
-
-        if let Some(submask) = mask.subtree(ExecutedTransaction::EFFECTS_FIELD) {
-            let effects = TransactionEffects::merge_from(&source.effects, &submask);
-
-            self.effects = Some(effects);
-        }
-    }
-}
-
-impl TryFrom<&Commit> for types::checkpoint::Checkpoint {
-    type Error = TryFromProtoError;
-
-    fn try_from(checkpoint: &Commit) -> Result<Self, Self::Error> {
-        let transactions = checkpoint
-            .transactions()
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
-
-        Ok(Self {
-            commit_index: checkpoint.index(),
-            timestamp_ms: checkpoint.timestamp_ms(),
-            transactions,
-        })
-    }
-}
-
-impl TryFrom<&ExecutedTransaction> for types::checkpoint::ExecutedTransaction {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &ExecutedTransaction) -> Result<Self, Self::Error> {
-        // Convert proto Transaction -> crate::types::Transaction -> types::transaction::TransactionData
-        let transaction = {
-            let proto_transaction = value.transaction();
-            let crate_transaction: crate::types::Transaction = proto_transaction
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("transaction", e))?;
-
-            // Now convert crate::types::Transaction to types::transaction::TransactionData
-            crate_transaction
-                .try_into()
-                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("transaction", e))?
-        };
-
-        // Convert proto TransactionEffects -> crate::types::TransactionEffects -> types::effects::TransactionEffects
-        let effects = {
-            let proto_effects = value.effects();
-            let crate_effects: crate::types::TransactionEffects = proto_effects
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("effects", e))?;
-
-            // Now convert crate::types::TransactionEffects to types::effects::TransactionEffects
-            crate_effects
-                .try_into()
-                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("effects", e))?
-        };
-
-        Ok(Self {
-            transaction,
-            effects,
-        })
-    }
-}
-
 impl From<types::metadata::Metadata> for Metadata {
     fn from(value: types::metadata::Metadata) -> Self {
         let mut message = Self::default();
@@ -1934,7 +1887,7 @@ impl From<types::metadata::Metadata> for Metadata {
             types::metadata::Metadata::V1(v1) => {
                 let mut proto_v1 = MetadataV1::default();
                 proto_v1.checksum = Some(v1.checksum().as_bytes().to_vec().into());
-                proto_v1.size = Some(v1.size());
+                proto_v1.size = Some(v1.size() as u64);
                 message.version = Some(crate::proto::soma::metadata::Version::V1(proto_v1));
             }
         }
@@ -1965,7 +1918,11 @@ impl TryFrom<&Metadata> for types::metadata::Metadata {
                 let checksum = types::checksum::Checksum::from_bytes(checksum_bytes)
                     .map_err(|e| TryFromProtoError::invalid("checksum", e))?;
 
-                let size = v1.size.ok_or_else(|| TryFromProtoError::missing("size"))?;
+                let size = v1
+                    .size
+                    .ok_or_else(|| TryFromProtoError::missing("size"))?
+                    .try_into()
+                    .map_err(|e| TryFromProtoError::invalid("size", e))?;
 
                 Ok(types::metadata::Metadata::V1(
                     types::metadata::MetadataV1::new(checksum, size),
@@ -1981,5 +1938,534 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
 
     fn try_from(value: Metadata) -> Result<Self, Self::Error> {
         (&value).try_into()
+    }
+}
+
+impl From<types::metadata::DownloadMetadata> for DownloadMetadata {
+    fn from(value: types::metadata::DownloadMetadata) -> Self {
+        use download_metadata::Kind;
+        use types::metadata::{DefaultDownloadMetadataAPI, MetadataAPI, MtlsDownloadMetadataAPI};
+
+        let kind = match value {
+            types::metadata::DownloadMetadata::Default(dm) => {
+                Kind::Default(DefaultDownloadMetadata {
+                    version: Some(default_download_metadata::Version::V1(
+                        DefaultDownloadMetadataV1 {
+                            url: Some(dm.url().to_string()),
+                            metadata: Some(dm.metadata().clone().into()),
+                        },
+                    )),
+                })
+            }
+            types::metadata::DownloadMetadata::Mtls(dm) => Kind::Mtls(MtlsDownloadMetadata {
+                version: Some(mtls_download_metadata::Version::V1(
+                    MtlsDownloadMetadataV1 {
+                        peer: Some(dm.peer().to_bytes().to_vec().into()),
+                        url: Some(dm.url().to_string()),
+                        metadata: Some(dm.metadata().clone().into()),
+                    },
+                )),
+            }),
+        };
+
+        DownloadMetadata { kind: Some(kind) }
+    }
+}
+
+impl TryFrom<&DownloadMetadata> for types::metadata::DownloadMetadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &DownloadMetadata) -> Result<Self, Self::Error> {
+        use download_metadata::Kind;
+
+        match value
+            .kind
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("kind"))?
+        {
+            Kind::Default(dm) => {
+                let v1 = match dm
+                    .version
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("version"))?
+                {
+                    default_download_metadata::Version::V1(v1) => v1,
+                };
+
+                let url = v1
+                    .url
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("url", e))?;
+                let metadata = v1
+                    .metadata
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .try_into()?;
+
+                Ok(types::metadata::DownloadMetadata::Default(
+                    types::metadata::DefaultDownloadMetadata::V1(
+                        types::metadata::DefaultDownloadMetadataV1::new(url, metadata),
+                    ),
+                ))
+            }
+            Kind::Mtls(dm) => {
+                let v1 = match dm
+                    .version
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("version"))?
+                {
+                    mtls_download_metadata::Version::V1(v1) => v1,
+                };
+
+                let peer_bytes = v1
+                    .peer
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("peer"))?;
+                let network_pubkey = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(peer_bytes)
+                    .map_err(|e| TryFromProtoError::invalid("peer", e))?;
+                let peer = types::crypto::NetworkPublicKey::new(network_pubkey);
+
+                let url = v1
+                    .url
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("url", e))?;
+                let metadata = v1
+                    .metadata
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .try_into()?;
+
+                Ok(types::metadata::DownloadMetadata::Mtls(
+                    types::metadata::MtlsDownloadMetadata::V1(
+                        types::metadata::MtlsDownloadMetadataV1::new(peer, url, metadata),
+                    ),
+                ))
+            }
+        }
+    }
+}
+
+//
+// CheckpointSummary
+//
+
+impl Merge<&types::full_checkpoint_content::Checkpoint> for Checkpoint {
+    fn merge(&mut self, source: &types::full_checkpoint_content::Checkpoint, mask: &FieldMaskTree) {
+        let sequence_number = source.summary.sequence_number;
+        let timestamp_ms = source.summary.timestamp_ms;
+
+        let summary = source.summary.data();
+        let signature = source.summary.auth_sig();
+
+        self.merge(summary, mask);
+        self.merge(signature.clone(), mask);
+
+        if mask.contains(Checkpoint::CONTENTS_FIELD.name) {
+            self.merge(&source.contents, mask);
+        }
+
+        if let Some(submask) = mask
+            .subtree(Checkpoint::OBJECTS_FIELD)
+            .and_then(|submask| submask.subtree(ObjectSet::OBJECTS_FIELD))
+        {
+            let set = source
+                .object_set
+                .iter()
+                .map(|o| crate::proto::soma::Object::merge_from(o, &submask))
+                .collect();
+            self.objects = Some(ObjectSet::default().with_objects(set));
+        }
+
+        if let Some(submask) = mask.subtree(Checkpoint::TRANSACTIONS_FIELD.name) {
+            self.transactions = source
+                .transactions
+                .iter()
+                .map(|t| {
+                    let mut transaction = ExecutedTransaction::merge_from(t, &submask);
+                    transaction.checkpoint = submask
+                        .contains(ExecutedTransaction::CHECKPOINT_FIELD)
+                        .then_some(sequence_number);
+                    transaction.timestamp = submask
+                        .contains(ExecutedTransaction::TIMESTAMP_FIELD)
+                        .then(|| crate::proto::timestamp_ms_to_proto(timestamp_ms));
+                    transaction
+                })
+                .collect();
+        }
+    }
+}
+
+impl Merge<&types::full_checkpoint_content::ExecutedTransaction> for ExecutedTransaction {
+    fn merge(
+        &mut self,
+        source: &types::full_checkpoint_content::ExecutedTransaction,
+        mask: &FieldMaskTree,
+    ) {
+        if mask.contains(ExecutedTransaction::DIGEST_FIELD) {
+            self.digest = Some(source.transaction.digest().to_string());
+        }
+
+        if let Some(submask) = mask.subtree(ExecutedTransaction::TRANSACTION_FIELD) {
+            self.transaction = Some(Transaction::merge_from(&source.transaction, &submask));
+        }
+
+        if let Some(submask) = mask.subtree(ExecutedTransaction::SIGNATURES_FIELD) {
+            self.signatures = source
+                .signatures
+                .iter()
+                .map(|s| UserSignature::merge_from(s, &submask))
+                .collect();
+        }
+
+        if let Some(submask) = mask.subtree(ExecutedTransaction::EFFECTS_FIELD) {
+            let mut effects = TransactionEffects::merge_from(&source.effects, &submask);
+            self.effects = Some(effects);
+        }
+    }
+}
+
+impl TryFrom<&Checkpoint> for types::full_checkpoint_content::Checkpoint {
+    type Error = TryFromProtoError;
+
+    fn try_from(checkpoint: &Checkpoint) -> Result<Self, Self::Error> {
+        // Convert proto CheckpointSummary -> crate::types::CheckpointSummary -> types::checkpoints::CheckpointSummary
+        let summary = {
+            let proto_summary = checkpoint.summary();
+            let crate_summary: crate::types::CheckpointSummary = proto_summary
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("summary", e))?;
+
+            let domain_summary: types::checkpoints::CheckpointSummary = crate_summary
+                .try_into()
+                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("summary", e))?;
+
+            // Get signature and combine into CertifiedCheckpointSummary
+            let crate_sig: crate::types::ValidatorAggregatedSignature =
+                checkpoint.signature().try_into()?;
+            let signature = types::crypto::AuthorityStrongQuorumSignInfo::try_from(crate_sig)
+                .map_err(|e| TryFromProtoError::invalid("signature", e))?;
+
+            types::checkpoints::CertifiedCheckpointSummary::new_from_data_and_sig(
+                domain_summary,
+                signature,
+            )
+        };
+
+        // Convert proto CheckpointContents -> crate::types::CheckpointContents -> types::checkpoints::CheckpointContents
+        let contents = {
+            let proto_contents = checkpoint.contents();
+            let crate_contents: crate::types::CheckpointContents = proto_contents
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("contents", e))?;
+
+            crate_contents
+                .try_into()
+                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("contents", e))?
+        };
+
+        let transactions = checkpoint
+            .transactions()
+            .iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()?;
+
+        let object_set = checkpoint.objects().try_into()?;
+
+        Ok(Self {
+            summary,
+            contents,
+            transactions,
+            object_set,
+        })
+    }
+}
+
+impl TryFrom<&ObjectReference> for types::storage::ObjectKey {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &ObjectReference) -> Result<Self, Self::Error> {
+        Ok(Self(
+            value
+                .object_id()
+                .parse()
+                .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+            value.version().into(),
+        ))
+    }
+}
+
+//
+// CheckpointSummary
+//
+
+impl From<types::checkpoints::CheckpointSummary> for CheckpointSummary {
+    fn from(summary: types::checkpoints::CheckpointSummary) -> Self {
+        Self::merge_from(summary, &FieldMaskTree::new_wildcard())
+    }
+}
+
+impl Merge<types::checkpoints::CheckpointSummary> for CheckpointSummary {
+    fn merge(&mut self, source: types::checkpoints::CheckpointSummary, mask: &FieldMaskTree) {
+        if mask.contains(Self::DIGEST_FIELD) {
+            self.digest = Some(source.digest().to_string());
+        }
+
+        let types::checkpoints::CheckpointSummary {
+            epoch,
+            sequence_number,
+            network_total_transactions,
+            content_digest,
+            previous_digest,
+            // epoch_rolling_gas_cost_summary,
+            timestamp_ms,
+            checkpoint_commitments,
+            end_of_epoch_data,
+        } = source;
+
+        if mask.contains(Self::EPOCH_FIELD) {
+            self.epoch = Some(epoch);
+        }
+
+        if mask.contains(Self::SEQUENCE_NUMBER_FIELD) {
+            self.sequence_number = Some(sequence_number);
+        }
+
+        if mask.contains(Self::TOTAL_NETWORK_TRANSACTIONS_FIELD) {
+            self.total_network_transactions = Some(network_total_transactions);
+        }
+
+        if mask.contains(Self::CONTENT_DIGEST_FIELD) {
+            self.content_digest = Some(content_digest.to_string());
+        }
+
+        if mask.contains(Self::PREVIOUS_DIGEST_FIELD) {
+            self.previous_digest = previous_digest.map(|d| d.to_string());
+        }
+
+        // if mask.contains(Self::EPOCH_ROLLING_GAS_COST_SUMMARY_FIELD) {
+        //     self.epoch_rolling_gas_cost_summary = Some(epoch_rolling_gas_cost_summary.into());
+        // }
+
+        if mask.contains(Self::TIMESTAMP_FIELD) {
+            self.timestamp = Some(crate::proto::timestamp_ms_to_proto(timestamp_ms));
+        }
+
+        if mask.contains(Self::COMMITMENTS_FIELD) {
+            self.commitments = checkpoint_commitments.into_iter().map(Into::into).collect();
+        }
+
+        if mask.contains(Self::END_OF_EPOCH_DATA_FIELD) {
+            self.end_of_epoch_data = end_of_epoch_data.map(Into::into);
+        }
+    }
+}
+
+//
+// CheckpointCommitment
+//
+
+impl From<types::checkpoints::CheckpointCommitment> for CheckpointCommitment {
+    fn from(value: types::checkpoints::CheckpointCommitment) -> Self {
+        use checkpoint_commitment::CheckpointCommitmentKind;
+
+        let mut message = Self::default();
+
+        let kind = match value {
+            types::checkpoints::CheckpointCommitment::ECMHLiveObjectSetDigest(digest) => {
+                message.digest = Some(digest.digest.to_string());
+                CheckpointCommitmentKind::EcmhLiveObjectSet
+            }
+            types::checkpoints::CheckpointCommitment::CheckpointArtifactsDigest(digest) => {
+                message.digest = Some(digest.to_string());
+                CheckpointCommitmentKind::CheckpointArtifacts
+            }
+        };
+
+        message.set_kind(kind);
+        message
+    }
+}
+
+//
+// EndOfEpochData
+//
+
+impl From<types::checkpoints::EndOfEpochData> for EndOfEpochData {
+    fn from(
+        types::checkpoints::EndOfEpochData {
+            next_epoch_validator_committee,
+            // next_epoch_protocol_version,
+            epoch_commitments,
+            ..
+        }: types::checkpoints::EndOfEpochData,
+    ) -> Self {
+        let mut message = Self::default();
+
+        message.next_epoch_validator_committee = Some(next_epoch_validator_committee.into());
+        // message.next_epoch_protocol_version = Some(next_epoch_protocol_version.as_u64());
+        message.epoch_commitments = epoch_commitments.into_iter().map(Into::into).collect();
+
+        message
+    }
+}
+
+//
+// CheckpointContents
+//
+
+impl From<types::checkpoints::CheckpointContents> for CheckpointContents {
+    fn from(value: types::checkpoints::CheckpointContents) -> Self {
+        Self::merge_from(value, &FieldMaskTree::new_wildcard())
+    }
+}
+
+impl Merge<types::checkpoints::CheckpointContents> for CheckpointContents {
+    fn merge(&mut self, source: types::checkpoints::CheckpointContents, mask: &FieldMaskTree) {
+        if mask.contains(Self::DIGEST_FIELD) {
+            self.digest = Some(source.digest().to_string());
+        }
+
+        if mask.contains(Self::VERSION_FIELD) {
+            self.version = Some(1);
+        }
+
+        if mask.contains(Self::TRANSACTIONS_FIELD) {
+            self.transactions = source
+                .into_iter_with_signatures()
+                .map(|(digests, sigs)| {
+                    let mut info = CheckpointedTransactionInfo::default();
+                    info.transaction = Some(digests.transaction.to_string());
+                    info.effects = Some(digests.effects.to_string());
+                    info.signatures = sigs.into_iter().map(Into::into).collect();
+                    info
+                })
+                .collect();
+        }
+    }
+}
+
+impl Merge<&types::checkpoints::CheckpointContents> for Checkpoint {
+    fn merge(&mut self, source: &types::checkpoints::CheckpointContents, mask: &FieldMaskTree) {
+        if let Some(submask) = mask.subtree(Self::CONTENTS_FIELD.name) {
+            self.contents = Some(CheckpointContents::merge_from(source.to_owned(), &submask));
+        }
+    }
+}
+
+//
+// Checkpoint
+//
+
+impl Merge<&types::checkpoints::CheckpointSummary> for Checkpoint {
+    fn merge(&mut self, source: &types::checkpoints::CheckpointSummary, mask: &FieldMaskTree) {
+        if mask.contains(Self::SEQUENCE_NUMBER_FIELD) {
+            self.sequence_number = Some(source.sequence_number);
+        }
+
+        if mask.contains(Self::DIGEST_FIELD) {
+            self.digest = Some(source.digest().to_string());
+        }
+
+        if let Some(submask) = mask.subtree(Self::SUMMARY_FIELD) {
+            self.summary = Some(CheckpointSummary::merge_from(source.clone(), &submask));
+        }
+    }
+}
+
+impl<const T: bool> Merge<types::crypto::AuthorityQuorumSignInfo<T>> for Checkpoint {
+    fn merge(&mut self, source: types::crypto::AuthorityQuorumSignInfo<T>, mask: &FieldMaskTree) {
+        if mask.contains(Self::SIGNATURE_FIELD) {
+            self.signature = Some(source.into());
+        }
+    }
+}
+
+impl Merge<types::checkpoints::CheckpointContents> for Checkpoint {
+    fn merge(&mut self, source: types::checkpoints::CheckpointContents, mask: &FieldMaskTree) {
+        if let Some(submask) = mask.subtree(Self::CONTENTS_FIELD) {
+            self.contents = Some(CheckpointContents::merge_from(source, &submask));
+        }
+    }
+}
+
+impl TryFrom<&ObjectSet> for types::full_checkpoint_content::ObjectSet {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &ObjectSet) -> Result<Self, Self::Error> {
+        let mut objects = Self::default();
+
+        for o in value.objects() {
+            let crate_object: crate::types::Object = o
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("object", e))?;
+            let object = crate_object
+                .try_into()
+                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("object", e))?;
+            objects.insert(object);
+        }
+
+        Ok(objects)
+    }
+}
+
+impl TryFrom<&ExecutedTransaction> for types::full_checkpoint_content::ExecutedTransaction {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &ExecutedTransaction) -> Result<Self, Self::Error> {
+        // Convert proto Transaction -> crate::types::Transaction -> types::transaction::TransactionData
+        let transaction = {
+            let proto_transaction = value.transaction();
+            let crate_transaction: crate::types::Transaction = proto_transaction
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("transaction", e))?;
+
+            // Now convert crate::types::Transaction to types::transaction::TransactionData
+            crate_transaction
+                .try_into()
+                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("transaction", e))?
+        };
+
+        let signatures = {
+            let proto_signature = value.signatures();
+            let crate_signatures: Vec<crate::types::UserSignature> = proto_signature
+                .iter()
+                .map(|s| {
+                    s.try_into()
+                        .map_err(|e| TryFromProtoError::invalid("signature", e))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            crate_signatures
+                .iter()
+                .map(|s| {
+                    (s.clone()).try_into().map_err(|e: SdkTypeConversionError| {
+                        TryFromProtoError::invalid("signature", e)
+                    })
+                })
+                .collect::<Result<Vec<types::crypto::GenericSignature>, _>>()?
+        };
+
+        // Convert proto TransactionEffects -> crate::types::TransactionEffects -> types::effects::TransactionEffects
+        let effects = {
+            let proto_effects = value.effects();
+            let crate_effects: crate::types::TransactionEffects = proto_effects
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("effects", e))?;
+
+            // Now convert crate::types::TransactionEffects to types::effects::TransactionEffects
+            crate_effects
+                .try_into()
+                .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("effects", e))?
+        };
+
+        Ok(Self {
+            transaction,
+            signatures,
+            effects,
+        })
     }
 }

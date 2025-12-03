@@ -48,8 +48,8 @@ use crate::{
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
     storage::InputKey,
     transaction::InputObjects,
+    transaction_outputs::WrittenObjects,
     tx_fee::TransactionFee,
-    tx_outputs::WrittenObjects,
 };
 
 /// # DeletedSharedObjectInfo

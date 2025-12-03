@@ -16,15 +16,15 @@ use crate::{
     crypto::{NetworkKeyPair, NetworkPublicKey, NetworkSignature},
     error::{ShardError, ShardResult, SharedError, SharedResult},
     multiaddr::Multiaddr,
-    p2p::to_host_port_str,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
         scope::{Scope, ScopedMessage},
     },
+    sync::to_host_port_str,
 };
 
-type SizeInBytes = u64;
+type SizeInBytes = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ObjectPath {
@@ -119,7 +119,7 @@ pub trait DefaultDownloadMetadataAPI {
     fn metadata(&self) -> &Metadata;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DefaultDownloadMetadataV1 {
     url: Url,
     metadata: Metadata,
@@ -140,7 +140,7 @@ impl DefaultDownloadMetadataAPI for DefaultDownloadMetadataV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[enum_dispatch(DefaultDownloadMetadataAPI)]
 pub enum DefaultDownloadMetadata {
     V1(DefaultDownloadMetadataV1),
@@ -153,7 +153,7 @@ pub trait MtlsDownloadMetadataAPI {
     fn metadata(&self) -> &Metadata;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MtlsDownloadMetadataV1 {
     peer: NetworkPublicKey,
     url: Url,
@@ -182,13 +182,13 @@ impl MtlsDownloadMetadataAPI for MtlsDownloadMetadataV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[enum_dispatch(MtlsDownloadMetadataAPI)]
 pub enum MtlsDownloadMetadata {
     V1(MtlsDownloadMetadataV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub enum DownloadMetadata {
     Default(DefaultDownloadMetadata),
     Mtls(MtlsDownloadMetadata),

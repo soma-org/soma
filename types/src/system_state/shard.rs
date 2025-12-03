@@ -1,4 +1,4 @@
-use crate::metadata::Metadata;
+use crate::metadata::DownloadMetadata;
 use crate::report::Report;
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use crate::{base::SomaAddress, committee::EpochId};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ShardInput {
     /// Metadata
-    pub metadata: Metadata,
+    pub download_metadata: DownloadMetadata,
     /// Escrowed amount for the shard
     pub amount: u64,
     /// Epoch at which the shard expires
@@ -21,7 +21,7 @@ pub struct ShardInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ShardResult {
     /// Metadata
-    pub metadata: Metadata,
+    pub download_metadata: DownloadMetadata,
     /// Escrowed amount for the shard
     pub amount: u64,
     /// The submitted report

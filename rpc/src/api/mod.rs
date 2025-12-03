@@ -11,6 +11,7 @@ pub mod error;
 mod grpc;
 mod reader;
 mod response;
+mod rpc_client;
 pub mod subscription;
 
 #[derive(Clone)]
@@ -54,11 +55,9 @@ impl RpcService {
             let ledger_service =
                 crate::proto::soma::ledger_service_server::LedgerServiceServer::new(self.clone());
             let transaction_execution_service = crate::proto::soma::transaction_execution_service_server::TransactionExecutionServiceServer::new(self.clone());
-            let live_data_service =
-                crate::proto::soma::live_data_service_server::LiveDataServiceServer::new(
-                    self.clone(),
-                )
-                .send_compressed(tonic::codec::CompressionEncoding::Zstd);
+            let state_service =
+                crate::proto::soma::state_service_server::StateServiceServer::new(self.clone())
+                    .send_compressed(tonic::codec::CompressionEncoding::Zstd);
 
             // let reflection_v1alpha = tonic_reflection::server::Builder::configure()
             //     .register_encoded_file_descriptor_set(
@@ -81,7 +80,7 @@ impl RpcService {
             let mut services = grpc::Services::new()
                 .add_service(ledger_service)
                 .add_service(transaction_execution_service)
-                .add_service(live_data_service);
+                .add_service(state_service);
             // .add_service(reflection_v1alpha)
 
             if self.subscription_service_handle.is_some() {
@@ -107,5 +106,18 @@ impl RpcService {
         axum::serve(listener, self.into_router().await)
             .await
             .unwrap();
+    }
+}
+
+#[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    Ascending,
+    Descending,
+}
+
+impl Direction {
+    pub fn is_descending(self) -> bool {
+        matches!(self, Self::Descending)
     }
 }

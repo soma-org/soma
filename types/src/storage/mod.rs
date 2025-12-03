@@ -1,68 +1,35 @@
-//! # Storage Module
-//!
-//! ## Overview
-//! This module defines the core storage abstractions and types used throughout the Soma blockchain.
-//! It provides interfaces and data structures for storing and retrieving blockchain objects,
-//! transactions, and other state information.
-//!
-//! ## Responsibilities
-//! - Define storage interfaces for different types of blockchain data
-//! - Provide key types and structures for object storage and retrieval
-//! - Support different storage access patterns (read, write, versioned)
-//! - Handle object lifecycle states (active, deleted, wrapped)
-//! - Manage consensus object storage and versioning
-//!
-//! ## Component Relationships
-//! - Used by the Authority module to persist and retrieve blockchain state
-//! - Provides storage abstractions for transaction processing
-//! - Interfaces with the underlying database implementation
-//! - Supports the object model defined in the object module
-//!
-//! ## Key Workflows
-//! 1. Object storage and retrieval with versioning
-//! 2. Transaction input and output object management
-//! 3. Consensus object handling with special sequencing requirements
-//! 4. Object tombstone management for deleted objects
-//!
-//! ## Design Patterns
-//! - Trait-based interfaces for storage operations
-//! - Type-safe key structures for database access
-//! - Enum-based state representation for object lifecycle
-//! - Separation of read and write operations
-
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use tracing::info;
-
 use crate::{
     base::{ConsensusObjectSequenceKey, FullObjectID, FullObjectRef},
+    checkpoints::{CertifiedCheckpointSummary, CheckpointSequenceNumber, VerifiedCheckpoint},
+    committee::Committee,
     digests::TransactionDigest,
     effects::{TransactionEffects, TransactionEffectsAPI},
     envelope::Message,
     error::SomaResult,
     object::{Object, ObjectID, ObjectRef, Version},
-    storage::object_store::ObjectStore,
-    transaction::SenderSignedData,
+    storage::{object_store::ObjectStore, write_store::WriteStore},
+    transaction::{SenderSignedData, TransactionData},
 };
+use futures::StreamExt as _;
+use itertools::Itertools as _;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use std::collections::BTreeSet;
+use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use storage_error::Error as StorageError;
+use tracing::debug;
 
 pub mod committee_store;
 pub mod consensus;
 pub mod object_store;
 pub mod read_store;
+pub mod shared_in_memory_store;
 pub mod storage_error;
+pub mod write_path_pending_tx_log;
 pub mod write_store;
 
-/// # InputKey
-///
-/// Represents a key for looking up potential inputs to a transaction.
-///
-/// ## Purpose
-/// Provides a standardized way to reference objects that may be used as inputs
-/// to transactions, with versioning information to ensure the correct object
-/// version is used.
-///
-/// ## Usage
-/// Used during transaction validation and execution to look up and verify
 /// the existence and state of input objects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum InputKey {
@@ -99,68 +66,30 @@ impl From<&Object> for InputKey {
     }
 }
 
-/// # WriteKind
-///
-/// Indicates how an object was written to storage during a transaction.
-///
-/// ## Purpose
-/// Tracks the origin and modification type of objects written to storage,
-/// which is important for correctly processing transaction effects and
-/// maintaining object history.
-///
-/// ## Usage
-/// Used in transaction effects to indicate how objects were modified,
-/// which affects how they are processed by the storage layer.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum WriteKind {
     /// The object was in storage already but has been modified
     Mutate,
-
     /// The object was created in this transaction
     Create,
-
     /// The object was previously wrapped in another object, but has been restored to storage
     Unwrap,
 }
 
-/// # MarkerValue
-///
-/// Represents different states that can be marked for an object in storage.
-///
-/// ## Purpose
-/// Tracks special states of objects that affect their availability for future
-/// transactions, such as being received, deleted, or consumed.
-///
-/// ## Usage
-/// Used by the storage layer to maintain object state and prevent double-spending
-/// or use of deleted objects.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum MarkerValue {
     /// An object was received at the given version in the transaction and is no longer able
-    /// to be received at that version in subsequent transactions
+    /// to be received at that version in subequent transactions.
     Received,
-
-    /// An owned object was deleted at the given version, and is no longer able to be
-    /// accessed or used in subsequent transactions
+    /// A fastpath object was deleted, wrapped, or transferred to consensus at the given
+    /// version, and is no longer able to be accessed or used in subsequent transactions via
+    /// fastpath unless/until it is returned to fastpath.
     OwnedDeleted,
-
-    /// A shared object was deleted by the transaction and is no longer able to be accessed or
-    /// used in subsequent transactions
-    /// Includes the digest of the transaction that deleted it
+    /// A shared object was deleted or removed from consensus by the transaction and is no longer
+    /// able to be accessed or used in subsequent transactions with the same initial shared version.
     SharedDeleted(TransactionDigest),
 }
 
-/// # ObjectKey
-///
-/// The primary key type for object storage, combining an object ID and version.
-///
-/// ## Purpose
-/// Provides a unique identifier for objects in storage that includes both the
-/// object ID and its version, allowing for versioned storage and retrieval.
-///
-/// ## Usage
-/// Used as the primary key in object storage tables and for referencing
-/// specific versions of objects throughout the system.
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct ObjectKey(pub ObjectID, pub Version);
@@ -189,18 +118,6 @@ impl From<&ObjectRef> for ObjectKey {
     }
 }
 
-/// # ObjectOrTombstone
-///
-/// Represents either a full object or a tombstone reference for a deleted object.
-///
-/// ## Purpose
-/// Allows the storage system to handle both active objects and references to
-/// deleted objects (tombstones) in a unified way, which is important for
-/// maintaining object history and preventing object resurrection.
-///
-/// ## Usage
-/// Used when retrieving objects from storage, where the result might be
-/// either a full object or just a reference to a deleted object.
 #[derive(Clone)]
 pub enum ObjectOrTombstone {
     /// A complete object with all its data
@@ -225,36 +142,10 @@ impl From<Object> for ObjectOrTombstone {
     }
 }
 
-/// # ConsensusObjectKey
-///
-/// A key type for consensus objects that includes sequence information.
-///
-/// ## Purpose
-/// Provides a unique identifier for consensus objects that includes both
-/// the sequence key and version, allowing for proper ordering and retrieval.
-///
-/// ## Usage
-/// Used for storing and retrieving consensus objects that require special
-/// sequencing and versioning.
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct ConsensusObjectKey(pub ConsensusObjectSequenceKey, pub Version);
 
-/// # FullObjectKey
-///
-/// Represents a unique object at a specific version, handling both fastpath and consensus objects.
-///
-/// ## Purpose
-/// Provides a unified key type that can reference both regular (fastpath) objects
-/// and consensus objects, which have different storage requirements and versioning.
-///
-/// ## Usage
-/// Used as a comprehensive key type for object storage and retrieval that can
-/// handle all object types in the system.
-///
-/// ## Variants
-/// - Fastpath: Regular objects with simple ID and version
-/// - Consensus: Consensus objects that include sequence information
 #[serde_as]
 #[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum FullObjectKey {
@@ -334,23 +225,6 @@ impl From<&FullObjectRef> for FullObjectKey {
     }
 }
 
-/// # transaction_non_shared_input_object_keys
-///
-/// Fetches the ObjectKeys for non-shared input objects in a transaction.
-///
-/// ## Purpose
-/// Extracts keys for owned and immutable objects used as inputs in a transaction,
-/// which is useful for transaction validation and execution.
-///
-/// ## Arguments
-/// * `tx` - The sender-signed transaction data to extract input object keys from
-///
-/// ## Returns
-/// A Result containing a vector of ObjectKeys for non-shared input objects
-///
-/// ## Behavior
-/// Includes owned and immutable objects as well as gas objects, but excludes
-/// move packages and shared objects.
 pub fn transaction_non_shared_input_object_keys(
     tx: &SenderSignedData,
 ) -> SomaResult<Vec<ObjectKey>> {
@@ -367,23 +241,6 @@ pub fn transaction_non_shared_input_object_keys(
         .collect())
 }
 
-/// # transaction_receiving_object_keys
-///
-/// Extracts the ObjectKeys for objects being received in a transaction.
-///
-/// ## Purpose
-/// Identifies objects that are being received by the transaction, which is
-/// important for tracking object transfers and preventing double-spending.
-///
-/// ## Arguments
-/// * `tx` - The sender-signed transaction data to extract receiving object keys from
-///
-/// ## Returns
-/// A vector of ObjectKeys for objects being received in the transaction
-///
-/// ## Usage
-/// Used during transaction processing to mark objects as received and
-/// prevent them from being received again in other transactions.
 pub fn transaction_receiving_object_keys(tx: &SenderSignedData) -> Vec<ObjectKey> {
     tx.intent_message()
         .value
@@ -392,26 +249,23 @@ pub fn transaction_receiving_object_keys(tx: &SenderSignedData) -> Vec<ObjectKey
         .map(|oref| oref.into())
         .collect()
 }
-
 pub fn get_transaction_input_objects(
     object_store: &dyn ObjectStore,
     effects: &TransactionEffects,
-) -> Result<Vec<Object>, storage_error::Error> {
+) -> Result<Vec<Object>, StorageError> {
     let input_object_keys = effects
         .modified_at_versions()
         .into_iter()
         .map(|(object_id, version)| ObjectKey(object_id, version))
         .collect::<Vec<_>>();
 
-    info!("Input object keys are : {:?}", input_object_keys);
-
     let input_objects = object_store
-        .multi_get_objects_by_key(&input_object_keys)?
+        .multi_get_objects_by_key(&input_object_keys)
         .into_iter()
         .enumerate()
         .map(|(idx, maybe_object)| {
             maybe_object.ok_or_else(|| {
-                storage_error::Error::custom(format!(
+                StorageError::custom(format!(
                     "missing input object key {:?} from tx {} effects {}",
                     input_object_keys[idx],
                     effects.transaction_digest(),
@@ -426,23 +280,21 @@ pub fn get_transaction_input_objects(
 pub fn get_transaction_output_objects(
     object_store: &dyn ObjectStore,
     effects: &TransactionEffects,
-) -> Result<Vec<Object>, storage_error::Error> {
+) -> Result<Vec<Object>, StorageError> {
     let output_object_keys = effects
         .all_changed_objects()
         .into_iter()
         .map(|(object_ref, _owner, _kind)| ObjectKey::from(object_ref))
         .collect::<Vec<_>>();
 
-    let ids: Vec<_> = output_object_keys.iter().map(|k| k.0).collect();
-
     let output_objects = object_store
-        .multi_get_objects(&ids)?
+        .multi_get_objects_by_key(&output_object_keys)
         .into_iter()
         .enumerate()
         .map(|(idx, maybe_object)| {
             maybe_object.ok_or_else(|| {
-                storage_error::Error::custom(format!(
-                    "missing output objects {:?} from tx {} effects {}",
+                StorageError::custom(format!(
+                    "missing output object key {:?} from tx {} effects {}",
                     output_object_keys[idx],
                     effects.transaction_digest(),
                     effects.digest()
@@ -450,21 +302,195 @@ pub fn get_transaction_output_objects(
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
-
-    // let output_objects = object_store
-    //     .multi_get_objects_by_key(&output_object_keys)?
-    //     .into_iter()
-    //     .enumerate()
-    //     .map(|(idx, maybe_object)| {
-    //         maybe_object.ok_or_else(|| {
-    //             storage_error::Error::custom(format!(
-    //                 "missing output object key {:?} from tx {} effects {}",
-    //                 output_object_keys[idx],
-    //                 effects.transaction_digest(),
-    //                 effects.digest()
-    //             ))
-    //         })
-    //     })
-    //     .collect::<Result<Vec<_>, _>>()?;
     Ok(output_objects)
+}
+
+// Returns an iterator over the ObjectKey's of objects read or written by this transaction
+pub fn get_transaction_object_set(
+    transaction: &TransactionData,
+    effects: &TransactionEffects,
+) -> BTreeSet<ObjectKey> {
+    // enumerate the full set of input objects in order to properly capture immutable objects that
+    // may not appear in the effects.
+    //
+    // This excludes packages
+    let input_objects = transaction
+        .input_objects()
+        .expect("txn was executed and must have valid input objects")
+        .into_iter()
+        .filter_map(|input| {
+            input
+                .version()
+                .map(|version| ObjectKey(input.object_id(), version))
+        });
+
+    // The full set of output/written objects as well as any of their initial versions
+    let modified_set = effects
+        .object_changes()
+        .into_iter()
+        .flat_map(|change| {
+            [
+                change
+                    .input_version
+                    .map(|version| ObjectKey(change.id, version)),
+                change
+                    .output_version
+                    .map(|version| ObjectKey(change.id, version)),
+            ]
+        })
+        .flatten();
+
+    // The set of unchanged consensus objects
+    let unchanged_consensus =
+        effects
+            .unchanged_shared_objects()
+            .into_iter()
+            .flat_map(|unchanged| {
+                if let crate::effects::UnchangedSharedKind::ReadOnlyRoot((version, _)) = unchanged.1
+                {
+                    Some(ObjectKey(unchanged.0, version))
+                } else {
+                    None
+                }
+            });
+
+    input_objects
+        .chain(modified_set)
+        .chain(unchanged_consensus)
+        .collect()
+}
+
+pub fn verify_checkpoint_with_committee(
+    committee: Arc<Committee>,
+    current: &VerifiedCheckpoint,
+    checkpoint: CertifiedCheckpointSummary,
+) -> Result<VerifiedCheckpoint, Box<CertifiedCheckpointSummary>> {
+    assert_eq!(
+        *checkpoint.sequence_number(),
+        current.sequence_number().checked_add(1).unwrap()
+    );
+
+    if Some(*current.digest()) != checkpoint.previous_digest {
+        debug!(
+            current_checkpoint_seq = current.sequence_number(),
+            current_digest =% current.digest(),
+            checkpoint_seq = checkpoint.sequence_number(),
+            checkpoint_digest =% checkpoint.digest(),
+            checkpoint_previous_digest =? checkpoint.previous_digest,
+            "checkpoint not on same chain"
+        );
+        return Err(Box::new(checkpoint));
+    }
+
+    let current_epoch = current.epoch();
+    if checkpoint.epoch() != current_epoch
+        && checkpoint.epoch() != current_epoch.checked_add(1).unwrap()
+    {
+        debug!(
+            checkpoint_seq = checkpoint.sequence_number(),
+            checkpoint_epoch = checkpoint.epoch(),
+            current_checkpoint_seq = current.sequence_number(),
+            current_epoch = current_epoch,
+            "cannot verify checkpoint with too high of an epoch",
+        );
+        return Err(Box::new(checkpoint));
+    }
+
+    if checkpoint.epoch() == current_epoch.checked_add(1).unwrap()
+        && current.next_epoch_committee().is_none()
+    {
+        debug!(
+            checkpoint_seq = checkpoint.sequence_number(),
+            checkpoint_epoch = checkpoint.epoch(),
+            current_checkpoint_seq = current.sequence_number(),
+            current_epoch = current_epoch,
+            "next checkpoint claims to be from the next epoch but the latest verified \
+            checkpoint does not indicate that it is the last checkpoint of an epoch"
+        );
+        return Err(Box::new(checkpoint));
+    }
+
+    checkpoint
+        .verify_authority_signatures(&committee)
+        .map_err(|e| {
+            debug!("error verifying checkpoint: {e}");
+            checkpoint.clone()
+        })?;
+    Ok(VerifiedCheckpoint::new_unchecked(checkpoint))
+}
+
+pub fn verify_checkpoint<S>(
+    current: &VerifiedCheckpoint,
+    store: S,
+    checkpoint: CertifiedCheckpointSummary,
+) -> Result<VerifiedCheckpoint, Box<CertifiedCheckpointSummary>>
+where
+    S: WriteStore,
+{
+    let committee = store.get_committee(checkpoint.epoch()).unwrap_or_else(|| {
+        panic!(
+            "BUG: should have committee for epoch {} before we try to verify checkpoint {}",
+            checkpoint.epoch(),
+            checkpoint.sequence_number()
+        )
+    });
+
+    verify_checkpoint_with_committee(committee, current, checkpoint)
+}
+
+pub async fn verify_checkpoint_range<S>(
+    checkpoint_range: Range<CheckpointSequenceNumber>,
+    store: S,
+    checkpoint_counter: Arc<AtomicU64>,
+    max_concurrency: usize,
+) where
+    S: WriteStore + Clone,
+{
+    let range_clone = checkpoint_range.clone();
+    futures::stream::iter(range_clone.into_iter().tuple_windows())
+        .map(|(a, b)| {
+            let current = store
+                .get_checkpoint_by_sequence_number(a)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Checkpoint {} should exist in store after summary sync but does not",
+                        a
+                    );
+                });
+            let next = store
+                .get_checkpoint_by_sequence_number(b)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Checkpoint {} should exist in store after summary sync but does not",
+                        a
+                    );
+                });
+            let committee = store.get_committee(next.epoch()).unwrap_or_else(|| {
+                panic!(
+                    "BUG: should have committee for epoch {} before we try to verify checkpoint {}",
+                    next.epoch(),
+                    next.sequence_number()
+                )
+            });
+            tokio::spawn(async move {
+                verify_checkpoint_with_committee(committee, &current, next.clone().into())
+                    .expect("Checkpoint verification failed");
+            })
+        })
+        .buffer_unordered(max_concurrency)
+        .for_each(|result| {
+            result.expect("Checkpoint verification task failed");
+            checkpoint_counter.fetch_add(1, Ordering::Relaxed);
+            futures::future::ready(())
+        })
+        .await;
+    let last = checkpoint_range
+        .last()
+        .expect("Received empty checkpoint range");
+    let final_checkpoint = store
+        .get_checkpoint_by_sequence_number(last)
+        .expect("Expected end of checkpoint range to exist in store");
+    store
+        .update_highest_verified_checkpoint(&final_checkpoint)
+        .expect("Failed to update highest verified checkpoint");
 }

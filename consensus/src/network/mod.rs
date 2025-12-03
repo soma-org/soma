@@ -1,40 +1,66 @@
+//! This module defines the network interface, and provides network implementations for the
+//! consensus protocol.
+//!
+//! Having an abstract network interface allows
+//! - simplifying the semantics of sending data and serving requests over the network
+//! - hiding implementation specific types and semantics from the consensus protocol
+//! - allowing easy swapping of network implementations, for better performance or testing
+//!
+//! When modifying the client and server interfaces, the principle is to keep the interfaces
+//! low level, close to underlying implementations in semantics. For example, the client interface
+//! exposes sending messages to a specific peer, instead of broadcasting to all peers. Subscribing
+//! to a stream of blocks gets back the stream via response, instead of delivering the stream
+//! directly to the server. This keeps the logic agnostics to the underlying network outside of
+//! this module, so they can be reused easily across network implementations.
+
+use std::{pin::Pin, sync::Arc, time::Duration};
+
+use async_trait::async_trait;
 use bytes::Bytes;
-use std::sync::Arc;
-use std::time::Duration;
-use tonic::async_trait;
-use types::committee::{AuthorityIndex, Epoch};
-use types::crypto::NetworkKeyPair;
-use types::{
-    consensus::{
-        block::{BlockRef, Round, VerifiedBlock},
-        commit::{CommitRange, TrustedCommit},
-        context::Context,
-    },
-    error::ConsensusResult,
+use futures::Stream;
+use types::committee::AuthorityIndex;
+use types::consensus::{
+    block::{BlockRef, ExtendedBlock, Round, VerifiedBlock},
+    commit::{CommitRange, TrustedCommit},
+    context::Context,
 };
+use types::crypto::NetworkKeyPair;
+use types::error::ConsensusResult;
 
 // Tonic generated RPC stubs.
 mod tonic_gen {
-    include!("proto/consensus.ConsensusService.rs");
+    include!(concat!(env!("OUT_DIR"), "/consensus.ConsensusService.rs"));
 }
 
-#[cfg(all(test))]
-mod network_tests;
-#[cfg(test)]
-pub(crate) mod test_network;
-
+// #[cfg(all(test, not(msim)))]
+// mod network_tests;
+// #[cfg(test)]
+// pub(crate) mod test_network;
+#[cfg(not(msim))]
 pub(crate) mod tonic_network;
+#[cfg(msim)]
+pub mod tonic_network;
+mod tonic_tls;
 
+/// A stream of serialized filtered blocks returned over the network.
+pub(crate) type BlockStream = Pin<Box<dyn Stream<Item = ExtendedSerializedBlock> + Send>>;
+
+/// Network client for communicating with peers.
+///
+/// NOTE: the timeout parameters help saving resources at client and potentially server.
+/// But it is up to the server implementation if the timeout is honored.
+/// - To bound server resources, server should implement own timeout for incoming requests.
 #[async_trait]
 pub(crate) trait NetworkClient: Send + Sync + Sized + 'static {
-    /// Sends a serialized SignedBlock to a peer.
-    async fn send_block(
+    /// Subscribes to blocks from a peer after last_received round.
+    async fn subscribe_blocks(
         &self,
         peer: AuthorityIndex,
-        block: &VerifiedBlock,
+        last_received: Round,
         timeout: Duration,
-    ) -> ConsensusResult<()>;
+    ) -> ConsensusResult<BlockStream>;
 
+    // TODO: add a parameter for maximum total size of blocks returned.
     /// Fetches serialized `SignedBlock`s from a peer. It also might return additional ancestor blocks
     /// of the requested blocks according to the provided `highest_accepted_rounds`. The `highest_accepted_rounds`
     /// length should be equal to the committee size. If `highest_accepted_rounds` is empty then it will
@@ -44,6 +70,7 @@ pub(crate) trait NetworkClient: Send + Sync + Sized + 'static {
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
+        breadth_first: bool,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>>;
 
@@ -66,6 +93,22 @@ pub(crate) trait NetworkClient: Send + Sync + Sized + 'static {
         authorities: Vec<AuthorityIndex>,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>>;
+
+    /// Gets the latest received & accepted rounds of all authorities from the peer.
+    async fn get_latest_rounds(
+        &self,
+        peer: AuthorityIndex,
+        timeout: Duration,
+    ) -> ConsensusResult<(Vec<Round>, Vec<Round>)>;
+
+    /// Sends a serialized SignedBlock to a peer.
+    #[cfg(test)]
+    async fn send_block(
+        &self,
+        peer: AuthorityIndex,
+        block: &VerifiedBlock,
+        timeout: Duration,
+    ) -> ConsensusResult<()>;
 }
 
 /// Network service for handling requests from peers.
@@ -74,7 +117,23 @@ pub(crate) trait NetworkService: Send + Sync + 'static {
     /// Handles the block sent from the peer via either unicast RPC or subscription stream.
     /// Peer value can be trusted to be a valid authority index.
     /// But serialized_block must be verified before its contents are trusted.
-    async fn handle_send_block(&self, peer: AuthorityIndex, block: Bytes) -> ConsensusResult<()>;
+    /// Excluded ancestors are also included as part of an effort to further propagate
+    /// blocks to peers despite the current exclusion.
+    async fn handle_send_block(
+        &self,
+        peer: AuthorityIndex,
+        block: ExtendedSerializedBlock,
+    ) -> ConsensusResult<()>;
+
+    /// Handles the subscription request from the peer.
+    /// A stream of newly proposed blocks is returned to the peer.
+    /// The stream continues until the end of epoch, peer unsubscribes, or a network error / crash
+    /// occurs.
+    async fn handle_subscribe_blocks(
+        &self,
+        peer: AuthorityIndex,
+        last_received: Round,
+    ) -> ConsensusResult<BlockStream>;
 
     /// Handles the request to fetch blocks by references from the peer.
     async fn handle_fetch_blocks(
@@ -82,6 +141,7 @@ pub(crate) trait NetworkService: Send + Sync + 'static {
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
+        breadth_first: bool,
     ) -> ConsensusResult<Vec<Bytes>>;
 
     /// Handles the request to fetch commits by index range from the peer.
@@ -97,8 +157,16 @@ pub(crate) trait NetworkService: Send + Sync + 'static {
         peer: AuthorityIndex,
         authorities: Vec<AuthorityIndex>,
     ) -> ConsensusResult<Vec<Bytes>>;
+
+    /// Handles the request to get the latest received & accepted rounds of all authorities.
+    async fn handle_get_latest_rounds(
+        &self,
+        peer: AuthorityIndex,
+    ) -> ConsensusResult<(Vec<Round>, Vec<Round>)>;
 }
 
+/// An `AuthorityNode` holds a `NetworkManager` until shutdown.
+/// Dropping `NetworkManager` will shutdown the network service.
 pub(crate) trait NetworkManager<S>: Send + Sync
 where
     S: NetworkService,
@@ -116,4 +184,31 @@ where
 
     /// Stops the network service.
     async fn stop(&mut self);
+}
+
+/// Serialized block with extended information from the proposing authority.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct ExtendedSerializedBlock {
+    pub(crate) block: Bytes,
+    // Serialized BlockRefs that are excluded from the blocks ancestors.
+    pub(crate) excluded_ancestors: Vec<Vec<u8>>,
+}
+
+impl From<ExtendedBlock> for ExtendedSerializedBlock {
+    fn from(extended_block: ExtendedBlock) -> Self {
+        Self {
+            block: extended_block.block.serialized().clone(),
+            excluded_ancestors: extended_block
+                .excluded_ancestors
+                .iter()
+                .filter_map(|r| match bcs::to_bytes(r) {
+                    Ok(serialized) => Some(serialized),
+                    Err(e) => {
+                        tracing::debug!("Failed to serialize block ref {:?}: {e:?}", r);
+                        None
+                    }
+                })
+                .collect(),
+        }
+    }
 }

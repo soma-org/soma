@@ -40,13 +40,13 @@ impl ObjectDownloader {
         Duration::from_nanos(nanos)
     }
 
-    fn generate_ranges(total_size: u64, chunk_size: u64) -> Vec<Range<u64>> {
+    fn generate_ranges(total_size: u64, chunk_size: u64) -> Vec<Range<usize>> {
         let num_chunks = ((total_size + chunk_size - 1) / chunk_size) as usize;
         let mut ranges = Vec::with_capacity(num_chunks);
 
         for i in 0..num_chunks {
-            let start = (i as u64) * chunk_size;
-            let end = ((i as u64 + 1) * chunk_size).min(total_size);
+            let start = (i) * chunk_size as usize;
+            let end = ((i + 1) * chunk_size as usize).min(total_size as usize);
             ranges.push(start..end);
         }
         ranges
@@ -65,10 +65,13 @@ impl ObjectDownloader {
 
         let mut hasher = DefaultHash::new();
 
-        if metadata.size() <= self.chunk_size as u64 {
+        if metadata.size() as u64 <= self.chunk_size {
             println!("this ran");
             let bytes = reader
-                .get_full(Self::compute_timeout(metadata.size(), self.ns_per_byte))
+                .get_full(Self::compute_timeout(
+                    metadata.size() as u64,
+                    self.ns_per_byte,
+                ))
                 .await?;
             hasher.update(&bytes);
             let computed_checksum = Checksum::new_from_hash(hasher.finalize().into());
@@ -76,7 +79,7 @@ impl ObjectDownloader {
             println!("this ran");
             println!("{}", bytes.len());
             println!("{}", metadata.size());
-            if computed_checksum != metadata.checksum() || bytes.len() as u64 != metadata.size() {
+            if computed_checksum != metadata.checksum() || bytes.len() != metadata.size() {
                 return Err(ObjectError::VerificationError(
                     "verification failed".to_string(),
                 ));
@@ -89,7 +92,7 @@ impl ObjectDownloader {
                 .map_err(ObjectError::ObjectStoreError)?;
         } else {
             let mut total_downloaded = 0u64;
-            let ranges = Self::generate_ranges(metadata.size(), self.chunk_size);
+            let ranges = Self::generate_ranges(metadata.size() as u64, self.chunk_size);
             let num_parts = ranges.len();
             let (tx, mut rx) =
                 mpsc::channel::<(usize, OwnedSemaphorePermit, JoinHandle<ObjectResult<Bytes>>)>(
@@ -108,7 +111,7 @@ impl ObjectDownloader {
 
                     let reader = reader_clone.clone();
                     let num_bytes = range.end - range.start;
-                    let timeout = Self::compute_timeout(num_bytes, ns_per_byte);
+                    let timeout = Self::compute_timeout(num_bytes as u64, ns_per_byte);
                     let range_clone = range.clone();
                     let get_handle =
                         tokio::spawn(async move { reader.get_range(range_clone, timeout).await });
@@ -166,7 +169,9 @@ impl ObjectDownloader {
             println!("{}", metadata.size());
             println!("{}", computed_checksum);
             println!("{}", metadata.checksum());
-            if computed_checksum != metadata.checksum() || total_downloaded != metadata.size() {
+            if computed_checksum != metadata.checksum()
+                || total_downloaded != metadata.size() as u64
+            {
                 let _ = multipart.abort().await;
                 return Err(ObjectError::VerificationError(
                     "verification failed".to_string(),
@@ -225,7 +230,7 @@ mod tests {
         let mut hasher = DefaultHash::new();
         hasher.update(&data);
         let checksum = Checksum::new_from_hash(hasher.finalize().into());
-        let metadata = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
+        let metadata = Metadata::V1(MetadataV1::new(checksum, data.len()));
 
         let object_path = ObjectPath::Probes(0, checksum);
 
@@ -279,7 +284,7 @@ mod tests {
         hasher.update(&data);
         let checksum = Checksum::new_from_hash(hasher.finalize().into());
 
-        let metadata = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
+        let metadata = Metadata::V1(MetadataV1::new(checksum, data.len()));
         let object_path = ObjectPath::Probes(1, checksum);
 
         // Source store
@@ -327,7 +332,7 @@ mod tests {
         let mut hasher = DefaultHash::new();
         hasher.update(&data);
         let checksum = Checksum::new_from_hash(hasher.finalize().into());
-        let metadata = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
+        let metadata = Metadata::V1(MetadataV1::new(checksum, data.len()));
         let object_path = ObjectPath::Probes(2, checksum);
 
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
@@ -370,7 +375,7 @@ mod tests {
 
         // Use wrong checksum
         let wrong_checksum = Checksum::new_from_hash(DefaultHash::digest(b"wrong").into());
-        let metadata = Metadata::V1(MetadataV1::new(wrong_checksum, data.len() as u64));
+        let metadata = Metadata::V1(MetadataV1::new(wrong_checksum, data.len()));
         let object_path = ObjectPath::Probes(3, wrong_checksum);
 
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());

@@ -158,10 +158,10 @@ impl From<crate::types::ValidatorCommittee> for ValidatorCommittee {
     }
 }
 
-impl TryFrom<&ValidatorCommittee> for crate::types::ValidatorCommittee {
+impl TryFrom<ValidatorCommittee> for crate::types::ValidatorCommittee {
     type Error = TryFromProtoError;
 
-    fn try_from(value: &ValidatorCommittee) -> Result<Self, Self::Error> {
+    fn try_from(value: ValidatorCommittee) -> Result<Self, Self::Error> {
         let epoch = value
             .epoch
             .ok_or_else(|| TryFromProtoError::missing("epoch"))?;

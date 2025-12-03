@@ -3,6 +3,7 @@ use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::error::Error;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -10,8 +11,41 @@ use std::mem;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::oneshot;
+use tokio::time::interval_at;
+use tracing::debug;
+use tracing::warn;
+
+/// Wrapper that ensures a spawned task is aborted when dropped
+struct TaskAbortOnDrop {
+    handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl TaskAbortOnDrop {
+    fn new(handle: tokio::task::JoinHandle<()>) -> Self {
+        Self {
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for TaskAbortOnDrop {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
+    }
+}
+
+/// Interval duration for logging waiting keys when reads take too long
+const LONG_WAIT_LOG_INTERVAL_SECS: u64 = 10;
+
+pub const CHECKPOINT_BUILDER_NOTIFY_READ_TASK_NAME: &str =
+    "CheckpointBuilder::notify_read_executed_effects";
 
 type Registrations<V> = Vec<oneshot::Sender<V>>;
 
@@ -114,26 +148,85 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
     }
 }
 
-impl<K: Eq + Hash + Clone + Unpin, V: Clone + Unpin> NotifyRead<K, V> {
-    pub async fn read<E: Error>(
-        &self,
-        keys: &[K],
-        fetch: impl FnOnce(&[K]) -> Result<Vec<Option<V>>, E>,
-    ) -> Result<Vec<V>, E> {
+impl<K: Eq + Hash + Clone + Unpin + std::fmt::Debug + Send + Sync + 'static, V: Clone + Unpin>
+    NotifyRead<K, V>
+{
+    pub async fn read(&self, keys: &[K], fetch: impl FnOnce(&[K]) -> Vec<Option<V>>) -> Vec<V> {
         let registrations = self.register_all(keys);
 
-        let results = fetch(keys)?;
+        let results = fetch(keys);
 
-        let results = results
-            .into_iter()
-            .zip(registrations)
-            .map(|(a, r)| match a {
-                // Note that Some() clause also drops registration that is already fulfilled
-                Some(ready) => Either::Left(futures::future::ready(ready)),
-                None => Either::Right(r),
+        // Track which keys are still waiting
+        let waiting_keys: HashSet<K> = keys
+            .iter()
+            .zip(results.iter())
+            .filter(|&(_key, result)| result.is_none())
+            .map(|(key, _result)| key.clone())
+            .collect();
+        let has_waiting_keys = !waiting_keys.is_empty();
+        let waiting_keys = Arc::new(Mutex::new(waiting_keys));
+
+        let _log_handle_guard = if has_waiting_keys {
+            let waiting_keys_clone = waiting_keys.clone();
+            let start_time = Instant::now();
+
+            let handle = tokio::spawn(async move {
+                // Only start logging after the first interval.
+                let start = Instant::now() + Duration::from_secs(LONG_WAIT_LOG_INTERVAL_SECS);
+                let mut interval = interval_at(
+                    start.into(),
+                    Duration::from_secs(LONG_WAIT_LOG_INTERVAL_SECS),
+                );
+
+                loop {
+                    interval.tick().await;
+                    let current_waiting = waiting_keys_clone.lock();
+                    if current_waiting.is_empty() {
+                        break;
+                    }
+                    let keys_vec: Vec<_> = current_waiting.iter().cloned().collect();
+                    drop(current_waiting); // Release lock before logging
+
+                    let elapsed_secs = start_time.elapsed().as_secs();
+
+                    warn!(
+                        "Still waiting for {}s for {} keys: {:?}",
+                        elapsed_secs,
+                        keys_vec.len(),
+                        keys_vec
+                    );
+
+                    if elapsed_secs >= 60 {
+                        debug!("Task is stuck");
+                    }
+                }
             });
+            Some(TaskAbortOnDrop::new(handle))
+        } else {
+            None
+        };
 
-        Ok(join_all(results).await)
+        let results =
+            results
+                .into_iter()
+                .zip(registrations)
+                .zip(keys.iter())
+                .map(|((a, r), key)| match a {
+                    // Note that Some() clause also drops registration that is already fulfilled
+                    Some(ready) => Either::Left(futures::future::ready(ready)),
+                    None => {
+                        let waiting_keys = waiting_keys.clone();
+                        let key = key.clone();
+                        Either::Right(async move {
+                            let result = r.await;
+                            // Remove this key from the waiting set
+                            waiting_keys.lock().remove(&key);
+                            result
+                        })
+                    }
+                });
+
+        join_all(results).await
     }
 }
 

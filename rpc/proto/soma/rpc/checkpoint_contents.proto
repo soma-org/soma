@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package soma.rpc;
+
+import "soma/rpc/signature.proto";
+
+// The committed to contents of a checkpoint.
+message CheckpointContents {
+  // The digest of this CheckpointContents.
+  optional string digest = 1;
+
+  // Version of this CheckpointContents
+  optional int32 version = 2;
+
+  // Set of transactions committed to in this checkpoint.
+  repeated CheckpointedTransactionInfo transactions = 3;
+}
+
+// Transaction information committed to in a checkpoint.
+message CheckpointedTransactionInfo {
+  // Digest of the transaction.
+  optional string transaction = 1;
+  // Digest of the effects.
+  optional string effects = 2;
+  // Set of user signatures that authorized the transaction.
+  repeated UserSignature signatures = 3;
+}

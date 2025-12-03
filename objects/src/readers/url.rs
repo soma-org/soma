@@ -142,7 +142,7 @@ impl ObjectReader for ObjectHttpReader {
             .map_err(|e| ObjectError::NetworkRequest(e.to_string()))?;
         Ok(bytes)
     }
-    async fn get_range(&self, range: Range<u64>, timeout: Duration) -> ObjectResult<Bytes> {
+    async fn get_range(&self, range: Range<usize>, timeout: Duration) -> ObjectResult<Bytes> {
         let range_header = format!("bytes={}-{}", range.start, range.end - 1);
         let req = self
             .client

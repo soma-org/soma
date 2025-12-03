@@ -31,7 +31,7 @@
 //! - Lamport timestamps for causal ordering
 
 use crate::base::HexAccountAddress;
-use crate::metadata::Metadata;
+use crate::metadata::{DownloadMetadata, Metadata};
 use crate::shard_crypto::digest::Digest;
 use crate::{
     base::{FullObjectID, FullObjectRef, SomaAddress, SOMA_ADDRESS_LENGTH},
@@ -395,6 +395,16 @@ impl Object {
         Self::with_id_owner_coin_for_testing(id, owner, GAS_VALUE_FOR_TESTING)
     }
 
+    pub fn with_id_owner_version_for_testing(id: ObjectID, version: Version, owner: Owner) -> Self {
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Coin,
+            version,
+            bcs::to_bytes(&GAS_VALUE_FOR_TESTING).unwrap(),
+        );
+        Self::new(data, owner, TransactionDigest::genesis_marker())
+    }
+
     pub fn with_id_owner_coin_for_testing(id: ObjectID, owner: SomaAddress, balance: u64) -> Self {
         let data = ObjectData::new_with_id(
             id,
@@ -443,7 +453,7 @@ impl Object {
     /// Create a new ShardInput object
     pub fn new_shard_input(
         id: ObjectID,
-        metadata: Metadata,
+        download_metadata: DownloadMetadata,
         amount: u64,
         expiration_epoch: EpochId,
         submitter: SomaAddress,
@@ -451,7 +461,7 @@ impl Object {
         previous_transaction: TransactionDigest,
     ) -> Self {
         let shard_input = ShardInput {
-            metadata,
+            download_metadata,
             amount,
             expiration_epoch,
             submitter,

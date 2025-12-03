@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::commit::CommitStore;
-use crate::store::AuthorityStore;
+use crate::authority_store::AuthorityStore;
+use crate::checkpoints::CheckpointStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use store::rocks::{DBMap, DBMapTableConfigMap};
@@ -12,9 +12,13 @@ use store::rocksdb::{compaction_filter::Decision, MergeOperands, WriteOptions};
 use store::{DBMapUtils, Map as _, TypedStoreError};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
-use types::checkpoint::{CheckpointData, CheckpointTransaction};
+use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
+use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
+use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
+use types::storage::WriteKind;
+use types::transaction_outputs::WrittenObjects;
+
 use types::committee::EpochId;
-use types::consensus::output::ConsensusOutputAPI;
 use types::consensus::ConsensusTransactionKind;
 use types::digests::TransactionDigest;
 use types::object::LiveObject;
@@ -22,7 +26,6 @@ use types::storage::read_store::{EpochInfo, TransactionInfo};
 use types::storage::storage_error::Error as StorageError;
 use types::system_state::SystemStateTrait;
 use types::{
-    accumulator::CommitIndex,
     base::SomaAddress,
     object::{Object, ObjectID, ObjectType, Owner, Version},
 };
@@ -240,7 +243,7 @@ struct IndexStoreTables {
     /// This is useful to help know the highest checkpoint that was indexed in the event that the
     /// node was running with indexes enabled, then run for a period of time with indexes disabled,
     /// and then run with them enabled again so that the tables can be reinitialized.
-    watermark: DBMap<Watermark, CommitIndex>,
+    watermark: DBMap<Watermark, CheckpointSequenceNumber>,
 
     /// An index of extra metadata for Epochs.
     ///
@@ -306,46 +309,46 @@ impl IndexStoreTables {
         IndexStoreTables::open_tables_read_write(path.into(), Some(options), table_options)
     }
 
-    fn needs_to_do_initialization(&self, commit_store: &CommitStore) -> bool {
+    fn needs_to_do_initialization(&self, checkpoint_store: &CheckpointStore) -> bool {
         (match self.meta.get(&()) {
             Ok(Some(metadata)) => metadata.version != CURRENT_DB_VERSION,
             Ok(None) => true,
             Err(_) => true,
-        }) || self.is_indexed_watermark_out_of_date(commit_store)
+        }) || self.is_indexed_watermark_out_of_date(checkpoint_store)
     }
 
     // Check if the index watermark is behind the highets_executed watermark.
-    fn is_indexed_watermark_out_of_date(&self, commit_store: &CommitStore) -> bool {
-        let highest_executed_checkpoint = commit_store
-            .get_highest_executed_commit_index()
+    fn is_indexed_watermark_out_of_date(&self, checkpoint_store: &CheckpointStore) -> bool {
+        let highest_executed_checkpint = checkpoint_store
+            .get_highest_executed_checkpoint_seq_number()
             .ok()
             .flatten();
         let watermark = self.watermark.get(&Watermark::Indexed).ok().flatten();
-        watermark < highest_executed_checkpoint
+        watermark < highest_executed_checkpint
     }
 
     #[tracing::instrument(skip_all)]
     fn init(
         &mut self,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
+        checkpoint_store: &CheckpointStore,
         batch_size_limit: usize,
     ) -> Result<(), StorageError> {
         info!("Initializing RPC indexes");
 
-        let highest_executed_checkpoint = commit_store.get_highest_executed_commit_index()?;
-
-        let lowest_available_checkpoint = commit_store
-            .get_highest_synced_commit()?
-            .map(|c| c.commit_ref.index.saturating_add(1))
+        let highest_executed_checkpoint =
+            checkpoint_store.get_highest_executed_checkpoint_seq_number()?;
+        let lowest_available_checkpoint = checkpoint_store
+            .get_highest_pruned_checkpoint_seq_number()?
+            .map(|c| c.saturating_add(1))
             .unwrap_or(0);
         let lowest_available_checkpoint_objects = authority_store
             .perpetual_tables
-            .get_highest_pruned_commit()?
+            .get_highest_pruned_checkpoint()?
             .map(|c| c.saturating_add(1))
             .unwrap_or(0);
-        // // Doing backfill requires processing objects so we have to restrict our backfill range
-        // // to the range of checkpoints that we have objects for.
+        // Doing backfill requires processing objects so we have to restrict our backfill range
+        // to the range of checkpoints that we have objects for.
         let lowest_available_checkpoint =
             lowest_available_checkpoint.max(lowest_available_checkpoint_objects);
 
@@ -354,10 +357,10 @@ impl IndexStoreTables {
         });
 
         if let Some(checkpoint_range) = checkpoint_range {
-            self.index_existing_transactions(authority_store, commit_store, checkpoint_range)?;
+            self.index_existing_transactions(authority_store, checkpoint_store, checkpoint_range)?;
         }
 
-        self.initialize_current_epoch(authority_store, commit_store)?;
+        self.initialize_current_epoch(authority_store, checkpoint_store)?;
 
         // Only index live objects if genesis checkpoint has been executed.
         // If genesis hasn't been executed yet, the objects will be properly indexed
@@ -388,12 +391,12 @@ impl IndexStoreTables {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, authority_store, commit_store))]
+    #[tracing::instrument(skip(self, authority_store, checkpoint_store))]
     fn index_existing_transactions(
         &mut self,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
-        checkpoint_range: std::ops::RangeInclusive<u32>,
+        checkpoint_store: &CheckpointStore,
+        checkpoint_range: std::ops::RangeInclusive<u64>,
     ) -> Result<(), StorageError> {
         info!(
             "Indexing {} checkpoints in range {checkpoint_range:?}",
@@ -403,7 +406,7 @@ impl IndexStoreTables {
 
         checkpoint_range.into_iter().try_for_each(|seq| {
             let checkpoint_data =
-                sparse_checkpoint_data_for_backfill(authority_store, commit_store, seq)?;
+                sparse_checkpoint_data_for_backfill(authority_store, checkpoint_store, seq)?;
 
             let mut batch = self.transactions.batch();
 
@@ -422,12 +425,17 @@ impl IndexStoreTables {
         Ok(())
     }
 
+    /// Prune data from this Index
     fn prune(
         &self,
-        pruned_checkpoint_watermark: u32,
-        transactions_to_prune: &[TransactionDigest],
+        pruned_checkpoint_watermark: u64,
+        checkpoint_contents_to_prune: &[CheckpointContents],
     ) -> Result<(), TypedStoreError> {
         let mut batch = self.transactions.batch();
+
+        let transactions_to_prune = checkpoint_contents_to_prune
+            .iter()
+            .flat_map(|contents| contents.iter().map(|digests| digests.transaction));
 
         batch.delete_batch(&self.transactions, transactions_to_prune)?;
         batch.insert_batch(
@@ -444,7 +452,7 @@ impl IndexStoreTables {
         checkpoint: &CheckpointData,
     ) -> Result<store::rocks::DBBatch, StorageError> {
         debug!(
-            checkpoint = checkpoint.committed_subdag.commit_ref.index,
+            checkpoint = checkpoint.checkpoint_summary.sequence_number,
             "indexing checkpoint"
         );
 
@@ -458,12 +466,12 @@ impl IndexStoreTables {
             &self.watermark,
             [(
                 Watermark::Indexed,
-                checkpoint.committed_subdag.commit_ref.index,
+                checkpoint.checkpoint_summary.sequence_number,
             )],
         )?;
 
         debug!(
-            checkpoint = checkpoint.committed_subdag.commit_ref.index,
+            checkpoint = checkpoint.checkpoint_summary.sequence_number,
             "finished indexing checkpoint"
         );
 
@@ -496,12 +504,11 @@ impl IndexStoreTables {
     fn initialize_current_epoch(
         &mut self,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
+        checkpoint_store: &CheckpointStore,
     ) -> Result<(), StorageError> {
-        let Some(checkpoint) = commit_store.get_highest_executed_commit()? else {
+        let Some(checkpoint) = checkpoint_store.get_highest_executed_checkpoint()? else {
             return Ok(());
         };
-
         let system_state = types::system_state::get_system_state(authority_store)
             .map_err(|e| StorageError::custom(format!("Failed to find system state: {e}")))?;
 
@@ -531,7 +538,7 @@ impl IndexStoreTables {
                 &tx.effects,
                 &tx.input_objects,
                 &tx.output_objects,
-                checkpoint.committed_subdag.commit_ref.index.into(),
+                checkpoint.checkpoint_summary.sequence_number,
             );
 
             let digest = tx.transaction.digest();
@@ -689,39 +696,124 @@ impl IndexStoreTables {
                 }
             }))
     }
+
+    /// Index a single executed transaction's object changes immediately after execution.
+    /// This mirrors the checkpoint-based `index_objects` but for a single transaction.
+    fn index_executed_tx_objects(
+        &self,
+        effects: &TransactionEffects,
+        written: &WrittenObjects,
+        input_objects: &BTreeMap<ObjectID, Object>,
+    ) -> Result<(), StorageError> {
+        let mut batch = self.owner.batch();
+        let mut balance_changes: HashMap<BalanceKey, BalanceIndexInfo> = HashMap::new();
+
+        let modified_at_versions: HashMap<ObjectID, Version> =
+            effects.modified_at_versions().into_iter().collect();
+
+        // Process deleted (removals)
+        for (id, _, _) in effects.deleted().into_iter() {
+            if let Some(old_version) = modified_at_versions.get(&id) {
+                if let Some(old_object) = input_objects.get(&id) {
+                    // Verify version matches what we expect
+                    if old_object.version() == *old_version {
+                        match old_object.owner() {
+                            Owner::AddressOwner(owner) => {
+                                Self::track_coin_balance_change(
+                                    old_object,
+                                    owner,
+                                    true, // is_removal
+                                    &mut balance_changes,
+                                )?;
+                                let owner_key = OwnerIndexKey::from_object(old_object);
+                                batch.delete_batch(&self.owner, [owner_key])?;
+                            }
+                            Owner::Shared { .. } | Owner::Immutable => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process all changed objects
+        for (oref, owner, kind) in effects.all_changed_objects() {
+            let id = &oref.0;
+
+            // For mutated objects, handle old owner removal if owner changed
+            if matches!(kind, WriteKind::Mutate) {
+                if let Some(old_version) = modified_at_versions.get(id) {
+                    if let Some(old_object) = input_objects.get(id) {
+                        if old_object.version() == *old_version {
+                            // Check if owner changed
+                            let old_owner_changed = match old_object.owner() {
+                                Owner::AddressOwner(old_addr) => {
+                                    !matches!(owner, Owner::AddressOwner(new_addr) if *old_addr == new_addr)
+                                }
+                                _ => false,
+                            };
+
+                            if old_owner_changed {
+                                if let Owner::AddressOwner(old_owner) = old_object.owner() {
+                                    Self::track_coin_balance_change(
+                                        old_object,
+                                        old_owner,
+                                        true,
+                                        &mut balance_changes,
+                                    )?;
+                                    let owner_key = OwnerIndexKey::from_object(old_object);
+                                    batch.delete_batch(&self.owner, [owner_key])?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle new/updated owner entry
+            match owner {
+                Owner::AddressOwner(addr) => {
+                    if let Some(new_object) = written.get(id) {
+                        Self::track_coin_balance_change(
+                            new_object,
+                            &addr,
+                            false, // not a removal
+                            &mut balance_changes,
+                        )?;
+                        let owner_key = OwnerIndexKey::from_object(new_object);
+                        let owner_info = OwnerIndexInfo::new(new_object);
+                        batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
+                    }
+                }
+                Owner::Shared { .. } | Owner::Immutable => {}
+            }
+        }
+
+        // Apply balance changes via merge operator
+        batch.partial_merge_batch(&self.balance, balance_changes)?;
+        batch.write()?;
+
+        Ok(())
+    }
 }
 
 fn sparse_checkpoint_data_for_backfill(
     authority_store: &AuthorityStore,
-    commit_store: &CommitStore,
-    checkpoint: u32,
+    checkpoint_store: &CheckpointStore,
+    checkpoint: u64,
 ) -> Result<CheckpointData, StorageError> {
-    let committed_subdag = commit_store
-        .get_commit_by_index(checkpoint)?
+    let summary = checkpoint_store
+        .get_checkpoint_by_sequence_number(checkpoint)?
         .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
-    // let contents = commit_store
-    //     .get_checkpoint_contents(&summary.content_digest)?
-    //     .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
+    let contents = checkpoint_store
+        .get_checkpoint_contents(&summary.content_digest)?
+        .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
 
-    let all_tx_digests: HashSet<_> = committed_subdag
-        .transactions()
+    let transaction_digests = contents
         .iter()
-        .flat_map(|(_, authority_transactions)| {
-            authority_transactions
-                .iter()
-                .filter_map(|(_, transaction)| {
-                    if let ConsensusTransactionKind::UserTransaction(cert_tx) = &transaction.kind {
-                        Some(*cert_tx.digest())
-                    } else {
-                        None
-                    }
-                })
-        })
-        .collect();
-
-    let all_tx_digests: Vec<_> = all_tx_digests.into_iter().collect();
+        .map(|execution_digests| execution_digests.transaction)
+        .collect::<Vec<_>>();
     let transactions = authority_store
-        .multi_get_transaction_blocks(&all_tx_digests)?
+        .multi_get_transaction_blocks(&transaction_digests)?
         .into_iter()
         .map(|maybe_transaction| {
             maybe_transaction.ok_or_else(|| StorageError::custom("missing transaction"))
@@ -729,7 +821,7 @@ fn sparse_checkpoint_data_for_backfill(
         .collect::<Result<Vec<_>, _>>()?;
 
     let effects = authority_store
-        .multi_get_executed_effects(&all_tx_digests)?
+        .multi_get_executed_effects(&transaction_digests)?
         .into_iter()
         .map(|maybe_effects| maybe_effects.ok_or_else(|| StorageError::custom("missing effects")))
         .collect::<Result<Vec<_>, _>>()?;
@@ -751,8 +843,8 @@ fn sparse_checkpoint_data_for_backfill(
     }
 
     let checkpoint_data = CheckpointData {
-        committed_subdag: committed_subdag,
-        // checkpoint_contents: contents,
+        checkpoint_summary: summary.into(),
+        checkpoint_contents: contents,
         transactions: full_transactions,
     };
 
@@ -773,8 +865,7 @@ impl RpcIndexStore {
     pub async fn new(
         dir: &Path,
         authority_store: &AuthorityStore,
-        commit_store: &CommitStore,
-        // index_config: Option<&RpcIndexInitConfig>,
+        checkpoint_store: &CheckpointStore,
     ) -> Self {
         let path = Self::db_path(dir);
 
@@ -783,7 +874,7 @@ impl RpcIndexStore {
 
             // If the index tables are uninitialized or on an older version then we need to
             // populate them
-            if tables.needs_to_do_initialization(commit_store) {
+            if tables.needs_to_do_initialization(checkpoint_store) {
                 let batch_size_limit;
 
                 let mut tables = {
@@ -940,7 +1031,7 @@ impl RpcIndexStore {
                 };
 
                 tables
-                    .init(authority_store, commit_store, batch_size_limit)
+                    .init(authority_store, checkpoint_store, batch_size_limit)
                     .expect("unable to initialize rpc index from live object set");
 
                 // Flush all data to disk before dropping tables.
@@ -1005,11 +1096,11 @@ impl RpcIndexStore {
 
     pub fn prune(
         &self,
-        pruned_checkpoint_watermark: u32,
-        tx_digests_to_prune: &[TransactionDigest],
+        pruned_checkpoint_watermark: u64,
+        checkpoint_contents_to_prune: &[CheckpointContents],
     ) -> Result<(), TypedStoreError> {
         self.tables
-            .prune(pruned_checkpoint_watermark, tx_digests_to_prune)
+            .prune(pruned_checkpoint_watermark, checkpoint_contents_to_prune)
     }
 
     /// Index a checkpoint and stage the index updated in `pending_updates`.
@@ -1018,10 +1109,10 @@ impl RpcIndexStore {
     /// called.
     #[tracing::instrument(
         skip_all,
-        fields(checkpoint = checkpoint.committed_subdag.commit_ref.index)
+        fields(checkpoint = checkpoint.checkpoint_summary.sequence_number)
     )]
     pub fn index_checkpoint(&self, checkpoint: &CheckpointData) {
-        let sequence_number = checkpoint.committed_subdag.commit_ref.index;
+        let sequence_number = checkpoint.checkpoint_summary.sequence_number;
         let batch = self.tables.index_checkpoint(checkpoint).expect("db error");
 
         self.pending_updates
@@ -1090,6 +1181,24 @@ impl RpcIndexStore {
         TypedStoreError,
     > {
         self.tables.balance_iter(owner, cursor)
+    }
+
+    pub fn get_highest_indexed_checkpoint_seq_number(
+        &self,
+    ) -> Result<Option<CheckpointSequenceNumber>, TypedStoreError> {
+        self.tables.watermark.get(&Watermark::Indexed)
+    }
+
+    /// Index a transaction immediately after execution (before checkpoint finalization).
+    /// This updates the owner and balance indexes in real-time.
+    pub fn index_executed_tx(
+        &self,
+        effects: &TransactionEffects,
+        written: &WrittenObjects,
+        input_objects: &BTreeMap<ObjectID, Object>,
+    ) -> Result<(), StorageError> {
+        self.tables
+            .index_executed_tx_objects(effects, written, input_objects)
     }
 }
 

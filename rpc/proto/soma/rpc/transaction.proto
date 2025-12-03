@@ -194,9 +194,39 @@ message MetadataV1 {
   optional uint64 size = 2;      // Size in bytes
 }
 
+message DefaultDownloadMetadataV1 {
+  optional string url = 1;
+  optional Metadata metadata = 2;
+}
+
+message DefaultDownloadMetadata {
+  oneof version {
+    DefaultDownloadMetadataV1 v1 = 1;
+  }
+}
+
+message MtlsDownloadMetadataV1 {
+  optional bytes peer = 1;  // NetworkPublicKey bytes
+  optional string url = 2;
+  optional Metadata metadata = 3;
+}
+
+message MtlsDownloadMetadata {
+  oneof version {
+    MtlsDownloadMetadataV1 v1 = 1;
+  }
+}
+
+message DownloadMetadata {
+  oneof kind {
+    DefaultDownloadMetadata default = 1;
+    MtlsDownloadMetadata mtls = 2;
+  }
+}
+
 
 message EmbedData {
-  optional Metadata metadata = 1;
+  optional DownloadMetadata download_metadata = 1;
   optional ObjectReference coin_ref = 2;
 }
 
@@ -233,8 +263,6 @@ message GenesisTransaction {
 }
 
 // Consensus commit prologue system transaction.
-//
-// This message can represent V1, V2, and V3 prologue types.
 message ConsensusCommitPrologue {
   // Epoch of the commit prologue transaction.
   optional uint64 epoch = 1;
@@ -242,13 +270,17 @@ message ConsensusCommitPrologue {
   // Consensus round of the commit.
   optional uint64 round = 2;
 
-  // Unix timestamp from consensus.
-  optional google.protobuf.Timestamp commit_timestamp = 3;
-
-  // Digest of consensus output.
-  optional string consensus_commit_digest = 4;
-
   // The sub DAG index of the consensus commit. This field is populated if there
   // are multiple consensus commits per round.
-  optional uint64 sub_dag_index = 5;
+  optional uint64 sub_dag_index = 3;
+
+  // Unix timestamp from consensus.
+  optional google.protobuf.Timestamp commit_timestamp = 4;
+
+  // Digest of consensus output.
+  optional string consensus_commit_digest = 5;
+
+  // Digest of any additional state computed by the consensus handler.
+  // Used to detect forking bugs as early as possible.
+  optional string additional_state_digest = 6;
 }

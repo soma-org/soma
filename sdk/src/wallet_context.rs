@@ -1,6 +1,7 @@
 use crate::SomaClient;
 use crate::client_config::{SomaClientConfig, SomaEnv};
 use anyhow::anyhow;
+use futures::TryStreamExt as _;
 use rpc::api::client::TransactionExecutionResponse;
 use rpc::proto::soma::owner::OwnerKind;
 use rpc::types::ObjectType;
@@ -11,6 +12,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncSeek};
 use tokio::sync::RwLock;
@@ -184,46 +186,21 @@ impl WalletContext {
             "version",
             "digest",
             "object_type",
+            "owner",
+            "contents",
+            "previous_transaction",
         ]));
 
         // Call the live data service
-        let response = client
-            .inner()
-            .live_data_client()
-            .list_owned_objects(request)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to list owned objects: {}", e))?;
+        let stream = client.list_owned_objects(request).await;
 
-        let response = response.into_inner();
+        let object_refs: Vec<ObjectRef> = Vec::new();
+        tokio::pin!(stream);
 
         // Convert the objects to ObjectRef
         let mut object_refs = Vec::new();
-        for proto_object in response.objects {
-            // Convert proto Object to ObjectRef
-            let object_id = proto_object
-                .object_id
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Object missing ID"))?;
-
-            let object_id = ObjectID::from_str(object_id)
-                .map_err(|e| anyhow::anyhow!("Invalid object ID: {}", e))?;
-
-            let version = proto_object
-                .version
-                .ok_or_else(|| anyhow::anyhow!("Object missing version"))?;
-
-            let digest = proto_object
-                .digest
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Object missing digest"))?;
-
-            // Create ObjectDigest from the digest string
-            let object_digest = ObjectDigest::from_str(digest)
-                .map_err(|e| anyhow::anyhow!("Invalid object digest: {}", e))?;
-
-            let object_ref = (object_id, Version::from_u64(version), object_digest);
-
-            object_refs.push(object_ref);
+        while let Some(object) = stream.try_next().await? {
+            object_refs.push(object.compute_object_reference());
 
             // Stop if we've reached the limit
             if let Some(limit) = limit {
@@ -239,33 +216,18 @@ impl WalletContext {
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {
         let client = self.get_client().await?;
 
-        // Create request to get the object
-        let mut request = rpc::proto::soma::GetObjectRequest::default();
-        request.object_id = Some(id.to_hex_literal());
-        request.read_mask = Some(FieldMask::from_paths(["owner", "object_id", "version"]));
-
-        // Call the ledger service
-        let response = client
-            .inner()
-            .raw_client() // This is the LedgerServiceClient
-            .get_object(request)
+        let object = client
+            .get_object(id.clone())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get object: {}", e))?;
-
-        let response = response.into_inner();
-
-        let object = response
-            .object
-            .ok_or_else(|| anyhow::anyhow!("No object returned"))?;
 
         // Extract owner from the proto object
         let owner = object
             .owner
-            .ok_or_else(|| anyhow::anyhow!("Object has no owner"))?;
+            .get_owner_address()
+            .map_err(|e| anyhow::anyhow!("Failed to get object: {}", e))?;
 
-        let owner_address = SomaAddress::from_bytes(owner.address().to_string().as_bytes())?;
-
-        Ok(owner_address)
+        Ok(owner)
     }
 
     /// Returns all the account addresses managed by the wallet and their owned gas objects.
@@ -425,75 +387,17 @@ impl WalletContext {
         Ok(client.execute_transaction(&tx).await?)
     }
 
-    pub async fn upload_data_and_submit_tx<R>(
+    /// Execute a transaction and wait for it to be indexed (checkpointed)
+    /// This ensures "read your writes" consistency for subsequent queries
+    pub async fn execute_transaction_and_wait_for_indexing(
         &self,
-        data_reader: R,
-        data_size: u64,
         tx: Transaction,
-    ) -> Result<TransactionExecutionResponse, anyhow::Error>
-    where
-        R: AsyncRead + AsyncSeek + Unpin + Send,
-    {
-        info!("Starting data upload and shard transaction submission");
-
-        // Get the client (which always has TUS functionality)
-        let client = self.get_client().await?;
-
-        // // Create upload session
-        // info!("Creating upload session for {} bytes", data_size);
-        // let upload_uuid = client.create_upload(data_size).await?;
-        // info!("Created upload with UUID: {}", upload_uuid);
-
-        // // Upload the data
-        // info!("Starting data upload...");
-        // client.upload_data(upload_uuid, data_reader).await?;
-
-        // // Verify upload completion
-        // let upload_info = client.get_upload_info(upload_uuid).await?;
-
-        // if upload_info.bytes_uploaded != upload_info.total_size {
-        //     return Err(anyhow!(
-        //         "Upload incomplete: {}/{} bytes uploaded",
-        //         upload_info.bytes_uploaded,
-        //         upload_info.total_size
-        //     ));
-        // }
-        // info!("Upload completed successfully");
-
-        let response = self.execute_transaction_must_succeed(tx).await;
-
-        info!("Shard transaction submitted successfully: {:?}", response);
-        Ok(response)
-    }
-
-    /// Upload data from bytes and submit shard transaction
-    pub async fn upload_bytes_and_submit_tx(
-        &self,
-        data: Vec<u8>,
-        tx: Transaction,
-    ) -> Result<TransactionExecutionResponse, anyhow::Error> {
-        let data_size = data.len() as u64;
-        let reader = Cursor::new(data);
-
-        self.upload_data_and_submit_tx(reader, data_size, tx).await
-    }
-
-    /// Upload data from file and submit shard transaction  
-    pub async fn upload_file_and_submit_tx(
-        &self,
-        file_path: &Path,
-        tx: Transaction,
-    ) -> Result<TransactionExecutionResponse, anyhow::Error> {
-        let metadata = tokio::fs::metadata(file_path)
+    ) -> anyhow::Result<TransactionExecutionResponse> {
+        let mut client = self.get_client().await?;
+        client
+            .execute_transaction_and_wait_for_checkpoint(&tx, Duration::from_secs(30))
             .await
-            .map_err(|e| anyhow!("Failed to read file metadata: {}", e))?;
-        let file_size = metadata.len();
-
-        let file = File::open(file_path)
-            .await
-            .map_err(|e| anyhow!("Failed to open file: {}", e))?;
-
-        self.upload_data_and_submit_tx(file, file_size, tx).await
+            .map_err(|e| anyhow::anyhow!("Transaction execution failed: {}", e))
     }
 
     /// Get one address managed by the wallet (for testing)

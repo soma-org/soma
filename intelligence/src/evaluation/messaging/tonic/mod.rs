@@ -18,8 +18,10 @@ use tracing::{debug, info, trace, warn};
 use types::error::{EvaluationError, EvaluationResult};
 use types::evaluation::{EvaluationInput, EvaluationOutput};
 use types::multiaddr::Multiaddr;
-use types::p2p::{to_host_port_str, to_socket_addr};
 use types::parameters::TonicParameters;
+use types::sync::{to_host_port_str, to_socket_addr};
+
+const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub(crate) type Channel = tower_http::trace::Trace<
     tonic::transport::Channel,
@@ -193,7 +195,10 @@ impl<S: EvaluationService> EvaluationManager<S> for EvaluationTonicManager {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
             .layer_fn(|service| {
-                types::shard_networking::grpc_timeout::GrpcTimeout::new(service, None)
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(
+                    service,
+                    DEFAULT_GRPC_REQUEST_TIMEOUT,
+                )
             });
         let encoder_external_service_server = EvaluationTonicServiceServer::new(service)
             .max_encoding_message_size(config.message_size_limit)

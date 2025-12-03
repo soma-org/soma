@@ -59,6 +59,8 @@ pub struct EncoderConfig {
     /// Address of the validator node for fetching committees
     pub validator_sync_address: Multiaddr,
 
+    pub validator_sync_network_key: NetworkPublicKey,
+
     pub rpc_address: SocketAddr,
 
     /// Genesis for blockchain, including validator and encoder committees
@@ -84,6 +86,7 @@ impl EncoderConfig {
         project_root: PathBuf,
         entry_point: PathBuf,
         validator_sync_address: Multiaddr,
+        validator_sync_network_key: NetworkPublicKey,
         genesis: Genesis,
         db_path: PathBuf,
     ) -> Self {
@@ -110,6 +113,7 @@ impl EncoderConfig {
             project_root,
             entry_point,
             validator_sync_address,
+            validator_sync_network_key,
             rpc_address,
             genesis,
             epoch_duration_ms: 1000, //TODO: Default epoch duration
@@ -272,6 +276,24 @@ pub struct EncoderGenesisConfig {
     pub stake: u64,
     pub commission_rate: u64,
     pub byte_price: u64,
+}
+
+impl Clone for EncoderGenesisConfig {
+    fn clone(&self) -> Self {
+        Self {
+            encoder_key_pair: self.encoder_key_pair.clone(),
+            account_key_pair: self.account_key_pair.copy(),
+            network_key_pair: self.network_key_pair.clone(),
+            internal_network_address: self.internal_network_address.clone(),
+            external_network_address: self.external_network_address.clone(),
+            object_address: self.object_address.clone(),
+            inference_address: self.inference_address.clone(),
+            evaluation_address: self.evaluation_address.clone(),
+            stake: self.stake.clone(),
+            commission_rate: self.commission_rate.clone(),
+            byte_price: self.byte_price.clone(),
+        }
+    }
 }
 
 // 2. Create a builder for EncoderGenesisConfig

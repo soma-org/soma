@@ -1155,7 +1155,7 @@ impl SystemStateTrait for SystemState {
 /// be found or deserialized
 pub fn get_system_state(object_store: &dyn ObjectStore) -> Result<SystemState, SomaError> {
     let object = object_store
-        .get_object(&SYSTEM_STATE_OBJECT_ID)?
+        .get_object(&SYSTEM_STATE_OBJECT_ID)
         // Don't panic here on None because object_store is a generic store.
         .ok_or_else(|| {
             SomaError::SystemStateReadError("SystemState object not found".to_owned())

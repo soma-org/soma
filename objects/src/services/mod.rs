@@ -2,12 +2,12 @@ pub mod signed_url;
 use axum::{
     body::Body,
     extract::{Path, Query, State},
-    http::{header, Response, StatusCode},
+    http::{header, HeaderMap, Response, StatusCode},
     response::IntoResponse,
     routing::get,
     Router,
 };
-use object_store::{GetOptions, GetRange, HeaderMap, ObjectStore};
+use object_store::{GetOptions, GetRange, ObjectStore};
 use soma_http::{PeerCertificates, ServerHandle};
 use soma_tls::{public_key_from_certificate, AllowPublicKeys};
 use std::{
@@ -21,10 +21,10 @@ use types::{
     crypto::{NetworkKeyPair, NetworkPublicKey},
     metadata::ObjectPath,
     multiaddr::Multiaddr,
-    p2p::to_socket_addr,
     parameters::HttpParameters,
     shard::Shard,
     shard_crypto::digest::Digest,
+    sync::to_socket_addr,
 };
 use types::{error::ObjectResult, shard_networking::CERTIFICATE_NAME};
 
@@ -210,16 +210,16 @@ impl<S: ObjectStore> ObjectService<S> {
 
         Ok(resp)
     }
-    fn parse_range(headers: &HeaderMap, total_size: u64) -> Option<(u64, u64)> {
+    fn parse_range(headers: &HeaderMap, total_size: usize) -> Option<(usize, usize)> {
         let range = headers.get(header::RANGE)?.to_str().ok()?;
         let range = range.strip_prefix("bytes=")?;
         let mut parts = range.split('-');
-        let start = parts.next()?.parse::<u64>().ok()?;
+        let start = parts.next()?.parse::<usize>().ok()?;
         let end = parts
             .next()?
-            .parse::<u64>()
+            .parse::<usize>()
             .ok()
-            .unwrap_or(total_size as u64 - 1);
+            .unwrap_or(total_size - 1);
 
         if start >= total_size || end >= total_size || start > end {
             return None;
@@ -326,17 +326,17 @@ mod http_tests {
     use tokio::sync::Semaphore;
     use types::{
         checksum::Checksum,
+        committee::get_available_local_address,
         committee::Epoch,
-        consensus::committee::get_available_local_address,
         crypto::{DefaultHash, NetworkKeyPair, NetworkPublicKey},
         error::ObjectError,
         metadata::{
             DownloadMetadata, Metadata, MetadataV1, MtlsDownloadMetadata, MtlsDownloadMetadataV1,
             ObjectPath,
         },
-        p2p::to_host_port_str,
         parameters::HttpParameters,
         shard_crypto::digest::Digest,
+        sync::to_host_port_str,
     };
     use url::Url;
 
@@ -414,7 +414,7 @@ mod http_tests {
         let mut h = DefaultHash::new();
         h.update(&data);
         let checksum = Checksum::new_from_hash(h.finalize().into());
-        let meta = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
+        let meta = Metadata::V1(MetadataV1::new(checksum, data.len()));
         let path = ObjectPath::Probes(0, checksum);
 
         // Upload to server
@@ -486,7 +486,7 @@ mod http_tests {
         let mut h = DefaultHash::new();
         h.update(&data);
         let checksum = Checksum::new_from_hash(h.finalize().into());
-        let meta = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
+        let meta = Metadata::V1(MetadataV1::new(checksum, data.len()));
         let path = ObjectPath::Probes(1, checksum);
 
         source_store
@@ -553,7 +553,7 @@ mod http_tests {
         let mut h = DefaultHash::new();
         h.update(&data);
         let checksum = Checksum::new_from_hash(h.finalize().into());
-        let meta = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
+        let meta = Metadata::V1(MetadataV1::new(checksum, data.len()));
         let path = ObjectPath::Probes(2, checksum);
 
         source_store
@@ -635,7 +635,7 @@ mod http_tests {
 
         // Wrong checksum on purpose
         let wrong = Checksum::new_from_hash(DefaultHash::digest(b"wrong").into());
-        let meta = Metadata::V1(MetadataV1::new(wrong, data.len() as u64));
+        let meta = Metadata::V1(MetadataV1::new(wrong, data.len()));
         let path = ObjectPath::Probes(3, wrong);
 
         source_store.put(&path.path(), data.into()).await.unwrap();

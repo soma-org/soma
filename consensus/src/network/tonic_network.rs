@@ -1,68 +1,52 @@
-use bytes::Bytes;
-use hyper_util::{rt::TokioIo, service::TowerToHyperService};
-use parking_lot::RwLock;
 use std::{
     collections::BTreeMap,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
+    pin::Pin,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
-use tokio::{
-    pin,
-    task::JoinSet,
-    time::{timeout, Instant},
-};
-use tokio_rustls::TlsAcceptor;
-use tonic::{async_trait, transport::Server, Request, Response};
-use tower_http::ServiceBuilderExt;
+
+use async_trait::async_trait;
+use bytes::Bytes;
+use futures::{stream, Stream, StreamExt as _};
+use parking_lot::RwLock;
+use soma_http::ServerHandle;
+use soma_tls::AllowPublicKeys;
+use tokio_stream::{iter, Iter};
+use tonic::{codec::CompressionEncoding, Request, Response, Streaming};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, error, info, trace, warn};
+use types::committee::AuthorityIndex;
+use types::consensus::{
+    block::{BlockRef, Round},
+    commit::{CommitIndex, CommitRange},
+    context::Context,
+};
+use types::crypto::{NetworkKeyPair, NetworkPublicKey};
+use types::error::{ConsensusError, ConsensusResult};
+use types::multiaddr::{Multiaddr, Protocol};
 
 use super::{
     tonic_gen::{
         consensus_service_client::ConsensusServiceClient,
         consensus_service_server::ConsensusService,
     },
-    NetworkClient, NetworkManager, NetworkService,
+    BlockStream, ExtendedSerializedBlock, NetworkClient, NetworkManager, NetworkService,
 };
-use crate::network::tonic_gen::consensus_service_server::ConsensusServiceServer;
-use cfg_if::cfg_if;
-use tokio_stream::{iter, Iter};
-use types::committee::AuthorityIndex;
-use types::crypto::{NetworkKeyPair, NetworkPublicKey};
-use types::multiaddr::{Multiaddr, Protocol};
-use types::p2p::{to_host_port_str, to_socket_addr};
-use types::tls::{
-    create_rustls_client_config, create_rustls_server_config, public_key_from_certificate,
-    AllowedPublicKeys,
+use crate::network::{
+    tonic_gen::consensus_service_server::ConsensusServiceServer, tonic_tls::certificate_server_name,
 };
-use types::{
-    committee::Epoch,
-    consensus::{
-        block::{BlockRef, Round, VerifiedBlock},
-        commit::{CommitIndex, CommitRange},
-        context::Context,
-    },
-    error::{ConsensusError, ConsensusResult},
-    state_sync::{
-        FetchBlocksRequest, FetchBlocksResponse, FetchCommitsRequest, FetchCommitsResponse,
-    },
-};
-use utils::notify_once::NotifyOnce;
 
-// Maximum bytes size in a single fetch_blocks() response.
+// Maximum bytes size in a single fetch_blocks()response.
+// TODO: put max RPC response size in protocol config.
 const MAX_FETCH_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
 // Maximum total bytes fetched in a single fetch_blocks() call, after combining the responses.
 const MAX_TOTAL_FETCHED_BYTES: usize = 128 * 1024 * 1024;
 
-// Maximum number of connections in backlog.
-const MAX_CONNECTIONS_BACKLOG: u32 = 1024;
+const DEFAULT_GRPC_SERVER_TIMEOUT: Duration = Duration::from_secs(300);
 
-// The time we are willing to wait for a connection to get gracefully shutdown before we attempt to
-// forcefully shutdown its task.
-const CONNECTION_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(1);
-
-// Tonic RPC Client for Consensus.
+// Implements Tonic RPC client for Consensus.
 pub(crate) struct TonicClient {
     context: Arc<Context>,
     network_keypair: NetworkKeyPair,
@@ -83,33 +67,58 @@ impl TonicClient {
         peer: AuthorityIndex,
         timeout: Duration,
     ) -> ConsensusResult<ConsensusServiceClient<Channel>> {
-        // TODO: Add message size limits
+        let config = &self.context.parameters.tonic;
         let channel = self
             .channel_pool
             .get_channel(self.network_keypair.clone(), peer, timeout)
             .await?;
-        Ok(ConsensusServiceClient::new(channel))
+        let client = ConsensusServiceClient::new(channel)
+            .max_encoding_message_size(config.message_size_limit)
+            .max_decoding_message_size(config.message_size_limit)
+            .send_compressed(CompressionEncoding::Zstd)
+            .accept_compressed(CompressionEncoding::Zstd);
+        Ok(client)
     }
 }
 
+// TODO: make sure callsites do not send request to own index, and return error otherwise.
 #[async_trait]
 impl NetworkClient for TonicClient {
-    async fn send_block(
+    async fn subscribe_blocks(
         &self,
         peer: AuthorityIndex,
-        block: &VerifiedBlock,
+        last_received: Round,
         timeout: Duration,
-    ) -> ConsensusResult<()> {
+    ) -> ConsensusResult<BlockStream> {
         let mut client = self.get_client(peer, timeout).await?;
-        let mut request = Request::new(SendBlockRequest {
-            block: block.serialized().clone(),
-        });
-        request.set_timeout(timeout);
-        client
-            .send_block(request)
-            .await
-            .map_err(|e| ConsensusError::NetworkRequest(format!("send_block failed: {e:?}")))?;
-        Ok(())
+        // TODO: add sampled block acknowledgments for latency measurements.
+        let request = Request::new(stream::once(async move {
+            SubscribeBlocksRequest {
+                last_received_round: last_received,
+            }
+        }));
+        let response = client.subscribe_blocks(request).await.map_err(|e| {
+            ConsensusError::NetworkRequest(format!("subscribe_blocks failed: {e:?}"))
+        })?;
+        let stream = response
+            .into_inner()
+            .take_while(|b| futures::future::ready(b.is_ok()))
+            .filter_map(move |b| async move {
+                match b {
+                    Ok(response) => Some(ExtendedSerializedBlock {
+                        block: response.block,
+                        excluded_ancestors: response.excluded_ancestors,
+                    }),
+                    Err(e) => {
+                        debug!("Network error received from {}: {e:?}", peer);
+                        None
+                    }
+                }
+            });
+        let rate_limited_stream =
+            tokio_stream::StreamExt::throttle(stream, self.context.parameters.min_round_delay / 2)
+                .boxed();
+        Ok(rate_limited_stream)
     }
 
     async fn fetch_blocks(
@@ -117,6 +126,7 @@ impl NetworkClient for TonicClient {
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
+        breadth_first: bool,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>> {
         let mut client = self.get_client(peer, timeout).await?;
@@ -132,6 +142,7 @@ impl NetworkClient for TonicClient {
                 })
                 .collect(),
             highest_accepted_rounds,
+            breadth_first,
         });
         request.set_timeout(timeout);
         let mut stream = client
@@ -156,8 +167,7 @@ impl NetworkClient for TonicClient {
                     blocks.extend(response.blocks);
                     if total_fetched_bytes > MAX_TOTAL_FETCHED_BYTES {
                         info!(
-                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating \
-                             stream.",
+                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating stream.",
                             total_fetched_bytes, MAX_TOTAL_FETCHED_BYTES,
                         );
                         break;
@@ -242,8 +252,7 @@ impl NetworkClient for TonicClient {
                     blocks.extend(response.blocks);
                     if total_fetched_bytes > MAX_TOTAL_FETCHED_BYTES {
                         info!(
-                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating \
-                             stream.",
+                            "fetch_blocks() fetched bytes exceeded limit: {} > {}, terminating stream.",
                             total_fetched_bytes, MAX_TOTAL_FETCHED_BYTES,
                         );
                         break;
@@ -263,7 +272,7 @@ impl NetworkClient for TonicClient {
                             "fetch_blocks failed mid-stream: {e:?}"
                         )));
                     } else {
-                        warn!("fetch_blocks failed mid-stream: {e:?}");
+                        warn!("fetch_latest_blocks failed mid-stream: {e:?}");
                         break;
                     }
                 }
@@ -271,11 +280,47 @@ impl NetworkClient for TonicClient {
         }
         Ok(blocks)
     }
+
+    async fn get_latest_rounds(
+        &self,
+        peer: AuthorityIndex,
+        timeout: Duration,
+    ) -> ConsensusResult<(Vec<Round>, Vec<Round>)> {
+        let mut client = self.get_client(peer, timeout).await?;
+        let mut request = Request::new(GetLatestRoundsRequest {});
+        request.set_timeout(timeout);
+        let response = client.get_latest_rounds(request).await.map_err(|e| {
+            ConsensusError::NetworkRequest(format!("get_latest_rounds failed: {e:?}"))
+        })?;
+        let response = response.into_inner();
+        Ok((response.highest_received, response.highest_accepted))
+    }
+
+    #[cfg(test)]
+    async fn send_block(
+        &self,
+        peer: AuthorityIndex,
+        block: &types::consensus::block::VerifiedBlock,
+        timeout: Duration,
+    ) -> ConsensusResult<()> {
+        let mut client = self.get_client(peer, timeout).await?;
+        let mut request = Request::new(SendBlockRequest {
+            block: block.serialized().clone(),
+        });
+        request.set_timeout(timeout);
+        client
+            .send_block(request)
+            .await
+            .map_err(|e| ConsensusError::NetworkRequest(format!("send_block failed: {e:?}")))?;
+        Ok(())
+    }
 }
 
-// Tonic channel
-// TODO: Add tower metrics as a wrapper
-type Channel = tonic::transport::Channel;
+// Tonic channel wrapped with layers.
+type Channel = tower_http::trace::Trace<
+    tonic_rustls::Channel,
+    tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
+>;
 
 /// Manages a pool of connections to peers to avoid constantly reconnecting,
 /// which can be expensive.
@@ -310,46 +355,45 @@ impl ChannelPool {
             .context
             .committee
             .authority_by_authority_index(peer)
-            .unwrap();
+            .ok_or(ConsensusError::MissingAuthority(peer))?;
         let address = to_host_port_str(&authority.address).map_err(|e| {
             ConsensusError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address = format!("https://{address}");
-        // TODO: Add connection buffer size, keepalive interval from config
-        let endpoint = tonic::transport::Channel::from_shared(address.clone())
-            .unwrap()
-            .connect_timeout(timeout)
-            .keep_alive_while_idle(true)
-            .user_agent("soma-mysticeti")
-            .unwrap();
-
-        let client_tls_config = create_rustls_client_config(
+        let config = &self.context.parameters.tonic;
+        let buffer_size = config.connection_buffer_size;
+        let client_tls_config = soma_tls::create_rustls_client_config(
             self.context
                 .committee
                 .authority_by_authority_index(peer)
-                .unwrap()
+                .ok_or(ConsensusError::MissingAuthority(peer))?
                 .network_key
                 .clone()
                 .into_inner(),
             certificate_server_name(&self.context),
-            network_keypair,
+            Some(network_keypair.private_key().into_inner()),
         );
-        let https_connector = hyper_rustls::HttpsConnectorBuilder::new()
-            .with_tls_config(client_tls_config)
-            .https_only()
-            .enable_http2()
-            .build();
+        let endpoint = tonic_rustls::Channel::from_shared(address.clone())
+            .unwrap()
+            .connect_timeout(timeout)
+            .initial_connection_window_size(Some(buffer_size as u32))
+            .initial_stream_window_size(Some(buffer_size as u32 / 2))
+            .keep_alive_while_idle(true)
+            .keep_alive_timeout(config.keepalive_interval)
+            .http2_keep_alive_interval(config.keepalive_interval)
+            // tcp keepalive is probably unnecessary and is unsupported by msim.
+            .user_agent("mysticeti")
+            .unwrap()
+            .tls_config(client_tls_config)
+            .unwrap();
 
         let deadline = tokio::time::Instant::now() + timeout;
         let channel = loop {
             trace!("Connecting to endpoint at {address}");
-            match endpoint
-                .connect_with_connector(https_connector.clone())
-                .await
-            {
+            match endpoint.connect().await {
                 Ok(channel) => break channel,
                 Err(e) => {
-                    warn!("Failed to connect to endpoint at {address}: {e:?}");
+                    debug!("Failed to connect to endpoint at {address}: {e:?}");
                     if tokio::time::Instant::now() >= deadline {
                         return Err(ConsensusError::NetworkClientConnection(format!(
                             "Timed out connecting to endpoint at {address}: {e:?}"
@@ -361,7 +405,13 @@ impl ChannelPool {
         };
         trace!("Connected to {address}");
 
-        // TODO: Add tower tracing middleware
+        let channel = tower::ServiceBuilder::new()
+            .layer(
+                TraceLayer::new_for_grpc()
+                    .make_span_with(DefaultMakeSpan::new().level(tracing::Level::TRACE))
+                    .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
+            )
+            .service(channel);
 
         let mut channels = self.channels.write();
         // There should not be many concurrent attempts at connecting to the same peer.
@@ -370,7 +420,7 @@ impl ChannelPool {
     }
 }
 
-/// Proxies Tonic requests to NetworkService.
+/// Proxies Tonic requests to NetworkService with actual handler implementation.
 struct TonicServiceProxy<S: NetworkService> {
     context: Arc<Context>,
     service: Arc<S>,
@@ -395,12 +445,61 @@ impl<S: NetworkService> ConsensusService for TonicServiceProxy<S> {
         else {
             return Err(tonic::Status::internal("PeerInfo not found"));
         };
-        let request = request.into_inner().block;
+        let block = request.into_inner().block;
+        let block = ExtendedSerializedBlock {
+            block,
+            excluded_ancestors: vec![],
+        };
         self.service
-            .handle_send_block(peer_index, request)
+            .handle_send_block(peer_index, block)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
         Ok(Response::new(SendBlockResponse {}))
+    }
+
+    type SubscribeBlocksStream =
+        Pin<Box<dyn Stream<Item = Result<SubscribeBlocksResponse, tonic::Status>> + Send>>;
+
+    async fn subscribe_blocks(
+        &self,
+        request: Request<Streaming<SubscribeBlocksRequest>>,
+    ) -> Result<Response<Self::SubscribeBlocksStream>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.authority_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let mut request_stream = request.into_inner();
+        let first_request = match request_stream.next().await {
+            Some(Ok(r)) => r,
+            Some(Err(e)) => {
+                debug!(
+                    "subscribe_blocks() request from {} failed: {e:?}",
+                    peer_index
+                );
+                return Err(tonic::Status::invalid_argument("Request error"));
+            }
+            None => {
+                return Err(tonic::Status::invalid_argument("Missing request"));
+            }
+        };
+        let stream = self
+            .service
+            .handle_subscribe_blocks(peer_index, first_request.last_received_round)
+            .await
+            .map_err(|e| tonic::Status::internal(format!("{e:?}")))?
+            .map(|block| {
+                Ok(SubscribeBlocksResponse {
+                    block: block.block,
+                    excluded_ancestors: block.excluded_ancestors,
+                })
+            });
+        let rate_limited_stream =
+            tokio_stream::StreamExt::throttle(stream, self.context.parameters.min_round_delay / 2)
+                .boxed();
+        Ok(Response::new(rate_limited_stream))
     }
 
     type FetchBlocksStream = Iter<std::vec::IntoIter<Result<FetchBlocksResponse, tonic::Status>>>;
@@ -429,9 +528,15 @@ impl<S: NetworkService> ConsensusService for TonicServiceProxy<S> {
             })
             .collect();
         let highest_accepted_rounds = inner.highest_accepted_rounds;
+        let breadth_first = inner.breadth_first;
         let blocks = self
             .service
-            .handle_fetch_blocks(peer_index, block_refs, highest_accepted_rounds)
+            .handle_fetch_blocks(
+                peer_index,
+                block_refs,
+                highest_accepted_rounds,
+                breadth_first,
+            )
             .await
             .map_err(|e| tonic::Status::internal(format!("{e:?}")))?;
         let responses: std::vec::IntoIter<Result<FetchBlocksResponse, tonic::Status>> =
@@ -520,6 +625,28 @@ impl<S: NetworkService> ConsensusService for TonicServiceProxy<S> {
         let stream = iter(responses);
         Ok(Response::new(stream))
     }
+
+    async fn get_latest_rounds(
+        &self,
+        request: Request<GetLatestRoundsRequest>,
+    ) -> Result<Response<GetLatestRoundsResponse>, tonic::Status> {
+        let Some(peer_index) = request
+            .extensions()
+            .get::<PeerInfo>()
+            .map(|p| p.authority_index)
+        else {
+            return Err(tonic::Status::internal("PeerInfo not found"));
+        };
+        let (highest_received, highest_accepted) = self
+            .service
+            .handle_get_latest_rounds(peer_index)
+            .await
+            .map_err(|e| tonic::Status::internal(format!("{e:?}")))?;
+        Ok(Response::new(GetLatestRoundsResponse {
+            highest_received,
+            highest_accepted,
+        }))
+    }
 }
 
 /// Manages the lifecycle of Tonic network client and service. Typical usage during initialization:
@@ -532,8 +659,7 @@ pub(crate) struct TonicManager {
     context: Arc<Context>,
     network_keypair: NetworkKeyPair,
     client: Arc<TonicClient>,
-    server: JoinSet<()>,
-    shutdown_notif: Arc<NotifyOnce>,
+    server: Option<ServerHandle>,
 }
 
 impl TonicManager {
@@ -542,8 +668,7 @@ impl TonicManager {
             context: context.clone(),
             network_keypair: network_keypair.clone(),
             client: Arc::new(TonicClient::new(context, network_keypair)),
-            server: JoinSet::new(),
-            shutdown_notif: Arc::new(NotifyOnce::new()),
+            server: None,
         }
     }
 }
@@ -562,250 +687,241 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
     async fn install_service(&mut self, service: Arc<S>) {
         info!("Starting tonic service");
 
-        let own_index = self.context.own_index.expect("Own index not found");
-
         let authority = self
             .context
             .committee
-            .authority_by_authority_index(own_index)
-            .unwrap();
+            .authority_by_authority_index(self.context.own_index)
+            .expect("Own index not present in committee");
         // By default, bind to the unspecified address to allow the actual address to be assigned.
         // But bind to localhost if it is requested.
-        // let own_address = if authority.address.is_localhost_ip() {
-        //     authority.address.clone()
-        // } else {
-        //     authority.address.with_zero_ip()
-        // };
-
-        let own_address = to_socket_addr(&authority.address).unwrap();
-        info!("Binding to address: {0}", own_address);
-        // panic!();
-        let service = TonicServiceProxy::new(self.context.clone(), service);
-
-        // TODO: Add tracing middleware, keepalive and message size limits
-        let consensus_service = Server::builder()
-            .initial_connection_window_size(64 << 20)
-            .initial_stream_window_size(32 << 20)
-            .add_service(ConsensusServiceServer::new(service))
-            .into_router();
-
-        let http =
-            hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
-                .http2_only();
-        let http = Arc::new(http);
-
-        let allower = AllowedPublicKeys::new(
-            self.context
-                .committee
-                .authorities()
-                .map(|(_, authority)| authority.network_key.clone().into_inner())
-                .collect(),
-        );
-        let tls_server_config = create_rustls_server_config(
-            allower,
-            certificate_server_name(&self.context),
-            self.network_keypair.clone(),
-        );
-        let tls_acceptor = TlsAcceptor::from(Arc::new(tls_server_config));
-
-        // Create listener to incoming connections.
-        let deadline = Instant::now() + Duration::from_secs(20);
-        let listener = loop {
-            if Instant::now() > deadline {
-                panic!("Failed to start server: timeout");
-            }
-
-            // During simtest crash/restart tests there may be an older instance of consensus running
-            // that is bound to the TCP port of `own_address` that hasn't finished relinquishing
-            // control of the port yet. So instead of crashing when the address is inuse, we will retry
-            // for a short/reasonable period of time before giving up.
-            cfg_if!(
-                if #[cfg(msim)] {
-                    // msim does not have a working stub for TcpSocket. So create TcpListener directly.
-                    match tokio::net::TcpListener::bind(own_address).await {
-                        Ok(listener) => {
-                            info!("Successfully bound consensus tonic server to address {:?}", own_address);
-                            break listener;
-                        },
-                        Err(e) => {
-                            warn!("Error binding to {own_address}: {e:?}");
-                            // panic!();
-                            tokio::time::sleep(Duration::from_secs(1)).await;
-                        }
-                    }
-                } else {
-                    info!("Binding tonic server to address {:?}", own_address);
-                    // TODO: Try creating an ephemeral port to test the highest allowed send and recv buffer sizes.
-                    // Create TcpListener via TCP socket.
-                    let socket = create_socket(&own_address);
-                    match socket.bind(own_address) {
-                        Ok(_) => {
-                            info!(
-                                "Successfully bound tonic server to address {:?}",
-                                own_address
-                            )
-                        }
-                        Err(e) => {
-                            warn!("Error binding to {own_address}: {e:?}");
-                            tokio::time::sleep(Duration::from_secs(1)).await;
-                            continue;
-                        }
-                    };
-
-                    match socket.listen(MAX_CONNECTIONS_BACKLOG) {
-                        Ok(listener) => break listener,
-                        Err(e) => {
-                            warn!("Error listening at {own_address}: {e:?}");
-                            tokio::time::sleep(Duration::from_secs(1)).await;
-                        }
-                    }
-                }
-            );
+        let own_address = if authority.address.is_localhost_ip() {
+            authority.address.clone()
+        } else {
+            authority.address.with_zero_ip()
         };
+        let own_address = to_socket_addr(&own_address).unwrap();
+        let service = TonicServiceProxy::new(self.context.clone(), service);
+        let config = &self.context.parameters.tonic;
 
         let connections_info = Arc::new(ConnectionsInfo::new(self.context.clone()));
-        let shutdown_notif = self.shutdown_notif.clone();
-
-        self.server.spawn(async move {
-            let mut connection_handlers = JoinSet::new();
-
-            loop {
-                let (tcp_stream, peer_addr) = tokio::select! {
-                    result = listener.accept() => {
-                        match result {
-                            // This is the only branch that has addition processing.
-                            // Other branches continue or break from the loop.
-                            Ok(incoming) => incoming,
-                            Err(e) => {
-                                warn!("Error accepting connection: {}", e);
-                                continue;
-                            }
-                        }
-                    },
-                    Some(result) = connection_handlers.join_next() => {
-                        match result {
-                            Ok(Ok(())) => {},
-                            Ok(Err(e)) => {
-                                warn!("Error serving connection: {e:?}");
-                            },
-                            Err(e) => {
-                                debug!("Connection task error, likely shutting down: {e:?}");
-                            }
-                        }
-                        continue;
-                    },
-                    _ = shutdown_notif.wait() => {
-                        info!("Received shutdown. Stopping consensus service.");
-                        if timeout(CONNECTION_SHUTDOWN_GRACE_PERIOD, async {
-                            while connection_handlers.join_next().await.is_some() {}
-                        }).await.is_err() {
-                            warn!("Failed to stop all connection handlers in {CONNECTION_SHUTDOWN_GRACE_PERIOD:?}. Forcing shutdown.");
-                            connection_handlers.shutdown().await;
-                        }
-                        return;
-                    },
-                };
-
-                trace!("Received TCP connection attempt from {peer_addr}");
-
-                let tls_acceptor = tls_acceptor.clone();
-                let consensus_service = consensus_service.clone();
-                let http = http.clone();
-                let connections_info = connections_info.clone();
-                let shutdown_notif = shutdown_notif.clone();
-
-                connection_handlers.spawn(async move {
-                    let tls_stream = tls_acceptor.accept(tcp_stream).await.map_err(|e| {
-                        let msg = format!("Error accepting TLS connection: {e:?}");
-                        trace!(msg);
-                        ConsensusError::NetworkServerConnection(msg)
-                    })?;
-                    trace!("Accepted TLS connection");
-                    let certificate_public_key =
-                        if let Some(certs) = tls_stream.get_ref().1.peer_certificates() {
-                            if certs.len() != 1 {
-                                let msg = format!(
-                                    "Unexpected number of certificates from TLS stream: {}",
-                                    certs.len()
-                                );
-                                trace!(msg);
-                                return Err(ConsensusError::NetworkServerConnection(msg));
-                            }
-                            trace!("Received {} certificates", certs.len());
-                            public_key_from_certificate(&certs[0]).map_err(|e| {
-                                trace!("Failed to extract public key from certificate: {e:?}");
-                                ConsensusError::NetworkServerConnection(format!(
-                                    "Failed to extract public key from certificate: {e:?}"
-                                ))
-                            })?
-                        } else {
-                            return Err(ConsensusError::NetworkServerConnection(
-                                "No certificate found in TLS stream".to_string(),
-                            ));
-                        };
-                    let client_public_key = NetworkPublicKey::new(certificate_public_key);
-                    let Some(authority_index) =
-                        connections_info.authority_index(&client_public_key)
-                    else {
-                        let msg = format!(
-                            "Failed to find the authority with public key {client_public_key:?}"
-                        );
-                        error!("{}", msg);
-                        return Err(ConsensusError::NetworkServerConnection(msg));
-                    };
-
-                    let svc = tower::ServiceBuilder::new()
-                        .map_request(move |mut request: http::Request<_>| {
-                            request.extensions_mut().insert(PeerInfo { authority_index });
-                            request
-                        })
-                        .service(consensus_service.clone());
-
-                    pin! {
-                        let connection = http.serve_connection(TokioIo::new(tls_stream), TowerToHyperService::new(svc));
+        let layers = tower::ServiceBuilder::new()
+            // Add a layer to extract a peer's PeerInfo from their TLS certs
+            .map_request(move |mut request: http::Request<_>| {
+                if let Some(peer_certificates) =
+                    request.extensions().get::<soma_http::PeerCertificates>()
+                {
+                    if let Some(peer_info) =
+                        peer_info_from_certs(&connections_info, peer_certificates)
+                    {
+                        request.extensions_mut().insert(peer_info);
                     }
+                }
+                request
+            })
+            .layer(
+                TraceLayer::new_for_grpc()
+                    .make_span_with(DefaultMakeSpan::new().level(tracing::Level::TRACE))
+                    .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
+            )
+            .layer_fn(|service| {
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(
+                    service,
+                    // This should only bound the unary and initial response time,
+                    // not the duration of streaming responses.
+                    DEFAULT_GRPC_SERVER_TIMEOUT,
+                )
+            });
 
-                    let mut has_shutdown = false;
-                    loop {
-                        tokio::select! {
-                            result = connection.as_mut() => {
-                                match result {
-                                    Ok(()) => {
-                                        trace!("Connection closed for {peer_addr:?}");
-                                        break;
-                                    },
-                                    Err(e) => {
-                                        let msg = format!("Connection error serving {peer_addr:?}: {e:?}");
-                                        trace!(msg);
-                                        return Err(ConsensusError::NetworkServerConnection(msg));
-                                    },
-                                }
-                            },
-                            _ = shutdown_notif.wait(), if !has_shutdown => {
-                                trace!("Received shutdown. Stopping connection for {peer_addr:?}");
-                                connection.as_mut().graceful_shutdown();
-                                has_shutdown = true;
-                            },
-                        }
-                    }
+        let consensus_service_server = ConsensusServiceServer::new(service)
+            .max_encoding_message_size(config.message_size_limit)
+            .max_decoding_message_size(config.message_size_limit)
+            .send_compressed(CompressionEncoding::Zstd)
+            .accept_compressed(CompressionEncoding::Zstd);
 
+        let consensus_service = tonic::service::Routes::new(consensus_service_server)
+            .into_axum_router()
+            .route_layer(layers);
 
-                    Ok(())
-                });
+        let tls_server_config = soma_tls::create_rustls_server_config_with_client_verifier(
+            self.network_keypair.clone().private_key().into_inner(),
+            certificate_server_name(&self.context),
+            AllowPublicKeys::new(
+                self.context
+                    .committee
+                    .authorities()
+                    .map(|(_i, a)| a.network_key.clone().into_inner())
+                    .collect(),
+            ),
+        );
+
+        // Calculate some metrics around send/recv buffer sizes for the current machine/OS
+        #[cfg(not(msim))]
+        {
+            // Try creating an ephemeral port to test the highest allowed send and recv buffer sizes.
+            // Buffer sizes are not set explicitly on the socket used for real traffic,
+            // to allow the OS to set appropriate values.
+            {
+                let ephemeral_addr = SocketAddr::new(own_address.ip(), 0);
+                let ephemeral_socket = create_socket(&ephemeral_addr);
+
+                if let Err(e) = ephemeral_socket.set_send_buffer_size(32 << 20) {
+                    info!("Failed to set send buffer size: {e:?}");
+                }
+                if let Err(e) = ephemeral_socket.set_recv_buffer_size(32 << 20) {
+                    info!("Failed to set recv buffer size: {e:?}");
+                }
+                if ephemeral_socket.bind(ephemeral_addr).is_ok() {};
             }
+        }
 
+        let http_config = soma_http::Config::default()
+            .initial_connection_window_size(64 << 20)
+            .initial_stream_window_size(32 << 20)
+            .http2_keepalive_interval(Some(config.keepalive_interval))
+            .http2_keepalive_timeout(Some(config.keepalive_interval))
+            .accept_http1(false);
 
-        });
+        // Create server
+        //
+        // During simtest crash/restart tests there may be an older instance of consensus running
+        // that is bound to the TCP port of `own_address` that hasn't finished relinquishing
+        // control of the port yet. So instead of crashing when the address is inuse, we will retry
+        // for a short/reasonable period of time before giving up.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let server = loop {
+            match soma_http::Builder::new()
+                .config(http_config.clone())
+                .tls_config(tls_server_config.clone())
+                .serve(own_address, consensus_service.clone())
+            {
+                Ok(server) => break server,
+                Err(err) => {
+                    warn!("Error starting consensus server: {err:?}");
+                    if Instant::now() > deadline {
+                        panic!("Failed to start consensus server within required deadline");
+                    }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        };
 
         info!("Server started at: {own_address}");
+        self.server = Some(server);
     }
 
     async fn stop(&mut self) {
-        let _ = self.shutdown_notif.notify();
-        self.server.join_next().await;
+        if let Some(server) = self.server.take() {
+            server.shutdown().await;
+        }
     }
 }
 
+// Ensure that if there is an active network running that it is shutdown when the TonicManager is
+// dropped.
+impl Drop for TonicManager {
+    fn drop(&mut self) {
+        if let Some(server) = self.server.as_ref() {
+            server.trigger_shutdown();
+        }
+    }
+}
+
+// TODO: improve sui-http to allow for providing a MakeService so that this can be done once per
+// connection
+fn peer_info_from_certs(
+    connections_info: &ConnectionsInfo,
+    peer_certificates: &soma_http::PeerCertificates,
+) -> Option<PeerInfo> {
+    let certs = peer_certificates.peer_certs();
+
+    if certs.len() != 1 {
+        trace!(
+            "Unexpected number of certificates from TLS stream: {}",
+            certs.len()
+        );
+        return None;
+    }
+    trace!("Received {} certificates", certs.len());
+    let public_key = soma_tls::public_key_from_certificate(&certs[0])
+        .map_err(|e| {
+            trace!("Failed to extract public key from certificate: {e:?}");
+            e
+        })
+        .ok()?;
+    let client_public_key = NetworkPublicKey::new(public_key);
+    let Some(authority_index) = connections_info.authority_index(&client_public_key) else {
+        error!("Failed to find the authority with public key {client_public_key:?}");
+        return None;
+    };
+    Some(PeerInfo { authority_index })
+}
+
+/// Attempts to convert a multiaddr of the form `/[ip4,ip6,dns]/{}/udp/{port}` into
+/// a host:port string.
+fn to_host_port_str(addr: &Multiaddr) -> Result<String, String> {
+    let mut iter = addr.iter();
+
+    match (iter.next(), iter.next()) {
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(format!("{}:{}", ipaddr, port))
+        }
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(format!("{}:{}", ipaddr, port))
+        }
+        (Some(Protocol::Dns(hostname)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Dns(hostname)), Some(Protocol::Tcp(port))) => {
+            Ok(format!("{}:{}", hostname, port))
+        }
+
+        _ => Err(format!("unsupported multiaddr: {addr}")),
+    }
+}
+
+/// Attempts to convert a multiaddr of the form `/[ip4,ip6]/{}/[udp,tcp]/{port}` into
+/// a SocketAddr value.
+pub fn to_socket_addr(addr: &Multiaddr) -> Result<SocketAddr, String> {
+    let mut iter = addr.iter();
+
+    match (iter.next(), iter.next()) {
+        (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Ip4(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(SocketAddr::V4(SocketAddrV4::new(ipaddr, port)))
+        }
+
+        (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Udp(port)))
+        | (Some(Protocol::Ip6(ipaddr)), Some(Protocol::Tcp(port))) => {
+            Ok(SocketAddr::V6(SocketAddrV6::new(ipaddr, port, 0, 0)))
+        }
+
+        _ => Err(format!("unsupported multiaddr: {addr}")),
+    }
+}
+
+#[cfg(not(msim))]
+fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
+    let socket = if address.is_ipv4() {
+        tokio::net::TcpSocket::new_v4()
+    } else if address.is_ipv6() {
+        tokio::net::TcpSocket::new_v6()
+    } else {
+        panic!("Invalid own address: {address:?}");
+    }
+    .unwrap_or_else(|e| panic!("Cannot create TCP socket: {e:?}"));
+    if let Err(e) = socket.set_nodelay(true) {
+        info!("Failed to set TCP_NODELAY: {e:?}");
+    }
+    if let Err(e) = socket.set_reuseaddr(true) {
+        info!("Failed to set SO_REUSEADDR: {e:?}");
+    }
+    socket
+}
+
+/// Looks up authority index by authority public key.
+///
+/// TODO: Add connection monitoring, and keep track of connected peers.
+/// TODO: Maybe merge with connection_monitor.rs
 struct ConnectionsInfo {
     authority_key_to_index: BTreeMap<NetworkPublicKey, AuthorityIndex>,
 }
@@ -845,6 +961,64 @@ pub(crate) struct SendBlockRequest {
 pub(crate) struct SendBlockResponse {}
 
 #[derive(Clone, prost::Message)]
+pub(crate) struct SubscribeBlocksRequest {
+    #[prost(uint32, tag = "1")]
+    last_received_round: Round,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct SubscribeBlocksResponse {
+    #[prost(bytes = "bytes", tag = "1")]
+    block: Bytes,
+    // Serialized BlockRefs that are excluded from the blocks ancestors.
+    #[prost(bytes = "vec", repeated, tag = "2")]
+    excluded_ancestors: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchBlocksRequest {
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    block_refs: Vec<Vec<u8>>,
+    // The highest accepted round per authority. The vector represents the round for each authority
+    // and its length should be the same as the committee size.
+    // When this field is non-empty, additional ancestors of the requested blocks can be fetched.
+    #[prost(uint32, repeated, tag = "2")]
+    highest_accepted_rounds: Vec<Round>,
+    // When true, this indicates that missing ancestors should be added breadth-first, by searching through
+    // missing ancestors of the requested blocks.
+    // When false, this indicates that missing ancestors should be added depth-first, by adding missing
+    // ancestors from the requested block authorities.
+    // This field is only meaningful when highest_accepted_rounds is non-empty.
+    #[prost(bool, tag = "3")]
+    breadth_first: bool,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchBlocksResponse {
+    // The response of the requested blocks as Serialized SignedBlock.
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    blocks: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchCommitsRequest {
+    #[prost(uint32, tag = "1")]
+    start: CommitIndex,
+    #[prost(uint32, tag = "2")]
+    end: CommitIndex,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct FetchCommitsResponse {
+    // Serialized consecutive Commit.
+    #[prost(bytes = "bytes", repeated, tag = "1")]
+    commits: Vec<Bytes>,
+    // Serialized SignedBlock that certify the last commit from above.
+    #[prost(bytes = "bytes", repeated, tag = "2")]
+    certifier_blocks: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
 pub(crate) struct FetchLatestBlocksRequest {
     #[prost(uint32, repeated, tag = "1")]
     authorities: Vec<u32>,
@@ -855,6 +1029,19 @@ pub(crate) struct FetchLatestBlocksResponse {
     // The response of the requested blocks as Serialized SignedBlock.
     #[prost(bytes = "bytes", repeated, tag = "1")]
     blocks: Vec<Bytes>,
+}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetLatestRoundsRequest {}
+
+#[derive(Clone, prost::Message)]
+pub(crate) struct GetLatestRoundsResponse {
+    // Highest received round per authority.
+    #[prost(uint32, repeated, tag = "1")]
+    highest_received: Vec<u32>,
+    // Highest accepted round per authority.
+    #[prost(uint32, repeated, tag = "2")]
+    highest_accepted: Vec<u32>,
 }
 
 fn chunk_blocks(blocks: Vec<Bytes>, chunk_limit: usize) -> Vec<Vec<Bytes>> {
@@ -875,27 +1062,4 @@ fn chunk_blocks(blocks: Vec<Bytes>, chunk_limit: usize) -> Vec<Vec<Bytes>> {
         chunks.push(chunk);
     }
     chunks
-}
-
-#[cfg(not(msim))]
-fn create_socket(address: &SocketAddr) -> tokio::net::TcpSocket {
-    let socket = if address.is_ipv4() {
-        tokio::net::TcpSocket::new_v4()
-    } else if address.is_ipv6() {
-        tokio::net::TcpSocket::new_v6()
-    } else {
-        panic!("Invalid own address: {address:?}");
-    }
-    .unwrap_or_else(|e| panic!("Cannot create TCP socket: {e:?}"));
-    if let Err(e) = socket.set_nodelay(true) {
-        info!("Failed to set TCP_NODELAY: {e:?}");
-    }
-    if let Err(e) = socket.set_reuseaddr(true) {
-        info!("Failed to set SO_REUSEADDR: {e:?}");
-    }
-    socket
-}
-
-fn certificate_server_name(context: &Context) -> String {
-    format!("consensus_epoch_{}", context.committee.epoch())
 }

@@ -10,11 +10,11 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use types::{
     crypto::{NetworkKeyPair, NetworkPublicKey},
     multiaddr::Multiaddr,
-    p2p::to_socket_addr,
     shard_networking::{
         external::{GetDataRequest, GetDataResponse},
         CERTIFICATE_NAME,
     },
+    sync::to_socket_addr,
 };
 
 use crate::messaging::{EncoderExternalNetworkManager, EncoderExternalNetworkService};
@@ -28,6 +28,8 @@ use types::{
         },
     },
 };
+
+const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Proxies Tonic requests to `NetworkService` with actual handler implementation.
 struct EncoderExternalTonicServiceProxy<S: EncoderExternalNetworkService> {
@@ -173,7 +175,10 @@ impl<S: EncoderExternalNetworkService> EncoderExternalNetworkManager<S>
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
             .layer_fn(|service| {
-                types::shard_networking::grpc_timeout::GrpcTimeout::new(service, None)
+                types::shard_networking::grpc_timeout::GrpcTimeout::new(
+                    service,
+                    DEFAULT_GRPC_REQUEST_TIMEOUT,
+                )
             });
         let encoder_external_service_server = EncoderExternalTonicServiceServer::new(service)
             .max_encoding_message_size(config.message_size_limit)

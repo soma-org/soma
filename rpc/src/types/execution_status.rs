@@ -51,6 +51,11 @@ pub enum ExecutionError {
     CannotReportOneself,
     ReportRecordNotFound,
 
+    // Other errors,
+    InputObjectDeleted,
+    CertificateDenied,
+    SharedObjectCongestion,
+
     // Generic error for cases not covered by specific variants
     OtherError(String),
 }

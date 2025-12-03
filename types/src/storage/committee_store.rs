@@ -7,15 +7,15 @@ use std::{
 use crate::{
     committee::{Committee, EpochId},
     error::{SomaError, SomaResult},
+    object::ObjectID,
 };
 use parking_lot::RwLock;
 use store::{
+    nondeterministic,
     rocks::{default_db_options, DBMap, DBOptions},
     rocksdb::Options,
     DBMapUtils, Map as _,
 };
-
-use super::read_store::ReadCommitteeStore;
 
 pub struct CommitteeStore {
     tables: CommitteeStoreTables,
@@ -48,11 +48,11 @@ impl CommitteeStore {
         store
     }
 
-    // pub fn new_for_testing(genesis_committee: &Committee) -> Self {
-    //     let dir = std::env::temp_dir();
-    //     let path = dir.join(format!("DB_{:?}", nondeterministic!(ObjectID::random())));
-    //     Self::new(path, genesis_committee, None)
-    // }
+    pub fn new_for_testing(genesis_committee: &Committee) -> Self {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("DB_{:?}", nondeterministic!(ObjectID::random())));
+        Self::new(path, genesis_committee, None)
+    }
 
     pub fn init_genesis_committee(&self, genesis_committee: Committee) -> SomaResult {
         assert_eq!(genesis_committee.epoch, 0);
@@ -118,31 +118,5 @@ impl CommitteeStore {
             .next()
             .transpose()?
             .is_none())
-    }
-}
-
-impl ReadCommitteeStore for CommitteeStore {
-    fn get_committee(
-        &self,
-        epoch: EpochId,
-    ) -> super::storage_error::Result<Option<Arc<Committee>>> {
-        self.get_committee(&epoch).map_err(Into::into)
-    }
-}
-
-pub struct TestCommitteeStore {}
-
-impl TestCommitteeStore {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl ReadCommitteeStore for TestCommitteeStore {
-    fn get_committee(
-        &self,
-        epoch: EpochId,
-    ) -> super::storage_error::Result<Option<Arc<Committee>>> {
-        todo!()
     }
 }

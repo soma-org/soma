@@ -26,10 +26,12 @@
 //! - Comprehensive serialization/deserialization support for network operations
 
 use crate::crypto::{DefaultHash, GenericSignature, PublicKey, SomaPublicKey, SomaSignature};
-use crate::digests::ObjectDigest;
+use crate::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
+use crate::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use crate::error::SomaResult;
 use crate::object::{ObjectID, Version};
 use crate::serde::Readable;
+use crate::transaction::{Transaction, VerifiedTransaction};
 use crate::{crypto::AuthorityPublicKeyBytes, error::SomaError};
 use anyhow::anyhow;
 use fastcrypto::encoding::{decode_bytes_hex, Encoding, Hex};
@@ -787,3 +789,81 @@ pub type FullObjectRef = (FullObjectID, Version, ObjectDigest);
 /// For shared objects or objects using the ConsensusV2 processing path, this
 /// key helps track and order the sequence of operations on the object.
 pub type ConsensusObjectSequenceKey = (ObjectID, Version);
+
+#[derive(
+    Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, Serialize, Deserialize, JsonSchema, Debug,
+)]
+pub struct ExecutionDigests {
+    pub transaction: TransactionDigest,
+    pub effects: TransactionEffectsDigest,
+}
+
+impl ExecutionDigests {
+    pub fn new(transaction: TransactionDigest, effects: TransactionEffectsDigest) -> Self {
+        Self {
+            transaction,
+            effects,
+        }
+    }
+
+    pub fn random() -> Self {
+        Self {
+            transaction: TransactionDigest::random(),
+            effects: TransactionEffectsDigest::random(),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct ExecutionData {
+    pub transaction: Transaction,
+    pub effects: TransactionEffects,
+}
+
+impl ExecutionData {
+    pub fn new(transaction: Transaction, effects: TransactionEffects) -> ExecutionData {
+        debug_assert_eq!(transaction.digest(), effects.transaction_digest());
+        Self {
+            transaction,
+            effects,
+        }
+    }
+
+    pub fn digests(&self) -> ExecutionDigests {
+        self.effects.execution_digests()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct VerifiedExecutionData {
+    pub transaction: VerifiedTransaction,
+    pub effects: TransactionEffects,
+}
+
+impl VerifiedExecutionData {
+    pub fn new(transaction: VerifiedTransaction, effects: TransactionEffects) -> Self {
+        debug_assert_eq!(transaction.digest(), effects.transaction_digest());
+        Self {
+            transaction,
+            effects,
+        }
+    }
+
+    pub fn new_unchecked(data: ExecutionData) -> Self {
+        Self {
+            transaction: VerifiedTransaction::new_unchecked(data.transaction),
+            effects: data.effects,
+        }
+    }
+
+    pub fn into_inner(self) -> ExecutionData {
+        ExecutionData {
+            transaction: self.transaction.into_inner(),
+            effects: self.effects,
+        }
+    }
+
+    pub fn digests(&self) -> ExecutionDigests {
+        self.effects.execution_digests()
+    }
+}

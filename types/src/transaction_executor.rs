@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::{
     effects::TransactionEffects,
     error::{ExecutionError, ExecutionResult, SomaError},
+    full_checkpoint_content::ObjectSet,
     object::{Object, ObjectID},
     quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionResponse, QuorumDriverError},
     transaction::TransactionData,
@@ -27,8 +28,9 @@ pub trait TransactionExecutor: Send + Sync {
 
 pub struct SimulateTransactionResult {
     pub effects: TransactionEffects,
-    pub input_objects: BTreeMap<ObjectID, Object>,
-    pub output_objects: BTreeMap<ObjectID, Object>,
+    pub objects: ObjectSet,
+    pub execution_result: ExecutionResult,
+    pub mock_gas_id: Option<ObjectID>,
 }
 
 #[derive(Default, Debug, Copy, Clone)]

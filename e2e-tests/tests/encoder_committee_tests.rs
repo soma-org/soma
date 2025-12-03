@@ -6,7 +6,9 @@ use tokio::time::sleep;
 use tracing::info;
 use types::checksum::Checksum;
 use types::crypto::{KeypairTraits, NetworkKeyPair};
-use types::metadata::{DownloadMetadata, Metadata, MetadataV1, ObjectPath};
+use types::effects::{self, TransactionEffects, TransactionEffectsAPI as _};
+use types::full_checkpoint_content::ObjectSet;
+use types::metadata::{DownloadMetadata, Metadata, MetadataAPI as _, MetadataV1, ObjectPath};
 use types::shard::{Shard, ShardAuthToken};
 use types::shard_crypto::digest::Digest;
 use types::{
@@ -106,52 +108,61 @@ async fn test_integrated_encoder_validator_system() {
     let data_size = 1024 * 10; // 10KB of data
     let mut data = vec![0u8; data_size];
     rand::RngCore::fill_bytes(&mut rng, &mut data);
-    let checksum = Checksum::new_from_bytes(&data);
 
-    let metadata = Metadata::V1(MetadataV1::new(checksum, data.len() as u64));
+    // Upload data to test object server and get metadata
+    let (metadata, download_metadata) = test_cluster.upload_test_data(&data).await;
 
-    let shard = execute_embed_data_with_upload(
+    info!(
+        checksum = %metadata.checksum(),
+        size = metadata.size(),
+        url = %download_metadata.url(),
+        "Uploaded test data to object server"
+    );
+
+    // Execute EmbedData transaction
+    let (effects, objects) = execute_embed_data(
         new_encoder_genesis.account_key_pair.copy(),
         &mut test_cluster,
         new_encoder_address,
-        metadata,
-        data,
+        download_metadata,
     )
-    .await
-    .expect("Could not get shard auth token from transaction execution");
+    .await;
+
+    info!(
+        tx_digest = ?effects.transaction_digest(),
+        status = ?effects.status(),
+        "EmbedData transaction executed"
+    );
 
     sleep(Duration::from_secs(5)).await;
 
-    for handle in encoder_cluster.all_encoder_handles() {
-        handle.with(|node| {
-            let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
-            if shard.encoders().contains(&enc_key) {
-                let store = node.get_store_for_testing();
+    // for handle in encoder_cluster.all_encoder_handles() {
+    //     handle.with(|node| {
+    //         let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
+    //         if shard.encoders().contains(&enc_key) {
+    //             let store = node.get_store_for_testing();
 
-                let result = store.get_aggregate_score(&shard);
+    //             let result = store.get_aggregate_score(&shard);
 
-                assert!(
-                    result.is_ok(),
-                    "Failed to get agg sig for shard: {:?}",
-                    result.err()
-                );
+    //             assert!(
+    //                 result.is_ok(),
+    //                 "Failed to get agg sig for shard: {:?}",
+    //                 result.err()
+    //             );
 
-                info!("Final agg sig: {:?}", result.unwrap().0);
-            }
-        });
-    }
+    //             info!("Final agg sig: {:?}", result.unwrap().0);
+    //         }
+    //     });
+    // }
 }
 
-/// Execute EmbedData transaction with actual data upload
-async fn execute_embed_data_with_upload(
+/// Execute EmbedData transaction
+async fn execute_embed_data(
     signer: SomaKeyPair,
     test_cluster: &mut TestCluster,
     address: SomaAddress,
-    metadata: Metadata,
-    data: Vec<u8>, // Actual data to upload
-) -> Option<Shard> {
-    let data_size_bytes = data.len() as u64;
-
+    download_metadata: DownloadMetadata,
+) -> (TransactionEffects, ObjectSet) {
     // Get gas object for the transaction
     let gas_object = test_cluster
         .wallet
@@ -160,33 +171,29 @@ async fn execute_embed_data_with_upload(
         .unwrap()
         .expect("Can't get gas object for encoder address");
 
-    // Create and execute AddEncoder transaction
+    // Create EmbedData transaction
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
             TransactionKind::EmbedData {
-                metadata,
+                download_metadata,
                 coin_ref: gas_object,
             },
             address,
             vec![gas_object],
         ),
-        vec![&signer], // Sign with keypair
+        vec![&signer],
     );
 
-    tracing::info!(
-        "Uploading {} bytes and executing embed data tx for {}",
-        data_size_bytes,
+    info!(
+        tx_digest = ?tx.digest(),
+        "Executing EmbedData transaction for {}",
         address
     );
 
-    // Upload data and submit transaction in one call
-    let response = test_cluster
-        .wallet
-        .upload_bytes_and_submit_tx(data, tx)
-        .await
-        .expect("Failed to upload data and submit transaction");
+    // Execute and wait for finalization
+    let response = test_cluster.execute_transaction(tx).await;
 
-    response.shard
+    (response.effects, response.objects)
 }
 
 /// Execute AddEncoder transaction

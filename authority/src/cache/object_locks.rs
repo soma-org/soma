@@ -1,6 +1,6 @@
 use core::panic;
 
-use crate::epoch_store::AuthorityPerEpochStore;
+use crate::{authority_per_epoch_store::AuthorityPerEpochStore, authority_store::LockDetails};
 use dashmap::mapref::entry::Entry as DashMapEntry;
 use dashmap::DashMap;
 use tracing::{debug, error, info, instrument, trace};
@@ -26,7 +26,7 @@ pub(super) struct ObjectLocks {
     // those objects. Therefore we do a db read for each object we are locking.
     //
     // TODO: find a strategy to allow us to avoid db reads for each object.
-    locked_transactions: DashMap<ObjectRef, (RefCount, TransactionDigest)>,
+    locked_transactions: DashMap<ObjectRef, (RefCount, LockDetails)>,
 }
 
 impl ObjectLocks {
@@ -40,7 +40,7 @@ impl ObjectLocks {
         &self,
         obj_ref: &ObjectRef,
         epoch_store: &AuthorityPerEpochStore,
-    ) -> SomaResult<Option<TransactionDigest>> {
+    ) -> SomaResult<Option<LockDetails>> {
         // We don't consult the in-memory state here. We are only interested in state that
         // has been committed to the db. This is because in memory state is reverted
         // if the transaction is not successfully locked.
@@ -54,7 +54,7 @@ impl ObjectLocks {
     pub(crate) fn try_set_transaction_lock(
         &self,
         obj_ref: &ObjectRef,
-        new_lock: TransactionDigest,
+        new_lock: LockDetails,
         epoch_store: &AuthorityPerEpochStore,
     ) -> SomaResult {
         // entry holds a lock on the dashmap shard, so this function operates atomicly
@@ -80,17 +80,17 @@ impl ObjectLocks {
                 let tables = epoch_store.tables()?;
                 if let Some(lock_details) = tables.get_locked_transaction(obj_ref)? {
                     trace!("read lock from db: {:?}", lock_details);
-                    vacant.insert((1, lock_details));
+                    vacant.insert((1, lock_details.clone()));
                     lock_details
                 } else {
                     trace!("set lock: {:?}", new_lock);
-                    vacant.insert((1, new_lock));
-                    new_lock
+                    vacant.insert((1, new_lock.clone()));
+                    new_lock.clone()
                 }
             }
             DashMapEntry::Occupied(mut occupied) => {
                 occupied.get_mut().0 += 1;
-                occupied.get().1
+                occupied.get().1.clone()
             }
         };
 
@@ -101,8 +101,9 @@ impl ObjectLocks {
             );
             Err(SomaError::ObjectLockConflict {
                 obj_ref: *obj_ref,
-                pending_transaction: prev_lock,
-            })
+                pending_transaction: prev_lock.tx_digest,
+            }
+            .into())
         } else {
             Ok(())
         }
@@ -117,9 +118,9 @@ impl ObjectLocks {
         debug_assert_eq!(obj_ref.0, live_object.id());
         if obj_ref.1 != live_object.version() {
             debug!(
-                "object version unavailable for consumption: {:?} (current: {})",
+                "object version unavailable for consumption: {:?} (current: {:?})",
                 obj_ref,
-                live_object.version().value()
+                live_object.version()
             );
             return Err(SomaError::ObjectVersionUnavailableForConsumption {
                 provided_obj_ref: *obj_ref,
@@ -138,12 +139,12 @@ impl ObjectLocks {
         Ok(())
     }
 
-    fn clear_cached_locks(&self, locks: &[(ObjectRef, TransactionDigest)]) {
+    fn clear_cached_locks(&self, locks: &[(ObjectRef, LockDetails)]) {
         for (obj_ref, lock) in locks {
             let entry = self.locked_transactions.entry(*obj_ref);
             let mut occupied = match entry {
                 DashMapEntry::Vacant(_) => {
-                    panic!("lock must exist for object: {:?}", obj_ref);
+                    debug!("lock must exist for object: {:?}", obj_ref);
                     continue;
                 }
                 DashMapEntry::Occupied(occupied) => occupied,
@@ -168,7 +169,7 @@ impl ObjectLocks {
         cache: &WritebackCache,
         object_ids: &[ObjectID],
     ) -> SomaResult<Vec<Object>> {
-        let objects = cache.multi_get_objects(object_ids)?;
+        let objects = cache.multi_get_objects(object_ids);
         let mut result = Vec::with_capacity(objects.len());
         for (i, object) in objects.into_iter().enumerate() {
             if let Some(object) = object {
@@ -190,7 +191,7 @@ impl ObjectLocks {
         epoch_store: &AuthorityPerEpochStore,
         owned_input_objects: &[ObjectRef],
         tx_digest: TransactionDigest,
-        signed_transaction: VerifiedSignedTransaction,
+        signed_transaction: Option<VerifiedSignedTransaction>,
     ) -> SomaResult {
         let object_ids = owned_input_objects.iter().map(|o| o.0).collect::<Vec<_>>();
         let live_objects = Self::multi_get_objects_must_exist(cache, &object_ids)?;
@@ -200,7 +201,7 @@ impl ObjectLocks {
             Self::verify_live_object(obj_ref, live_object)?;
         }
 
-        let mut locks_to_write: Vec<(_, TransactionDigest)> =
+        let mut locks_to_write: Vec<(_, LockDetails)> =
             Vec::with_capacity(owned_input_objects.len());
 
         // Sort the objects before locking. This is not required by the protocol (since it's okay to
@@ -218,13 +219,16 @@ impl ObjectLocks {
             o
         };
 
+        let epoch = epoch_store.epoch();
+        let lock = LockDetails { tx_digest, epoch };
+
         // Note that this function does not have to operate atomically. If there are two racing threads,
         // then they are either trying to lock the same transaction (in which case both will succeed),
         // or they are trying to lock the same object in two different transactions, in which case
         // the sender has equivocated, and we are under no obligation to help them form a cert.
         for obj_ref in owned_input_objects.iter() {
-            match self.try_set_transaction_lock(obj_ref, tx_digest, epoch_store) {
-                Ok(()) => locks_to_write.push((*obj_ref, tx_digest)),
+            match self.try_set_transaction_lock(obj_ref, lock.clone(), epoch_store) {
+                Ok(()) => locks_to_write.push((*obj_ref, lock.clone())),
                 Err(e) => {
                     // revert all pending writes and return error
                     // Note that reverting is not required for liveness, since a well formed and un-equivocating

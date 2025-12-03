@@ -45,15 +45,11 @@ impl Intent {
 #[non_exhaustive]
 pub enum IntentScope {
     TransactionData = 0,         // Used for a user signature on a transaction data.
-    ConsensusBlock = 1,          // Used for consensus authority signature on block's digest
-    SenderSignedTransaction = 2, // Used for an authority signature on a user signed transaction.
-    TransactionEffects = 3,      // Used for an authority signature on transaction effects.
-    DiscoveryPeers = 4,          // Used for a signature on a discovery message.
-    CommitSummary = 5,           // Used for a signature on a commit summary.
-    ValidatorSet = 6,            // Used for a signature on a validator set.
-    EncoderCommittee = 7,
-    NetworkingCommittee = 8,
-    ConsensusFinality = 9,
+    TransactionEffects = 1,      // Used for an authority signature on transaction effects.
+    CheckpointSummary = 2,       // Used for an authority signature on a checkpoint summary.
+    PersonalMessage = 3,         // Used for a user signature on a personal message.
+    SenderSignedTransaction = 4, // Used for an authority signature on a user signed transaction.
+    ConsensusBlock = 5,          // Used for consensus authority signature on block's digest
 }
 
 /// Byte signifying the version of an [`Intent`]

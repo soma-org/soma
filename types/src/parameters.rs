@@ -5,13 +5,19 @@ use serde::{Deserialize, Serialize};
 /// Operational configurations of a consensus authority.
 ///
 /// All fields should tolerate inconsistencies among authorities, without affecting safety of the
-/// protocol. Otherwise, they need to be part of the protocol config or epoch state on-chain.
+/// protocol. Otherwise, they need to be part of Sui protocol config or epoch state on-chain.
 ///
 /// NOTE: fields with default values are specified in the serde default functions. Most operators
 /// should not need to specify any field, except db_path.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Parameters {
-    /// Time to wait for parent round leader before sealing a block.
+    /// Path to consensus DB for this epoch. Required when initializing consensus.
+    /// This is calculated based on user configuration for base directory.
+    #[serde(skip)]
+    pub db_path: PathBuf,
+
+    /// Time to wait for parent round leader before sealing a block, from when parent round
+    /// has a quorum.
     #[serde(default = "Parameters::default_leader_timeout")]
     pub leader_timeout: Duration,
 
@@ -26,9 +32,38 @@ pub struct Parameters {
     #[serde(default = "Parameters::default_max_forward_time_drift")]
     pub max_forward_time_drift: Duration,
 
-    /// Number of blocks to fetch per request.
+    /// Max number of blocks to fetch per block sync request.
+    /// Block sync requests have very short (~2s) timeouts.
+    /// So this value should be limited to allow the requests
+    /// to finish on hosts with good network with this timeout.
+    /// Usually a host sends 14-16 blocks per sec to a peer, so
+    /// sending 32 blocks in 2 seconds should be reasonable.
+    #[serde(default = "Parameters::default_max_blocks_per_sync")]
+    pub max_blocks_per_sync: usize,
+
+    /// Max number of blocks to fetch per commit sync request.
     #[serde(default = "Parameters::default_max_blocks_per_fetch")]
     pub max_blocks_per_fetch: usize,
+
+    /// Time to wait during node start up until the node has synced the last proposed block via the
+    /// network peers. When set to `0` the sync mechanism is disabled. This property is meant to be
+    /// used for amnesia recovery.
+    #[serde(default = "Parameters::default_sync_last_known_own_block_timeout")]
+    pub sync_last_known_own_block_timeout: Duration,
+
+    /// Interval in milliseconds to probe highest received rounds of peers.
+    #[serde(default = "Parameters::default_round_prober_interval_ms")]
+    pub round_prober_interval_ms: u64,
+
+    /// Timeout in milliseconds for a round prober request.
+    #[serde(default = "Parameters::default_round_prober_request_timeout_ms")]
+    pub round_prober_request_timeout_ms: u64,
+
+    /// Proposing new block is stopped when the propagation delay is greater than this threshold.
+    /// Propagation delay is the difference between the round of the last proposed block and the
+    /// the highest round from this authority that is received by all validators in a quorum.
+    #[serde(default = "Parameters::default_propagation_delay_stop_proposal_threshold")]
+    pub propagation_delay_stop_proposal_threshold: u32,
 
     /// The number of rounds of blocks to be kept in the Dag state cache per authority. The larger
     /// the number the more the blocks that will be kept in memory allowing minimising any potential
@@ -49,33 +84,19 @@ pub struct Parameters {
     #[serde(default = "Parameters::default_commit_sync_batch_size")]
     pub commit_sync_batch_size: u32,
 
-    // Maximum number of commit batches being fetched, before throttling
-    // of outgoing commit fetches starts.
+    // This affects the maximum number of commit batches being fetched, and those fetched but not
+    // processed as consensus output, before throttling of outgoing commit fetches starts.
     #[serde(default = "Parameters::default_commit_sync_batches_ahead")]
     pub commit_sync_batches_ahead: usize,
 
     /// Tonic network settings.
     #[serde(default = "TonicParameters::default")]
     pub tonic: TonicParameters,
-
-    /// Time to wait during node start up until the node has synced the last proposed block via the
-    /// network peers. When set to `0` the sync mechanism is disabled. This property is meant to be
-    /// used for amnesia recovery.
-    #[serde(default = "Parameters::default_sync_last_proposed_block_timeout")]
-    pub sync_last_proposed_block_timeout: Duration,
-
-    /// The maximum serialised transaction size (in bytes) accepted by consensus. That should be bigger than the
-    /// `max_tx_size_bytes` with some additional headroom.
-    #[serde(default = "Parameters::default_consensus_max_transaction_size_bytes")]
-    pub consensus_max_transaction_size_bytes: u64,
-    /// The maximum size of transactions included in a consensus proposed block
-    #[serde(default = "Parameters::default_consensus_max_transactions_in_block_bytes")]
-    pub consensus_max_transactions_in_block_bytes: u64,
 }
 
 impl Parameters {
     pub(crate) fn default_leader_timeout() -> Duration {
-        Duration::from_millis(250)
+        Duration::from_millis(200)
     }
 
     pub(crate) fn default_min_round_delay() -> Duration {
@@ -84,6 +105,9 @@ impl Parameters {
             // leading to long reconfiguration delays. This is because simtest is single threaded,
             // and spending too much time in consensus can lead to starvation elsewhere.
             Duration::from_millis(400)
+        } else if cfg!(test) {
+            // Avoid excessive CPU, data and logs in tests.
+            Duration::from_millis(250)
         } else {
             Duration::from_millis(50)
         }
@@ -93,25 +117,12 @@ impl Parameters {
         Duration::from_millis(500)
     }
 
-    pub(crate) fn default_dag_state_cached_rounds() -> u32 {
+    pub(crate) fn default_max_blocks_per_sync() -> usize {
         if cfg!(msim) {
-            // Exercise reading blocks from store.
-            5
+            // Exercise hitting blocks per sync limit.
+            4
         } else {
-            500
-        }
-    }
-
-    pub(crate) fn default_commit_sync_parallel_fetches() -> usize {
-        20
-    }
-
-    pub(crate) fn default_commit_sync_batch_size() -> u32 {
-        if cfg!(msim) {
-            // Exercise commit sync.
-            5
-        } else {
-            100
+            32
         }
     }
 
@@ -124,44 +135,89 @@ impl Parameters {
         }
     }
 
+    pub(crate) fn default_sync_last_known_own_block_timeout() -> Duration {
+        if cfg!(msim) {
+            Duration::from_millis(500)
+        } else {
+            // Here we prioritise liveness over the complete de-risking of block equivocation. 5 seconds
+            // in the majority of cases should be good enough for this given a healthy network.
+            Duration::from_secs(5)
+        }
+    }
+
+    pub(crate) fn default_round_prober_interval_ms() -> u64 {
+        if cfg!(msim) {
+            1000
+        } else {
+            5000
+        }
+    }
+
+    pub(crate) fn default_round_prober_request_timeout_ms() -> u64 {
+        if cfg!(msim) {
+            800
+        } else {
+            4000
+        }
+    }
+
+    pub(crate) fn default_propagation_delay_stop_proposal_threshold() -> u32 {
+        // Propagation delay is usually 0 round in production.
+        if cfg!(msim) {
+            2
+        } else {
+            5
+        }
+    }
+
+    pub(crate) fn default_dag_state_cached_rounds() -> u32 {
+        if cfg!(msim) {
+            // Exercise reading blocks from store.
+            5
+        } else {
+            500
+        }
+    }
+
+    pub(crate) fn default_commit_sync_parallel_fetches() -> usize {
+        8
+    }
+
+    pub(crate) fn default_commit_sync_batch_size() -> u32 {
+        if cfg!(msim) {
+            // Exercise commit sync.
+            5
+        } else {
+            100
+        }
+    }
+
     pub(crate) fn default_commit_sync_batches_ahead() -> usize {
-        200
-    }
-
-    pub(crate) fn default_sync_last_proposed_block_timeout() -> Duration {
-        Duration::ZERO
-    }
-
-    pub fn is_sync_last_proposed_block_enabled(&self) -> bool {
-        !self.sync_last_proposed_block_timeout.is_zero()
-    }
-
-    pub(crate) fn default_consensus_max_transaction_size_bytes() -> u64 {
-        256 * 1024 // 256KB
-    }
-
-    pub(crate) fn default_consensus_max_transactions_in_block_bytes() -> u64 {
-        6 * 1_024 * 1024 // 6 MB
+        // This is set to be a multiple of default commit_sync_parallel_fetches to allow fetching ahead,
+        // while keeping the total number of inflight fetches and unprocessed fetched commits limited.
+        32
     }
 }
 
 impl Default for Parameters {
     fn default() -> Self {
         Self {
+            db_path: PathBuf::default(),
             leader_timeout: Parameters::default_leader_timeout(),
             min_round_delay: Parameters::default_min_round_delay(),
             max_forward_time_drift: Parameters::default_max_forward_time_drift(),
-            dag_state_cached_rounds: Parameters::default_dag_state_cached_rounds(),
+            max_blocks_per_sync: Parameters::default_max_blocks_per_sync(),
             max_blocks_per_fetch: Parameters::default_max_blocks_per_fetch(),
-            sync_last_proposed_block_timeout: Parameters::default_sync_last_proposed_block_timeout(
-            ),
+            sync_last_known_own_block_timeout:
+                Parameters::default_sync_last_known_own_block_timeout(),
+            round_prober_interval_ms: Parameters::default_round_prober_interval_ms(),
+            round_prober_request_timeout_ms: Parameters::default_round_prober_request_timeout_ms(),
+            propagation_delay_stop_proposal_threshold:
+                Parameters::default_propagation_delay_stop_proposal_threshold(),
+            dag_state_cached_rounds: Parameters::default_dag_state_cached_rounds(),
             commit_sync_parallel_fetches: Parameters::default_commit_sync_parallel_fetches(),
             commit_sync_batch_size: Parameters::default_commit_sync_batch_size(),
             commit_sync_batches_ahead: Parameters::default_commit_sync_batches_ahead(),
-            consensus_max_transaction_size_bytes:
-                Parameters::default_consensus_max_transaction_size_bytes(),
-            consensus_max_transactions_in_block_bytes:
-                Parameters::default_consensus_max_transactions_in_block_bytes(),
             tonic: TonicParameters::default(),
         }
     }
@@ -195,16 +251,13 @@ pub struct TonicParameters {
     #[serde(default = "TonicParameters::default_message_size_limit")]
     pub message_size_limit: usize,
 
-    #[serde(default = "TonicParameters::default_channel_pool_capacity")]
-    pub channel_pool_capacity: usize,
-
     #[serde(default = "TonicParameters::default_connect_timeout")]
     pub connect_timeout: Duration,
 }
 
 impl TonicParameters {
     fn default_keepalive_interval() -> Duration {
-        Duration::from_secs(5)
+        Duration::from_secs(10)
     }
 
     fn default_connection_buffer_size() -> usize {
@@ -217,9 +270,6 @@ impl TonicParameters {
 
     fn default_message_size_limit() -> usize {
         64 << 20
-    }
-    fn default_channel_pool_capacity() -> usize {
-        1 << 8
     }
 
     fn default_connect_timeout() -> Duration {
@@ -234,7 +284,6 @@ impl Default for TonicParameters {
             connection_buffer_size: TonicParameters::default_connection_buffer_size(),
             excessive_message_size: TonicParameters::default_excessive_message_size(),
             message_size_limit: TonicParameters::default_message_size_limit(),
-            channel_pool_capacity: TonicParameters::default_channel_pool_capacity(),
             connect_timeout: TonicParameters::default_connect_timeout(),
         }
     }

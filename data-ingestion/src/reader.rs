@@ -12,27 +12,27 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
-use types::checkpoint::CommitArchiveData;
-use types::consensus::commit::CommitIndex;
+use types::checkpoints::CheckpointSequenceNumber;
+use types::full_checkpoint_content::CheckpointData;
 
 use crate::util::create_remote_store_client;
 
-pub struct CommitReader {
+pub struct CheckpointReader {
     /// Local directory path for reading archive files
     path: PathBuf,
     /// Optional remote store URL for fetching from object storage
     remote_store_url: Option<String>,
     remote_store_options: Vec<(String, String)>,
-    /// Current commit index to read next
-    current_commit_index: CommitIndex,
-    /// Last commit index that was pruned/processed
-    last_pruned_watermark: CommitIndex,
-    /// Sender for commit archive data
-    commit_sender: mpsc::Sender<Arc<CommitArchiveData>>,
-    /// Receiver for processed commit notifications
-    processed_receiver: mpsc::Receiver<CommitIndex>,
+    /// Current checkpoint sequence number to read next
+    current_checkpoint_seq: CheckpointSequenceNumber,
+    /// Last checkpoint sequence number that was pruned/processed
+    last_pruned_watermark: CheckpointSequenceNumber,
+    /// Sender for checkpoint archive data
+    checkpoint_sender: mpsc::Sender<Arc<CheckpointData>>,
+    /// Receiver for processed checkpoint notifications
+    processed_receiver: mpsc::Receiver<CheckpointSequenceNumber>,
     /// Remote fetcher task receiver
-    remote_fetcher_receiver: Option<mpsc::Receiver<Result<Arc<CommitArchiveData>>>>,
+    remote_fetcher_receiver: Option<mpsc::Receiver<Result<Arc<CheckpointData>>>>,
     /// Exit signal receiver
     exit_receiver: oneshot::Receiver<()>,
     /// Reader options
@@ -47,8 +47,8 @@ pub struct ReaderOptions {
     pub timeout_secs: u64,
     /// Number of concurrent remote fetches
     pub batch_size: usize,
-    /// Upper limit of commit index to process
-    pub upper_limit: Option<CommitIndex>,
+    /// Upper limit of checkpoint sequence number to process
+    pub upper_limit: Option<CheckpointSequenceNumber>,
     /// Whether to delete processed archive files
     pub gc_archive_files: bool,
 }
@@ -65,21 +65,21 @@ impl Default for ReaderOptions {
     }
 }
 
-impl CommitReader {
-    /// Initialize the commit reader
+impl CheckpointReader {
+    /// Initialize the checkpoint reader
     pub fn initialize(
         path: PathBuf,
-        starting_commit_index: CommitIndex,
+        starting_checkpoint: CheckpointSequenceNumber,
         remote_store_url: Option<String>,
         remote_store_options: Vec<(String, String)>,
         options: ReaderOptions,
     ) -> (
         Self,
-        mpsc::Receiver<Arc<CommitArchiveData>>,
-        mpsc::Sender<CommitIndex>,
+        mpsc::Receiver<Arc<CheckpointData>>,
+        mpsc::Sender<CheckpointSequenceNumber>,
         oneshot::Sender<()>,
     ) {
-        let (commit_sender, commit_recv) = mpsc::channel(100);
+        let (checkpoint_sender, checkpoint_recv) = mpsc::channel(100);
         let (processed_sender, processed_receiver) = mpsc::channel(100);
         let (exit_sender, exit_receiver) = oneshot::channel();
 
@@ -87,32 +87,32 @@ impl CommitReader {
             path,
             remote_store_url,
             remote_store_options,
-            current_commit_index: starting_commit_index,
-            last_pruned_watermark: starting_commit_index,
-            commit_sender,
+            current_checkpoint_seq: starting_checkpoint,
+            last_pruned_watermark: starting_checkpoint,
+            checkpoint_sender,
             processed_receiver,
             remote_fetcher_receiver: None,
             exit_receiver,
             options,
         };
 
-        (reader, commit_recv, processed_sender, exit_sender)
+        (reader, checkpoint_recv, processed_sender, exit_sender)
     }
 
     /// Read local archive files
-    async fn read_local_files(&self) -> Result<Vec<Arc<CommitArchiveData>>> {
+    async fn read_local_files(&self) -> Result<Vec<Arc<CheckpointData>>> {
         let mut archives = vec![];
         for offset in 0..100 {
-            // Max 100 commits at a time
-            let commit_index = self.current_commit_index + offset as u32;
-            if self.exceeds_limit(commit_index) {
+            // Max 100 checkpoints at a time
+            let checkpoint_seq = self.current_checkpoint_seq + offset as u64;
+            if self.exceeds_limit(checkpoint_seq) {
                 break;
             }
 
-            let file_path = self.path.join(format!("{}.dat", commit_index));
+            let file_path = self.path.join(format!("{}.chk", checkpoint_seq));
             match fs::read(file_path) {
                 Ok(bytes) => {
-                    let archive_data: CommitArchiveData = bcs::from_bytes(&bytes)?;
+                    let archive_data: CheckpointData = bcs::from_bytes(&bytes)?;
                     archives.push(Arc::new(archive_data));
                 }
                 Err(err) => match err.kind() {
@@ -124,9 +124,9 @@ impl CommitReader {
         Ok(archives)
     }
 
-    fn exceeds_limit(&self, commit_index: CommitIndex) -> bool {
+    fn exceeds_limit(&self, checkpoint_seq: CheckpointSequenceNumber) -> bool {
         if let Some(upper_limit) = self.options.upper_limit {
-            commit_index > upper_limit
+            checkpoint_seq > upper_limit
         } else {
             false
         }
@@ -135,19 +135,19 @@ impl CommitReader {
     /// Fetch from object store
     async fn fetch_from_object_store(
         store: &dyn ObjectStore,
-        commit_index: CommitIndex,
-    ) -> Result<Arc<CommitArchiveData>> {
-        let path = Path::from(format!("{}.dat", commit_index));
+        checkpoint_seq: CheckpointSequenceNumber,
+    ) -> Result<Arc<CheckpointData>> {
+        let path = Path::from(format!("{}.chk", checkpoint_seq));
         let response = store.get(&path).await?;
         let bytes = response.bytes().await?;
-        let archive_data: CommitArchiveData = bcs::from_bytes(&bytes)?;
+        let archive_data: CheckpointData = bcs::from_bytes(&bytes)?;
         Ok(Arc::new(archive_data))
     }
 
     /// Start remote fetcher task
-    fn start_remote_fetcher(&mut self) -> mpsc::Receiver<Result<Arc<CommitArchiveData>>> {
+    fn start_remote_fetcher(&mut self) -> mpsc::Receiver<Result<Arc<CheckpointData>>> {
         let batch_size = self.options.batch_size;
-        let start_commit = self.current_commit_index;
+        let start_checkpoint = self.current_checkpoint_seq;
         let (sender, receiver) = mpsc::channel(batch_size);
 
         let url = self
@@ -162,12 +162,12 @@ impl CommitReader {
         .expect("failed to create remote store client");
 
         tokio::spawn(async move {
-            let mut commit_stream = (start_commit..u32::MAX)
-                .map(|commit_index| Self::fetch_from_object_store(&*store, commit_index))
+            let mut checkpoint_stream = (start_checkpoint..u64::MAX)
+                .map(|checkpoint_seq| Self::fetch_from_object_store(&*store, checkpoint_seq))
                 .pipe(futures::stream::iter)
                 .buffered(batch_size);
 
-            while let Some(archive) = commit_stream.next().await {
+            while let Some(archive) = checkpoint_stream.next().await {
                 if sender.send(archive).await.is_err() {
                     info!("Remote reader dropped");
                     break;
@@ -179,13 +179,13 @@ impl CommitReader {
     }
 
     /// Fetch from remote store
-    fn remote_fetch(&mut self) -> Vec<Arc<CommitArchiveData>> {
+    fn remote_fetch(&mut self) -> Vec<Arc<CheckpointData>> {
         let mut archives = vec![];
         if self.remote_fetcher_receiver.is_none() {
             self.remote_fetcher_receiver = Some(self.start_remote_fetcher());
         }
 
-        while !self.exceeds_limit(self.current_commit_index + archives.len() as u32) {
+        while !self.exceeds_limit(self.current_checkpoint_seq + archives.len() as u64) {
             match self.remote_fetcher_receiver.as_mut().unwrap().try_recv() {
                 Ok(Ok(archive)) => archives.push(archive),
                 Ok(Err(err)) => {
@@ -218,22 +218,22 @@ impl CommitReader {
         }
 
         info!(
-            "Read from {}. Current commit: {}, new archives: {}",
+            "Read from {}. Current checkpoint: {}, new archives: {}",
             read_source,
-            self.current_commit_index,
+            self.current_checkpoint_seq,
             archives.len()
         );
 
         for archive in archives {
-            self.commit_sender.send(archive).await?;
-            self.current_commit_index += 1;
+            self.checkpoint_sender.send(archive).await?;
+            self.current_checkpoint_seq += 1;
         }
 
         Ok(())
     }
 
     /// Clean up processed files
-    fn gc_processed_files(&mut self, watermark: CommitIndex) -> Result<()> {
+    fn gc_processed_files(&mut self, watermark: CheckpointSequenceNumber) -> Result<()> {
         self.last_pruned_watermark = watermark;
         if !self.options.gc_archive_files {
             return Ok(());
@@ -243,8 +243,8 @@ impl CommitReader {
         for entry in fs::read_dir(&self.path)? {
             let entry = entry?;
             let file_name = entry.file_name();
-            if let Some(commit_index) = Self::parse_commit_index(&file_name) {
-                if commit_index < watermark {
+            if let Some(checkpoint_seq) = Self::parse_checkpoint_seq(&file_name) {
+                if checkpoint_seq < watermark {
                     fs::remove_file(entry.path())?;
                 }
             }
@@ -252,10 +252,10 @@ impl CommitReader {
         Ok(())
     }
 
-    fn parse_commit_index(file_name: &std::ffi::OsStr) -> Option<CommitIndex> {
+    fn parse_checkpoint_seq(file_name: &std::ffi::OsStr) -> Option<CheckpointSequenceNumber> {
         file_name
             .to_str()
-            .and_then(|s| s.strip_suffix(".dat"))
+            .and_then(|s| s.strip_suffix(".chk"))
             .and_then(|s| s.parse().ok())
     }
 
@@ -268,8 +268,8 @@ impl CommitReader {
         loop {
             tokio::select! {
                 _ = &mut self.exit_receiver => break,
-                Some(commit_index) = self.processed_receiver.recv() => {
-                    self.gc_processed_files(commit_index)?;
+                Some(checkpoint_seq) = self.processed_receiver.recv() => {
+                    self.gc_processed_files(checkpoint_seq)?;
                 }
                 _ = tokio::time::sleep(Duration::from_millis(self.options.tick_interval_ms)) => {
                     self.sync().await?;

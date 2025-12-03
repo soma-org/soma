@@ -346,7 +346,7 @@ pub struct EncoderCommitteeDigest([u8; DIGEST_LENGTH]);
 pub fn to_encoder_committee_intent(
     digest: EncoderCommitteeDigest,
 ) -> IntentMessage<EncoderCommitteeDigest> {
-    IntentMessage::new(Intent::consensus_app(IntentScope::EncoderCommittee), digest)
+    IntentMessage::new(Intent::soma_app(IntentScope::EncoderCommittee), digest)
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]

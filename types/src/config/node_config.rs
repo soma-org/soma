@@ -1,6 +1,13 @@
 use crate::{
     base::SomaAddress,
-    config::{local_ip_utils, object_store_config::ObjectStoreConfig, rpc_config::RpcConfig},
+    checkpoints::CheckpointSequenceNumber,
+    committee::EpochId,
+    config::{
+        certificate_deny_config::CertificateDenyConfig, local_ip_utils,
+        object_store_config::ObjectStoreConfig, rpc_config::RpcConfig,
+        transaction_deny_config::TransactionDenyConfig,
+        validator_client_monitor_config::ValidatorClientMonitorConfig,
+    },
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
     genesis::Genesis,
     multiaddr::Multiaddr,
@@ -15,6 +22,7 @@ use fastcrypto::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{
+    collections::BTreeMap,
     net::SocketAddr,
     num::NonZeroUsize,
     ops::Mul,
@@ -76,6 +84,40 @@ pub struct NodeConfig {
 
     #[serde(default = "default_rpc_address")]
     pub rpc_address: SocketAddr,
+
+    #[serde(default)]
+    pub checkpoint_executor_config: CheckpointExecutorConfig,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_with_range: Option<RunWithRange>,
+
+    #[serde(default)]
+    pub execution_cache: ExecutionCacheConfig,
+
+    #[serde(default)]
+    pub state_debug_dump_config: StateDebugDumpConfig,
+
+    /// Fork recovery configuration for handling validator equivocation after forks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fork_recovery: Option<ForkRecoveryConfig>,
+
+    #[serde(default)]
+    pub transaction_deny_config: TransactionDenyConfig,
+
+    #[serde(default)]
+    pub certificate_deny_config: CertificateDenyConfig,
+
+    #[serde(default)]
+    pub expensive_safety_check_config: ExpensiveSafetyCheckConfig,
+
+    /// Configuration for validator client monitoring from the client perspective.
+    /// When enabled, tracks client-observed performance metrics for validators.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validator_client_monitor_config: Option<ValidatorClientMonitorConfig>,
+
+    /// Configuration for the transaction driver.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transaction_driver_config: Option<TransactionDriverConfig>,
 }
 
 impl NodeConfig {
@@ -167,8 +209,8 @@ pub struct AuthorityStorePruningConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pruning_run_delay_seconds: Option<u64>,
     /// maximum number of commits in the pruning batch. Can be adjusted to increase performance
-    #[serde(default = "default_max_commits_in_batch")]
-    pub max_commits_in_batch: usize,
+    #[serde(default = "default_max_checkpoints_in_batch")]
+    pub max_checkpoints_in_batch: usize,
     /// maximum number of transaction in the pruning batch
     #[serde(default = "default_max_transactions_in_batch")]
     pub max_transactions_in_batch: usize,
@@ -182,7 +224,7 @@ pub struct AuthorityStorePruningConfig {
     pub periodic_compaction_threshold_days: Option<usize>,
     /// number of epochs to keep the latest version of transactions and effects for
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub num_epochs_to_retain_for_commits: Option<u64>,
+    pub num_epochs_to_retain_for_checkpoints: Option<u64>,
     /// disables object tombstone pruning. We don't serialize it if it is the default value, false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub killswitch_tombstone_pruning: bool,
@@ -211,7 +253,7 @@ fn default_max_transactions_in_batch() -> usize {
     1000
 }
 
-fn default_max_commits_in_batch() -> usize {
+fn default_max_checkpoints_in_batch() -> usize {
     10
 }
 
@@ -234,10 +276,10 @@ impl Default for AuthorityStorePruningConfig {
             epoch_db_pruning_period_secs: default_epoch_db_pruning_period_secs(),
             num_epochs_to_retain: 0,
             pruning_run_delay_seconds: if cfg!(msim) { Some(2) } else { None },
-            max_commits_in_batch: default_max_commits_in_batch(),
+            max_checkpoints_in_batch: default_max_checkpoints_in_batch(),
             max_transactions_in_batch: default_max_transactions_in_batch(),
             periodic_compaction_threshold_days: None,
-            num_epochs_to_retain_for_commits: if cfg!(msim) { Some(2) } else { None },
+            num_epochs_to_retain_for_checkpoints: if cfg!(msim) { Some(2) } else { None },
             killswitch_tombstone_pruning: false,
             smooth: true,
             enable_compaction_filter: cfg!(test) || cfg!(msim),
@@ -251,12 +293,12 @@ impl AuthorityStorePruningConfig {
         self.num_epochs_to_retain = num_epochs_to_retain;
     }
 
-    pub fn set_num_epochs_to_retain_for_commits(&mut self, num_epochs_to_retain: Option<u64>) {
-        self.num_epochs_to_retain_for_commits = num_epochs_to_retain;
+    pub fn set_num_epochs_to_retain_for_checkpoints(&mut self, num_epochs_to_retain: Option<u64>) {
+        self.num_epochs_to_retain_for_checkpoints = num_epochs_to_retain;
     }
 
-    pub fn num_epochs_to_retain_for_commits(&self) -> Option<u64> {
-        self.num_epochs_to_retain_for_commits
+    pub fn num_epochs_to_retain_for_checkpoints(&self) -> Option<u64> {
+        self.num_epochs_to_retain_for_checkpoints
             // if n less than 2, coerce to 2 and log
             .map(|n| {
                 if n < 2 {
@@ -450,6 +492,47 @@ impl ConsensusConfig {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct CheckpointExecutorConfig {
+    /// Upper bound on the number of checkpoints that can be concurrently executed
+    ///
+    /// If unspecified, this will default to `200`
+    #[serde(default = "default_checkpoint_execution_max_concurrency")]
+    pub checkpoint_execution_max_concurrency: usize,
+
+    /// Number of seconds to wait for effects of a batch of transactions
+    /// before logging a warning. Note that we will continue to retry
+    /// indefinitely
+    ///
+    /// If unspecified, this will default to `10`.
+    #[serde(default = "default_local_execution_timeout_sec")]
+    pub local_execution_timeout_sec: u64,
+
+    /// Optional directory used for data ingestion pipeline
+    /// When specified, each executed checkpoint will be saved in a local directory for post processing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_ingestion_dir: Option<PathBuf>,
+}
+
+fn default_checkpoint_execution_max_concurrency() -> usize {
+    4
+}
+
+fn default_local_execution_timeout_sec() -> u64 {
+    30
+}
+
+impl Default for CheckpointExecutorConfig {
+    fn default() -> Self {
+        Self {
+            checkpoint_execution_max_concurrency: default_checkpoint_execution_max_concurrency(),
+            local_execution_timeout_sec: default_local_execution_timeout_sec(),
+            data_ingestion_dir: None,
+        }
+    }
+}
+
 // fn default_authority_key_pair() -> AuthorityKeyPairWithPath {
 //     AuthorityKeyPairWithPath::new(get_key_pair_from_rng::<AuthorityKeyPair, _>(&mut OsRng).1)
 // }
@@ -550,7 +633,7 @@ impl ValidatorConfigBuilder {
                 // Set a shorter timeout for commit content download in tests, since
                 // commit pruning also happens much faster, and network is local.
                 state_sync: Some(StateSyncConfig {
-                    commit_content_timeout_ms: Some(10_000),
+                    checkpoint_content_timeout_ms: Some(10_000),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -558,6 +641,11 @@ impl ValidatorConfigBuilder {
         };
 
         let pruning_config = AuthorityStorePruningConfig::default();
+
+        let checkpoint_executor_config = CheckpointExecutorConfig {
+            // TODO: data_ingestion_dir: self.data_ingestion_dir,
+            ..Default::default()
+        };
 
         NodeConfig {
             protocol_key_pair: AuthorityKeyPairWithPath::new(validator.key_pair),
@@ -579,11 +667,22 @@ impl ValidatorConfigBuilder {
             rpc: Some(RpcConfig {
                 ..Default::default()
             }),
+            checkpoint_executor_config,
             state_archive_read_config: None,
             consensus_config,
             authority_store_pruning_config: pruning_config,
             end_of_epoch_broadcast_channel_capacity: 128,
             p2p_config,
+            state_debug_dump_config: Default::default(),
+            validator_client_monitor_config: None,
+            run_with_range: None,
+            // By default, expensive checks will be enabled in debug build, but not in release build.
+            expensive_safety_check_config: ExpensiveSafetyCheckConfig::default(),
+            execution_cache: ExecutionCacheConfig::default(),
+            fork_recovery: None,
+            transaction_driver_config: Some(TransactionDriverConfig::default()),
+            transaction_deny_config: Default::default(),
+            certificate_deny_config: Default::default(),
         }
     }
 
@@ -748,3 +847,333 @@ pub const CONSENSUS_DB_NAME: &str = "consensus_db";
 pub const FULL_NODE_DB_PATH: &str = "full_node_db";
 pub const AUTHORITIES_DB_NAME: &str = "authorities_db";
 pub const ENCODERS_DB_NAME: &str = "encoders_db";
+
+// RunWithRange is used to specify the ending epoch/checkpoint to process.
+// this is intended for use with disaster recovery debugging and verification workflows, never in normal operations
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub enum RunWithRange {
+    Epoch(EpochId),
+    Checkpoint(CheckpointSequenceNumber),
+}
+
+impl RunWithRange {
+    // is epoch_id > RunWithRange::Epoch
+    pub fn is_epoch_gt(&self, epoch_id: EpochId) -> bool {
+        matches!(self, RunWithRange::Epoch(e) if epoch_id > *e)
+    }
+
+    pub fn matches_checkpoint(&self, seq_num: CheckpointSequenceNumber) -> bool {
+        matches!(self, RunWithRange::Checkpoint(seq) if *seq == seq_num)
+    }
+
+    pub fn into_checkpoint_bound(self) -> Option<CheckpointSequenceNumber> {
+        match self {
+            RunWithRange::Epoch(_) => None,
+            RunWithRange::Checkpoint(seq) => Some(seq),
+        }
+    }
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionCacheConfig {
+    WritebackCache {
+        /// Maximum number of entries in each cache. (There are several different caches).
+        /// If None, the default of 10000 is used.
+        max_cache_size: Option<u64>,
+
+        package_cache_size: Option<u64>, // defaults to 1000
+
+        object_cache_size: Option<u64>, // defaults to max_cache_size
+        marker_cache_size: Option<u64>, // defaults to object_cache_size
+        object_by_id_cache_size: Option<u64>, // defaults to object_cache_size
+
+        transaction_cache_size: Option<u64>, // defaults to max_cache_size
+        executed_effect_cache_size: Option<u64>, // defaults to transaction_cache_size
+        effect_cache_size: Option<u64>,      // defaults to executed_effect_cache_size
+
+        transaction_objects_cache_size: Option<u64>, // defaults to 1000
+
+        /// Number of uncommitted transactions at which to pause consensus handler.
+        backpressure_threshold: Option<u64>,
+
+        /// Number of uncommitted transactions at which to refuse new transaction
+        /// submissions. Defaults to backpressure_threshold if unset.
+        backpressure_threshold_for_rpc: Option<u64>,
+
+        fastpath_transaction_outputs_cache_size: Option<u64>,
+    },
+}
+
+impl Default for ExecutionCacheConfig {
+    fn default() -> Self {
+        ExecutionCacheConfig::WritebackCache {
+            max_cache_size: None,
+            backpressure_threshold: None,
+            backpressure_threshold_for_rpc: None,
+            package_cache_size: None,
+            object_cache_size: None,
+            marker_cache_size: None,
+            object_by_id_cache_size: None,
+            transaction_cache_size: None,
+            executed_effect_cache_size: None,
+            effect_cache_size: None,
+            transaction_objects_cache_size: None,
+            fastpath_transaction_outputs_cache_size: None,
+        }
+    }
+}
+
+impl ExecutionCacheConfig {
+    pub fn max_cache_size(&self) -> u64 {
+        std::env::var("SOMA_MAX_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache { max_cache_size, .. } => {
+                    max_cache_size.unwrap_or(100000)
+                }
+            })
+    }
+
+    pub fn package_cache_size(&self) -> u64 {
+        std::env::var("SOMA_PACKAGE_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    package_cache_size, ..
+                } => package_cache_size.unwrap_or(1000),
+            })
+    }
+
+    pub fn object_cache_size(&self) -> u64 {
+        std::env::var("SOMA_OBJECT_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    object_cache_size, ..
+                } => object_cache_size.unwrap_or(self.max_cache_size()),
+            })
+    }
+
+    pub fn marker_cache_size(&self) -> u64 {
+        std::env::var("SOMA_MARKER_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    marker_cache_size, ..
+                } => marker_cache_size.unwrap_or(self.object_cache_size()),
+            })
+    }
+
+    pub fn object_by_id_cache_size(&self) -> u64 {
+        std::env::var("SOMA_OBJECT_BY_ID_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    object_by_id_cache_size,
+                    ..
+                } => object_by_id_cache_size.unwrap_or(self.object_cache_size()),
+            })
+    }
+
+    pub fn transaction_cache_size(&self) -> u64 {
+        std::env::var("SOMA_TRANSACTION_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    transaction_cache_size,
+                    ..
+                } => transaction_cache_size.unwrap_or(self.max_cache_size()),
+            })
+    }
+
+    pub fn executed_effect_cache_size(&self) -> u64 {
+        std::env::var("SOMA_EXECUTED_EFFECT_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    executed_effect_cache_size,
+                    ..
+                } => executed_effect_cache_size.unwrap_or(self.transaction_cache_size()),
+            })
+    }
+
+    pub fn effect_cache_size(&self) -> u64 {
+        std::env::var("SOMA_EFFECT_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    effect_cache_size, ..
+                } => effect_cache_size.unwrap_or(self.executed_effect_cache_size()),
+            })
+    }
+
+    pub fn transaction_objects_cache_size(&self) -> u64 {
+        std::env::var("SOMA_TRANSACTION_OBJECTS_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    transaction_objects_cache_size,
+                    ..
+                } => transaction_objects_cache_size.unwrap_or(1000),
+            })
+    }
+
+    pub fn backpressure_threshold(&self) -> u64 {
+        std::env::var("SOMA_BACKPRESSURE_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    backpressure_threshold,
+                    ..
+                } => backpressure_threshold.unwrap_or(100_000),
+            })
+    }
+
+    pub fn backpressure_threshold_for_rpc(&self) -> u64 {
+        std::env::var("SOMA_BACKPRESSURE_THRESHOLD_FOR_RPC")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    backpressure_threshold_for_rpc,
+                    ..
+                } => backpressure_threshold_for_rpc.unwrap_or(self.backpressure_threshold()),
+            })
+    }
+
+    pub fn fastpath_transaction_outputs_cache_size(&self) -> u64 {
+        std::env::var("SOMA_FASTPATH_TRANSACTION_OUTPUTS_CACHE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| match self {
+                ExecutionCacheConfig::WritebackCache {
+                    fastpath_transaction_outputs_cache_size,
+                    ..
+                } => fastpath_transaction_outputs_cache_size.unwrap_or(10_000),
+            })
+    }
+}
+
+/// Configurations which determine how we dump state debug info.
+/// Debug info is dumped when a node forks.
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub struct StateDebugDumpConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dump_file_directory: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ExpensiveSafetyCheckConfig {
+    /// If enabled, at epoch boundary, we will check that the accumulated
+    /// live object state matches the end of epoch root state digest.
+    #[serde(default)]
+    enable_state_consistency_check: bool,
+
+    /// Disable state consistency check even when we are running in debug mode.
+    #[serde(default)]
+    force_disable_state_consistency_check: bool,
+}
+
+impl ExpensiveSafetyCheckConfig {
+    pub fn new_enable_all() -> Self {
+        Self {
+            enable_state_consistency_check: true,
+            force_disable_state_consistency_check: false,
+        }
+    }
+
+    pub fn new_disable_all() -> Self {
+        Self {
+            enable_state_consistency_check: false,
+            force_disable_state_consistency_check: true,
+        }
+    }
+
+    pub fn force_disable_state_consistency_check(&mut self) {
+        self.force_disable_state_consistency_check = true;
+    }
+
+    pub fn enable_state_consistency_check(&self) -> bool {
+        (self.enable_state_consistency_check || cfg!(debug_assertions))
+            && !self.force_disable_state_consistency_check
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ForkCrashBehavior {
+    #[serde(rename = "await-fork-recovery")]
+    #[default]
+    AwaitForkRecovery,
+    /// Return an error instead of blocking forever. This is primarily for testing.
+    #[serde(rename = "return-error")]
+    ReturnError,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ForkRecoveryConfig {
+    /// Map of transaction digest to effects digest overrides
+    /// Used to repoint transactions to correct effects after a fork
+    #[serde(default)]
+    pub transaction_overrides: BTreeMap<String, String>,
+
+    /// Map of checkpoint sequence number to checkpoint digest overrides
+    /// On node start, if we have a locally computed checkpoint with a
+    /// digest mismatch with this table, we will clear any associated local state.
+    #[serde(default)]
+    pub checkpoint_overrides: BTreeMap<u64, String>,
+
+    /// Behavior when a fork is detected after recovery attempts
+    #[serde(default)]
+    pub fork_crash_behavior: ForkCrashBehavior,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct TransactionDriverConfig {
+    /// The list of validators that are allowed to submit MFP transactions to (via the transaction driver).
+    /// Each entry is a validator display name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_submission_validators: Vec<String>,
+
+    /// The list of validators that are blocked from submitting block transactions to (via the transaction driver).
+    /// Each entry is a validator display name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_submission_validators: Vec<String>,
+
+    /// Enable early transaction validation before submission to consensus.
+    /// This checks for non-retriable errors (like old object versions) and rejects
+    /// transactions early to provide fast feedback to clients.
+    /// Note: Currently used in TransactionOrchestrator, but may be moved to TransactionDriver in future.
+    #[serde(default = "bool_true")]
+    pub enable_early_validation: bool,
+}
+
+impl Default for TransactionDriverConfig {
+    fn default() -> Self {
+        Self {
+            allowed_submission_validators: vec![],
+            blocked_submission_validators: vec![],
+            enable_early_validation: true,
+        }
+    }
+}
+
+pub fn bool_true() -> bool {
+    true
+}

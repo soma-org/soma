@@ -6,16 +6,16 @@ use tokio::{
     sync::{mpsc::UnboundedReceiver, oneshot, Semaphore},
     time::sleep,
 };
-use tracing::{error, error_span, info, trace, Instrument};
+use tracing::{Instrument, error, error_span, info, trace, warn};
+use types::execution::ExecutionOutput;
 
-use crate::{state::AuthorityState, tx_manager::PendingCertificate};
+use crate::{authority::AuthorityState, execution_scheduler::PendingCertificate};
 
 // Execution should not encounter permanent failures, so any failure can and needs
 // to be retried.
 pub const EXECUTION_MAX_ATTEMPTS: u32 = 10;
 const EXECUTION_FAILURE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 const QUEUEING_DELAY_SAMPLING_RATIO: f64 = 0.05;
-
 /// When a notification that a new pending transaction is received we activate
 /// processing the transaction in a loop.
 pub async fn execution_process(
@@ -30,18 +30,19 @@ pub async fn execution_process(
 
     // Loop whenever there is a signal that a new transactions is ready to process.
     loop {
+
         let certificate;
-        let expected_effects_digest;
-        let commit;
+        let execution_env;
+        
         tokio::select! {
             result = rx_ready_certificates.recv() => {
                 if let Some(pending_cert) = result {
                     certificate = pending_cert.certificate;
-                    expected_effects_digest = pending_cert.expected_effects_digest;
-                    commit = pending_cert.commit;
+                    execution_env = pending_cert.execution_env;
+                 
                 } else {
                     // Should only happen after the AuthorityState has shut down and tx_ready_certificate
-                    // has been dropped by TransactionManager.
+                    // has been dropped by ExecutionScheduler.
                     info!("No more certificate will be received. Exiting executor ...");
                     return;
                 };
@@ -67,35 +68,50 @@ pub async fn execution_process(
         let digest = *certificate.digest();
         trace!(?digest, "Pending certificate execution activated.");
 
+        if epoch_store.epoch() != certificate.epoch() {
+            info!(
+                ?digest,
+                cur_epoch = epoch_store.epoch(),
+                cert_epoch = certificate.epoch(),
+                "Ignoring certificate from previous epoch."
+            );
+            continue;
+        }
+
         let limit = limit.clone();
         // hold semaphore permit until task completes. unwrap ok because we never close
         // the semaphore in this context.
         let permit = limit.acquire_owned().await.unwrap();
 
         // Certificate execution can take significant time, so run it in a separate task.
+        let epoch_store_clone = epoch_store.clone();
         tokio::spawn(async move {
-            let _guard = permit;
-            // TODO: if let Ok(true) = authority.is_tx_already_executed(&digest) {
-            //     return;
-            // }
-            let mut attempts = 0;
-            loop {
-                attempts += 1;
-                let res = authority
-                    .try_execute_immediately(&certificate, expected_effects_digest, commit,  &epoch_store)
-                    .await;
-                if let Err(e) = res {
-                    if attempts == EXECUTION_MAX_ATTEMPTS {
-                        panic!("Failed to execute certified transaction {digest:?} after {attempts} attempts! error={e} certificate={certificate:?}");
-                    }
-                    // Assume only transient failure can happen. Permanent failure is probably
-                    // a bug. There is nothing that can be done to recover from permanent failures.
-                    error!(tx_digest=?digest, "Failed to execute certified transaction {digest:?}! attempt {attempts}, {e}");
-                    sleep(EXECUTION_FAILURE_RETRY_INTERVAL).await;
-                } else {
-                    break;
+            let result = epoch_store_clone.within_alive_epoch(async {
+                let _guard = permit;
+                if authority.is_tx_already_executed(&digest) {
+                    return;
                 }
-            }
+
+                match authority.try_execute_immediately(
+                    &certificate,
+                    execution_env,
+                    &epoch_store_clone,
+                ).await {
+                    ExecutionOutput::Success(_) => {
+                    
+                    }
+                    ExecutionOutput::EpochEnded => {
+                        warn!("Could not execute transaction {digest:?} because validator is halted at epoch end. certificate={certificate:?}");
+                    }
+                    ExecutionOutput::Fatal(e) => {
+                        panic!("Failed to execute certified transaction {digest:?}! error={e} certificate={certificate:?}");
+                    }
+                    ExecutionOutput::RetryLater => {
+                        // Transaction will be retried later and auto-rescheduled, so we ignore it here
+                    }
+                }
+            }).await;
+            result
         }.instrument(error_span!("execution_driver", tx_digest = ?digest)));
     }
 }

@@ -22,30 +22,88 @@ mod _getter_impls {
             self
         }
     }
-    impl Commit {
+    impl Checkpoint {
         pub const fn const_default() -> Self {
             Self {
-                index: None,
+                sequence_number: None,
                 digest: None,
-                timestamp_ms: None,
+                summary: None,
+                signature: None,
+                contents: None,
                 transactions: Vec::new(),
+                objects: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: Commit = Commit::const_default();
+            static DEFAULT: Checkpoint = Checkpoint::const_default();
             &DEFAULT
         }
-        pub fn with_index(mut self, field: u32) -> Self {
-            self.index = Some(field.into());
+        pub fn with_sequence_number(mut self, field: u64) -> Self {
+            self.sequence_number = Some(field.into());
             self
         }
         pub fn with_digest(mut self, field: String) -> Self {
             self.digest = Some(field.into());
             self
         }
-        pub fn with_timestamp_ms(mut self, field: u64) -> Self {
-            self.timestamp_ms = Some(field.into());
+        pub fn summary(&self) -> &CheckpointSummary {
+            self.summary
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| CheckpointSummary::default_instance() as _)
+        }
+        pub fn summary_opt(&self) -> Option<&CheckpointSummary> {
+            self.summary.as_ref().map(|field| field as _)
+        }
+        pub fn summary_opt_mut(&mut self) -> Option<&mut CheckpointSummary> {
+            self.summary.as_mut().map(|field| field as _)
+        }
+        pub fn summary_mut(&mut self) -> &mut CheckpointSummary {
+            self.summary.get_or_insert_default()
+        }
+        pub fn with_summary(mut self, field: CheckpointSummary) -> Self {
+            self.summary = Some(field.into());
+            self
+        }
+        pub fn signature(&self) -> &ValidatorAggregatedSignature {
+            self.signature
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ValidatorAggregatedSignature::default_instance() as _)
+        }
+        pub fn signature_opt(&self) -> Option<&ValidatorAggregatedSignature> {
+            self.signature.as_ref().map(|field| field as _)
+        }
+        pub fn signature_opt_mut(
+            &mut self,
+        ) -> Option<&mut ValidatorAggregatedSignature> {
+            self.signature.as_mut().map(|field| field as _)
+        }
+        pub fn signature_mut(&mut self) -> &mut ValidatorAggregatedSignature {
+            self.signature.get_or_insert_default()
+        }
+        pub fn with_signature(mut self, field: ValidatorAggregatedSignature) -> Self {
+            self.signature = Some(field.into());
+            self
+        }
+        pub fn contents(&self) -> &CheckpointContents {
+            self.contents
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| CheckpointContents::default_instance() as _)
+        }
+        pub fn contents_opt(&self) -> Option<&CheckpointContents> {
+            self.contents.as_ref().map(|field| field as _)
+        }
+        pub fn contents_opt_mut(&mut self) -> Option<&mut CheckpointContents> {
+            self.contents.as_mut().map(|field| field as _)
+        }
+        pub fn contents_mut(&mut self) -> &mut CheckpointContents {
+            self.contents.get_or_insert_default()
+        }
+        pub fn with_contents(mut self, field: CheckpointContents) -> Self {
+            self.contents = Some(field.into());
             self
         }
         pub fn transactions(&self) -> &[ExecutedTransaction] {
@@ -56,6 +114,229 @@ mod _getter_impls {
         }
         pub fn with_transactions(mut self, field: Vec<ExecutedTransaction>) -> Self {
             self.transactions = field;
+            self
+        }
+        pub fn objects(&self) -> &ObjectSet {
+            self.objects
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectSet::default_instance() as _)
+        }
+        pub fn objects_opt(&self) -> Option<&ObjectSet> {
+            self.objects.as_ref().map(|field| field as _)
+        }
+        pub fn objects_opt_mut(&mut self) -> Option<&mut ObjectSet> {
+            self.objects.as_mut().map(|field| field as _)
+        }
+        pub fn objects_mut(&mut self) -> &mut ObjectSet {
+            self.objects.get_or_insert_default()
+        }
+        pub fn with_objects(mut self, field: ObjectSet) -> Self {
+            self.objects = Some(field.into());
+            self
+        }
+    }
+    impl CheckpointContents {
+        pub const fn const_default() -> Self {
+            Self {
+                digest: None,
+                version: None,
+                transactions: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: CheckpointContents = CheckpointContents::const_default();
+            &DEFAULT
+        }
+        pub fn with_digest(mut self, field: String) -> Self {
+            self.digest = Some(field.into());
+            self
+        }
+        pub fn with_version(mut self, field: i32) -> Self {
+            self.version = Some(field.into());
+            self
+        }
+        pub fn transactions(&self) -> &[CheckpointedTransactionInfo] {
+            &self.transactions
+        }
+        pub fn transactions_mut(&mut self) -> &mut Vec<CheckpointedTransactionInfo> {
+            &mut self.transactions
+        }
+        pub fn with_transactions(
+            mut self,
+            field: Vec<CheckpointedTransactionInfo>,
+        ) -> Self {
+            self.transactions = field;
+            self
+        }
+    }
+    impl CheckpointedTransactionInfo {
+        pub const fn const_default() -> Self {
+            Self {
+                transaction: None,
+                effects: None,
+                signatures: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: CheckpointedTransactionInfo = CheckpointedTransactionInfo::const_default();
+            &DEFAULT
+        }
+        pub fn with_transaction(mut self, field: String) -> Self {
+            self.transaction = Some(field.into());
+            self
+        }
+        pub fn with_effects(mut self, field: String) -> Self {
+            self.effects = Some(field.into());
+            self
+        }
+        pub fn signatures(&self) -> &[UserSignature] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<UserSignature> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<UserSignature>) -> Self {
+            self.signatures = field;
+            self
+        }
+    }
+    impl CheckpointSummary {
+        pub const fn const_default() -> Self {
+            Self {
+                digest: None,
+                epoch: None,
+                sequence_number: None,
+                total_network_transactions: None,
+                content_digest: None,
+                previous_digest: None,
+                timestamp: None,
+                commitments: Vec::new(),
+                end_of_epoch_data: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: CheckpointSummary = CheckpointSummary::const_default();
+            &DEFAULT
+        }
+        pub fn with_digest(mut self, field: String) -> Self {
+            self.digest = Some(field.into());
+            self
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_sequence_number(mut self, field: u64) -> Self {
+            self.sequence_number = Some(field.into());
+            self
+        }
+        pub fn with_total_network_transactions(mut self, field: u64) -> Self {
+            self.total_network_transactions = Some(field.into());
+            self
+        }
+        pub fn with_content_digest(mut self, field: String) -> Self {
+            self.content_digest = Some(field.into());
+            self
+        }
+        pub fn with_previous_digest(mut self, field: String) -> Self {
+            self.previous_digest = Some(field.into());
+            self
+        }
+        pub fn commitments(&self) -> &[CheckpointCommitment] {
+            &self.commitments
+        }
+        pub fn commitments_mut(&mut self) -> &mut Vec<CheckpointCommitment> {
+            &mut self.commitments
+        }
+        pub fn with_commitments(mut self, field: Vec<CheckpointCommitment>) -> Self {
+            self.commitments = field;
+            self
+        }
+        pub fn end_of_epoch_data(&self) -> &EndOfEpochData {
+            self.end_of_epoch_data
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| EndOfEpochData::default_instance() as _)
+        }
+        pub fn end_of_epoch_data_opt(&self) -> Option<&EndOfEpochData> {
+            self.end_of_epoch_data.as_ref().map(|field| field as _)
+        }
+        pub fn end_of_epoch_data_opt_mut(&mut self) -> Option<&mut EndOfEpochData> {
+            self.end_of_epoch_data.as_mut().map(|field| field as _)
+        }
+        pub fn end_of_epoch_data_mut(&mut self) -> &mut EndOfEpochData {
+            self.end_of_epoch_data.get_or_insert_default()
+        }
+        pub fn with_end_of_epoch_data(mut self, field: EndOfEpochData) -> Self {
+            self.end_of_epoch_data = Some(field.into());
+            self
+        }
+    }
+    impl EndOfEpochData {
+        pub const fn const_default() -> Self {
+            Self {
+                next_epoch_validator_committee: None,
+                epoch_commitments: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: EndOfEpochData = EndOfEpochData::const_default();
+            &DEFAULT
+        }
+        pub fn next_epoch_validator_committee(&self) -> &ValidatorCommittee {
+            self.next_epoch_validator_committee
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ValidatorCommittee::default_instance() as _)
+        }
+        pub fn next_epoch_validator_committee_opt(&self) -> Option<&ValidatorCommittee> {
+            self.next_epoch_validator_committee.as_ref().map(|field| field as _)
+        }
+        pub fn next_epoch_validator_committee_opt_mut(
+            &mut self,
+        ) -> Option<&mut ValidatorCommittee> {
+            self.next_epoch_validator_committee.as_mut().map(|field| field as _)
+        }
+        pub fn next_epoch_validator_committee_mut(&mut self) -> &mut ValidatorCommittee {
+            self.next_epoch_validator_committee.get_or_insert_default()
+        }
+        pub fn with_next_epoch_validator_committee(
+            mut self,
+            field: ValidatorCommittee,
+        ) -> Self {
+            self.next_epoch_validator_committee = Some(field.into());
+            self
+        }
+        pub fn epoch_commitments(&self) -> &[CheckpointCommitment] {
+            &self.epoch_commitments
+        }
+        pub fn epoch_commitments_mut(&mut self) -> &mut Vec<CheckpointCommitment> {
+            &mut self.epoch_commitments
+        }
+        pub fn with_epoch_commitments(
+            mut self,
+            field: Vec<CheckpointCommitment>,
+        ) -> Self {
+            self.epoch_commitments = field;
+            self
+        }
+    }
+    impl CheckpointCommitment {
+        pub const fn const_default() -> Self {
+            Self { kind: None, digest: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: CheckpointCommitment = CheckpointCommitment::const_default();
+            &DEFAULT
+        }
+        pub fn with_digest(mut self, field: String) -> Self {
+            self.digest = Some(field.into());
             self
         }
     }
@@ -285,8 +566,11 @@ mod _getter_impls {
                 epoch: None,
                 committee: None,
                 system_state: None,
+                first_checkpoint: None,
+                last_checkpoint: None,
                 start: None,
                 end: None,
+                protocol_config: None,
             }
         }
         #[doc(hidden)]
@@ -336,6 +620,33 @@ mod _getter_impls {
             self.system_state = Some(field.into());
             self
         }
+        pub fn with_first_checkpoint(mut self, field: u64) -> Self {
+            self.first_checkpoint = Some(field.into());
+            self
+        }
+        pub fn with_last_checkpoint(mut self, field: u64) -> Self {
+            self.last_checkpoint = Some(field.into());
+            self
+        }
+        pub fn protocol_config(&self) -> &ProtocolConfig {
+            self.protocol_config
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ProtocolConfig::default_instance() as _)
+        }
+        pub fn protocol_config_opt(&self) -> Option<&ProtocolConfig> {
+            self.protocol_config.as_ref().map(|field| field as _)
+        }
+        pub fn protocol_config_opt_mut(&mut self) -> Option<&mut ProtocolConfig> {
+            self.protocol_config.as_mut().map(|field| field as _)
+        }
+        pub fn protocol_config_mut(&mut self) -> &mut ProtocolConfig {
+            self.protocol_config.get_or_insert_default()
+        }
+        pub fn with_protocol_config(mut self, field: ProtocolConfig) -> Self {
+            self.protocol_config = Some(field.into());
+            self
+        }
     }
     impl ExecutedTransaction {
         pub const fn const_default() -> Self {
@@ -344,12 +655,10 @@ mod _getter_impls {
                 transaction: None,
                 signatures: Vec::new(),
                 effects: None,
-                commit: None,
+                checkpoint: None,
                 timestamp: None,
                 balance_changes: Vec::new(),
-                input_objects: Vec::new(),
-                output_objects: Vec::new(),
-                shard: None,
+                objects: None,
             }
         }
         #[doc(hidden)]
@@ -409,8 +718,8 @@ mod _getter_impls {
             self.effects = Some(field.into());
             self
         }
-        pub fn with_commit(mut self, field: u64) -> Self {
-            self.commit = Some(field.into());
+        pub fn with_checkpoint(mut self, field: u64) -> Self {
+            self.checkpoint = Some(field.into());
             self
         }
         pub fn balance_changes(&self) -> &[BalanceChange] {
@@ -423,43 +732,23 @@ mod _getter_impls {
             self.balance_changes = field;
             self
         }
-        pub fn input_objects(&self) -> &[Object] {
-            &self.input_objects
-        }
-        pub fn input_objects_mut(&mut self) -> &mut Vec<Object> {
-            &mut self.input_objects
-        }
-        pub fn with_input_objects(mut self, field: Vec<Object>) -> Self {
-            self.input_objects = field;
-            self
-        }
-        pub fn output_objects(&self) -> &[Object] {
-            &self.output_objects
-        }
-        pub fn output_objects_mut(&mut self) -> &mut Vec<Object> {
-            &mut self.output_objects
-        }
-        pub fn with_output_objects(mut self, field: Vec<Object>) -> Self {
-            self.output_objects = field;
-            self
-        }
-        pub fn shard(&self) -> &Shard {
-            self.shard
+        pub fn objects(&self) -> &ObjectSet {
+            self.objects
                 .as_ref()
                 .map(|field| field as _)
-                .unwrap_or_else(|| Shard::default_instance() as _)
+                .unwrap_or_else(|| ObjectSet::default_instance() as _)
         }
-        pub fn shard_opt(&self) -> Option<&Shard> {
-            self.shard.as_ref().map(|field| field as _)
+        pub fn objects_opt(&self) -> Option<&ObjectSet> {
+            self.objects.as_ref().map(|field| field as _)
         }
-        pub fn shard_opt_mut(&mut self) -> Option<&mut Shard> {
-            self.shard.as_mut().map(|field| field as _)
+        pub fn objects_opt_mut(&mut self) -> Option<&mut ObjectSet> {
+            self.objects.as_mut().map(|field| field as _)
         }
-        pub fn shard_mut(&mut self) -> &mut Shard {
-            self.shard.get_or_insert_default()
+        pub fn objects_mut(&mut self) -> &mut ObjectSet {
+            self.objects.get_or_insert_default()
         }
-        pub fn with_shard(mut self, field: Shard) -> Self {
-            self.shard = Some(field.into());
+        pub fn with_objects(mut self, field: ObjectSet) -> Self {
+            self.objects = Some(field.into());
             self
         }
     }
@@ -593,6 +882,63 @@ mod _getter_impls {
             self.error_details = Some(
                 execution_error::ErrorDetails::OtherError(field.into()),
             );
+            self
+        }
+    }
+    impl GetServiceInfoRequest {
+        pub const fn const_default() -> Self {
+            Self {}
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetServiceInfoRequest = GetServiceInfoRequest::const_default();
+            &DEFAULT
+        }
+    }
+    impl GetServiceInfoResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                chain_id: None,
+                chain: None,
+                epoch: None,
+                checkpoint_height: None,
+                timestamp: None,
+                lowest_available_checkpoint: None,
+                lowest_available_checkpoint_objects: None,
+                server: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetServiceInfoResponse = GetServiceInfoResponse::const_default();
+            &DEFAULT
+        }
+        pub fn with_chain_id(mut self, field: String) -> Self {
+            self.chain_id = Some(field.into());
+            self
+        }
+        pub fn with_chain(mut self, field: String) -> Self {
+            self.chain = Some(field.into());
+            self
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_checkpoint_height(mut self, field: u64) -> Self {
+            self.checkpoint_height = Some(field.into());
+            self
+        }
+        pub fn with_lowest_available_checkpoint(mut self, field: u64) -> Self {
+            self.lowest_available_checkpoint = Some(field.into());
+            self
+        }
+        pub fn with_lowest_available_checkpoint_objects(mut self, field: u64) -> Self {
+            self.lowest_available_checkpoint_objects = Some(field.into());
+            self
+        }
+        pub fn with_server(mut self, field: String) -> Self {
+            self.server = Some(field.into());
             self
         }
     }
@@ -873,69 +1219,80 @@ mod _getter_impls {
             self
         }
     }
-    impl GetCommitRequest {
+    impl GetCheckpointRequest {
         pub const fn const_default() -> Self {
             Self {
                 read_mask: None,
-                commit_id: None,
+                checkpoint_id: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetCommitRequest = GetCommitRequest::const_default();
+            static DEFAULT: GetCheckpointRequest = GetCheckpointRequest::const_default();
             &DEFAULT
         }
-        pub fn index(&self) -> u32 {
-            if let Some(get_commit_request::CommitId::Index(field)) = &self.commit_id {
+        pub fn sequence_number(&self) -> u64 {
+            if let Some(get_checkpoint_request::CheckpointId::SequenceNumber(field)) = &self
+                .checkpoint_id
+            {
                 *field
             } else {
-                0u32
+                0u64
             }
         }
-        pub fn index_opt(&self) -> Option<u32> {
-            if let Some(get_commit_request::CommitId::Index(field)) = &self.commit_id {
+        pub fn sequence_number_opt(&self) -> Option<u64> {
+            if let Some(get_checkpoint_request::CheckpointId::SequenceNumber(field)) = &self
+                .checkpoint_id
+            {
                 Some(*field)
             } else {
                 None
             }
         }
-        pub fn index_opt_mut(&mut self) -> Option<&mut u32> {
-            if let Some(get_commit_request::CommitId::Index(field)) = &mut self.commit_id
+        pub fn sequence_number_opt_mut(&mut self) -> Option<&mut u64> {
+            if let Some(get_checkpoint_request::CheckpointId::SequenceNumber(field)) = &mut self
+                .checkpoint_id
             {
                 Some(field as _)
             } else {
                 None
             }
         }
-        pub fn index_mut(&mut self) -> &mut u32 {
-            if self.index_opt_mut().is_none() {
-                self.commit_id = Some(
-                    get_commit_request::CommitId::Index(u32::default()),
+        pub fn sequence_number_mut(&mut self) -> &mut u64 {
+            if self.sequence_number_opt_mut().is_none() {
+                self.checkpoint_id = Some(
+                    get_checkpoint_request::CheckpointId::SequenceNumber(u64::default()),
                 );
             }
-            self.index_opt_mut().unwrap()
+            self.sequence_number_opt_mut().unwrap()
         }
-        pub fn with_index(mut self, field: u32) -> Self {
-            self.commit_id = Some(get_commit_request::CommitId::Index(field.into()));
+        pub fn with_sequence_number(mut self, field: u64) -> Self {
+            self.checkpoint_id = Some(
+                get_checkpoint_request::CheckpointId::SequenceNumber(field.into()),
+            );
             self
         }
         pub fn digest(&self) -> &str {
-            if let Some(get_commit_request::CommitId::Digest(field)) = &self.commit_id {
+            if let Some(get_checkpoint_request::CheckpointId::Digest(field)) = &self
+                .checkpoint_id
+            {
                 field as _
             } else {
                 ""
             }
         }
         pub fn digest_opt(&self) -> Option<&str> {
-            if let Some(get_commit_request::CommitId::Digest(field)) = &self.commit_id {
+            if let Some(get_checkpoint_request::CheckpointId::Digest(field)) = &self
+                .checkpoint_id
+            {
                 Some(field as _)
             } else {
                 None
             }
         }
         pub fn digest_opt_mut(&mut self) -> Option<&mut String> {
-            if let Some(get_commit_request::CommitId::Digest(field)) = &mut self
-                .commit_id
+            if let Some(get_checkpoint_request::CheckpointId::Digest(field)) = &mut self
+                .checkpoint_id
             {
                 Some(field as _)
             } else {
@@ -944,43 +1301,45 @@ mod _getter_impls {
         }
         pub fn digest_mut(&mut self) -> &mut String {
             if self.digest_opt_mut().is_none() {
-                self.commit_id = Some(
-                    get_commit_request::CommitId::Digest(String::default()),
+                self.checkpoint_id = Some(
+                    get_checkpoint_request::CheckpointId::Digest(String::default()),
                 );
             }
             self.digest_opt_mut().unwrap()
         }
         pub fn with_digest(mut self, field: String) -> Self {
-            self.commit_id = Some(get_commit_request::CommitId::Digest(field.into()));
+            self.checkpoint_id = Some(
+                get_checkpoint_request::CheckpointId::Digest(field.into()),
+            );
             self
         }
     }
-    impl GetCommitResponse {
+    impl GetCheckpointResponse {
         pub const fn const_default() -> Self {
-            Self { commit: None }
+            Self { checkpoint: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetCommitResponse = GetCommitResponse::const_default();
+            static DEFAULT: GetCheckpointResponse = GetCheckpointResponse::const_default();
             &DEFAULT
         }
-        pub fn commit(&self) -> &Commit {
-            self.commit
+        pub fn checkpoint(&self) -> &Checkpoint {
+            self.checkpoint
                 .as_ref()
                 .map(|field| field as _)
-                .unwrap_or_else(|| Commit::default_instance() as _)
+                .unwrap_or_else(|| Checkpoint::default_instance() as _)
         }
-        pub fn commit_opt(&self) -> Option<&Commit> {
-            self.commit.as_ref().map(|field| field as _)
+        pub fn checkpoint_opt(&self) -> Option<&Checkpoint> {
+            self.checkpoint.as_ref().map(|field| field as _)
         }
-        pub fn commit_opt_mut(&mut self) -> Option<&mut Commit> {
-            self.commit.as_mut().map(|field| field as _)
+        pub fn checkpoint_opt_mut(&mut self) -> Option<&mut Checkpoint> {
+            self.checkpoint.as_mut().map(|field| field as _)
         }
-        pub fn commit_mut(&mut self) -> &mut Commit {
-            self.commit.get_or_insert_default()
+        pub fn checkpoint_mut(&mut self) -> &mut Checkpoint {
+            self.checkpoint.get_or_insert_default()
         }
-        pub fn with_commit(mut self, field: Commit) -> Self {
-            self.commit = Some(field.into());
+        pub fn with_checkpoint(mut self, field: Checkpoint) -> Self {
+            self.checkpoint = Some(field.into());
             self
         }
     }
@@ -1027,155 +1386,6 @@ mod _getter_impls {
         }
         pub fn with_epoch(mut self, field: Epoch) -> Self {
             self.epoch = Some(field.into());
-            self
-        }
-    }
-    impl GetBalanceRequest {
-        pub const fn const_default() -> Self {
-            Self { owner: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetBalanceRequest = GetBalanceRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_owner(mut self, field: String) -> Self {
-            self.owner = Some(field.into());
-            self
-        }
-    }
-    impl GetBalanceResponse {
-        pub const fn const_default() -> Self {
-            Self { balance: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetBalanceResponse = GetBalanceResponse::const_default();
-            &DEFAULT
-        }
-        pub fn with_balance(mut self, field: u64) -> Self {
-            self.balance = Some(field.into());
-            self
-        }
-    }
-    impl SimulateTransactionRequest {
-        pub const fn const_default() -> Self {
-            Self {
-                transaction: None,
-                read_mask: None,
-                checks: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: SimulateTransactionRequest = SimulateTransactionRequest::const_default();
-            &DEFAULT
-        }
-        pub fn transaction(&self) -> &Transaction {
-            self.transaction
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Transaction::default_instance() as _)
-        }
-        pub fn transaction_opt(&self) -> Option<&Transaction> {
-            self.transaction.as_ref().map(|field| field as _)
-        }
-        pub fn transaction_opt_mut(&mut self) -> Option<&mut Transaction> {
-            self.transaction.as_mut().map(|field| field as _)
-        }
-        pub fn transaction_mut(&mut self) -> &mut Transaction {
-            self.transaction.get_or_insert_default()
-        }
-        pub fn with_transaction(mut self, field: Transaction) -> Self {
-            self.transaction = Some(field.into());
-            self
-        }
-    }
-    impl SimulateTransactionResponse {
-        pub const fn const_default() -> Self {
-            Self { transaction: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: SimulateTransactionResponse = SimulateTransactionResponse::const_default();
-            &DEFAULT
-        }
-        pub fn transaction(&self) -> &ExecutedTransaction {
-            self.transaction
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ExecutedTransaction::default_instance() as _)
-        }
-        pub fn transaction_opt(&self) -> Option<&ExecutedTransaction> {
-            self.transaction.as_ref().map(|field| field as _)
-        }
-        pub fn transaction_opt_mut(&mut self) -> Option<&mut ExecutedTransaction> {
-            self.transaction.as_mut().map(|field| field as _)
-        }
-        pub fn transaction_mut(&mut self) -> &mut ExecutedTransaction {
-            self.transaction.get_or_insert_default()
-        }
-        pub fn with_transaction(mut self, field: ExecutedTransaction) -> Self {
-            self.transaction = Some(field.into());
-            self
-        }
-    }
-    impl ListOwnedObjectsRequest {
-        pub const fn const_default() -> Self {
-            Self {
-                owner: None,
-                page_size: None,
-                page_token: None,
-                read_mask: None,
-                object_type: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: ListOwnedObjectsRequest = ListOwnedObjectsRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_owner(mut self, field: String) -> Self {
-            self.owner = Some(field.into());
-            self
-        }
-        pub fn with_page_size(mut self, field: u32) -> Self {
-            self.page_size = Some(field.into());
-            self
-        }
-        pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.page_token = Some(field.into());
-            self
-        }
-        pub fn with_object_type(mut self, field: String) -> Self {
-            self.object_type = Some(field.into());
-            self
-        }
-    }
-    impl ListOwnedObjectsResponse {
-        pub const fn const_default() -> Self {
-            Self {
-                objects: Vec::new(),
-                next_page_token: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: ListOwnedObjectsResponse = ListOwnedObjectsResponse::const_default();
-            &DEFAULT
-        }
-        pub fn objects(&self) -> &[Object] {
-            &self.objects
-        }
-        pub fn objects_mut(&mut self) -> &mut Vec<Object> {
-            &mut self.objects
-        }
-        pub fn with_objects(mut self, field: Vec<Object>) -> Self {
-            self.objects = field;
-            self
-        }
-        pub fn with_next_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.next_page_token = Some(field.into());
             self
         }
     }
@@ -1240,6 +1450,26 @@ mod _getter_impls {
             self
         }
     }
+    impl ObjectSet {
+        pub const fn const_default() -> Self {
+            Self { objects: Vec::new() }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ObjectSet = ObjectSet::const_default();
+            &DEFAULT
+        }
+        pub fn objects(&self) -> &[Object] {
+            &self.objects
+        }
+        pub fn objects_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.objects
+        }
+        pub fn with_objects(mut self, field: Vec<Object>) -> Self {
+            self.objects = field;
+            self
+        }
+    }
     impl ObjectReference {
         pub const fn const_default() -> Self {
             Self {
@@ -1285,6 +1515,24 @@ mod _getter_impls {
         }
         pub fn with_version(mut self, field: u64) -> Self {
             self.version = Some(field.into());
+            self
+        }
+    }
+    impl ProtocolConfig {
+        pub const fn const_default() -> Self {
+            Self {
+                protocol_version: None,
+                feature_flags: std::collections::BTreeMap::new(),
+                attributes: std::collections::BTreeMap::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ProtocolConfig = ProtocolConfig::const_default();
+            &DEFAULT
+        }
+        pub fn with_protocol_version(mut self, field: u64) -> Self {
+            self.protocol_version = Some(field.into());
             self
         }
     }
@@ -1526,46 +1774,136 @@ mod _getter_impls {
             self
         }
     }
-    impl SubscribeCommitsRequest {
+    impl GetBalanceRequest {
+        pub const fn const_default() -> Self {
+            Self { owner: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetBalanceRequest = GetBalanceRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_owner(mut self, field: String) -> Self {
+            self.owner = Some(field.into());
+            self
+        }
+    }
+    impl GetBalanceResponse {
+        pub const fn const_default() -> Self {
+            Self { balance: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetBalanceResponse = GetBalanceResponse::const_default();
+            &DEFAULT
+        }
+        pub fn with_balance(mut self, field: u64) -> Self {
+            self.balance = Some(field.into());
+            self
+        }
+    }
+    impl ListOwnedObjectsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                owner: None,
+                page_size: None,
+                page_token: None,
+                read_mask: None,
+                object_type: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListOwnedObjectsRequest = ListOwnedObjectsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_owner(mut self, field: String) -> Self {
+            self.owner = Some(field.into());
+            self
+        }
+        pub fn with_page_size(mut self, field: u32) -> Self {
+            self.page_size = Some(field.into());
+            self
+        }
+        pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.page_token = Some(field.into());
+            self
+        }
+        pub fn with_object_type(mut self, field: String) -> Self {
+            self.object_type = Some(field.into());
+            self
+        }
+    }
+    impl ListOwnedObjectsResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                objects: Vec::new(),
+                next_page_token: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListOwnedObjectsResponse = ListOwnedObjectsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn objects(&self) -> &[Object] {
+            &self.objects
+        }
+        pub fn objects_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.objects
+        }
+        pub fn with_objects(mut self, field: Vec<Object>) -> Self {
+            self.objects = field;
+            self
+        }
+        pub fn with_next_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_page_token = Some(field.into());
+            self
+        }
+    }
+    impl SubscribeCheckpointsRequest {
         pub const fn const_default() -> Self {
             Self { read_mask: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: SubscribeCommitsRequest = SubscribeCommitsRequest::const_default();
+            static DEFAULT: SubscribeCheckpointsRequest = SubscribeCheckpointsRequest::const_default();
             &DEFAULT
         }
     }
-    impl SubscribeCommitsResponse {
+    impl SubscribeCheckpointsResponse {
         pub const fn const_default() -> Self {
-            Self { cursor: None, commit: None }
+            Self {
+                cursor: None,
+                checkpoint: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: SubscribeCommitsResponse = SubscribeCommitsResponse::const_default();
+            static DEFAULT: SubscribeCheckpointsResponse = SubscribeCheckpointsResponse::const_default();
             &DEFAULT
         }
         pub fn with_cursor(mut self, field: u64) -> Self {
             self.cursor = Some(field.into());
             self
         }
-        pub fn commit(&self) -> &Commit {
-            self.commit
+        pub fn checkpoint(&self) -> &Checkpoint {
+            self.checkpoint
                 .as_ref()
                 .map(|field| field as _)
-                .unwrap_or_else(|| Commit::default_instance() as _)
+                .unwrap_or_else(|| Checkpoint::default_instance() as _)
         }
-        pub fn commit_opt(&self) -> Option<&Commit> {
-            self.commit.as_ref().map(|field| field as _)
+        pub fn checkpoint_opt(&self) -> Option<&Checkpoint> {
+            self.checkpoint.as_ref().map(|field| field as _)
         }
-        pub fn commit_opt_mut(&mut self) -> Option<&mut Commit> {
-            self.commit.as_mut().map(|field| field as _)
+        pub fn checkpoint_opt_mut(&mut self) -> Option<&mut Checkpoint> {
+            self.checkpoint.as_mut().map(|field| field as _)
         }
-        pub fn commit_mut(&mut self) -> &mut Commit {
-            self.commit.get_or_insert_default()
+        pub fn checkpoint_mut(&mut self) -> &mut Checkpoint {
+            self.checkpoint.get_or_insert_default()
         }
-        pub fn with_commit(mut self, field: Commit) -> Self {
-            self.commit = Some(field.into());
+        pub fn with_checkpoint(mut self, field: Checkpoint) -> Self {
+            self.checkpoint = Some(field.into());
             self
         }
     }
@@ -2230,7 +2568,7 @@ mod _getter_impls {
     impl ShardResult {
         pub const fn const_default() -> Self {
             Self {
-                metadata: None,
+                download_metadata: None,
                 amount: None,
                 report: None,
             }
@@ -2240,23 +2578,23 @@ mod _getter_impls {
             static DEFAULT: ShardResult = ShardResult::const_default();
             &DEFAULT
         }
-        pub fn metadata(&self) -> &Metadata {
-            self.metadata
+        pub fn download_metadata(&self) -> &DownloadMetadata {
+            self.download_metadata
                 .as_ref()
                 .map(|field| field as _)
-                .unwrap_or_else(|| Metadata::default_instance() as _)
+                .unwrap_or_else(|| DownloadMetadata::default_instance() as _)
         }
-        pub fn metadata_opt(&self) -> Option<&Metadata> {
-            self.metadata.as_ref().map(|field| field as _)
+        pub fn download_metadata_opt(&self) -> Option<&DownloadMetadata> {
+            self.download_metadata.as_ref().map(|field| field as _)
         }
-        pub fn metadata_opt_mut(&mut self) -> Option<&mut Metadata> {
-            self.metadata.as_mut().map(|field| field as _)
+        pub fn download_metadata_opt_mut(&mut self) -> Option<&mut DownloadMetadata> {
+            self.download_metadata.as_mut().map(|field| field as _)
         }
-        pub fn metadata_mut(&mut self) -> &mut Metadata {
-            self.metadata.get_or_insert_default()
+        pub fn download_metadata_mut(&mut self) -> &mut DownloadMetadata {
+            self.download_metadata.get_or_insert_default()
         }
-        pub fn with_metadata(mut self, field: Metadata) -> Self {
-            self.metadata = Some(field.into());
+        pub fn with_download_metadata(mut self, field: DownloadMetadata) -> Self {
+            self.download_metadata = Some(field.into());
             self
         }
         pub fn with_amount(mut self, field: u64) -> Self {
@@ -3867,17 +4205,18 @@ mod _getter_impls {
             self
         }
     }
-    impl EmbedData {
+    impl DefaultDownloadMetadataV1 {
         pub const fn const_default() -> Self {
-            Self {
-                metadata: None,
-                coin_ref: None,
-            }
+            Self { url: None, metadata: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: EmbedData = EmbedData::const_default();
+            static DEFAULT: DefaultDownloadMetadataV1 = DefaultDownloadMetadataV1::const_default();
             &DEFAULT
+        }
+        pub fn with_url(mut self, field: String) -> Self {
+            self.url = Some(field.into());
+            self
         }
         pub fn metadata(&self) -> &Metadata {
             self.metadata
@@ -3896,6 +4235,247 @@ mod _getter_impls {
         }
         pub fn with_metadata(mut self, field: Metadata) -> Self {
             self.metadata = Some(field.into());
+            self
+        }
+    }
+    impl DefaultDownloadMetadata {
+        pub const fn const_default() -> Self {
+            Self { version: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: DefaultDownloadMetadata = DefaultDownloadMetadata::const_default();
+            &DEFAULT
+        }
+        pub fn v1(&self) -> &DefaultDownloadMetadataV1 {
+            if let Some(default_download_metadata::Version::V1(field)) = &self.version {
+                field as _
+            } else {
+                DefaultDownloadMetadataV1::default_instance() as _
+            }
+        }
+        pub fn v1_opt(&self) -> Option<&DefaultDownloadMetadataV1> {
+            if let Some(default_download_metadata::Version::V1(field)) = &self.version {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_opt_mut(&mut self) -> Option<&mut DefaultDownloadMetadataV1> {
+            if let Some(default_download_metadata::Version::V1(field)) = &mut self
+                .version
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_mut(&mut self) -> &mut DefaultDownloadMetadataV1 {
+            if self.v1_opt_mut().is_none() {
+                self.version = Some(
+                    default_download_metadata::Version::V1(
+                        DefaultDownloadMetadataV1::default(),
+                    ),
+                );
+            }
+            self.v1_opt_mut().unwrap()
+        }
+        pub fn with_v1(mut self, field: DefaultDownloadMetadataV1) -> Self {
+            self.version = Some(default_download_metadata::Version::V1(field.into()));
+            self
+        }
+    }
+    impl MtlsDownloadMetadataV1 {
+        pub const fn const_default() -> Self {
+            Self {
+                peer: None,
+                url: None,
+                metadata: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MtlsDownloadMetadataV1 = MtlsDownloadMetadataV1::const_default();
+            &DEFAULT
+        }
+        pub fn with_peer(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.peer = Some(field.into());
+            self
+        }
+        pub fn with_url(mut self, field: String) -> Self {
+            self.url = Some(field.into());
+            self
+        }
+        pub fn metadata(&self) -> &Metadata {
+            self.metadata
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Metadata::default_instance() as _)
+        }
+        pub fn metadata_opt(&self) -> Option<&Metadata> {
+            self.metadata.as_ref().map(|field| field as _)
+        }
+        pub fn metadata_opt_mut(&mut self) -> Option<&mut Metadata> {
+            self.metadata.as_mut().map(|field| field as _)
+        }
+        pub fn metadata_mut(&mut self) -> &mut Metadata {
+            self.metadata.get_or_insert_default()
+        }
+        pub fn with_metadata(mut self, field: Metadata) -> Self {
+            self.metadata = Some(field.into());
+            self
+        }
+    }
+    impl MtlsDownloadMetadata {
+        pub const fn const_default() -> Self {
+            Self { version: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MtlsDownloadMetadata = MtlsDownloadMetadata::const_default();
+            &DEFAULT
+        }
+        pub fn v1(&self) -> &MtlsDownloadMetadataV1 {
+            if let Some(mtls_download_metadata::Version::V1(field)) = &self.version {
+                field as _
+            } else {
+                MtlsDownloadMetadataV1::default_instance() as _
+            }
+        }
+        pub fn v1_opt(&self) -> Option<&MtlsDownloadMetadataV1> {
+            if let Some(mtls_download_metadata::Version::V1(field)) = &self.version {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_opt_mut(&mut self) -> Option<&mut MtlsDownloadMetadataV1> {
+            if let Some(mtls_download_metadata::Version::V1(field)) = &mut self.version {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_mut(&mut self) -> &mut MtlsDownloadMetadataV1 {
+            if self.v1_opt_mut().is_none() {
+                self.version = Some(
+                    mtls_download_metadata::Version::V1(
+                        MtlsDownloadMetadataV1::default(),
+                    ),
+                );
+            }
+            self.v1_opt_mut().unwrap()
+        }
+        pub fn with_v1(mut self, field: MtlsDownloadMetadataV1) -> Self {
+            self.version = Some(mtls_download_metadata::Version::V1(field.into()));
+            self
+        }
+    }
+    impl DownloadMetadata {
+        pub const fn const_default() -> Self {
+            Self { kind: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: DownloadMetadata = DownloadMetadata::const_default();
+            &DEFAULT
+        }
+        pub fn default(&self) -> &DefaultDownloadMetadata {
+            if let Some(download_metadata::Kind::Default(field)) = &self.kind {
+                field as _
+            } else {
+                DefaultDownloadMetadata::default_instance() as _
+            }
+        }
+        pub fn default_opt(&self) -> Option<&DefaultDownloadMetadata> {
+            if let Some(download_metadata::Kind::Default(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn default_opt_mut(&mut self) -> Option<&mut DefaultDownloadMetadata> {
+            if let Some(download_metadata::Kind::Default(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn default_mut(&mut self) -> &mut DefaultDownloadMetadata {
+            if self.default_opt_mut().is_none() {
+                self.kind = Some(
+                    download_metadata::Kind::Default(DefaultDownloadMetadata::default()),
+                );
+            }
+            self.default_opt_mut().unwrap()
+        }
+        pub fn with_default(mut self, field: DefaultDownloadMetadata) -> Self {
+            self.kind = Some(download_metadata::Kind::Default(field.into()));
+            self
+        }
+        pub fn mtls(&self) -> &MtlsDownloadMetadata {
+            if let Some(download_metadata::Kind::Mtls(field)) = &self.kind {
+                field as _
+            } else {
+                MtlsDownloadMetadata::default_instance() as _
+            }
+        }
+        pub fn mtls_opt(&self) -> Option<&MtlsDownloadMetadata> {
+            if let Some(download_metadata::Kind::Mtls(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn mtls_opt_mut(&mut self) -> Option<&mut MtlsDownloadMetadata> {
+            if let Some(download_metadata::Kind::Mtls(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn mtls_mut(&mut self) -> &mut MtlsDownloadMetadata {
+            if self.mtls_opt_mut().is_none() {
+                self.kind = Some(
+                    download_metadata::Kind::Mtls(MtlsDownloadMetadata::default()),
+                );
+            }
+            self.mtls_opt_mut().unwrap()
+        }
+        pub fn with_mtls(mut self, field: MtlsDownloadMetadata) -> Self {
+            self.kind = Some(download_metadata::Kind::Mtls(field.into()));
+            self
+        }
+    }
+    impl EmbedData {
+        pub const fn const_default() -> Self {
+            Self {
+                download_metadata: None,
+                coin_ref: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: EmbedData = EmbedData::const_default();
+            &DEFAULT
+        }
+        pub fn download_metadata(&self) -> &DownloadMetadata {
+            self.download_metadata
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| DownloadMetadata::default_instance() as _)
+        }
+        pub fn download_metadata_opt(&self) -> Option<&DownloadMetadata> {
+            self.download_metadata.as_ref().map(|field| field as _)
+        }
+        pub fn download_metadata_opt_mut(&mut self) -> Option<&mut DownloadMetadata> {
+            self.download_metadata.as_mut().map(|field| field as _)
+        }
+        pub fn download_metadata_mut(&mut self) -> &mut DownloadMetadata {
+            self.download_metadata.get_or_insert_default()
+        }
+        pub fn with_download_metadata(mut self, field: DownloadMetadata) -> Self {
+            self.download_metadata = Some(field.into());
             self
         }
         pub fn coin_ref(&self) -> &ObjectReference {
@@ -4049,9 +4629,10 @@ mod _getter_impls {
             Self {
                 epoch: None,
                 round: None,
+                sub_dag_index: None,
                 commit_timestamp: None,
                 consensus_commit_digest: None,
-                sub_dag_index: None,
+                additional_state_digest: None,
             }
         }
         #[doc(hidden)]
@@ -4067,12 +4648,16 @@ mod _getter_impls {
             self.round = Some(field.into());
             self
         }
+        pub fn with_sub_dag_index(mut self, field: u64) -> Self {
+            self.sub_dag_index = Some(field.into());
+            self
+        }
         pub fn with_consensus_commit_digest(mut self, field: String) -> Self {
             self.consensus_commit_digest = Some(field.into());
             self
         }
-        pub fn with_sub_dag_index(mut self, field: u64) -> Self {
-            self.sub_dag_index = Some(field.into());
+        pub fn with_additional_state_digest(mut self, field: String) -> Self {
+            self.additional_state_digest = Some(field.into());
             self
         }
     }
@@ -4121,34 +4706,12 @@ mod _getter_impls {
     }
     impl ExecuteTransactionResponse {
         pub const fn const_default() -> Self {
-            Self {
-                finality: None,
-                transaction: None,
-            }
+            Self { transaction: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: ExecuteTransactionResponse = ExecuteTransactionResponse::const_default();
             &DEFAULT
-        }
-        pub fn finality(&self) -> &TransactionFinality {
-            self.finality
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| TransactionFinality::default_instance() as _)
-        }
-        pub fn finality_opt(&self) -> Option<&TransactionFinality> {
-            self.finality.as_ref().map(|field| field as _)
-        }
-        pub fn finality_opt_mut(&mut self) -> Option<&mut TransactionFinality> {
-            self.finality.as_mut().map(|field| field as _)
-        }
-        pub fn finality_mut(&mut self) -> &mut TransactionFinality {
-            self.finality.get_or_insert_default()
-        }
-        pub fn with_finality(mut self, field: TransactionFinality) -> Self {
-            self.finality = Some(field.into());
-            self
         }
         pub fn transaction(&self) -> &ExecutedTransaction {
             self.transaction
@@ -4170,58 +4733,65 @@ mod _getter_impls {
             self
         }
     }
-    impl TransactionFinality {
+    impl SimulateTransactionRequest {
         pub const fn const_default() -> Self {
-            Self { finality: None }
+            Self {
+                transaction: None,
+                read_mask: None,
+                checks: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: TransactionFinality = TransactionFinality::const_default();
+            static DEFAULT: SimulateTransactionRequest = SimulateTransactionRequest::const_default();
             &DEFAULT
         }
-        pub fn certified(&self) -> &ValidatorAggregatedSignature {
-            if let Some(transaction_finality::Finality::Certified(field)) = &self
-                .finality
-            {
-                field as _
-            } else {
-                ValidatorAggregatedSignature::default_instance() as _
-            }
+        pub fn transaction(&self) -> &Transaction {
+            self.transaction
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Transaction::default_instance() as _)
         }
-        pub fn certified_opt(&self) -> Option<&ValidatorAggregatedSignature> {
-            if let Some(transaction_finality::Finality::Certified(field)) = &self
-                .finality
-            {
-                Some(field as _)
-            } else {
-                None
-            }
+        pub fn transaction_opt(&self) -> Option<&Transaction> {
+            self.transaction.as_ref().map(|field| field as _)
         }
-        pub fn certified_opt_mut(
-            &mut self,
-        ) -> Option<&mut ValidatorAggregatedSignature> {
-            if let Some(transaction_finality::Finality::Certified(field)) = &mut self
-                .finality
-            {
-                Some(field as _)
-            } else {
-                None
-            }
+        pub fn transaction_opt_mut(&mut self) -> Option<&mut Transaction> {
+            self.transaction.as_mut().map(|field| field as _)
         }
-        pub fn certified_mut(&mut self) -> &mut ValidatorAggregatedSignature {
-            if self.certified_opt_mut().is_none() {
-                self.finality = Some(
-                    transaction_finality::Finality::Certified(
-                        ValidatorAggregatedSignature::default(),
-                    ),
-                );
-            }
-            self.certified_opt_mut().unwrap()
+        pub fn transaction_mut(&mut self) -> &mut Transaction {
+            self.transaction.get_or_insert_default()
         }
-        pub fn with_certified(mut self, field: ValidatorAggregatedSignature) -> Self {
-            self.finality = Some(
-                transaction_finality::Finality::Certified(field.into()),
-            );
+        pub fn with_transaction(mut self, field: Transaction) -> Self {
+            self.transaction = Some(field.into());
+            self
+        }
+    }
+    impl SimulateTransactionResponse {
+        pub const fn const_default() -> Self {
+            Self { transaction: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SimulateTransactionResponse = SimulateTransactionResponse::const_default();
+            &DEFAULT
+        }
+        pub fn transaction(&self) -> &ExecutedTransaction {
+            self.transaction
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ExecutedTransaction::default_instance() as _)
+        }
+        pub fn transaction_opt(&self) -> Option<&ExecutedTransaction> {
+            self.transaction.as_ref().map(|field| field as _)
+        }
+        pub fn transaction_opt_mut(&mut self) -> Option<&mut ExecutedTransaction> {
+            self.transaction.as_mut().map(|field| field as _)
+        }
+        pub fn transaction_mut(&mut self) -> &mut ExecutedTransaction {
+            self.transaction.get_or_insert_default()
+        }
+        pub fn with_transaction(mut self, field: ExecutedTransaction) -> Self {
+            self.transaction = Some(field.into());
             self
         }
     }

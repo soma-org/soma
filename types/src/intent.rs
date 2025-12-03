@@ -68,6 +68,7 @@ pub enum IntentScope {
     EncoderCommittee = 7,
     NetworkingCommittee = 8,
     ConsensusFinality = 9,
+    CheckpointSummary = 10,
 }
 
 impl TryFrom<u8> for IntentScope {
@@ -123,6 +124,14 @@ impl FromStr for Intent {
 }
 
 impl Intent {
+    pub fn soma_app(scope: IntentScope) -> Self {
+        Self {
+            version: IntentVersion::V0,
+            scope,
+            app_id: AppId::Soma,
+        }
+    }
+
     pub fn consensus_app(scope: IntentScope) -> Self {
         Self {
             scope,

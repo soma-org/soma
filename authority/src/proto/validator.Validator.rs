@@ -27,7 +27,7 @@ pub mod validator_client {
     }
     impl<T> ValidatorClient<T>
     where
-        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T: tonic::client::GrpcService<tonic::body::Body>,
         T::Error: Into<StdError>,
         T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
         <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
@@ -48,13 +48,13 @@ pub mod validator_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
+                http::Request<tonic::body::Body>,
                 Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
                 >,
             >,
             <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
+                http::Request<tonic::body::Body>,
             >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             ValidatorClient::new(InterceptedService::new(inner, interceptor))
@@ -90,11 +90,61 @@ pub mod validator_client {
             self.inner = self.inner.max_encoding_message_size(limit);
             self
         }
+        pub async fn submit_transaction(
+            &mut self,
+            request: impl tonic::IntoRequest<types::messages_grpc::RawSubmitTxRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::RawSubmitTxResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/validator.Validator/SubmitTransaction",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("validator.Validator", "SubmitTransaction"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn wait_for_effects(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                types::messages_grpc::RawWaitForEffectsRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::RawWaitForEffectsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/validator.Validator/WaitForEffects",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("validator.Validator", "WaitForEffects"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn transaction(
             &mut self,
             request: impl tonic::IntoRequest<types::transaction::Transaction>,
         ) -> std::result::Result<
-            tonic::Response<types::grpc::HandleTransactionResponse>,
+            tonic::Response<types::messages_grpc::HandleTransactionResponse>,
             tonic::Status,
         > {
             self.inner
@@ -116,9 +166,11 @@ pub mod validator_client {
         }
         pub async fn handle_certificate(
             &mut self,
-            request: impl tonic::IntoRequest<types::grpc::HandleCertificateRequest>,
+            request: impl tonic::IntoRequest<
+                types::messages_grpc::HandleCertificateRequest,
+            >,
         ) -> std::result::Result<
-            tonic::Response<types::grpc::HandleCertificateResponse>,
+            tonic::Response<types::messages_grpc::HandleCertificateResponse>,
             tonic::Status,
         > {
             self.inner
@@ -138,11 +190,11 @@ pub mod validator_client {
                 .insert(GrpcMethod::new("validator.Validator", "CertifiedTransaction"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn submit_certificate(
+        pub async fn object_info(
             &mut self,
-            request: impl tonic::IntoRequest<types::transaction::CertifiedTransaction>,
+            request: impl tonic::IntoRequest<types::messages_grpc::ObjectInfoRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::grpc::SubmitCertificateResponse>,
+            tonic::Response<types::messages_grpc::ObjectInfoResponse>,
             tonic::Status,
         > {
             self.inner
@@ -155,11 +207,111 @@ pub mod validator_client {
                 })?;
             let codec = utils::codec::BcsCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/validator.Validator/SubmitCertificate",
+                "/validator.Validator/ObjectInfo",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("validator.Validator", "SubmitCertificate"));
+                .insert(GrpcMethod::new("validator.Validator", "ObjectInfo"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn transaction_info(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                types::messages_grpc::TransactionInfoRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::TransactionInfoResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/validator.Validator/TransactionInfo",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("validator.Validator", "TransactionInfo"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn checkpoint(
+            &mut self,
+            request: impl tonic::IntoRequest<types::checkpoints::CheckpointRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::checkpoints::CheckpointResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/validator.Validator/Checkpoint",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("validator.Validator", "Checkpoint"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_system_state_object(
+            &mut self,
+            request: impl tonic::IntoRequest<types::messages_grpc::SystemStateRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::system_state::SystemState>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = utils::codec::BcsCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/validator.Validator/GetSystemStateObject",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("validator.Validator", "GetSystemStateObject"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn validator_health(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                types::messages_grpc::RawValidatorHealthRequest,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::RawValidatorHealthResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/validator.Validator/ValidatorHealth",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("validator.Validator", "ValidatorHealth"));
             self.inner.unary(req, path, codec).await
         }
     }
@@ -177,25 +329,67 @@ pub mod validator_server {
     /// Generated trait containing gRPC methods that should be implemented for use with ValidatorServer.
     #[async_trait]
     pub trait Validator: std::marker::Send + std::marker::Sync + 'static {
+        async fn submit_transaction(
+            &self,
+            request: tonic::Request<types::messages_grpc::RawSubmitTxRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::RawSubmitTxResponse>,
+            tonic::Status,
+        >;
+        async fn wait_for_effects(
+            &self,
+            request: tonic::Request<types::messages_grpc::RawWaitForEffectsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::RawWaitForEffectsResponse>,
+            tonic::Status,
+        >;
         async fn transaction(
             &self,
             request: tonic::Request<types::transaction::Transaction>,
         ) -> std::result::Result<
-            tonic::Response<types::grpc::HandleTransactionResponse>,
+            tonic::Response<types::messages_grpc::HandleTransactionResponse>,
             tonic::Status,
         >;
         async fn handle_certificate(
             &self,
-            request: tonic::Request<types::grpc::HandleCertificateRequest>,
+            request: tonic::Request<types::messages_grpc::HandleCertificateRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::grpc::HandleCertificateResponse>,
+            tonic::Response<types::messages_grpc::HandleCertificateResponse>,
             tonic::Status,
         >;
-        async fn submit_certificate(
+        async fn object_info(
             &self,
-            request: tonic::Request<types::transaction::CertifiedTransaction>,
+            request: tonic::Request<types::messages_grpc::ObjectInfoRequest>,
         ) -> std::result::Result<
-            tonic::Response<types::grpc::SubmitCertificateResponse>,
+            tonic::Response<types::messages_grpc::ObjectInfoResponse>,
+            tonic::Status,
+        >;
+        async fn transaction_info(
+            &self,
+            request: tonic::Request<types::messages_grpc::TransactionInfoRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::TransactionInfoResponse>,
+            tonic::Status,
+        >;
+        async fn checkpoint(
+            &self,
+            request: tonic::Request<types::checkpoints::CheckpointRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::checkpoints::CheckpointResponse>,
+            tonic::Status,
+        >;
+        async fn get_system_state_object(
+            &self,
+            request: tonic::Request<types::messages_grpc::SystemStateRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::system_state::SystemState>,
+            tonic::Status,
+        >;
+        async fn validator_health(
+            &self,
+            request: tonic::Request<types::messages_grpc::RawValidatorHealthRequest>,
+        ) -> std::result::Result<
+            tonic::Response<types::messages_grpc::RawValidatorHealthResponse>,
             tonic::Status,
         >;
     }
@@ -265,7 +459,7 @@ pub mod validator_server {
         B: Body + std::marker::Send + 'static,
         B::Error: Into<StdError> + std::marker::Send + 'static,
     {
-        type Response = http::Response<tonic::body::BoxBody>;
+        type Response = http::Response<tonic::body::Body>;
         type Error = std::convert::Infallible;
         type Future = BoxFuture<Self::Response, Self::Error>;
         fn poll_ready(
@@ -276,6 +470,102 @@ pub mod validator_server {
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
+                "/validator.Validator/SubmitTransaction" => {
+                    #[allow(non_camel_case_types)]
+                    struct SubmitTransactionSvc<T: Validator>(pub Arc<T>);
+                    impl<
+                        T: Validator,
+                    > tonic::server::UnaryService<
+                        types::messages_grpc::RawSubmitTxRequest,
+                    > for SubmitTransactionSvc<T> {
+                        type Response = types::messages_grpc::RawSubmitTxResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::messages_grpc::RawSubmitTxRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Validator>::submit_transaction(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SubmitTransactionSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/validator.Validator/WaitForEffects" => {
+                    #[allow(non_camel_case_types)]
+                    struct WaitForEffectsSvc<T: Validator>(pub Arc<T>);
+                    impl<
+                        T: Validator,
+                    > tonic::server::UnaryService<
+                        types::messages_grpc::RawWaitForEffectsRequest,
+                    > for WaitForEffectsSvc<T> {
+                        type Response = types::messages_grpc::RawWaitForEffectsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::messages_grpc::RawWaitForEffectsRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Validator>::wait_for_effects(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = WaitForEffectsSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 "/validator.Validator/Transaction" => {
                     #[allow(non_camel_case_types)]
                     struct TransactionSvc<T: Validator>(pub Arc<T>);
@@ -283,7 +573,7 @@ pub mod validator_server {
                         T: Validator,
                     > tonic::server::UnaryService<types::transaction::Transaction>
                     for TransactionSvc<T> {
-                        type Response = types::grpc::HandleTransactionResponse;
+                        type Response = types::messages_grpc::HandleTransactionResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -326,9 +616,10 @@ pub mod validator_server {
                     struct CertifiedTransactionSvc<T: Validator>(pub Arc<T>);
                     impl<
                         T: Validator,
-                    > tonic::server::UnaryService<types::grpc::HandleCertificateRequest>
-                    for CertifiedTransactionSvc<T> {
-                        type Response = types::grpc::HandleCertificateResponse;
+                    > tonic::server::UnaryService<
+                        types::messages_grpc::HandleCertificateRequest,
+                    > for CertifiedTransactionSvc<T> {
+                        type Response = types::messages_grpc::HandleCertificateResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -336,7 +627,7 @@ pub mod validator_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::grpc::HandleCertificateRequest,
+                                types::messages_grpc::HandleCertificateRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
@@ -368,15 +659,15 @@ pub mod validator_server {
                     };
                     Box::pin(fut)
                 }
-                "/validator.Validator/SubmitCertificate" => {
+                "/validator.Validator/ObjectInfo" => {
                     #[allow(non_camel_case_types)]
-                    struct SubmitCertificateSvc<T: Validator>(pub Arc<T>);
+                    struct ObjectInfoSvc<T: Validator>(pub Arc<T>);
                     impl<
                         T: Validator,
                     > tonic::server::UnaryService<
-                        types::transaction::CertifiedTransaction,
-                    > for SubmitCertificateSvc<T> {
-                        type Response = types::grpc::SubmitCertificateResponse;
+                        types::messages_grpc::ObjectInfoRequest,
+                    > for ObjectInfoSvc<T> {
+                        type Response = types::messages_grpc::ObjectInfoResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -384,12 +675,12 @@ pub mod validator_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                types::transaction::CertifiedTransaction,
+                                types::messages_grpc::ObjectInfoRequest,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Validator>::submit_certificate(&inner, request).await
+                                <T as Validator>::object_info(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -400,8 +691,200 @@ pub mod validator_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = SubmitCertificateSvc(inner);
+                        let method = ObjectInfoSvc(inner);
                         let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/validator.Validator/TransactionInfo" => {
+                    #[allow(non_camel_case_types)]
+                    struct TransactionInfoSvc<T: Validator>(pub Arc<T>);
+                    impl<
+                        T: Validator,
+                    > tonic::server::UnaryService<
+                        types::messages_grpc::TransactionInfoRequest,
+                    > for TransactionInfoSvc<T> {
+                        type Response = types::messages_grpc::TransactionInfoResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::messages_grpc::TransactionInfoRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Validator>::transaction_info(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = TransactionInfoSvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/validator.Validator/Checkpoint" => {
+                    #[allow(non_camel_case_types)]
+                    struct CheckpointSvc<T: Validator>(pub Arc<T>);
+                    impl<
+                        T: Validator,
+                    > tonic::server::UnaryService<types::checkpoints::CheckpointRequest>
+                    for CheckpointSvc<T> {
+                        type Response = types::checkpoints::CheckpointResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::checkpoints::CheckpointRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Validator>::checkpoint(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CheckpointSvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/validator.Validator/GetSystemStateObject" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetSystemStateObjectSvc<T: Validator>(pub Arc<T>);
+                    impl<
+                        T: Validator,
+                    > tonic::server::UnaryService<
+                        types::messages_grpc::SystemStateRequest,
+                    > for GetSystemStateObjectSvc<T> {
+                        type Response = types::system_state::SystemState;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::messages_grpc::SystemStateRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Validator>::get_system_state_object(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetSystemStateObjectSvc(inner);
+                        let codec = utils::codec::BcsCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/validator.Validator/ValidatorHealth" => {
+                    #[allow(non_camel_case_types)]
+                    struct ValidatorHealthSvc<T: Validator>(pub Arc<T>);
+                    impl<
+                        T: Validator,
+                    > tonic::server::UnaryService<
+                        types::messages_grpc::RawValidatorHealthRequest,
+                    > for ValidatorHealthSvc<T> {
+                        type Response = types::messages_grpc::RawValidatorHealthResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                types::messages_grpc::RawValidatorHealthRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Validator>::validator_health(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ValidatorHealthSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
                                 accept_compression_encodings,
@@ -418,7 +901,9 @@ pub mod validator_server {
                 }
                 _ => {
                     Box::pin(async move {
-                        let mut response = http::Response::new(empty_body());
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
                         let headers = response.headers_mut();
                         headers
                             .insert(
