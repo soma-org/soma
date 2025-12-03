@@ -390,6 +390,8 @@ impl TemporaryStore {
         epoch: EpochId,
         fee: Option<TransactionFee>,
     ) -> (InnerTemporaryStore, TransactionEffects) {
+        self.ensure_mutable_shared_objects_written();
+
         self.update_object_version_and_prev_tx();
 
         // Regardless of execution status (including aborts), we insert the previous transaction
@@ -619,6 +621,29 @@ impl TemporaryStore {
     /// Helper method to get the set of mutable input object IDs
     pub fn get_mutable_input_ids(&self) -> HashSet<ObjectID> {
         self.mutable_input_refs.keys().cloned().collect()
+    }
+
+    /// Ensures all mutable shared objects are included in written_objects
+    /// so they get the new Lamport version, even if not explicitly modified.
+    /// This is required because the shared object version manager always advances
+    /// the next version for shared objects based on Lamport timestamps.
+    fn ensure_mutable_shared_objects_written(&mut self) {
+        for (id, _) in &self.mutable_input_refs {
+            if let Some(obj) = self.input_objects.get(id) {
+                // Only handle shared objects - owned objects don't have this issue
+                if matches!(obj.owner, Owner::Shared { .. }) {
+                    // If not already written and not deleted, add to written objects
+                    if !self.execution_results.written_objects.contains_key(id)
+                        && !self.execution_results.deleted_object_ids.contains(id)
+                    {
+                        self.execution_results
+                            .written_objects
+                            .insert(*id, obj.clone());
+                        self.execution_results.modified_objects.insert(*id);
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,8 +1,6 @@
 use crate::{
     sync::{
-        encoder_validator_client::{
-            EncoderValidatorClient, NetworkPeerInfo, VerifiedEpochCommittees,
-        },
+        encoder_validator_client::{EncoderValidatorClient, VerifiedEpochCommittees},
         utils::extract_network_peers,
     },
     types::context::{Committees, Context, InnerContext},
@@ -64,7 +62,7 @@ impl CommitteeSyncManager {
         let manager_clone = manager.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = manager_clone.run().await {
+            if let Err(e) = manager_clone.sync_loop().await {
                 error!("Committee sync loop failed: {:?}", e);
             }
         });
@@ -76,7 +74,7 @@ impl CommitteeSyncManager {
         self.shutdown.store(true, Ordering::SeqCst);
     }
 
-    async fn run(&self) -> ShardResult<()> {
+    async fn sync_loop(&self) -> ShardResult<()> {
         // Initial sync
         self.initial_sync().await?;
 
@@ -84,53 +82,69 @@ impl CommitteeSyncManager {
         let max_backoff = Duration::from_secs(60);
 
         while !self.shutdown.load(Ordering::SeqCst) {
-            let sleep_duration = self.calculate_sleep_duration();
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
 
-            if sleep_duration > Duration::ZERO {
-                tokio::time::sleep(sleep_duration).await;
-                continue;
+            let next_epoch_ms = self.next_epoch_time_ms.load(Ordering::SeqCst);
+
+            // If it's not yet time for the next epoch
+            if now_ms < next_epoch_ms {
+                let sleep_time = next_epoch_ms.saturating_sub(now_ms);
+
+                // If we're more than 10% of an epoch away, sleep until we're closer
+                if sleep_time > self.epoch_duration_ms / 10 {
+                    let sleep_duration = sleep_time.saturating_sub(self.epoch_duration_ms / 10);
+                    info!(
+                        "Next epoch in {}ms, sleeping for {}ms until closer to transition",
+                        sleep_time, sleep_duration
+                    );
+                    tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
+                    continue;
+                }
+
+                debug!(
+                    "Within 10% of epoch transition ({}ms away), polling more frequently",
+                    sleep_time
+                );
             }
 
-            // Near epoch transition, poll frequently
-            match self.try_sync().await {
-                Ok(true) => {
-                    backoff = Duration::from_millis(100);
+            // Poll interval: at least 1 second, or 1% of epoch duration
+            let poll_interval = std::cmp::max(self.epoch_duration_ms / 100, 1000);
+
+            // Poll for updates
+            match self.poll_for_updates().await {
+                Ok(Some(committees)) => {
+                    let current_epoch = self.current_epoch.load(Ordering::SeqCst);
+
+                    // Only apply if this is actually a newer epoch
+                    if committees.epoch > current_epoch {
+                        if let Err(e) = self.apply_committees(&committees) {
+                            error!("Failed to apply committees: {:?}", e);
+                            tokio::time::sleep(backoff).await;
+                            backoff = std::cmp::min(backoff * 2, max_backoff);
+                        } else {
+                            // Reset backoff on success
+                            backoff = Duration::from_millis(100);
+                            continue;
+                        }
+                    }
                 }
-                Ok(false) => {
-                    // No new epoch yet, wait a bit
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                Ok(None) => {
+                    // No new epoch yet, continue polling
                 }
                 Err(e) => {
-                    error!("Sync error: {:?}", e);
+                    error!("Failed to poll for updates: {:?}", e);
                     tokio::time::sleep(backoff).await;
-                    backoff = (backoff * 2).min(max_backoff);
+                    backoff = std::cmp::min(backoff * 2, max_backoff);
                 }
             }
+
+            tokio::time::sleep(Duration::from_millis(poll_interval)).await;
         }
 
         Ok(())
-    }
-
-    fn calculate_sleep_duration(&self) -> Duration {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
-        let next_epoch_ms = self.next_epoch_time_ms.load(Ordering::SeqCst);
-
-        if now_ms >= next_epoch_ms {
-            return Duration::ZERO;
-        }
-
-        let time_until_epoch = next_epoch_ms - now_ms;
-        let threshold = self.epoch_duration_ms / 10;
-
-        if time_until_epoch > threshold {
-            Duration::from_millis(time_until_epoch - threshold)
-        } else {
-            Duration::ZERO
-        }
     }
 
     async fn initial_sync(&self) -> ShardResult<()> {
@@ -155,18 +169,12 @@ impl CommitteeSyncManager {
         Ok(())
     }
 
-    async fn try_sync(&self) -> ShardResult<bool> {
+    async fn poll_for_updates(&self) -> ShardResult<Option<VerifiedEpochCommittees>> {
         let mut client = self.validator_client.lock().await;
-
-        match client.poll_for_updates().await {
-            Ok(Some(committees)) => {
-                drop(client);
-                self.apply_committees(&committees)?;
-                Ok(true)
-            }
-            Ok(None) => Ok(false),
-            Err(e) => Err(ShardError::Other(format!("Poll failed: {}", e))),
-        }
+        client
+            .poll_for_updates()
+            .await
+            .map_err(|e| ShardError::Other(format!("Poll failed: {}", e)))
     }
 
     fn apply_committees(&self, committees: &VerifiedEpochCommittees) -> ShardResult<()> {
@@ -185,7 +193,7 @@ impl CommitteeSyncManager {
         // Update allowed public keys
         self.update_allowed_keys(committees);
 
-        // Update networking info
+        // Extract and update networking info from encoder committee
         let peers = extract_network_peers(&committees.encoder_committee);
         let networking_entries: Vec<_> = peers
             .iter()
@@ -198,6 +206,10 @@ impl CommitteeSyncManager {
             .collect();
 
         if !networking_entries.is_empty() {
+            info!(
+                "Updating networking info with {} entries",
+                networking_entries.len()
+            );
             self.networking_info.update(networking_entries);
         }
 

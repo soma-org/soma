@@ -107,10 +107,15 @@ impl Client {
             None => return Err(ExecuteAndWaitError::MissingTransaction),
         };
 
-        let executed_txn_digest = match crate::types::Transaction::try_from(transaction) {
-            Ok(tx) => tx.digest().to_string(),
-            Err(e) => return Err(ExecuteAndWaitError::ProtoConversionError(e)),
-        };
+        // TODO: there are some problems converting the proto Transaction to the SDK type for some TransactionKind's (specifically EmbedData)
+        // let executed_txn_digest = match crate::types::Transaction::try_from(transaction) {
+        //     Ok(tx) => tx.digest().to_string(),
+        //     Err(e) => return Err(ExecuteAndWaitError::ProtoConversionError(e)),
+        // };
+
+        let executed_txn_digest = transaction.digest.clone().ok_or_else(|| {
+            ExecuteAndWaitError::ProtoConversionError(TryFromProtoError::missing("digest"))
+        })?;
 
         let response = match self.execution_client().execute_transaction(request).await {
             Ok(resp) => resp,

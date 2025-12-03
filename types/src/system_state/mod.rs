@@ -877,7 +877,7 @@ impl SystemState {
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
         reward_slashing_rate: u64,
-    ) -> ExecutionResult<HashMap<SomaAddress, StakedSoma>> {
+    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSoma>> {
         // Verify we're advancing to the correct epoch
         if new_epoch != self.epoch + 1 {
             return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);

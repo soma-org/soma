@@ -1460,14 +1460,14 @@ impl From<types::metadata::DownloadMetadata> for DownloadMetadata {
         match value {
             types::metadata::DownloadMetadata::Default(dm) => {
                 DownloadMetadata::Default(DefaultDownloadMetadata::V1(DefaultDownloadMetadataV1 {
-                    url: dm.url().to_string(),
+                    url: dm.url().clone(),
                     metadata: dm.metadata().clone().into(),
                 }))
             }
             types::metadata::DownloadMetadata::Mtls(dm) => {
                 DownloadMetadata::Mtls(MtlsDownloadMetadata::V1(MtlsDownloadMetadataV1 {
                     peer: dm.peer().to_bytes().to_vec(),
-                    url: dm.url().to_string(),
+                    url: dm.url().clone(),
                     metadata: dm.metadata().clone().into(),
                 }))
             }
@@ -1482,10 +1482,7 @@ impl TryFrom<DownloadMetadata> for types::metadata::DownloadMetadata {
         match value {
             DownloadMetadata::Default(dm) => match dm {
                 DefaultDownloadMetadata::V1(v1) => {
-                    let url = v1
-                        .url
-                        .parse()
-                        .map_err(|e| SdkTypeConversionError(format!("Invalid URL: {}", e)))?;
+                    let url = v1.url.clone();
                     let metadata = v1.metadata.try_into()?;
                     Ok(types::metadata::DownloadMetadata::Default(
                         types::metadata::DefaultDownloadMetadata::V1(
@@ -1503,10 +1500,7 @@ impl TryFrom<DownloadMetadata> for types::metadata::DownloadMetadata {
                     })?;
                     let peer = types::crypto::NetworkPublicKey::new(network_key);
 
-                    let url = v1
-                        .url
-                        .parse()
-                        .map_err(|e| SdkTypeConversionError(format!("Invalid URL: {}", e)))?;
+                    let url = v1.url.clone();
                     let metadata = v1.metadata.try_into()?;
                     Ok(types::metadata::DownloadMetadata::Mtls(
                         types::metadata::MtlsDownloadMetadata::V1(

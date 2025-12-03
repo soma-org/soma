@@ -59,6 +59,8 @@ impl EncoderValidatorClient {
             address
         );
 
+        let address = address.clone().rewrite_udp_to_tcp().rewrite_http_to_https();
+
         // Create TLS config targeting the validator's network key
         let tls_config = soma_tls::create_rustls_client_config(
             validator_network_key.into_inner(),
@@ -66,7 +68,7 @@ impl EncoderValidatorClient {
             None,
         );
 
-        let channel = connect(address, tls_config)
+        let channel = connect(&address, tls_config)
             .await
             .map_err(|e| anyhow!("Failed to connect to validator: {}", e))?;
 
@@ -96,10 +98,6 @@ impl EncoderValidatorClient {
         start: EpochId,
         end: EpochId,
     ) -> Result<Vec<CertifiedCheckpointSummary>> {
-        if start == 0 {
-            return Err(anyhow!("Cannot fetch epoch 0 - genesis must be configured"));
-        }
-
         info!("Fetching checkpoints for epochs {} to {}", start, end);
         let request = tonic::Request::new(FetchCommitteesRequest { start, end });
         let response = self.client.fetch_committees(request).await?;
@@ -153,10 +151,13 @@ impl EncoderValidatorClient {
             return Ok(self.verified_committees.clone());
         }
 
-        let start_epoch = self.current_epoch.max(1);
+        // To get committees for epoch N, we need the end-of-epoch checkpoint from epoch N-1
+        // So to sync to target_epoch, we need checkpoints from current_epoch to target_epoch-1
+        let start_epoch = self.current_epoch;
         let end_epoch = target_epoch - 1;
 
-        if start_epoch > end_epoch {
+        // Edge case: can't fetch epoch before 0
+        if end_epoch < start_epoch {
             return Ok(None);
         }
 

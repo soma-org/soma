@@ -42,7 +42,7 @@ impl EvaluationTonicClient {
         let address_string = to_host_port_str(&address).map_err(|e| {
             EvaluationError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
-        let address_string = format!("https://{address_string}");
+        let address_string = format!("http://{address_string}");
         let endpoint = tonic::transport::Channel::from_shared(address_string.clone())
             .map_err(|e| EvaluationError::NetworkConfig(format!("Failed to create URI: {e}")))?
             .connect_timeout(config.connect_timeout)

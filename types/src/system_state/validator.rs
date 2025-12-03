@@ -637,7 +637,7 @@ impl ValidatorSet {
         reward_slashing_rate: u64,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         validator_low_stake_grace_period: u64,
-    ) -> HashMap<SomaAddress, StakedSoma> {
+    ) -> BTreeMap<SomaAddress, StakedSoma> {
         let validator_rewards = self.calculate_and_distribute_rewards(
             total_rewards,
             reward_slashing_rate,
@@ -921,7 +921,7 @@ impl ValidatorSet {
         reward_slashing_rate: u64,
         validator_report_records: &BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         new_epoch: u64,
-    ) -> HashMap<SomaAddress, StakedSoma> {
+    ) -> BTreeMap<SomaAddress, StakedSoma> {
         // Only consensus validators participate in rewards
         let total_voting_power: u64 = self
             .consensus_validators
@@ -930,7 +930,7 @@ impl ValidatorSet {
             .sum();
 
         if total_voting_power == 0 {
-            return HashMap::new();
+            return BTreeMap::new();
         }
 
         // Calculate rewards distribution (existing logic)
@@ -1015,10 +1015,10 @@ impl ValidatorSet {
         adjusted_rewards: &[u64],
         total_rewards: &mut u64,
         new_epoch: u64,
-    ) -> HashMap<SomaAddress, StakedSoma> {
+    ) -> BTreeMap<SomaAddress, StakedSoma> {
         assert!(!self.consensus_validators.is_empty(), "Validator set empty");
 
-        let mut rewards = HashMap::new();
+        let mut rewards = BTreeMap::new();
         let mut distributed_total = 0;
 
         for (i, validator) in self.consensus_validators.iter_mut().enumerate() {
@@ -1131,6 +1131,7 @@ impl ValidatorSet {
             b.staking_pool
                 .soma_balance
                 .cmp(&a.staking_pool.soma_balance)
+                .then_with(|| a.metadata.soma_address.cmp(&b.metadata.soma_address))
         });
 
         // First pass: calculate capped voting power based on stake

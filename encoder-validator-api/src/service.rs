@@ -36,12 +36,6 @@ impl EncoderValidatorApi for EncoderValidatorService {
             return Err(Status::invalid_argument("start must be <= end"));
         }
 
-        if req.start == 0 {
-            return Err(Status::invalid_argument(
-                "epoch 0 must be configured, not fetched",
-            ));
-        }
-
         info!(
             "Fetching end-of-epoch checkpoints for epochs {} to {}",
             req.start, req.end
@@ -49,10 +43,8 @@ impl EncoderValidatorApi for EncoderValidatorService {
 
         let mut checkpoints = Vec::new();
 
-        // For each requested epoch N, we need the checkpoint from epoch N-1
-        // (since that checkpoint contains the committees for epoch N)
         for target_epoch in req.start..=req.end {
-            let checkpoint_epoch = target_epoch - 1;
+            let checkpoint_epoch = target_epoch;
 
             match self
                 .checkpoint_store

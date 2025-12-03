@@ -907,6 +907,7 @@ impl EncoderSet {
             b.staking_pool
                 .soma_balance
                 .cmp(&a.staking_pool.soma_balance)
+                .then_with(|| a.metadata.soma_address.cmp(&b.metadata.soma_address))
         });
 
         // First pass: calculate capped voting power based on stake

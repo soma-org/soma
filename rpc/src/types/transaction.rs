@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Digest;
 use crate::types::{Address, CommitTimestamp, EpochId, Object, ObjectReference, UserSignature};
-use serde::ser::SerializeSeq;
-
 use serde::Deserializer;
 use serde::Serializer;
+use serde::ser::SerializeSeq;
 use serde_with::DeserializeAs;
 use serde_with::SerializeAs;
+use url::Url;
 
 /// A transaction
 ///
@@ -46,7 +46,7 @@ pub enum Metadata {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct DefaultDownloadMetadataV1 {
-    pub url: String,
+    pub url: Url, // Changed from String to Url
     pub metadata: Metadata,
 }
 
@@ -57,8 +57,8 @@ pub enum DefaultDownloadMetadata {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct MtlsDownloadMetadataV1 {
-    pub peer: Vec<u8>, // NetworkPublicKey bytes
-    pub url: String,
+    pub peer: Vec<u8>,
+    pub url: Url, // Changed from String to Url
     pub metadata: Metadata,
 }
 

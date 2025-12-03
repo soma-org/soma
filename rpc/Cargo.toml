@@ -24,6 +24,7 @@ types.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
 async-stream = "0.3.6"
+url.workspace = true
 axum = { workspace = true, features = ["matched-path"] }
 tower.workspace = true
 tracing.workspace = true

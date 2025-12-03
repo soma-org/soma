@@ -66,7 +66,6 @@ impl From<crate::types::DownloadMetadata> for DownloadMetadata {
         DownloadMetadata { kind: Some(kind) }
     }
 }
-
 impl From<crate::types::DefaultDownloadMetadata> for DefaultDownloadMetadata {
     fn from(value: crate::types::DefaultDownloadMetadata) -> Self {
         use default_download_metadata::Version;
@@ -74,7 +73,7 @@ impl From<crate::types::DefaultDownloadMetadata> for DefaultDownloadMetadata {
         match value {
             crate::types::DefaultDownloadMetadata::V1(v1) => DefaultDownloadMetadata {
                 version: Some(Version::V1(DefaultDownloadMetadataV1 {
-                    url: Some(v1.url),
+                    url: Some(v1.url.to_string()), // Url -> String
                     metadata: Some(v1.metadata.into()),
                 })),
             },
@@ -90,7 +89,7 @@ impl From<crate::types::MtlsDownloadMetadata> for MtlsDownloadMetadata {
             crate::types::MtlsDownloadMetadata::V1(v1) => MtlsDownloadMetadata {
                 version: Some(Version::V1(MtlsDownloadMetadataV1 {
                     peer: Some(v1.peer.into()),
-                    url: Some(v1.url),
+                    url: Some(v1.url.to_string()), // Url -> String
                     metadata: Some(v1.metadata.into()),
                 })),
             },
@@ -129,8 +128,10 @@ impl TryFrom<&DefaultDownloadMetadata> for crate::types::DefaultDownloadMetadata
             Version::V1(v1) => Ok(Self::V1(crate::types::DefaultDownloadMetadataV1 {
                 url: v1
                     .url
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("url"))?,
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?
+                    .parse() // String -> Url
+                    .map_err(|e| TryFromProtoError::invalid("url", e))?,
                 metadata: v1
                     .metadata
                     .as_ref()
@@ -160,8 +161,10 @@ impl TryFrom<&MtlsDownloadMetadata> for crate::types::MtlsDownloadMetadata {
                     .to_vec(),
                 url: v1
                     .url
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("url"))?,
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?
+                    .parse() // String -> Url
+                    .map_err(|e| TryFromProtoError::invalid("url", e))?,
                 metadata: v1
                     .metadata
                     .as_ref()

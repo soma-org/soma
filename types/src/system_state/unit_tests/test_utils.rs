@@ -69,7 +69,7 @@ impl ValidatorRewards {
     pub fn add_commission_rewards(
         &mut self,
         epoch: u64,
-        rewards: HashMap<SomaAddress, StakedSoma>,
+        rewards: BTreeMap<SomaAddress, StakedSoma>,
     ) {
         for (addr, staked_soma) in rewards {
             self.commission_rewards
@@ -505,7 +505,7 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
     reward_amount: u64,
-) -> ExecutionResult<HashMap<SomaAddress, StakedSoma>> {
+) -> ExecutionResult<BTreeMap<SomaAddress, StakedSoma>> {
     // Calculate next epoch
     let next_epoch = system_state.epoch + 1;
 

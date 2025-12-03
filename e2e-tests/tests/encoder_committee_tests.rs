@@ -85,7 +85,7 @@ async fn test_integrated_encoder_validator_system() {
     let _encoder_handle = encoder_cluster.spawn_new_encoder(encoder_config).await;
 
     // Wait for a moment to allow the encoder to sync
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Verify all encoders are in sync with the new committee
     for handle in encoder_cluster.all_encoder_handles() {
