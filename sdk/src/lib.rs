@@ -1,5 +1,4 @@
 use futures::Stream;
-use objects::networking::tus::client::{ServerInfo, TusClient, UploadInfo};
 use rpc::proto::soma::ListOwnedObjectsRequest;
 use rpc::{api::client::Client, proto::soma::ledger_service_client::LedgerServiceClient};
 use std::pin::Pin;
@@ -42,13 +41,6 @@ impl SomaClientBuilder {
         self.request_timeout = timeout;
         self
     }
-
-    /// Set the TUS chunk size
-    pub fn tus_chunk_size(mut self, size: usize) -> Self {
-        self.tus_chunk_size = Some(size);
-        self
-    }
-
     /// Build the client with RPC and object storage URLs
     pub async fn build(
         self,
@@ -59,14 +51,8 @@ impl SomaClientBuilder {
         let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
 
-        // Create TUS client
-        let tus_url = Url::parse(object_storage_url.as_ref())
-            .map_err(|e| error::Error::ClientInitError(format!("Invalid TUS URL: {}", e)))?;
-        let tus_client = TusClient::new(tus_url, self.tus_chunk_size);
-
         Ok(SomaClient {
             inner: Arc::new(RwLock::new(client)),
-            tus_client: Arc::new(tus_client),
         })
     }
 
@@ -93,7 +79,6 @@ impl SomaClientBuilder {
 #[derive(Clone)]
 pub struct SomaClient {
     inner: Arc<RwLock<Client>>,
-    tus_client: Arc<TusClient>,
 }
 
 impl SomaClient {
@@ -147,41 +132,5 @@ impl SomaClient {
         request: impl tonic::IntoRequest<ListOwnedObjectsRequest>,
     ) -> Pin<Box<dyn Stream<Item = Result<Object, tonic::Status>> + Send + 'static>> {
         self.inner.read().await.clone().list_owned_objects(request)
-    }
-
-    // ========== TUS Upload Methods ==========
-
-    /// Create a new upload session
-    pub async fn create_upload(&self, size: u64) -> Result<Uuid, error::Error> {
-        self.tus_client
-            .create(size)
-            .await
-            .map_err(|e| error::Error::DataError(format!("Failed to create upload: {:?}", e)))
-    }
-
-    /// Upload data from a reader
-    pub async fn upload_data<R>(&self, uuid: Uuid, reader: R) -> Result<(), error::Error>
-    where
-        R: AsyncRead + AsyncSeek + Unpin + Send,
-    {
-        self.tus_client
-            .upload(uuid, reader)
-            .await
-            .map_err(|e| error::Error::DataError(format!("Upload failed: {:?}", e)))
-    }
-
-    /// Get upload status
-    pub async fn get_upload_info(&self, uuid: Uuid) -> Result<UploadInfo, error::Error> {
-        self.tus_client
-            .get_info(uuid)
-            .await
-            .map_err(|e| error::Error::DataError(format!("Failed to get upload info: {:?}", e)))
-    }
-
-    /// Verify TUS server connection
-    pub async fn verify_object_storage(&self) -> Result<ServerInfo, error::Error> {
-        self.tus_client.get_server_info().await.map_err(|e| {
-            error::Error::DataError(format!("Failed to verify object storage: {:?}", e))
-        })
     }
 }

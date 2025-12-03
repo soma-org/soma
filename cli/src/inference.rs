@@ -10,7 +10,6 @@ use bytes::Bytes;
 use clap::Subcommand;
 use json_to_table::{json_to_table, Orientation};
 use object_store::{memory::InMemory, ObjectStore, PutPayload};
-use objects::networking::{internal_service::InternalObjectServiceManager, ObjectServiceManager};
 use rand::{rngs::StdRng, SeedableRng};
 use reqwest::Url;
 use serde::Serialize;

@@ -6,15 +6,16 @@ use axum::{
     Router,
 };
 use bytes::Bytes;
+use fastcrypto::hash::HashFunction as _;
 use object_store::{memory::InMemory, path::Path as ObjectPath, ObjectStore};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use tracing::info;
-use types::checksum::Checksum;
 use types::metadata::{
     DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
     ObjectPath as SomaObjectPath,
 };
+use types::{checksum::Checksum, crypto::DefaultHash};
 use url::Url;
 
 /// Handle for the test object server
@@ -69,7 +70,9 @@ impl TestObjectServer {
 
     /// Upload data and return the download metadata
     pub async fn upload_data(&self, data: &[u8]) -> (Metadata, DownloadMetadata) {
-        let checksum = Checksum::new_from_bytes(data);
+        let mut h = DefaultHash::new();
+        h.update(data);
+        let checksum = Checksum::new_from_hash(h.finalize().into());
         let metadata = Metadata::V1(MetadataV1::new(checksum.clone(), data.len()));
 
         // Store the data

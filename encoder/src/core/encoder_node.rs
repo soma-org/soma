@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 use std::{collections::BTreeSet, future::Future, sync::Arc};
 
 use fastcrypto::traits::KeyPair;
@@ -14,11 +15,14 @@ use intelligence::inference::messaging::tonic::{InferenceTonicClient, InferenceT
 use intelligence::inference::messaging::InferenceServiceManager;
 use intelligence::inference::module::MockModule;
 use object_store::memory::InMemory;
-use objects::networking::downloader::Downloader;
-use objects::networking::external_service::ExternalObjectServiceManager;
-use objects::networking::internal_service::InternalObjectServiceManager;
-use objects::networking::{DownloadClient, DownloadService, ObjectServiceManager};
-use objects::{EphemeralInMemoryStore, PersistentInMemoryStore};
+use object_store::ObjectStore;
+use objects::downloader::ObjectDownloader;
+use objects::readers::url::ObjectHttpClient;
+use objects::services::signed_url::ObjectServiceUrlGenerator;
+use objects::services::{ObjectService, ObjectServiceManager};
+use objects::stores::memory::{EphemeralInMemoryStore, PersistentInMemoryStore};
+use objects::stores::EphemeralStore;
+use objects::MIN_PART_SIZE;
 use rand::Rng;
 use sdk::client_config::{SomaClientConfig, SomaEnv};
 use sdk::wallet_context::WalletContext;
@@ -83,11 +87,9 @@ pub struct EncoderNode {
     config: EncoderConfig,
     internal_network_manager: EncoderInternalTonicManager,
     external_network_manager: EncoderExternalTonicManager,
-    internal_object_service_manager: InternalObjectServiceManager,
-    external_object_service_manager: ExternalObjectServiceManager,
+    object_service_manager: ObjectServiceManager,
     inference_network_manager: InferenceTonicManager,
     evaluation_network_manager: EvaluationTonicManager,
-    downloader_manager: ActorManager<Downloader>,
     clean_up_manager: ActorManager<CleanUpProcessor>,
     report_vote_manager: ActorManager<ReportVoteProcessor<EncoderInternalTonicClient>>,
     evaluation_manager:
@@ -126,13 +128,8 @@ impl EncoderNode {
             .to_string()
             .parse()
             .expect("Valid multiaddr");
-        let internal_object_address: Multiaddr = config
-            .internal_object_address
-            .to_string()
-            .parse()
-            .expect("Valid multiaddr");
-        let external_object_address: Multiaddr = config
-            .external_object_address
+        let object_address: Multiaddr = config
+            .object_address
             .to_string()
             .parse()
             .expect("Valid multiaddr");
@@ -147,12 +144,8 @@ impl EncoderNode {
             .parse()
             .expect("Valid multiaddr");
 
-        let (context, networking_info, allower) = create_context_from_genesis(
-            &config,
-            encoder_keypair.public(),
-            network_keypair.clone(),
-            internal_object_address.clone(),
-        );
+        let (context, networking_info, allower) =
+            create_context_from_genesis(&config, encoder_keypair.public(), network_keypair.clone());
 
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),
@@ -169,42 +162,36 @@ impl EncoderNode {
         >>::client(&internal_network_manager);
 
         let object_storage = Arc::new(InMemory::new());
-        let download_service: DownloadService<InMemory> =
-            DownloadService::new(object_storage.clone(), network_keypair.public());
 
-        let mut external_object_service_manager = ExternalObjectServiceManager::new(
+        let mut object_service_manager = ObjectServiceManager::new(
             network_keypair.clone(),
             config.object_parameters.clone(),
             allower.clone(),
         )
         .unwrap();
 
-        external_object_service_manager
-            .start(&external_object_address, download_service.clone())
+        let object_service = ObjectService::new(object_storage.clone(), network_keypair.public());
+
+        object_service_manager
+            .start(&object_address, object_service.clone())
             .await;
 
-        let external_object_server_url = Url::from_str(&format!(
+        let object_server_url = Url::from_str(&format!(
             "https://{}",
-            to_host_port_str(&external_object_address).unwrap()
+            to_host_port_str(&object_address).unwrap()
         ))
         .unwrap();
-        let mut internal_object_service_manager = InternalObjectServiceManager::new(
+
+        let download_metadata_generator = Arc::new(ObjectServiceUrlGenerator::new(
+            object_server_url,
             network_keypair.clone(),
-            config.object_parameters.clone(),
-        )
-        .unwrap();
+            //TODO change the timeout to be one epoch?
+            Duration::from_secs(3600),
+        ));
 
-        internal_object_service_manager
-            .start(&internal_object_address, download_service.clone())
-            .await;
-
-        ///////////////////////////
         let ephemeral_store = EphemeralInMemoryStore::new(object_storage.clone());
-        let persistent_store = PersistentInMemoryStore::new(
-            object_storage.clone(),
-            external_object_server_url,
-            network_keypair.clone(),
-        );
+        let persistent_store =
+            PersistentInMemoryStore::new(object_storage.clone(), download_metadata_generator);
 
         ///////////////////////////
         ////////////////////////////
@@ -222,25 +209,24 @@ impl EncoderNode {
         // 5gb
         let max_size: u64 = 5 * 1024 * 1024 * 1024;
 
-        let download_client: Arc<DownloadClient> = Arc::new(
-            DownloadClient::new(
-                network_keypair.clone(),
-                Arc::new(HttpParameters::default()),
-                max_size,
-            )
-            .unwrap(),
-        );
+        let concurrency = Arc::new(Semaphore::new(default_concurrency));
+        let chunk_size = MIN_PART_SIZE;
+        let ns_per_byte = 40;
+        let object_downloader =
+            Arc::new(ObjectDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap());
 
-        let downloader_processor = Downloader::new(default_concurrency, download_client);
-        let downloader_manager = ActorManager::new(default_buffer, downloader_processor);
-        let downloader_handle = downloader_manager.handle();
+        let object_http_client =
+            ObjectHttpClient::new(network_keypair.clone(), Arc::new(HttpParameters::default()))
+                .unwrap();
 
         let module_client = Arc::new(MockModule::new());
+
         let inference_core_processor = InferenceCoreProcessor::new(
             persistent_store.clone(),
             ephemeral_store.clone(),
-            downloader_handle.clone(),
             module_client,
+            object_downloader.clone(),
+            object_http_client.clone(),
         );
 
         let inference_processor_manager =
@@ -271,7 +257,8 @@ impl EncoderNode {
             persistent_store.clone(),
             ephemeral_store,
             evaluator_client,
-            downloader_handle,
+            object_downloader.clone(),
+            object_http_client.clone(),
         );
 
         let evaluation_processor_manager =
@@ -444,15 +431,13 @@ impl EncoderNode {
             config,
             internal_network_manager,
             external_network_manager,
-            internal_object_service_manager,
-            external_object_service_manager,
+            object_service_manager,
             store,
             object_storage,
             context,
             inference_network_manager,
             evaluation_network_manager,
             committee_sync_manager,
-            downloader_manager,
             clean_up_manager,
             report_vote_manager,
             evaluation_manager,
@@ -481,6 +466,7 @@ impl EncoderNode {
                     EvaluationTonicClient,
                     InferenceTonicClient,
                 >,
+                InMemory,
                 PersistentInMemoryStore,
             >,
         >>::stop(&mut self.external_network_manager)
@@ -488,22 +474,23 @@ impl EncoderNode {
 
         self.committee_sync_manager.stop();
 
-        <InternalObjectServiceManager as ObjectServiceManager<InMemory>>::stop(
-            &mut self.internal_object_service_manager,
-        )
-        .await;
-        <ExternalObjectServiceManager as ObjectServiceManager<InMemory>>::stop(
-            &mut self.external_object_service_manager,
-        )
-        .await;
+        self.object_service_manager.stop().await;
 
         <InferenceTonicManager as InferenceServiceManager<
-            InferenceNetworkService<PersistentInMemoryStore, EphemeralInMemoryStore, MockModule>,
+            InferenceNetworkService<
+                InMemory,
+                InMemory,
+                PersistentInMemoryStore,
+                EphemeralInMemoryStore,
+                MockModule,
+            >,
         >>::stop(&mut self.inference_network_manager)
         .await;
 
         <EvaluationTonicManager as EvaluationManager<
             EvaluationNetworkService<
+                InMemory,
+                InMemory,
                 PersistentInMemoryStore,
                 EphemeralInMemoryStore,
                 MockEvaluator,
@@ -511,7 +498,6 @@ impl EncoderNode {
         >>::stop(&mut self.evaluation_network_manager)
         .await;
 
-        self.downloader_manager.shutdown();
         self.clean_up_manager.shutdown();
         self.report_vote_manager.shutdown();
         self.evaluation_manager.shutdown();
@@ -573,7 +559,6 @@ fn create_context_from_genesis(
     config: &EncoderConfig,
     own_encoder_key: EncoderPublicKey,
     own_network_keypair: NetworkKeyPair,
-    internal_object_service_address: Multiaddr,
 ) -> (Context, EncoderNetworkingInfo, AllowPublicKeys) {
     let networking_info = EncoderNetworkingInfo::default();
     let allower = AllowPublicKeys::default();
@@ -603,7 +588,6 @@ fn create_context_from_genesis(
         0,
         own_encoder_key,
         own_network_keypair,
-        internal_object_service_address,
     );
 
     if !initial_networking_info.is_empty() {

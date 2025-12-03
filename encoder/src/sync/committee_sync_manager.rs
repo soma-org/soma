@@ -211,7 +211,6 @@ impl CommitteeSyncManager {
             epoch,
             self.own_encoder_key.clone(),
             self.context.own_network_keypair(),
-            self.context.internal_object_service_address(),
         );
         self.context.update(new_inner);
 

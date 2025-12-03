@@ -4,7 +4,9 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use objects::PersistentStore;
+use object_store::ObjectStore;
+use objects::stores::PersistentStore;
+use std::marker::PhantomData;
 use std::{collections::HashMap, sync::Arc};
 use tokio_util::sync::CancellationToken;
 use tracing::error;
@@ -20,14 +22,19 @@ use types::{
     shard_verifier::ShardVerifier,
 };
 
-pub(crate) struct EncoderExternalService<D: ExternalDispatcher, P: PersistentStore> {
+pub(crate) struct EncoderExternalService<
+    D: ExternalDispatcher,
+    S: ObjectStore,
+    P: PersistentStore<S>,
+> {
     context: Context,
     dispatcher: D,
     shard_verifier: Arc<ShardVerifier>,
     persistent_store: P,
+    _marker: PhantomData<S>,
 }
 
-impl<D: ExternalDispatcher, P: PersistentStore> EncoderExternalService<D, P> {
+impl<D: ExternalDispatcher, S: ObjectStore, P: PersistentStore<S>> EncoderExternalService<D, S, P> {
     pub(crate) fn new(
         context: Context,
         dispatcher: D,
@@ -39,6 +46,7 @@ impl<D: ExternalDispatcher, P: PersistentStore> EncoderExternalService<D, P> {
             dispatcher,
             shard_verifier,
             persistent_store,
+            _marker: PhantomData,
         }
     }
 
@@ -67,8 +75,8 @@ impl<D: ExternalDispatcher, P: PersistentStore> EncoderExternalService<D, P> {
     }
 }
 #[async_trait]
-impl<D: ExternalDispatcher, P: PersistentStore> EncoderExternalNetworkService
-    for EncoderExternalService<D, P>
+impl<D: ExternalDispatcher, S: ObjectStore, P: PersistentStore<S>> EncoderExternalNetworkService
+    for EncoderExternalService<D, S, P>
 {
     async fn handle_send_input(
         &self,
@@ -111,15 +119,18 @@ impl<D: ExternalDispatcher, P: PersistentStore> EncoderExternalNetworkService
                 bcs::from_bytes(&get_data_bytes).map_err(ShardError::MalformedType)?;
 
             let mut download_map = HashMap::new();
-            for path in get_data.object_paths() {
-                let download_metadata =
-                    match self.persistent_store.download_metadata(path.clone()).await {
-                        Ok(metadata) => Some(metadata),
-                        Err(e) => match e {
-                            ObjectError::NotFound(_) => None,
-                            _ => return Err(ShardError::ObjectError(e)),
-                        },
-                    };
+            for (path, metadata) in get_data.object_paths() {
+                let download_metadata = match self
+                    .persistent_store
+                    .download_metadata(path.clone(), metadata.clone())
+                    .await
+                {
+                    Ok(metadata) => Some(metadata),
+                    Err(e) => match e {
+                        ObjectError::NotFound(_) => None,
+                        _ => return Err(ShardError::ObjectError(e)),
+                    },
+                };
 
                 match download_metadata {
                     Some(dm) => {

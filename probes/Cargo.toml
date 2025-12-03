@@ -17,6 +17,7 @@ ndarray.workspace = true
 ndarray-safetensors.workspace = true
 burn-store.workspace = true
 burn-ndarray.workspace = true
+burn-wgpu.workspace = true
 
 [lints]
 workspace = true

@@ -1,9 +1,5 @@
-use fastcrypto::{
-    error::FastCryptoError,
-    hash::{Digest, HashFunction},
-    serialize_deserialize_with_to_from_bytes,
-    traits::{EncodeDecodeBase64, ToFromBytes},
-};
+use fastcrypto::{error::FastCryptoError, hash::Digest, traits::ToFromBytes};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     cmp::Ordering,
     fmt,
@@ -24,15 +20,6 @@ impl Checksum {
     pub fn new_from_hash(hash: [u8; DIGEST_LENGTH]) -> Self {
         Self(hash)
     }
-
-    // TODO: make this work better for chunking intelligently
-    pub fn new_from_bytes(bytes: &[u8]) -> Self {
-        let mut hasher = DefaultHashFunction::new();
-        hasher.update(bytes);
-        Self(hasher.finalize().into())
-    }
-
-    // TODO: make
 }
 
 impl Hash for Checksum {
@@ -68,7 +55,7 @@ impl fmt::Display for Checksum {
         write!(
             f,
             "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE, self.0)
+            base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, self.0)
         )
     }
 }
@@ -78,7 +65,7 @@ impl fmt::Debug for Checksum {
         write!(
             f,
             "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
+            base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, self.0)
         )
     }
 }
@@ -86,6 +73,45 @@ impl fmt::Debug for Checksum {
 impl AsRef<[u8]> for Checksum {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for Checksum {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // 1. Pull the raw string from the URL
+        let s = String::deserialize(deserializer)?;
+
+        // 2. Decode base64url (no padding) – exactly the format you use in `Display`
+        let bytes = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, &s)
+            .map_err(|e| serde::de::Error::custom(format!("invalid base64url: {e}")))?;
+
+        // 3. Length check – must be exactly DIGEST_LENGTH
+        if bytes.len() != DIGEST_LENGTH {
+            return Err(serde::de::Error::custom(format!(
+                "checksum must be {DIGEST_LENGTH} bytes, got {}",
+                bytes.len()
+            )));
+        }
+
+        // 4. Copy into fixed-size array
+        let mut arr = [0u8; DIGEST_LENGTH];
+        arr.copy_from_slice(&bytes);
+        Ok(Checksum(arr))
+    }
+}
+
+impl Serialize for Checksum {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Encode the raw bytes as base64url (no padding) – exactly what `Display` does
+        let encoded =
+            base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, self.0);
+        serializer.serialize_str(&encoded)
     }
 }
 
@@ -103,5 +129,3 @@ impl ToFromBytes for Checksum {
         &self.0
     }
 }
-
-serialize_deserialize_with_to_from_bytes!(Checksum, DIGEST_LENGTH);

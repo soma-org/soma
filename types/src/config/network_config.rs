@@ -472,7 +472,6 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     encoder.internal_network_address,
                     encoder.external_network_address,
                     encoder.object_address,
-                    encoder.local_object_address,
                     encoder.inference_address,
                     encoder.evaluation_address,
                     rpc_address

@@ -1,15 +1,17 @@
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use async_trait::async_trait;
 use object_store::ObjectStore;
 use objects::{
-    networking::{downloader::Downloader, transfer::Transfer},
-    EphemeralStore, PersistentStore,
+    downloader::ObjectDownloader,
+    readers::{store::ObjectStoreReader, url::ObjectHttpClient},
+    stores::{EphemeralStore, PersistentStore},
 };
 use tokio_util::sync::CancellationToken;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
+    metadata::{DownloadMetadata, Metadata, ObjectPath},
 };
 
 use crate::inference::{
@@ -17,37 +19,58 @@ use crate::inference::{
     InferenceInput, InferenceInputAPI, InferenceOutput, InferenceOutputV1,
 };
 
-pub struct InferenceCoreProcessor<P: PersistentStore, E: EphemeralStore, M: ModuleClient> {
+pub struct InferenceCoreProcessor<
+    PS: ObjectStore,
+    ES: ObjectStore,
+    P: PersistentStore<PS>,
+    E: EphemeralStore<ES>,
+    M: ModuleClient,
+> {
     persistent_store: P,
     ephemeral_store: E,
-    downloader: ActorHandle<Downloader>,
     module_client: Arc<M>,
+    downloader: Arc<ObjectDownloader>,
+    object_http_client: ObjectHttpClient,
+    p_marker: PhantomData<PS>,
+    e_marker: PhantomData<ES>,
 }
 
-impl<P: PersistentStore, E: EphemeralStore, M: ModuleClient> InferenceCoreProcessor<P, E, M> {
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        M: ModuleClient,
+    > InferenceCoreProcessor<PS, ES, P, E, M>
+{
     pub fn new(
         persistent_store: P,
         ephemeral_store: E,
-        downloader: ActorHandle<Downloader>,
         module_client: Arc<M>,
+        downloader: Arc<ObjectDownloader>,
+        object_http_client: ObjectHttpClient,
     ) -> Self {
         Self {
             persistent_store,
             ephemeral_store,
-            downloader,
             module_client,
+            downloader,
+            object_http_client,
+            p_marker: PhantomData,
+            e_marker: PhantomData,
         }
     }
 
-    async fn load_input_data(
+    async fn load_data(
         &self,
-        input: &InferenceInput,
+        object_path: &ObjectPath,
+        download_metadata: &DownloadMetadata,
         cancellation: CancellationToken,
     ) -> ShardResult<()> {
         if self
             .ephemeral_store
             .object_store()
-            .head(&input.object_path().path())
+            .head(&object_path.path())
             .await
             .is_ok()
         {
@@ -58,39 +81,75 @@ impl<P: PersistentStore, E: EphemeralStore, M: ModuleClient> InferenceCoreProces
         if self
             .persistent_store
             .object_store()
-            .head(&input.object_path().path())
+            .head(&object_path.path())
             .await
             .is_ok()
         {
-            Transfer::transfer(
+            let reader = Arc::new(ObjectStoreReader::new(
                 self.persistent_store.object_store().clone(),
+                object_path.clone(),
+            ));
+            self.downloader
+                .download(
+                    reader,
+                    self.ephemeral_store.object_store().clone(),
+                    object_path.clone(),
+                    download_metadata.metadata().clone(),
+                )
+                .await
+                .map_err(ShardError::ObjectError)?;
+        }
+        let reader = Arc::new(
+            self.object_http_client
+                .get_reader(download_metadata)
+                .await
+                .map_err(ShardError::ObjectError)?,
+        );
+
+        self.downloader
+            .download(
+                reader,
                 self.ephemeral_store.object_store().clone(),
-                &input.object_path(),
+                object_path.clone(),
+                download_metadata.metadata().clone(),
             )
             .await
             .map_err(ShardError::ObjectError)?;
-            return Ok(());
-        }
 
-        // Download from remote.
+        Ok(())
+    }
+
+    async fn store_to_persistent(
+        &self,
+        object_path: &ObjectPath,
+        metadata: &Metadata,
+    ) -> ShardResult<()> {
+        let reader = Arc::new(ObjectStoreReader::new(
+            self.ephemeral_store.object_store().clone(),
+            object_path.clone(),
+        ));
         self.downloader
-            .process(
-                (
-                    input.download_metadata().clone(),
-                    input.object_path().clone(),
-                    self.ephemeral_store.object_store().clone(),
-                ),
-                cancellation,
+            .download(
+                reader,
+                self.persistent_store.object_store().clone(),
+                object_path.clone(),
+                metadata.clone(),
             )
-            .await?;
+            .await
+            .map_err(ShardError::ObjectError)?;
 
         Ok(())
     }
 }
 
 #[async_trait]
-impl<P: PersistentStore, E: EphemeralStore, M: ModuleClient> Processor
-    for InferenceCoreProcessor<P, E, M>
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        M: ModuleClient,
+    > Processor for InferenceCoreProcessor<PS, ES, P, E, M>
 {
     type Input = InferenceInput;
     type Output = InferenceOutput;
@@ -98,10 +157,15 @@ impl<P: PersistentStore, E: EphemeralStore, M: ModuleClient> Processor
     async fn process(&self, msg: ActorMessage<Self>) {
         let result: ShardResult<Self::Output> = async {
             let input = msg.input;
-            self.load_input_data(&input, msg.cancellation.clone())
-                .await?;
+            self.load_data(
+                input.object_path(),
+                input.download_metadata(),
+                msg.cancellation.clone(),
+            )
+            .await?;
             let module_input = ModuleInput::V1(ModuleInputV1::new(
                 input.epoch(),
+                input.download_metadata().metadata().clone(),
                 input.object_path().clone(),
             ));
 
@@ -111,27 +175,20 @@ impl<P: PersistentStore, E: EphemeralStore, M: ModuleClient> Processor
                 .await
                 .map_err(ShardError::InferenceError)?;
 
-            Transfer::transfer(
-                self.ephemeral_store.object_store().clone(),
-                self.persistent_store.object_store().clone(),
-                &input.object_path(),
-            )
-            .await
-            .map_err(ShardError::ObjectError)?;
-
-            Transfer::transfer(
-                self.ephemeral_store.object_store().clone(),
-                self.persistent_store.object_store().clone(),
-                &module_output.object_path(),
-            )
-            .await
-            .map_err(ShardError::ObjectError)?;
+            self.store_to_persistent(input.object_path(), input.download_metadata().metadata())
+                .await?;
 
             let download_metadata = self
                 .persistent_store
-                .download_metadata(module_output.object_path().clone())
+                .download_metadata(
+                    module_output.object_path().clone(),
+                    module_output.metadata().clone(),
+                )
                 .await
                 .map_err(ShardError::ObjectError)?;
+
+            self.store_to_persistent(module_output.object_path(), download_metadata.metadata())
+                .await?;
 
             Ok(InferenceOutput::V1(InferenceOutputV1::new(
                 download_metadata,

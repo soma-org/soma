@@ -1,3 +1,4 @@
+pub mod ensemble;
 pub mod modules;
 pub mod probe;
 

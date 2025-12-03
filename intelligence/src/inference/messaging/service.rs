@@ -4,24 +4,43 @@ use crate::inference::module::ModuleClient;
 use crate::inference::InferenceInput;
 use async_trait::async_trait;
 use bytes::Bytes;
-use objects::{EphemeralStore, PersistentStore};
+use object_store::ObjectStore;
+use objects::stores::{EphemeralStore, PersistentStore};
 use tokio_util::sync::CancellationToken;
 use types::actors::ActorHandle;
 use types::error::{InferenceError, InferenceResult};
 
-pub struct InferenceNetworkService<P: PersistentStore, E: EphemeralStore, M: ModuleClient> {
-    core_processor: ActorHandle<InferenceCoreProcessor<P, E, M>>,
+pub struct InferenceNetworkService<
+    PS: ObjectStore,
+    ES: ObjectStore,
+    P: PersistentStore<PS>,
+    E: EphemeralStore<ES>,
+    M: ModuleClient,
+> {
+    core_processor: ActorHandle<InferenceCoreProcessor<PS, ES, P, E, M>>,
 }
 
-impl<P: PersistentStore, E: EphemeralStore, M: ModuleClient> InferenceNetworkService<P, E, M> {
-    pub fn new(core_processor: ActorHandle<InferenceCoreProcessor<P, E, M>>) -> Self {
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        M: ModuleClient,
+    > InferenceNetworkService<PS, ES, P, E, M>
+{
+    pub fn new(core_processor: ActorHandle<InferenceCoreProcessor<PS, ES, P, E, M>>) -> Self {
         Self { core_processor }
     }
 }
 
 #[async_trait]
-impl<P: PersistentStore, E: EphemeralStore, M: ModuleClient> InferenceService
-    for InferenceNetworkService<P, E, M>
+impl<
+        PS: ObjectStore,
+        ES: ObjectStore,
+        P: PersistentStore<PS>,
+        E: EphemeralStore<ES>,
+        M: ModuleClient,
+    > InferenceService for InferenceNetworkService<PS, ES, P, E, M>
 {
     async fn handle_inference(&self, input_bytes: Bytes) -> InferenceResult<Bytes> {
         let inference_input: InferenceInput =

@@ -39,10 +39,8 @@ pub struct EncoderConfig {
     pub network_keypair: KeyPairWithPath,
     pub internal_network_address: Multiaddr,
     pub external_network_address: Multiaddr,
-    /// The network address for the unencrypted object storage
-    pub internal_object_address: Multiaddr,
     /// The network address for object storage
-    pub external_object_address: Multiaddr,
+    pub object_address: Multiaddr,
     /// The network address for inference service
     pub inference_address: Multiaddr,
     /// The network address for evaluation service
@@ -81,8 +79,7 @@ impl EncoderConfig {
         network_keypair: NetworkKeyPair,
         internal_network_address: Multiaddr,
         external_network_address: Multiaddr,
-        internal_object_address: Multiaddr,
-        external_object_address: Multiaddr,
+        object_address: Multiaddr,
         inference_address: Multiaddr,
         evaluation_address: Multiaddr,
         rpc_address: SocketAddr,
@@ -106,8 +103,7 @@ impl EncoderConfig {
             )),
             internal_network_address,
             external_network_address,
-            internal_object_address,
-            external_object_address,
+            object_address,
             inference_address,
             evaluation_address,
             // parameters,
@@ -275,7 +271,6 @@ pub struct EncoderGenesisConfig {
     pub internal_network_address: Multiaddr,
     pub external_network_address: Multiaddr,
     pub object_address: Multiaddr,
-    pub local_object_address: Multiaddr,
     pub inference_address: Multiaddr,
     pub evaluation_address: Multiaddr,
     pub stake: u64,
@@ -292,7 +287,6 @@ impl Clone for EncoderGenesisConfig {
             internal_network_address: self.internal_network_address.clone(),
             external_network_address: self.external_network_address.clone(),
             object_address: self.object_address.clone(),
-            local_object_address: self.local_object_address.clone(),
             inference_address: self.inference_address.clone(),
             evaluation_address: self.evaluation_address.clone(),
             stake: self.stake.clone(),
@@ -370,7 +364,6 @@ impl EncoderGenesisConfigBuilder {
             internal_network_address,
             external_network_address,
             object_address,
-            local_object_address,
             inference_address,
             evaluation_address,
         ) = if let Some(offset) = self.port_offset {
@@ -380,11 +373,9 @@ impl EncoderGenesisConfigBuilder {
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 5),
             )
         } else {
             (
-                local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -400,7 +391,6 @@ impl EncoderGenesisConfigBuilder {
             internal_network_address,
             external_network_address,
             object_address,
-            local_object_address,
             inference_address,
             evaluation_address,
             stake,

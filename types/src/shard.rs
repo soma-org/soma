@@ -192,22 +192,22 @@ pub fn verify_input(input: &Input, shard: &Shard, peer: &NetworkPublicKey) -> Sh
 // /////////////////////////////////////////////////////
 #[enum_dispatch]
 pub trait GetDataAPI {
-    fn object_paths(&self) -> &Vec<ObjectPath>;
+    fn object_paths(&self) -> &Vec<(ObjectPath, Metadata)>;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetDataV1 {
-    object_paths: Vec<ObjectPath>,
+    object_paths: Vec<(ObjectPath, Metadata)>,
 }
 
 impl GetDataV1 {
-    pub fn new(object_paths: Vec<ObjectPath>) -> Self {
+    pub fn new(object_paths: Vec<(ObjectPath, Metadata)>) -> Self {
         Self { object_paths }
     }
 }
 
 impl GetDataAPI for GetDataV1 {
-    fn object_paths(&self) -> &Vec<ObjectPath> {
+    fn object_paths(&self) -> &Vec<(ObjectPath, Metadata)> {
         &self.object_paths
     }
 }
