@@ -1,19 +1,15 @@
-use arrgen::{constant_array, normal_array, uniform_array};
+use arrgen::{constant_array, normal_array};
+use burn::backend::NdArray;
+use burn::backend::ndarray::NdArrayTensor;
+use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
-use burn::{
-    module::Module,
-    nn::{Linear, LinearConfig},
-    prelude::Backend,
-};
-use burn_ndarray::NdArrayTensor;
-use burn_store::{ModuleSnapshot, SafetensorsStore};
-use ndarray_safetensors::TensorViewWithDataBuffer;
-use probes::v1::modules::pwff::{PositionWiseFeedForward, PositionWiseFeedForwardConfig};
+use burn::tensor::{Tensor, TensorPrimitive, Tolerance};
+use probes::tensor::{ArrayWrapper, IntoTensorData};
+use probes::v1::modules::pwff::PositionWiseFeedForwardConfig;
 use safetensors::serialize;
 use std::collections::HashMap;
 
-type TestBackend = burn_ndarray::NdArray<f32>;
+type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;
 
 // set_print_options(PrintOptions {
@@ -28,32 +24,32 @@ fn test_v1_pwff_ones() {
     let embedding_dim = 4usize;
     let hidden_dim = 2usize;
     let seed = 42u64;
-    let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
+    let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear_inner.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 1,
-            vec![embedding_dim, hidden_dim],
+            &vec![embedding_dim, hidden_dim],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "linear_inner.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed + 2, vec![hidden_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 2, &vec![hidden_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear_outer.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 3,
-            vec![hidden_dim, embedding_dim],
+            &vec![hidden_dim, embedding_dim],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "linear_outer.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed + 4, vec![embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 4, &vec![embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -63,11 +59,11 @@ fn test_v1_pwff_ones() {
         .with_embedding_dim(embedding_dim)
         .with_hidden_dim(hidden_dim)
         .init(&device);
-    model.apply_from(&mut store).unwrap();
-    let input = constant_array(vec![embedding_dim], 1.0);
-    let nd_tensor = NdArrayTensor::from(input.into_shared());
-    let primitive = TensorPrimitive::Float(nd_tensor);
-    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_primitive(primitive);
+    model.load_from(&mut store).unwrap();
+    let input_data = constant_array(&vec![embedding_dim], 1.0)
+        .to_tensor_data()
+        .unwrap();
+    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
     let output = model.forward(input_tensor);
 
     let expected_output = Tensor::<TestBackend, 1>::from_floats(

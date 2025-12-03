@@ -4,7 +4,7 @@ use numpy::{IxDyn, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, rngs::StdRng, SeedableRng};
 
-pub fn uniform_array(seed: u64, shape: Vec<usize>, min: f32, max: f32) -> ArrayD<f32> {
+pub fn uniform_array(seed: u64, shape: &[usize], min: f32, max: f32) -> ArrayD<f32> {
     let mut rng = StdRng::seed_from_u64(seed);
     let dist = Uniform::new(min, max);
     let array_shape = IxDyn(&shape);
@@ -12,7 +12,7 @@ pub fn uniform_array(seed: u64, shape: Vec<usize>, min: f32, max: f32) -> ArrayD
     array
 }
 
-pub fn normal_array(seed: u64, shape: Vec<usize>, mean: f32, std_dev: f32) -> ArrayD<f32> {
+pub fn normal_array(seed: u64, shape: &[usize], mean: f32, std_dev: f32) -> ArrayD<f32> {
     let mut rng = StdRng::seed_from_u64(seed);
     let dist = Normal::new(mean, std_dev).unwrap();
     let array_shape = IxDyn(&shape);
@@ -20,7 +20,7 @@ pub fn normal_array(seed: u64, shape: Vec<usize>, mean: f32, std_dev: f32) -> Ar
     array
 }
 
-pub fn constant_array(shape: Vec<usize>, value: f32) -> ArrayD<f32> {
+pub fn constant_array(shape: &[usize], value: f32) -> ArrayD<f32> {
     let array_shape = IxDyn(&shape);
     ArrayD::from_elem(array_shape, value)
 }
@@ -34,7 +34,7 @@ fn py_uniform_array(
     min: f32,
     max: f32,
 ) -> PyResult<Bound<'_, PyArrayDyn<f32>>> {
-    let array = uniform_array(seed, shape, min, max);
+    let array = uniform_array(seed, &shape, min, max);
     Ok(array.to_pyarray(py))
 }
 
@@ -47,7 +47,7 @@ fn py_normal_array(
     mean: f32,
     std_dev: f32,
 ) -> PyResult<Bound<'_, PyArrayDyn<f32>>> {
-    let array = normal_array(seed, shape, mean, std_dev);
+    let array = normal_array(seed, &shape, mean, std_dev);
     Ok(array.to_pyarray(py))
 }
 
@@ -58,7 +58,7 @@ fn py_constant_array(
     shape: Vec<usize>,
     value: f32,
 ) -> PyResult<Bound<'_, PyArrayDyn<f32>>> {
-    let array = constant_array(shape, value);
+    let array = constant_array(&shape, value);
     Ok(array.to_pyarray(py))
 }
 

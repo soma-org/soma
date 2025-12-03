@@ -1,19 +1,18 @@
 use std::collections::HashMap;
 
 use arrgen::{constant_array, normal_array, uniform_array};
+use burn::backend::NdArray;
+use burn::backend::ndarray::NdArrayTensor;
 use burn::module::Module;
 use burn::prelude::Backend;
+use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{Int, PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
-use burn_ndarray::NdArrayTensor;
-use burn_store::{ModuleSnapshot, SafetensorsStore};
-use ndarray_safetensors::TensorViewWithDataBuffer;
-use probes::v1::modules::attention::{
-    MhaInput, MultiHeadAttention, MultiHeadAttentionConfig, apply_rope,
-};
+use probes::tensor::{ArrayWrapper, IntoTensorData};
+use probes::v1::modules::attention::{MhaInput, MultiHeadAttention, MultiHeadAttentionConfig};
 use safetensors::serialize;
 
-type TestBackend = burn_ndarray::NdArray<f32>;
+type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;
 
 // set_print_options(PrintOptions {
@@ -22,39 +21,6 @@ type FT = FloatElem<TestBackend>;
 //     precision: Some(8), // High value for full precision.
 // });
 // println!("{}", output);
-
-#[test]
-fn test_v1_rope_ones() {
-    // inputs: Tensor<B, 4>,         // [batch_size, seq_len, num_heads, head_dim]
-    // positions: Tensor<B, 2, Int>, // [batch_size, seq_len]
-    let batch_size = 1usize;
-    let seq_len = 1usize;
-    let num_heads = 1usize;
-    let head_dim = 2usize;
-    let max_wavelength = 10_000.0;
-    let scale_factor = 1.0;
-    let device = Default::default();
-    let inputs = constant_array(vec![batch_size, seq_len, num_heads, head_dim], 1.0);
-    let nd_tensor = NdArrayTensor::from(inputs.into_shared());
-    let primitive = TensorPrimitive::Float(nd_tensor);
-    let input_tensor: Tensor<TestBackend, 4> = Tensor::from_primitive(primitive);
-    let positions: Tensor<TestBackend, 2, Int> = Tensor::from_data([[1]], &device);
-
-    let output = apply_rope(
-        input_tensor,
-        positions,
-        head_dim,
-        max_wavelength,
-        scale_factor,
-    );
-
-    let expected_output =
-        Tensor::<TestBackend, 4>::from_floats([[[[-0.30116868, 1.38177323]]]], &device);
-
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
-}
 
 #[derive(Module, Debug)]
 pub struct MhaModule<B: Backend> {
@@ -80,82 +46,80 @@ impl<B: Backend> MhaModule<B> {
 #[test]
 fn test_v1_attention() {
     let batch_size = 1usize;
-    let seq_len = 1usize;
-    let num_heads = 1usize;
+    let seq_len = 4usize;
+    let num_heads = 2usize;
     let head_dim = 2usize;
-    let max_wavelength = 10_000.0;
-    let scale_factor = 1.0;
 
     let seed = 42u64;
-    let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
+    let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "mha.query.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 1,
-            vec![head_dim * num_heads, head_dim * num_heads],
+            &vec![head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.query.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 2,
-            vec![head_dim * num_heads],
+            &vec![head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.key.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 3,
-            vec![head_dim * num_heads, head_dim * num_heads],
+            &vec![head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.key.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 4,
-            vec![head_dim * num_heads],
+            &vec![head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.value.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 5,
-            vec![head_dim * num_heads, head_dim * num_heads],
+            &vec![head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.value.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 6,
-            vec![head_dim * num_heads],
+            &vec![head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.output.weight".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 7,
-            vec![head_dim * num_heads, head_dim * num_heads],
+            &vec![head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.output.bias".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(
+        ArrayWrapper(normal_array(
             seed + 8,
-            vec![head_dim * num_heads],
+            &vec![head_dim * num_heads],
             0.0,
             1.0,
         )),
@@ -165,25 +129,36 @@ fn test_v1_attention() {
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model: MhaModule<TestBackend> = MhaModule::new(head_dim, num_heads, &device);
 
-    model.apply_from(&mut store).unwrap();
+    model.load_from(&mut store).unwrap();
 
-    let inputs = constant_array(vec![batch_size, seq_len, num_heads * head_dim], 1.0);
-    let nd_tensor = NdArrayTensor::from(inputs.into_shared());
-    let primitive = TensorPrimitive::Float(nd_tensor);
-    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_primitive(primitive);
-    let positions: Tensor<TestBackend, 2, Int> = Tensor::from_data([[1]], &device);
+    let input_data = normal_array(
+        seed + 9,
+        &vec![batch_size, seq_len, num_heads * head_dim],
+        0.0,
+        1.0,
+    )
+    .to_tensor_data()
+    .unwrap();
+    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
 
-    let mha_input = MhaInput::new(input_tensor, Some(positions));
+    let mha_input = MhaInput::new(input_tensor);
     let output = model.forward(mha_input);
-    // set_print_options(PrintOptions {
-    //     threshold: 1000,    // Default or custom threshold for summarization.
-    //     edge_items: 3,      // Default or custom edge items to display.
-    //     precision: Some(8), // High value for full precision.
-    // });
-    // println!("{}", output);
+    set_print_options(PrintOptions {
+        threshold: 1000,    // Default or custom threshold for summarization.
+        edge_items: 3,      // Default or custom edge items to display.
+        precision: Some(8), // High value for full precision.
+    });
+    println!("{}", output);
 
-    let expected_output =
-        Tensor::<TestBackend, 3>::from_floats([[[-1.93152618, -0.17658120]]], &device);
+    let expected_output = Tensor::<TestBackend, 3>::from_floats(
+        [[
+            [0.02807204, 2.13409519, 5.45623493, 13.48927689],
+            [3.20324492, 0.78216082, 0.03813785, 1.87561870],
+            [3.04302406, 0.51064676, -0.37436891, 0.42570090],
+            [3.08121729, 0.57106179, -0.28497183, 0.74396586],
+        ]],
+        &device,
+    );
 
     output
         .to_data()

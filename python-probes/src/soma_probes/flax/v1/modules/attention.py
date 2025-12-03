@@ -17,34 +17,6 @@ from flax.nnx.nn.linear import (
 from flax.nnx import rnglib
 
 
-def apply_rope(
-    inputs: Array,  # [BATCH_SIZE, SEQ_LEN, NUM_HEADS, HEAD_DIM]
-    positions: Array,  # [BATCH_SIZE, SEQ_LEN]
-    head_dim: int,
-    max_wavelength: int = 10_000,
-    scale_factor: float = 1.0,
-) -> Array:
-    fraction = 2 * jnp.arange(0, head_dim // 2) / head_dim
-    timescale = max_wavelength**fraction
-    positions = positions[..., jnp.newaxis]
-    timescale = timescale[jnp.newaxis, jnp.newaxis, :]  # ty: ignore[non-subscriptable]
-
-    sinusoid_inp = positions / timescale
-    sinusoid_inp = sinusoid_inp[..., jnp.newaxis, :]
-    if scale_factor < 1.0:
-        raise ValueError(f"scale_factor must be >= 1.0, got {scale_factor}")
-    sinusoid_inp /= scale_factor
-
-    sin = jnp.sin(sinusoid_inp)
-    cos = jnp.cos(sinusoid_inp)
-
-    first_half, second_half = jnp.split(inputs, 2, axis=-1)
-    first_part = first_half * cos - second_half * sin
-    second_part = second_half * cos + first_half * sin
-    out = jnp.concatenate([first_part, second_part], axis=-1)
-    return out.astype(inputs.dtype)
-
-
 class MultiHeadAttention(Module):
     def __init__(
         self,
@@ -63,8 +35,6 @@ class MultiHeadAttention(Module):
         out_bias_init: Initializer | None = None,
         use_bias: bool = True,
         attention_fn: Callable[..., Array] = dot_product_attention,
-        max_wavelength: float = 10_000.0,
-        scale_factor: float = 1.0,
         rngs: rnglib.Rngs,
         keep_rngs: bool = True,
     ):
@@ -82,8 +52,6 @@ class MultiHeadAttention(Module):
         self.out_bias_init = out_bias_init
         self.use_bias = use_bias
         self.attention_fn = attention_fn
-        self.max_wavelength = max_wavelength
-        self.scale_factor = scale_factor
 
         if self.num_features % self.num_heads != 0:
             raise ValueError(
@@ -129,7 +97,6 @@ class MultiHeadAttention(Module):
         *,
         deterministic: bool | None = None,
         rngs: rnglib.Rngs | rnglib.RngStream | None = None,
-        positions: Array | None = None,
     ):
         if rngs is None:
             rngs = self.rngs
@@ -145,23 +112,6 @@ class MultiHeadAttention(Module):
         query = self.query(inputs)
         key = self.key(inputs)
         value = self.value(inputs)
-
-        if positions is not None:
-            # Apply RoPE to query and key
-            query = apply_rope(
-                query,
-                positions,
-                head_dim=self.head_dim,
-                max_wavelength=self.max_wavelength,
-                scale_factor=self.scale_factor,
-            )
-            key = apply_rope(
-                key,
-                positions,
-                head_dim=self.head_dim,
-                max_wavelength=self.max_wavelength,
-                scale_factor=self.scale_factor,
-            )
 
         if self.dropout_rate > 0.0:  # Require `deterministic` only if using dropout.
             deterministic = first_from(

@@ -1,7 +1,6 @@
 from jax import numpy as jnp
 from flax import nnx
 from arrgen import (
-    constant_array,
     normal_array,
 )
 from safetensors.numpy import save
@@ -12,17 +11,13 @@ from soma_probes.flax.v1.probe import Probe, ProbeConfig
 def test_v1_probe():
     seed = 42
 
-    batch_size = 2
-    seq_len = 1
-    num_heads = 1
+    batch_size = 1
+    seq_len = 4
+    num_heads = 2
     head_dim = 2
-    num_layers = 1
-    max_wavelength = 10_000
-    scale_factor = 1.0
+    num_layers = 2
     embedding_dim = head_dim * num_heads
     hidden_dim = embedding_dim * 2
-    vocab_size = 1
-    max_seq_len = 10
 
     serde = Serde(
         Probe(
@@ -32,9 +27,6 @@ def test_v1_probe():
                 pwff_hidden_dim=hidden_dim,
                 num_layers=num_layers,
                 num_heads=num_heads,
-                vocab_size=vocab_size,
-                max_wavelength=max_wavelength,
-                max_seq_len=max_seq_len,
             ),
             rngs=nnx.Rngs(0),
         )
@@ -130,31 +122,21 @@ def test_v1_probe():
         }
         generated_tensors.update(layer_tensors)
 
-    probe_tensors = {
-        "mask_token": normal_array(
-            seed + 100, [1, 1, embedding_dim], mean=0.0, std_dev=1.0
-        ),
-        "final_norm.gamma": normal_array(
-            seed + 101, [embedding_dim], mean=0.0, std_dev=1.0
-        ),
-        "final_norm.beta": normal_array(
-            seed + 102, [embedding_dim], mean=0.0, std_dev=1.0
-        ),
-        "predictor.weight": normal_array(
-            seed + 103, [embedding_dim, vocab_size], mean=0.0, std_dev=1.0
-        ),
-        "predictor.bias": normal_array(seed + 104, [vocab_size], mean=0.0, std_dev=1.0),
-    }
-
-    generated_tensors.update(probe_tensors)
-
     serialized_tensors = save(generated_tensors)
     module = serde.deserialize(serialized_tensors)
     module.eval()
-    inputs = jnp.array(constant_array([batch_size, seq_len, embedding_dim], 1.0))
-    positions = jnp.array([[1], [1]])
-    outputs = module(inputs, positions=positions)
+    inputs = jnp.array(
+        normal_array(seed + 100, [batch_size, seq_len, embedding_dim], 0.0, 1.0)
+    )
+    outputs = module(inputs)
     expected = jnp.array(
-        [[1.01745927], [1.01745927]],
+        [
+            [
+                [5.63600826, 4.15462685, 10.13569641, -3.19333267],
+                [3.72393632, 3.78364635, 9.71327305, -2.26928043],
+                [5.81568480, 5.00127506, 10.68091393, -2.86526680],
+                [1.72769535, 3.66892815, 9.59317303, -2.37384295],
+            ]
+        ],
     )
     assert jnp.allclose(outputs, expected), "Arrays are not close enough!"

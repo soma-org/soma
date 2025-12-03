@@ -7,25 +7,8 @@ from arrgen import (
 from safetensors.numpy import save
 from soma_probes.flax.serde import Serde
 from soma_probes.flax.v1.modules.attention import (
-    apply_rope,
     MultiHeadAttention,
 )
-
-
-def test_v1_rope_ones():
-    batch_size = 1
-    seq_len = 1
-    num_heads = 1
-    head_dim = 2
-    max_wavelength = 10_000
-    scale_factor = 1.0
-
-    inputs = jnp.array(constant_array([batch_size, seq_len, num_heads, head_dim], 1.0))
-    positions = jnp.array([[1]])
-    outputs = apply_rope(inputs, positions, head_dim, max_wavelength, scale_factor)
-
-    expected = jnp.array([[[[-0.30116868, 1.38177323]]]])
-    assert jnp.allclose(outputs, expected), "Arrays are not close enough!"
 
 
 class MhaModule(nnx.Module):
@@ -36,18 +19,16 @@ class MhaModule(nnx.Module):
             rngs=nnx.Rngs(0),
         )
 
-    def __call__(self, x, positions):
-        x = self.mha(inputs=x, positions=positions)
+    def __call__(self, x):
+        x = self.mha(inputs=x)
         return x
 
 
 def test_v1_attention():
     batch_size = 1
-    seq_len = 1
-    num_heads = 1
+    seq_len = 4
+    num_heads = 2
     head_dim = 2
-    max_wavelength = 10_000.0
-    scale_factor = 1.0
 
     seed = 42
     serde = Serde(MhaModule(num_heads, head_dim, rngs=nnx.Rngs(0)))
@@ -93,8 +74,18 @@ def test_v1_attention():
     module = serde.deserialize(serialized_tensors)
     module.eval()
 
-    inputs = jnp.array(constant_array([batch_size, seq_len, num_heads * head_dim], 1.0))
-    positions = jnp.array([[1]])
-    outputs = module(inputs, positions)
-    expected = jnp.array([[[-1.93152618, -0.17658120]]])
+    inputs = jnp.array(
+        normal_array(seed + 9, [batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
+    )
+    outputs = module(inputs)
+    expected = jnp.array(
+        [
+            [
+                [0.02807204, 2.13409519, 5.45623493, 13.48927689],
+                [3.20324492, 0.78216082, 0.03813785, 1.87561870],
+                [3.04302406, 0.51064676, -0.37436891, 0.42570090],
+                [3.08121729, 0.57106179, -0.28497183, 0.74396586],
+            ]
+        ],
+    )
     assert jnp.allclose(outputs, expected), "Arrays are not close enough!"

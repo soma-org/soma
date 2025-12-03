@@ -11,13 +11,11 @@ from soma_probes.flax.v1.modules.encoder import Encoder, EncoderConfig
 
 def test_v1_attention():
     seed = 42
-    batch_size = 2
-    seq_len = 1
-    num_heads = 1
+    batch_size = 1
+    seq_len = 4
+    num_heads = 2
     head_dim = 2
-    num_layers = 1
-    max_wavelength = 10_000
-    scale_factor = 1.0
+    num_layers = 2
     embedding_dim = head_dim * num_heads
     hidden_dim = embedding_dim * 2
     serde = Serde(
@@ -28,7 +26,6 @@ def test_v1_attention():
                 pwff_hidden_dim=hidden_dim,
                 num_layers=num_layers,
                 num_heads=num_heads,
-                max_wavelength=max_wavelength,
             ),
             rngs=nnx.Rngs(0),
         )
@@ -126,11 +123,19 @@ def test_v1_attention():
     serialized_tensors = save(generated_tensors)
     module = serde.deserialize(serialized_tensors)
     module.eval()
-    inputs = jnp.array(constant_array([batch_size, seq_len, embedding_dim], 1.0))
-    positions = jnp.array([[1]])
-    outputs = module(inputs, positions=positions)
+    inputs = jnp.array(
+        normal_array(seed + 100, [batch_size, seq_len, embedding_dim], 0.0, 1.0)
+    )
+    outputs = module(inputs)
     print(outputs)
     expected = jnp.array(
-        [[[0.6717827, 2.158453]], [[0.6717827, 2.158453]]],
+        [
+            [
+                [5.63600826, 4.15462685, 10.13569641, -3.19333267],
+                [3.72393632, 3.78364635, 9.71327305, -2.26928043],
+                [5.81568480, 5.00127506, 10.68091393, -2.86526680],
+                [1.72769535, 3.66892815, 9.59317303, -2.37384295],
+            ]
+        ],
     )
     assert jnp.allclose(outputs, expected), "Arrays are not close enough!"

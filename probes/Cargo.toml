@@ -5,19 +5,13 @@ version.workspace = true
 
 [dependencies]
 num-traits.workspace = true
-
-[dependencies.burn]
-workspace = true
-features = ["ndarray", "autodiff"]
+ndarray.workspace = true
+burn.workspace = true
+safetensors.workspace = true
+types.workspace = true
 
 [dev-dependencies]
 arrgen.workspace = true
-safetensors.workspace = true
-ndarray.workspace = true
-ndarray-safetensors.workspace = true
-burn-store.workspace = true
-burn-ndarray.workspace = true
-burn-wgpu.workspace = true
 
 [lints]
 workspace = true

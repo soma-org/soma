@@ -259,13 +259,7 @@ mockall = "0.13.1"
 quick_cache = "0.6.10"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = { git = "https://github.com/tracel-ai/burn.git", features = ["metal"] }
-burn-ndarray = { git = "https://github.com/tracel-ai/burn.git" }
-burn-wgpu = { git = "https://github.com/tracel-ai/burn.git" }
-burn-store = { git = "https://github.com/tracel-ai/burn.git", features = [
-  "safetensors",
-] }
-
+burn = { version = "0.19.1", features = ["ndarray", "store"] }
 http = "1"
 http-body = "1"
 http-body-util = "0.1"
@@ -309,7 +303,6 @@ tiny-bip39 = "2.0.0"
 slip10_ed25519 = "0.1.3"
 tabled = "0.20.0"
 json_to_table = "0.12.0"
-ndarray-safetensors = "0.3.0"
 serde_urlencoded = "0.7.1"
 object_store = { version = "0.11.2", features = [
   "aws",
@@ -318,7 +311,7 @@ object_store = { version = "0.11.2", features = [
   "http",
 ] }
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
-fixed = {version = "1.29.0", features = ["serde"]}
+fixed = { version = "1.29.0", features = ["serde"] }
 
 [patch.crates-io]
 tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98" }

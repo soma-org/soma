@@ -1,16 +1,16 @@
 use arrgen::{constant_array, normal_array, uniform_array};
+use burn::backend::NdArray;
 use burn::module::Param;
 use burn::nn::Initializer;
+use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
 use burn::{module::Module, prelude::Backend};
-use burn_ndarray::NdArrayTensor;
-use burn_store::{ModuleSnapshot, SafetensorsStore};
-use ndarray_safetensors::TensorViewWithDataBuffer;
+use probes::tensor::{ArrayWrapper, IntoTensorData};
 use safetensors::serialize;
 use std::collections::HashMap;
 
-type TestBackend = burn_ndarray::NdArray<f32>;
+type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;
 
 #[derive(Module, Debug)]
@@ -57,16 +57,16 @@ impl<B: Backend> ParamModule3D<B> {
 fn test_1d_param() {
     let seed = 42u64;
     let embedding_dim = 4;
-    let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
+    let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed, vec![embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed, &vec![embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = ParamModule1D::<TestBackend>::new(&device);
-    model.apply_from(&mut store).unwrap();
+    model.load_from(&mut store).unwrap();
     let output = model.forward();
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
         [0.06942791, 0.13293812, 0.26257637, -0.22530088],
@@ -82,16 +82,16 @@ fn test_1d_param() {
 fn test_3d_param() {
     let seed = 42u64;
     let embedding_dim = 4;
-    let mut tensors: HashMap<String, TensorViewWithDataBuffer> = HashMap::new();
+    let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        TensorViewWithDataBuffer::new(&normal_array(seed, vec![1, 1, embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed, &vec![1, 1, embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = ParamModule3D::<TestBackend>::new(&device);
-    model.apply_from(&mut store).unwrap();
+    model.load_from(&mut store).unwrap();
     let output = model.forward();
     let expected_output = Tensor::<TestBackend, 3>::from_floats(
         [[[0.06942791, 0.13293812, 0.26257637, -0.22530088]]],

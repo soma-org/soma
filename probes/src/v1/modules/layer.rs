@@ -1,7 +1,7 @@
 use burn::{
     module::Module,
     nn::{Dropout, DropoutConfig, LayerNorm, LayerNormConfig},
-    tensor::{Int, Tensor, backend::Backend},
+    tensor::{Tensor, backend::Backend},
 };
 
 use crate::v1::modules::attention::{MhaInput, MultiHeadAttention, MultiHeadAttentionConfig};
@@ -29,8 +29,6 @@ impl<B: Backend> Layer<B> {
                 .with_num_heads(config.num_heads)
                 .with_dropout_rate(config.dropout_rate)
                 .with_initializer(config.initializer.clone())
-                .with_max_wavelength(config.max_wavelength)
-                .with_scale_factor(config.scale_factor)
                 .init(device),
             norm_2: LayerNormConfig::new(config.embedding_dim).init(device),
             pwff: PositionWiseFeedForwardConfig::new()
@@ -42,14 +40,10 @@ impl<B: Backend> Layer<B> {
             dropout: DropoutConfig::new(config.dropout_rate).init(),
         }
     }
-    pub(crate) fn forward(
-        &self,
-        context: Tensor<B, 3>,
-        positions: Tensor<B, 2, Int>,
-    ) -> Tensor<B, 3> {
+    pub(crate) fn forward(&self, context: Tensor<B, 3>) -> Tensor<B, 3> {
         let x = context;
         let residual_path = self.norm_1.forward(x.clone());
-        let input_mha = MhaInput::new(residual_path, Some(positions));
+        let input_mha = MhaInput::new(residual_path);
         let residual_path = self.attention.forward(input_mha);
         let residual_path = self.dropout.forward(residual_path);
         let x = x + residual_path;
