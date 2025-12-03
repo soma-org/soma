@@ -23,13 +23,15 @@ use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
     load_checkpoint, store_checkpoint_locally,
 };
 use crate::checkpoints::CheckpointStore;
+use crate::encoder_client::EncoderClientService;
 use crate::execution_scheduler::{BarrierDependencyBuilder, ExecutionScheduler};
 use crate::global_state_hasher::GlobalStateHasher;
 use futures::StreamExt;
 use parking_lot::Mutex;
+use std::time::Duration;
 use std::{sync::Arc, time::Instant};
 use tap::{TapFallible, TapOptional};
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 use types::base::SequenceNumber;
 use types::checkpoints::{
     CheckpointContents, CheckpointSequenceNumber, GlobalStateHash, VerifiedCheckpoint,
@@ -39,10 +41,21 @@ use types::digests::{TransactionDigest, TransactionEffectsDigest};
 use types::effects::{
     ExecutionFailureStatus, ExecutionStatus, TransactionEffects, TransactionEffectsAPI as _,
 };
+use types::encoder_committee::EncoderCommittee;
+use types::entropy::SimpleVDF;
 use types::envelope::Message as _;
+use types::error::{SomaError, SomaResult};
+use types::finality::FinalityProof;
 use types::full_checkpoint_content::Checkpoint;
-use types::object::Version;
-use types::transaction::{TransactionKind, VerifiedExecutableTransaction, VerifiedTransaction};
+use types::metadata::DownloadMetadata;
+use types::object::{ObjectRef, Version};
+use types::shard::{ShardAuthToken, ShardEntropy};
+use types::shard_crypto::digest::Digest;
+use types::system_state::SystemStateTrait as _;
+use types::transaction::{
+    ExecutableTransaction, Transaction, TransactionKind, VerifiedExecutableTransaction,
+    VerifiedTransaction,
+};
 use utils::*;
 
 mod data_ingestion_handler;
@@ -133,6 +146,8 @@ pub struct CheckpointExecutor {
     config: CheckpointExecutorConfig,
     tps_estimator: Mutex<TPSEstimator>,
     subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
+    encoder_client: Option<Arc<EncoderClientService>>,
+    vdf: Arc<SimpleVDF>,
 }
 
 impl CheckpointExecutor {
@@ -144,9 +159,10 @@ impl CheckpointExecutor {
         backpressure_manager: Arc<BackpressureManager>,
         config: CheckpointExecutorConfig,
         subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
+        encoder_client: Option<Arc<EncoderClientService>>,
     ) -> Self {
         Self {
-            epoch_store,
+            epoch_store: epoch_store.clone(),
             state: state.clone(),
             checkpoint_store,
             object_cache_reader: state.get_object_cache_reader().clone(),
@@ -157,6 +173,10 @@ impl CheckpointExecutor {
             config,
             tps_estimator: Mutex::new(TPSEstimator::default()),
             subscription_service_checkpoint_sender,
+            encoder_client,
+            vdf: Arc::new(SimpleVDF::new(
+                epoch_store.protocol_config().vdf_iterations(),
+            )),
         }
     }
 
@@ -173,6 +193,7 @@ impl CheckpointExecutor {
             state_hasher,
             BackpressureManager::new_for_tests(),
             Default::default(),
+            None,
             None,
         )
     }
@@ -356,6 +377,13 @@ impl CheckpointExecutor {
             .expect("cannot fail");
 
         finish_stage!(pipeline_handle, FinalizeCheckpoint);
+
+        // Process encoder work for EmbedData transactions after finalization
+        // This runs asynchronously and doesn't block checkpoint progression
+        if self.encoder_client.is_some() {
+            self.process_encoder_work_for_checkpoint(&ckpt_state.data)
+                .await;
+        }
 
         if let Some(checkpoint_data) = ckpt_state.full_data.take() {
             self.commit_index_updates_and_enqueue_to_subscription_service(checkpoint_data)
@@ -879,5 +907,209 @@ impl CheckpointExecutor {
                 warn!("unable to send checkpoint to subscription service: {e}");
             }
         }
+    }
+
+    /// Process encoder work for all EmbedData transactions in the checkpoint.
+    /// Fetches transaction data from cache as needed.
+    #[instrument(level = "info", skip_all, fields(seq = ?ckpt_data.checkpoint.sequence_number))]
+    async fn process_encoder_work_for_checkpoint(&self, ckpt_data: &CheckpointExecutionData) {
+        let encoder_client = match &self.encoder_client {
+            Some(client) => client.clone(),
+            None => return,
+        };
+
+        // Get current encoder committee
+        let encoder_committee = match self.get_current_encoder_committee() {
+            Ok(committee) => committee,
+            Err(e) => {
+                warn!(
+                    "Failed to get encoder committee, skipping encoder work: {}",
+                    e
+                );
+                return;
+            }
+        };
+
+        // Update encoder client's committee
+        encoder_client.update_encoder_committee(&encoder_committee);
+
+        // Fetch transactions and effects from cache
+        let transactions = self
+            .transaction_cache_reader
+            .multi_get_transaction_blocks(&ckpt_data.tx_digests);
+
+        let effects = self
+            .transaction_cache_reader
+            .multi_get_effects(&ckpt_data.fx_digests);
+
+        // Process each transaction looking for EmbedData
+        for (i, (tx_opt, effects_opt)) in transactions.iter().zip(effects.iter()).enumerate() {
+            let Some(tx) = tx_opt else {
+                warn!(
+                    tx_digest = ?ckpt_data.tx_digests[i],
+                    "Transaction not found in cache for encoder work"
+                );
+                continue;
+            };
+
+            let Some(effects) = effects_opt else {
+                warn!(
+                    fx_digest = ?ckpt_data.fx_digests[i],
+                    "Effects not found in cache for encoder work"
+                );
+                continue;
+            };
+
+            let tx_kind = tx.transaction_data().kind();
+
+            if let TransactionKind::EmbedData {
+                download_metadata, ..
+            } = tx_kind
+            {
+                // Skip failed transactions
+                if !effects.status().is_ok() {
+                    debug!(
+                        tx_digest = ?tx.digest(),
+                        "Skipping failed EmbedData transaction for encoder work"
+                    );
+                    continue;
+                }
+
+                // Get the created shard input object reference
+                let created = effects.created();
+                let Some((shard_input_ref, _)) = created.first() else {
+                    warn!(
+                        tx_digest = ?tx.digest(),
+                        "EmbedData transaction has no created objects, skipping encoder work"
+                    );
+                    continue;
+                };
+
+                // Spawn task to handle encoder work
+                self.spawn_encoder_work_task(
+                    ckpt_data,
+                    tx.as_ref().clone().into_inner(),
+                    effects.clone(),
+                    download_metadata.clone(),
+                    *shard_input_ref,
+                    encoder_client.clone(),
+                    encoder_committee.clone(),
+                );
+            }
+        }
+    }
+
+    /// Spawn an async task to handle encoder work for a single EmbedData transaction
+    fn spawn_encoder_work_task(
+        &self,
+        ckpt_data: &CheckpointExecutionData,
+        transaction: Transaction,
+        effects: TransactionEffects,
+        download_metadata: DownloadMetadata,
+        shard_input_ref: ObjectRef,
+        encoder_client: Arc<EncoderClientService>,
+        encoder_committee: EncoderCommittee,
+    ) {
+        let tx_digest = *transaction.digest();
+        let checkpoint = ckpt_data.checkpoint.clone().into_inner();
+        let checkpoint_contents = ckpt_data.checkpoint_contents.clone();
+        let vdf = self.vdf.clone();
+
+        tokio::spawn(async move {
+            // Build finality proof
+            let finality_proof =
+                FinalityProof::new(transaction, effects, checkpoint, checkpoint_contents);
+
+            let checkpoint_digest = finality_proof.checkpoint_digest();
+
+            // Compute VDF entropy (CPU-intensive, run on blocking thread pool)
+            let vdf_clone = vdf.clone();
+            let checkpoint_digest_clone = checkpoint_digest.clone();
+
+            let vdf_result = tokio::task::spawn_blocking(move || {
+                vdf_clone.get_entropy(&checkpoint_digest_clone)
+            })
+            .await;
+
+            let (checkpoint_entropy, entropy_proof) = match vdf_result {
+                Ok(Ok(result)) => result,
+                Ok(Err(e)) => {
+                    error!(?tx_digest, error = ?e, "VDF computation failed");
+                    return;
+                }
+                Err(e) => {
+                    error!(?tx_digest, error = ?e, "VDF task panicked");
+                    return;
+                }
+            };
+
+            // Compute shard selection
+            let shard_entropy = ShardEntropy::new(
+                download_metadata.metadata().clone(),
+                checkpoint_entropy.clone(),
+            );
+            let shard_seed = match Digest::new(&shard_entropy) {
+                Ok(seed) => seed,
+                Err(e) => {
+                    error!(?tx_digest, error = ?e, "Failed to compute shard seed");
+                    return;
+                }
+            };
+
+            let shard = match encoder_committee.sample_shard(shard_seed) {
+                Ok(shard) => shard,
+                Err(e) => {
+                    error!(?tx_digest, error = ?e, "Failed to sample shard from encoder committee");
+                    return;
+                }
+            };
+
+            // Build shard auth token
+            let shard_auth_token = ShardAuthToken::new(
+                finality_proof,
+                checkpoint_entropy,
+                entropy_proof,
+                download_metadata.metadata().clone(),
+                shard_input_ref,
+            );
+
+            info!(
+                ?tx_digest,
+                shard_size = shard.size(),
+                checkpoint_seq = shard_auth_token.finality_proof.checkpoint_sequence_number(),
+                "Sending shard auth token to encoder shard"
+            );
+
+            // Send to shard members
+            match encoder_client
+                .send_to_shard(
+                    shard.encoders(),
+                    shard_auth_token,
+                    download_metadata,
+                    Duration::from_secs(30),
+                )
+                .await
+            {
+                Ok(()) => {
+                    debug!(
+                        ?tx_digest,
+                        "Successfully sent shard input to all encoder shard members"
+                    );
+                }
+                Err(e) => {
+                    error!(?tx_digest, error = ?e, "Failed to send to encoder shard members");
+                }
+            }
+        });
+    }
+
+    /// Get current encoder committee from system state
+    fn get_current_encoder_committee(&self) -> SomaResult<EncoderCommittee> {
+        let system_state = self
+            .object_cache_reader
+            .get_system_state_object()
+            .map_err(|e| SomaError::Storage(format!("Failed to get system state: {}", e)))?;
+
+        Ok(system_state.get_current_epoch_encoder_committee())
     }
 }

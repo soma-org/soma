@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use crate::checksum::Checksum;
 use crate::committee::Epoch;
 use crate::crypto::NetworkPublicKey;
+use crate::digests::CheckpointDigest;
 use crate::encoder_committee::CountUnit;
-use crate::entropy::{BlockEntropy, BlockEntropyProof};
+use crate::entropy::{CheckpointEntropy, CheckpointEntropyProof};
 use crate::error::{ShardError, ShardResult, SharedError};
 use crate::finality::FinalityProof;
 use crate::metadata::{DownloadMetadata, Metadata, MtlsDownloadMetadataAPI, ObjectPath};
@@ -69,15 +70,15 @@ impl Shard {
 /// Digest<MetadataCommitment> is included inside of a tx which is a one way fn whereas
 /// this entropy uses the actual values of the serialized type of MetadataCommitment to create the Digest.
 ///
-/// BlockEntropy is derived from VDF(Epoch, BlockRef, iterations)
+/// CheckpointEntropy is derived from VDF(CheckpointDigest, iterations)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ShardEntropy {
     metadata: Metadata,
-    entropy: BlockEntropy,
+    entropy: CheckpointEntropy,
 }
 
 impl ShardEntropy {
-    pub fn new(metadata: Metadata, entropy: BlockEntropy) -> Self {
+    pub fn new(metadata: Metadata, entropy: CheckpointEntropy) -> Self {
         Self { metadata, entropy }
     }
 }
@@ -85,8 +86,9 @@ impl ShardEntropy {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShardAuthToken {
     pub finality_proof: FinalityProof,
-    pub block_entropy: BlockEntropy,
-    pub block_entropy_proof: BlockEntropyProof,
+    /// VDF output computed on checkpoint_digest
+    pub checkpoint_entropy: CheckpointEntropy,
+    pub checkpoint_entropy_proof: CheckpointEntropyProof,
     pub metadata: Metadata,
     pub shard_input_ref: ObjectRef,
 }
@@ -94,15 +96,15 @@ pub struct ShardAuthToken {
 impl ShardAuthToken {
     pub fn new(
         finality_proof: FinalityProof,
-        block_entropy: BlockEntropy,
-        block_entropy_proof: BlockEntropyProof,
+        checkpoint_entropy: CheckpointEntropy,
+        checkpoint_entropy_proof: CheckpointEntropyProof,
         metadata: Metadata,
         shard_input_ref: ObjectRef,
     ) -> Self {
         Self {
             finality_proof,
-            block_entropy,
-            block_entropy_proof,
+            checkpoint_entropy,
+            checkpoint_entropy_proof,
             metadata,
             shard_input_ref,
         }
@@ -112,12 +114,12 @@ impl ShardAuthToken {
         self.finality_proof.clone()
     }
 
-    pub fn block_entropy(&self) -> BlockEntropy {
-        self.block_entropy.clone()
+    pub fn checkpoint_entropy(&self) -> CheckpointEntropy {
+        self.checkpoint_entropy.clone()
     }
 
-    pub fn block_entropy_proof(&self) -> BlockEntropyProof {
-        self.block_entropy_proof.clone()
+    pub fn checkpoint_entropy_proof(&self) -> CheckpointEntropyProof {
+        self.checkpoint_entropy_proof.clone()
     }
 
     pub fn metadata(&self) -> Metadata {
@@ -128,9 +130,12 @@ impl ShardAuthToken {
         self.shard_input_ref.clone()
     }
 
+    pub fn checkpoint_digest(&self) -> &CheckpointDigest {
+        self.finality_proof.checkpoint_digest()
+    }
+
     pub fn epoch(&self) -> u64 {
-        // TODO: change this to use checkpoints instead
-        self.finality_proof.consensus_finality.epoch()
+        self.finality_proof.epoch()
     }
 }
 

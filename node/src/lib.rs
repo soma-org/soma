@@ -502,25 +502,22 @@ impl SomaNode {
         // setup shutdown channel
         let (shutdown_channel, _) = broadcast::channel::<Option<RunWithRange>>(1);
 
-        // TODO: see if we can replace this with an rpc subscription on the encoder
         let encoder_client_service = if is_full_node {
             // Only fullnodes send to encoders, not validators
-            // Some(Arc::new(EncoderClientService::new(
-            //     config.protocol_key_pair().copy(),
-            //     config.network_key_pair(),
-            // )))
-            None
+            Some(Arc::new(EncoderClientService::new(
+                config.protocol_key_pair().copy(),
+                config.network_key_pair(),
+            )))
         } else {
             None
         };
 
         let encoder_validator_server_handle = if is_full_node {
-            // info!("Starting encoder validator service for fullnode");
-            // Some(
-            //     Self::start_grpc_encoder_service(&config, state.clone(), commit_store.clone())
-            //         .await?,
-            // )
-            None
+            info!("Starting encoder validator service for fullnode");
+            Some(
+                Self::start_grpc_encoder_service(&config, state.clone(), checkpoint_store.clone())
+                    .await?,
+            )
         } else {
             None
         };
@@ -537,7 +534,6 @@ impl SomaNode {
             end_of_epoch_channel,
             backpressure_manager,
             shutdown_channel_tx: shutdown_channel,
-
             auth_agg,
             subscription_service_checkpoint_sender,
 
@@ -1016,7 +1012,7 @@ impl SomaNode {
 
         let tls_config = soma_tls::create_rustls_server_config(
             config.network_key_pair().clone().private_key().into_inner(),
-            TLS_SERVER_NAME.to_string(),
+            "soma-encoder-sync".to_string(),
         );
 
         let server = server_builder
@@ -1051,6 +1047,7 @@ impl SomaNode {
                 self.backpressure_manager.clone(),
                 self.config.checkpoint_executor_config.clone(),
                 self.subscription_service_checkpoint_sender.clone(),
+                self.encoder_client_service.clone(),
             );
 
             let run_with_range = self.config.run_with_range;
@@ -1083,6 +1080,12 @@ impl SomaNode {
                         err
                     );
                 }
+            }
+
+            if let Some(encoder_client) = &self.encoder_client_service {
+                let encoder_committee = latest_system_state.get_current_epoch_encoder_committee();
+                info!("Updating encoder committee after reconfiguration");
+                encoder_client.update_encoder_committee(&encoder_committee);
             }
 
             let new_epoch_start_state = latest_system_state.into_epoch_start_state();

@@ -10,7 +10,7 @@ use types::{
     effects::ExecutionFailureStatus,
     encoder_committee::EncoderCommittee,
     error::{ConsensusError, ExecutionResult, SomaError},
-    metadata::{Metadata, MetadataAPI},
+    metadata::{DownloadMetadata, Metadata, MetadataAPI},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
     report::Report,
     shard::ShardAuthToken,
@@ -46,7 +46,7 @@ impl ShardExecutor {
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
-        metadata: Metadata,
+        download_metadata: DownloadMetadata,
         coin_ref: ObjectRef,
         tx_digest: TransactionDigest,
         value_fee: u64,
@@ -78,7 +78,7 @@ impl ShardExecutor {
         let current_epoch = state.epoch;
 
         // Calculate total price for the data size
-        let embed_price = byte_price.saturating_mul(metadata.size() as u64);
+        let embed_price = byte_price.saturating_mul(download_metadata.metadata().size() as u64);
 
         if embed_price == 0 {
             return Err(ExecutionFailureStatus::InvalidArguments {
@@ -130,7 +130,7 @@ impl ShardExecutor {
         // Create ShardInput object as a shared object
         let shard_input = Object::new_shard_input(
             ObjectID::derive_id(tx_digest, store.next_creation_num()),
-            metadata,
+            download_metadata,
             embed_price,
             expiration_epoch,
             signer,
@@ -408,7 +408,7 @@ impl ShardExecutor {
         })?;
 
         // 2.3 Verify the metadata matches
-        if shard_input.metadata != shard_auth_token.metadata() {
+        if *shard_input.download_metadata.metadata() != shard_auth_token.metadata() {
             return Err(ExecutionFailureStatus::InvalidArguments {
                 reason: "Metadata mismatch".to_string(),
             });
@@ -427,7 +427,7 @@ impl ShardExecutor {
         state.add_shard_result(
             shard_digest,
             ShardResult {
-                metadata: shard_input.metadata,
+                download_metadata: shard_input.download_metadata,
                 amount: shard_input.amount,
                 report: signed_report.into_inner(),
             },
@@ -460,9 +460,17 @@ impl TransactionExecutor for ShardExecutor {
         value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::EmbedData { metadata, coin_ref } => {
-                self.execute_embed_data(store, signer, metadata, coin_ref, tx_digest, value_fee)
-            }
+            TransactionKind::EmbedData {
+                download_metadata,
+                coin_ref,
+            } => self.execute_embed_data(
+                store,
+                signer,
+                download_metadata,
+                coin_ref,
+                tx_digest,
+                value_fee,
+            ),
             TransactionKind::ClaimEscrow { shard_input_ref } => {
                 self.execute_claim_escrow(store, signer, shard_input_ref, tx_digest)
             }
@@ -491,7 +499,9 @@ impl FeeCalculator for ShardExecutor {
     fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
         match kind {
             TransactionKind::EmbedData {
-                metadata, coin_ref, ..
+                download_metadata,
+                coin_ref,
+                ..
             } => {
                 // Get the actual embedding cost
                 if let Some(state_obj) = store.read_object(&SYSTEM_STATE_OBJECT_ID) {
@@ -499,7 +509,8 @@ impl FeeCalculator for ShardExecutor {
                         bcs::from_bytes::<SystemState>(state_obj.as_inner().data.contents())
                     {
                         let byte_price = state.encoders.reference_byte_price;
-                        let embed_cost = byte_price.saturating_mul(metadata.size() as u64);
+                        let embed_cost =
+                            byte_price.saturating_mul(download_metadata.metadata().size() as u64);
 
                         // Fee is 0.05% (5 basis points) of the embedding cost
                         let fee = (embed_cost * 5) / 10000;

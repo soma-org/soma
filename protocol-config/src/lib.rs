@@ -195,6 +195,9 @@ pub struct ProtocolConfig {
     /// can happen automatically. 10000bps would indicate that complete unanimity is required (all
     /// 3f+1 must vote), while 0bps would indicate that 2f+1 is sufficient.
     buffer_stake_for_protocol_upgrade_bps: Option<u64>,
+
+    /// Number of iterations to run vdf for shard randomness.
+    vdf_iterations: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -266,6 +269,8 @@ impl ProtocolConfig {
             max_checkpoint_size_bytes: Some(30 * 1024 * 1024),
 
             buffer_stake_for_protocol_upgrade_bps: Some(5000),
+
+            vdf_iterations: Some(1000),
             // When adding a new constant, set it to None in the earliest version, like this:
             // new_constant: None,
 
@@ -306,6 +311,8 @@ impl ProtocolConfig {
         if cfg!(msim) {
             // Trigger GC more often.
             cfg.consensus_gc_depth = Some(5);
+
+            cfg.vdf_iterations = Some(1);
         }
 
         cfg

@@ -2,11 +2,13 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
+use object_store::memory::InMemory;
 use rand::rngs::OsRng;
 use rpc::api::client::TransactionExecutionResponse;
 use sdk::{
@@ -36,6 +38,7 @@ use types::{
     effects::TransactionEffects,
     error::SomaResult,
     genesis::Genesis,
+    metadata::{DownloadMetadata, Metadata},
     object::ObjectRef,
     peer_id::PeerId,
     shard::{Shard, ShardAuthToken},
@@ -43,6 +46,8 @@ use types::{
     system_state::{SystemState, SystemStateTrait},
     transaction::{Transaction, TransactionData},
 };
+
+use crate::test_object_server::TestObjectServer;
 
 #[cfg(msim)]
 #[path = "./container-sim.rs"]
@@ -54,6 +59,7 @@ mod container;
 
 mod swarm;
 mod swarm_node;
+mod test_object_server;
 
 const NUM_VALIDATORS: usize = 4;
 
@@ -90,6 +96,7 @@ pub struct TestCluster {
     pub swarm: Swarm,
     pub wallet: WalletContext,
     pub fullnode_handle: FullNodeHandle,
+    pub object_server: TestObjectServer,
 }
 
 impl TestCluster {
@@ -455,6 +462,29 @@ impl TestCluster {
 
         config
     }
+
+    pub fn get_encoder_committee_size(&self) -> usize {
+        self.fullnode_handle.soma_node.with(|node| {
+            let system_state = node
+                .state()
+                .get_system_state_object_for_testing()
+                .expect("Should be able to get SystemState");
+            system_state
+                .get_current_epoch_encoder_committee()
+                .members()
+                .len()
+        })
+    }
+
+    /// Upload test data to the object server and return metadata for transaction
+    pub async fn upload_test_data(&self, data: &[u8]) -> (Metadata, DownloadMetadata) {
+        self.object_server.upload_data(data).await
+    }
+
+    /// Get the object store for direct access
+    pub fn object_store(&self) -> Arc<InMemory> {
+        self.object_server.store.clone()
+    }
 }
 
 pub struct TestClusterBuilder {
@@ -524,6 +554,8 @@ impl TestClusterBuilder {
     }
 
     pub async fn build(mut self) -> TestCluster {
+        // Start the test object server first
+        let object_server = TestObjectServer::new().await;
         let swarm = self.start_swarm().await.unwrap();
         let working_dir = swarm.dir();
 
@@ -574,6 +606,7 @@ impl TestClusterBuilder {
             wallet,
             fullnode_handle,
             swarm,
+            object_server,
         }
     }
 

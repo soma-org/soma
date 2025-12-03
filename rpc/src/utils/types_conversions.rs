@@ -366,8 +366,11 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             },
 
             // Shard operations
-            TK::EmbedData { metadata, coin_ref } => TransactionKind::EmbedData {
-                metadata: metadata.into(),
+            TK::EmbedData {
+                download_metadata,
+                coin_ref,
+            } => TransactionKind::EmbedData {
+                download_metadata: download_metadata.into(),
                 coin_ref: coin_ref.into(),
             },
 
@@ -563,8 +566,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             },
 
             // Shard operations
-            TransactionKind::EmbedData { metadata, coin_ref } => TK::EmbedData {
-                metadata: metadata.try_into()?,
+            TransactionKind::EmbedData {
+                download_metadata,
+                coin_ref,
+            } => TK::EmbedData {
+                download_metadata: download_metadata.try_into()?,
                 coin_ref: coin_ref.into(),
             },
 
@@ -1443,6 +1449,72 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
                     types::metadata::MetadataV1::new(checksum, size),
                 ))
             }
+        }
+    }
+}
+
+impl From<types::metadata::DownloadMetadata> for DownloadMetadata {
+    fn from(value: types::metadata::DownloadMetadata) -> Self {
+        use types::metadata::{DefaultDownloadMetadataAPI, MetadataAPI, MtlsDownloadMetadataAPI};
+
+        match value {
+            types::metadata::DownloadMetadata::Default(dm) => {
+                DownloadMetadata::Default(DefaultDownloadMetadata::V1(DefaultDownloadMetadataV1 {
+                    url: dm.url().to_string(),
+                    metadata: dm.metadata().clone().into(),
+                }))
+            }
+            types::metadata::DownloadMetadata::Mtls(dm) => {
+                DownloadMetadata::Mtls(MtlsDownloadMetadata::V1(MtlsDownloadMetadataV1 {
+                    peer: dm.peer().to_bytes().to_vec(),
+                    url: dm.url().to_string(),
+                    metadata: dm.metadata().clone().into(),
+                }))
+            }
+        }
+    }
+}
+
+impl TryFrom<DownloadMetadata> for types::metadata::DownloadMetadata {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: DownloadMetadata) -> Result<Self, Self::Error> {
+        match value {
+            DownloadMetadata::Default(dm) => match dm {
+                DefaultDownloadMetadata::V1(v1) => {
+                    let url = v1
+                        .url
+                        .parse()
+                        .map_err(|e| SdkTypeConversionError(format!("Invalid URL: {}", e)))?;
+                    let metadata = v1.metadata.try_into()?;
+                    Ok(types::metadata::DownloadMetadata::Default(
+                        types::metadata::DefaultDownloadMetadata::V1(
+                            types::metadata::DefaultDownloadMetadataV1::new(url, metadata),
+                        ),
+                    ))
+                }
+            },
+            DownloadMetadata::Mtls(dm) => match dm {
+                MtlsDownloadMetadata::V1(v1) => {
+                    // Parse the network key
+                    let network_key = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(&v1.peer)
+                        .map_err(|e| {
+                        SdkTypeConversionError(format!("Invalid peer key: {}", e))
+                    })?;
+                    let peer = types::crypto::NetworkPublicKey::new(network_key);
+
+                    let url = v1
+                        .url
+                        .parse()
+                        .map_err(|e| SdkTypeConversionError(format!("Invalid URL: {}", e)))?;
+                    let metadata = v1.metadata.try_into()?;
+                    Ok(types::metadata::DownloadMetadata::Mtls(
+                        types::metadata::MtlsDownloadMetadata::V1(
+                            types::metadata::MtlsDownloadMetadataV1::new(peer, url, metadata),
+                        ),
+                    ))
+                }
+            },
         }
     }
 }

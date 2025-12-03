@@ -2998,9 +2998,8 @@ pub struct Encoder {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ShardResult {
-    /// Changed from digest + data_size_bytes
     #[prost(message, optional, tag = "1")]
-    pub metadata: ::core::option::Option<Metadata>,
+    pub download_metadata: ::core::option::Option<DownloadMetadata>,
     #[prost(uint64, optional, tag = "2")]
     pub amount: ::core::option::Option<u64>,
     #[prost(bytes = "bytes", optional, tag = "3")]
@@ -3292,9 +3291,75 @@ pub struct MetadataV1 {
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DefaultDownloadMetadataV1 {
+    #[prost(string, optional, tag = "1")]
+    pub url: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub metadata: ::core::option::Option<Metadata>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DefaultDownloadMetadata {
+    #[prost(oneof = "default_download_metadata::Version", tags = "1")]
+    pub version: ::core::option::Option<default_download_metadata::Version>,
+}
+/// Nested message and enum types in `DefaultDownloadMetadata`.
+pub mod default_download_metadata {
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Version {
+        #[prost(message, tag = "1")]
+        V1(super::DefaultDownloadMetadataV1),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MtlsDownloadMetadataV1 {
+    /// NetworkPublicKey bytes
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub peer: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(string, optional, tag = "2")]
+    pub url: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "3")]
+    pub metadata: ::core::option::Option<Metadata>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MtlsDownloadMetadata {
+    #[prost(oneof = "mtls_download_metadata::Version", tags = "1")]
+    pub version: ::core::option::Option<mtls_download_metadata::Version>,
+}
+/// Nested message and enum types in `MtlsDownloadMetadata`.
+pub mod mtls_download_metadata {
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Version {
+        #[prost(message, tag = "1")]
+        V1(super::MtlsDownloadMetadataV1),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DownloadMetadata {
+    #[prost(oneof = "download_metadata::Kind", tags = "1, 2")]
+    pub kind: ::core::option::Option<download_metadata::Kind>,
+}
+/// Nested message and enum types in `DownloadMetadata`.
+pub mod download_metadata {
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Kind {
+        #[prost(message, tag = "1")]
+        Default(super::DefaultDownloadMetadata),
+        #[prost(message, tag = "2")]
+        Mtls(super::MtlsDownloadMetadata),
+    }
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EmbedData {
     #[prost(message, optional, tag = "1")]
-    pub metadata: ::core::option::Option<Metadata>,
+    pub download_metadata: ::core::option::Option<DownloadMetadata>,
     #[prost(message, optional, tag = "2")]
     pub coin_ref: ::core::option::Option<ObjectReference>,
 }

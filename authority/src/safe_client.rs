@@ -10,7 +10,6 @@ use types::checkpoints::{
     CheckpointSummaryResponse,
 };
 use types::crypto::AuthoritySignInfoTrait;
-use types::finality::SignedConsensusFinality;
 use types::intent::Intent;
 use types::messages_grpc::{
     ExecutedData, ObjectInfoRequest, ObjectInfoResponse, SubmitTxRequest, SubmitTxResponse,

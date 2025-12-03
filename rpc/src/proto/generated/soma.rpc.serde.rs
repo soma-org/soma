@@ -3073,6 +3073,337 @@ impl<'de> serde::Deserialize<'de> for ConsensusCommitPrologue {
         deserializer.deserialize_struct("soma.rpc.ConsensusCommitPrologue", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for DefaultDownloadMetadata {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.version.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.DefaultDownloadMetadata", len)?;
+        if let Some(v) = self.version.as_ref() {
+            match v {
+                default_download_metadata::Version::V1(v) => {
+                    struct_ser.serialize_field("v1", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for DefaultDownloadMetadata {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "v1",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            V1,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "v1" => Ok(GeneratedField::V1),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = DefaultDownloadMetadata;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.DefaultDownloadMetadata")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<DefaultDownloadMetadata, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut version__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::V1 => {
+                            if version__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("v1"));
+                            }
+                            version__ = map_.next_value::<::std::option::Option<_>>()?.map(default_download_metadata::Version::V1)
+;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(DefaultDownloadMetadata {
+                    version: version__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.DefaultDownloadMetadata", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for DefaultDownloadMetadataV1 {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.url.is_some() {
+            len += 1;
+        }
+        if self.metadata.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.DefaultDownloadMetadataV1", len)?;
+        if let Some(v) = self.url.as_ref() {
+            struct_ser.serialize_field("url", v)?;
+        }
+        if let Some(v) = self.metadata.as_ref() {
+            struct_ser.serialize_field("metadata", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for DefaultDownloadMetadataV1 {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "url",
+            "metadata",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Url,
+            Metadata,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "url" => Ok(GeneratedField::Url),
+                            "metadata" => Ok(GeneratedField::Metadata),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = DefaultDownloadMetadataV1;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.DefaultDownloadMetadataV1")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<DefaultDownloadMetadataV1, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut url__ = None;
+                let mut metadata__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Url => {
+                            if url__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("url"));
+                            }
+                            url__ = map_.next_value()?;
+                        }
+                        GeneratedField::Metadata => {
+                            if metadata__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("metadata"));
+                            }
+                            metadata__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(DefaultDownloadMetadataV1 {
+                    url: url__,
+                    metadata: metadata__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.DefaultDownloadMetadataV1", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for DownloadMetadata {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.kind.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.DownloadMetadata", len)?;
+        if let Some(v) = self.kind.as_ref() {
+            match v {
+                download_metadata::Kind::Default(v) => {
+                    struct_ser.serialize_field("default", v)?;
+                }
+                download_metadata::Kind::Mtls(v) => {
+                    struct_ser.serialize_field("mtls", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for DownloadMetadata {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "default",
+            "mtls",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Default,
+            Mtls,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "default" => Ok(GeneratedField::Default),
+                            "mtls" => Ok(GeneratedField::Mtls),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = DownloadMetadata;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.DownloadMetadata")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<DownloadMetadata, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut kind__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Default => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("default"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(download_metadata::Kind::Default)
+;
+                        }
+                        GeneratedField::Mtls => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("mtls"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(download_metadata::Kind::Mtls)
+;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(DownloadMetadata {
+                    kind: kind__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.DownloadMetadata", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for EmbedData {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -3081,15 +3412,15 @@ impl serde::Serialize for EmbedData {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.metadata.is_some() {
+        if self.download_metadata.is_some() {
             len += 1;
         }
         if self.coin_ref.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.EmbedData", len)?;
-        if let Some(v) = self.metadata.as_ref() {
-            struct_ser.serialize_field("metadata", v)?;
+        if let Some(v) = self.download_metadata.as_ref() {
+            struct_ser.serialize_field("downloadMetadata", v)?;
         }
         if let Some(v) = self.coin_ref.as_ref() {
             struct_ser.serialize_field("coinRef", v)?;
@@ -3104,14 +3435,15 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "metadata",
+            "download_metadata",
+            "downloadMetadata",
             "coin_ref",
             "coinRef",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Metadata,
+            DownloadMetadata,
             CoinRef,
             __SkipField__,
         }
@@ -3135,7 +3467,7 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
                         E: serde::de::Error,
                     {
                         match value {
-                            "metadata" => Ok(GeneratedField::Metadata),
+                            "downloadMetadata" | "download_metadata" => Ok(GeneratedField::DownloadMetadata),
                             "coinRef" | "coin_ref" => Ok(GeneratedField::CoinRef),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -3158,15 +3490,15 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut metadata__ = None;
+                let mut download_metadata__ = None;
                 let mut coin_ref__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Metadata => {
-                            if metadata__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("metadata"));
+                        GeneratedField::DownloadMetadata => {
+                            if download_metadata__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("downloadMetadata"));
                             }
-                            metadata__ = map_.next_value()?;
+                            download_metadata__ = map_.next_value()?;
                         }
                         GeneratedField::CoinRef => {
                             if coin_ref__.is_some() {
@@ -3180,7 +3512,7 @@ impl<'de> serde::Deserialize<'de> for EmbedData {
                     }
                 }
                 Ok(EmbedData {
-                    metadata: metadata__,
+                    download_metadata: download_metadata__,
                     coin_ref: coin_ref__,
                 })
             }
@@ -7377,6 +7709,243 @@ impl<'de> serde::Deserialize<'de> for MetadataV1 {
         deserializer.deserialize_struct("soma.rpc.MetadataV1", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for MtlsDownloadMetadata {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.version.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MtlsDownloadMetadata", len)?;
+        if let Some(v) = self.version.as_ref() {
+            match v {
+                mtls_download_metadata::Version::V1(v) => {
+                    struct_ser.serialize_field("v1", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MtlsDownloadMetadata {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "v1",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            V1,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "v1" => Ok(GeneratedField::V1),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MtlsDownloadMetadata;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MtlsDownloadMetadata")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MtlsDownloadMetadata, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut version__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::V1 => {
+                            if version__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("v1"));
+                            }
+                            version__ = map_.next_value::<::std::option::Option<_>>()?.map(mtls_download_metadata::Version::V1)
+;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MtlsDownloadMetadata {
+                    version: version__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MtlsDownloadMetadata", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for MtlsDownloadMetadataV1 {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.peer.is_some() {
+            len += 1;
+        }
+        if self.url.is_some() {
+            len += 1;
+        }
+        if self.metadata.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MtlsDownloadMetadataV1", len)?;
+        if let Some(v) = self.peer.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("peer", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.url.as_ref() {
+            struct_ser.serialize_field("url", v)?;
+        }
+        if let Some(v) = self.metadata.as_ref() {
+            struct_ser.serialize_field("metadata", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MtlsDownloadMetadataV1 {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "peer",
+            "url",
+            "metadata",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Peer,
+            Url,
+            Metadata,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "peer" => Ok(GeneratedField::Peer),
+                            "url" => Ok(GeneratedField::Url),
+                            "metadata" => Ok(GeneratedField::Metadata),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MtlsDownloadMetadataV1;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MtlsDownloadMetadataV1")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MtlsDownloadMetadataV1, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut peer__ = None;
+                let mut url__ = None;
+                let mut metadata__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Peer => {
+                            if peer__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("peer"));
+                            }
+                            peer__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Url => {
+                            if url__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("url"));
+                            }
+                            url__ = map_.next_value()?;
+                        }
+                        GeneratedField::Metadata => {
+                            if metadata__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("metadata"));
+                            }
+                            metadata__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MtlsDownloadMetadataV1 {
+                    peer: peer__,
+                    url: url__,
+                    metadata: metadata__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MtlsDownloadMetadataV1", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for Object {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -9699,7 +10268,7 @@ impl serde::Serialize for ShardResult {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.metadata.is_some() {
+        if self.download_metadata.is_some() {
             len += 1;
         }
         if self.amount.is_some() {
@@ -9709,8 +10278,8 @@ impl serde::Serialize for ShardResult {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.ShardResult", len)?;
-        if let Some(v) = self.metadata.as_ref() {
-            struct_ser.serialize_field("metadata", v)?;
+        if let Some(v) = self.download_metadata.as_ref() {
+            struct_ser.serialize_field("downloadMetadata", v)?;
         }
         if let Some(v) = self.amount.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -9732,14 +10301,15 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "metadata",
+            "download_metadata",
+            "downloadMetadata",
             "amount",
             "report",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Metadata,
+            DownloadMetadata,
             Amount,
             Report,
             __SkipField__,
@@ -9764,7 +10334,7 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
                         E: serde::de::Error,
                     {
                         match value {
-                            "metadata" => Ok(GeneratedField::Metadata),
+                            "downloadMetadata" | "download_metadata" => Ok(GeneratedField::DownloadMetadata),
                             "amount" => Ok(GeneratedField::Amount),
                             "report" => Ok(GeneratedField::Report),
                             _ => Ok(GeneratedField::__SkipField__),
@@ -9788,16 +10358,16 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut metadata__ = None;
+                let mut download_metadata__ = None;
                 let mut amount__ = None;
                 let mut report__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Metadata => {
-                            if metadata__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("metadata"));
+                        GeneratedField::DownloadMetadata => {
+                            if download_metadata__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("downloadMetadata"));
                             }
-                            metadata__ = map_.next_value()?;
+                            download_metadata__ = map_.next_value()?;
                         }
                         GeneratedField::Amount => {
                             if amount__.is_some() {
@@ -9821,7 +10391,7 @@ impl<'de> serde::Deserialize<'de> for ShardResult {
                     }
                 }
                 Ok(ShardResult {
-                    metadata: metadata__,
+                    download_metadata: download_metadata__,
                     amount: amount__,
                     report: report__,
                 })

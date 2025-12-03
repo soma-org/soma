@@ -7,7 +7,7 @@ use crate::{
     base::FullObjectID,
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
     digests::{AdditionalConsensusStateDigest, SenderSignedDataDigest},
-    metadata::Metadata,
+    metadata::{DownloadMetadata, Metadata},
     shard::Shard,
     shard_crypto::{
         digest::Digest,
@@ -133,7 +133,7 @@ pub enum TransactionKind {
 
     // Shard txs
     EmbedData {
-        metadata: Metadata,
+        download_metadata: DownloadMetadata,
         coin_ref: ObjectRef,
     },
     ClaimEscrow {

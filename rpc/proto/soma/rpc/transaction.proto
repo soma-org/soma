@@ -194,9 +194,39 @@ message MetadataV1 {
   optional uint64 size = 2;      // Size in bytes
 }
 
+message DefaultDownloadMetadataV1 {
+  optional string url = 1;
+  optional Metadata metadata = 2;
+}
+
+message DefaultDownloadMetadata {
+  oneof version {
+    DefaultDownloadMetadataV1 v1 = 1;
+  }
+}
+
+message MtlsDownloadMetadataV1 {
+  optional bytes peer = 1;  // NetworkPublicKey bytes
+  optional string url = 2;
+  optional Metadata metadata = 3;
+}
+
+message MtlsDownloadMetadata {
+  oneof version {
+    MtlsDownloadMetadataV1 v1 = 1;
+  }
+}
+
+message DownloadMetadata {
+  oneof kind {
+    DefaultDownloadMetadata default = 1;
+    MtlsDownloadMetadata mtls = 2;
+  }
+}
+
 
 message EmbedData {
-  optional Metadata metadata = 1;
+  optional DownloadMetadata download_metadata = 1;
   optional ObjectReference coin_ref = 2;
 }
 

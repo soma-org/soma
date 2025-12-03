@@ -7,7 +7,6 @@ use crate::{
     digests::TransactionDigest,
     effects::{SignedTransactionEffects, VerifiedSignedTransactionEffects},
     error::SomaError,
-    finality::SignedConsensusFinality,
     object::{Object, ObjectID},
     transaction::{CertifiedTransaction, SenderSignedData, Transaction},
 };

@@ -44,6 +44,35 @@ pub enum Metadata {
     V1(MetadataV1),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct DefaultDownloadMetadataV1 {
+    pub url: String,
+    pub metadata: Metadata,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub enum DefaultDownloadMetadata {
+    V1(DefaultDownloadMetadataV1),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct MtlsDownloadMetadataV1 {
+    pub peer: Vec<u8>, // NetworkPublicKey bytes
+    pub url: String,
+    pub metadata: Metadata,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub enum MtlsDownloadMetadata {
+    V1(MtlsDownloadMetadataV1),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub enum DownloadMetadata {
+    Default(DefaultDownloadMetadata),
+    Mtls(MtlsDownloadMetadata),
+}
+
 /// Transaction type
 ///
 /// # BCS
@@ -131,7 +160,7 @@ pub enum TransactionKind {
 
     // Shard operations
     EmbedData {
-        metadata: Metadata,
+        download_metadata: DownloadMetadata,
         coin_ref: ObjectReference,
     },
     ClaimEscrow {

@@ -465,8 +465,11 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {
                 staked_soma: Some(object_ref_to_proto(staked_soma)),
             }),
-            K::EmbedData { metadata, coin_ref } => Kind::EmbedData(EmbedData {
-                metadata: Some(metadata.into()),
+            K::EmbedData {
+                download_metadata,
+                coin_ref,
+            } => Kind::EmbedData(EmbedData {
+                download_metadata: Some(download_metadata.into()),
                 coin_ref: Some(object_ref_to_proto(coin_ref)),
             }),
             K::ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(ClaimEscrow {
@@ -1412,8 +1415,8 @@ impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
 
     fn try_from(proto_shard: ShardResult) -> Result<Self, Self::Error> {
         // Convert proto Metadata to domain Metadata
-        let metadata = proto_shard
-            .metadata
+        let download_metadata = proto_shard
+            .download_metadata
             .as_ref()
             .ok_or("Missing metadata")?
             .try_into()
@@ -1426,7 +1429,7 @@ impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
             .map_err(|e| format!("Failed to deserialize report: {}", e))?;
 
         Ok(types::system_state::shard::ShardResult {
-            metadata,
+            download_metadata,
             amount: proto_shard.amount.ok_or("Missing amount")?,
             report,
         })
@@ -1815,14 +1818,14 @@ impl TryFrom<types::system_state::shard::ShardResult> for ShardResult {
         use bytes::Bytes;
 
         // Convert domain Metadata to proto Metadata
-        let metadata: crate::proto::soma::Metadata = domain_shard.metadata.into();
+        let download_metadata: DownloadMetadata = domain_shard.download_metadata.into();
 
         // Serialize the report to bytes
         let report_bytes = bcs::to_bytes(&domain_shard.report)
             .map_err(|e| format!("Failed to serialize report: {}", e))?;
 
         Ok(ShardResult {
-            metadata: Some(metadata),
+            download_metadata: Some(download_metadata),
             amount: Some(domain_shard.amount),
             report: Some(Bytes::from(report_bytes)),
         })
@@ -1935,6 +1938,114 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
 
     fn try_from(value: Metadata) -> Result<Self, Self::Error> {
         (&value).try_into()
+    }
+}
+
+impl From<types::metadata::DownloadMetadata> for DownloadMetadata {
+    fn from(value: types::metadata::DownloadMetadata) -> Self {
+        use download_metadata::Kind;
+        use types::metadata::{DefaultDownloadMetadataAPI, MetadataAPI, MtlsDownloadMetadataAPI};
+
+        let kind = match value {
+            types::metadata::DownloadMetadata::Default(dm) => {
+                Kind::Default(DefaultDownloadMetadata {
+                    version: Some(default_download_metadata::Version::V1(
+                        DefaultDownloadMetadataV1 {
+                            url: Some(dm.url().to_string()),
+                            metadata: Some(dm.metadata().clone().into()),
+                        },
+                    )),
+                })
+            }
+            types::metadata::DownloadMetadata::Mtls(dm) => Kind::Mtls(MtlsDownloadMetadata {
+                version: Some(mtls_download_metadata::Version::V1(
+                    MtlsDownloadMetadataV1 {
+                        peer: Some(dm.peer().to_bytes().to_vec().into()),
+                        url: Some(dm.url().to_string()),
+                        metadata: Some(dm.metadata().clone().into()),
+                    },
+                )),
+            }),
+        };
+
+        DownloadMetadata { kind: Some(kind) }
+    }
+}
+
+impl TryFrom<&DownloadMetadata> for types::metadata::DownloadMetadata {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &DownloadMetadata) -> Result<Self, Self::Error> {
+        use download_metadata::Kind;
+
+        match value
+            .kind
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("kind"))?
+        {
+            Kind::Default(dm) => {
+                let v1 = match dm
+                    .version
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("version"))?
+                {
+                    default_download_metadata::Version::V1(v1) => v1,
+                };
+
+                let url = v1
+                    .url
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("url", e))?;
+                let metadata = v1
+                    .metadata
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .try_into()?;
+
+                Ok(types::metadata::DownloadMetadata::Default(
+                    types::metadata::DefaultDownloadMetadata::V1(
+                        types::metadata::DefaultDownloadMetadataV1::new(url, metadata),
+                    ),
+                ))
+            }
+            Kind::Mtls(dm) => {
+                let v1 = match dm
+                    .version
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("version"))?
+                {
+                    mtls_download_metadata::Version::V1(v1) => v1,
+                };
+
+                let peer_bytes = v1
+                    .peer
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("peer"))?;
+                let network_pubkey = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(peer_bytes)
+                    .map_err(|e| TryFromProtoError::invalid("peer", e))?;
+                let peer = types::crypto::NetworkPublicKey::new(network_pubkey);
+
+                let url = v1
+                    .url
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("url", e))?;
+                let metadata = v1
+                    .metadata
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
+                    .try_into()?;
+
+                Ok(types::metadata::DownloadMetadata::Mtls(
+                    types::metadata::MtlsDownloadMetadata::V1(
+                        types::metadata::MtlsDownloadMetadataV1::new(peer, url, metadata),
+                    ),
+                ))
+            }
+        }
     }
 }
 

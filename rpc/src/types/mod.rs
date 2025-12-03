@@ -77,7 +77,10 @@ pub use transaction::Transaction;
 pub use transaction::TransactionKind;
 pub use transaction::UpdateEncoderMetadataArgs;
 pub use transaction::UpdateValidatorMetadataArgs;
-pub use transaction::{Metadata, MetadataV1};
+pub use transaction::{
+    DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
+    MtlsDownloadMetadata, MtlsDownloadMetadataV1,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersonalMessage<'a>(pub std::borrow::Cow<'a, [u8]>);

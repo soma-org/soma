@@ -183,7 +183,7 @@ pub trait DefaultDownloadMetadataAPI {
     fn metadata(&self) -> &Metadata;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DefaultDownloadMetadataV1 {
     url: Url,
     metadata: Metadata,
@@ -204,7 +204,7 @@ impl DefaultDownloadMetadataAPI for DefaultDownloadMetadataV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[enum_dispatch(DefaultDownloadMetadataAPI)]
 pub enum DefaultDownloadMetadata {
     V1(DefaultDownloadMetadataV1),
@@ -217,7 +217,7 @@ pub trait MtlsDownloadMetadataAPI {
     fn metadata(&self) -> &Metadata;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MtlsDownloadMetadataV1 {
     peer: NetworkPublicKey,
     url: Url,
@@ -246,13 +246,13 @@ impl MtlsDownloadMetadataAPI for MtlsDownloadMetadataV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[enum_dispatch(MtlsDownloadMetadataAPI)]
 pub enum MtlsDownloadMetadata {
     V1(MtlsDownloadMetadataV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub enum DownloadMetadata {
     Default(DefaultDownloadMetadata),
     Mtls(MtlsDownloadMetadata),
