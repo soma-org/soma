@@ -102,7 +102,29 @@ impl<
                 )
                 .await
                 .map_err(ShardError::ObjectError)?;
+            return Ok(());
         }
+
+        // In msim tests, data may be at a different path (e.g., uploads/xxx instead of inputs/xxx).
+        // Check if data exists at the URL path in the store and copy to expected location.
+        #[cfg(msim)]
+        {
+            use object_store::path::Path as ObjPath;
+            use types::error::ObjectError;
+
+            let url_path = ObjPath::from(download_metadata.url().path().trim_start_matches('/'));
+            if let Ok(result) = self.persistent_store.object_store().get(&url_path).await {
+                if let Ok(bytes) = result.bytes().await {
+                    self.ephemeral_store
+                        .object_store()
+                        .put(&object_path.path(), bytes.into())
+                        .await
+                        .map_err(|e| ShardError::ObjectError(ObjectError::ObjectStoreError(e)))?;
+                    return Ok(());
+                }
+            }
+        }
+
         let reader = Arc::new(
             self.object_http_client
                 .get_reader(download_metadata)

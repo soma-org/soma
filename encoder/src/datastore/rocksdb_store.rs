@@ -186,6 +186,7 @@ impl Store for RocksDBStore {
             Ok(())
         }
     }
+
     fn add_input_download_metadata(
         &self,
         shard: &Shard,
@@ -256,16 +257,17 @@ impl Store for RocksDBStore {
         let shard_digest = shard.digest()?;
 
         let mut results = Vec::new();
-        let lower_bound = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let upper_bound = (epoch, shard_digest, EncoderPublicKey::MAX());
 
-        for item in self
-            .submission_digests
-            .safe_iter_with_bounds(Some(lower_bound), Some(upper_bound))
-        {
+        // Use unbounded iteration and filter by (epoch, shard_digest) prefix
+        for item in self.submission_digests.safe_iter() {
             let ((e, sd, encoder), timestamped) = item?;
             if e == epoch && sd == shard_digest {
                 results.push((encoder, timestamped.data, timestamped.instant()));
+            }
+            // Early exit optimization: if we've passed our epoch/shard prefix, stop
+            // (assuming keys are sorted lexicographically)
+            if e > epoch || (e == epoch && sd > shard_digest) {
+                break;
             }
         }
 
@@ -295,18 +297,16 @@ impl Store for RocksDBStore {
         let shard_digest = shard.digest()?;
 
         let mut results = Vec::new();
-        let lower_bound = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let upper_bound = (epoch, shard_digest, EncoderPublicKey::MAX());
 
-        for item in self
-            .commit_votes
-            .safe_iter_with_bounds(Some(lower_bound), Some(upper_bound))
-        {
+        for item in self.commit_votes.safe_iter() {
             let ((e, sd, _), bytes) = item?;
             if e == epoch && sd == shard_digest {
                 let votes: CommitVotes = bcs::from_bytes(&bytes)
                     .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
                 results.push(votes);
+            }
+            if e > epoch || (e == epoch && sd > shard_digest) {
+                break;
             }
         }
 
@@ -341,16 +341,14 @@ impl Store for RocksDBStore {
         let shard_digest = shard.digest()?;
 
         let mut results = Vec::new();
-        let lower_bound = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let upper_bound = (epoch, shard_digest, EncoderPublicKey::MAX());
 
-        for item in self
-            .accepted_commits
-            .safe_iter_with_bounds(Some(lower_bound), Some(upper_bound))
-        {
+        for item in self.accepted_commits.safe_iter() {
             let ((e, sd, encoder), submission_digest) = item?;
             if e == epoch && sd == shard_digest {
                 results.push((encoder, submission_digest));
+            }
+            if e > epoch || (e == epoch && sd > shard_digest) {
+                break;
             }
         }
 
@@ -407,18 +405,16 @@ impl Store for RocksDBStore {
         let shard_digest = shard.digest()?;
 
         let mut results = Vec::new();
-        let lower_bound = (epoch, shard_digest, Digest::<Submission>::MIN);
-        let upper_bound = (epoch, shard_digest, Digest::<Submission>::MAX);
 
-        for item in self
-            .submissions
-            .safe_iter_with_bounds(Some(lower_bound), Some(upper_bound))
-        {
+        for item in self.submissions.safe_iter() {
             let ((e, sd, _), timestamped) = item?;
             if e == epoch && sd == shard_digest {
                 let submission: Submission = bcs::from_bytes(&timestamped.data.0)
                     .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
                 results.push((submission, timestamped.instant(), timestamped.data.1));
+            }
+            if e > epoch || (e == epoch && sd > shard_digest) {
+                break;
             }
         }
 
@@ -447,18 +443,16 @@ impl Store for RocksDBStore {
         let shard_digest = shard.digest()?;
 
         let mut results = Vec::new();
-        let lower_bound = (epoch, shard_digest, EncoderPublicKey::MIN());
-        let upper_bound = (epoch, shard_digest, EncoderPublicKey::MAX());
 
-        for item in self
-            .report_votes
-            .safe_iter_with_bounds(Some(lower_bound), Some(upper_bound))
-        {
+        for item in self.report_votes.safe_iter() {
             let ((e, sd, _), bytes) = item?;
             if e == epoch && sd == shard_digest {
                 let vote: ReportVote = bcs::from_bytes(&bytes)
                     .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
                 results.push(vote);
+            }
+            if e > epoch || (e == epoch && sd > shard_digest) {
+                break;
             }
         }
 

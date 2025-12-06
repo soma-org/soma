@@ -248,13 +248,27 @@ impl ObjectServiceManager {
             server: None,
         })
     }
-    pub async fn start<S: ObjectStore>(&mut self, address: &Multiaddr, service: ObjectService<S>) {
-        let config = &self.parameters;
-        let own_address = if address.is_localhost_ip() {
+
+    /// Compute the bind address. In msim, we must bind to the actual IP.
+    /// In production, we bind to 0.0.0.0 for non-localhost addresses.
+    #[cfg(msim)]
+    fn compute_bind_address(address: &Multiaddr) -> Multiaddr {
+        // In msim, always use the actual address - can't bind to 0.0.0.0
+        address.clone()
+    }
+
+    #[cfg(not(msim))]
+    fn compute_bind_address(address: &Multiaddr) -> Multiaddr {
+        if address.is_localhost_ip() {
             address.clone()
         } else {
             address.with_zero_ip()
-        };
+        }
+    }
+
+    pub async fn start<S: ObjectStore>(&mut self, address: &Multiaddr, service: ObjectService<S>) {
+        let config = &self.parameters;
+        let own_address = Self::compute_bind_address(address);
 
         let own_address = to_socket_addr(&own_address).unwrap();
 

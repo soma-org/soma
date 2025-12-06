@@ -2,13 +2,14 @@ use crate::swarm_node::Node;
 use anyhow::Result;
 use encoder::core::encoder_node::EncoderNodeHandle;
 use futures::future::try_join_all;
+use object_store::memory::InMemory;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tempfile::TempDir;
 use tracing::info;
 use types::shard_crypto::keys::EncoderPublicKey;
 use types::{config::encoder_config::EncoderConfig, crypto::NetworkPublicKey};
-
-use std::path::{Path, PathBuf};
-use tempfile::TempDir;
 
 #[derive(Debug)]
 enum SwarmDirectory {
@@ -50,6 +51,7 @@ impl AsRef<Path> for SwarmDirectory {
 pub struct EncoderSwarm {
     dir: SwarmDirectory,
     nodes: HashMap<EncoderPublicKey, Node>,
+    shared_object_store: Option<Arc<InMemory>>,
 }
 
 impl Drop for EncoderSwarm {
@@ -109,7 +111,7 @@ impl EncoderSwarm {
     pub async fn spawn_new_encoder(&mut self, config: EncoderConfig) -> EncoderNodeHandle {
         let name = config.protocol_public_key();
         let working_dir = self.dir.encoder_dir(self.nodes.len());
-        let node = Node::new(config, working_dir);
+        let node = Node::new(config, working_dir, self.shared_object_store.clone());
         node.start().await.unwrap();
         let handle = node.get_node_handle().unwrap();
         self.nodes.insert(name, node);
@@ -121,6 +123,7 @@ pub struct EncoderSwarmBuilder {
     encoders: Option<Vec<EncoderConfig>>,
     client_key: Option<NetworkPublicKey>,
     dir: Option<PathBuf>, // Add this field
+    shared_object_store: Option<Arc<InMemory>>,
 }
 
 impl EncoderSwarmBuilder {
@@ -129,6 +132,7 @@ impl EncoderSwarmBuilder {
             encoders: None,
             client_key: None,
             dir: None,
+            shared_object_store: None,
         }
     }
 
@@ -139,6 +143,11 @@ impl EncoderSwarmBuilder {
 
     pub fn with_client_key(mut self, client_key: NetworkPublicKey) -> Self {
         self.client_key = Some(client_key);
+        self
+    }
+
+    pub fn with_shared_object_store(mut self, store: Arc<InMemory>) -> Self {
+        self.shared_object_store = Some(store);
         self
     }
 
@@ -156,6 +165,7 @@ impl EncoderSwarmBuilder {
 
         // We require configs to be provided
         let encoder_configs = self.encoders.expect("Encoder configs must be provided");
+        let shared_store = self.shared_object_store;
 
         // Create nodes from the configs
         let nodes = encoder_configs
@@ -171,11 +181,15 @@ impl EncoderSwarmBuilder {
 
                 (
                     config.protocol_public_key(),
-                    Node::new(config.clone(), node_working_dir),
+                    Node::new(config.clone(), node_working_dir, shared_store.clone()),
                 )
             })
             .collect();
 
-        EncoderSwarm { dir, nodes }
+        EncoderSwarm {
+            dir,
+            nodes,
+            shared_object_store: shared_store,
+        }
     }
 }

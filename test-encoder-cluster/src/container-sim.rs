@@ -2,6 +2,7 @@ use encoder::core::encoder_node::{EncoderNode, EncoderNodeHandle};
 use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::KeyPair;
 use msim::runtime::Handle;
+use object_store::memory::InMemory;
 use std::path::PathBuf;
 use std::{
     net::{IpAddr, SocketAddr},
@@ -35,7 +36,11 @@ impl Drop for Container {
 
 impl Container {
     /// Spawn a new Node.
-    pub async fn spawn(config: EncoderConfig, working_dir: PathBuf) -> Self {
+    pub async fn spawn(
+        config: EncoderConfig,
+        working_dir: PathBuf,
+        shared_object_store: Option<Arc<InMemory>>,
+    ) -> Self {
         let (startup_sender, mut startup_receiver) = tokio::sync::watch::channel(Weak::new());
         let (cancel_sender, cancel_receiver) = tokio::sync::watch::channel(false);
 
@@ -66,8 +71,9 @@ impl Container {
                 let mut cancel_receiver = cancel_receiver.clone();
                 let startup_sender = startup_sender.clone();
                 let dir = working_dir.clone();
+                let store = shared_object_store.clone();
                 async move {
-                    let server = Arc::new(EncoderNode::start(config, dir).await);
+                    let server = Arc::new(EncoderNode::start(config, dir, store).await);
 
                     startup_sender.send(Arc::downgrade(&server)).ok();
 
@@ -98,7 +104,6 @@ impl Container {
 
     /// Check to see that the Node is still alive by checking if the receiving side of the
     /// `cancel_sender` has been dropped.
-    ///
     pub fn is_alive(&self) -> bool {
         if let Some(cancel_sender) = &self.cancel_sender {
             // unless the node is deleted, it keeps a reference to its start up function, which

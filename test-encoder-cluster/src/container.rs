@@ -2,6 +2,7 @@ use encoder::core::encoder_node::{EncoderNode, EncoderNodeHandle};
 use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::KeyPair;
 use futures::FutureExt;
+use object_store::memory::InMemory;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::thread;
@@ -36,7 +37,11 @@ impl Drop for Container {
 
 impl Container {
     /// Spawn a new Node.
-    pub async fn spawn(config: EncoderConfig, working_dir: PathBuf) -> Self {
+    pub async fn spawn(
+        config: EncoderConfig,
+        working_dir: PathBuf,
+        shared_object_store: Option<Arc<InMemory>>,
+    ) -> Self {
         let (startup_sender, startup_receiver) = tokio::sync::oneshot::channel();
         let (cancel_sender, cancel_receiver) = tokio::sync::oneshot::channel();
         let name = format!(
@@ -72,11 +77,13 @@ impl Container {
 
                 let _guard = span.as_ref().map(|span| span.enter());
 
-                let mut builder = tokio::runtime::Builder::new_current_thread(); // TODO: multi threaded runtime
+                let mut builder = tokio::runtime::Builder::new_current_thread();
                 let runtime = builder.enable_all().build().unwrap();
 
                 runtime.block_on(async move {
-                    let server = Arc::new(EncoderNode::start(config, working_dir).await);
+                    let server = Arc::new(
+                        EncoderNode::start(config, working_dir, shared_object_store).await,
+                    );
                     // Notify that we've successfully started the node
                     let _ = startup_sender.send(Arc::downgrade(&server));
                     // run until canceled
@@ -103,10 +110,6 @@ impl Container {
 
     /// Check to see that the Node is still alive by checking if the receiving side of the
     /// `cancel_sender` has been dropped.
-    ///
-    //TODO When we move to rust 1.61 we should also use
-    // https://doc.rust-lang.org/stable/std/thread/struct.JoinHandle.html#method.is_finished
-    // in order to check if the thread has finished.
     pub fn is_alive(&self) -> bool {
         if let Some(cancel_sender) = &self.cancel_sender {
             !cancel_sender.is_closed()

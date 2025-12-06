@@ -6,9 +6,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytes::Bytes;
+use fastcrypto::hash::HashFunction as _;
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
-use object_store::memory::InMemory;
+use object_store::{memory::InMemory, ObjectStore as _};
 use rand::rngs::OsRng;
 use rpc::api::client::TransactionExecutionResponse;
 use sdk::{
@@ -22,6 +24,7 @@ use tokio::time::timeout;
 use tracing::{error, info};
 use types::{
     base::{AuthorityName, ConciseableName, SomaAddress},
+    checksum::Checksum,
     committee::{CommitteeTrait, EpochId},
     config::{
         encoder_config::{EncoderConfig, EncoderGenesisConfig},
@@ -34,11 +37,14 @@ use types::{
         p2p_config::SeedPeer,
         Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
     },
-    crypto::{NetworkKeyPair, SomaKeyPair},
+    crypto::{DefaultHash, NetworkKeyPair, SomaKeyPair},
     effects::TransactionEffects,
     error::SomaResult,
     genesis::Genesis,
-    metadata::{DownloadMetadata, Metadata},
+    metadata::{
+        DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
+        ObjectPath,
+    },
     object::ObjectRef,
     peer_id::PeerId,
     shard::{Shard, ShardAuthToken},
@@ -46,8 +52,7 @@ use types::{
     system_state::{SystemState, SystemStateTrait},
     transaction::{Transaction, TransactionData},
 };
-
-use crate::test_object_server::TestObjectServer;
+use url::Url;
 
 #[cfg(msim)]
 #[path = "./container-sim.rs"]
@@ -59,7 +64,6 @@ mod container;
 
 mod swarm;
 mod swarm_node;
-mod test_object_server;
 
 const NUM_VALIDATORS: usize = 4;
 
@@ -96,7 +100,7 @@ pub struct TestCluster {
     pub swarm: Swarm,
     pub wallet: WalletContext,
     pub fullnode_handle: FullNodeHandle,
-    pub object_server: TestObjectServer,
+    pub shared_object_store: Arc<InMemory>,
 }
 
 impl TestCluster {
@@ -474,14 +478,34 @@ impl TestCluster {
         })
     }
 
-    /// Upload test data to the object server and return metadata for transaction
+    /// Upload test data directly to the shared object store
     pub async fn upload_test_data(&self, data: &[u8]) -> (Metadata, DownloadMetadata) {
-        self.object_server.upload_data(data).await
+        let mut h = DefaultHash::new();
+        h.update(data);
+        let checksum = Checksum::new_from_hash(h.finalize().into());
+        let metadata = Metadata::V1(MetadataV1::new(checksum.clone(), data.len()));
+
+        // Store directly - this is the same store encoders will read from
+        let path = ObjectPath::Uploads(checksum.clone());
+        self.shared_object_store
+            .put(&path.path(), Bytes::copy_from_slice(data).into())
+            .await
+            .expect("Failed to store data");
+
+        // URL is placeholder - HTTP is never used since data is already in shared store
+        let url =
+            Url::parse(&format!("memory:///uploads/{}", checksum)).expect("Failed to create URL");
+
+        let download_metadata = DownloadMetadata::Default(DefaultDownloadMetadata::V1(
+            DefaultDownloadMetadataV1::new(url, metadata.clone()),
+        ));
+
+        (metadata, download_metadata)
     }
 
-    /// Get the object store for direct access
+    /// Get the shared object store for passing to encoder cluster
     pub fn object_store(&self) -> Arc<InMemory> {
-        self.object_server.store.clone()
+        self.shared_object_store.clone()
     }
 }
 
@@ -552,8 +576,7 @@ impl TestClusterBuilder {
     }
 
     pub async fn build(mut self) -> TestCluster {
-        // Start the test object server first
-        let object_server = TestObjectServer::new().await;
+        let shared_object_store = Arc::new(InMemory::new());
         let swarm = self.start_swarm().await.unwrap();
         let working_dir = swarm.dir();
 
@@ -604,7 +627,7 @@ impl TestClusterBuilder {
             wallet,
             fullnode_handle,
             swarm,
-            object_server,
+            shared_object_store,
         }
     }
 

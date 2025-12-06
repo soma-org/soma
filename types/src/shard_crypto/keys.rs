@@ -50,13 +50,6 @@ impl EncoderPublicKey {
     pub fn verify(&self, msg: &[u8], signature: &EncoderSignature) -> Result<(), FastCryptoError> {
         self.0.verify(msg, &signature.0)
     }
-
-    pub fn MIN() -> Self {
-        Self(BLS12381PublicKey::from_bytes(&[u8::MIN; BLS12381PublicKey::LENGTH]).unwrap())
-    }
-    pub fn MAX() -> Self {
-        Self(BLS12381PublicKey::from_bytes(&[u8::MAX; BLS12381PublicKey::LENGTH]).unwrap())
-    }
 }
 
 impl FromStr for EncoderPublicKey {

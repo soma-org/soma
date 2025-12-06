@@ -22,6 +22,7 @@ vdf.workspace = true
 intelligence.workspace = true
 serde.workspace = true
 tempfile.workspace = true
+object_store.workspace = true
 
 serde_with = { version = "3.8", features = ["schemars_0_8"] }
 

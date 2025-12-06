@@ -36,6 +36,7 @@ pub async fn setup_integrated_encoder_validator_test(
     // Step 3: Build TestEncoderCluster with the configs from TestCluster
     let encoder_cluster = TestEncoderClusterBuilder::new()
         .with_encoders(encoder_configs)
+        .with_shared_object_store(test_cluster.object_store())
         .build()
         .await;
 

@@ -103,6 +103,24 @@ pub struct EncoderNode {
     input_manager: ActorManager<
         InputProcessor<EncoderInternalTonicClient, EvaluationTonicClient, InferenceTonicClient>,
     >,
+    inference_processor_manager: ActorManager<
+        InferenceCoreProcessor<
+            InMemory,
+            InMemory,
+            PersistentInMemoryStore,
+            EphemeralInMemoryStore,
+            MockModule,
+        >,
+    >,
+    evaluation_processor_manager: ActorManager<
+        EvaluationCoreProcessor<
+            InMemory,
+            InMemory,
+            PersistentInMemoryStore,
+            EphemeralInMemoryStore,
+            MockEvaluator,
+        >,
+    >,
     store: Arc<dyn Store>,
     pub context: Context,
     object_storage: Arc<InMemory>,
@@ -114,7 +132,11 @@ pub struct EncoderNode {
 }
 
 impl EncoderNode {
-    pub async fn start(config: EncoderConfig, working_dir: PathBuf) -> Self {
+    pub async fn start(
+        config: EncoderConfig,
+        working_dir: PathBuf,
+        shared_object_store: Option<Arc<InMemory>>,
+    ) -> Self {
         let encoder_keypair = config.encoder_keypair.encoder_keypair().clone();
         let network_keypair = NetworkKeyPair::new(config.network_keypair.keypair().inner().copy());
         let parameters = Arc::new(types::parameters::Parameters::default());
@@ -161,7 +183,8 @@ impl EncoderNode {
             >,
         >>::client(&internal_network_manager);
 
-        let object_storage = Arc::new(InMemory::new());
+        // TODO: configure this differently based on config
+        let object_storage = shared_object_store.unwrap_or_else(|| Arc::new(InMemory::new()));
 
         let mut object_service_manager = ObjectServiceManager::new(
             network_keypair.clone(),
@@ -446,6 +469,8 @@ impl EncoderNode {
             commit_manager,
             input_manager,
             wallet_context,
+            inference_processor_manager,
+            evaluation_processor_manager,
             #[cfg(msim)]
             sim_state: Default::default(),
         }
@@ -505,6 +530,8 @@ impl EncoderNode {
         self.commit_votes_manager.shutdown();
         self.commit_manager.shutdown();
         self.input_manager.shutdown();
+        self.inference_processor_manager.shutdown();
+        self.evaluation_processor_manager.shutdown();
     }
 
     pub fn get_config(&self) -> &EncoderConfig {

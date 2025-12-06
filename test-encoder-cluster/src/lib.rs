@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use encoder::core::encoder_node::EncoderNodeHandle;
-
+use object_store::memory::InMemory;
 use rand::{rngs::StdRng, SeedableRng};
 
 use swarm::EncoderSwarm;
@@ -83,6 +83,7 @@ impl TestEncoderCluster {
 pub struct TestEncoderClusterBuilder {
     encoders: Option<Vec<EncoderConfig>>,
     client_keypair: Option<NetworkKeyPair>,
+    shared_object_store: Option<Arc<InMemory>>,
 }
 
 impl TestEncoderClusterBuilder {
@@ -90,6 +91,7 @@ impl TestEncoderClusterBuilder {
         TestEncoderClusterBuilder {
             encoders: None,
             client_keypair: None,
+            shared_object_store: None,
         }
     }
 
@@ -100,6 +102,11 @@ impl TestEncoderClusterBuilder {
 
     pub fn with_client_keypair(mut self, keypair: NetworkKeyPair) -> Self {
         self.client_keypair = Some(keypair);
+        self
+    }
+
+    pub fn with_shared_object_store(mut self, store: Arc<InMemory>) -> Self {
+        self.shared_object_store = Some(store);
         self
     }
 
@@ -116,6 +123,10 @@ impl TestEncoderClusterBuilder {
             builder = builder.with_encoders(encoders);
         } else {
             panic!("Encoder configs must be provided when building TestEncoderCluster");
+        }
+
+        if let Some(store) = self.shared_object_store {
+            builder = builder.with_shared_object_store(store);
         }
 
         let mut swarm = builder.build();
