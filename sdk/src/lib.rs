@@ -108,6 +108,16 @@ impl SomaClient {
             .await
     }
 
+    /// Subscribe to checkpoints
+    pub async fn subscribe_checkpoints(
+        &self,
+        request: impl tonic::IntoRequest<rpc::proto::soma::SubscribeCheckpointsRequest>,
+    ) -> Result<tonic::Streaming<rpc::proto::soma::SubscribeCheckpointsResponse>, tonic::Status>
+    {
+        let mut client = self.inner.write().await;
+        client.subscribe_checkpoints(request).await
+    }
+
     /// Get an object by ID
     pub async fn get_object(&self, object_id: ObjectID) -> Result<Object, tonic::Status> {
         let mut client = self.inner.write().await;

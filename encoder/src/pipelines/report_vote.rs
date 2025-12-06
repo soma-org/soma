@@ -201,13 +201,13 @@ impl<E: EncoderInternalNetworkClient> Processor for ReportVoteProcessor<E> {
                 self.store
                     .add_aggregate_score(&shard, (agg.clone(), evaluators.clone()))?;
 
+                self.submit_winner_transaction(&report_vote, &agg, evaluators).await?;
+                
+
                 info!(
                     "SHARD CONSENSUS COMPLETE - Aggregate score stored: {:?}",
                     agg
                 );
-
-                self.submit_winner_transaction(&report_vote, &agg, evaluators).await?;
-                
 
                 self.clean_up_pipeline
                     .process(shard.clone(), msg.cancellation.clone())

@@ -1,4 +1,6 @@
-use e2e_tests::integration_helpers::setup_integrated_encoder_validator_test;
+use e2e_tests::integration_helpers::{
+    extract_shard_input_id, setup_integrated_encoder_validator_test, wait_for_shard_completion,
+};
 use rand::rngs::OsRng;
 use std::time::Duration;
 use test_cluster::TestCluster;
@@ -124,7 +126,7 @@ async fn test_integrated_encoder_validator_system() {
         new_encoder_genesis.account_key_pair.copy(),
         &mut test_cluster,
         new_encoder_address,
-        download_metadata,
+        download_metadata.clone(),
     )
     .await;
 
@@ -134,26 +136,37 @@ async fn test_integrated_encoder_validator_system() {
         "EmbedData transaction executed"
     );
 
-    sleep(Duration::from_secs(5)).await;
+    // Extract the ShardInput object ID from the effects
+    let shard_input_id = extract_shard_input_id(&effects)
+        .expect("Should find ShardInput object in EmbedData effects");
 
-    // for handle in encoder_cluster.all_encoder_handles() {
-    //     handle.with(|node| {
-    //         let enc_key = node.get_config().encoder_keypair.encoder_keypair().public();
-    //         if shard.encoders().contains(&enc_key) {
-    //             let store = node.get_store_for_testing();
+    info!(shard_input = %shard_input_id, "Created ShardInput object");
 
-    //             let result = store.get_aggregate_score(&shard);
+    // Get the client for subscription
+    let client = test_cluster
+        .wallet
+        .get_client()
+        .await
+        .expect("Should get RPC client");
 
-    //             assert!(
-    //                 result.is_ok(),
-    //                 "Failed to get agg sig for shard: {:?}",
-    //                 result.err()
-    //             );
+    // Wait for the shard to complete (ReportWinner transaction)
+    let completion_info =
+        wait_for_shard_completion(&client, &shard_input_id, Duration::from_secs(60))
+            .await
+            .expect("Should receive ReportWinner transaction");
 
-    //             info!("Final agg sig: {:?}", result.unwrap().0);
-    //         }
-    //     });
-    // }
+    info!(
+        winner_tx = %completion_info.winner_tx_digest,
+        checkpoint = completion_info.checkpoint_sequence,
+        signers = ?completion_info.signers,
+        "Shard encoding completed successfully"
+    );
+
+    // Verify we got a valid completion
+    assert!(
+        !completion_info.signers.is_empty(),
+        "ReportWinner should have at least one signer"
+    );
 }
 
 /// Execute EmbedData transaction

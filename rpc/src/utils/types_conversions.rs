@@ -591,10 +591,16 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 signers: signers
                     .into_iter()
                     .map(|s| {
-                        let key = BLS12381PublicKey::from_bytes(&s.as_bytes()).map_err(|e| {
+                        let hex_str = s.strip_prefix("0x").unwrap_or(&s);
+                        let bytes = hex::decode(hex_str).map_err(|e| {
+                            SdkTypeConversionError(format!(
+                                "Invalid hex encoding for BLS public key: {}",
+                                e
+                            ))
+                        })?;
+                        let key = BLS12381PublicKey::from_bytes(&bytes).map_err(|e| {
                             SdkTypeConversionError(format!("Invalid BLS public key: {}", e))
                         })?;
-                        // Wrap in EncoderPublicKey
                         Ok(types::shard_crypto::keys::EncoderPublicKey::new(key))
                     })
                     .collect::<Result<Vec<_>, SdkTypeConversionError>>()?,

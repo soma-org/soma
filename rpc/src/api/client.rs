@@ -216,6 +216,18 @@ impl Client {
         execute_transaction_response_try_from_proto(&response)
             .map_err(|e| status_from_error_with_metadata(e, metadata))
     }
+
+    /// Subscribe to checkpoints stream
+    pub async fn subscribe_checkpoints(
+        &mut self,
+        request: impl tonic::IntoRequest<crate::proto::soma::SubscribeCheckpointsRequest>,
+    ) -> Result<tonic::Streaming<crate::proto::soma::SubscribeCheckpointsResponse>> {
+        self.0
+            .subscription_client()
+            .subscribe_checkpoints(request)
+            .await
+            .map(|r| r.into_inner())
+    }
 }
 
 #[derive(Debug)]

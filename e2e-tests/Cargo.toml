@@ -20,3 +20,6 @@ chrono.workspace = true
 regex.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true
+rpc.workspace = true
+sdk.workspace = true
+prost-types.workspace = true

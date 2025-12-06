@@ -369,6 +369,11 @@ impl TestCluster {
             .soma_node
             .with(|node| node.get_config().encoder_validator_address.clone());
 
+        let rpc_address = self
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.get_config().rpc_address.clone());
+
         // Get epoch duration from system state
         let epoch_duration = self
             .swarm
@@ -384,6 +389,7 @@ impl TestCluster {
             .map(|config| {
                 let mut config = config.clone();
                 // Update config to point to fullnode for validation
+                config.rpc_address = rpc_address.clone();
                 config.validator_sync_address = validator_sync_address.clone();
                 config.genesis = self.get_genesis();
                 // Set epoch duration to match the validator system
