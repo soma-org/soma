@@ -1,6 +1,7 @@
 mod bls12381;
 mod ed25519;
 mod intent;
+mod multisig;
 mod signature;
 mod validator;
 
@@ -12,6 +13,11 @@ pub use intent::Intent;
 pub use intent::IntentAppId;
 pub use intent::IntentScope;
 pub use intent::IntentVersion;
+pub use multisig::MultisigAggregatedSignature;
+pub use multisig::MultisigCommittee;
+pub use multisig::MultisigMember;
+pub use multisig::MultisigMemberPublicKey;
+pub use multisig::MultisigMemberSignature;
 pub use signature::SignatureScheme;
 pub use signature::SimpleSignature;
 pub use signature::UserSignature;

@@ -5,7 +5,6 @@ use std::{
     time::Duration,
 };
 
-use crate::error::{CliError, CliResult};
 use bytes::Bytes;
 use clap::Subcommand;
 use json_to_table::{json_to_table, Orientation};
@@ -54,7 +53,7 @@ pub enum CommandOutput {
 }
 
 impl InferenceCommand {
-    pub async fn execute(self) -> CliResult<CommandOutput> {
+    pub async fn execute(self) -> Result<CommandOutput, anyhow::Error> {
         Ok(match self {
             InferenceCommand::MockCall {
                 base_url,

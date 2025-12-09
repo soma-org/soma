@@ -155,6 +155,7 @@ pub trait InputAPI {
 pub struct InputV1 {
     auth_token: ShardAuthToken,
     download_metadata: DownloadMetadata,
+    // TODO: needs full optional target embedding
 }
 
 impl InputV1 {

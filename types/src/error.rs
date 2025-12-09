@@ -39,6 +39,13 @@ pub enum SomaError {
     #[error("Invalid committee composition")]
     InvalidCommittee(String),
 
+    // Cryptography errors.
+    #[error("Signature key generation error: {0}")]
+    SignatureKeyGenError(String),
+
+    #[error("Invalid Private Key provided")]
+    InvalidPrivateKey,
+
     /// Error when converting between key formats
     #[error("Key Conversion Error: {0}")]
     KeyConversionError(String),

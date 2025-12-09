@@ -19,6 +19,10 @@ regex.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 signature = "1.6.0"
+colored = "2.0.0"
+tokio.workspace = true
+bcs.workspace = true
+base64.workspace = true
 
 [lints]
 workspace = true

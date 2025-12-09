@@ -10,4 +10,5 @@ package soma.rpc;
 enum SignatureScheme {
   ED25519 = 0;
   BLS12381 = 1;
+  MULTISIG = 2;
 }

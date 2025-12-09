@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::{proto::TryFromProtoError, types::*};
 use base64::Engine;
-use fastcrypto::{bls12381::min_sig::BLS12381PublicKey, traits::ToFromBytes};
+use fastcrypto::{
+    bls12381::min_sig::BLS12381PublicKey, serde_helpers::BytesRepresentation, traits::ToFromBytes,
+};
 use tap::Pipe;
 use tracing::info;
 use types::{
@@ -144,6 +146,9 @@ impl TryFrom<types::crypto::GenericSignature> for UserSignature {
                     }
                 }
             }
+            types::crypto::GenericSignature::MultiSig(sig) => {
+                Ok(UserSignature::Multisig(sig.into()))
+            }
         }
     }
 }
@@ -178,9 +183,94 @@ impl TryFrom<UserSignature> for types::crypto::GenericSignature {
 
                 Ok(types::crypto::GenericSignature::Signature(signature))
             }
+            UserSignature::Multisig(multisig) => {
+                Ok(types::crypto::GenericSignature::MultiSig(multisig.into()))
+            }
         }
     }
 }
+
+impl From<MultisigMemberPublicKey> for types::crypto::PublicKey {
+    fn from(value: MultisigMemberPublicKey) -> Self {
+        match value {
+            MultisigMemberPublicKey::Ed25519(pk) => {
+                types::crypto::PublicKey::Ed25519(BytesRepresentation(pk.into_inner()))
+            }
+        }
+    }
+}
+
+impl From<MultisigMemberSignature> for types::crypto::CompressedSignature {
+    fn from(value: MultisigMemberSignature) -> Self {
+        match value {
+            MultisigMemberSignature::Ed25519(sig) => {
+                types::crypto::CompressedSignature::Ed25519(BytesRepresentation(sig.into_inner()))
+            }
+        }
+    }
+}
+
+impl From<types::multisig::MultiSig> for MultisigAggregatedSignature {
+    fn from(value: types::multisig::MultiSig) -> Self {
+        // Convert compressed signatures to SDK member signatures
+        let signatures: Vec<MultisigMemberSignature> = value
+            .get_sigs()
+            .iter()
+            .cloned()
+            .map(|sig| {
+                sig.try_into()
+                    .expect("CompressedSignature conversion should not fail")
+            })
+            .collect();
+
+        let bitmap = value.get_bitmap();
+
+        // Convert MultiSigPublicKey to MultisigCommittee
+        let multisig_pk = value.get_pk();
+        let members: Vec<MultisigMember> = multisig_pk
+            .pubkeys()
+            .iter()
+            .map(|(pk, weight)| {
+                let public_key: MultisigMemberPublicKey = pk
+                    .clone()
+                    .try_into()
+                    .expect("PublicKey conversion should not fail");
+                MultisigMember::new(public_key, *weight)
+            })
+            .collect();
+
+        let committee = MultisigCommittee::new(members, *multisig_pk.threshold());
+
+        MultisigAggregatedSignature::new(committee, signatures, bitmap)
+    }
+}
+
+impl From<MultisigAggregatedSignature> for types::multisig::MultiSig {
+    fn from(value: MultisigAggregatedSignature) -> Self {
+        // Convert SDK member signatures to domain compressed signatures
+        let sigs: Vec<types::crypto::CompressedSignature> =
+            value.signatures().iter().cloned().map(Into::into).collect();
+
+        let bitmap = value.bitmap();
+
+        // Convert MultisigCommittee to MultiSigPublicKey
+        let committee = value.committee();
+        let pk_map: Vec<(types::crypto::PublicKey, types::multisig::WeightUnit)> = committee
+            .members()
+            .iter()
+            .map(|member| {
+                let pk: types::crypto::PublicKey = member.public_key().clone().into();
+                (pk, member.weight())
+            })
+            .collect();
+
+        let multisig_pk =
+            types::multisig::MultiSigPublicKey::insecure_new(pk_map, committee.threshold());
+
+        types::multisig::MultiSig::insecure_new(sigs, bitmap, multisig_pk)
+    }
+}
+
 // Helper conversion for SimpleSignature to types::crypto::Signature
 impl TryFrom<SimpleSignature> for types::crypto::Signature {
     type Error = SdkTypeConversionError;
@@ -1322,6 +1412,32 @@ impl From<types::checkpoints::CheckpointCommitment> for CheckpointCommitment {
     }
 }
 
+impl TryFrom<types::crypto::PublicKey> for MultisigMemberPublicKey {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: types::crypto::PublicKey) -> Result<Self, Self::Error> {
+        match value {
+            types::crypto::PublicKey::Ed25519(bytes_representation) => {
+                Self::Ed25519(Ed25519PublicKey::new(bytes_representation.0))
+            }
+        }
+        .pipe(Ok)
+    }
+}
+
+impl TryFrom<types::crypto::CompressedSignature> for MultisigMemberSignature {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: types::crypto::CompressedSignature) -> Result<Self, Self::Error> {
+        match value {
+            types::crypto::CompressedSignature::Ed25519(bytes_representation) => {
+                Self::Ed25519(Ed25519Signature::new(bytes_representation.0))
+            }
+        }
+        .pipe(Ok)
+    }
+}
+
 impl TryFrom<types::crypto::Signature> for SimpleSignature {
     type Error = SdkTypeConversionError;
 
@@ -1347,6 +1463,7 @@ impl From<types::crypto::SignatureScheme> for SignatureScheme {
         match value {
             types::crypto::SignatureScheme::ED25519 => Self::Ed25519,
             types::crypto::SignatureScheme::BLS12381 => Self::Bls12381,
+            types::crypto::SignatureScheme::MultiSig => Self::Multisig,
         }
     }
 }

@@ -106,7 +106,54 @@ impl crate::types::UserSignature {
             crate::types::UserSignature::Simple(simple) => {
                 DerivedAddressIter::new(simple.derive_address())
             }
+            crate::types::UserSignature::Multisig(multisig) => {
+                DerivedAddressIter::new(multisig.derive_address())
+            }
         }
+    }
+}
+
+impl crate::types::MultisigCommittee {
+    /// Derive an `Address` from this MultisigCommittee.
+    ///
+    /// A MultiSig address
+    /// is defined as the 32-byte Blake2b hash of serializing the `SignatureScheme` flag (0x03), the
+    /// threshold (in little endian), and the concatenation of all n flag, public keys and
+    /// its weight.
+    ///
+    /// `hash(0x03 || threshold || flag_1 || pk_1 || weight_1
+    /// || ... || flag_n || pk_n || weight_n)`.
+    ///
+    /// When flag_i is ZkLogin, the pk_i for the [`ZkLoginPublicIdentifier`] refers to the same
+    /// input used when deriving the address using the
+    /// [`ZkLoginPublicIdentifier::derive_address_padded`] method (using the full 32-byte
+    /// `address_seed` value).
+    ///
+    /// [`ZkLoginPublicIdentifier`]: crate::ZkLoginPublicIdentifier
+    /// [`ZkLoginPublicIdentifier::derive_address_padded`]: crate::ZkLoginPublicIdentifier::derive_address_padded
+    pub fn derive_address(&self) -> Address {
+        use crate::types::MultisigMemberPublicKey::*;
+
+        let mut hasher = Hasher::new();
+        hasher.update([self.scheme().to_u8()]);
+        hasher.update(self.threshold().to_le_bytes());
+
+        for member in self.members() {
+            match member.public_key() {
+                Ed25519(p) => p.write_into_hasher(&mut hasher),
+            }
+
+            hasher.update(member.weight().to_le_bytes());
+        }
+
+        let digest = hasher.finalize();
+        Address::new(digest.into_inner())
+    }
+}
+
+impl crate::types::MultisigAggregatedSignature {
+    pub fn derive_address(&self) -> Address {
+        self.committee().derive_address()
     }
 }
 

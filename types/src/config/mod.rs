@@ -34,6 +34,22 @@ pub const AUTHORITIES_DB_NAME: &str = "authorities_db";
 pub const CONSENSUS_DB_NAME: &str = "consensus_db";
 pub const FULL_NODE_DB_PATH: &str = "full_node_db";
 
+pub fn soma_config_dir() -> Result<PathBuf, anyhow::Error> {
+    match std::env::var_os("SOMA_CONFIG_DIR") {
+        Some(config_env) => Ok(config_env.into()),
+        None => match dirs::home_dir() {
+            Some(v) => Ok(v.join(SOMA_DIR).join(SOMA_CONFIG_DIR)),
+            None => anyhow::bail!("Cannot obtain home directory path"),
+        },
+    }
+    .and_then(|dir| {
+        if !dir.exists() {
+            fs::create_dir_all(dir.clone())?;
+        }
+        Ok(dir)
+    })
+}
+
 pub trait Config
 where
     Self: DeserializeOwned + Serialize,

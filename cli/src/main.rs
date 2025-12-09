@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod commands;
-mod error;
 mod inference;
-mod key_identity;
 mod keytool;
-
 use clap::*;
 use colored::Colorize;
 use commands::SomaCommand;
+
 use tracing::{debug, Level};
 
 // Define the `GIT_REVISION` and `VERSION` consts

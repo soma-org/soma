@@ -25,10 +25,13 @@
 //! - Strong typing for blockchain addresses with validation
 //! - Comprehensive serialization/deserialization support for network operations
 
-use crate::crypto::{DefaultHash, GenericSignature, PublicKey, SomaPublicKey, SomaSignature};
+use crate::crypto::{
+    DefaultHash, GenericSignature, PublicKey, SignatureScheme, SomaPublicKey, SomaSignature,
+};
 use crate::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
 use crate::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use crate::error::SomaResult;
+use crate::multisig::MultiSigPublicKey;
 use crate::object::{ObjectID, Version};
 use crate::serde::Readable;
 use crate::transaction::{Transaction, VerifiedTransaction};
@@ -474,6 +477,25 @@ impl From<&PublicKey> for SomaAddress {
     }
 }
 
+impl From<&MultiSigPublicKey> for SomaAddress {
+    /// Derive a SomaAddress from [struct MultiSigPublicKey]. A MultiSig address
+    /// is defined as the 32-byte Blake2b hash of serializing the flag, the
+    /// threshold, concatenation of all n flag, public keys and
+    /// its weight. `flag_MultiSig || threshold || flag_1 || pk_1 || weight_1
+    /// || ... || flag_n || pk_n || weight_n`.
+    fn from(multisig_pk: &MultiSigPublicKey) -> Self {
+        let mut hasher = DefaultHash::default();
+        hasher.update([SignatureScheme::MultiSig.flag()]);
+        hasher.update(multisig_pk.threshold().to_le_bytes());
+        multisig_pk.pubkeys().iter().for_each(|(pk, w)| {
+            hasher.update([pk.flag()]);
+            hasher.update(pk.as_ref());
+            hasher.update(w.to_le_bytes());
+        });
+        SomaAddress(hasher.finalize().digest)
+    }
+}
+
 impl TryFrom<&GenericSignature> for SomaAddress {
     type Error = SomaError;
     /// Derive a SomaAddress from a serialized signature in Soma [GenericSignature].
@@ -489,6 +511,7 @@ impl TryFrom<&GenericSignature> for SomaAddress {
                 })?;
                 Ok(SomaAddress::from(&pub_key))
             }
+            GenericSignature::MultiSig(ms) => Ok(ms.get_pk().into()),
         }
     }
 }

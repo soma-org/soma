@@ -1618,6 +1618,42 @@ mod _getter_impls {
             self.signature = Some(user_signature::Signature::Simple(field.into()));
             self
         }
+        pub fn multisig(&self) -> &MultisigAggregatedSignature {
+            if let Some(user_signature::Signature::Multisig(field)) = &self.signature {
+                field as _
+            } else {
+                MultisigAggregatedSignature::default_instance() as _
+            }
+        }
+        pub fn multisig_opt(&self) -> Option<&MultisigAggregatedSignature> {
+            if let Some(user_signature::Signature::Multisig(field)) = &self.signature {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn multisig_opt_mut(&mut self) -> Option<&mut MultisigAggregatedSignature> {
+            if let Some(user_signature::Signature::Multisig(field)) = &mut self.signature
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn multisig_mut(&mut self) -> &mut MultisigAggregatedSignature {
+            if self.multisig_opt_mut().is_none() {
+                self.signature = Some(
+                    user_signature::Signature::Multisig(
+                        MultisigAggregatedSignature::default(),
+                    ),
+                );
+            }
+            self.multisig_opt_mut().unwrap()
+        }
+        pub fn with_multisig(mut self, field: MultisigAggregatedSignature) -> Self {
+            self.signature = Some(user_signature::Signature::Multisig(field.into()));
+            self
+        }
     }
     impl SimpleSignature {
         pub const fn const_default() -> Self {
@@ -1638,6 +1674,150 @@ mod _getter_impls {
         }
         pub fn with_public_key(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.public_key = Some(field.into());
+            self
+        }
+    }
+    impl MultisigMemberPublicKey {
+        pub const fn const_default() -> Self {
+            Self {
+                scheme: None,
+                public_key: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MultisigMemberPublicKey = MultisigMemberPublicKey::const_default();
+            &DEFAULT
+        }
+        pub fn with_public_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.public_key = Some(field.into());
+            self
+        }
+    }
+    impl MultisigMember {
+        pub const fn const_default() -> Self {
+            Self {
+                public_key: None,
+                weight: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MultisigMember = MultisigMember::const_default();
+            &DEFAULT
+        }
+        pub fn public_key(&self) -> &MultisigMemberPublicKey {
+            self.public_key
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| MultisigMemberPublicKey::default_instance() as _)
+        }
+        pub fn public_key_opt(&self) -> Option<&MultisigMemberPublicKey> {
+            self.public_key.as_ref().map(|field| field as _)
+        }
+        pub fn public_key_opt_mut(&mut self) -> Option<&mut MultisigMemberPublicKey> {
+            self.public_key.as_mut().map(|field| field as _)
+        }
+        pub fn public_key_mut(&mut self) -> &mut MultisigMemberPublicKey {
+            self.public_key.get_or_insert_default()
+        }
+        pub fn with_public_key(mut self, field: MultisigMemberPublicKey) -> Self {
+            self.public_key = Some(field.into());
+            self
+        }
+        pub fn with_weight(mut self, field: u32) -> Self {
+            self.weight = Some(field.into());
+            self
+        }
+    }
+    impl MultisigCommittee {
+        pub const fn const_default() -> Self {
+            Self {
+                members: Vec::new(),
+                threshold: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MultisigCommittee = MultisigCommittee::const_default();
+            &DEFAULT
+        }
+        pub fn members(&self) -> &[MultisigMember] {
+            &self.members
+        }
+        pub fn members_mut(&mut self) -> &mut Vec<MultisigMember> {
+            &mut self.members
+        }
+        pub fn with_members(mut self, field: Vec<MultisigMember>) -> Self {
+            self.members = field;
+            self
+        }
+        pub fn with_threshold(mut self, field: u32) -> Self {
+            self.threshold = Some(field.into());
+            self
+        }
+    }
+    impl MultisigAggregatedSignature {
+        pub const fn const_default() -> Self {
+            Self {
+                signatures: Vec::new(),
+                bitmap: None,
+                committee: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MultisigAggregatedSignature = MultisigAggregatedSignature::const_default();
+            &DEFAULT
+        }
+        pub fn signatures(&self) -> &[MultisigMemberSignature] {
+            &self.signatures
+        }
+        pub fn signatures_mut(&mut self) -> &mut Vec<MultisigMemberSignature> {
+            &mut self.signatures
+        }
+        pub fn with_signatures(mut self, field: Vec<MultisigMemberSignature>) -> Self {
+            self.signatures = field;
+            self
+        }
+        pub fn with_bitmap(mut self, field: u32) -> Self {
+            self.bitmap = Some(field.into());
+            self
+        }
+        pub fn committee(&self) -> &MultisigCommittee {
+            self.committee
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| MultisigCommittee::default_instance() as _)
+        }
+        pub fn committee_opt(&self) -> Option<&MultisigCommittee> {
+            self.committee.as_ref().map(|field| field as _)
+        }
+        pub fn committee_opt_mut(&mut self) -> Option<&mut MultisigCommittee> {
+            self.committee.as_mut().map(|field| field as _)
+        }
+        pub fn committee_mut(&mut self) -> &mut MultisigCommittee {
+            self.committee.get_or_insert_default()
+        }
+        pub fn with_committee(mut self, field: MultisigCommittee) -> Self {
+            self.committee = Some(field.into());
+            self
+        }
+    }
+    impl MultisigMemberSignature {
+        pub const fn const_default() -> Self {
+            Self {
+                scheme: None,
+                signature: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: MultisigMemberSignature = MultisigMemberSignature::const_default();
+            &DEFAULT
+        }
+        pub fn with_signature(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.signature = Some(field.into());
             self
         }
     }

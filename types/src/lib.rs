@@ -25,6 +25,7 @@ pub mod intent;
 pub mod messages_grpc;
 pub mod metadata;
 pub mod multiaddr;
+pub mod multisig;
 pub mod mutex_table;
 pub mod object;
 pub mod parameters;

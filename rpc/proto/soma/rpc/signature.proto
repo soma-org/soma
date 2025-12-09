@@ -15,8 +15,11 @@ message UserSignature {
   optional SignatureScheme scheme = 1;
 
   oneof signature {
-    // Simple signature if scheme is ed25519 | secp256k1 | secp256r1.
+    // Simple signature if scheme is ed25519.
     SimpleSignature simple = 2;
+
+    // The multisig aggregated signature if scheme is `MULTISIG`.
+    MultisigAggregatedSignature multisig = 3;
   }
 }
 
@@ -31,6 +34,57 @@ message SimpleSignature {
   // Public key bytes
   optional bytes public_key = 3;
 }
+
+// Set of valid public keys for multisig committee members.
+message MultisigMemberPublicKey {
+  // The signature scheme of this public key.
+  optional SignatureScheme scheme = 1;
+
+  // Public key bytes if scheme is ed25519.
+  optional bytes public_key = 2;
+}
+
+// A member in a multisig committee.
+message MultisigMember {
+  // The public key of the committee member.
+  optional MultisigMemberPublicKey public_key = 1;
+  // The weight of this member's signature.
+  optional uint32 weight = 2;
+}
+
+// A multisig committee.
+message MultisigCommittee {
+  // A list of committee members and their corresponding weight.
+  repeated MultisigMember members = 1;
+  // The threshold of signatures needed to validate a signature from
+  // this committee.
+  optional uint32 threshold = 2;
+}
+
+// Aggregated signature from members of a multisig committee.
+message MultisigAggregatedSignature {
+  // The plain signatures encoded with signature scheme.
+  //
+  // The signatures must be in the same order as they are listed in the committee.
+  repeated MultisigMemberSignature signatures = 1;
+
+  // Bitmap indicating which committee members contributed to the
+  // signature.
+  optional uint32 bitmap = 2;
+ 
+  // The committee to use to validate this signature.
+  optional MultisigCommittee committee = 3;
+}
+
+// A signature from a member of a multisig committee.
+message MultisigMemberSignature {
+  // The signature scheme of this signature.
+  optional SignatureScheme scheme = 1;
+
+  // Signature bytes if scheme is ed25519.
+  optional bytes signature = 2;
+}
+
 // The validator set for a particular epoch.
 message ValidatorCommittee {
   // The epoch where this committee governs.

@@ -1813,7 +1813,7 @@ pub struct UserSignature {
     /// The signature scheme of this signature.
     #[prost(enumeration = "SignatureScheme", optional, tag = "1")]
     pub scheme: ::core::option::Option<i32>,
-    #[prost(oneof = "user_signature::Signature", tags = "2")]
+    #[prost(oneof = "user_signature::Signature", tags = "2, 3")]
     pub signature: ::core::option::Option<user_signature::Signature>,
 }
 /// Nested message and enum types in `UserSignature`.
@@ -1821,9 +1821,12 @@ pub mod user_signature {
     #[non_exhaustive]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Signature {
-        /// Simple signature if scheme is ed25519 | secp256k1 | secp256r1.
+        /// Simple signature if scheme is ed25519.
         #[prost(message, tag = "2")]
         Simple(super::SimpleSignature),
+        /// The multisig aggregated signature if scheme is `MULTISIG`.
+        #[prost(message, tag = "3")]
+        Multisig(super::MultisigAggregatedSignature),
     }
 }
 /// Either an ed25519, secp256k1 or secp256r1 signature
@@ -1839,6 +1842,68 @@ pub struct SimpleSignature {
     /// Public key bytes
     #[prost(bytes = "bytes", optional, tag = "3")]
     pub public_key: ::core::option::Option<::prost::bytes::Bytes>,
+}
+/// Set of valid public keys for multisig committee members.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MultisigMemberPublicKey {
+    /// The signature scheme of this public key.
+    #[prost(enumeration = "SignatureScheme", optional, tag = "1")]
+    pub scheme: ::core::option::Option<i32>,
+    /// Public key bytes if scheme is ed25519.
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub public_key: ::core::option::Option<::prost::bytes::Bytes>,
+}
+/// A member in a multisig committee.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MultisigMember {
+    /// The public key of the committee member.
+    #[prost(message, optional, tag = "1")]
+    pub public_key: ::core::option::Option<MultisigMemberPublicKey>,
+    /// The weight of this member's signature.
+    #[prost(uint32, optional, tag = "2")]
+    pub weight: ::core::option::Option<u32>,
+}
+/// A multisig committee.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MultisigCommittee {
+    /// A list of committee members and their corresponding weight.
+    #[prost(message, repeated, tag = "1")]
+    pub members: ::prost::alloc::vec::Vec<MultisigMember>,
+    /// The threshold of signatures needed to validate a signature from
+    /// this committee.
+    #[prost(uint32, optional, tag = "2")]
+    pub threshold: ::core::option::Option<u32>,
+}
+/// Aggregated signature from members of a multisig committee.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MultisigAggregatedSignature {
+    /// The plain signatures encoded with signature scheme.
+    ///
+    /// The signatures must be in the same order as they are listed in the committee.
+    #[prost(message, repeated, tag = "1")]
+    pub signatures: ::prost::alloc::vec::Vec<MultisigMemberSignature>,
+    /// Bitmap indicating which committee members contributed to the
+    /// signature.
+    #[prost(uint32, optional, tag = "2")]
+    pub bitmap: ::core::option::Option<u32>,
+    /// The committee to use to validate this signature.
+    #[prost(message, optional, tag = "3")]
+    pub committee: ::core::option::Option<MultisigCommittee>,
+}
+/// A signature from a member of a multisig committee.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MultisigMemberSignature {
+    /// The signature scheme of this signature.
+    #[prost(enumeration = "SignatureScheme", optional, tag = "1")]
+    pub scheme: ::core::option::Option<i32>,
+    /// Signature bytes if scheme is ed25519.
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub signature: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// The validator set for a particular epoch.
 #[non_exhaustive]
@@ -1910,6 +1975,7 @@ pub struct ValidatorAggregatedSignature {
 pub enum SignatureScheme {
     Ed25519 = 0,
     Bls12381 = 1,
+    Multisig = 2,
 }
 impl SignatureScheme {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1920,6 +1986,7 @@ impl SignatureScheme {
         match self {
             Self::Ed25519 => "ED25519",
             Self::Bls12381 => "BLS12381",
+            Self::Multisig => "MULTISIG",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1927,6 +1994,7 @@ impl SignatureScheme {
         match value {
             "ED25519" => Some(Self::Ed25519),
             "BLS12381" => Some(Self::Bls12381),
+            "MULTISIG" => Some(Self::Multisig),
             _ => None,
         }
     }

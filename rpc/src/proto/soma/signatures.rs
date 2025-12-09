@@ -189,6 +189,7 @@ impl TryFrom<&SignatureScheme> for crate::types::SignatureScheme {
         match value {
             Ed25519 => Self::Ed25519,
             Bls12381 => Self::Bls12381,
+            Multisig => Self::Multisig,
         }
         .pipe(Ok)
     }
@@ -246,7 +247,7 @@ impl TryFrom<&SimpleSignature> for crate::types::SimpleSignature {
                     TryFromProtoError::invalid(SimpleSignature::PUBLIC_KEY_FIELD, e)
                 })?,
             },
-            SignatureScheme::Bls12381 => {
+            SignatureScheme::Multisig | SignatureScheme::Bls12381 => {
                 return Err(TryFromProtoError::invalid(
                     SimpleSignature::SCHEME_FIELD,
                     "invalid or unknown signature scheme",
@@ -254,6 +255,209 @@ impl TryFrom<&SimpleSignature> for crate::types::SimpleSignature {
             }
         }
         .pipe(Ok)
+    }
+}
+
+//
+// MultisigMemberPublicKey
+//
+
+impl From<&crate::types::MultisigMemberPublicKey> for MultisigMemberPublicKey {
+    fn from(value: &crate::types::MultisigMemberPublicKey) -> Self {
+        use crate::types::MultisigMemberPublicKey::*;
+
+        let mut message = Self::default();
+
+        let scheme = match value {
+            Ed25519(public_key) => {
+                message.public_key = Some(public_key.as_bytes().to_vec().into());
+                SignatureScheme::Ed25519
+            }
+
+            _ => return Self::default(),
+        };
+
+        message.set_scheme(scheme);
+        message
+    }
+}
+
+impl TryFrom<&MultisigMemberPublicKey> for crate::types::MultisigMemberPublicKey {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &MultisigMemberPublicKey) -> Result<Self, Self::Error> {
+        use crate::types::Ed25519PublicKey;
+
+        match value.scheme() {
+            SignatureScheme::Ed25519 => Self::Ed25519(
+                Ed25519PublicKey::from_bytes(value.public_key()).map_err(|e| {
+                    TryFromProtoError::invalid(MultisigMemberPublicKey::PUBLIC_KEY_FIELD, e)
+                })?,
+            ),
+
+            SignatureScheme::Multisig | SignatureScheme::Bls12381 => {
+                return Err(TryFromProtoError::invalid(
+                    MultisigMemberPublicKey::SCHEME_FIELD,
+                    "invalid MultisigMemberPublicKey scheme",
+                ));
+            }
+        }
+        .pipe(Ok)
+    }
+}
+
+//
+// MultisigMember
+//
+
+impl From<&crate::types::MultisigMember> for MultisigMember {
+    fn from(value: &crate::types::MultisigMember) -> Self {
+        Self {
+            public_key: Some(value.public_key().into()),
+            weight: Some(value.weight().into()),
+        }
+    }
+}
+
+impl TryFrom<&MultisigMember> for crate::types::MultisigMember {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &MultisigMember) -> Result<Self, Self::Error> {
+        let public_key = value
+            .public_key
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("public_key"))?
+            .try_into()?;
+        let weight = value
+            .weight
+            .ok_or_else(|| TryFromProtoError::missing("weight"))?
+            .try_into()
+            .map_err(|e| TryFromProtoError::invalid(MultisigMember::WEIGHT_FIELD, e))?;
+
+        Ok(Self::new(public_key, weight))
+    }
+}
+
+//
+// MultisigCommittee
+//
+
+impl From<&crate::types::MultisigCommittee> for MultisigCommittee {
+    fn from(value: &crate::types::MultisigCommittee) -> Self {
+        Self {
+            members: value.members().iter().map(Into::into).collect(),
+            threshold: Some(value.threshold().into()),
+        }
+    }
+}
+
+impl TryFrom<&MultisigCommittee> for crate::types::MultisigCommittee {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &MultisigCommittee) -> Result<Self, Self::Error> {
+        let members = value
+            .members
+            .iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()?;
+        let threshold = value
+            .threshold
+            .ok_or_else(|| TryFromProtoError::missing("threshold"))?
+            .try_into()
+            .map_err(|e| TryFromProtoError::invalid(MultisigCommittee::THRESHOLD_FIELD, e))?;
+
+        Ok(Self::new(members, threshold))
+    }
+}
+
+//
+// MultisigMemberSignature
+//
+
+impl From<&crate::types::MultisigMemberSignature> for MultisigMemberSignature {
+    fn from(value: &crate::types::MultisigMemberSignature) -> Self {
+        use crate::types::MultisigMemberSignature::*;
+
+        let mut message = Self::default();
+
+        let scheme = match value {
+            Ed25519(signature) => {
+                message.signature = Some(signature.as_bytes().to_vec().into());
+                SignatureScheme::Ed25519
+            }
+
+            _ => return Self::default(),
+        };
+
+        message.set_scheme(scheme);
+        message
+    }
+}
+
+impl TryFrom<&MultisigMemberSignature> for crate::types::MultisigMemberSignature {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &MultisigMemberSignature) -> Result<Self, Self::Error> {
+        use crate::types::Ed25519Signature;
+
+        match value.scheme() {
+            SignatureScheme::Ed25519 => Self::Ed25519(
+                Ed25519Signature::from_bytes(value.signature()).map_err(|e| {
+                    TryFromProtoError::invalid(MultisigMemberSignature::SIGNATURE_FIELD, e)
+                })?,
+            ),
+
+            SignatureScheme::Multisig | SignatureScheme::Bls12381 => {
+                return Err(TryFromProtoError::invalid(
+                    MultisigMemberSignature::SCHEME_FIELD,
+                    "invalid MultisigMemberSignature scheme",
+                ));
+            }
+        }
+        .pipe(Ok)
+    }
+}
+
+//
+// MultisigAggregatedSignature
+//
+
+impl From<&crate::types::MultisigAggregatedSignature> for MultisigAggregatedSignature {
+    fn from(value: &crate::types::MultisigAggregatedSignature) -> Self {
+        Self {
+            signatures: value.signatures().iter().map(Into::into).collect(),
+            bitmap: Some(value.bitmap().into()),
+
+            committee: Some(value.committee().into()),
+        }
+    }
+}
+
+impl TryFrom<&MultisigAggregatedSignature> for crate::types::MultisigAggregatedSignature {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &MultisigAggregatedSignature) -> Result<Self, Self::Error> {
+        let signatures = value
+            .signatures
+            .iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()?;
+        let bitmap = value
+            .bitmap
+            .ok_or_else(|| TryFromProtoError::missing("bitmap"))?
+            .try_into()
+            .map_err(|e| {
+                TryFromProtoError::invalid(MultisigAggregatedSignature::BITMAP_FIELD, e)
+            })?;
+        let committee = value
+            .committee
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("committee"))?
+            .try_into()?;
+
+        let mut signature = Self::new(committee, signatures, bitmap);
+
+        Ok(signature)
     }
 }
 
@@ -282,6 +486,11 @@ impl Merge<crate::types::UserSignature> for UserSignature {
                     self.signature = Some(Signature::Simple(simple.into()));
                 }
             }
+            Multisig(ref multisig) => {
+                if mask.contains(Self::MULTISIG_FIELD.name) {
+                    self.signature = Some(Signature::Multisig(multisig.into()));
+                }
+            }
             _ => {}
         }
     }
@@ -298,6 +507,8 @@ impl Merge<&UserSignature> for UserSignature {
         }
 
         if matches!(signature, Some(Signature::Simple(_))) && mask.contains(Self::SIMPLE_FIELD.name)
+            || matches!(signature, Some(Signature::Multisig(_)))
+                && mask.contains(Self::MULTISIG_FIELD.name)
         {
             self.signature = signature.clone();
         }
@@ -318,6 +529,7 @@ impl TryFrom<&UserSignature> for crate::types::UserSignature {
 
         match &value.signature {
             Some(Signature::Simple(simple)) => Self::Simple(simple.try_into()?),
+            Some(Signature::Multisig(multisig)) => Self::Multisig(multisig.try_into()?),
             None => {
                 return Err(TryFromProtoError::invalid(
                     "signature",

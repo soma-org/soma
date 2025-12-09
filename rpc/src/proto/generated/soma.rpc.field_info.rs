@@ -2378,11 +2378,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: Some(SimpleSignature::FIELDS),
         };
+        pub const MULTISIG_FIELD: &'static MessageField = &MessageField {
+            name: "multisig",
+            json_name: "multisig",
+            number: 3i32,
+            message_fields: Some(MultisigAggregatedSignature::FIELDS),
+        };
     }
     impl MessageFields for UserSignature {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::SCHEME_FIELD,
             Self::SIMPLE_FIELD,
+            Self::MULTISIG_FIELD,
         ];
     }
     impl UserSignature {
@@ -2412,6 +2419,10 @@ mod _field_impls {
         pub fn simple(mut self) -> SimpleSignatureFieldPathBuilder {
             self.path.push(UserSignature::SIMPLE_FIELD.name);
             SimpleSignatureFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn multisig(mut self) -> MultisigAggregatedSignatureFieldPathBuilder {
+            self.path.push(UserSignature::MULTISIG_FIELD.name);
+            MultisigAggregatedSignatureFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl SimpleSignature {
@@ -2471,6 +2482,262 @@ mod _field_impls {
         }
         pub fn public_key(mut self) -> String {
             self.path.push(SimpleSignature::PUBLIC_KEY_FIELD.name);
+            self.finish()
+        }
+    }
+    impl MultisigMemberPublicKey {
+        pub const SCHEME_FIELD: &'static MessageField = &MessageField {
+            name: "scheme",
+            json_name: "scheme",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const PUBLIC_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "public_key",
+            json_name: "publicKey",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for MultisigMemberPublicKey {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SCHEME_FIELD,
+            Self::PUBLIC_KEY_FIELD,
+        ];
+    }
+    impl MultisigMemberPublicKey {
+        pub fn path_builder() -> MultisigMemberPublicKeyFieldPathBuilder {
+            MultisigMemberPublicKeyFieldPathBuilder::new()
+        }
+    }
+    pub struct MultisigMemberPublicKeyFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl MultisigMemberPublicKeyFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn scheme(mut self) -> String {
+            self.path.push(MultisigMemberPublicKey::SCHEME_FIELD.name);
+            self.finish()
+        }
+        pub fn public_key(mut self) -> String {
+            self.path.push(MultisigMemberPublicKey::PUBLIC_KEY_FIELD.name);
+            self.finish()
+        }
+    }
+    impl MultisigMember {
+        pub const PUBLIC_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "public_key",
+            json_name: "publicKey",
+            number: 1i32,
+            message_fields: Some(MultisigMemberPublicKey::FIELDS),
+        };
+        pub const WEIGHT_FIELD: &'static MessageField = &MessageField {
+            name: "weight",
+            json_name: "weight",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for MultisigMember {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::PUBLIC_KEY_FIELD,
+            Self::WEIGHT_FIELD,
+        ];
+    }
+    impl MultisigMember {
+        pub fn path_builder() -> MultisigMemberFieldPathBuilder {
+            MultisigMemberFieldPathBuilder::new()
+        }
+    }
+    pub struct MultisigMemberFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl MultisigMemberFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn public_key(mut self) -> MultisigMemberPublicKeyFieldPathBuilder {
+            self.path.push(MultisigMember::PUBLIC_KEY_FIELD.name);
+            MultisigMemberPublicKeyFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn weight(mut self) -> String {
+            self.path.push(MultisigMember::WEIGHT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl MultisigCommittee {
+        pub const MEMBERS_FIELD: &'static MessageField = &MessageField {
+            name: "members",
+            json_name: "members",
+            number: 1i32,
+            message_fields: Some(MultisigMember::FIELDS),
+        };
+        pub const THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "threshold",
+            json_name: "threshold",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for MultisigCommittee {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MEMBERS_FIELD,
+            Self::THRESHOLD_FIELD,
+        ];
+    }
+    impl MultisigCommittee {
+        pub fn path_builder() -> MultisigCommitteeFieldPathBuilder {
+            MultisigCommitteeFieldPathBuilder::new()
+        }
+    }
+    pub struct MultisigCommitteeFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl MultisigCommitteeFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn members(mut self) -> MultisigMemberFieldPathBuilder {
+            self.path.push(MultisigCommittee::MEMBERS_FIELD.name);
+            MultisigMemberFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn threshold(mut self) -> String {
+            self.path.push(MultisigCommittee::THRESHOLD_FIELD.name);
+            self.finish()
+        }
+    }
+    impl MultisigAggregatedSignature {
+        pub const SIGNATURES_FIELD: &'static MessageField = &MessageField {
+            name: "signatures",
+            json_name: "signatures",
+            number: 1i32,
+            message_fields: Some(MultisigMemberSignature::FIELDS),
+        };
+        pub const BITMAP_FIELD: &'static MessageField = &MessageField {
+            name: "bitmap",
+            json_name: "bitmap",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const COMMITTEE_FIELD: &'static MessageField = &MessageField {
+            name: "committee",
+            json_name: "committee",
+            number: 3i32,
+            message_fields: Some(MultisigCommittee::FIELDS),
+        };
+    }
+    impl MessageFields for MultisigAggregatedSignature {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SIGNATURES_FIELD,
+            Self::BITMAP_FIELD,
+            Self::COMMITTEE_FIELD,
+        ];
+    }
+    impl MultisigAggregatedSignature {
+        pub fn path_builder() -> MultisigAggregatedSignatureFieldPathBuilder {
+            MultisigAggregatedSignatureFieldPathBuilder::new()
+        }
+    }
+    pub struct MultisigAggregatedSignatureFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl MultisigAggregatedSignatureFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn signatures(mut self) -> MultisigMemberSignatureFieldPathBuilder {
+            self.path.push(MultisigAggregatedSignature::SIGNATURES_FIELD.name);
+            MultisigMemberSignatureFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn bitmap(mut self) -> String {
+            self.path.push(MultisigAggregatedSignature::BITMAP_FIELD.name);
+            self.finish()
+        }
+        pub fn committee(mut self) -> MultisigCommitteeFieldPathBuilder {
+            self.path.push(MultisigAggregatedSignature::COMMITTEE_FIELD.name);
+            MultisigCommitteeFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl MultisigMemberSignature {
+        pub const SCHEME_FIELD: &'static MessageField = &MessageField {
+            name: "scheme",
+            json_name: "scheme",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const SIGNATURE_FIELD: &'static MessageField = &MessageField {
+            name: "signature",
+            json_name: "signature",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for MultisigMemberSignature {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SCHEME_FIELD,
+            Self::SIGNATURE_FIELD,
+        ];
+    }
+    impl MultisigMemberSignature {
+        pub fn path_builder() -> MultisigMemberSignatureFieldPathBuilder {
+            MultisigMemberSignatureFieldPathBuilder::new()
+        }
+    }
+    pub struct MultisigMemberSignatureFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl MultisigMemberSignatureFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn scheme(mut self) -> String {
+            self.path.push(MultisigMemberSignature::SCHEME_FIELD.name);
+            self.finish()
+        }
+        pub fn signature(mut self) -> String {
+            self.path.push(MultisigMemberSignature::SIGNATURE_FIELD.name);
             self.finish()
         }
     }

@@ -1,9 +1,11 @@
+use super::MultisigAggregatedSignature;
 use crate::types::{Ed25519PublicKey, Ed25519Signature};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum UserSignature {
     Simple(SimpleSignature),
+    Multisig(MultisigAggregatedSignature),
 }
 
 impl UserSignature {
@@ -11,6 +13,7 @@ impl UserSignature {
     pub fn scheme(&self) -> SignatureScheme {
         match self {
             UserSignature::Simple(simple) => simple.scheme(),
+            UserSignature::Multisig(_) => SignatureScheme::Multisig,
         }
     }
 }
@@ -19,6 +22,7 @@ impl UserSignature {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             UserSignature::Simple(s) => s.to_bytes(),
+            UserSignature::Multisig(m) => m.to_bytes(),
         }
     }
 
@@ -42,7 +46,10 @@ impl UserSignature {
                 let simple = SimpleSignature::from_serialized_bytes(bytes)?;
                 Ok(Self::Simple(simple))
             }
-
+            SignatureScheme::Multisig => {
+                let multisig = MultisigAggregatedSignature::from_serialized_bytes(bytes)?;
+                Ok(Self::Multisig(multisig))
+            }
             SignatureScheme::Bls12381 => Err(serde::de::Error::custom(
                 "bls not supported for user signatures",
             )),
@@ -69,6 +76,7 @@ enum ReadableUserSignatureRef<'a> {
         signature: &'a Ed25519Signature,
         public_key: &'a Ed25519PublicKey,
     },
+    Multisig(&'a MultisigAggregatedSignature),
 }
 
 #[derive(serde_derive::Deserialize)]
@@ -79,6 +87,7 @@ enum ReadableUserSignature {
         signature: Ed25519Signature,
         public_key: Ed25519PublicKey,
     },
+    Multisig(MultisigAggregatedSignature),
 }
 
 impl serde::Serialize for UserSignature {
@@ -95,11 +104,13 @@ impl serde::Serialize for UserSignature {
                     signature,
                     public_key,
                 },
+                UserSignature::Multisig(multisig) => ReadableUserSignatureRef::Multisig(multisig),
             };
             readable.serialize(serializer)
         } else {
             match self {
                 UserSignature::Simple(simple) => simple.serialize(serializer),
+                UserSignature::Multisig(multisig) => multisig.serialize(serializer),
             }
         }
     }
@@ -120,6 +131,7 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
                     signature,
                     public_key,
                 }),
+                ReadableUserSignature::Multisig(multisig) => Self::Multisig(multisig),
             })
         } else {
             use serde_with::DeserializeAs;
@@ -193,7 +205,9 @@ impl SimpleSignature {
                     public_key: Ed25519PublicKey::new(public_key),
                 })
             }
-            SignatureScheme::Bls12381 => Err(serde::de::Error::custom("invalid signature scheme")),
+            SignatureScheme::Bls12381 | SignatureScheme::Multisig => {
+                Err(serde::de::Error::custom("invalid signature scheme"))
+            }
         }
     }
 }
@@ -283,15 +297,11 @@ impl<'de> serde::Deserialize<'de> for SimpleSignature {
 /// The BCS serialized form for this type is defined by the following ABNF:
 ///
 /// ```text
-/// signature-scheme = ed25519-flag / secp256k1-flag / secp256r1-flag /
-///                    multisig-flag / bls-flag / zklogin-flag / passkey-flag
+/// signature-scheme = ed25519-flag /
+///                    multisig-flag / bls-flag
 /// ed25519-flag     = %x00
-/// secp256k1-flag   = %x01
-/// secp256r1-flag   = %x02
-/// multisig-flag    = %x03
-/// bls-flag         = %x04
-/// zklogin-flag     = %x05
-/// passkey-flag     = %x06
+/// multisig-flag    = %x02
+/// bls-flag         = %x01
 /// ```
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
@@ -299,6 +309,7 @@ impl<'de> serde::Deserialize<'de> for SimpleSignature {
 pub enum SignatureScheme {
     Ed25519 = 0x00,
     Bls12381 = 0x01, // This is currently not supported for user addresses
+    Multisig = 0x02,
 }
 
 impl SignatureScheme {
@@ -307,6 +318,7 @@ impl SignatureScheme {
         match self {
             SignatureScheme::Ed25519 => "ed25519",
             SignatureScheme::Bls12381 => "bls12381",
+            SignatureScheme::Multisig => "multisig",
         }
     }
 
@@ -315,6 +327,7 @@ impl SignatureScheme {
         match flag {
             0x00 => Ok(Self::Ed25519),
             0x01 => Ok(Self::Bls12381),
+            0x02 => Ok(Self::Multisig),
             invalid => Err(InvalidSignatureScheme(invalid)),
         }
     }

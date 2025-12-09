@@ -34,6 +34,7 @@ use crate::base::{AuthorityName, ConciseableName, SomaAddress};
 use crate::committee::{Committee, CommitteeTrait, EpochId, VotingPower};
 use crate::error::{SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage};
+use crate::multisig::MultiSig;
 use crate::serde::Readable;
 use crate::serde::SomaBitmap;
 use anyhow::{anyhow, Error};
@@ -47,6 +48,7 @@ use fastcrypto::bls12381::min_sig::{
 };
 use fastcrypto::ed25519::{
     self, Ed25519KeyPair, Ed25519PublicKey, Ed25519PublicKeyAsBytes, Ed25519Signature,
+    Ed25519SignatureAsBytes,
 };
 use fastcrypto::encoding::{Base64, Bech32};
 use fastcrypto::encoding::{Encoding, Hex};
@@ -804,23 +806,10 @@ impl SomaAuthoritySignature for AuthoritySignature {
     }
 }
 
-/// Generates a keypair from the specified random number generator
-///
-/// ## Purpose
-/// Creates a new keypair using the provided random number generator,
-/// which is useful for testing with seedable RNGs to produce deterministic keys.
-///
-/// ## Arguments
-/// * `csprng` - Cryptographically secure random number generator
-///
-/// ## Returns
-/// A tuple containing the Soma address derived from the public key and the keypair
-///
-/// ## Examples
-/// ```
-/// let mut rng = StdRng::from_seed([0; 32]);
-/// let (address, keypair) = get_key_pair_from_rng::<Ed25519KeyPair, _>(&mut rng);
-/// ```
+pub fn get_authority_key_pair() -> (SomaAddress, AuthorityKeyPair) {
+    get_key_pair()
+}
+
 pub fn get_key_pair_from_rng<KP: KeypairTraits, R>(csprng: &mut R) -> (SomaAddress, KP)
 where
     R: rand::CryptoRng + rand::RngCore,
@@ -837,21 +826,6 @@ where
     get_key_pair_from_rng(&mut OsRng)
 }
 
-/// Generates a set of random committee key pairs with a given size
-///
-/// ## Purpose
-/// Creates a deterministic set of authority key pairs for testing and simulation.
-/// The keys are generated using a fixed seed for reproducibility.
-///
-/// ## Arguments
-/// * `size` - Number of authority key pairs to generate
-///
-/// ## Returns
-/// A vector of AuthorityKeyPair instances
-///
-/// ## Note
-/// The implementation currently generates extra keys to match the behavior of
-/// ConfigBuilder::build. This is a known issue that should be addressed in the future.
 pub fn random_committee_key_pairs_of_size(size: usize) -> Vec<AuthorityKeyPair> {
     let mut rng = StdRng::from_seed([0; 32]);
     (0..size)
@@ -873,6 +847,7 @@ pub fn random_committee_key_pairs_of_size(size: usize) -> Vec<AuthorityKeyPair> 
 #[enum_dispatch(AuthenticatorTrait)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GenericSignature {
+    MultiSig,
     Signature,
 }
 
@@ -887,6 +862,64 @@ impl GenericSignature {
     {
         self.verify_claims(value, author)
     }
+
+    /// Parse [enum CompressedSignature] from trait SomaSignature `flag || sig || pk`.
+    /// This is useful for the MultiSig to combine partial signature into a MultiSig public key.
+    pub fn to_compressed(&self) -> Result<CompressedSignature, SomaError> {
+        match self {
+            GenericSignature::Signature(s) => {
+                let bytes = s.signature_bytes();
+                match s.scheme() {
+                    SignatureScheme::ED25519 => Ok(CompressedSignature::Ed25519(
+                        (&Ed25519Signature::from_bytes(bytes).map_err(|_| {
+                            SomaError::InvalidSignature {
+                                error: "Cannot parse ed25519 sig".to_string(),
+                            }
+                        })?)
+                            .into(),
+                    )),
+
+                    _ => Err(SomaError::UnsupportedFeatureError {
+                        error: "Unsupported signature scheme".to_string(),
+                    }
+                    .into()),
+                }
+            }
+
+            _ => Err(SomaError::UnsupportedFeatureError {
+                error: "Unsupported signature scheme".to_string(),
+            }
+            .into()),
+        }
+    }
+
+    /// Parse [struct PublicKey] from trait SomaSignature `flag || sig || pk`.
+    /// This is useful for the MultiSig to construct the bitmap in [struct MultiPublicKey].
+    pub fn to_public_key(&self) -> Result<PublicKey, SomaError> {
+        match self {
+            GenericSignature::Signature(s) => {
+                let bytes = s.public_key_bytes();
+                match s.scheme() {
+                    SignatureScheme::ED25519 => Ok(PublicKey::Ed25519(
+                        (&Ed25519PublicKey::from_bytes(bytes).map_err(|_| {
+                            SomaError::KeyConversionError("Cannot parse ed25519 pk".to_string())
+                        })?)
+                            .into(),
+                    )),
+
+                    _ => Err(SomaError::UnsupportedFeatureError {
+                        error: "Unsupported signature scheme in MultiSig".to_string(),
+                    }
+                    .into()),
+                }
+            }
+
+            _ => Err(SomaError::UnsupportedFeatureError {
+                error: "Unsupported signature scheme".to_string(),
+            }
+            .into()),
+        }
+    }
 }
 
 impl ToFromBytes for GenericSignature {
@@ -898,7 +931,10 @@ impl ToFromBytes for GenericSignature {
                 SignatureScheme::ED25519 => Ok(GenericSignature::Signature(
                     Signature::from_bytes(bytes).map_err(|_| FastCryptoError::InvalidSignature)?,
                 )),
-
+                SignatureScheme::MultiSig => match MultiSig::from_bytes(bytes) {
+                    Ok(multisig) => Ok(GenericSignature::MultiSig(multisig)),
+                    _ => Err(FastCryptoError::InvalidInput),
+                },
                 _ => Err(FastCryptoError::InvalidInput),
             },
             Err(_) => Err(FastCryptoError::InvalidInput),
@@ -911,6 +947,7 @@ impl AsRef<[u8]> for GenericSignature {
     fn as_ref(&self) -> &[u8] {
         match self {
             GenericSignature::Signature(s) => s.as_ref(),
+            GenericSignature::MultiSig(s) => s.as_ref(),
         }
     }
 }
@@ -1042,6 +1079,7 @@ where
 pub enum SignatureScheme {
     ED25519,
     BLS12381,
+    MultiSig,
 }
 
 impl SignatureScheme {
@@ -1049,6 +1087,7 @@ impl SignatureScheme {
         match self {
             SignatureScheme::ED25519 => 0x00,
             SignatureScheme::BLS12381 => 0x01,
+            SignatureScheme::MultiSig => 0x02,
         }
     }
 
@@ -1056,9 +1095,24 @@ impl SignatureScheme {
         match byte_int {
             0x00 => Ok(SignatureScheme::ED25519),
             0x01 => Ok(SignatureScheme::BLS12381),
+            0x02 => Ok(SignatureScheme::MultiSig),
             _ => Err(SomaError::KeyConversionError(
                 "Invalid key scheme".to_string(),
             )),
+        }
+    }
+}
+
+/// Unlike [enum Signature], [enum CompressedSignature] does not contain public key.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+pub enum CompressedSignature {
+    Ed25519(Ed25519SignatureAsBytes),
+}
+
+impl AsRef<[u8]> for CompressedSignature {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            CompressedSignature::Ed25519(sig) => &sig.0,
         }
     }
 }
@@ -1721,5 +1775,26 @@ impl<'a> VerificationObligation<'a> {
             }
         })?;
         Ok(())
+    }
+}
+
+impl FromStr for Signature {
+    type Err = eyre::Report;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::decode_base64(s).map_err(|e| eyre!("Fail to decode base64 {}", e.to_string()))
+    }
+}
+
+impl FromStr for PublicKey {
+    type Err = eyre::Report;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::decode_base64(s).map_err(|e| eyre!("Fail to decode base64 {}", e.to_string()))
+    }
+}
+
+impl FromStr for GenericSignature {
+    type Err = eyre::Report;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::decode_base64(s).map_err(|e| eyre!("Fail to decode base64 {}", e.to_string()))
     }
 }

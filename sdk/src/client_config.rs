@@ -74,7 +74,7 @@ impl SomaClientConfig {
     }
 }
 
-pub fn encoder_config_to_client_config(
+pub async fn encoder_config_to_client_config(
     encoder_config: &EncoderConfig,
     config_dir: &Path,
 ) -> Result<PersistedConfig<SomaClientConfig>, anyhow::Error> {
@@ -86,7 +86,9 @@ pub fn encoder_config_to_client_config(
     // Import the account keypair
     let account_kp = encoder_config.account_keypair.keypair().copy();
     let address = SomaAddress::from(&account_kp.public());
-    keystore.add_key(Some("encoder-account".to_string()), account_kp)?;
+    keystore
+        .import(Some("encoder-account".to_string()), account_kp)
+        .await?;
 
     // TODO: should encoder config have the internal object address of the rpc?
     let env = SomaEnv {

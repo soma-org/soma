@@ -558,7 +558,9 @@ async fn init_wallet_context(
     // Import the account keypair from EncoderConfig
     let account_kp = (*(config.account_keypair.keypair())).copy();
     let address = SomaAddress::from(&account_kp.public());
-    keystore.add_key(Some("encoder-account".to_string()), account_kp)?;
+    keystore
+        .import(Some("encoder-account".to_string()), account_kp)
+        .await?;
 
     // Create the client config
     let env = SomaEnv {

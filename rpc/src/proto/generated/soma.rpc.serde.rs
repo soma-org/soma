@@ -7946,6 +7946,613 @@ impl<'de> serde::Deserialize<'de> for MtlsDownloadMetadataV1 {
         deserializer.deserialize_struct("soma.rpc.MtlsDownloadMetadataV1", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for MultisigAggregatedSignature {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.signatures.is_empty() {
+            len += 1;
+        }
+        if self.bitmap.is_some() {
+            len += 1;
+        }
+        if self.committee.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MultisigAggregatedSignature", len)?;
+        if !self.signatures.is_empty() {
+            struct_ser.serialize_field("signatures", &self.signatures)?;
+        }
+        if let Some(v) = self.bitmap.as_ref() {
+            struct_ser.serialize_field("bitmap", v)?;
+        }
+        if let Some(v) = self.committee.as_ref() {
+            struct_ser.serialize_field("committee", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MultisigAggregatedSignature {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "signatures",
+            "bitmap",
+            "committee",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Signatures,
+            Bitmap,
+            Committee,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "signatures" => Ok(GeneratedField::Signatures),
+                            "bitmap" => Ok(GeneratedField::Bitmap),
+                            "committee" => Ok(GeneratedField::Committee),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MultisigAggregatedSignature;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MultisigAggregatedSignature")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MultisigAggregatedSignature, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut signatures__ = None;
+                let mut bitmap__ = None;
+                let mut committee__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Signatures => {
+                            if signatures__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signatures"));
+                            }
+                            signatures__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::Bitmap => {
+                            if bitmap__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bitmap"));
+                            }
+                            bitmap__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Committee => {
+                            if committee__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("committee"));
+                            }
+                            committee__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MultisigAggregatedSignature {
+                    signatures: signatures__.unwrap_or_default(),
+                    bitmap: bitmap__,
+                    committee: committee__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MultisigAggregatedSignature", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for MultisigCommittee {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.members.is_empty() {
+            len += 1;
+        }
+        if self.threshold.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MultisigCommittee", len)?;
+        if !self.members.is_empty() {
+            struct_ser.serialize_field("members", &self.members)?;
+        }
+        if let Some(v) = self.threshold.as_ref() {
+            struct_ser.serialize_field("threshold", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MultisigCommittee {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "members",
+            "threshold",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Members,
+            Threshold,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "members" => Ok(GeneratedField::Members),
+                            "threshold" => Ok(GeneratedField::Threshold),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MultisigCommittee;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MultisigCommittee")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MultisigCommittee, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut members__ = None;
+                let mut threshold__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Members => {
+                            if members__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("members"));
+                            }
+                            members__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::Threshold => {
+                            if threshold__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("threshold"));
+                            }
+                            threshold__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MultisigCommittee {
+                    members: members__.unwrap_or_default(),
+                    threshold: threshold__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MultisigCommittee", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for MultisigMember {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.public_key.is_some() {
+            len += 1;
+        }
+        if self.weight.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MultisigMember", len)?;
+        if let Some(v) = self.public_key.as_ref() {
+            struct_ser.serialize_field("publicKey", v)?;
+        }
+        if let Some(v) = self.weight.as_ref() {
+            struct_ser.serialize_field("weight", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MultisigMember {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "public_key",
+            "publicKey",
+            "weight",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            PublicKey,
+            Weight,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "publicKey" | "public_key" => Ok(GeneratedField::PublicKey),
+                            "weight" => Ok(GeneratedField::Weight),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MultisigMember;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MultisigMember")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MultisigMember, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut public_key__ = None;
+                let mut weight__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::PublicKey => {
+                            if public_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("publicKey"));
+                            }
+                            public_key__ = map_.next_value()?;
+                        }
+                        GeneratedField::Weight => {
+                            if weight__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("weight"));
+                            }
+                            weight__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MultisigMember {
+                    public_key: public_key__,
+                    weight: weight__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MultisigMember", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for MultisigMemberPublicKey {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.scheme.is_some() {
+            len += 1;
+        }
+        if self.public_key.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MultisigMemberPublicKey", len)?;
+        if let Some(v) = self.scheme.as_ref() {
+            let v = SignatureScheme::try_from(*v)
+                .map_err(|_| serde::ser::Error::custom(format!("Invalid variant {}", *v)))?;
+            struct_ser.serialize_field("scheme", &v)?;
+        }
+        if let Some(v) = self.public_key.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("publicKey", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MultisigMemberPublicKey {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "scheme",
+            "public_key",
+            "publicKey",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Scheme,
+            PublicKey,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "scheme" => Ok(GeneratedField::Scheme),
+                            "publicKey" | "public_key" => Ok(GeneratedField::PublicKey),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MultisigMemberPublicKey;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MultisigMemberPublicKey")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MultisigMemberPublicKey, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut scheme__ = None;
+                let mut public_key__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Scheme => {
+                            if scheme__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("scheme"));
+                            }
+                            scheme__ = map_.next_value::<::std::option::Option<SignatureScheme>>()?.map(|x| x as i32);
+                        }
+                        GeneratedField::PublicKey => {
+                            if public_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("publicKey"));
+                            }
+                            public_key__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MultisigMemberPublicKey {
+                    scheme: scheme__,
+                    public_key: public_key__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MultisigMemberPublicKey", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for MultisigMemberSignature {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.scheme.is_some() {
+            len += 1;
+        }
+        if self.signature.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.MultisigMemberSignature", len)?;
+        if let Some(v) = self.scheme.as_ref() {
+            let v = SignatureScheme::try_from(*v)
+                .map_err(|_| serde::ser::Error::custom(format!("Invalid variant {}", *v)))?;
+            struct_ser.serialize_field("scheme", &v)?;
+        }
+        if let Some(v) = self.signature.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("signature", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MultisigMemberSignature {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "scheme",
+            "signature",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Scheme,
+            Signature,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "scheme" => Ok(GeneratedField::Scheme),
+                            "signature" => Ok(GeneratedField::Signature),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MultisigMemberSignature;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.MultisigMemberSignature")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MultisigMemberSignature, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut scheme__ = None;
+                let mut signature__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Scheme => {
+                            if scheme__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("scheme"));
+                            }
+                            scheme__ = map_.next_value::<::std::option::Option<SignatureScheme>>()?.map(|x| x as i32);
+                        }
+                        GeneratedField::Signature => {
+                            if signature__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("signature"));
+                            }
+                            signature__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(MultisigMemberSignature {
+                    scheme: scheme__,
+                    signature: signature__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.MultisigMemberSignature", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for Object {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -10409,6 +11016,7 @@ impl serde::Serialize for SignatureScheme {
         let variant = match self {
             Self::Ed25519 => "ED25519",
             Self::Bls12381 => "BLS12381",
+            Self::Multisig => "MULTISIG",
         };
         serializer.serialize_str(variant)
     }
@@ -10422,6 +11030,7 @@ impl<'de> serde::Deserialize<'de> for SignatureScheme {
         const FIELDS: &[&str] = &[
             "ED25519",
             "BLS12381",
+            "MULTISIG",
         ];
 
         struct GeneratedVisitor;
@@ -10464,6 +11073,7 @@ impl<'de> serde::Deserialize<'de> for SignatureScheme {
                 match value {
                     "ED25519" => Ok(SignatureScheme::Ed25519),
                     "BLS12381" => Ok(SignatureScheme::Bls12381),
+                    "MULTISIG" => Ok(SignatureScheme::Multisig),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -14090,6 +14700,9 @@ impl serde::Serialize for UserSignature {
                 user_signature::Signature::Simple(v) => {
                     struct_ser.serialize_field("simple", v)?;
                 }
+                user_signature::Signature::Multisig(v) => {
+                    struct_ser.serialize_field("multisig", v)?;
+                }
             }
         }
         struct_ser.end()
@@ -14104,12 +14717,14 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
         const FIELDS: &[&str] = &[
             "scheme",
             "simple",
+            "multisig",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             Scheme,
             Simple,
+            Multisig,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -14134,6 +14749,7 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
                         match value {
                             "scheme" => Ok(GeneratedField::Scheme),
                             "simple" => Ok(GeneratedField::Simple),
+                            "multisig" => Ok(GeneratedField::Multisig),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -14170,6 +14786,13 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
                                 return Err(serde::de::Error::duplicate_field("simple"));
                             }
                             signature__ = map_.next_value::<::std::option::Option<_>>()?.map(user_signature::Signature::Simple)
+;
+                        }
+                        GeneratedField::Multisig => {
+                            if signature__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("multisig"));
+                            }
+                            signature__ = map_.next_value::<::std::option::Option<_>>()?.map(user_signature::Signature::Multisig)
 ;
                         }
                         GeneratedField::__SkipField__ => {

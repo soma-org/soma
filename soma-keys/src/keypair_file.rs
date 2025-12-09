@@ -1,77 +1,68 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-
 use std::path::PathBuf;
 
+use anyhow::anyhow;
 use fastcrypto::encoding::{Encoding, Hex};
-use fastcrypto::{secp256k1::Secp256k1KeyPair, traits::EncodeDecodeBase64};
-use types::crypto::SomaKeyPair;
-
-use crate::error::{SomaKeyError, SomaKeyResult};
+use fastcrypto::traits::EncodeDecodeBase64;
+use types::crypto::{AuthorityKeyPair, NetworkKeyPair, SomaKeyPair};
 
 /// Write Base64 encoded `flag || privkey` to file.
 pub fn write_keypair_to_file<P: AsRef<std::path::Path>>(
     keypair: &SomaKeyPair,
     path: P,
-) -> SomaKeyResult<()> {
+) -> anyhow::Result<()> {
     let contents = keypair.encode_base64();
-    std::fs::write(path, contents).map_err(|e| SomaKeyError::FileSystemError(e.to_string()))?;
+    std::fs::write(path, contents)?;
     Ok(())
 }
 
-// /// Write Base64 encoded `privkey` to file.
-// pub fn write_authority_keypair_to_file<P: AsRef<std::path::Path>>(
-//     keypair: &AuthorityKeyPair,
-//     path: P,
-// ) -> anyhow::Result<()> {
-//     let contents = keypair.encode_base64();
-//     std::fs::write(path, contents)?;
-//     Ok(())
-// }
-
-// /// Read from file as Base64 encoded `privkey` and return a AuthorityKeyPair.
-// pub fn read_authority_keypair_from_file<P: AsRef<std::path::Path>>(
-//     path: P,
-// ) -> anyhow::Result<AuthorityKeyPair> {
-//     let contents = std::fs::read_to_string(path)?;
-//     AuthorityKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
-// }
-
-/// Read from file as Base64 encoded `flag || privkey` and return a SuiKeypair.
-pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> SomaKeyResult<SomaKeyPair> {
-    let contents =
-        std::fs::read_to_string(path).map_err(|e| SomaKeyError::FileSystemError(e.to_string()))?;
-    SomaKeyPair::decode_base64(contents.as_str().trim())
-        .map_err(|e| SomaKeyError::ErrorDecoding(e.to_string()))
+/// Write Base64 encoded `privkey` to file.
+pub fn write_authority_keypair_to_file<P: AsRef<std::path::Path>>(
+    keypair: &AuthorityKeyPair,
+    path: P,
+) -> anyhow::Result<()> {
+    let contents = keypair.encode_base64();
+    std::fs::write(path, contents)?;
+    Ok(())
 }
 
-// /// Read from file as Base64 encoded `flag || privkey` and return a NetworkKeyPair.
-// pub fn read_network_keypair_from_file<P: AsRef<std::path::Path>>(
-//     path: P,
-// ) -> anyhow::Result<NetworkKeyPair> {
-//     let kp = read_keypair_from_file(path)?;
-//     if let SuiKeyPair::Ed25519(kp) = kp {
-//         Ok(kp)
-//     } else {
-//         Err(anyhow!("Invalid scheme for network keypair"))
-//     }
-// }
+/// Read from file as Base64 encoded `privkey` and return a AuthorityKeyPair.
+pub fn read_authority_keypair_from_file<P: AsRef<std::path::Path>>(
+    path: P,
+) -> anyhow::Result<AuthorityKeyPair> {
+    let contents = std::fs::read_to_string(path)?;
+    AuthorityKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
+}
 
-/// Read a SuiKeyPair from a file. The content could be any of the following:
+/// Read from file as Base64 encoded `flag || privkey` and return a SomaKeypair.
+pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Result<SomaKeyPair> {
+    let contents = std::fs::read_to_string(path)?;
+    SomaKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
+}
+
+/// Read from file as Base64 encoded `flag || privkey` and return a NetworkKeyPair.
+pub fn read_network_keypair_from_file<P: AsRef<std::path::Path>>(
+    path: P,
+) -> anyhow::Result<NetworkKeyPair> {
+    let kp = read_keypair_from_file(path)?;
+    if let SomaKeyPair::Ed25519(kp) = kp {
+        Ok(NetworkKeyPair::new(kp))
+    } else {
+        Err(anyhow!("Invalid scheme for network keypair"))
+    }
+}
+
+/// Read a SomaKeyPair from a file. The content could be any of the following:
 /// - Base64 encoded `flag || privkey` for ECDSA key
 /// - Base64 encoded `privkey` for Raw key
-/// - Bech32 encoded private key prefixed with `suiprivkey`
+/// - Bech32 encoded private key prefixed with `somaprivkey`
 /// - Hex encoded `privkey` for Raw key
-///
-pub fn read_key(path: &PathBuf) -> SomaKeyResult<SomaKeyPair> {
+pub fn read_key(path: &PathBuf) -> Result<SomaKeyPair, anyhow::Error> {
     if !path.exists() {
-        return Err(SomaKeyError::InvalidFilePath(format!(
-            "path does not exist: {:?}",
-            path
-        )));
+        return Err(anyhow::anyhow!("Key file not found at path: {:?}", path));
     }
-    let file_contents =
-        std::fs::read_to_string(path).map_err(|e| SomaKeyError::FileSystemError(e.to_string()))?;
+    let file_contents = std::fs::read_to_string(path)?;
     let contents = file_contents.as_str().trim();
 
     // Try base64 encoded SomaKeyPair `flag || privkey`
@@ -85,5 +76,5 @@ pub fn read_key(path: &PathBuf) -> SomaKeyResult<SomaKeyPair> {
         return Ok(key);
     }
 
-    Err(SomaKeyError::ErrorDecoding(format!("{:?}", path)))
+    Err(anyhow!("Error decoding key from {:?}", path))
 }

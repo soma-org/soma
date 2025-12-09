@@ -170,6 +170,7 @@ impl From<types::crypto::SignatureScheme> for SignatureScheme {
         match value {
             S::ED25519 => Self::Ed25519,
             S::BLS12381 => Self::Bls12381,
+            S::MultiSig => Self::Multisig,
         }
     }
 }
@@ -188,6 +189,81 @@ impl From<types::crypto::Signature> for SimpleSignature {
         message.scheme = Some(scheme.into());
         message.signature = Some(signature.to_vec().into());
         message.public_key = Some(public_key.to_vec().into());
+        message
+    }
+}
+
+//
+// MultisigMemberPublicKey
+//
+
+impl From<&types::crypto::PublicKey> for MultisigMemberPublicKey {
+    fn from(value: &types::crypto::PublicKey) -> Self {
+        let mut message = Self::default();
+
+        match value {
+            types::crypto::PublicKey::Ed25519(_) => {
+                message.public_key = Some(value.as_ref().to_vec().into());
+            }
+        }
+
+        message.set_scheme(value.scheme().into());
+        message
+    }
+}
+
+//
+// MultisigCommittee
+//
+
+impl From<&types::multisig::MultiSigPublicKey> for MultisigCommittee {
+    fn from(value: &types::multisig::MultiSigPublicKey) -> Self {
+        let mut message = Self::default();
+        message.members = value
+            .pubkeys()
+            .iter()
+            .map(|(pk, weight)| {
+                let mut member = MultisigMember::default();
+                member.public_key = Some(pk.into());
+                member.weight = Some((*weight).into());
+                member
+            })
+            .collect();
+        message.threshold = Some((*value.threshold()).into());
+        message
+    }
+}
+
+//
+// MultisigMemberSignature
+//
+
+impl From<&types::crypto::CompressedSignature> for MultisigMemberSignature {
+    fn from(value: &types::crypto::CompressedSignature) -> Self {
+        let mut message = Self::default();
+
+        let scheme = match value {
+            types::crypto::CompressedSignature::Ed25519(b) => {
+                message.signature = Some(b.0.to_vec().into());
+                SignatureScheme::Ed25519
+            }
+        };
+
+        message.set_scheme(scheme);
+        message
+    }
+}
+
+//
+// MultisigAggregatedSignature
+//
+
+impl From<&types::multisig::MultiSig> for MultisigAggregatedSignature {
+    fn from(value: &types::multisig::MultiSig) -> Self {
+        let mut message = Self::default();
+        message.signatures = value.get_sigs().iter().map(Into::into).collect();
+        message.bitmap = Some(value.get_bitmap().into());
+        message.committee = Some(value.get_pk().into());
         message
     }
 }
@@ -213,6 +289,12 @@ impl Merge<&types::crypto::GenericSignature> for UserSignature {
                     self.signature = Some(Signature::Simple(signature.clone().into()));
                 }
                 scheme
+            }
+            types::crypto::GenericSignature::MultiSig(multi_sig) => {
+                if mask.contains(Self::MULTISIG_FIELD) {
+                    self.signature = Some(Signature::Multisig(multi_sig.into()));
+                }
+                SignatureScheme::Multisig
             }
         };
 
