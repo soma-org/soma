@@ -15,24 +15,52 @@ mod rpc_client;
 pub mod subscription;
 
 #[derive(Clone)]
+pub struct ServerVersion {
+    pub bin: &'static str,
+    pub version: &'static str,
+}
+
+impl ServerVersion {
+    pub fn new(bin: &'static str, version: &'static str) -> Self {
+        Self { bin, version }
+    }
+}
+
+impl std::fmt::Display for ServerVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.bin)?;
+        f.write_str("/")?;
+        f.write_str(self.version)
+    }
+}
+
+#[derive(Clone)]
 pub struct RpcService {
     reader: StateReader,
-    // chain_id: types::digests::ChainIdentifier,
+    chain_id: types::digests::ChainIdentifier,
     subscription_service_handle: Option<SubscriptionServiceHandle>,
+
+    server_version: Option<ServerVersion>,
     config: RpcConfig,
     executor: Option<Arc<dyn TransactionExecutor>>,
 }
 
 impl RpcService {
     pub fn new(reader: Arc<dyn RpcStateReader>) -> Self {
-        // let chain_id = reader.get_chain_identifier().unwrap();
+        let chain_id = reader.get_chain_identifier().unwrap();
         Self {
             reader: StateReader::new(reader),
             executor: None,
             subscription_service_handle: None,
-            // chain_id,
+            chain_id,
+            server_version: None,
             config: RpcConfig::default(),
         }
+    }
+
+    pub fn with_server_version(&mut self, server_version: ServerVersion) -> &mut Self {
+        self.server_version = Some(server_version);
+        self
     }
 
     pub fn with_executor(&mut self, executor: Arc<dyn TransactionExecutor + Send + Sync>) {
@@ -48,6 +76,14 @@ impl RpcService {
         subscription_service_handle: SubscriptionServiceHandle,
     ) {
         self.subscription_service_handle = Some(subscription_service_handle);
+    }
+
+    pub fn chain_id(&self) -> types::digests::ChainIdentifier {
+        self.chain_id
+    }
+
+    pub fn server_version(&self) -> Option<&ServerVersion> {
+        self.server_version.as_ref()
     }
 
     pub async fn into_router(self) -> axum::Router {

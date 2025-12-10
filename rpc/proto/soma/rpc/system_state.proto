@@ -8,23 +8,26 @@ message SystemState {
   // Core epoch information
   optional uint64 epoch = 1;
   optional uint64 epoch_start_timestamp_ms = 2;
+
+  // The protocol version
+  optional uint64 protocol_version = 3;
   
   // System parameters
-  optional SystemParameters parameters = 3;
+  optional SystemParameters parameters = 4;
   
   // Validator and encoder sets
-  optional ValidatorSet validators = 4;
-  optional EncoderSet encoders = 5;
+  optional ValidatorSet validators = 5;
+  optional EncoderSet encoders = 6;
   
   // Report records
-  map<string, ReporterSet> validator_report_records = 6;
-  map<string, ReporterSet> encoder_report_records = 7;
+  map<string, ReporterSet> validator_report_records = 7;
+  map<string, ReporterSet> encoder_report_records = 8;
   
   // Stake subsidy
-  optional StakeSubsidy stake_subsidy = 8;
+  optional StakeSubsidy stake_subsidy = 9;
   
   // Shard results (digest -> result)
-  map<string, ShardResult> shard_results = 9;
+  map<string, ShardResult> shard_results = 10;
 }
 
 message ReporterSet {

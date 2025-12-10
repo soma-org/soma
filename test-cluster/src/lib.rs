@@ -32,8 +32,12 @@ use types::{
             AccountConfig, GenesisConfig, ValidatorGenesisConfig, DEFAULT_GAS_AMOUNT,
         },
         local_ip_utils,
-        network_config::NetworkConfig,
-        node_config::{get_key_path, NodeConfig, ValidatorConfigBuilder, ENCODERS_DB_NAME},
+        network_config::{
+            NetworkConfig, ProtocolVersionsConfig, SupportedProtocolVersionsCallback,
+        },
+        node_config::{
+            get_key_path, NodeConfig, RunWithRange, ValidatorConfigBuilder, ENCODERS_DB_NAME,
+        },
         p2p_config::SeedPeer,
         Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
     },
@@ -49,7 +53,8 @@ use types::{
     peer_id::PeerId,
     shard::{Shard, ShardAuthToken},
     shard_crypto::keys::EncoderKeyPair,
-    system_state::{SystemState, SystemStateTrait},
+    supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions},
+    system_state::{epoch_start::EpochStartSystemStateTrait as _, SystemState, SystemStateTrait},
     transaction::{Transaction, TransactionData},
 };
 use url::Url;
@@ -199,6 +204,67 @@ impl TestCluster {
         FullNodeHandle::new(node, rpc_address, internal_object_address).await
     }
 
+    pub async fn wait_for_run_with_range_shutdown_signal(&self) -> Option<RunWithRange> {
+        self.wait_for_run_with_range_shutdown_signal_with_timeout(Duration::from_secs(60))
+            .await
+    }
+
+    pub async fn wait_for_run_with_range_shutdown_signal_with_timeout(
+        &self,
+        timeout_dur: Duration,
+    ) -> Option<RunWithRange> {
+        let mut shutdown_channel_rx = self
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.subscribe_to_shutdown_channel());
+
+        timeout(timeout_dur, async move {
+            tokio::select! {
+                msg = shutdown_channel_rx.recv() =>
+                {
+                    match msg {
+                        Ok(Some(run_with_range)) => Some(run_with_range),
+                        Ok(None) => None,
+                        Err(e) => {
+                            error!("failed recv from soma-node shutdown channel: {}", e);
+                            None
+                        },
+                    }
+                },
+            }
+        })
+        .await
+        .expect("Timed out waiting for cluster to hit target epoch and recv shutdown signal from sui-node")
+    }
+
+    pub async fn wait_for_protocol_version(
+        &self,
+        target_protocol_version: ProtocolVersion,
+    ) -> SystemState {
+        self.wait_for_protocol_version_with_timeout(
+            target_protocol_version,
+            Duration::from_secs(60),
+        )
+        .await
+    }
+
+    pub async fn wait_for_protocol_version_with_timeout(
+        &self,
+        target_protocol_version: ProtocolVersion,
+        timeout_dur: Duration,
+    ) -> SystemState {
+        timeout(timeout_dur, async move {
+            loop {
+                let system_state = self.wait_for_epoch(None).await;
+                if system_state.protocol_version() >= target_protocol_version.as_u64() {
+                    return system_state;
+                }
+            }
+        })
+        .await
+        .expect("Timed out waiting for cluster to target protocol version")
+    }
+
     /// Ask 2f+1 validators to close epoch actively, and wait for the entire network to reach the next
     /// epoch. This requires waiting for both the fullnode and all validators to reach the next epoch.
     pub async fn trigger_reconfiguration(&self) {
@@ -327,6 +393,62 @@ impl TestCluster {
         timeout(Duration::from_secs(40), join_all(tasks))
             .await
             .expect("timed out waiting for reconfiguration to complete");
+    }
+
+    /// Upgrade the network protocol version, by restarting every validator with a new
+    /// supported versions.
+    /// Note that we don't restart the fullnode here, and it is assumed that the fulnode supports
+    /// the entire version range.
+    pub async fn update_validator_supported_versions(
+        &self,
+        new_supported_versions: SupportedProtocolVersions,
+    ) {
+        for authority in self.get_validator_pubkeys() {
+            self.stop_node(&authority);
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+            self.swarm
+                .node(&authority)
+                .unwrap()
+                .config()
+                .supported_protocol_versions = Some(new_supported_versions);
+            self.start_node(&authority).await;
+            info!("Restarted validator {}", authority);
+        }
+    }
+
+    /// Wait for all nodes in the network to upgrade to `protocol_version`.
+    pub async fn wait_for_all_nodes_upgrade_to(&self, protocol_version: u64) {
+        for h in self.all_node_handles() {
+            h.with_async(|node| async {
+                while node
+                    .state()
+                    .epoch_store_for_testing()
+                    .epoch_start_state()
+                    .protocol_version()
+                    .as_u64()
+                    != protocol_version
+                {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            })
+            .await;
+        }
+    }
+
+    /// Return the highest observed protocol version in the test cluster.
+    pub fn highest_protocol_version(&self) -> ProtocolVersion {
+        self.all_node_handles()
+            .into_iter()
+            .map(|h| {
+                h.with(|node| {
+                    node.state()
+                        .epoch_store_for_testing()
+                        .epoch_start_state()
+                        .protocol_version()
+                })
+            })
+            .max()
+            .expect("at least one node must be up to get highest protocol version")
     }
 
     pub async fn sign_transaction(&self, tx_data: &TransactionData) -> Transaction {
@@ -522,6 +644,7 @@ pub struct TestClusterBuilder {
     network_config: Option<NetworkConfig>,
     validators: Option<Vec<ValidatorGenesisConfig>>,
     encoders: Option<Vec<EncoderGenesisConfig>>,
+    validator_supported_protocol_versions_config: ProtocolVersionsConfig,
 }
 
 impl TestClusterBuilder {
@@ -533,6 +656,7 @@ impl TestClusterBuilder {
             network_config: None,
             validators: None,
             encoders: None,
+            validator_supported_protocol_versions_config: ProtocolVersionsConfig::Default,
         }
     }
 
@@ -581,6 +705,27 @@ impl TestClusterBuilder {
         self
     }
 
+    pub fn with_supported_protocol_versions(mut self, c: SupportedProtocolVersions) -> Self {
+        self.validator_supported_protocol_versions_config = ProtocolVersionsConfig::Global(c);
+        self
+    }
+
+    pub fn with_protocol_version(mut self, v: ProtocolVersion) -> Self {
+        self.get_or_init_genesis_config()
+            .parameters
+            .protocol_version = v;
+        self
+    }
+
+    pub fn with_supported_protocol_version_callback(
+        mut self,
+        func: SupportedProtocolVersionsCallback,
+    ) -> Self {
+        self.validator_supported_protocol_versions_config =
+            ProtocolVersionsConfig::PerValidator(func);
+        self
+    }
+
     pub async fn build(mut self) -> TestCluster {
         let shared_object_store = Arc::new(InMemory::new());
         let swarm = self.start_swarm().await.unwrap();
@@ -618,6 +763,7 @@ impl TestClusterBuilder {
             rpc: rpc_url,
             internal_object_address: object_url,
             basic_auth: None,
+            chain_id: None,
         });
         wallet_conf.active_env = Some("localnet".to_string());
 
@@ -664,7 +810,11 @@ impl TestClusterBuilder {
             builder = builder.with_network_config(network_config);
         }
 
-        let mut swarm = builder.build();
+        let mut swarm = builder
+            .with_supported_protocol_versions_config(
+                self.validator_supported_protocol_versions_config.clone(),
+            )
+            .build();
         swarm.launch().await?;
 
         let dir = swarm.dir();

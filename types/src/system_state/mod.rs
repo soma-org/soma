@@ -177,6 +177,8 @@ pub trait SystemStateTrait {
 
     /// Convert this system state to an epoch start system state
     fn into_epoch_start_state(self) -> EpochStartSystemState;
+
+    fn protocol_version(&self) -> u64;
 }
 
 /// # SystemState
@@ -200,7 +202,8 @@ pub trait SystemStateTrait {
 pub struct SystemState {
     /// The current epoch number
     pub epoch: u64,
-    // pub protocol_version: u64,
+
+    pub protocol_version: u64,
     // pub system_state_version: u64,
     /// The current validator set
     pub validators: ValidatorSet,
@@ -244,6 +247,7 @@ impl SystemState {
         consensus_validators: Vec<Validator>,
         networking_validators: Vec<Validator>,
         encoders: Vec<Encoder>,
+        protocol_version: u64,
         epoch_start_timestamp_ms: u64,
         parameters: SystemParameters,
         stake_subsidy_fund: u64,
@@ -277,6 +281,7 @@ impl SystemState {
         let mut system_state = Self {
             epoch: 0,
             validators,
+            protocol_version,
             encoders,
             parameters,
             epoch_start_timestamp_ms,
@@ -964,6 +969,10 @@ impl SystemStateTrait for SystemState {
         self.epoch
     }
 
+    fn protocol_version(&self) -> u64 {
+        self.protocol_version
+    }
+
     fn epoch_start_timestamp_ms(&self) -> u64 {
         self.epoch_start_timestamp_ms
     }
@@ -1107,6 +1116,7 @@ impl SystemStateTrait for SystemState {
     fn into_epoch_start_state(self) -> EpochStartSystemState {
         EpochStartSystemState {
             epoch: self.epoch,
+            protocol_version: self.protocol_version,
             epoch_start_timestamp_ms: self.epoch_start_timestamp_ms,
             epoch_duration_ms: self.parameters.epoch_duration_ms,
             active_validators: self

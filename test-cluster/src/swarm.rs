@@ -16,10 +16,14 @@ use types::{
     config::{
         encoder_config::{EncoderCommitteeConfig, EncoderConfig, EncoderGenesisConfig},
         genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
-        network_config::{CommitteeConfig, ConfigBuilder, NetworkConfig},
+        network_config::{
+            CommitteeConfig, ConfigBuilder, NetworkConfig, ProtocolVersionsConfig,
+            SupportedProtocolVersionsCallback,
+        },
         node_config::NodeConfig,
     },
     multiaddr::Multiaddr,
+    supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions},
 };
 
 #[derive(Debug)]
@@ -164,6 +168,7 @@ pub struct SwarmBuilder<R = OsRng> {
     fullnode_count: usize,
     fullnode_rpc_port: Option<u16>,
     fullnode_rpc_addr: Option<SocketAddr>,
+    supported_protocol_versions_config: ProtocolVersionsConfig,
 }
 
 impl SwarmBuilder {
@@ -178,6 +183,7 @@ impl SwarmBuilder {
             fullnode_count: 0,
             fullnode_rpc_port: None,
             fullnode_rpc_addr: None,
+            supported_protocol_versions_config: ProtocolVersionsConfig::Default,
         }
     }
 }
@@ -194,6 +200,7 @@ impl<R> SwarmBuilder<R> {
             fullnode_count: self.fullnode_count,
             fullnode_rpc_port: self.fullnode_rpc_port,
             fullnode_rpc_addr: self.fullnode_rpc_addr,
+            supported_protocol_versions_config: self.supported_protocol_versions_config,
         }
     }
 
@@ -271,6 +278,31 @@ impl<R> SwarmBuilder<R> {
         }
         self.genesis_config.as_mut().unwrap()
     }
+
+    pub fn with_protocol_version(mut self, v: ProtocolVersion) -> Self {
+        self.get_or_init_genesis_config()
+            .parameters
+            .protocol_version = v;
+        self
+    }
+
+    pub fn with_supported_protocol_versions(mut self, c: SupportedProtocolVersions) -> Self {
+        self.supported_protocol_versions_config = ProtocolVersionsConfig::Global(c);
+        self
+    }
+
+    pub fn with_supported_protocol_version_callback(
+        mut self,
+        func: SupportedProtocolVersionsCallback,
+    ) -> Self {
+        self.supported_protocol_versions_config = ProtocolVersionsConfig::PerValidator(func);
+        self
+    }
+
+    pub fn with_supported_protocol_versions_config(mut self, c: ProtocolVersionsConfig) -> Self {
+        self.supported_protocol_versions_config = c;
+        self
+    }
 }
 
 impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
@@ -305,6 +337,9 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             config_builder
                 .committee(committee)
                 .encoder_committee(self.encoder_committee)
+                .with_supported_protocol_versions_config(
+                    self.supported_protocol_versions_config.clone(),
+                )
                 .rng(self.rng)
                 .build()
         });

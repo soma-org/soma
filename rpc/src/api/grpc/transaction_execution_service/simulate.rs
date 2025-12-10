@@ -48,22 +48,21 @@ pub fn simulate_transaction(
 
     let checks = TransactionChecks::from(request.checks());
 
-    // TODO: get protocol config
-    // let protocol_config = {
-    //     let system_state = service.reader.get_system_state()?;
-    //     let protocol_config = ProtocolConfig::get_for_version_if_supported(
-    //         system_state.protocol_version.into(),
-    //         service.reader.inner().get_chain_identifier()?.chain(),
-    //     )
-    //     .ok_or_else(|| {
-    //         RpcError::new(
-    //             tonic::Code::Internal,
-    //             "unable to get current protocol config",
-    //         )
-    //     })?;
+    let protocol_config = {
+        let system_state = service.reader.get_system_state()?;
+        let protocol_config = ProtocolConfig::get_for_version_if_supported(
+            system_state.protocol_version.into(),
+            service.reader.inner().get_chain_identifier()?.chain(),
+        )
+        .ok_or_else(|| {
+            RpcError::new(
+                tonic::Code::Internal,
+                "unable to get current protocol config",
+            )
+        })?;
 
-    //     protocol_config
-    // };
+        protocol_config
+    };
 
     // Try to parse out a fully-formed transaction. If one wasn't provided then we will attempt to
     // perform transaction resolution.

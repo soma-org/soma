@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use protocol_config::ProtocolVersion;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -29,11 +30,14 @@ pub struct EpochStartSystemState {
     pub active_validators: Vec<EpochStartValidatorInfo>,
 
     pub reference_byte_price: u64,
+
+    pub protocol_version: u64,
 }
 
 impl EpochStartSystemState {
     pub fn new(
         epoch: EpochId,
+        protocol_version: u64,
         epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
         active_validators: Vec<EpochStartValidatorInfo>,
@@ -41,6 +45,7 @@ impl EpochStartSystemState {
     ) -> Self {
         Self {
             epoch,
+            protocol_version,
             epoch_start_timestamp_ms,
             epoch_duration_ms,
             active_validators,
@@ -55,10 +60,11 @@ impl EpochStartSystemState {
     pub fn new_for_testing_with_epoch(epoch: EpochId) -> Self {
         Self {
             epoch,
+            protocol_version: ProtocolVersion::MAX.as_u64(),
+            reference_byte_price: 0, //crate::transaction::DEFAULT_BYTE_PRICE, // TODO: define this
             epoch_start_timestamp_ms: 0,
             epoch_duration_ms: 1000,
             active_validators: vec![],
-            reference_byte_price: 0,
         }
     }
 }
@@ -74,6 +80,10 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
 
     fn epoch_duration_ms(&self) -> u64 {
         self.epoch_duration_ms
+    }
+
+    fn protocol_version(&self) -> ProtocolVersion {
+        ProtocolVersion::new(self.protocol_version)
     }
 
     fn reference_byte_price(&self) -> u64 {
@@ -196,6 +206,8 @@ pub trait EpochStartSystemStateTrait {
 
     /// Get the reference byte price for the epoch
     fn reference_byte_price(&self) -> u64;
+
+    fn protocol_version(&self) -> ProtocolVersion;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

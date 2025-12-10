@@ -21,6 +21,7 @@ use fastcrypto::{
     ed25519::Ed25519PublicKey,
     traits::{KeyPair, ToFromBytes},
 };
+use protocol_config::ProtocolVersion;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::{
@@ -481,6 +482,7 @@ pub fn create_test_system_state(
         validators,
         vec![],
         encoders,
+        ProtocolVersion::MAX.as_u64(),
         epoch_start_timestamp_ms,
         parameters,
         stake_subsidy_fund,

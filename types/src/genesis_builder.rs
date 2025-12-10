@@ -1,4 +1,5 @@
 use fastcrypto::traits::KeyPair as _;
+use protocol_config::ProtocolVersion;
 
 use crate::base::ExecutionDigests;
 use crate::config::encoder_config::EncoderGenesisConfig;
@@ -13,6 +14,7 @@ use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::validator::Validator;
 use crate::system_state::{get_system_state, SystemParameters};
 use crate::transaction::InputObjects;
+use crate::tx_fee::TransactionFee;
 use crate::{
     base::SomaAddress,
     checkpoints::{CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary},
@@ -79,6 +81,15 @@ impl GenesisBuilder {
     pub fn with_token_distribution_schedule(mut self, schedule: TokenDistributionSchedule) -> Self {
         self.token_distribution_schedule = Some(schedule);
         self
+    }
+
+    pub fn with_protocol_version(mut self, v: ProtocolVersion) -> Self {
+        self.parameters.parameters.protocol_version = v;
+        self
+    }
+
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.parameters.parameters.protocol_version
     }
 
     pub fn add_validator_signature(mut self, keypair: &AuthorityKeyPair) -> Self {
@@ -209,6 +220,7 @@ impl GenesisBuilder {
                     )
                 })
                 .collect(),
+            self.parameters.parameters.protocol_version.as_u64(),
             self.parameters.parameters.chain_start_timestamp_ms,
             SystemParameters {
                 epoch_duration_ms: self.parameters.parameters.epoch_duration_ms,
@@ -327,6 +339,7 @@ impl GenesisBuilder {
             BTreeSet::new(), // dependencies
             ExecutionStatus::Success,
             0, // epoch_id
+            TransactionFee::default(),
             None,
         );
 
@@ -356,7 +369,7 @@ impl GenesisBuilder {
             network_total_transactions: contents.size() as u64,
             content_digest: *contents.digest(),
             previous_digest: None,
-            // TODO: epoch_rolling_gas_cost_summary: Default::default(),
+            epoch_rolling_transaction_fees: Default::default(),
             end_of_epoch_data: None,
             timestamp_ms: self.parameters.parameters.chain_start_timestamp_ms,
             checkpoint_commitments: Default::default(),

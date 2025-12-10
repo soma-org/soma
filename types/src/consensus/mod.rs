@@ -9,13 +9,18 @@ use crate::{
     },
     encoder_committee::EncoderCommittee,
     error::SomaError,
+    supported_protocol_versions::{SupportedProtocolVersions, SupportedProtocolVersionsWithHashes},
     transaction::{CertifiedTransaction, Transaction},
 };
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Bytes;
+use protocol_config::Chain;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Formatter};
 use std::{collections::hash_map::DefaultHasher, hash::Hash as _, hash::Hasher as _};
+use std::{
+    fmt::{Debug, Formatter},
+    time::{SystemTime, UNIX_EPOCH},
+};
 use validator_set::ValidatorSet;
 
 pub mod block;
@@ -117,6 +122,7 @@ impl ConsensusTransaction {
             ConsensusTransactionKind::UserTransaction(tx) => {
                 format!("User({})", tx.digest())
             }
+            ConsensusTransactionKind::CapabilityNotification(..) => "Cap".to_string(),
         }
     }
 }
@@ -133,6 +139,8 @@ pub enum ConsensusTransactionKind {
     EndOfPublish(AuthorityName),
 
     CheckpointSignature(Box<CheckpointSignatureMessage>),
+
+    CapabilityNotification(AuthorityCapabilities),
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
@@ -144,6 +152,8 @@ pub enum ConsensusTransactionKey {
 
     /// Key for an end-of-publish message, identified by the authority that sent it
     EndOfPublish(AuthorityName),
+
+    CapabilityNotification(AuthorityName, u64 /* generation */),
 }
 
 impl Debug for ConsensusTransactionKey {
@@ -158,6 +168,66 @@ impl Debug for ConsensusTransactionKey {
                 digest
             ),
             Self::EndOfPublish(name) => write!(f, "EndOfPublish({:?})", name.concise()),
+            Self::CapabilityNotification(name, generation) => write!(
+                f,
+                "CapabilityNotification({:?}, {:?})",
+                name.concise(),
+                generation
+            ),
+        }
+    }
+}
+
+/// Used to advertise capabilities of each authority via consensus. This allows validators to
+/// negotiate the creation of the ChangeEpoch transaction.
+#[derive(Serialize, Deserialize, Clone, Hash)]
+pub struct AuthorityCapabilities {
+    /// Originating authority - must match transaction source authority from consensus.
+    pub authority: AuthorityName,
+    /// Generation number set by sending authority. Used to determine which of multiple
+    /// AuthorityCapabilities messages from the same authority is the most recent.
+    ///
+    /// (Currently, we just set this to the current time in milliseconds since the epoch, but this
+    /// should not be interpreted as a timestamp.)
+    pub generation: u64,
+
+    /// ProtocolVersions that the authority supports.
+    pub supported_protocol_versions: SupportedProtocolVersionsWithHashes,
+}
+
+impl Debug for AuthorityCapabilities {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthorityCapabilities")
+            .field("authority", &self.authority.concise())
+            .field("generation", &self.generation)
+            .field(
+                "supported_protocol_versions",
+                &self.supported_protocol_versions,
+            )
+            .finish()
+    }
+}
+
+impl AuthorityCapabilities {
+    pub fn new(
+        authority: AuthorityName,
+        chain: Chain,
+        supported_protocol_versions: SupportedProtocolVersions,
+    ) -> Self {
+        let generation = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Soma did not exist prior to 1970")
+            .as_millis()
+            .try_into()
+            .expect("This build of soma is not supported in the year 500,000,000");
+        Self {
+            authority,
+            generation,
+            supported_protocol_versions:
+                SupportedProtocolVersionsWithHashes::from_supported_versions(
+                    supported_protocol_versions,
+                    chain,
+                ),
         }
     }
 }
@@ -197,6 +267,16 @@ impl ConsensusTransaction {
         Self {
             tracking_id,
             kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)),
+        }
+    }
+
+    pub fn new_capability_notification(capabilities: AuthorityCapabilities) -> Self {
+        let mut hasher = DefaultHasher::new();
+        capabilities.hash(&mut hasher);
+        let tracking_id = hasher.finish().to_le_bytes();
+        Self {
+            tracking_id,
+            kind: ConsensusTransactionKind::CapabilityNotification(capabilities),
         }
     }
 
@@ -253,6 +333,9 @@ impl ConsensusTransaction {
                 // because existing usages of ConsensusTransactionKey should not differentiate
                 // between CertifiedTransaction and UserTransaction.
                 ConsensusTransactionKey::Certificate(*tx.digest())
+            }
+            ConsensusTransactionKind::CapabilityNotification(cap) => {
+                ConsensusTransactionKey::CapabilityNotification(cap.authority, cap.generation)
             }
         }
     }

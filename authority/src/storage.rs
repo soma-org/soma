@@ -451,6 +451,10 @@ impl RpcStateReader for RestReadStore {
             .unwrap_or(0))
     }
 
+    fn get_chain_identifier(&self) -> Result<types::digests::ChainIdentifier> {
+        Ok(self.state.get_chain_identifier())
+    }
+
     fn indexes(&self) -> Option<&dyn RpcIndexes> {
         Some(self)
     }

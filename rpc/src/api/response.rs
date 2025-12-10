@@ -17,14 +17,13 @@ pub async fn append_info_headers(
 ) -> impl IntoResponse {
     let mut headers = HeaderMap::new();
 
-    // TODO: add chain headers
-    // if let Ok(chain_id) = state.chain_id().to_string().try_into() {
-    //     headers.insert(X_SOMA_CHAIN_ID, chain_id);
-    // }
+    if let Ok(chain_id) = state.chain_id().to_string().try_into() {
+        headers.insert(X_SOMA_CHAIN_ID, chain_id);
+    }
 
-    // if let Ok(chain) = state.chain_id().chain().as_str().try_into() {
-    //     headers.insert(X_SOMA_CHAIN, chain);
-    // }
+    if let Ok(chain) = state.chain_id().chain().as_str().try_into() {
+        headers.insert(X_SOMA_CHAIN, chain);
+    }
 
     if let Ok(latest_checkpoint) = state.reader.inner().get_latest_checkpoint() {
         headers.insert(X_SOMA_EPOCH, latest_checkpoint.epoch().into());
@@ -62,13 +61,12 @@ pub async fn append_info_headers(
         );
     }
 
-    // TODO: add server version
-    // if let Some(server_version) = state
-    //     .server_version()
-    //     .and_then(|version| version.to_string().try_into().ok())
-    // {
-    //     headers.insert(axum::http::header::SERVER, server_version);
-    // }
+    if let Some(server_version) = state
+        .server_version()
+        .and_then(|version| version.to_string().try_into().ok())
+    {
+        headers.insert(axum::http::header::SERVER, server_version);
+    }
 
     (headers, response)
 }

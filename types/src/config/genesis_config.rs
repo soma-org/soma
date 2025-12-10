@@ -10,6 +10,7 @@ use crate::{
 };
 use anyhow::Result;
 use fastcrypto::traits::KeyPair as _;
+use protocol_config::ProtocolVersion;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -268,6 +269,10 @@ pub struct GenesisCeremonyParameters {
     #[serde(default = "GenesisCeremonyParameters::default_timestamp_ms")]
     pub chain_start_timestamp_ms: u64,
 
+    /// protocol version that the chain starts at.
+    #[serde(default = "ProtocolVersion::max")]
+    pub protocol_version: ProtocolVersion,
+
     /// The duration of an epoch, in milliseconds.
     #[serde(default = "GenesisCeremonyParameters::default_epoch_duration_ms")]
     pub epoch_duration_ms: u64,
@@ -301,6 +306,7 @@ impl GenesisCeremonyParameters {
     pub fn new() -> Self {
         Self {
             chain_start_timestamp_ms: Self::default_timestamp_ms(),
+            protocol_version: ProtocolVersion::max(),
             epoch_duration_ms: Self::default_epoch_duration_ms(),
             stake_subsidy_start_epoch: 0,
             stake_subsidy_initial_distribution_amount:

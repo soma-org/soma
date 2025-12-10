@@ -20,6 +20,7 @@ use fastcrypto::{
 };
 use itertools::{Either, Itertools};
 use nonempty::{nonempty, NonEmpty};
+use protocol_config::ProtocolVersion;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
@@ -471,6 +472,10 @@ pub struct ChangeEpoch {
     pub epoch: EpochId,
     /// Unix timestamp when epoch started
     pub epoch_start_timestamp_ms: u64,
+    /// The protocol version in effect in the new epoch.
+    pub protocol_version: ProtocolVersion,
+    /// The total amount of fees charged during the epoch.
+    pub fees: u64,
 }
 
 /// # CertificateProof
@@ -1120,10 +1125,14 @@ impl VerifiedTransaction {
 
     pub fn new_change_epoch_transaction(
         next_epoch: EpochId,
+        protocol_version: ProtocolVersion,
+        fees: u64,
         epoch_start_timestamp_ms: u64,
     ) -> Self {
         TransactionKind::ChangeEpoch(ChangeEpoch {
             epoch: next_epoch,
+            protocol_version,
+            fees,
             epoch_start_timestamp_ms,
         })
         .pipe(Self::new_system_transaction)

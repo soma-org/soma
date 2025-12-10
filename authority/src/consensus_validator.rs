@@ -60,6 +60,8 @@ impl TxValidator {
 
                 ConsensusTransactionKind::EndOfPublish(_) => {}
 
+                ConsensusTransactionKind::CapabilityNotification(_) => {}
+
                 ConsensusTransactionKind::UserTransaction(_tx) => {
 
                     // TODO(fastpath): move deterministic verifications of user transactions here,

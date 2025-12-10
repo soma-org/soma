@@ -313,22 +313,28 @@ mod _field_impls {
             number: 6i32,
             message_fields: None,
         };
+        pub const EPOCH_ROLLING_TRANSACTION_FEES_FIELD: &'static MessageField = &MessageField {
+            name: "epoch_rolling_transaction_fees",
+            json_name: "epochRollingTransactionFees",
+            number: 7i32,
+            message_fields: Some(TransactionFee::FIELDS),
+        };
         pub const TIMESTAMP_FIELD: &'static MessageField = &MessageField {
             name: "timestamp",
             json_name: "timestamp",
-            number: 7i32,
+            number: 8i32,
             message_fields: None,
         };
         pub const COMMITMENTS_FIELD: &'static MessageField = &MessageField {
             name: "commitments",
             json_name: "commitments",
-            number: 8i32,
+            number: 9i32,
             message_fields: Some(CheckpointCommitment::FIELDS),
         };
         pub const END_OF_EPOCH_DATA_FIELD: &'static MessageField = &MessageField {
             name: "end_of_epoch_data",
             json_name: "endOfEpochData",
-            number: 9i32,
+            number: 10i32,
             message_fields: Some(EndOfEpochData::FIELDS),
         };
     }
@@ -340,6 +346,7 @@ mod _field_impls {
             Self::TOTAL_NETWORK_TRANSACTIONS_FIELD,
             Self::CONTENT_DIGEST_FIELD,
             Self::PREVIOUS_DIGEST_FIELD,
+            Self::EPOCH_ROLLING_TRANSACTION_FEES_FIELD,
             Self::TIMESTAMP_FIELD,
             Self::COMMITMENTS_FIELD,
             Self::END_OF_EPOCH_DATA_FIELD,
@@ -389,6 +396,12 @@ mod _field_impls {
             self.path.push(CheckpointSummary::PREVIOUS_DIGEST_FIELD.name);
             self.finish()
         }
+        pub fn epoch_rolling_transaction_fees(
+            mut self,
+        ) -> TransactionFeeFieldPathBuilder {
+            self.path.push(CheckpointSummary::EPOCH_ROLLING_TRANSACTION_FEES_FIELD.name);
+            TransactionFeeFieldPathBuilder::new_with_base(self.path)
+        }
         pub fn timestamp(mut self) -> String {
             self.path.push(CheckpointSummary::TIMESTAMP_FIELD.name);
             self.finish()
@@ -409,16 +422,23 @@ mod _field_impls {
             number: 1i32,
             message_fields: Some(ValidatorCommittee::FIELDS),
         };
+        pub const NEXT_EPOCH_PROTOCOL_VERSION_FIELD: &'static MessageField = &MessageField {
+            name: "next_epoch_protocol_version",
+            json_name: "nextEpochProtocolVersion",
+            number: 2i32,
+            message_fields: None,
+        };
         pub const EPOCH_COMMITMENTS_FIELD: &'static MessageField = &MessageField {
             name: "epoch_commitments",
             json_name: "epochCommitments",
-            number: 2i32,
+            number: 3i32,
             message_fields: Some(CheckpointCommitment::FIELDS),
         };
     }
     impl MessageFields for EndOfEpochData {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::NEXT_EPOCH_VALIDATOR_COMMITTEE_FIELD,
+            Self::NEXT_EPOCH_PROTOCOL_VERSION_FIELD,
             Self::EPOCH_COMMITMENTS_FIELD,
         ];
     }
@@ -447,6 +467,10 @@ mod _field_impls {
         ) -> ValidatorCommitteeFieldPathBuilder {
             self.path.push(EndOfEpochData::NEXT_EPOCH_VALIDATOR_COMMITTEE_FIELD.name);
             ValidatorCommitteeFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_epoch_protocol_version(mut self) -> String {
+            self.path.push(EndOfEpochData::NEXT_EPOCH_PROTOCOL_VERSION_FIELD.name);
+            self.finish()
         }
         pub fn epoch_commitments(mut self) -> CheckpointCommitmentFieldPathBuilder {
             self.path.push(EndOfEpochData::EPOCH_COMMITMENTS_FIELD.name);
@@ -527,28 +551,34 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
+        pub const GAS_OBJECT_INDEX_FIELD: &'static MessageField = &MessageField {
+            name: "gas_object_index",
+            json_name: "gasObjectIndex",
+            number: 5i32,
+            message_fields: None,
+        };
         pub const DEPENDENCIES_FIELD: &'static MessageField = &MessageField {
             name: "dependencies",
             json_name: "dependencies",
-            number: 5i32,
+            number: 6i32,
             message_fields: None,
         };
         pub const LAMPORT_VERSION_FIELD: &'static MessageField = &MessageField {
             name: "lamport_version",
             json_name: "lamportVersion",
-            number: 6i32,
+            number: 7i32,
             message_fields: None,
         };
         pub const CHANGED_OBJECTS_FIELD: &'static MessageField = &MessageField {
             name: "changed_objects",
             json_name: "changedObjects",
-            number: 7i32,
+            number: 8i32,
             message_fields: Some(ChangedObject::FIELDS),
         };
         pub const UNCHANGED_SHARED_OBJECTS_FIELD: &'static MessageField = &MessageField {
             name: "unchanged_shared_objects",
             json_name: "unchangedSharedObjects",
-            number: 8i32,
+            number: 9i32,
             message_fields: Some(UnchangedSharedObject::FIELDS),
         };
     }
@@ -558,6 +588,7 @@ mod _field_impls {
             Self::EPOCH_FIELD,
             Self::FEE_FIELD,
             Self::TRANSACTION_DIGEST_FIELD,
+            Self::GAS_OBJECT_INDEX_FIELD,
             Self::DEPENDENCIES_FIELD,
             Self::LAMPORT_VERSION_FIELD,
             Self::CHANGED_OBJECTS_FIELD,
@@ -598,6 +629,10 @@ mod _field_impls {
         }
         pub fn transaction_digest(mut self) -> String {
             self.path.push(TransactionEffects::TRANSACTION_DIGEST_FIELD.name);
+            self.finish()
+        }
+        pub fn gas_object_index(mut self) -> String {
+            self.path.push(TransactionEffects::GAS_OBJECT_INDEX_FIELD.name);
             self.finish()
         }
         pub fn dependencies(mut self) -> String {
@@ -3282,46 +3317,52 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const PROTOCOL_VERSION_FIELD: &'static MessageField = &MessageField {
+            name: "protocol_version",
+            json_name: "protocolVersion",
+            number: 3i32,
+            message_fields: None,
+        };
         pub const PARAMETERS_FIELD: &'static MessageField = &MessageField {
             name: "parameters",
             json_name: "parameters",
-            number: 3i32,
+            number: 4i32,
             message_fields: Some(SystemParameters::FIELDS),
         };
         pub const VALIDATORS_FIELD: &'static MessageField = &MessageField {
             name: "validators",
             json_name: "validators",
-            number: 4i32,
+            number: 5i32,
             message_fields: Some(ValidatorSet::FIELDS),
         };
         pub const ENCODERS_FIELD: &'static MessageField = &MessageField {
             name: "encoders",
             json_name: "encoders",
-            number: 5i32,
+            number: 6i32,
             message_fields: Some(EncoderSet::FIELDS),
         };
         pub const VALIDATOR_REPORT_RECORDS_FIELD: &'static MessageField = &MessageField {
             name: "validator_report_records",
             json_name: "validatorReportRecords",
-            number: 6i32,
+            number: 7i32,
             message_fields: None,
         };
         pub const ENCODER_REPORT_RECORDS_FIELD: &'static MessageField = &MessageField {
             name: "encoder_report_records",
             json_name: "encoderReportRecords",
-            number: 7i32,
+            number: 8i32,
             message_fields: None,
         };
         pub const STAKE_SUBSIDY_FIELD: &'static MessageField = &MessageField {
             name: "stake_subsidy",
             json_name: "stakeSubsidy",
-            number: 8i32,
+            number: 9i32,
             message_fields: Some(StakeSubsidy::FIELDS),
         };
         pub const SHARD_RESULTS_FIELD: &'static MessageField = &MessageField {
             name: "shard_results",
             json_name: "shardResults",
-            number: 9i32,
+            number: 10i32,
             message_fields: None,
         };
     }
@@ -3329,6 +3370,7 @@ mod _field_impls {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::EPOCH_FIELD,
             Self::EPOCH_START_TIMESTAMP_MS_FIELD,
+            Self::PROTOCOL_VERSION_FIELD,
             Self::PARAMETERS_FIELD,
             Self::VALIDATORS_FIELD,
             Self::ENCODERS_FIELD,
@@ -3364,6 +3406,10 @@ mod _field_impls {
         }
         pub fn epoch_start_timestamp_ms(mut self) -> String {
             self.path.push(SystemState::EPOCH_START_TIMESTAMP_MS_FIELD.name);
+            self.finish()
+        }
+        pub fn protocol_version(mut self) -> String {
+            self.path.push(SystemState::PROTOCOL_VERSION_FIELD.name);
             self.finish()
         }
         pub fn parameters(mut self) -> SystemParametersFieldPathBuilder {
@@ -6438,11 +6484,25 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const PROTOCOL_VERSION_FIELD: &'static MessageField = &MessageField {
+            name: "protocol_version",
+            json_name: "protocolVersion",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const FEES_FIELD: &'static MessageField = &MessageField {
+            name: "fees",
+            json_name: "fees",
+            number: 4i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for ChangeEpoch {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::EPOCH_FIELD,
             Self::EPOCH_START_TIMESTAMP_FIELD,
+            Self::PROTOCOL_VERSION_FIELD,
+            Self::FEES_FIELD,
         ];
     }
     impl ChangeEpoch {
@@ -6471,6 +6531,14 @@ mod _field_impls {
         }
         pub fn epoch_start_timestamp(mut self) -> String {
             self.path.push(ChangeEpoch::EPOCH_START_TIMESTAMP_FIELD.name);
+            self.finish()
+        }
+        pub fn protocol_version(mut self) -> String {
+            self.path.push(ChangeEpoch::PROTOCOL_VERSION_FIELD.name);
+            self.finish()
+        }
+        pub fn fees(mut self) -> String {
+            self.path.push(ChangeEpoch::FEES_FIELD.name);
             self.finish()
         }
     }
@@ -6820,12 +6888,6 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
-        pub const GAS_OBJECT_REF_FIELD: &'static MessageField = &MessageField {
-            name: "gas_object_ref",
-            json_name: "gasObjectRef",
-            number: 5i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
     }
     impl MessageFields for TransactionFee {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -6833,7 +6895,6 @@ mod _field_impls {
             Self::OPERATION_FEE_FIELD,
             Self::VALUE_FEE_FIELD,
             Self::TOTAL_FEE_FIELD,
-            Self::GAS_OBJECT_REF_FIELD,
         ];
     }
     impl TransactionFee {
@@ -6871,10 +6932,6 @@ mod _field_impls {
         pub fn total_fee(mut self) -> String {
             self.path.push(TransactionFee::TOTAL_FEE_FIELD.name);
             self.finish()
-        }
-        pub fn gas_object_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(TransactionFee::GAS_OBJECT_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
     }
 }

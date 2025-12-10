@@ -10,22 +10,26 @@ use std::{pin::Pin, sync::Arc};
 use arc_swap::{ArcSwap, Guard};
 use fastcrypto::encoding::{Base58, Encoding as _};
 use fastcrypto::hash::MultisetHash;
+use itertools::Itertools as _;
 use parking_lot::Mutex;
+use protocol_config::{ProtocolConfig, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 use tap::TapFallible as _;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
-use types::base::FullObjectID;
+use types::base::{ConciseableName as _, FullObjectID};
 use types::checkpoints::{
     CheckpointCommitment, CheckpointContents, CheckpointRequest, CheckpointResponse,
     CheckpointSequenceNumber, CheckpointSummary, CheckpointSummaryResponse, CheckpointTimestamp,
     ECMHLiveObjectSetDigest, VerifiedCheckpoint,
 };
 use types::config::node_config::{ExpensiveSafetyCheckConfig, StateDebugDumpConfig};
+use types::consensus::AuthorityCapabilities;
 use types::digests::{
-    CheckpointContentsDigest, CheckpointDigest, ObjectDigest, TransactionEffectsDigest,
+    ChainIdentifier, CheckpointContentsDigest, CheckpointDigest, ObjectDigest,
+    TransactionEffectsDigest,
 };
 use types::effects::{
     InputSharedObject, SignedTransactionEffects, TransactionEffects, TransactionEffectsAPI,
@@ -39,6 +43,7 @@ use types::messages_grpc::TransactionInfoRequest;
 use types::object::{Object, ObjectID, ObjectRef, Owner, Version, OBJECT_START_VERSION};
 use types::storage::object_store::ObjectStore;
 use types::storage::InputKey;
+use types::supported_protocol_versions::SupportedProtocolVersions;
 use types::system_state::get_system_state;
 use types::system_state::{epoch_start::EpochStartSystemStateTrait, SystemState};
 use types::temporary_store::InnerTemporaryStore;
@@ -48,6 +53,7 @@ use types::transaction::{
 };
 use types::transaction_executor::{SimulateTransactionResult, TransactionChecks};
 use types::transaction_outputs::{TransactionOutputs, WrittenObjects};
+use types::tx_fee::TransactionFee;
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
     base::AuthorityName,
@@ -87,6 +93,7 @@ use crate::execution_scheduler::{ExecutionScheduler, SchedulingSource};
 use crate::global_state_hasher::{GlobalStateHashStore, GlobalStateHasher};
 use crate::rpc_index::RpcIndexStore;
 use crate::shared_obj_version_manager::{AssignedVersions, Schedulable};
+use crate::stake_aggregator::StakeAggregator;
 use crate::start_epoch::EpochStartConfigTrait;
 use crate::transaction_input_loader::TransactionInputLoader;
 use crate::validator_tx_finalizer::ValidatorTxFinalizer;
@@ -258,8 +265,8 @@ pub struct AuthorityState {
     pub config: NodeConfig,
 
     pub validator_tx_finalizer: Option<Arc<ValidatorTxFinalizer<NetworkAuthorityClient>>>,
-    // TODO: The chain identifier is derived from the digest of the genesis checkpoint.
-    // chain_identifier: ChainIdentifier,
+    // The chain identifier is derived from the digest of the genesis checkpoint.
+    chain_identifier: ChainIdentifier,
     //TODO: Traffic controller for Sui core servers (json-rpc, validator service)
     // pub traffic_controller: Option<Arc<TrafficController>>,
     /// Fork recovery state for handling equivocation after forks
@@ -290,7 +297,6 @@ impl AuthorityState {
         self.checkpoint_store.get_epoch_state_commitments(epoch)
     }
 
-    // TODO: transaction checks
     fn handle_transaction_deny_checks(
         &self,
         transaction: &VerifiedTransaction,
@@ -1345,10 +1351,34 @@ impl AuthorityState {
         })
     }
 
+    fn check_protocol_version(
+        supported_protocol_versions: SupportedProtocolVersions,
+        current_version: ProtocolVersion,
+    ) {
+        info!("current protocol version is now {:?}", current_version);
+        info!("supported versions are: {:?}", supported_protocol_versions);
+        if !supported_protocol_versions.is_version_supported(current_version) {
+            let msg = format!(
+                "Unsupported protocol version. The network is at {:?}, but this SomaNode only supports: {:?}. Shutting down.",
+                current_version, supported_protocol_versions,
+            );
+
+            error!("{}", msg);
+            eprintln!("{}", msg);
+
+            #[cfg(not(msim))]
+            std::process::exit(1);
+
+            #[cfg(msim)]
+            msim::task::shutdown_current_node();
+        }
+    }
+
     #[allow(clippy::disallowed_methods)] // allow unbounded_channel()
     pub async fn new(
         name: AuthorityName,
         secret: StableSyncAuthoritySigner,
+        supported_protocol_versions: SupportedProtocolVersions,
         store: Arc<AuthorityStore>,
         execution_cache_trait_pointers: ExecutionCacheTraitPointers,
         epoch_store: Arc<AuthorityPerEpochStore>,
@@ -1358,10 +1388,12 @@ impl AuthorityState {
         genesis_objects: &[Object],
         config: NodeConfig,
         validator_tx_finalizer: Option<Arc<ValidatorTxFinalizer<NetworkAuthorityClient>>>,
-        // chain_identifier: ChainIdentifier,
+        chain_identifier: ChainIdentifier,
         pruner_db: Option<Arc<AuthorityPrunerTables>>,
         pruner_watermarks: Arc<PrunerWatermarks>,
     ) -> Arc<Self> {
+        Self::check_protocol_version(supported_protocol_versions, epoch_store.protocol_version());
+
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
         let execution_scheduler = Arc::new(ExecutionScheduler::new(
             execution_cache_trait_pointers.object_cache_reader.clone(),
@@ -1412,7 +1444,7 @@ impl AuthorityState {
             _authority_per_epoch_pruner,
             config,
             validator_tx_finalizer,
-            // chain_identifier,
+            chain_identifier,
             fork_recovery_state,
         });
 
@@ -1522,19 +1554,19 @@ impl AuthorityState {
     pub async fn reconfigure(
         &self,
         cur_epoch_store: &AuthorityPerEpochStore,
+        supported_protocol_versions: SupportedProtocolVersions,
         new_committee: Committee,
         epoch_start_configuration: EpochStartConfiguration,
         state_hasher: Arc<GlobalStateHasher>,
         expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
         epoch_last_checkpoint: CheckpointSequenceNumber,
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
-        // TODO: check protocol version
-        // Self::check_protocol_version(
-        //     supported_protocol_versions,
-        //     epoch_start_configuration
-        //         .epoch_start_state()
-        //         .protocol_version(),
-        // );
+        Self::check_protocol_version(
+            supported_protocol_versions,
+            epoch_start_configuration
+                .epoch_start_state()
+                .protocol_version(),
+        );
 
         self.committee_store.insert_new_committee(&new_committee)?;
 
@@ -1771,10 +1803,10 @@ impl AuthorityState {
         Ok(checkpoint)
     }
 
-    // /// Chain Identifier is the digest of the genesis checkpoint.
-    // pub fn get_chain_identifier(&self) -> ChainIdentifier {
-    //     self.chain_identifier
-    // }
+    /// Chain Identifier is the digest of the genesis checkpoint.
+    pub fn get_chain_identifier(&self) -> ChainIdentifier {
+        self.chain_identifier
+    }
 
     pub fn get_fork_recovery_state(&self) -> Option<&ForkRecoveryState> {
         self.fork_recovery_state.as_ref()
@@ -2118,6 +2150,142 @@ impl AuthorityState {
             .get_latest_object_ref_or_tombstone(object_id)
     }
 
+    /// Ordinarily, protocol upgrades occur when 2f + 1 + (f *
+    /// ProtocolConfig::buffer_stake_for_protocol_upgrade_bps) vote for the upgrade.
+    ///
+    /// This method can be used to dynamic adjust the amount of buffer. If set to 0, the upgrade
+    /// will go through with only 2f+1 votes.
+    ///
+    /// IMPORTANT: If this is used, it must be used on >=2f+1 validators (all should have the same
+    /// value), or you risk halting the chain.
+    pub fn set_override_protocol_upgrade_buffer_stake(
+        &self,
+        expected_epoch: EpochId,
+        buffer_stake_bps: u64,
+    ) -> SomaResult {
+        let epoch_store = self.load_epoch_store_one_call_per_task();
+        let actual_epoch = epoch_store.epoch();
+        if actual_epoch != expected_epoch {
+            return Err(SomaError::WrongEpoch {
+                expected_epoch,
+                actual_epoch,
+            }
+            .into());
+        }
+
+        epoch_store.set_override_protocol_upgrade_buffer_stake(buffer_stake_bps)
+    }
+
+    pub fn clear_override_protocol_upgrade_buffer_stake(
+        &self,
+        expected_epoch: EpochId,
+    ) -> SomaResult {
+        let epoch_store = self.load_epoch_store_one_call_per_task();
+        let actual_epoch = epoch_store.epoch();
+        if actual_epoch != expected_epoch {
+            return Err(SomaError::WrongEpoch {
+                expected_epoch,
+                actual_epoch,
+            }
+            .into());
+        }
+
+        epoch_store.clear_override_protocol_upgrade_buffer_stake()
+    }
+
+    fn is_protocol_version_supported(
+        current_protocol_version: ProtocolVersion,
+        proposed_protocol_version: ProtocolVersion,
+        protocol_config: &ProtocolConfig,
+        committee: &Committee,
+        capabilities: Vec<AuthorityCapabilities>,
+        mut buffer_stake_bps: u64,
+    ) -> Option<ProtocolVersion> {
+        if buffer_stake_bps > 10000 {
+            warn!("clamping buffer_stake_bps to 10000");
+            buffer_stake_bps = 10000;
+        }
+
+        // For each validator, gather the protocol version and system packages that it would like
+        // to upgrade to in the next epoch.
+        let mut desired_upgrades: Vec<_> = capabilities
+            .into_iter()
+            .filter_map(|mut cap| {
+                info!(
+                    "validator {:?} supports {:?}",
+                    cap.authority.concise(),
+                    cap.supported_protocol_versions,
+                );
+
+                // A validator that only supports the current protocol version is also voting
+                // against any change, because framework upgrades always require a protocol version
+                // bump.
+                cap.supported_protocol_versions
+                    .get_version_digest(proposed_protocol_version)
+                    .map(|digest| (digest, cap.authority))
+            })
+            .collect();
+
+        // There can only be one set of votes that have a majority, find one if it exists.
+        desired_upgrades.sort();
+        desired_upgrades
+            .into_iter()
+            .chunk_by(|(digest, _authority)| *digest)
+            .into_iter()
+            .find_map(|(digest, group)| {
+                let mut stake_aggregator: StakeAggregator<(), true> =
+                    StakeAggregator::new(Arc::new(committee.clone()));
+
+                for (_, authority) in group {
+                    stake_aggregator.insert_generic(authority, ());
+                }
+
+                let total_votes = stake_aggregator.total_votes();
+                let quorum_threshold = committee.quorum_threshold();
+                let f = committee.total_votes() - committee.quorum_threshold();
+
+                // multiple by buffer_stake_bps / 10000, rounded up.
+                let buffer_stake = (f * buffer_stake_bps).div_ceil(10000);
+                let effective_threshold = quorum_threshold + buffer_stake;
+
+                info!(
+                    protocol_config_digest = ?digest,
+                    ?total_votes,
+                    ?quorum_threshold,
+                    ?buffer_stake_bps,
+                    ?effective_threshold,
+                    ?proposed_protocol_version,
+                    "support for upgrade"
+                );
+
+                let has_support = total_votes >= effective_threshold;
+                has_support.then_some(proposed_protocol_version)
+            })
+    }
+
+    fn choose_protocol_version(
+        current_protocol_version: ProtocolVersion,
+        protocol_config: &ProtocolConfig,
+        committee: &Committee,
+        capabilities: Vec<AuthorityCapabilities>,
+        buffer_stake_bps: u64,
+    ) -> ProtocolVersion {
+        let mut next_protocol_version = current_protocol_version;
+
+        while let Some(version) = Self::is_protocol_version_supported(
+            current_protocol_version,
+            next_protocol_version + 1,
+            protocol_config,
+            committee,
+            capabilities.clone(),
+            buffer_stake_bps,
+        ) {
+            next_protocol_version = version;
+        }
+
+        next_protocol_version
+    }
+
     /// Creates and execute the advance epoch transaction to effects without committing it to the database.
     /// The effects of the change epoch tx are only written to the database after a certified checkpoint has been
     /// formed and executed by CheckpointExecutor.
@@ -2132,7 +2300,7 @@ impl AuthorityState {
     pub async fn create_and_execute_advance_epoch_tx(
         &self,
         epoch_store: &Arc<AuthorityPerEpochStore>,
-        // gas_cost_summary: &GasCostSummary,
+        transaction_fees: &TransactionFee,
         checkpoint: CheckpointSequenceNumber,
         epoch_start_timestamp_ms: CheckpointTimestamp,
         // This may be less than `checkpoint - 1` if the end-of-epoch PendingCheckpoint produced
@@ -2141,21 +2309,24 @@ impl AuthorityState {
     ) -> CheckpointBuilderResult<(SystemState, TransactionEffects)> {
         let next_epoch = epoch_store.epoch() + 1;
 
-        // let buffer_stake_bps = epoch_store.get_effective_buffer_stake_bps();
+        let buffer_stake_bps = epoch_store.get_effective_buffer_stake_bps();
 
-        // let next_epoch_protocol_version =
-        //         Self::choose_protocol_version(
-        //             epoch_store.protocol_version(),
-        //             epoch_store.protocol_config(),
-        //             epoch_store.committee(),
-        //             buffer_stake_bps,
-        //         );
+        let next_epoch_protocol_version = Self::choose_protocol_version(
+            epoch_store.protocol_version(),
+            epoch_store.protocol_config(),
+            epoch_store.committee(),
+            epoch_store
+                .get_capabilities()
+                .expect("read capabilities from db cannot fail"),
+            buffer_stake_bps,
+        );
 
         let config = epoch_store.protocol_config();
 
         let tx = VerifiedTransaction::new_change_epoch_transaction(
             next_epoch,
-            // next_epoch_protocol_version,
+            next_epoch_protocol_version,
+            transaction_fees.total_fee,
             epoch_start_timestamp_ms,
         );
 

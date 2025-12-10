@@ -41,7 +41,7 @@ use encoder_validator_api::{
 };
 use futures::{future::BoxFuture, TryFutureExt};
 use parking_lot::RwLock;
-use rpc::api::subscription::SubscriptionService;
+use rpc::api::{subscription::SubscriptionService, ServerVersion};
 
 use store::rocks::default_db_options;
 use sync::builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle};
@@ -68,12 +68,13 @@ use types::{
     config::node_config::{
         ConsensusConfig, ForkCrashBehavior, ForkRecoveryConfig, NodeConfig, RunWithRange,
     },
-    consensus::ConsensusTransactionKind,
+    consensus::{AuthorityCapabilities, ConsensusTransaction, ConsensusTransactionKind},
     crypto::KeypairTraits,
     digests::{ChainIdentifier, CheckpointDigest, TransactionDigest, TransactionEffectsDigest},
     error::{SomaError, SomaResult},
     full_checkpoint_content::Checkpoint,
     storage::committee_store::CommitteeStore,
+    supported_protocol_versions::SupportedProtocolVersions,
     sync::{
         active_peers::{self, ActivePeers},
         channel_manager::{ChannelManager, ChannelManagerRequest},
@@ -204,10 +205,22 @@ pub struct SomaNode {
 
 impl SomaNode {
     pub async fn start(config: NodeConfig) -> Result<Arc<SomaNode>> {
-        Self::start_async(config).await
+        Self::start_async(config, ServerVersion::new("soma-node", "unknown")).await
     }
 
-    pub async fn start_async(config: NodeConfig) -> Result<Arc<SomaNode>> {
+    pub async fn start_async(
+        config: NodeConfig,
+        server_version: ServerVersion,
+    ) -> Result<Arc<SomaNode>> {
+        let mut config = config.clone();
+        if config.supported_protocol_versions.is_none() {
+            info!(
+                "populating config.supported_protocol_versions with default {:?}",
+                SupportedProtocolVersions::SYSTEM_DEFAULT
+            );
+            config.supported_protocol_versions = Some(SupportedProtocolVersions::SYSTEM_DEFAULT);
+        }
+
         let run_with_range = config.run_with_range;
         let is_validator = config.consensus_config().is_some();
         let is_full_node = !is_validator;
@@ -293,10 +306,10 @@ impl SomaNode {
         };
 
         let chain_id = ChainIdentifier::from(*genesis.checkpoint().digest());
-        // TODO: let chain = match config.chain_override_for_testing {
-        //     Some(chain) => chain,
-        //     None => ChainIdentifier::from(*genesis.checkpoint().digest()).chain(),
-        // };
+        let chain = match config.chain_override_for_testing {
+            Some(chain) => chain,
+            None => ChainIdentifier::from(*genesis.checkpoint().digest()).chain(),
+        };
 
         let epoch_options = default_db_options().optimize_db_for_write_throughput(4);
         let epoch_store = AuthorityPerEpochStore::new(
@@ -305,6 +318,7 @@ impl SomaNode {
             &config.db_path().join("store"),
             Some(epoch_options.options),
             epoch_start_configuration,
+            (chain_id, chain),
             checkpoint_store
                 .get_highest_executed_checkpoint_seq_number()
                 .expect("checkpoint store read cannot fail")
@@ -313,18 +327,17 @@ impl SomaNode {
 
         info!("created epoch store");
 
-        // TODO: set effective buffer stake
-        // let effective_buffer_stake = epoch_store.get_effective_buffer_stake_bps();
-        // let default_buffer_stake = epoch_store
-        //     .protocol_config()
-        //     .buffer_stake_for_protocol_upgrade_bps();
-        // if effective_buffer_stake != default_buffer_stake {
-        //     warn!(
-        //         ?effective_buffer_stake,
-        //         ?default_buffer_stake,
-        //         "buffer_stake_for_protocol_upgrade_bps is currently overridden"
-        //     );
-        // }
+        let effective_buffer_stake = epoch_store.get_effective_buffer_stake_bps();
+        let default_buffer_stake = epoch_store
+            .protocol_config()
+            .buffer_stake_for_protocol_upgrade_bps();
+        if effective_buffer_stake != default_buffer_stake {
+            warn!(
+                ?effective_buffer_stake,
+                ?default_buffer_stake,
+                "buffer_stake_for_protocol_upgrade_bps is currently overridden"
+            );
+        }
 
         checkpoint_store.insert_genesis_checkpoint(
             genesis.checkpoint(),
@@ -347,7 +360,7 @@ impl SomaNode {
             None
         };
 
-        // TODO: let chain_identifier = epoch_store.get_chain_identifier();
+        let chain_identifier = epoch_store.get_chain_identifier();
 
         // TOD:  let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
         let P2pComponents {
@@ -392,6 +405,7 @@ impl SomaNode {
         let state = AuthorityState::new(
             authority_name,
             secret,
+            config.supported_protocol_versions.unwrap(),
             store.clone(),
             cache_traits.clone(),
             epoch_store.clone(),
@@ -401,7 +415,7 @@ impl SomaNode {
             genesis.objects(),
             config.clone(),
             Some(validator_tx_finalizer),
-            // chain_identifier,
+            chain_identifier,
             pruner_db,
             pruner_watermarks,
         )
@@ -460,6 +474,7 @@ impl SomaNode {
             state_sync_store,
             &transaction_orchestrator.clone(),
             &config,
+            server_version,
         )
         .await?;
 
@@ -1054,7 +1069,34 @@ impl SomaNode {
 
             let cur_epoch_store = self.state.load_epoch_store_one_call_per_task();
 
-            // TODO: Advertise capabilities to committee, if we are a validator?
+            // Advertise capabilities to committee, if we are a validator.
+            if let Some(components) = &*self.validator_components.lock().await {
+                // TODO: without this sleep, the consensus message is not delivered reliably.
+                tokio::time::sleep(Duration::from_millis(1)).await;
+
+                let config = cur_epoch_store.protocol_config();
+                let supported_protocol_versions = self
+                    .config
+                    .supported_protocol_versions
+                    .expect("Supported versions should be populated")
+                    // no need to send digests of versions less than the current version
+                    .truncate_below(config.version);
+
+                let transaction =
+                    ConsensusTransaction::new_capability_notification(AuthorityCapabilities::new(
+                        self.state.name,
+                        cur_epoch_store.get_chain_identifier().chain(),
+                        supported_protocol_versions,
+                    ));
+                info!(?transaction, "submitting capabilities to consensus");
+                components.consensus_adapter.submit(
+                    transaction,
+                    None,
+                    &cur_epoch_store,
+                    None,
+                    None,
+                )?;
+            }
 
             let stop_condition = checkpoint_executor.run_epoch(run_with_range).await;
 
@@ -1071,7 +1113,7 @@ impl SomaNode {
                 .state
                 .get_object_cache_reader()
                 .get_system_state_object()
-                .expect("Read Sui System State object cannot fail");
+                .expect("Read Soma System State object cannot fail");
 
             if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone()) {
                 if self.state.is_fullnode(&cur_epoch_store) {
@@ -1267,6 +1309,7 @@ impl SomaNode {
             .state
             .reconfigure(
                 cur_epoch_store,
+                self.config.supported_protocol_versions.unwrap(),
                 next_epoch_committee,
                 epoch_start_configuration,
                 global_state_hasher,
@@ -1523,6 +1566,7 @@ async fn build_http_servers(
     store: RocksDbStore,
     transaction_orchestrator: &Option<Arc<TransactionOrchestrator<NetworkAuthorityClient>>>,
     config: &NodeConfig,
+    server_version: ServerVersion,
 ) -> Result<(HttpServers, Option<tokio::sync::mpsc::Sender<Checkpoint>>)> {
     // Validators do not expose these APIs
     if config.consensus_config().is_some() {
@@ -1536,7 +1580,7 @@ async fn build_http_servers(
     let rpc_router = {
         let mut rpc_service =
             rpc::api::RpcService::new(Arc::new(RestReadStore::new(state.clone(), store)));
-        // rpc_service.with_server_version(server_version);
+        rpc_service.with_server_version(server_version);
 
         if let Some(config) = config.rpc.clone() {
             rpc_service.with_config(config);

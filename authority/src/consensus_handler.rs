@@ -45,7 +45,8 @@ use types::{
     checkpoints::CheckpointSignatureMessage,
     committee::AuthorityIndex,
     consensus::{
-        ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind,
+        AuthorityCapabilities, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey,
+        ConsensusTransactionKind,
     },
     digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest, TransactionDigest},
     system_state::epoch_start::EpochStartSystemStateTrait,
@@ -441,6 +442,7 @@ impl<C> ConsensusHandler<C> {
 #[derive(Default)]
 struct CommitHandlerInput {
     user_transactions: Vec<VerifiedExecutableTransaction>,
+    capability_notifications: Vec<AuthorityCapabilities>,
     checkpoint_signature_messages: Vec<CheckpointSignatureMessage>,
     end_of_publish_transactions: Vec<AuthorityName>,
 }
@@ -561,10 +563,12 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
         let CommitHandlerInput {
             user_transactions,
+            capability_notifications,
             checkpoint_signature_messages,
             end_of_publish_transactions,
         } = self.build_commit_handler_input(transactions);
 
+        self.process_capability_notifications(capability_notifications);
         self.process_checkpoint_signature_messages(checkpoint_signature_messages);
 
         let (schedulables, assigned_versions) =
@@ -733,6 +737,17 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             state.indirect_state_observer.take().unwrap(),
         );
         Some(transaction)
+    }
+
+    fn process_capability_notifications(
+        &self,
+        capability_notifications: Vec<AuthorityCapabilities>,
+    ) {
+        for capabilities in capability_notifications {
+            self.epoch_store
+                .record_capabilities(&capabilities)
+                .expect("db error");
+        }
     }
 
     fn process_checkpoint_signature_messages(
@@ -950,7 +965,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                     match &parsed.transaction.kind {
                         ConsensusTransactionKind::UserTransaction(_)
                         | ConsensusTransactionKind::CertifiedTransaction(_)
-                        | ConsensusTransactionKind::EndOfPublish(_) => {
+                        | ConsensusTransactionKind::EndOfPublish(_)
+                        | ConsensusTransactionKind::CapabilityNotification(_) => {
                             debug!(
                                 "Ignoring consensus transaction {:?} because of end of epoch",
                                 parsed.transaction.key()
@@ -1117,6 +1133,14 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                                 .push(authority_public_key_bytes);
                         }
 
+                        ConsensusTransactionKind::CapabilityNotification(
+                            authority_capabilities,
+                        ) => {
+                            commit_handler_input
+                                .capability_notifications
+                                .push(authority_capabilities);
+                        }
+
                         ConsensusTransactionKind::CheckpointSignature(
                             checkpoint_signature_message,
                         ) => {
@@ -1275,6 +1299,7 @@ pub(crate) fn classify(transaction: &ConsensusTransaction) -> &'static str {
             }
         }
         ConsensusTransactionKind::CheckpointSignature(_) => "checkpoint_signature",
+        ConsensusTransactionKind::CapabilityNotification(_) => "capability_notification",
         ConsensusTransactionKind::EndOfPublish(_) => "end_of_publish",
         ConsensusTransactionKind::UserTransaction(tx) => {
             if tx.is_consensus_tx() {

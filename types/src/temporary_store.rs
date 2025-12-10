@@ -388,7 +388,8 @@ impl TemporaryStore {
         mut transaction_dependencies: BTreeSet<TransactionDigest>,
         status: ExecutionStatus,
         epoch: EpochId,
-        fee: Option<TransactionFee>,
+        fee: TransactionFee,
+        gas_object_id: Option<ObjectID>,
     ) -> (InnerTemporaryStore, TransactionEffects) {
         self.ensure_mutable_shared_objects_written();
 
@@ -428,6 +429,7 @@ impl TemporaryStore {
             object_changes,
             transaction_dependencies.into_iter().collect(),
             fee,
+            gas_object_id,
         );
 
         (inner, effects)

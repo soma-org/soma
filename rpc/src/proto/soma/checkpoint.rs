@@ -26,7 +26,7 @@ impl Merge<crate::types::CheckpointSummary> for CheckpointSummary {
             network_total_transactions,
             content_digest,
             previous_digest,
-            // TODO: epoch_rolling_gas_cost_summary,
+            epoch_rolling_transaction_fees,
             timestamp_ms,
             checkpoint_commitments,
             end_of_epoch_data,
@@ -52,9 +52,9 @@ impl Merge<crate::types::CheckpointSummary> for CheckpointSummary {
             self.previous_digest = previous_digest.map(|d| d.to_string());
         }
 
-        // if mask.contains(Self::EPOCH_ROLLING_GAS_COST_SUMMARY_FIELD.name) {
-        //     self.epoch_rolling_gas_cost_summary = Some(epoch_rolling_gas_cost_summary.into());
-        // }
+        if mask.contains(Self::EPOCH_ROLLING_TRANSACTION_FEES_FIELD.name) {
+            self.epoch_rolling_transaction_fees = Some(epoch_rolling_transaction_fees.into());
+        }
 
         if mask.contains(Self::TIMESTAMP_FIELD.name) {
             self.timestamp = Some(crate::proto::timestamp_ms_to_proto(timestamp_ms));
@@ -79,7 +79,7 @@ impl Merge<&CheckpointSummary> for CheckpointSummary {
             total_network_transactions,
             content_digest,
             previous_digest,
-            // epoch_rolling_gas_cost_summary,
+            epoch_rolling_transaction_fees,
             timestamp,
             commitments,
             end_of_epoch_data,
@@ -109,9 +109,9 @@ impl Merge<&CheckpointSummary> for CheckpointSummary {
             self.previous_digest = previous_digest.clone();
         }
 
-        // if mask.contains(Self::EPOCH_ROLLING_GAS_COST_SUMMARY_FIELD.name) {
-        //     self.epoch_rolling_gas_cost_summary = *epoch_rolling_gas_cost_summary;
-        // }
+        if mask.contains(Self::EPOCH_ROLLING_TRANSACTION_FEES_FIELD.name) {
+            self.epoch_rolling_transaction_fees = *epoch_rolling_transaction_fees;
+        }
 
         if mask.contains(Self::TIMESTAMP_FIELD.name) {
             self.timestamp = *timestamp;
@@ -138,7 +138,7 @@ impl TryFrom<&CheckpointSummary> for crate::types::CheckpointSummary {
             total_network_transactions,
             content_digest,
             previous_digest,
-            // epoch_rolling_gas_cost_summary,
+            epoch_rolling_transaction_fees,
             timestamp,
             commitments,
             end_of_epoch_data,
@@ -162,10 +162,10 @@ impl TryFrom<&CheckpointSummary> for crate::types::CheckpointSummary {
                 })
             })
             .transpose()?;
-        // let epoch_rolling_gas_cost_summary = epoch_rolling_gas_cost_summary
-        //     .as_ref()
-        //     .ok_or_else(|| TryFromProtoError::missing("epoch_rolling_gas_cost_summary"))?
-        //     .try_into()?;
+        let epoch_rolling_transaction_fees = epoch_rolling_transaction_fees
+            .as_ref()
+            .ok_or_else(|| TryFromProtoError::missing("epoch_rolling_transaction_fees"))?
+            .try_into()?;
 
         let timestamp_ms = timestamp
             .ok_or_else(|| TryFromProtoError::missing("timestamp_ms"))?
@@ -187,17 +187,13 @@ impl TryFrom<&CheckpointSummary> for crate::types::CheckpointSummary {
             network_total_transactions,
             content_digest,
             previous_digest,
-            // epoch_rolling_gas_cost_summary,
+            epoch_rolling_transaction_fees,
             timestamp_ms,
             checkpoint_commitments,
             end_of_epoch_data,
         })
     }
 }
-
-//
-// TODO: GasCostSummary
-//
 
 //
 // CheckpointCommitment
@@ -262,12 +258,13 @@ impl From<crate::types::EndOfEpochData> for EndOfEpochData {
     fn from(
         crate::types::EndOfEpochData {
             next_epoch_validator_committee,
+            next_epoch_protocol_version,
             epoch_commitments,
         }: crate::types::EndOfEpochData,
     ) -> Self {
         Self {
             next_epoch_validator_committee: Some(next_epoch_validator_committee.into()),
-            // TODO: next_epoch_protocol_version: Some(next_epoch_protocol_version),
+            next_epoch_protocol_version: Some(next_epoch_protocol_version),
             epoch_commitments: epoch_commitments.into_iter().map(Into::into).collect(),
         }
     }
@@ -279,12 +276,12 @@ impl TryFrom<&EndOfEpochData> for crate::types::EndOfEpochData {
     fn try_from(
         EndOfEpochData {
             next_epoch_validator_committee,
-            // next_epoch_protocol_version,
+            next_epoch_protocol_version,
             epoch_commitments,
         }: &EndOfEpochData,
     ) -> Result<Self, Self::Error> {
-        // let next_epoch_protocol_version = next_epoch_protocol_version
-        //     .ok_or_else(|| TryFromProtoError::missing("next_epoch_protocol_version"))?;
+        let next_epoch_protocol_version = next_epoch_protocol_version
+            .ok_or_else(|| TryFromProtoError::missing("next_epoch_protocol_version"))?;
 
         Ok(Self {
             next_epoch_validator_committee: next_epoch_validator_committee
@@ -292,7 +289,7 @@ impl TryFrom<&EndOfEpochData> for crate::types::EndOfEpochData {
                 .ok_or_else(|| TryFromProtoError::missing("next_epoch_validator_committee"))?
                 .try_into()
                 .map_err(|e| TryFromProtoError::invalid("next_epoch_validator_committee", e))?,
-            // next_epoch_protocol_version,
+            next_epoch_protocol_version,
             epoch_commitments: epoch_commitments
                 .iter()
                 .map(TryInto::try_into)

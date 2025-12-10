@@ -40,6 +40,7 @@ pub mod shard_verifier;
 pub mod signature_verification;
 pub mod storage;
 pub mod submission;
+pub mod supported_protocol_versions;
 pub mod sync;
 pub mod system_state;
 pub mod temporary_store;

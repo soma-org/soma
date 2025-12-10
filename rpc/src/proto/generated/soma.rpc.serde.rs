@@ -1247,6 +1247,12 @@ impl serde::Serialize for ChangeEpoch {
         if self.epoch_start_timestamp.is_some() {
             len += 1;
         }
+        if self.protocol_version.is_some() {
+            len += 1;
+        }
+        if self.fees.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.ChangeEpoch", len)?;
         if let Some(v) = self.epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -1255,6 +1261,16 @@ impl serde::Serialize for ChangeEpoch {
         }
         if let Some(v) = self.epoch_start_timestamp.as_ref() {
             struct_ser.serialize_field("epochStartTimestamp", &crate::utils::_serde::TimestampSerializer(v))?;
+        }
+        if let Some(v) = self.protocol_version.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("protocolVersion", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.fees.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("fees", ToString::to_string(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -1269,12 +1285,17 @@ impl<'de> serde::Deserialize<'de> for ChangeEpoch {
             "epoch",
             "epoch_start_timestamp",
             "epochStartTimestamp",
+            "protocol_version",
+            "protocolVersion",
+            "fees",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             Epoch,
             EpochStartTimestamp,
+            ProtocolVersion,
+            Fees,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -1299,6 +1320,8 @@ impl<'de> serde::Deserialize<'de> for ChangeEpoch {
                         match value {
                             "epoch" => Ok(GeneratedField::Epoch),
                             "epochStartTimestamp" | "epoch_start_timestamp" => Ok(GeneratedField::EpochStartTimestamp),
+                            "protocolVersion" | "protocol_version" => Ok(GeneratedField::ProtocolVersion),
+                            "fees" => Ok(GeneratedField::Fees),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -1322,6 +1345,8 @@ impl<'de> serde::Deserialize<'de> for ChangeEpoch {
             {
                 let mut epoch__ = None;
                 let mut epoch_start_timestamp__ = None;
+                let mut protocol_version__ = None;
+                let mut fees__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Epoch => {
@@ -1338,6 +1363,22 @@ impl<'de> serde::Deserialize<'de> for ChangeEpoch {
                             }
                             epoch_start_timestamp__ = map_.next_value::<::std::option::Option<crate::utils::_serde::TimestampDeserializer>>()?.map(|x| x.0.into());
                         }
+                        GeneratedField::ProtocolVersion => {
+                            if protocol_version__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("protocolVersion"));
+                            }
+                            protocol_version__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Fees => {
+                            if fees__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("fees"));
+                            }
+                            fees__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -1346,6 +1387,8 @@ impl<'de> serde::Deserialize<'de> for ChangeEpoch {
                 Ok(ChangeEpoch {
                     epoch: epoch__,
                     epoch_start_timestamp: epoch_start_timestamp__,
+                    protocol_version: protocol_version__,
+                    fees: fees__,
                 })
             }
         }
@@ -2422,6 +2465,9 @@ impl serde::Serialize for CheckpointSummary {
         if self.previous_digest.is_some() {
             len += 1;
         }
+        if self.epoch_rolling_transaction_fees.is_some() {
+            len += 1;
+        }
         if self.timestamp.is_some() {
             len += 1;
         }
@@ -2456,6 +2502,9 @@ impl serde::Serialize for CheckpointSummary {
         if let Some(v) = self.previous_digest.as_ref() {
             struct_ser.serialize_field("previousDigest", v)?;
         }
+        if let Some(v) = self.epoch_rolling_transaction_fees.as_ref() {
+            struct_ser.serialize_field("epochRollingTransactionFees", v)?;
+        }
         if let Some(v) = self.timestamp.as_ref() {
             struct_ser.serialize_field("timestamp", &crate::utils::_serde::TimestampSerializer(v))?;
         }
@@ -2485,6 +2534,8 @@ impl<'de> serde::Deserialize<'de> for CheckpointSummary {
             "contentDigest",
             "previous_digest",
             "previousDigest",
+            "epoch_rolling_transaction_fees",
+            "epochRollingTransactionFees",
             "timestamp",
             "commitments",
             "end_of_epoch_data",
@@ -2499,6 +2550,7 @@ impl<'de> serde::Deserialize<'de> for CheckpointSummary {
             TotalNetworkTransactions,
             ContentDigest,
             PreviousDigest,
+            EpochRollingTransactionFees,
             Timestamp,
             Commitments,
             EndOfEpochData,
@@ -2530,6 +2582,7 @@ impl<'de> serde::Deserialize<'de> for CheckpointSummary {
                             "totalNetworkTransactions" | "total_network_transactions" => Ok(GeneratedField::TotalNetworkTransactions),
                             "contentDigest" | "content_digest" => Ok(GeneratedField::ContentDigest),
                             "previousDigest" | "previous_digest" => Ok(GeneratedField::PreviousDigest),
+                            "epochRollingTransactionFees" | "epoch_rolling_transaction_fees" => Ok(GeneratedField::EpochRollingTransactionFees),
                             "timestamp" => Ok(GeneratedField::Timestamp),
                             "commitments" => Ok(GeneratedField::Commitments),
                             "endOfEpochData" | "end_of_epoch_data" => Ok(GeneratedField::EndOfEpochData),
@@ -2560,6 +2613,7 @@ impl<'de> serde::Deserialize<'de> for CheckpointSummary {
                 let mut total_network_transactions__ = None;
                 let mut content_digest__ = None;
                 let mut previous_digest__ = None;
+                let mut epoch_rolling_transaction_fees__ = None;
                 let mut timestamp__ = None;
                 let mut commitments__ = None;
                 let mut end_of_epoch_data__ = None;
@@ -2607,6 +2661,12 @@ impl<'de> serde::Deserialize<'de> for CheckpointSummary {
                             }
                             previous_digest__ = map_.next_value()?;
                         }
+                        GeneratedField::EpochRollingTransactionFees => {
+                            if epoch_rolling_transaction_fees__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epochRollingTransactionFees"));
+                            }
+                            epoch_rolling_transaction_fees__ = map_.next_value()?;
+                        }
                         GeneratedField::Timestamp => {
                             if timestamp__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("timestamp"));
@@ -2637,6 +2697,7 @@ impl<'de> serde::Deserialize<'de> for CheckpointSummary {
                     total_network_transactions: total_network_transactions__,
                     content_digest: content_digest__,
                     previous_digest: previous_digest__,
+                    epoch_rolling_transaction_fees: epoch_rolling_transaction_fees__,
                     timestamp: timestamp__,
                     commitments: commitments__.unwrap_or_default(),
                     end_of_epoch_data: end_of_epoch_data__,
@@ -4197,12 +4258,20 @@ impl serde::Serialize for EndOfEpochData {
         if self.next_epoch_validator_committee.is_some() {
             len += 1;
         }
+        if self.next_epoch_protocol_version.is_some() {
+            len += 1;
+        }
         if !self.epoch_commitments.is_empty() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.EndOfEpochData", len)?;
         if let Some(v) = self.next_epoch_validator_committee.as_ref() {
             struct_ser.serialize_field("nextEpochValidatorCommittee", v)?;
+        }
+        if let Some(v) = self.next_epoch_protocol_version.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProtocolVersion", ToString::to_string(&v).as_str())?;
         }
         if !self.epoch_commitments.is_empty() {
             struct_ser.serialize_field("epochCommitments", &self.epoch_commitments)?;
@@ -4219,6 +4288,8 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
         const FIELDS: &[&str] = &[
             "next_epoch_validator_committee",
             "nextEpochValidatorCommittee",
+            "next_epoch_protocol_version",
+            "nextEpochProtocolVersion",
             "epoch_commitments",
             "epochCommitments",
         ];
@@ -4226,6 +4297,7 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             NextEpochValidatorCommittee,
+            NextEpochProtocolVersion,
             EpochCommitments,
             __SkipField__,
         }
@@ -4250,6 +4322,7 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                     {
                         match value {
                             "nextEpochValidatorCommittee" | "next_epoch_validator_committee" => Ok(GeneratedField::NextEpochValidatorCommittee),
+                            "nextEpochProtocolVersion" | "next_epoch_protocol_version" => Ok(GeneratedField::NextEpochProtocolVersion),
                             "epochCommitments" | "epoch_commitments" => Ok(GeneratedField::EpochCommitments),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -4273,6 +4346,7 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut next_epoch_validator_committee__ = None;
+                let mut next_epoch_protocol_version__ = None;
                 let mut epoch_commitments__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
@@ -4281,6 +4355,14 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                                 return Err(serde::de::Error::duplicate_field("nextEpochValidatorCommittee"));
                             }
                             next_epoch_validator_committee__ = map_.next_value()?;
+                        }
+                        GeneratedField::NextEpochProtocolVersion => {
+                            if next_epoch_protocol_version__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProtocolVersion"));
+                            }
+                            next_epoch_protocol_version__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::EpochCommitments => {
                             if epoch_commitments__.is_some() {
@@ -4295,6 +4377,7 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                 }
                 Ok(EndOfEpochData {
                     next_epoch_validator_committee: next_epoch_validator_committee__,
+                    next_epoch_protocol_version: next_epoch_protocol_version__,
                     epoch_commitments: epoch_commitments__.unwrap_or_default(),
                 })
             }
@@ -12360,6 +12443,9 @@ impl serde::Serialize for SystemState {
         if self.epoch_start_timestamp_ms.is_some() {
             len += 1;
         }
+        if self.protocol_version.is_some() {
+            len += 1;
+        }
         if self.parameters.is_some() {
             len += 1;
         }
@@ -12391,6 +12477,11 @@ impl serde::Serialize for SystemState {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("epochStartTimestampMs", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.protocol_version.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("protocolVersion", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.parameters.as_ref() {
             struct_ser.serialize_field("parameters", v)?;
@@ -12426,6 +12517,8 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             "epoch",
             "epoch_start_timestamp_ms",
             "epochStartTimestampMs",
+            "protocol_version",
+            "protocolVersion",
             "parameters",
             "validators",
             "encoders",
@@ -12443,6 +12536,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
         enum GeneratedField {
             Epoch,
             EpochStartTimestampMs,
+            ProtocolVersion,
             Parameters,
             Validators,
             Encoders,
@@ -12474,6 +12568,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                         match value {
                             "epoch" => Ok(GeneratedField::Epoch),
                             "epochStartTimestampMs" | "epoch_start_timestamp_ms" => Ok(GeneratedField::EpochStartTimestampMs),
+                            "protocolVersion" | "protocol_version" => Ok(GeneratedField::ProtocolVersion),
                             "parameters" => Ok(GeneratedField::Parameters),
                             "validators" => Ok(GeneratedField::Validators),
                             "encoders" => Ok(GeneratedField::Encoders),
@@ -12504,6 +12599,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             {
                 let mut epoch__ = None;
                 let mut epoch_start_timestamp_ms__ = None;
+                let mut protocol_version__ = None;
                 let mut parameters__ = None;
                 let mut validators__ = None;
                 let mut encoders__ = None;
@@ -12526,6 +12622,14 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                                 return Err(serde::de::Error::duplicate_field("epochStartTimestampMs"));
                             }
                             epoch_start_timestamp_ms__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ProtocolVersion => {
+                            if protocol_version__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("protocolVersion"));
+                            }
+                            protocol_version__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -12585,6 +12689,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                 Ok(SystemState {
                     epoch: epoch__,
                     epoch_start_timestamp_ms: epoch_start_timestamp_ms__,
+                    protocol_version: protocol_version__,
                     parameters: parameters__,
                     validators: validators__,
                     encoders: encoders__,
@@ -12767,6 +12872,9 @@ impl serde::Serialize for TransactionEffects {
         if self.transaction_digest.is_some() {
             len += 1;
         }
+        if self.gas_object_index.is_some() {
+            len += 1;
+        }
         if !self.dependencies.is_empty() {
             len += 1;
         }
@@ -12793,6 +12901,9 @@ impl serde::Serialize for TransactionEffects {
         }
         if let Some(v) = self.transaction_digest.as_ref() {
             struct_ser.serialize_field("transactionDigest", v)?;
+        }
+        if let Some(v) = self.gas_object_index.as_ref() {
+            struct_ser.serialize_field("gasObjectIndex", v)?;
         }
         if !self.dependencies.is_empty() {
             struct_ser.serialize_field("dependencies", &self.dependencies)?;
@@ -12823,6 +12934,8 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
             "fee",
             "transaction_digest",
             "transactionDigest",
+            "gas_object_index",
+            "gasObjectIndex",
             "dependencies",
             "lamport_version",
             "lamportVersion",
@@ -12838,6 +12951,7 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
             Epoch,
             Fee,
             TransactionDigest,
+            GasObjectIndex,
             Dependencies,
             LamportVersion,
             ChangedObjects,
@@ -12868,6 +12982,7 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                             "epoch" => Ok(GeneratedField::Epoch),
                             "fee" => Ok(GeneratedField::Fee),
                             "transactionDigest" | "transaction_digest" => Ok(GeneratedField::TransactionDigest),
+                            "gasObjectIndex" | "gas_object_index" => Ok(GeneratedField::GasObjectIndex),
                             "dependencies" => Ok(GeneratedField::Dependencies),
                             "lamportVersion" | "lamport_version" => Ok(GeneratedField::LamportVersion),
                             "changedObjects" | "changed_objects" => Ok(GeneratedField::ChangedObjects),
@@ -12897,6 +13012,7 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                 let mut epoch__ = None;
                 let mut fee__ = None;
                 let mut transaction_digest__ = None;
+                let mut gas_object_index__ = None;
                 let mut dependencies__ = None;
                 let mut lamport_version__ = None;
                 let mut changed_objects__ = None;
@@ -12928,6 +13044,14 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                                 return Err(serde::de::Error::duplicate_field("transactionDigest"));
                             }
                             transaction_digest__ = map_.next_value()?;
+                        }
+                        GeneratedField::GasObjectIndex => {
+                            if gas_object_index__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("gasObjectIndex"));
+                            }
+                            gas_object_index__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::Dependencies => {
                             if dependencies__.is_some() {
@@ -12965,6 +13089,7 @@ impl<'de> serde::Deserialize<'de> for TransactionEffects {
                     epoch: epoch__,
                     fee: fee__,
                     transaction_digest: transaction_digest__,
+                    gas_object_index: gas_object_index__,
                     dependencies: dependencies__.unwrap_or_default(),
                     lamport_version: lamport_version__,
                     changed_objects: changed_objects__.unwrap_or_default(),
@@ -12995,9 +13120,6 @@ impl serde::Serialize for TransactionFee {
         if self.total_fee.is_some() {
             len += 1;
         }
-        if self.gas_object_ref.is_some() {
-            len += 1;
-        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.TransactionFee", len)?;
         if let Some(v) = self.base_fee.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -13019,9 +13141,6 @@ impl serde::Serialize for TransactionFee {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("totalFee", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.gas_object_ref.as_ref() {
-            struct_ser.serialize_field("gasObjectRef", v)?;
-        }
         struct_ser.end()
     }
 }
@@ -13040,8 +13159,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
             "valueFee",
             "total_fee",
             "totalFee",
-            "gas_object_ref",
-            "gasObjectRef",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -13050,7 +13167,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
             OperationFee,
             ValueFee,
             TotalFee,
-            GasObjectRef,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -13077,7 +13193,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                             "operationFee" | "operation_fee" => Ok(GeneratedField::OperationFee),
                             "valueFee" | "value_fee" => Ok(GeneratedField::ValueFee),
                             "totalFee" | "total_fee" => Ok(GeneratedField::TotalFee),
-                            "gasObjectRef" | "gas_object_ref" => Ok(GeneratedField::GasObjectRef),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -13103,7 +13218,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                 let mut operation_fee__ = None;
                 let mut value_fee__ = None;
                 let mut total_fee__ = None;
-                let mut gas_object_ref__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::BaseFee => {
@@ -13138,12 +13252,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::GasObjectRef => {
-                            if gas_object_ref__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("gasObjectRef"));
-                            }
-                            gas_object_ref__ = map_.next_value()?;
-                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -13154,7 +13262,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                     operation_fee: operation_fee__,
                     value_fee: value_fee__,
                     total_fee: total_fee__,
-                    gas_object_ref: gas_object_ref__,
                 })
             }
         }

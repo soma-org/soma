@@ -1,3 +1,5 @@
+use crate::types::TransactionFee;
+
 use super::Digest;
 use super::Object;
 use super::SignedTransaction;
@@ -28,7 +30,7 @@ pub struct EndOfEpochData {
     pub next_epoch_validator_committee: ValidatorCommittee,
 
     /// The protocol version that is in effect during the next epoch.
-    // TODO: pub next_epoch_protocol_version: ProtocolVersion,
+    pub next_epoch_protocol_version: ProtocolVersion,
 
     /// Commitments to epoch specific state (e.g. live object set)
     pub epoch_commitments: Vec<CheckpointCommitment>,
@@ -55,9 +57,9 @@ pub struct CheckpointSummary {
     /// This will be only be `None` for the first, or genesis checkpoint.
     pub previous_digest: Option<Digest>,
 
-    /// The running total gas costs of all transactions included in the current epoch so far
+    /// The running total fees of all transactions included in the current epoch so far
     /// until this checkpoint.
-    // TODO: pub epoch_rolling_gas_cost_summary: GasCostSummary,
+    pub epoch_rolling_transaction_fees: TransactionFee,
 
     /// Timestamp of the checkpoint - number of milliseconds from the Unix epoch
     /// Checkpoint timestamps are monotonic, but not strongly monotonic - subsequent

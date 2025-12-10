@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::{
+    base::AuthorityName,
     base::SomaAddress,
     committee::{Committee, CommitteeWithNetworkMetadata},
     config::{
@@ -28,6 +29,7 @@ use crate::{
     multiaddr::Multiaddr,
     object::{self, Object, ObjectData, ObjectID, ObjectType, Owner, Version},
     peer_id::PeerId,
+    supported_protocol_versions::SupportedProtocolVersions,
     system_state::{
         encoder::Encoder,
         epoch_start::EpochStartSystemStateTrait,
@@ -70,6 +72,27 @@ pub enum CommitteeConfig {
     },
 }
 
+pub type SupportedProtocolVersionsCallback = Arc<
+    dyn Fn(
+            usize,                 /* validator idx */
+            Option<AuthorityName>, /* None for fullnode */
+        ) -> SupportedProtocolVersions
+        + Send
+        + Sync
+        + 'static,
+>;
+
+#[derive(Clone)]
+pub enum ProtocolVersionsConfig {
+    // use SYSTEM_DEFAULT
+    Default,
+    // Use one range for all validators.
+    Global(SupportedProtocolVersions),
+    // A closure that returns the versions for each validator.
+    // TODO: This doesn't apply to fullnodes.
+    PerValidator(SupportedProtocolVersionsCallback),
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NetworkConfig {
     pub validator_configs: Vec<NodeConfig>,
@@ -108,6 +131,7 @@ pub struct ConfigBuilder<R = OsRng> {
     committee: CommitteeConfig,
     encoder_committee: EncoderCommitteeConfig,
     genesis_config: Option<GenesisConfig>,
+    supported_protocol_versions_config: Option<ProtocolVersionsConfig>,
 }
 
 impl ConfigBuilder {
@@ -117,6 +141,7 @@ impl ConfigBuilder {
             committee: CommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             encoder_committee: EncoderCommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             genesis_config: None,
+            supported_protocol_versions_config: None,
         }
     }
 }
@@ -154,6 +179,7 @@ impl<R> ConfigBuilder<R> {
             committee: self.committee,
             encoder_committee: self.encoder_committee,
             genesis_config: self.genesis_config,
+            supported_protocol_versions_config: self.supported_protocol_versions_config,
         }
     }
 
@@ -165,6 +191,24 @@ impl<R> ConfigBuilder<R> {
         self.get_or_init_genesis_config()
             .parameters
             .chain_start_timestamp_ms = duration_since_unix_epoch.as_millis() as u64;
+        self
+    }
+
+    pub fn with_supported_protocol_versions(mut self, c: SupportedProtocolVersions) -> Self {
+        self.supported_protocol_versions_config = Some(ProtocolVersionsConfig::Global(c));
+        self
+    }
+
+    pub fn with_supported_protocol_version_callback(
+        mut self,
+        func: SupportedProtocolVersionsCallback,
+    ) -> Self {
+        self.supported_protocol_versions_config = Some(ProtocolVersionsConfig::PerValidator(func));
+        self
+    }
+
+    pub fn with_supported_protocol_versions_config(mut self, c: ProtocolVersionsConfig) -> Self {
+        self.supported_protocol_versions_config = Some(c);
         self
     }
 
@@ -454,6 +498,20 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             .enumerate()
             .map(|(idx, validator)| {
                 let mut builder = ValidatorConfigBuilder::new();
+
+                if let Some(spvc) = &self.supported_protocol_versions_config {
+                    let supported_versions = match spvc {
+                        ProtocolVersionsConfig::Default => {
+                            SupportedProtocolVersions::SYSTEM_DEFAULT
+                        }
+                        ProtocolVersionsConfig::Global(v) => *v,
+                        ProtocolVersionsConfig::PerValidator(func) => {
+                            func(idx, Some(validator.key_pair.public().into()))
+                        }
+                    };
+                    builder = builder.with_supported_protocol_versions(supported_versions);
+                }
+
                 builder.build(validator, genesis.clone(), seed_peers.clone())
             })
             .collect();

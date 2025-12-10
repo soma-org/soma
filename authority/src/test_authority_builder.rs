@@ -34,6 +34,7 @@ use types::{
     genesis::Genesis,
     object::{Object, ObjectID},
     storage::committee_store::CommitteeStore,
+    supported_protocol_versions::SupportedProtocolVersions,
     system_state::SystemStateTrait,
     transaction::{VerifiedExecutableTransaction, VerifiedTransaction},
 };
@@ -255,6 +256,7 @@ impl<'a> TestAuthorityBuilder<'a> {
             &path.join("store"),
             None,
             epoch_start_configuration,
+            (chain_id, chain),
             checkpoint_store
                 .get_highest_executed_checkpoint_seq_number()
                 .unwrap()
@@ -298,6 +300,7 @@ impl<'a> TestAuthorityBuilder<'a> {
         let state = AuthorityState::new(
             name,
             secret,
+            SupportedProtocolVersions::SYSTEM_DEFAULT,
             authority_store,
             cache_traits,
             epoch_store.clone(),
@@ -307,6 +310,7 @@ impl<'a> TestAuthorityBuilder<'a> {
             genesis.objects(),
             config.clone(),
             None,
+            chain_identifier,
             pruner_db,
             Arc::new(PrunerWatermarks::default()),
         )

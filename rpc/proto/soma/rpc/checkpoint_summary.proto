@@ -4,6 +4,7 @@ package soma.rpc;
 
 import "google/protobuf/timestamp.proto";
 import "soma/rpc/signature.proto";
+import "soma/rpc/transaction_fee.proto";
 
 // A header for a checkpoint on the Soma blockchain.
 //
@@ -46,20 +47,20 @@ message CheckpointSummary {
   // This will be `None` only for the first, or genesis, checkpoint.
   optional string previous_digest = 6;
 
-  // The running total gas costs of all transactions included in the current epoch so far
+  // The running total fees of all transactions included in the current epoch so far
   // until this checkpoint.
-// TODO: optional GasCostSummary epoch_rolling_gas_cost_summary = 8;
+  optional TransactionFee epoch_rolling_transaction_fees = 7;
 
   // Timestamp of the checkpoint - number of milliseconds from the Unix epoch
   // Checkpoint timestamps are monotonic, but not strongly monotonic - subsequent
   // checkpoints can have the same timestamp if they originate from the same underlining consensus commit.
-  optional google.protobuf.Timestamp timestamp = 7;
+  optional google.protobuf.Timestamp timestamp = 8;
 
   // Commitments to checkpoint-specific state.
-  repeated CheckpointCommitment commitments = 8;
+  repeated CheckpointCommitment commitments = 9;
 
   // Extra data only present in the final checkpoint of an epoch.
-  optional EndOfEpochData end_of_epoch_data = 9;
+  optional EndOfEpochData end_of_epoch_data = 10;
 }
 
 // Data, which when included in a `CheckpointSummary`, signals the end of an `Epoch`.
@@ -67,10 +68,10 @@ message EndOfEpochData {
   // The set of validators that will be in the `ValidatorCommittee` for the next epoch.
   optional ValidatorCommittee next_epoch_validator_committee = 1;
   // TODO: add encoder committee & network committees
-  // TODO: The protocol version that is in effect during the next epoch.
-//   optional uint64 next_epoch_protocol_version = 2;
+  // The protocol version that is in effect during the next epoch.
+  optional uint64 next_epoch_protocol_version = 2;
   // Commitments to epoch specific state (live object set)
-  repeated CheckpointCommitment epoch_commitments = 2;
+  repeated CheckpointCommitment epoch_commitments = 3;
 }
 
 // A commitment made by a checkpoint.

@@ -328,6 +328,8 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
 
             TK::ChangeEpoch(change) => TransactionKind::ChangeEpoch(ChangeEpoch {
                 epoch: change.epoch,
+                protocol_version: change.protocol_version.as_u64(),
+                fees: change.fees,
                 epoch_start_timestamp_ms: change.epoch_start_timestamp_ms,
             }),
 
@@ -519,6 +521,8 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             TransactionKind::ChangeEpoch(change) => {
                 TK::ChangeEpoch(types::transaction::ChangeEpoch {
                     epoch: change.epoch,
+                    protocol_version: change.protocol_version.into(),
+                    fees: change.fees,
                     epoch_start_timestamp_ms: change.epoch_start_timestamp_ms,
                 })
             }
@@ -707,10 +711,11 @@ impl TryFrom<types::effects::TransactionEffects> for crate::types::TransactionEf
         Ok(Self {
             status: value.status.into(),
             epoch: value.executed_epoch,
-            fee: value.transaction_fee.map(|f| f.into()),
+            fee: value.transaction_fee.into(),
             transaction_digest: value.transaction_digest.into(),
             dependencies: value.dependencies.into_iter().map(Into::into).collect(),
             lamport_version: value.version.value(),
+            gas_object_index: value.gas_object_index,
             changed_objects: value
                 .changed_objects
                 .into_iter()
@@ -740,10 +745,11 @@ impl TryFrom<crate::types::TransactionEffects> for types::effects::TransactionEf
         Ok(Self {
             status: value.status.into(),
             executed_epoch: value.epoch,
-            transaction_fee: value.fee.map(|f| f.into()),
+            transaction_fee: value.fee.into(),
             transaction_digest: value.transaction_digest.into(),
             dependencies: value.dependencies.into_iter().map(Into::into).collect(),
             version: types::object::Version::from_u64(value.lamport_version),
+            gas_object_index: value.gas_object_index,
             changed_objects: value
                 .changed_objects
                 .into_iter()
@@ -774,11 +780,6 @@ impl From<types::tx_fee::TransactionFee> for crate::types::TransactionFee {
             operation_fee: value.operation_fee,
             value_fee: value.value_fee,
             total_fee: value.total_fee,
-            gas_object_ref: ObjectReference::new(
-                value.gas_object_ref.0.into(),
-                value.gas_object_ref.1.value(),
-                value.gas_object_ref.2.into(),
-            ),
         }
     }
 }
@@ -790,7 +791,6 @@ impl From<crate::types::TransactionFee> for types::tx_fee::TransactionFee {
             operation_fee: value.operation_fee,
             value_fee: value.value_fee,
             total_fee: value.total_fee,
-            gas_object_ref: value.gas_object_ref.into(),
         }
     }
 }
@@ -1472,11 +1472,15 @@ impl From<types::transaction::ChangeEpoch> for ChangeEpoch {
     fn from(
         types::transaction::ChangeEpoch {
             epoch,
+            protocol_version,
+            fees,
             epoch_start_timestamp_ms,
         }: types::transaction::ChangeEpoch,
     ) -> Self {
         Self {
             epoch,
+            protocol_version: protocol_version.as_u64(),
+            fees,
             epoch_start_timestamp_ms,
         }
     }
@@ -1697,6 +1701,7 @@ impl TryFrom<types::checkpoints::EndOfEpochData> for crate::types::EndOfEpochDat
     fn try_from(value: types::checkpoints::EndOfEpochData) -> Result<Self, Self::Error> {
         Ok(Self {
             next_epoch_validator_committee: value.next_epoch_validator_committee.into(),
+            next_epoch_protocol_version: value.next_epoch_protocol_version.as_u64(),
             epoch_commitments: value
                 .epoch_commitments
                 .into_iter()
@@ -1730,6 +1735,7 @@ impl TryFrom<crate::types::EndOfEpochData> for types::checkpoints::EndOfEpochDat
         );
 
         Ok(Self {
+            next_epoch_protocol_version: value.next_epoch_protocol_version.into(),
             next_epoch_validator_committee,
             next_epoch_encoder_committee,
             next_epoch_networking_committee,
@@ -1754,6 +1760,7 @@ impl TryFrom<types::checkpoints::CheckpointSummary> for crate::types::Checkpoint
             epoch: value.epoch,
             sequence_number: value.sequence_number,
             network_total_transactions: value.network_total_transactions,
+            epoch_rolling_transaction_fees: value.epoch_rolling_transaction_fees.into(),
             content_digest: value.content_digest.into(),
             previous_digest: value.previous_digest.map(Into::into),
             timestamp_ms: value.timestamp_ms,
@@ -1775,6 +1782,7 @@ impl TryFrom<crate::types::CheckpointSummary> for types::checkpoints::Checkpoint
             epoch: value.epoch,
             sequence_number: value.sequence_number,
             network_total_transactions: value.network_total_transactions,
+            epoch_rolling_transaction_fees: value.epoch_rolling_transaction_fees.into(),
             content_digest: value.content_digest.into(),
             previous_digest: value.previous_digest.map(Into::into),
             timestamp_ms: value.timestamp_ms,

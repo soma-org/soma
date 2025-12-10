@@ -72,6 +72,21 @@ impl SomaClientConfig {
             self.envs.push(env)
         }
     }
+
+    /// Update the cached chain ID for the specified environment.
+    pub fn update_env_chain_id(
+        &mut self,
+        alias: &str,
+        chain_id: String,
+    ) -> Result<(), anyhow::Error> {
+        let env = self
+            .envs
+            .iter_mut()
+            .find(|env| env.alias == alias)
+            .ok_or_else(|| anyhow!("Environment {} not found", alias))?;
+        env.chain_id = Some(chain_id);
+        Ok(())
+    }
 }
 
 pub async fn encoder_config_to_client_config(
@@ -96,6 +111,7 @@ pub async fn encoder_config_to_client_config(
         rpc: format!("http://{}", encoder_config.rpc_address),
         internal_object_address: format!("http://{}", encoder_config.rpc_address),
         basic_auth: None,
+        chain_id: None, // TODO: change this chain_id?
     };
 
     let config = SomaClientConfig {
@@ -118,6 +134,8 @@ pub struct SomaEnv {
     pub rpc: String, // This is now the gRPC endpoint URL
     pub internal_object_address: String,
     pub basic_auth: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<String>,
 }
 
 impl SomaEnv {
@@ -153,6 +171,7 @@ impl SomaEnv {
             rpc: SOMA_DEVNET_URL.into(),
             internal_object_address: "http://fullnode.devnet.soma.org:8080".into(),
             basic_auth: None,
+            chain_id: None,
         }
     }
     pub fn testnet() -> Self {
@@ -161,6 +180,7 @@ impl SomaEnv {
             rpc: SOMA_TESTNET_URL.into(),
             internal_object_address: "http://fullnode.testnet.soma.org:8080".into(),
             basic_auth: None,
+            chain_id: None,
         }
     }
 
@@ -170,6 +190,7 @@ impl SomaEnv {
             rpc: SOMA_LOCAL_NETWORK_URL.into(),
             internal_object_address: "http://127.0.0.1:8080".into(),
             basic_auth: None,
+            chain_id: None,
         }
     }
 }
@@ -182,6 +203,10 @@ impl Display for SomaEnv {
         if let Some(basic_auth) = &self.basic_auth {
             writeln!(writer)?;
             write!(writer, "Basic Auth: {}", basic_auth)?;
+        }
+        if let Some(chain_id) = &self.chain_id {
+            writeln!(writer)?;
+            write!(writer, "Chain ID: {}", chain_id)?;
         }
         write!(f, "{}", writer)
     }

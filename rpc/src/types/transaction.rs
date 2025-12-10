@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::Digest;
-use crate::types::{Address, CommitTimestamp, EpochId, Object, ObjectReference, UserSignature};
+use crate::types::{Address, CheckpointTimestamp, EpochId, Object, ObjectReference, UserSignature};
+use crate::types::{Digest, ProtocolVersion};
 use serde::Deserializer;
 use serde::Serializer;
 use serde::ser::SerializeSeq;
@@ -249,7 +249,7 @@ pub struct ConsensusCommitPrologue {
     pub sub_dag_index: Option<u64>,
 
     /// Unix timestamp from consensus
-    pub commit_timestamp_ms: CommitTimestamp,
+    pub commit_timestamp_ms: CheckpointTimestamp,
 
     /// Digest of consensus output for verification
     pub consensus_commit_digest: Digest,
@@ -274,8 +274,14 @@ pub struct ChangeEpoch {
     /// The next (to become) epoch ID.
     pub epoch: EpochId,
 
+    /// The protocol version in effect in the new epoch.
+    pub protocol_version: ProtocolVersion,
+
     /// Unix timestamp when epoch started
     pub epoch_start_timestamp_ms: u64,
+
+    /// The total amount of fees charged during the epoch.
+    pub fees: u64,
 }
 
 /// The genesis transaction

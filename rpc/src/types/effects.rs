@@ -12,11 +12,16 @@ pub struct TransactionEffects {
     /// The epoch when this transaction was executed
     pub epoch: EpochId,
 
-    /// The transaction fee (optional like in source)
-    pub fee: Option<TransactionFee>,
+    /// The transaction fee
+    pub fee: TransactionFee,
 
     /// The transaction digest
     pub transaction_digest: Digest,
+
+    /// The updated gas object reference, as an index into the `changed_objects` vector.
+    /// Having a dedicated field for convenient access.
+    /// System transaction that don't require gas will leave this as None.
+    pub gas_object_index: Option<u32>,
 
     /// The set of transaction digests this transaction depends on
     pub dependencies: Vec<Digest>,
@@ -199,7 +204,7 @@ impl TransactionEffects {
     }
 
     /// The gas used in this transaction.
-    pub fn fee(&self) -> &Option<TransactionFee> {
+    pub fn fee(&self) -> &TransactionFee {
         &self.fee
     }
 }

@@ -133,6 +133,65 @@ impl WalletContext {
         })
     }
 
+    /// Load the chain ID corresponding to the active environment, or fetch and cache it if not
+    /// present.
+    ///
+    /// The chain ID is cached in the `client.yaml` file to avoid redundant network requests.
+    pub async fn load_or_cache_chain_id(
+        &self,
+        client: &SomaClient,
+    ) -> Result<String, anyhow::Error> {
+        self.internal_load_or_cache_chain_id(client, false).await
+    }
+
+    /// Try to load the cached chain ID for the active environment.
+    pub async fn try_load_chain_id_from_cache(
+        &self,
+        env: Option<String>,
+    ) -> Result<String, anyhow::Error> {
+        let env = if let Some(env) = env {
+            self.config
+                .get_env(&Some(env.to_string()))
+                .ok_or_else(|| anyhow!("Environment configuration not found for env [{}]", env))?
+        } else {
+            self.get_active_env()?
+        };
+        if let Some(chain_id) = &env.chain_id {
+            Ok(chain_id.clone())
+        } else {
+            Err(anyhow!(
+                "No cached chain ID found for env {}. Please pass `-e env_name` to your command",
+                env.alias
+            ))
+        }
+    }
+
+    /// Cache (or recache) chain ID for the active environment by fetching it from the
+    /// network
+    pub async fn cache_chain_id(&self, client: &SomaClient) -> Result<String, anyhow::Error> {
+        self.internal_load_or_cache_chain_id(client, true).await
+    }
+
+    async fn internal_load_or_cache_chain_id(
+        &self,
+        client: &SomaClient,
+        force_recache: bool,
+    ) -> Result<String, anyhow::Error> {
+        let env = self.get_active_env()?;
+        if !force_recache && env.chain_id.is_some() {
+            let chain_id = env.chain_id.as_ref().unwrap();
+            info!("Found cached chain ID for env {}: {}", env.alias, chain_id);
+            return Ok(chain_id.clone());
+        }
+        let chain_id = client.get_chain_identifier().await?;
+        let path = self.config.path();
+        let mut config_result = SomaClientConfig::load_with_lock(path)?;
+
+        config_result.update_env_chain_id(&env.alias, chain_id.clone())?;
+        config_result.save_with_lock(path)?;
+        Ok(chain_id)
+    }
+
     /// Get the active environment configuration
     pub fn get_active_env(&self) -> Result<&SomaEnv, anyhow::Error> {
         if self.env_override.is_some() {

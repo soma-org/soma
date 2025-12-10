@@ -13,7 +13,7 @@ use crate::{
         CheckpointContents, CheckpointSequenceNumber, FullCheckpointContents, VerifiedCheckpoint,
     },
     committee::{Committee, EpochId},
-    digests::{CheckpointContentsDigest, CheckpointDigest, TransactionDigest},
+    digests::{ChainIdentifier, CheckpointContentsDigest, CheckpointDigest, TransactionDigest},
     effects::TransactionEffects,
     full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet},
     object::{Object, ObjectID, ObjectType, Version},
@@ -490,7 +490,7 @@ pub trait RpcStateReader: ObjectStore + ReadStore + Send + Sync {
     /// available.
     fn get_lowest_available_checkpoint_objects(&self) -> Result<CheckpointSequenceNumber>;
 
-    // fn get_chain_identifier(&self) -> Result<ChainIdentifier>;
+    fn get_chain_identifier(&self) -> Result<ChainIdentifier>;
 
     // Get a handle to an instance of the RpcIndexes
     fn indexes(&self) -> Option<&dyn RpcIndexes>;
@@ -556,7 +556,7 @@ impl TransactionInfo {
 #[derive(Clone, Default, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub struct EpochInfo {
     pub epoch: u64,
-    // pub protocol_version: Option<u64>,
+    pub protocol_version: Option<u64>,
     pub start_timestamp_ms: Option<u64>,
     pub end_timestamp_ms: Option<u64>,
     pub start_checkpoint: Option<u64>,

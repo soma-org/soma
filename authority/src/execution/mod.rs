@@ -123,6 +123,7 @@ pub fn execute_transaction(
                 transaction_dependencies,
                 epoch_id,
                 transaction_fee,
+                None, // No gas object on failure
                 error_status,
             );
         }
@@ -141,6 +142,7 @@ pub fn execute_transaction(
             },
             epoch_id,
             gas_result.transaction_fee.clone(),
+            gas_result.primary_gas_id,
         );
 
         return (inner, effects, Some(ExecutionError::new(early_error, None)));
@@ -262,6 +264,7 @@ pub fn execute_transaction(
         execution_status,
         epoch_id,
         final_transaction_fee,
+        gas_result.primary_gas_id,
     );
 
     (inner, effects, execution_error)
@@ -417,6 +420,7 @@ fn handle_shared_object_transaction(
             execution_status,
             epoch_id,
             gas_result.transaction_fee,
+            gas_result.primary_gas_id,
         );
 
         return (
@@ -462,6 +466,7 @@ fn handle_shared_object_transaction(
                 execution_status,
                 epoch_id,
                 gas_result.transaction_fee,
+                gas_result.primary_gas_id,
             );
 
             return (inner, effects, Some(ExecutionError::new(err, None)));
@@ -495,6 +500,7 @@ fn handle_shared_object_transaction(
                 execution_status,
                 epoch_id,
                 gas_result.transaction_fee, // Use original fee that was successfully deducted
+                gas_result.primary_gas_id,
             );
 
             return (inner, effects, Some(ExecutionError::new(err, None)));
@@ -684,6 +690,7 @@ fn handle_shared_object_transaction(
         object_changes,
         transaction_dependencies.into_iter().collect(),
         final_transaction_fee, // Include transaction fee
+        gas_result.primary_gas_id,
     );
 
     // Create InnerTemporaryStore
@@ -704,7 +711,8 @@ fn error_result(
     shared_object_refs: Vec<SharedInput>,
     transaction_dependencies: BTreeSet<TransactionDigest>,
     epoch_id: EpochId,
-    transaction_fee: Option<TransactionFee>,
+    transaction_fee: TransactionFee,
+    gas_object: Option<ObjectID>,
     error_status: ExecutionFailureStatus,
 ) -> (
     InnerTemporaryStore,
@@ -724,6 +732,7 @@ fn error_result(
         BTreeMap::new(),
         transaction_dependencies.into_iter().collect(),
         transaction_fee,
+        gas_object,
     );
 
     let inner_store = InnerTemporaryStore::new(

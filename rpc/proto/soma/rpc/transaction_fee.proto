@@ -14,6 +14,4 @@ message TransactionFee {
   optional uint64 value_fee = 3;
   // Total fee deducted.
   optional uint64 total_fee = 4;
-
-  optional ObjectReference gas_object_ref = 5;
 }

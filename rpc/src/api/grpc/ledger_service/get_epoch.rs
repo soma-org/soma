@@ -76,17 +76,16 @@ pub fn get_epoch(service: &RpcService, request: GetEpochRequest) -> Result<GetEp
         //     message.reference_gas_price = epoch_info.reference_gas_price;
         // }
 
-        // TODO: set protocol config after implementing chain identifier
-        // if let Some(submask) = read_mask.subtree(Epoch::PROTOCOL_CONFIG_FIELD.name) {
-        //     // let chain = service.reader.inner().get_chain_identifier()?.chain();
-        //     // TODO: let protocol_config = epoch_info
-        //     //     .protocol_version
-        //     //     .map(|version| get_protocol_config(version, chain))
-        //     //     .transpose()?;
+        if let Some(submask) = read_mask.subtree(Epoch::PROTOCOL_CONFIG_FIELD.name) {
+            let chain = service.reader.inner().get_chain_identifier()?.chain();
+            let protocol_config = epoch_info
+                .protocol_version
+                .map(|version| get_protocol_config(version, chain))
+                .transpose()?;
 
-        //     message.protocol_config =
-        //         protocol_config.map(|config| ProtocolConfig::merge_from(config, &submask));
-        // }
+            message.protocol_config =
+                protocol_config.map(|config| ProtocolConfig::merge_from(config, &submask));
+        }
 
         // If we're not loading the current epoch then grab the indexed snapshot of the system
         // state at the start of the epoch.
@@ -169,9 +168,8 @@ fn get_protocol_config(
     chain: protocol_config::Chain,
 ) -> Result<ProtocolConfig, ProtocolVersionNotFoundError> {
     let config =
-       // TODO: protocol_config::ProtocolConfig::get_for_version_if_supported(version.into(), chain)
-        // .ok_or_else(|| ProtocolVersionNotFoundError::new(version))?;
-       protocol_config::ProtocolConfig::get_for_version(version.into(), chain);
+        protocol_config::ProtocolConfig::get_for_version_if_supported(version.into(), chain)
+            .ok_or_else(|| ProtocolVersionNotFoundError::new(version))?;
 
     Ok(protocol_config_to_proto(config))
 }

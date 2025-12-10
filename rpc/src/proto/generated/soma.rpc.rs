@@ -113,16 +113,20 @@ pub struct CheckpointSummary {
     /// This will be `None` only for the first, or genesis, checkpoint.
     #[prost(string, optional, tag = "6")]
     pub previous_digest: ::core::option::Option<::prost::alloc::string::String>,
+    /// The running total fees of all transactions included in the current epoch so far
+    /// until this checkpoint.
+    #[prost(message, optional, tag = "7")]
+    pub epoch_rolling_transaction_fees: ::core::option::Option<TransactionFee>,
     /// Timestamp of the checkpoint - number of milliseconds from the Unix epoch
     /// Checkpoint timestamps are monotonic, but not strongly monotonic - subsequent
     /// checkpoints can have the same timestamp if they originate from the same underlining consensus commit.
-    #[prost(message, optional, tag = "7")]
+    #[prost(message, optional, tag = "8")]
     pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
     /// Commitments to checkpoint-specific state.
-    #[prost(message, repeated, tag = "8")]
+    #[prost(message, repeated, tag = "9")]
     pub commitments: ::prost::alloc::vec::Vec<CheckpointCommitment>,
     /// Extra data only present in the final checkpoint of an epoch.
-    #[prost(message, optional, tag = "9")]
+    #[prost(message, optional, tag = "10")]
     pub end_of_epoch_data: ::core::option::Option<EndOfEpochData>,
 }
 /// Data, which when included in a `CheckpointSummary`, signals the end of an `Epoch`.
@@ -133,10 +137,11 @@ pub struct EndOfEpochData {
     #[prost(message, optional, tag = "1")]
     pub next_epoch_validator_committee: ::core::option::Option<ValidatorCommittee>,
     /// TODO: add encoder committee & network committees
-    /// TODO: The protocol version that is in effect during the next epoch.
-    ///    optional uint64 next_epoch_protocol_version = 2;
+    /// The protocol version that is in effect during the next epoch.
+    #[prost(uint64, optional, tag = "2")]
+    pub next_epoch_protocol_version: ::core::option::Option<u64>,
     /// Commitments to epoch specific state (live object set)
-    #[prost(message, repeated, tag = "2")]
+    #[prost(message, repeated, tag = "3")]
     pub epoch_commitments: ::prost::alloc::vec::Vec<CheckpointCommitment>,
 }
 /// A commitment made by a checkpoint.
@@ -214,20 +219,25 @@ pub struct TransactionEffects {
     /// The transaction digest.
     #[prost(string, optional, tag = "4")]
     pub transaction_digest: ::core::option::Option<::prost::alloc::string::String>,
+    /// Information about the gas object. Also present in the `changed_objects` vector.
+    ///
+    /// System transactions that don't require gas will leave this as `None`.
+    #[prost(uint32, optional, tag = "5")]
+    pub gas_object_index: ::core::option::Option<u32>,
     /// The set of transaction digests this transaction depends on.
-    #[prost(string, repeated, tag = "5")]
+    #[prost(string, repeated, tag = "6")]
     pub dependencies: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     /// The version number of all the written objects (excluding packages) by this transaction.
-    #[prost(uint64, optional, tag = "6")]
+    #[prost(uint64, optional, tag = "7")]
     pub lamport_version: ::core::option::Option<u64>,
     /// Objects whose state are changed by this transaction.
-    #[prost(message, repeated, tag = "7")]
+    #[prost(message, repeated, tag = "8")]
     pub changed_objects: ::prost::alloc::vec::Vec<ChangedObject>,
     /// Shared objects that are not mutated in this transaction. Unlike owned objects,
     /// read-only shared objects' version are not committed in the transaction,
     /// and in order for a node to catch up and execute it without consensus sequencing,
     /// the version needs to be committed in the effects.
-    #[prost(message, repeated, tag = "8")]
+    #[prost(message, repeated, tag = "9")]
     pub unchanged_shared_objects: ::prost::alloc::vec::Vec<UnchangedSharedObject>,
 }
 /// Input/output state of an object that was changed during execution.
@@ -2803,30 +2813,33 @@ pub struct SystemState {
     pub epoch: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "2")]
     pub epoch_start_timestamp_ms: ::core::option::Option<u64>,
+    /// The protocol version
+    #[prost(uint64, optional, tag = "3")]
+    pub protocol_version: ::core::option::Option<u64>,
     /// System parameters
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag = "4")]
     pub parameters: ::core::option::Option<SystemParameters>,
     /// Validator and encoder sets
-    #[prost(message, optional, tag = "4")]
-    pub validators: ::core::option::Option<ValidatorSet>,
     #[prost(message, optional, tag = "5")]
+    pub validators: ::core::option::Option<ValidatorSet>,
+    #[prost(message, optional, tag = "6")]
     pub encoders: ::core::option::Option<EncoderSet>,
     /// Report records
-    #[prost(btree_map = "string, message", tag = "6")]
+    #[prost(btree_map = "string, message", tag = "7")]
     pub validator_report_records: ::prost::alloc::collections::BTreeMap<
         ::prost::alloc::string::String,
         ReporterSet,
     >,
-    #[prost(btree_map = "string, message", tag = "7")]
+    #[prost(btree_map = "string, message", tag = "8")]
     pub encoder_report_records: ::prost::alloc::collections::BTreeMap<
         ::prost::alloc::string::String,
         ReporterSet,
     >,
     /// Stake subsidy
-    #[prost(message, optional, tag = "8")]
+    #[prost(message, optional, tag = "9")]
     pub stake_subsidy: ::core::option::Option<StakeSubsidy>,
     /// Shard results (digest -> result)
-    #[prost(btree_map = "string, message", tag = "9")]
+    #[prost(btree_map = "string, message", tag = "10")]
     pub shard_results: ::prost::alloc::collections::BTreeMap<
         ::prost::alloc::string::String,
         ShardResult,
@@ -3461,6 +3474,12 @@ pub struct ChangeEpoch {
     /// Unix timestamp when epoch started.
     #[prost(message, optional, tag = "2")]
     pub epoch_start_timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    /// The protocol version in effect in the new epoch.
+    #[prost(uint64, optional, tag = "3")]
+    pub protocol_version: ::core::option::Option<u64>,
+    /// The total amount of fees charged during the epoch.
+    #[prost(uint64, optional, tag = "4")]
+    pub fees: ::core::option::Option<u64>,
 }
 /// The genesis transaction.
 #[non_exhaustive]
@@ -3982,7 +4001,7 @@ pub mod transaction_execution_service_server {
 }
 /// Summary of the fee for this transaction.
 #[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TransactionFee {
     /// base transaction fee.
     #[prost(uint64, optional, tag = "1")]
@@ -3996,6 +4015,4 @@ pub struct TransactionFee {
     /// Total fee deducted.
     #[prost(uint64, optional, tag = "4")]
     pub total_fee: ::core::option::Option<u64>,
-    #[prost(message, optional, tag = "5")]
-    pub gas_object_ref: ::core::option::Option<ObjectReference>,
 }

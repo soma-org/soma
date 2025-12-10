@@ -317,6 +317,18 @@ impl ProtocolConfig {
 
         cfg
     }
+
+    /// Get the value ProtocolConfig that are in effect during the given protocol version.
+    /// Or none if the version is not supported.
+    pub fn get_for_version_if_supported(version: ProtocolVersion, chain: Chain) -> Option<Self> {
+        if version.0 >= ProtocolVersion::MIN.0 && version.0 <= ProtocolVersion::MAX_ALLOWED.0 {
+            let mut ret = Self::get_for_version_impl(version, chain);
+            ret.version = version;
+            Some(ret)
+        } else {
+            None
+        }
+    }
 }
 
 impl ProtocolConfig {

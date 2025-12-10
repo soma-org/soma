@@ -16,6 +16,7 @@ use itertools::Itertools as _;
 use nonempty::NonEmpty;
 use parking_lot::Mutex;
 use pin_project_lite::pin_project;
+use protocol_config::ProtocolVersion;
 use rand::seq::SliceRandom as _;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -54,6 +55,7 @@ use types::error::{SomaError, SomaResult};
 use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use types::system_state::{SystemState, SystemStateTrait as _};
 use types::transaction::{TransactionKind, VerifiedExecutableTransaction, VerifiedTransaction};
+use types::tx_fee::TransactionFee;
 use types::{
     checkpoints::{
         CheckpointContents, CheckpointRequest, CheckpointSequenceNumber, CheckpointSummary,
@@ -1672,13 +1674,15 @@ impl CheckpointBuilder {
             }
 
             let (mut effects, mut signatures): (Vec<_>, Vec<_>) = transactions.into_iter().unzip();
-            // TODO: let epoch_rolling_gas_cost_summary =
-            //     self.get_epoch_total_gas_cost(last_checkpoint.as_ref().map(|(_, c)| c), &effects);
+            let epoch_rolling_transaction_fees = self.get_epoch_total_transaction_fees(
+                last_checkpoint.as_ref().map(|(_, c)| c),
+                &effects,
+            );
 
             let end_of_epoch_data = if last_checkpoint_of_epoch {
                 let system_state_obj = self
                     .augment_epoch_last_checkpoint(
-                        // &epoch_rolling_gas_cost_summary,
+                        &epoch_rolling_transaction_fees,
                         timestamp_ms,
                         &mut effects,
                         &mut signatures,
@@ -1731,9 +1735,9 @@ impl CheckpointBuilder {
                     next_epoch_validator_committee: committee,
                     next_epoch_encoder_committee: encoder_committee,
                     next_epoch_networking_committee: networking_committee,
-                    // TODO: next_epoch_protocol_version: ProtocolVersion::new(
-                    //     system_state_obj.protocol_version(),
-                    // ),
+                    next_epoch_protocol_version: ProtocolVersion::new(
+                        system_state_obj.protocol_version(),
+                    ),
                     epoch_commitments,
                 })
             } else {
@@ -1764,13 +1768,12 @@ impl CheckpointBuilder {
             };
 
             let summary = CheckpointSummary::new(
-                // TODO: self.epoch_store.protocol_config(),
                 epoch,
                 sequence_number,
                 network_total_transactions,
                 &contents,
                 previous_digest,
-                // TODO: epoch_rolling_gas_cost_summary,
+                epoch_rolling_transaction_fees,
                 end_of_epoch_data,
                 timestamp_ms,
                 checkpoint_commitments,
@@ -1789,33 +1792,31 @@ impl CheckpointBuilder {
         Ok(NonEmpty::from_vec(checkpoints).expect("at least one checkpoint"))
     }
 
-    // TODO: fn get_epoch_total_gas_cost(
-    //     &self,
-    //     last_checkpoint: Option<&CheckpointSummary>,
-    //     cur_checkpoint_effects: &[TransactionEffects],
-    // ) -> GasCostSummary {
-    //     let (previous_epoch, previous_gas_costs) = last_checkpoint
-    //         .map(|c| (c.epoch, c.epoch_rolling_gas_cost_summary.clone()))
-    //         .unwrap_or_default();
-    //     let current_gas_costs = GasCostSummary::new_from_txn_effects(cur_checkpoint_effects.iter());
-    //     if previous_epoch == self.epoch_store.epoch() {
-    //         // sum only when we are within the same epoch
-    //         GasCostSummary::new(
-    //             previous_gas_costs.computation_cost + current_gas_costs.computation_cost,
-    //             previous_gas_costs.storage_cost + current_gas_costs.storage_cost,
-    //             previous_gas_costs.storage_rebate + current_gas_costs.storage_rebate,
-    //             previous_gas_costs.non_refundable_storage_fee
-    //                 + current_gas_costs.non_refundable_storage_fee,
-    //         )
-    //     } else {
-    //         current_gas_costs
-    //     }
-    // }
+    fn get_epoch_total_transaction_fees(
+        &self,
+        last_checkpoint: Option<&CheckpointSummary>,
+        cur_checkpoint_effects: &[TransactionEffects],
+    ) -> TransactionFee {
+        let (previous_epoch, previous_tx_fees) = last_checkpoint
+            .map(|c| (c.epoch, c.epoch_rolling_transaction_fees.clone()))
+            .unwrap_or_default();
+        let current_tx_fees = TransactionFee::new_from_txn_effects(cur_checkpoint_effects.iter());
+        if previous_epoch == self.epoch_store.epoch() {
+            // sum only when we are within the same epoch
+            TransactionFee::new(
+                previous_tx_fees.base_fee + current_tx_fees.base_fee,
+                previous_tx_fees.operation_fee + current_tx_fees.operation_fee,
+                previous_tx_fees.value_fee + current_tx_fees.value_fee,
+            )
+        } else {
+            current_tx_fees
+        }
+    }
 
     #[instrument(level = "error", skip_all)]
     async fn augment_epoch_last_checkpoint(
         &self,
-        // TODO: epoch_total_gas_cost: &GasCostSummary,
+        epoch_total_tx_fees: &TransactionFee,
         epoch_start_timestamp_ms: CheckpointTimestamp,
         checkpoint_effects: &mut Vec<TransactionEffects>,
         signatures: &mut Vec<Vec<GenericSignature>>,
@@ -1828,7 +1829,7 @@ impl CheckpointBuilder {
             .state
             .create_and_execute_advance_epoch_tx(
                 &self.epoch_store,
-                // epoch_total_gas_cost,
+                epoch_total_tx_fees,
                 checkpoint,
                 epoch_start_timestamp_ms,
                 last_checkpoint,

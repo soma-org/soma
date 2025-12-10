@@ -9,6 +9,7 @@ use itertools::izip;
 use nonempty::NonEmpty;
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use serde::{Deserialize, Serialize};
+use tap::TapOptional as _;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     future::Future,
@@ -37,11 +38,11 @@ use types::{
         CheckpointContents, CheckpointSequenceNumber, CheckpointSignatureMessage,
         CheckpointSummary, ECMHLiveObjectSetDigest, GlobalStateHash,
     }, committee::{Authority, Committee, EpochId, NetworkingCommittee}, consensus::{
-        ConsensusCommitPrologue, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI, block::BlockRef, validator_set::ValidatorSet
+        AuthorityCapabilities, ConsensusCommitPrologue, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI, block::BlockRef, validator_set::ValidatorSet
     }, crypto::{
         AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo,
         GenericSignature, Signer,
-    }, digests::{TransactionDigest, TransactionEffectsDigest}, effects::{
+    }, digests::{ChainIdentifier, TransactionDigest, TransactionEffectsDigest}, effects::{
         self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind, object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut}
     }, encoder_committee::EncoderCommittee, envelope::TrustedEnvelope, error::{ExecutionError, SomaError, SomaResult}, mutex_table::{MutexGuard, MutexTable}, object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version}, storage::{InputKey, object_store::ObjectStore}, system_state::{
         self, SystemState, SystemStateTrait, epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, get_system_state
@@ -309,7 +310,11 @@ pub struct AuthorityPerEpochStore {
     /// the last few seconds of an epoch.
     epoch_close_time: RwLock<Option<Instant>>,
     epoch_start_configuration: Arc<EpochStartConfiguration>,
-    // chain_identifier: ChainIdentifier,
+ 
+    /// ChainIdentifier is always the true id (digest of genesis checkpoint). Chain is the
+    /// nominal identifier and can be overridden for testing purposes.
+    chain: (ChainIdentifier, Chain),
+
     pub(crate) consensus_tx_status_cache: Option<ConsensusTxStatusCache>,
 
     /// A cache that maintains the reject vote reason for a transaction.
@@ -405,13 +410,17 @@ pub struct AuthorityEpochTables {
     #[rename = "running_root_accumulators"]
     pub running_root_state_hash: DBMap<CheckpointSequenceNumber, GlobalStateHash>,
 
+    /// Record of the capabilities advertised by each authority.
+    authority_capabilities: DBMap<AuthorityName, AuthorityCapabilities>,
+
+
+    /// Contains a single key, which overrides the value of
+    /// ProtocolConfig::buffer_stake_for_protocol_upgrade_bps
+    override_protocol_upgrade_buffer_stake: DBMap<u64, u64>,
+
     /// When transaction is executed via checkpoint executor, we store association here
     pub(crate) executed_transactions_to_checkpoint:
         DBMap<TransactionDigest, CheckpointSequenceNumber>,
-
-    // TODO: potentially remove this and use checkpoints instead
-    /// Signed consensus finality for EmbedData transactions
-    pub(crate) consensus_finalities: DBMap<TransactionDigest, BlockRef>,
 }
 
 fn signed_transactions_table_default_config() -> DBOptions {
@@ -529,7 +538,7 @@ impl AuthorityPerEpochStore {
         parent_path: &Path,
         db_options: Option<Options>,
         epoch_start_configuration: EpochStartConfiguration,
-        //  TODO: chain: (ChainIdentifier, Chain),
+        chain: (ChainIdentifier, Chain),
         highest_executed_checkpoint: CheckpointSequenceNumber,
     ) -> SomaResult<Arc<Self>> {
         let current_time = Instant::now();
@@ -559,27 +568,24 @@ impl AuthorityPerEpochStore {
             epoch_id
         );
         let epoch_start_configuration = Arc::new(epoch_start_configuration);
-  
-        let protocol_version = ProtocolVersion::MIN;
-        let chain = Chain::Mainnet;
-        // TODO: derive protocol version from epoch start config
-        // let protocol_version = epoch_start_configuration
-        //     .epoch_start_state()
-        //     .protocol_version();
+       
+        let protocol_version = epoch_start_configuration
+            .epoch_start_state()
+            .protocol_version();
 
-        // let chain_from_id = chain.0.chain();
-        // if chain_from_id == Chain::Mainnet || chain_from_id == Chain::Testnet {
-        //     assert_eq!(
-        //         chain_from_id, chain.1,
-        //         "cannot override chain on production networks!"
-        //     );
-        // }
-        // info!(
-        //     "initializing epoch store from chain id {:?} to chain id {:?}",
-        //     chain_from_id, chain.1
-        // );
+        let chain_from_id = chain.0.chain();
+        if chain_from_id == Chain::Mainnet || chain_from_id == Chain::Testnet {
+            assert_eq!(
+                chain_from_id, chain.1,
+                "cannot override chain on production networks!"
+            );
+        }
+        info!(
+            "initializing epoch store from chain id {:?} to chain id {:?}",
+            chain_from_id, chain.1
+        );
 
-        let protocol_config = ProtocolConfig::get_for_version(protocol_version, chain);
+        let protocol_config = ProtocolConfig::get_for_version(protocol_version, chain.1);
 
         let signature_verifier = SignatureVerifier::new(committee.clone());
 
@@ -619,6 +625,7 @@ impl AuthorityPerEpochStore {
             epoch_open_time: current_time,
             epoch_close_time: Default::default(),
             epoch_start_configuration,
+            chain,
             checkpoint_state_notify_read: NotifyRead::new(),
             consensus_tx_status_cache,
             tx_reject_reason_cache,
@@ -655,6 +662,15 @@ impl AuthorityPerEpochStore {
         self.epoch_start_configuration.epoch_start_state()
     }
 
+
+    pub fn get_chain_identifier(&self) -> ChainIdentifier {
+        self.chain.0
+    }
+
+    pub fn get_chain(&self) -> Chain {
+        self.chain.1
+    }
+
     pub fn new_at_next_epoch(
         &self,
         name: AuthorityName,
@@ -669,6 +685,7 @@ impl AuthorityPerEpochStore {
             &self.parent_path,
             self.db_options.clone(),
             epoch_start_configuration,
+            self.chain,
             previous_epoch_last_checkpoint,
         )
     }
@@ -827,6 +844,11 @@ impl AuthorityPerEpochStore {
 
         Ok(())
     }
+
+      pub fn protocol_version(&self) -> ProtocolVersion {
+        self.epoch_start_state().protocol_version()
+    }
+
 
     pub fn store_reconfig_state(&self, new_state: &ReconfigState) -> SomaResult {
         self.tables()?
@@ -1620,6 +1642,80 @@ impl AuthorityPerEpochStore {
         result
     }
 
+     pub fn clear_override_protocol_upgrade_buffer_stake(&self) -> SomaResult {
+        warn!(
+            epoch = ?self.epoch(),
+            "clearing buffer_stake_for_protocol_upgrade_bps override"
+        );
+        self.tables()?
+            .override_protocol_upgrade_buffer_stake
+            .remove(&OVERRIDE_PROTOCOL_UPGRADE_BUFFER_STAKE_INDEX)?;
+ 
+        Ok(())
+    }
+
+    pub fn set_override_protocol_upgrade_buffer_stake(&self, new_stake_bps: u64) -> SomaResult {
+        warn!(
+            ?new_stake_bps,
+            epoch = ?self.epoch(),
+            "storing buffer_stake_for_protocol_upgrade_bps override"
+        );
+        self.tables()?
+            .override_protocol_upgrade_buffer_stake
+            .insert(
+                &OVERRIDE_PROTOCOL_UPGRADE_BUFFER_STAKE_INDEX,
+                &new_stake_bps,
+            )?;
+ 
+        Ok(())
+    }
+
+
+    pub fn get_effective_buffer_stake_bps(&self) -> u64 {
+        self.tables()
+            .expect("epoch initialization should have finished")
+            .override_protocol_upgrade_buffer_stake
+            .get(&OVERRIDE_PROTOCOL_UPGRADE_BUFFER_STAKE_INDEX)
+            .expect("force_protocol_upgrade read cannot fail")
+            .tap_some(|b| warn!("using overridden buffer stake value of {}", b))
+            .unwrap_or_else(|| {
+                self.protocol_config()
+                    .buffer_stake_for_protocol_upgrade_bps()
+            })
+    }
+
+     /// Record most recently advertised capabilities of all authorities
+    pub fn record_capabilities(&self, capabilities: &AuthorityCapabilities) -> SomaResult {
+        info!("received capabilities {:?}", capabilities);
+        let authority = &capabilities.authority;
+        let tables = self.tables()?;
+
+        // Read-compare-write pattern assumes we are only called from the consensus handler task.
+        if let Some(cap) = tables.authority_capabilities.get(authority)? {
+            if cap.generation >= capabilities.generation {
+                 debug!(
+                "ignoring new capabilities {:?} in favor of previous capabilities {:?}",
+                capabilities, cap
+                );
+                return Ok(());
+            }
+           
+        }
+        tables
+            .authority_capabilities
+            .insert(authority, capabilities)?;
+        Ok(())
+    }
+
+     pub fn get_capabilities(&self) -> SomaResult<Vec<AuthorityCapabilities>> {
+        Ok(self
+            .tables()?
+            .authority_capabilities
+            .safe_iter()
+            .map(|item| item.map(|(_, v)| v))
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
     #[cfg(test)]
     pub(crate) fn push_consensus_output_for_tests(&self, output: ConsensusCommitOutput) {
         self.consensus_quarantine
@@ -1774,6 +1870,22 @@ impl AuthorityPerEpochStore {
                         "CheckpointSignature authority {} does not match its author from consensus {}",
                         data.summary.auth_sig().authority,
                         transaction.certificate_author_index
+                    );
+                    return None;
+                }
+            }
+            SequencedConsensusTransactionKind::External(ConsensusTransaction {
+                kind:
+                    ConsensusTransactionKind::CapabilityNotification(AuthorityCapabilities {
+                        authority,
+                        ..
+                    }),
+                ..
+            }) => {
+                if transaction.sender_authority() != *authority {
+                    warn!(
+                        "CapabilityNotification authority {} does not match its author from consensus {}",
+                        authority, transaction.certificate_author_index
                     );
                     return None;
                 }

@@ -87,10 +87,15 @@ pub struct TransactionEffects {
     /// The epoch when this transaction was executed
     pub executed_epoch: EpochId,
 
-    pub transaction_fee: Option<TransactionFee>,
+    pub transaction_fee: TransactionFee,
 
     /// The transaction digest that uniquely identifies the transaction
     pub transaction_digest: TransactionDigest,
+
+    /// The updated gas object reference, as an index into the `changed_objects` vector.
+    /// Having a dedicated field for convenient access.
+    /// System transaction that don't require gas will leave this as None.
+    pub gas_object_index: Option<u32>,
 
     /// The set of transaction digests this transaction depends on
     /// These are transactions that must be executed before this one
@@ -124,8 +129,25 @@ impl TransactionEffectsAPI for TransactionEffects {
         self.executed_epoch
     }
 
-    fn transaction_fee(&self) -> Option<&TransactionFee> {
-        self.transaction_fee.as_ref()
+    fn transaction_fee(&self) -> &TransactionFee {
+        &self.transaction_fee
+    }
+
+    fn gas_object(&self) -> (ObjectRef, Owner) {
+        if let Some(gas_object_index) = self.gas_object_index {
+            let entry = &self.changed_objects[gas_object_index as usize];
+            match &entry.1.output_state {
+                ObjectOut::ObjectWrite((digest, owner)) => {
+                    ((entry.0, self.version, *digest), owner.clone())
+                }
+                _ => panic!("Gas object must be an ObjectWrite in changed_objects"),
+            }
+        } else {
+            (
+                (ObjectID::ZERO, Version::default(), ObjectDigest::MIN),
+                Owner::AddressOwner(SomaAddress::default()),
+            )
+        }
     }
 
     fn modified_at_versions(&self) -> Vec<(ObjectID, Version)> {
@@ -200,7 +222,7 @@ impl TransactionEffectsAPI for TransactionEffects {
     fn mutated_excluding_gas(&self) -> Vec<(ObjectRef, Owner)> {
         self.mutated()
             .into_iter()
-            .filter(|o| o.0 != self.transaction_fee().unwrap().gas_object_ref)
+            .filter(|o| o != &self.gas_object())
             .collect()
     }
 
@@ -368,7 +390,8 @@ impl TransactionEffects {
         version: Version,
         changed_objects: BTreeMap<ObjectID, EffectsObjectChange>,
         dependencies: Vec<TransactionDigest>,
-        transaction_fee: Option<TransactionFee>,
+        transaction_fee: TransactionFee,
+        gas_object: Option<ObjectID>,
     ) -> Self {
         let unchanged_shared_objects = shared_objects
             .into_iter()
@@ -396,10 +419,18 @@ impl TransactionEffects {
             .collect();
         let changed_objects: Vec<_> = changed_objects.into_iter().collect();
 
+        let gas_object_index = gas_object.map(|gas_id| {
+            changed_objects
+                .iter()
+                .position(|(id, _)| id == &gas_id)
+                .unwrap() as u32
+        });
+
         let result = Self {
             status,
             executed_epoch,
             transaction_digest,
+            gas_object_index,
             version,
             changed_objects,
             unchanged_shared_objects,
@@ -539,7 +570,8 @@ impl Default for TransactionEffects {
             changed_objects: vec![],
             dependencies: vec![],
             unchanged_shared_objects: vec![],
-            transaction_fee: None,
+            transaction_fee: TransactionFee::default(),
+            gas_object_index: None,
         }
     }
 }
@@ -601,8 +633,10 @@ pub trait TransactionEffectsAPI {
     fn dependencies_mut_for_testing(&mut self) -> &mut Vec<TransactionDigest>;
     fn unsafe_add_input_shared_object_for_testing(&mut self, kind: InputSharedObject);
 
-    fn transaction_fee(&self) -> Option<&TransactionFee>;
+    fn transaction_fee(&self) -> &TransactionFee;
     fn mutated_excluding_gas(&self) -> Vec<(ObjectRef, Owner)>;
+
+    fn gas_object(&self) -> (ObjectRef, Owner);
 
     fn object_changes(&self) -> Vec<ObjectChange>;
 }

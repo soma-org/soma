@@ -925,6 +925,8 @@ impl From<crate::types::ChangeEpoch> for ChangeEpoch {
     fn from(value: crate::types::ChangeEpoch) -> Self {
         Self {
             epoch: Some(value.epoch),
+            protocol_version: Some(value.protocol_version),
+            fees: Some(value.fees),
             epoch_start_timestamp: Some(crate::proto::timestamp_ms_to_proto(
                 value.epoch_start_timestamp_ms,
             )),
@@ -938,10 +940,16 @@ impl TryFrom<&ChangeEpoch> for crate::types::ChangeEpoch {
     fn try_from(
         ChangeEpoch {
             epoch,
+            protocol_version,
+            fees,
             epoch_start_timestamp,
         }: &ChangeEpoch,
     ) -> Result<Self, Self::Error> {
         let epoch = epoch.ok_or_else(|| TryFromProtoError::missing("epoch"))?;
+
+        let protocol_version =
+            protocol_version.ok_or_else(|| TryFromProtoError::missing("protocol_version"))?;
+        let fees = fees.ok_or_else(|| TryFromProtoError::missing("fees"))?;
 
         let epoch_start_timestamp_ms = epoch_start_timestamp
             .ok_or_else(|| TryFromProtoError::missing("epoch_start_timestamp_ms"))?
@@ -949,6 +957,8 @@ impl TryFrom<&ChangeEpoch> for crate::types::ChangeEpoch {
 
         Ok(Self {
             epoch,
+            protocol_version,
+            fees,
             epoch_start_timestamp_ms,
         })
     }

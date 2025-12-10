@@ -20,13 +20,13 @@ pub fn get_service_info(service: &RpcService) -> Result<GetServiceInfoResponse, 
         .pipe(Some);
 
     let mut message = GetServiceInfoResponse::default();
-    // TODO: message.chain_id = Some(Digest::new(service.chain_id().as_bytes().to_owned()).to_string());
-    // TODO: message.chain = Some(service.chain_id().chain().as_str().into());
+    message.chain_id = Some(Digest::new(service.chain_id().as_bytes().to_owned()).to_string());
+    message.chain = Some(service.chain_id().chain().as_str().into());
     message.epoch = Some(latest_checkpoint.epoch());
     message.checkpoint_height = Some(latest_checkpoint.sequence_number);
     message.timestamp = Some(timestamp_ms_to_proto(latest_checkpoint.timestamp_ms));
     message.lowest_available_checkpoint = lowest_available_checkpoint;
     message.lowest_available_checkpoint_objects = lowest_available_checkpoint_objects;
-    // TODO: message.server = service.server_version().map(ToString::to_string);
+    message.server = service.server_version().map(ToString::to_string);
     Ok(message)
 }

@@ -90,8 +90,8 @@ async fn test_pay_coin_success_one_input_coin() -> anyhow::Result<()> {
         effects.mutated()[0].1.get_address_owner_address().unwrap(),
         sender
     );
-    let gas_used = effects.transaction_fee().unwrap().total_fee as u64;
-    info!("{:?}", effects.transaction_fee().unwrap());
+    let gas_used = effects.transaction_fee().total_fee as u64;
+    info!("{:?}", effects.transaction_fee());
     let gas_object = res.authority_state.get_object(&object_id).await.unwrap();
     assert_eq!(
         gas_object.as_coin().unwrap(),
@@ -159,7 +159,7 @@ async fn test_pay_coin_success_multiple_input_coins() -> anyhow::Result<()> {
         effects.mutated()[0].1.get_address_owner_address().unwrap(),
         sender
     );
-    let gas_used = effects.transaction_fee().unwrap().total_fee as u64;
+    let gas_used = effects.transaction_fee().total_fee as u64;
     let gas_object = res.authority_state.get_object(&object_id1).await.unwrap();
     assert_eq!(
         gas_object.as_coin().unwrap(),
@@ -200,7 +200,7 @@ async fn test_pay_all_coins_success_one_input_coin() -> anyhow::Result<()> {
         recipient
     );
 
-    let gas_used = effects.transaction_fee().unwrap().total_fee;
+    let gas_used = effects.transaction_fee().total_fee;
     let obj = res.authority_state.get_object(&obj_ref.0).await.unwrap();
     assert_eq!(obj.as_coin().unwrap(), 3000000 - gas_used);
     Ok(())
@@ -243,7 +243,7 @@ async fn test_pay_all_coins_success_multiple_input_coins() -> anyhow::Result<()>
         recipient
     );
 
-    let gas_used = effects.transaction_fee().unwrap().total_fee;
+    let gas_used = effects.transaction_fee().total_fee;
     let obj = res.authority_state.get_object(&obj_ref.0).await.unwrap();
     assert_eq!(obj.as_coin().unwrap(), 3002000 - gas_used);
     Ok(())

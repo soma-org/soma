@@ -22,7 +22,7 @@ impl Merge<&TransactionEffects> for TransactionEffects {
             epoch,
             fee,
             transaction_digest,
-
+            gas_object_index,
             dependencies,
             lamport_version,
             changed_objects,
@@ -44,6 +44,10 @@ impl Merge<&TransactionEffects> for TransactionEffects {
 
         if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
             self.transaction_digest = transaction_digest.clone();
+        }
+
+        if mask.contains(Self::GAS_OBJECT_INDEX_FIELD.name) {
+            self.gas_object_index = gas_object_index.clone();
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
@@ -77,7 +81,11 @@ impl TryFrom<&TransactionEffects> for crate::types::TransactionEffects {
             epoch: value
                 .epoch
                 .ok_or_else(|| TryFromProtoError::missing("epoch"))?,
-            fee: value.fee.as_ref().map(TryInto::try_into).transpose()?,
+            fee: value
+                .fee
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("fee"))?
+                .try_into()?,
             transaction_digest: value
                 .transaction_digest
                 .as_ref()
@@ -92,6 +100,7 @@ impl TryFrom<&TransactionEffects> for crate::types::TransactionEffects {
                         .map_err(|e| TryFromProtoError::invalid("dependencies", e))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
+            gas_object_index: value.gas_object_index,
             lamport_version: value
                 .lamport_version
                 .ok_or_else(|| TryFromProtoError::missing("lamport_version"))?,
@@ -109,19 +118,6 @@ impl TryFrom<&TransactionEffects> for crate::types::TransactionEffects {
     }
 }
 
-// impl TryFrom<&TransactionEffects> for crate::types::TransactionEffects {
-//     type Error = TryFromProtoError;
-
-//     fn try_from(value: &TransactionEffects) -> Result<Self, Self::Error> {
-//         value
-//             .bcs
-//             .as_ref()
-//             .ok_or_else(|| TryFromProtoError::missing("bcs"))?
-//             .deserialize()
-//             .map_err(|e| TryFromProtoError::invalid(TransactionEffects::BCS_FIELD, e))
-//     }
-// }
-
 //
 // TransactionEffects
 //
@@ -134,6 +130,7 @@ impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
             epoch,
             fee,
             transaction_digest,
+            gas_object_index,
             dependencies,
             lamport_version,
             changed_objects,
@@ -150,11 +147,15 @@ impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::FEE_FIELD.name) {
-            self.fee = fee.clone().map(|f| f.into());
+            self.fee = Some(fee.clone().into());
         }
 
         if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
             self.transaction_digest = Some(transaction_digest.to_string());
+        }
+
+        if mask.contains(Self::GAS_OBJECT_INDEX_FIELD.name) {
+            self.gas_object_index = gas_object_index.clone();
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
@@ -460,7 +461,6 @@ impl From<crate::types::TransactionFee> for TransactionFee {
             operation_fee: Some(value.operation_fee),
             value_fee: Some(value.value_fee),
             total_fee: Some(value.total_fee),
-            gas_object_ref: Some(value.gas_object_ref.into()),
         }
     }
 }
@@ -482,11 +482,6 @@ impl TryFrom<&TransactionFee> for crate::types::TransactionFee {
             total_fee: value
                 .total_fee
                 .ok_or_else(|| TryFromProtoError::missing("total_fee"))?,
-            gas_object_ref: value
-                .gas_object_ref
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("gas_object_ref"))?
-                .try_into()?,
         })
     }
 }

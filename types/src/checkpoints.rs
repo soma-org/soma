@@ -20,11 +20,13 @@ use crate::{
     object::{ObjectID, Version},
     serde::Readable,
     transaction::{Transaction, TransactionData},
+    tx_fee::TransactionFee,
 };
 use anyhow::Result;
 use fastcrypto::hash::{Blake2b256, MultisetHash as _};
 use fastcrypto::merkle::MerkleTree;
 use once_cell::sync::OnceCell;
+use protocol_config::ProtocolVersion;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -276,11 +278,9 @@ pub struct EndOfEpochData {
     /// The networking committee for the next epoch
     pub next_epoch_networking_committee: NetworkingCommittee,
 
-    /// TODO: The protocol version that is in effect during the epoch that starts immediately after this
-    /// checkpoint.
-    // #[schemars(with = "AsProtocolVersion")]
-    // #[serde_as(as = "Readable<AsProtocolVersion, _>")]
-    // pub next_epoch_protocol_version: ProtocolVersion,
+    /// The protocol version that is in effect during the epoch that starts immediately after this
+    ///checkpoint.
+    pub next_epoch_protocol_version: ProtocolVersion,
 
     /// Commitments to epoch specific state (e.g. live object set)
     pub epoch_commitments: Vec<CheckpointCommitment>,
@@ -295,9 +295,9 @@ pub struct CheckpointSummary {
     pub network_total_transactions: u64,
     pub content_digest: CheckpointContentsDigest,
     pub previous_digest: Option<CheckpointDigest>,
-    /// The running total gas costs of all transactions included in the current epoch so far
+    /// The running total fees of all transactions included in the current epoch so far
     /// until this checkpoint.
-    // TODO: pub epoch_rolling_gas_cost_summary: GasCostSummary,
+    pub epoch_rolling_transaction_fees: TransactionFee,
 
     /// Timestamp of the checkpoint - number of milliseconds from the Unix epoch
     /// Checkpoint timestamps are monotonic, but not strongly monotonic - subsequent
@@ -323,13 +323,12 @@ impl Message for CheckpointSummary {
 
 impl CheckpointSummary {
     pub fn new(
-        // TODO: protocol_config: &ProtocolConfig,
         epoch: EpochId,
         sequence_number: CheckpointSequenceNumber,
         network_total_transactions: u64,
         transactions: &CheckpointContents,
         previous_digest: Option<CheckpointDigest>,
-        // TODO: epoch_rolling_gas_cost_summary: GasCostSummary,
+        epoch_rolling_transaction_fees: TransactionFee,
         end_of_epoch_data: Option<EndOfEpochData>,
         timestamp_ms: CheckpointTimestamp,
         checkpoint_commitments: Vec<CheckpointCommitment>,
@@ -342,10 +341,9 @@ impl CheckpointSummary {
             network_total_transactions,
             content_digest,
             previous_digest,
-            // epoch_rolling_gas_cost_summary,
+            epoch_rolling_transaction_fees,
             end_of_epoch_data,
             timestamp_ms,
-            // version_specific_data,
             checkpoint_commitments,
         }
     }
@@ -400,12 +398,12 @@ impl Display for CheckpointSummary {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "CheckpointSummary {{ epoch: {:?}, seq: {:?}, content_digest: {},}}",
-            // epoch_rolling_gas_cost_summary: {:?}}}",
+            "CheckpointSummary {{ epoch: {:?}, seq: {:?}, content_digest: {},
+            epoch_rolling_transaction_fees: {:?}}}",
             self.epoch,
             self.sequence_number,
             self.content_digest,
-            // self.epoch_rolling_gas_cost_summary,
+            self.epoch_rolling_transaction_fees,
         )
     }
 }

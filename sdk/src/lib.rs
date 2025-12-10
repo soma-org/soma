@@ -143,4 +143,10 @@ impl SomaClient {
     ) -> Pin<Box<dyn Stream<Item = Result<Object, tonic::Status>> + Send + 'static>> {
         self.inner.read().await.clone().list_owned_objects(request)
     }
+
+    /// Get the chain identifier from the network
+    pub async fn get_chain_identifier(&self) -> Result<String, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_chain_identifier().await
+    }
 }

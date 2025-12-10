@@ -228,6 +228,20 @@ impl Client {
             .await
             .map(|r| r.into_inner())
     }
+
+    pub async fn get_chain_identifier(&mut self) -> Result<String> {
+        let request = crate::proto::soma::GetServiceInfoRequest::default();
+        let response = self
+            .0
+            .ledger_client()
+            .get_service_info(request)
+            .await?
+            .into_inner();
+
+        response
+            .chain_id
+            .ok_or_else(|| tonic::Status::not_found("chain_id not found in service info response"))
+    }
 }
 
 #[derive(Debug)]

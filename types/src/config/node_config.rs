@@ -13,12 +13,14 @@ use crate::{
     multiaddr::Multiaddr,
     parameters::Parameters,
     peer_id::PeerId,
+    supported_protocol_versions::SupportedProtocolVersions,
 };
 use anyhow::anyhow;
 use fastcrypto::{
     encoding::{Encoding, Hex},
     traits::{EncodeDecodeBase64, KeyPair},
 };
+use protocol_config::Chain;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::{
@@ -88,6 +90,12 @@ pub struct NodeConfig {
     #[serde(default)]
     pub checkpoint_executor_config: CheckpointExecutorConfig,
 
+    /// In a `soma-node` binary, this is set to SupportedProtocolVersions::SYSTEM_DEFAULT
+    /// in node-node/src/main.rs. It is present in the config so that it can be changed by tests in
+    /// order to test protocol upgrades.
+    #[serde(skip)]
+    pub supported_protocol_versions: Option<SupportedProtocolVersions>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run_with_range: Option<RunWithRange>,
 
@@ -109,6 +117,12 @@ pub struct NodeConfig {
 
     #[serde(default)]
     pub expensive_safety_check_config: ExpensiveSafetyCheckConfig,
+
+    /// Allow overriding the chain for testing purposes. For instance, it allows you to
+    /// create a test network that believes it is mainnet or testnet. Attempting to
+    /// override this value on production networks will result in an error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_override_for_testing: Option<Chain>,
 
     /// Configuration for validator client monitoring from the client perspective.
     /// When enabled, tracks client-observed performance metrics for validators.
@@ -573,6 +587,7 @@ pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Res
 #[derive(Clone, Default)]
 pub struct ValidatorConfigBuilder {
     config_directory: Option<PathBuf>,
+    supported_protocol_versions: Option<SupportedProtocolVersions>,
 }
 
 impl ValidatorConfigBuilder {
@@ -585,6 +600,15 @@ impl ValidatorConfigBuilder {
     pub fn with_config_directory(mut self, config_directory: PathBuf) -> Self {
         assert!(self.config_directory.is_none());
         self.config_directory = Some(config_directory);
+        self
+    }
+
+    pub fn with_supported_protocol_versions(
+        mut self,
+        supported_protocol_versions: SupportedProtocolVersions,
+    ) -> Self {
+        assert!(self.supported_protocol_versions.is_none());
+        self.supported_protocol_versions = Some(supported_protocol_versions);
         self
     }
 
@@ -675,7 +699,9 @@ impl ValidatorConfigBuilder {
             p2p_config,
             state_debug_dump_config: Default::default(),
             validator_client_monitor_config: None,
+            chain_override_for_testing: None,
             run_with_range: None,
+            supported_protocol_versions: self.supported_protocol_versions,
             // By default, expensive checks will be enabled in debug build, but not in release build.
             expensive_safety_check_config: ExpensiveSafetyCheckConfig::default(),
             execution_cache: ExecutionCacheConfig::default(),

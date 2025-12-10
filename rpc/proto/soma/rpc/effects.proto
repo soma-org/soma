@@ -20,20 +20,25 @@ message TransactionEffects {
   // The transaction digest.
   optional string transaction_digest = 4;
 
+  // Information about the gas object. Also present in the `changed_objects` vector.
+  //
+  // System transactions that don't require gas will leave this as `None`.
+  optional uint32 gas_object_index = 5;
+
   // The set of transaction digests this transaction depends on.
-  repeated string dependencies = 5;
+  repeated string dependencies = 6;
 
   // The version number of all the written objects (excluding packages) by this transaction.
-  optional uint64 lamport_version = 6;
+  optional uint64 lamport_version = 7;
 
   // Objects whose state are changed by this transaction.
-  repeated ChangedObject changed_objects = 7;
+  repeated ChangedObject changed_objects = 8;
 
   // Shared objects that are not mutated in this transaction. Unlike owned objects,
   // read-only shared objects' version are not committed in the transaction,
   // and in order for a node to catch up and execute it without consensus sequencing,
   // the version needs to be committed in the effects.
-  repeated UnchangedSharedObject unchanged_shared_objects = 8;
+  repeated UnchangedSharedObject unchanged_shared_objects = 9;
 }
 
 // Input/output state of an object that was changed during execution.

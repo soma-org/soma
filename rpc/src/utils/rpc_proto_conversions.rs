@@ -23,7 +23,6 @@ impl From<types::tx_fee::TransactionFee> for TransactionFee {
             operation_fee,
             value_fee,
             total_fee,
-            gas_object_ref, // TODO: use gas_object_ref
         }: types::tx_fee::TransactionFee,
     ) -> Self {
         let mut message = Self::default();
@@ -784,11 +783,15 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::FEE_FIELD.name) {
-            self.fee = source.transaction_fee.clone().map(|f| f.into());
+            self.fee = Some(source.transaction_fee.clone().into());
         }
 
         if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
             self.transaction_digest = Some(source.transaction_digest.to_string());
+        }
+
+        if mask.contains(Self::GAS_OBJECT_INDEX_FIELD.name) {
+            self.gas_object_index = source.gas_object_index;
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
@@ -935,6 +938,8 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
     fn try_from(proto_state: SystemState) -> Result<Self, Self::Error> {
         let epoch = proto_state.epoch.ok_or("Missing epoch")?;
 
+        let protocol_version = proto_state.epoch.ok_or("Missing protocol version")?;
+
         let epoch_start_timestamp_ms = proto_state
             .epoch_start_timestamp_ms
             .ok_or("Missing epoch_start_timestamp_ms")?;
@@ -969,6 +974,7 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
         // Build initial committees
         let mut system_state = types::system_state::SystemState {
             epoch,
+            protocol_version,
             epoch_start_timestamp_ms,
             parameters,
             validators,
@@ -1580,6 +1586,7 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
 
         Ok(SystemState {
             epoch: Some(domain_state.epoch),
+            protocol_version: Some(domain_state.protocol_version),
             epoch_start_timestamp_ms: Some(domain_state.epoch_start_timestamp_ms),
             parameters: Some(domain_state.parameters.try_into()?),
             validators: Some(domain_state.validators.try_into()?),
@@ -2302,7 +2309,7 @@ impl Merge<types::checkpoints::CheckpointSummary> for CheckpointSummary {
             network_total_transactions,
             content_digest,
             previous_digest,
-            // epoch_rolling_gas_cost_summary,
+            epoch_rolling_transaction_fees,
             timestamp_ms,
             checkpoint_commitments,
             end_of_epoch_data,
@@ -2328,9 +2335,9 @@ impl Merge<types::checkpoints::CheckpointSummary> for CheckpointSummary {
             self.previous_digest = previous_digest.map(|d| d.to_string());
         }
 
-        // if mask.contains(Self::EPOCH_ROLLING_GAS_COST_SUMMARY_FIELD) {
-        //     self.epoch_rolling_gas_cost_summary = Some(epoch_rolling_gas_cost_summary.into());
-        // }
+        if mask.contains(Self::EPOCH_ROLLING_TRANSACTION_FEES_FIELD) {
+            self.epoch_rolling_transaction_fees = Some(epoch_rolling_transaction_fees.into());
+        }
 
         if mask.contains(Self::TIMESTAMP_FIELD) {
             self.timestamp = Some(crate::proto::timestamp_ms_to_proto(timestamp_ms));

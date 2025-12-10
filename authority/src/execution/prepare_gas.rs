@@ -14,9 +14,9 @@ use super::TransactionExecutor;
 /// Result of gas preparation
 pub(crate) struct GasPreparationResult {
     /// Primary gas object ID (if gas handling is enabled)
-    primary_gas_id: Option<ObjectID>,
-    /// Transaction fee information (if base fee was deducted)
-    pub transaction_fee: Option<TransactionFee>,
+    pub primary_gas_id: Option<ObjectID>,
+    /// Transaction fee information
+    pub transaction_fee: TransactionFee,
     /// Amount of base fee that was deducted
     base_fee_deducted: u64,
     /// Pre-calculated value fee to ensure consistency
@@ -33,12 +33,12 @@ pub fn prepare_gas(
     signer: &SomaAddress,
     gas_payment: Vec<ObjectRef>,
     executor: &dyn TransactionExecutor,
-) -> Result<GasPreparationResult, (ExecutionFailureStatus, Option<TransactionFee>)> {
+) -> Result<GasPreparationResult, (ExecutionFailureStatus, TransactionFee)> {
     // Skip gas handling for system transactions
     if kind.is_system_tx() {
         return Ok(GasPreparationResult {
             primary_gas_id: None,
-            transaction_fee: None,
+            transaction_fee: TransactionFee::default(),
             base_fee_deducted: 0,
             value_fee: 0,
         });
@@ -48,7 +48,7 @@ pub fn prepare_gas(
     let gas_id = match smash_gas_coins(temporary_store, signer, gas_payment) {
         Ok(id) => id,
         Err(err) => {
-            return Err((err, None));
+            return Err((err, TransactionFee::default()));
         }
     };
 
@@ -68,35 +68,22 @@ pub fn prepare_gas(
         // Not enough for base fee - take what we can and fail
         if gas_balance > 0 {
             // Deduct whatever is available
-            let gas_ref = gas_obj.compute_object_reference();
-            let partial_fee_obj = TransactionFee::new(gas_balance, 0, 0, gas_ref);
+            let partial_fee = TransactionFee::new(gas_balance, 0, 0);
 
             // This should always succeed since we're taking at most the available balance
-            if let Ok(_) = deduct_gas_fee(temporary_store, &partial_fee_obj) {
-                // Create transaction fee with what we could deduct
-                let updated_gas_ref = if gas_balance == gas_obj.as_coin().unwrap() {
-                    // Gas object was deleted, use the original reference
-                    gas_ref
-                } else if let Some(updated_obj) = temporary_store.read_object(&gas_id) {
-                    // Gas object was updated, get new reference
-                    updated_obj.compute_object_reference()
-                } else {
-                    // Gas object was deleted, use the original reference
-                    gas_ref
-                };
-
-                let partial_fee = Some(TransactionFee::new(gas_balance, 0, 0, updated_gas_ref));
-
+            if let Ok(_) = deduct_gas_fee(temporary_store, &partial_fee) {
                 return Err((ExecutionFailureStatus::InsufficientGas, partial_fee));
             }
         }
 
-        return Err((ExecutionFailureStatus::InsufficientGas, None));
+        return Err((
+            ExecutionFailureStatus::InsufficientGas,
+            TransactionFee::default(),
+        ));
     }
 
     // Sufficient gas for base fee - deduct it
-    let gas_ref = gas_obj.compute_object_reference();
-    let base_fee_obj = TransactionFee::new(base_fee, 0, 0, gas_ref);
+    let base_fee_obj = TransactionFee::new(base_fee, 0, 0);
 
     // Calculate value fee before deducting any gas
     let value_fee = executor.calculate_value_fee(temporary_store, kind);
@@ -104,11 +91,7 @@ pub fn prepare_gas(
     match deduct_gas_fee(temporary_store, &base_fee_obj) {
         Ok(_) => {
             // Base fee deducted successfully
-            // Get updated gas object reference
-            let updated_gas_obj = temporary_store.read_object(&gas_id).unwrap();
-            let updated_gas_ref = updated_gas_obj.compute_object_reference();
-
-            let transaction_fee = Some(TransactionFee::new(base_fee, 0, 0, updated_gas_ref));
+            let transaction_fee = TransactionFee::new(base_fee, 0, 0);
 
             Ok(GasPreparationResult {
                 primary_gas_id,
@@ -119,7 +102,7 @@ pub fn prepare_gas(
         }
         Err(err) => {
             // This shouldn't happen since we checked the balance
-            Err((err, None))
+            Err((err, TransactionFee::default()))
         }
     }
 }
@@ -228,7 +211,7 @@ pub fn calculate_and_deduct_remaining_fees(
     kind: &TransactionKind,
     executor: &dyn TransactionExecutor,
     gas_result: &GasPreparationResult,
-) -> Result<Option<TransactionFee>, ExecutionFailureStatus> {
+) -> Result<TransactionFee, ExecutionFailureStatus> {
     // Skip for system transactions or if no gas ID
     if kind.is_system_tx() || gas_result.primary_gas_id.is_none() {
         return Ok(gas_result.transaction_fee.clone());
@@ -249,14 +232,11 @@ pub fn calculate_and_deduct_remaining_fees(
         None => return Err(ExecutionFailureStatus::ObjectNotFound { object_id: gas_id }),
     };
 
-    let gas_object_ref = gas_obj.compute_object_reference();
-
     // Create TransactionFee with pre-calculated value fee
     let remaining_fee = TransactionFee::new(
         0, // Base fee already deducted
         operation_fee,
         value_fee,
-        gas_object_ref,
     );
 
     // Attempt to deduct the remaining fee
@@ -264,14 +244,17 @@ pub fn calculate_and_deduct_remaining_fees(
         Ok(_) => {
             // Combine base fee with operation and value fees for reporting
             let final_fee = merge_fee_components(gas_result.base_fee_deducted, remaining_fee);
-            Ok(Some(final_fee))
+            Ok(final_fee)
         }
         Err(err) => Err(err),
     }
 }
 
 fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> ExecutionResult<u64> {
-    let gas_id = fee.gas_object_ref.0;
+    let gas_id = store
+        .gas_object_id
+        .ok_or_else(|| ExecutionFailureStatus::SomaError(SomaError::from("No gas object set")))?;
+
     let gas_obj = store
         .read_object(&gas_id)
         .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: gas_id })?;
@@ -306,6 +289,5 @@ fn merge_fee_components(base_fee: u64, remaining_fee: TransactionFee) -> Transac
         base_fee,
         remaining_fee.operation_fee,
         remaining_fee.value_fee,
-        remaining_fee.gas_object_ref,
     )
 }

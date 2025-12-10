@@ -212,6 +212,7 @@ mod _getter_impls {
                 total_network_transactions: None,
                 content_digest: None,
                 previous_digest: None,
+                epoch_rolling_transaction_fees: None,
                 timestamp: None,
                 commitments: Vec::new(),
                 end_of_epoch_data: None,
@@ -244,6 +245,30 @@ mod _getter_impls {
         }
         pub fn with_previous_digest(mut self, field: String) -> Self {
             self.previous_digest = Some(field.into());
+            self
+        }
+        pub fn epoch_rolling_transaction_fees(&self) -> &TransactionFee {
+            self.epoch_rolling_transaction_fees
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| TransactionFee::default_instance() as _)
+        }
+        pub fn epoch_rolling_transaction_fees_opt(&self) -> Option<&TransactionFee> {
+            self.epoch_rolling_transaction_fees.as_ref().map(|field| field as _)
+        }
+        pub fn epoch_rolling_transaction_fees_opt_mut(
+            &mut self,
+        ) -> Option<&mut TransactionFee> {
+            self.epoch_rolling_transaction_fees.as_mut().map(|field| field as _)
+        }
+        pub fn epoch_rolling_transaction_fees_mut(&mut self) -> &mut TransactionFee {
+            self.epoch_rolling_transaction_fees.get_or_insert_default()
+        }
+        pub fn with_epoch_rolling_transaction_fees(
+            mut self,
+            field: TransactionFee,
+        ) -> Self {
+            self.epoch_rolling_transaction_fees = Some(field.into());
             self
         }
         pub fn commitments(&self) -> &[CheckpointCommitment] {
@@ -280,6 +305,7 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 next_epoch_validator_committee: None,
+                next_epoch_protocol_version: None,
                 epoch_commitments: Vec::new(),
             }
         }
@@ -310,6 +336,10 @@ mod _getter_impls {
             field: ValidatorCommittee,
         ) -> Self {
             self.next_epoch_validator_committee = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_protocol_version(mut self, field: u64) -> Self {
+            self.next_epoch_protocol_version = Some(field.into());
             self
         }
         pub fn epoch_commitments(&self) -> &[CheckpointCommitment] {
@@ -347,6 +377,7 @@ mod _getter_impls {
                 epoch: None,
                 fee: None,
                 transaction_digest: None,
+                gas_object_index: None,
                 dependencies: Vec::new(),
                 lamport_version: None,
                 changed_objects: Vec::new(),
@@ -402,6 +433,10 @@ mod _getter_impls {
         }
         pub fn with_transaction_digest(mut self, field: String) -> Self {
             self.transaction_digest = Some(field.into());
+            self
+        }
+        pub fn with_gas_object_index(mut self, field: u32) -> Self {
+            self.gas_object_index = Some(field.into());
             self
         }
         pub fn dependencies(&self) -> &[String] {
@@ -2092,6 +2127,7 @@ mod _getter_impls {
             Self {
                 epoch: None,
                 epoch_start_timestamp_ms: None,
+                protocol_version: None,
                 parameters: None,
                 validators: None,
                 encoders: None,
@@ -2112,6 +2148,10 @@ mod _getter_impls {
         }
         pub fn with_epoch_start_timestamp_ms(mut self, field: u64) -> Self {
             self.epoch_start_timestamp_ms = Some(field.into());
+            self
+        }
+        pub fn with_protocol_version(mut self, field: u64) -> Self {
+            self.protocol_version = Some(field.into());
             self
         }
         pub fn parameters(&self) -> &SystemParameters {
@@ -4772,6 +4812,8 @@ mod _getter_impls {
             Self {
                 epoch: None,
                 epoch_start_timestamp: None,
+                protocol_version: None,
+                fees: None,
             }
         }
         #[doc(hidden)]
@@ -4781,6 +4823,14 @@ mod _getter_impls {
         }
         pub fn with_epoch(mut self, field: u64) -> Self {
             self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_protocol_version(mut self, field: u64) -> Self {
+            self.protocol_version = Some(field.into());
+            self
+        }
+        pub fn with_fees(mut self, field: u64) -> Self {
+            self.fees = Some(field.into());
             self
         }
     }
@@ -4982,7 +5032,6 @@ mod _getter_impls {
                 operation_fee: None,
                 value_fee: None,
                 total_fee: None,
-                gas_object_ref: None,
             }
         }
         #[doc(hidden)]
@@ -5004,25 +5053,6 @@ mod _getter_impls {
         }
         pub fn with_total_fee(mut self, field: u64) -> Self {
             self.total_fee = Some(field.into());
-            self
-        }
-        pub fn gas_object_ref(&self) -> &ObjectReference {
-            self.gas_object_ref
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
-        }
-        pub fn gas_object_ref_opt(&self) -> Option<&ObjectReference> {
-            self.gas_object_ref.as_ref().map(|field| field as _)
-        }
-        pub fn gas_object_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.gas_object_ref.as_mut().map(|field| field as _)
-        }
-        pub fn gas_object_ref_mut(&mut self) -> &mut ObjectReference {
-            self.gas_object_ref.get_or_insert_default()
-        }
-        pub fn with_gas_object_ref(mut self, field: ObjectReference) -> Self {
-            self.gas_object_ref = Some(field.into());
             self
         }
     }

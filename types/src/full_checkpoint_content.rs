@@ -90,7 +90,7 @@ impl CheckpointData {
             })?;
         Ok(Some(EpochInfo {
             epoch: system_state.epoch(),
-            // TODO: protocol_version: Some(system_state.protocol_version()),
+            protocol_version: Some(system_state.protocol_version()),
             start_timestamp_ms: Some(system_state.epoch_start_timestamp_ms()),
             end_timestamp_ms: None,
             start_checkpoint: Some(start_checkpoint),
