@@ -50,7 +50,6 @@ use fastcrypto::{
     traits::ToFromBytes,
 };
 use serde::{Deserialize, Serialize};
-use shard::ShardResult;
 use staking::StakedSoma;
 use subsidy::StakeSubsidy;
 use tracing::{error, info};
@@ -221,10 +220,6 @@ pub struct SystemState {
     pub encoders: EncoderSet,
     pub encoder_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
 
-    /// Stores ShardResults indexed by Digest<Shard>
-    /// This is intermediary state used to calculate rewards at the end of the epoch
-    pub shard_results: BTreeMap<Digest<Shard>, ShardResult>,
-
     /// Cached committees: [previous_epoch, current_epoch]
     /// Index 0: Previous epoch committees
     /// Index 1: Current epoch committees
@@ -288,7 +283,6 @@ impl SystemState {
             validator_report_records: BTreeMap::new(),
             encoder_report_records: BTreeMap::new(),
             stake_subsidy,
-            shard_results: BTreeMap::new(),
             committees: [None, None],
         };
 
@@ -940,27 +934,9 @@ impl SystemState {
         let new_committees = self.build_committees_for_epoch(new_epoch);
         self.committees[1] = Some(new_committees);
 
-        // Clear shard results for the new epoch
-        self.clear_shard_scores();
-
         // For simplicity in this implementation, we're just returning validator rewards
         // In a full implementation, you'd want to return both and handle them appropriately
         Ok(validator_rewards)
-    }
-
-    /// Adds shard result to the system state
-    pub fn add_shard_result(
-        &mut self,
-        shard_digest: Digest<Shard>,
-        result: ShardResult,
-    ) -> ExecutionResult<()> {
-        self.shard_results.insert(shard_digest, result);
-        Ok(())
-    }
-
-    /// Clears all shard scores (called at the end of an epoch)
-    pub fn clear_shard_scores(&mut self) {
-        self.shard_results.clear();
     }
 }
 

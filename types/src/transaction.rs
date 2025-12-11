@@ -136,16 +136,21 @@ pub enum TransactionKind {
     EmbedData {
         download_metadata: DownloadMetadata,
         coin_ref: ObjectRef,
+        target_ref: Option<ObjectRef>,
     },
     ClaimEscrow {
-        shard_input_ref: ObjectRef,
+        shard_ref: ObjectRef,
     },
     ReportWinner {
-        shard_input_ref: ObjectRef,
-        signed_report: Vec<u8>, // BCS Serialized Signed<Report, BLS>
-        signature: Vec<u8>,     // BCS serialized EncoderAggregateSignature (BLS)
+        shard_ref: ObjectRef,
+        target_ref: Option<ObjectRef>,
+        report: Vec<u8>, // BCS Serialized Report (will contain both sampled and summary)
+        signature: Vec<u8>, // BCS serialized EncoderAggregateSignature (BLS)
         signers: Vec<EncoderPublicKey>,
-        shard_auth_token: Vec<u8>,
+        shard_auth_token: Vec<u8>, // BCS Serialized ShardAuthToken
+    },
+    ClaimReward {
+        target_ref: ObjectRef,
     },
 }
 
@@ -272,7 +277,6 @@ impl TransactionKind {
                 | TransactionKind::SetEncoderCommissionRate { .. }
                 | TransactionKind::UpdateEncoderMetadata(_)
                 | TransactionKind::SetEncoderBytePrice { .. }
-                | TransactionKind::ReportWinner { .. }
         )
     }
 
@@ -294,7 +298,17 @@ impl TransactionKind {
             || self.is_epoch_change()
             || self.is_staking_tx()
             || self.is_encoder_tx()
-            || self.is_embed_tx()
+            || self.is_shard_tx()
+    }
+
+    pub fn is_shard_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::EmbedData { .. }
+                | TransactionKind::ClaimEscrow { .. }
+                | TransactionKind::ReportWinner { .. }
+                | TransactionKind::ClaimReward { .. }
+        )
     }
 
     pub fn is_embed_tx(&self) -> bool {
@@ -330,22 +344,51 @@ impl TransactionKind {
 
         // Add transaction-specific shared objects
         match self {
-            // Add ShardInput as shared object for ClaimEscrow
-            TransactionKind::ClaimEscrow { shard_input_ref } => {
+            // EmbedData: target is read-only (just referencing which target to aim for)
+            TransactionKind::EmbedData {
+                target_ref: Some(target),
+                ..
+            } => {
                 objects.push(SharedInputObject {
-                    id: shard_input_ref.0,
-                    initial_shared_version: shard_input_ref.1,
+                    id: target.0,
+                    initial_shared_version: target.1,
+                    mutable: false, // read-only when creating a shard
+                });
+            }
+            // ClaimEscrow: shard is mutated (escrow state changes)
+            TransactionKind::ClaimEscrow { shard_ref } => {
+                objects.push(SharedInputObject {
+                    id: shard_ref.0,
+                    initial_shared_version: shard_ref.1,
                     mutable: true,
                 });
             }
-            // Add ShardInput as shared object for ReportScores
-            // (note: system state is already added above)
+            // ReportWinner: shard is mutated (winner, scores, embeddings set)
             TransactionKind::ReportWinner {
-                shard_input_ref, ..
+                shard_ref,
+                target_ref,
+                ..
             } => {
+                // Shard is mutated (winner, scores, embeddings set)
                 objects.push(SharedInputObject {
-                    id: shard_input_ref.0,
-                    initial_shared_version: shard_input_ref.1,
+                    id: shard_ref.0,
+                    initial_shared_version: shard_ref.1,
+                    mutable: true,
+                });
+                // Target (if present) is mutated (winning_shard may be updated)
+                if let Some(target) = target_ref {
+                    objects.push(SharedInputObject {
+                        id: target.0,
+                        initial_shared_version: target.1,
+                        mutable: true,
+                    });
+                }
+            }
+            // ClaimReward: target is mutated (winning_shard updated, funds distributed)
+            TransactionKind::ClaimReward { target_ref } => {
+                objects.push(SharedInputObject {
+                    id: target_ref.0,
+                    initial_shared_version: target_ref.1,
                     mutable: true,
                 });
             }
@@ -395,22 +438,51 @@ impl TransactionKind {
             TransactionKind::WithdrawStake { staked_soma } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
             }
-            TransactionKind::EmbedData { coin_ref, .. } => {
+            TransactionKind::EmbedData {
+                coin_ref,
+                target_ref,
+                ..
+            } => {
+                // Coin is owned by sender, used for escrow payment
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
+                // Target (if specified) is shared, read-only access
+                if let Some(target) = target_ref {
+                    input_objects.push(InputObjectKind::SharedObject {
+                        id: target.0,
+                        initial_shared_version: target.1,
+                        mutable: false,
+                    });
+                }
             }
-            TransactionKind::ClaimEscrow { shard_input_ref } => {
+            TransactionKind::ClaimEscrow { shard_ref } => {
                 input_objects.push(InputObjectKind::SharedObject {
-                    id: shard_input_ref.0,
-                    initial_shared_version: shard_input_ref.1,
+                    id: shard_ref.0,
+                    initial_shared_version: shard_ref.1,
                     mutable: true,
                 });
             }
             TransactionKind::ReportWinner {
-                shard_input_ref, ..
+                shard_ref,
+                target_ref,
+                ..
             } => {
                 input_objects.push(InputObjectKind::SharedObject {
-                    id: shard_input_ref.0,
-                    initial_shared_version: shard_input_ref.1,
+                    id: shard_ref.0,
+                    initial_shared_version: shard_ref.1,
+                    mutable: true,
+                });
+                if let Some(target) = target_ref {
+                    input_objects.push(InputObjectKind::SharedObject {
+                        id: target.0,
+                        initial_shared_version: target.1,
+                        mutable: true,
+                    });
+                }
+            }
+            TransactionKind::ClaimReward { target_ref } => {
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: target_ref.0,
+                    initial_shared_version: target_ref.1,
                     mutable: true,
                 });
             }

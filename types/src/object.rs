@@ -40,7 +40,10 @@ use crate::{
     digests::{ObjectDigest, TransactionDigest},
     error::{SomaError, SomaResult},
     serde::Readable,
-    system_state::{shard::ShardInput, staking::StakedSoma},
+    system_state::{
+        shard::{Embedding, Shard, Target},
+        staking::StakedSoma,
+    },
 };
 use anyhow::anyhow;
 use fastcrypto::{
@@ -450,36 +453,108 @@ impl Object {
         }
     }
 
-    /// Create a new ShardInput object
-    pub fn new_shard_input(
+    /// Create a new Shard object
+    pub fn new_shard(
         id: ObjectID,
         download_metadata: DownloadMetadata,
         amount: u64,
-        expiration_epoch: EpochId,
-        submitter: SomaAddress,
+        created_epoch: EpochId,
+        data_submitter: SomaAddress,
+        target: Option<ObjectRef>,
         owner: Owner,
         previous_transaction: TransactionDigest,
     ) -> Self {
-        let shard_input = ShardInput {
+        let shard = Shard {
             download_metadata,
             amount,
-            expiration_epoch,
-            submitter,
+            created_epoch,
+            data_submitter,
+            target,
+            winning_encoder: None,
+            evaluation_scores: None,
+            target_scores: None,
+            summary_embedding: None,
+            sampled_embedding: None,
         };
 
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::ShardInput,
+            ObjectType::Shard,
             Version::MIN,
-            bcs::to_bytes(&shard_input).unwrap(),
+            bcs::to_bytes(&shard).unwrap(),
         );
 
         Self::new(data, owner, previous_transaction)
     }
 
-    /// Extract ShardInput from an Object
-    pub fn as_shard_input(&self) -> Option<ShardInput> {
-        if *self.data.object_type() == ObjectType::ShardInput {
+    /// Extract Shard from an Object
+    pub fn as_shard(&self) -> Option<Shard> {
+        if *self.data.object_type() == ObjectType::Shard {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Create a new Target object
+    pub fn new_target(
+        id: ObjectID,
+        creator: Option<SomaAddress>,
+        amount: u64,
+        created_epoch: EpochId,
+        target_embedding: ObjectRef,
+        owner: Owner,
+        previous_transaction: TransactionDigest,
+    ) -> Self {
+        let target = Target {
+            creator,
+            amount,
+            created_epoch,
+            target_embedding,
+            winning_shard: None,
+        };
+
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Shard,
+            Version::MIN,
+            bcs::to_bytes(&target).unwrap(),
+        );
+
+        Self::new(data, owner, previous_transaction)
+    }
+
+    /// Extract Target from an Object
+    pub fn as_target(&self) -> Option<Target> {
+        if *self.data.object_type() == ObjectType::Target {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Create a new Embedding object
+    pub fn new_embedding(
+        id: ObjectID,
+        embedding: Vec<u8>,
+        owner: Owner,
+        previous_transaction: TransactionDigest,
+    ) -> Self {
+        let embedding = Embedding { embedding };
+
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Embedding,
+            Version::MIN,
+            bcs::to_bytes(&embedding).unwrap(),
+        );
+
+        Self::new(data, owner, previous_transaction)
+    }
+
+    /// Extract Embedding from an Object
+    pub fn as_embedding(&self) -> Option<Embedding> {
+        if *self.data.object_type() == ObjectType::Embedding {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
             None
@@ -643,8 +718,12 @@ pub enum ObjectType {
     Coin,
     /// Represents an owned Staked Soma object
     StakedSoma,
-    /// Represents a shard input with escrowed funds
-    ShardInput,
+    /// Represents a shard object
+    Shard,
+    /// Represents a target object
+    Target,
+    /// Represents a embedding object (a sampled embedding or target)
+    Embedding,
 }
 
 impl fmt::Display for ObjectType {
@@ -653,7 +732,9 @@ impl fmt::Display for ObjectType {
             ObjectType::SystemState => write!(f, "SystemState"),
             ObjectType::Coin => write!(f, "Coin"),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
-            ObjectType::ShardInput => write!(f, "ShardInput"),
+            ObjectType::Shard => write!(f, "Shard"),
+            ObjectType::Target => write!(f, "Target"),
+            ObjectType::Embedding => write!(f, "Embedding"),
         }
     }
 }
@@ -666,7 +747,9 @@ impl FromStr for ObjectType {
             "SystemState" => Ok(ObjectType::SystemState),
             "Coin" => Ok(ObjectType::Coin),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
-            "ShardInput" => Ok(ObjectType::ShardInput),
+            "Shard" => Ok(ObjectType::Shard),
+            "Target" => Ok(ObjectType::Target),
+            "Embedding" => Ok(ObjectType::Embedding),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

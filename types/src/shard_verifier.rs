@@ -114,20 +114,14 @@ impl ShardVerifier {
         // 2. Verify the transaction is an EmbedData transaction with matching metadata
         let tx_kind = token.finality_proof.transaction.transaction_data().kind();
 
-        if let TransactionKind::EmbedData {
+        let TransactionKind::EmbedData {
             download_metadata, ..
         } = tx_kind
-        {
-            if *download_metadata.metadata() != token.metadata {
-                return Err(ShardError::InvalidShardToken(
-                    "metadata does not match transaction".to_string(),
-                ));
-            }
-        } else {
+        else {
             return Err(ShardError::InvalidShardToken(
                 "transaction is not EmbedData type".to_string(),
             ));
-        }
+        };
 
         // 3. Verify VDF entropy was correctly computed from checkpoint digest
         let vdf = SimpleVDF::new(vdf_iterations);
@@ -141,8 +135,10 @@ impl ShardVerifier {
         .map_err(|e| ShardError::InvalidShardToken(format!("VDF verification failed: {}", e)))?;
 
         // 4. Compute shard selection using the verified entropy
-        let shard_entropy =
-            ShardEntropy::new(token.metadata.clone(), token.checkpoint_entropy.clone());
+        let shard_entropy = ShardEntropy::new(
+            download_metadata.metadata().clone(),
+            token.checkpoint_entropy.clone(),
+        );
         let shard_seed = Digest::new(&shard_entropy).map_err(|e| {
             ShardError::InvalidShardToken(format!("failed to compute shard seed: {}", e))
         })?;

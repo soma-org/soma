@@ -11,6 +11,7 @@ use crate::finality::FinalityProof;
 use crate::metadata::{DownloadMetadata, Metadata, MtlsDownloadMetadataAPI, ObjectPath};
 use crate::object::ObjectRef;
 use crate::shard_crypto::keys::EncoderPublicKey;
+use crate::system_state::shard::{Embedding, Shard as ShardObject, Target};
 use crate::{error::SharedResult, shard_crypto::digest::Digest};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
@@ -142,7 +143,7 @@ pub enum Input {
 pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn input_download_metadata(&self) -> &DownloadMetadata;
-    fn target_embedding(&self) -> &Option<Embedding>;
+    fn target_embedding(&self) -> Option<Embedding>;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -150,19 +151,22 @@ pub struct InputV1 {
     auth_token: ShardAuthToken,
     // TODO: replace with the actual on-chain objects
     input_download_metadata: DownloadMetadata,
-    target_embedding: Option<Embedding>,
+    shard_object: ShardObject,
+    target_object: Option<(Target, Embedding)>,
 }
 
 impl InputV1 {
     pub fn new(
         auth_token: ShardAuthToken,
         input_download_metadata: DownloadMetadata,
-        target_embedding: Option<Embedding>,
+        shard_object: ShardObject,
+        target_object: Option<(Target, Embedding)>,
     ) -> Self {
         Self {
             auth_token,
             input_download_metadata,
-            target_embedding,
+            shard_object,
+            target_object,
         }
     }
 }
@@ -174,8 +178,8 @@ impl InputAPI for InputV1 {
     fn input_download_metadata(&self) -> &DownloadMetadata {
         &self.input_download_metadata
     }
-    fn target_embedding(&self) -> &Option<Embedding> {
-        &self.target_embedding
+    fn target_embedding(&self) -> Option<Embedding> {
+        self.target_object.clone().map(|o| o.1)
     }
 }
 
