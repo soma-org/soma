@@ -1,35 +1,3 @@
-//! # Object Module
-//!
-//! ## Overview
-//! This module defines the core data structures for the object model in the Soma blockchain.
-//! Objects are the fundamental units of state in the system, representing both user-owned
-//! and system resources.
-//!
-//! ## Responsibilities
-//! - Define the structure and behavior of objects in the Soma blockchain
-//! - Provide versioning mechanisms for state tracking
-//! - Implement ownership models for different object types
-//! - Support object identification, referencing, and lifecycle management
-//! - Enable serialization and deserialization of object data
-//!
-//! ## Component Relationships
-//! - Used by the Authority module for state management and transaction processing
-//! - Referenced by the Transaction module for input/output validation
-//! - Utilized by the Storage module for persistence
-//! - Integrated with the Consensus module for shared object handling
-//!
-//! ## Key Workflows
-//! 1. Object creation and initialization with ownership assignment
-//! 2. Version management during transaction processing
-//! 3. Object reference computation for state verification
-//! 4. Ownership transitions between different models (address-owned, shared, immutable)
-//!
-//! ## Design Patterns
-//! - Immutable data structures with Arc for efficient sharing
-//! - Clear separation between object identity, data, and ownership
-//! - Version-based state tracking for concurrency control
-//! - Lamport timestamps for causal ordering
-
 use crate::base::HexAccountAddress;
 use crate::metadata::{DownloadMetadata, Metadata};
 use crate::shard_crypto::digest::Digest;
@@ -65,23 +33,6 @@ use std::{fmt, str::FromStr, sync::Arc};
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
 pub const GAS_VALUE_FOR_TESTING: u64 = 300_000_000_000_000;
 
-/// # Version
-///
-/// Represents a logical timestamp for objects in the system, used for tracking
-/// state changes and ensuring causal ordering.
-///
-/// ## Purpose
-/// Version serves as both a sequence number and a logical timestamp. It increases
-/// each time an object is mutated by a transaction, providing a mechanism for
-/// tracking the evolution of state and detecting conflicts.
-///
-/// ## Usage Patterns
-/// - Incremented when an object is mutated
-/// - Used in Lamport timestamp calculations for causal ordering
-/// - Special values indicate system conditions (MAX, CANCELLED_READ, CONGESTED)
-///
-/// ## Thread Safety
-/// Version is Copy and can be safely shared across threads.
 #[derive(
     Eq,
     PartialEq,
@@ -500,7 +451,6 @@ impl Object {
     pub fn new_target(
         id: ObjectID,
         creator: Option<SomaAddress>,
-        amount: u64,
         created_epoch: EpochId,
         target_embedding: ObjectRef,
         owner: Owner,
@@ -508,7 +458,6 @@ impl Object {
     ) -> Self {
         let target = Target {
             creator,
-            amount,
             created_epoch,
             target_embedding,
             winning_shard: None,

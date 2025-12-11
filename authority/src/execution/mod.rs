@@ -308,7 +308,8 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         // Shard transactions
         TransactionKind::EmbedData { .. }
         | TransactionKind::ClaimEscrow { .. }
-        | TransactionKind::ReportWinner { .. } => Box::new(ShardExecutor::new()),
+        | TransactionKind::ReportWinner { .. }
+        | TransactionKind::ClaimReward { .. } => Box::new(ShardExecutor::new()),
     }
 }
 

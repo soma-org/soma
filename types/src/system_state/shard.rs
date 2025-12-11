@@ -40,12 +40,20 @@ pub struct Embedding {
 pub struct Target {
     /// None if system-generated, Some if user-submitted data bounty
     pub creator: Option<SomaAddress>,
-    /// Reward amount for hitting the data target
-    pub amount: u64,
     /// Epoch at which the target was created
     pub created_epoch: EpochId,
     /// Target Embedding object to be hit
     pub target_embedding: ObjectRef,
-    /// Winning Shard (defaults to None, set when Shard that is aiming for target beats highest score)
-    pub winning_shard: Option<ObjectRef>,
+    /// Winner info stored directly
+    pub winning_shard: Option<WinningShardInfo>,
+}
+
+/// Info about the winning shard - stored in Target to avoid loading shard object
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct WinningShardInfo {
+    pub shard_ref: ObjectRef,
+    pub data_submitter: SomaAddress,
+    pub winning_encoder: EncoderPublicKey,
+    pub distance: u64,
+    pub shard_created_epoch: EpochId,
 }

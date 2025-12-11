@@ -1,33 +1,3 @@
-//! # System State
-//!
-//! ## Overview
-//! This module defines the system state of the Soma blockchain, including epoch management,
-//! validator set management, and system parameters. The system state is a critical component
-//! that maintains the global state of the blockchain across epochs.
-//!
-//! ## Responsibilities
-//! - Manage the validator set (active validators, pending validators, etc.)
-//! - Track epoch transitions and reconfiguration
-//! - Store system-wide parameters and configuration
-//! - Provide committee information for consensus
-//! - Support validator addition and removal operations
-//!
-//! ## Component Relationships
-//! - Used by Authority module to determine the current validator set
-//! - Provides committee information to Consensus module
-//! - Interacts with storage layer to persist system state
-//! - Referenced during transaction validation and execution
-//!
-//! ## Key Workflows
-//! 1. Epoch advancement: Processes pending validator changes and updates epoch information
-//! 2. Validator management: Handles addition and removal of validators
-//! 3. Committee formation: Creates committee structures for consensus operations
-//!
-//! ## Design Patterns
-//! - Trait-based interfaces (SystemStateTrait, EpochStartSystemStateTrait) for abstraction
-//! - Immutable epoch state snapshots for consistent reference
-//! - Clear separation between current state and epoch transition logic
-
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     str::FromStr,
@@ -108,18 +78,6 @@ pub mod test_utils;
 /// This is a BLS12-381 public key used for validator signatures in the consensus protocol.
 pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
 
-/// # SystemParameters
-///
-/// System-wide configuration parameters that govern the behavior of the Soma blockchain.
-///
-/// ## Purpose
-/// Defines operational parameters for the blockchain, including epoch duration,
-/// validator requirements, and stake thresholds. These parameters control the
-/// validator lifecycle and epoch management process.
-///
-/// ## Usage
-/// These parameters are stored as part of the SystemState and are used during
-/// epoch transitions and validator management operations.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
@@ -142,19 +100,6 @@ impl Default for SystemParameters {
     }
 }
 
-/// # SystemStateTrait
-///
-/// A trait defining the interface for accessing system state information.
-///
-/// ## Purpose
-/// Provides a common interface for accessing epoch information and committee
-/// data regardless of the underlying system state implementation. This allows
-/// for different system state implementations to be used interchangeably.
-///
-/// ## Usage
-/// This trait is implemented by SystemState and can be used by components
-/// that need to access system state information without depending on the
-/// specific SystemState implementation.
 pub trait SystemStateTrait {
     /// Get the current epoch number
     fn epoch(&self) -> u64;
@@ -224,6 +169,15 @@ pub struct SystemState {
     /// Index 0: Previous epoch committees
     /// Index 1: Current epoch committees
     pub committees: [Option<Committees>; 2],
+
+    /// Map of epoch -> reward amount per target for that epoch
+    pub target_rewards_per_epoch: BTreeMap<EpochId, u64>,
+
+    /// Count of targets created per epoch (for reward calculation)
+    pub targets_created_per_epoch: BTreeMap<EpochId, u64>,
+
+    /// Epoch seeds for deterministic randomness
+    pub epoch_seeds: BTreeMap<EpochId, Vec<u8>>,
 }
 
 impl SystemState {
@@ -284,6 +238,9 @@ impl SystemState {
             encoder_report_records: BTreeMap::new(),
             stake_subsidy,
             committees: [None, None],
+            target_rewards_per_epoch: BTreeMap::new(),
+            targets_created_per_epoch: BTreeMap::new(),
+            epoch_seeds: BTreeMap::new(),
         };
 
         // Initialize current epoch committees
