@@ -85,8 +85,10 @@ impl EvaluationInputAPI for EvaluationInputV1 {
 
 #[enum_dispatch]
 pub trait EvaluationOutputAPI {
-    fn score(&self) -> Score;
-    fn summary_digest(&self) -> &EmbeddingDigest;
+    fn evaluation_scores(&self) -> &EvaluationScores;
+    fn summary_embedding(&self) -> &Embedding;
+    fn sampled_embedding(&self) -> &Embedding;
+    fn target_details(&self) -> &Option<TargetDetails>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -97,55 +99,134 @@ pub enum EvaluationOutput {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct EvaluationOutputV1 {
-    score: Score,
-    summary_digest: EmbeddingDigest,
+    evaluation_scores: EvaluationScores,
+    summary_embedding: Embedding,
+    sampled_embedding: Embedding,
+    target_details: Option<TargetDetails>,
 }
 
 impl EvaluationOutputV1 {
-    pub fn new(score: Score, summary_digest: EmbeddingDigest) -> Self {
+    pub fn new(
+        evaluation_scores: EvaluationScores,
+        summary_embedding: Embedding,
+        sampled_embedding: Embedding,
+        target_details: Option<TargetDetails>,
+    ) -> Self {
         Self {
-            score,
-            summary_digest,
+            evaluation_scores,
+            summary_embedding,
+            sampled_embedding,
+            target_details,
         }
     }
 }
 
 impl EvaluationOutputAPI for EvaluationOutputV1 {
-    fn score(&self) -> Score {
-        self.score.clone()
+    fn evaluation_scores(&self) -> &EvaluationScores {
+        &self.evaluation_scores
     }
-    fn summary_digest(&self) -> &EmbeddingDigest {
-        &self.summary_digest
+    fn summary_embedding(&self) -> &Embedding {
+        &self.summary_embedding
+    }
+    fn sampled_embedding(&self) -> &Embedding {
+        &self.sampled_embedding
+    }
+    fn target_details(&self) -> &Option<TargetDetails> {
+        &self.target_details
     }
 }
 
 #[enum_dispatch]
-pub trait ScoreAPI {
+pub trait EvaluationScoresAPI {
     fn value(&self) -> u64;
 }
 
 // TODO: convert this to use fixed point math directly!
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[enum_dispatch(ScoreAPI)]
-pub enum Score {
-    V1(ScoreV1),
+#[enum_dispatch(EvaluationScoresAPI)]
+pub enum EvaluationScores {
+    V1(EvaluationScoresV1),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
-pub struct ScoreV1 {
+pub struct EvaluationScoresV1 {
+    flow_matching: u64,
+    sig_reg: u64,
+    compression: u64,
+    composite: u64,
+}
+impl EvaluationScoresV1 {
+    pub fn new(flow_matching: u64, sig_reg: u64, compression: u64, composite: u64) -> Self {
+        Self {
+            flow_matching,
+            sig_reg,
+            compression,
+            composite,
+        }
+    }
+}
+
+impl EvaluationScoresAPI for EvaluationScoresV1 {
+    fn value(&self) -> u64 {
+        self.composite
+    }
+}
+
+#[enum_dispatch]
+pub trait TargetScoresAPI {
+    fn value(&self) -> u64;
+}
+
+// TODO: convert this to use fixed point math directly!
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[enum_dispatch(TargetScoresAPI)]
+pub enum TargetScores {
+    V1(TargetScoresV1),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
+pub struct TargetScoresV1 {
     value: u64,
 }
-impl ScoreV1 {
+impl TargetScoresV1 {
     pub fn new(value: u64) -> Self {
         Self { value }
     }
 }
 
-impl ScoreAPI for ScoreV1 {
+impl TargetScoresAPI for TargetScoresV1 {
     fn value(&self) -> u64 {
         self.value
     }
 }
 
 // TODO: change this to actually be accurate
-pub type EmbeddingDigest = Digest<Vec<u8>>;
+pub type Embedding = Digest<Vec<u8>>;
+
+#[enum_dispatch]
+pub trait TargetDetailsAPI {
+    fn value(&self) -> u64;
+}
+
+// TODO: convert this to use fixed point math directly!
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[enum_dispatch(TargetDetailsAPI)]
+pub enum TargetDetails {
+    V1(TargetDetailsV1),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
+pub struct TargetDetailsV1 {
+    value: u64,
+}
+impl TargetDetailsV1 {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+impl TargetDetailsAPI for TargetDetailsV1 {
+    fn value(&self) -> u64 {
+        self.value
+    }
+}
