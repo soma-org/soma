@@ -16,7 +16,7 @@ use types::{
     },
     shard_verifier::ShardVerifier,
     system_state::{
-        shard::{Shard, Target, WinningShardInfo},
+        shard::{Shard, Target, TargetOrigin, WinningShardInfo},
         SystemState,
     },
     temporary_store::TemporaryStore,
@@ -328,36 +328,15 @@ impl ShardExecutor {
             ))
         })?;
 
-        // 9. Create Embedding objects for sampled and summary embeddings
-        // Sampled embedding - may become a target
-        let sampled_embedding_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
-        let sampled_embedding_obj = Object::new_embedding(
-            sampled_embedding_id,
-            report.sampled_embedding.clone(),
-            Owner::Immutable, // Embeddings are immutable reference data
-            tx_digest,
-        );
-        store.create_object(sampled_embedding_obj.clone());
-        let sampled_embedding_ref = sampled_embedding_obj.compute_object_reference();
-
-        // Summary embedding - the winner's embedding for this shard
-        let summary_embedding_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
-        let summary_embedding_obj = Object::new_embedding(
-            summary_embedding_id,
-            report.summary_embedding.clone(),
-            Owner::Immutable,
-            tx_digest,
-        );
-        store.create_object(summary_embedding_obj.clone());
-        let summary_embedding_ref = summary_embedding_obj.compute_object_reference();
-
-        // 10. Update shard object with winner and embeddings
+        // 9. Update shard object with winner and embeddings
         let mut updated_shard_data = shard_data.clone();
         updated_shard_data.winning_encoder = Some(report.winner.clone());
+        updated_shard_data.embeddings_download_metadata =
+            Some(report.embeddings_download_metadata.clone());
         updated_shard_data.evaluation_scores = Some(report.scores);
         updated_shard_data.target_scores = Some(report.distance);
-        updated_shard_data.sampled_embedding = Some(sampled_embedding_ref);
-        updated_shard_data.summary_embedding = Some(summary_embedding_ref);
+        updated_shard_data.sampled_embedding = Some(report.sampled_embedding.clone());
+        updated_shard_data.summary_embedding = Some(report.summary_embedding.clone());
 
         let mut updated_shard = shard_object.clone();
         updated_shard
@@ -384,8 +363,8 @@ impl ShardExecutor {
         }
 
         info!(
-            "ReportWinner: Shard {} won by encoder {:?}, created embeddings {} and {}",
-            shard_id, report.winner, sampled_embedding_id, summary_embedding_id
+            "ReportWinner: Shard {} won by encoder {:?}",
+            shard_id, report.winner
         );
 
         Ok(())
@@ -811,20 +790,24 @@ impl ShardExecutor {
             });
         }
 
-        // 4. Look up reward amount from system state
-        // Reward is determined at epoch boundary when target becomes valid (created_epoch + 1)
-        let reward_epoch = target_data.created_epoch + 1;
-        let reward_amount = state.get_target_reward(reward_epoch).ok_or_else(|| {
-            ExecutionFailureStatus::InvalidArguments {
-                reason: format!("Target reward not found for epoch {}", reward_epoch),
+        // Determine reward amount based on origin
+        let reward_amount = match &target_data.origin {
+            TargetOrigin::System => {
+                let reward_epoch = target_data.created_epoch + 1;
+                state.get_target_reward(reward_epoch).ok_or_else(|| {
+                    ExecutionFailureStatus::InvalidArguments {
+                        reason: format!("Target reward not found for epoch {}", reward_epoch),
+                    }
+                })?
             }
-        })?;
+            TargetOrigin::User { reward_amount, .. } => *reward_amount,
+        };
 
-        // 5. Calculate claim incentive
+        // Calculate claim incentive
         let claim_incentive = (reward_amount * CLAIM_INCENTIVE_BPS) / BPS_DENOMINATOR;
         let remaining_amount = reward_amount.saturating_sub(claim_incentive);
 
-        // 6. Pay claim incentive to signer
+        // Pay claim incentive
         if claim_incentive > 0 {
             let incentive_coin = Object::new_coin(
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -835,10 +818,10 @@ impl ShardExecutor {
             store.create_object(incentive_coin);
         }
 
-        // 7. Determine recipient
+        // Determine recipient
         let recipient = self.determine_reward_recipient(&target_data, &state)?;
 
-        // 8. Distribute remaining reward
+        // Distribute
         match recipient {
             RewardRecipient::Address(addr) => {
                 let coin = Object::new_coin(
@@ -848,26 +831,17 @@ impl ShardExecutor {
                     tx_digest,
                 );
                 store.create_object(coin);
-
-                info!(
-                    "ClaimReward: Target {} reward {} transferred to {}",
-                    target_id, remaining_amount, addr
-                );
             }
             RewardRecipient::EmissionsPool => {
+                // Only happens for system targets with no winner
                 state.return_to_emissions_pool(remaining_amount);
-
-                info!(
-                    "ClaimReward: Target {} reward {} returned to emissions pool",
-                    target_id, remaining_amount
-                );
             }
         }
 
-        // 9. Delete target object
+        // Delete target object
         store.delete_input_object(&target_id);
 
-        // 10. Save updated system state
+        // Save updated system state
         self.save_system_state(store, state)?;
 
         Ok(())
@@ -882,24 +856,15 @@ impl ShardExecutor {
         state: &SystemState,
     ) -> ExecutionResult<RewardRecipient> {
         match &target.winning_shard {
-            None => {
-                // No winner
-                match target.creator {
-                    Some(creator) => Ok(RewardRecipient::Address(creator)),
-                    None => Ok(RewardRecipient::EmissionsPool),
-                }
+            Some(winner_info) if !state.is_encoder_tallied(&winner_info.winning_encoder) => {
+                // Valid winner - reward goes to data submitter
+                Ok(RewardRecipient::Address(winner_info.data_submitter))
             }
-            Some(winner_info) => {
-                // Check if winning encoder was tallied
-                if state.is_encoder_tallied(&winner_info.winning_encoder) {
-                    // Encoder was slashed, treat as no winner
-                    match target.creator {
-                        Some(creator) => Ok(RewardRecipient::Address(creator)),
-                        None => Ok(RewardRecipient::EmissionsPool),
-                    }
-                } else {
-                    // Valid winner - reward goes to data submitter
-                    Ok(RewardRecipient::Address(winner_info.data_submitter))
+            _ => {
+                // No winner or winner slashed - return based on origin
+                match &target.origin {
+                    TargetOrigin::User { creator, .. } => Ok(RewardRecipient::Address(*creator)),
+                    TargetOrigin::System => Ok(RewardRecipient::EmissionsPool),
                 }
             }
         }

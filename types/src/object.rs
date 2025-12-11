@@ -1,6 +1,7 @@
 use crate::base::HexAccountAddress;
 use crate::metadata::{DownloadMetadata, Metadata};
 use crate::shard_crypto::digest::Digest;
+use crate::system_state::shard::TargetOrigin;
 use crate::{
     base::{FullObjectID, FullObjectRef, SomaAddress, SOMA_ADDRESS_LENGTH},
     committee::EpochId,
@@ -9,7 +10,7 @@ use crate::{
     error::{SomaError, SomaResult},
     serde::Readable,
     system_state::{
-        shard::{Embedding, Shard, Target},
+        shard::{Shard, Target},
         staking::StakedSoma,
     },
 };
@@ -407,7 +408,7 @@ impl Object {
     /// Create a new Shard object
     pub fn new_shard(
         id: ObjectID,
-        download_metadata: DownloadMetadata,
+        input_download_metadata: DownloadMetadata,
         amount: u64,
         created_epoch: EpochId,
         data_submitter: SomaAddress,
@@ -416,12 +417,13 @@ impl Object {
         previous_transaction: TransactionDigest,
     ) -> Self {
         let shard = Shard {
-            download_metadata,
+            input_download_metadata,
             amount,
             created_epoch,
             data_submitter,
             target,
             winning_encoder: None,
+            embeddings_download_metadata: None,
             evaluation_scores: None,
             target_scores: None,
             summary_embedding: None,
@@ -450,14 +452,14 @@ impl Object {
     /// Create a new Target object
     pub fn new_target(
         id: ObjectID,
-        creator: Option<SomaAddress>,
+        origin: TargetOrigin,
         created_epoch: EpochId,
-        target_embedding: ObjectRef,
+        target_embedding: Vec<u8>,
         owner: Owner,
         previous_transaction: TransactionDigest,
     ) -> Self {
         let target = Target {
-            creator,
+            origin,
             created_epoch,
             target_embedding,
             winning_shard: None,
@@ -476,34 +478,6 @@ impl Object {
     /// Extract Target from an Object
     pub fn as_target(&self) -> Option<Target> {
         if *self.data.object_type() == ObjectType::Target {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
-
-    /// Create a new Embedding object
-    pub fn new_embedding(
-        id: ObjectID,
-        embedding: Vec<u8>,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Self {
-        let embedding = Embedding { embedding };
-
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Embedding,
-            Version::MIN,
-            bcs::to_bytes(&embedding).unwrap(),
-        );
-
-        Self::new(data, owner, previous_transaction)
-    }
-
-    /// Extract Embedding from an Object
-    pub fn as_embedding(&self) -> Option<Embedding> {
-        if *self.data.object_type() == ObjectType::Embedding {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
             None
@@ -671,8 +645,6 @@ pub enum ObjectType {
     Shard,
     /// Represents a target object
     Target,
-    /// Represents a embedding object (a sampled embedding or target)
-    Embedding,
 }
 
 impl fmt::Display for ObjectType {
@@ -683,7 +655,6 @@ impl fmt::Display for ObjectType {
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
             ObjectType::Shard => write!(f, "Shard"),
             ObjectType::Target => write!(f, "Target"),
-            ObjectType::Embedding => write!(f, "Embedding"),
         }
     }
 }
@@ -698,7 +669,7 @@ impl FromStr for ObjectType {
             "StakedSoma" => Ok(ObjectType::StakedSoma),
             "Shard" => Ok(ObjectType::Shard),
             "Target" => Ok(ObjectType::Target),
-            "Embedding" => Ok(ObjectType::Embedding),
+
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }
