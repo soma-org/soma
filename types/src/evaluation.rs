@@ -1,8 +1,4 @@
-use std::collections::HashMap;
-
 use crate::{
-    encoder_committee::EncoderCommittee,
-    error::{SharedError, SharedResult},
     metadata::{DownloadMetadata, ObjectPath},
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
@@ -15,8 +11,9 @@ pub trait EvaluationInputAPI {
     fn input_object_path(&self) -> &ObjectPath;
     fn embedding_download_metadata(&self) -> &DownloadMetadata;
     fn embedding_object_path(&self) -> &ObjectPath;
-    fn probe_set_data(&self) -> &HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)>;
-    fn probe_set(&self) -> &ProbeSet;
+    fn probe_encoder(&self) -> &EncoderPublicKey;
+    fn probe_download_metadata(&self) -> &DownloadMetadata;
+    fn probe_object_path(&self) -> &ObjectPath;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -31,8 +28,9 @@ pub struct EvaluationInputV1 {
     input_object_path: ObjectPath,
     embedding_download_metadata: DownloadMetadata,
     embedding_object_path: ObjectPath,
-    probe_set_data: HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)>,
-    probe_set: ProbeSet,
+    probe_encoder: EncoderPublicKey,
+    probe_download_metadata: DownloadMetadata,
+    probe_object_path: ObjectPath,
 }
 
 impl EvaluationInputV1 {
@@ -41,16 +39,18 @@ impl EvaluationInputV1 {
         input_object_path: ObjectPath,
         embedding_download_metadata: DownloadMetadata,
         embedding_object_path: ObjectPath,
-        probe_set_data: HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)>,
-        probe_set: ProbeSet,
+        probe_encoder: EncoderPublicKey,
+        probe_download_metadata: DownloadMetadata,
+        probe_object_path: ObjectPath,
     ) -> Self {
         Self {
             input_download_metadata,
             input_object_path,
             embedding_download_metadata,
             embedding_object_path,
-            probe_set_data,
-            probe_set,
+            probe_encoder,
+            probe_download_metadata,
+            probe_object_path,
         }
     }
 }
@@ -72,12 +72,14 @@ impl EvaluationInputAPI for EvaluationInputV1 {
         &self.embedding_object_path
     }
 
-    fn probe_set_data(&self) -> &HashMap<EncoderPublicKey, (DownloadMetadata, ObjectPath)> {
-        &self.probe_set_data
+    fn probe_encoder(&self) -> &EncoderPublicKey {
+        &self.probe_encoder
     }
-
-    fn probe_set(&self) -> &ProbeSet {
-        &self.probe_set
+    fn probe_download_metadata(&self) -> &DownloadMetadata {
+        &self.probe_download_metadata
+    }
+    fn probe_object_path(&self) -> &ObjectPath {
+        &self.probe_object_path
     }
 }
 
@@ -147,102 +149,3 @@ impl ScoreAPI for ScoreV1 {
 
 // TODO: change this to actually be accurate
 pub type EmbeddingDigest = Digest<Vec<u8>>;
-
-#[enum_dispatch]
-pub trait ProbeWeightAPI {
-    fn encoder(&self) -> &EncoderPublicKey;
-    fn weight(&self) -> u64;
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ProbeWeightV1 {
-    encoder: EncoderPublicKey,
-    weight: u64,
-}
-
-impl ProbeWeightV1 {
-    pub fn new(encoder: EncoderPublicKey, weight: u64) -> Self {
-        Self { encoder, weight }
-    }
-}
-
-impl ProbeWeightAPI for ProbeWeightV1 {
-    fn encoder(&self) -> &EncoderPublicKey {
-        &self.encoder
-    }
-
-    fn weight(&self) -> u64 {
-        self.weight
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[enum_dispatch(ProbeWeightAPI)]
-pub enum ProbeWeight {
-    V1(ProbeWeightV1),
-}
-
-#[enum_dispatch]
-pub trait ProbeSetAPI {
-    fn probe_weights(&self) -> Vec<ProbeWeight>;
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[enum_dispatch(ProbeSetAPI)]
-pub enum ProbeSet {
-    V1(ProbeSetV1),
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ProbeSetV1 {
-    probe_weights: Vec<ProbeWeightV1>,
-}
-impl ProbeSetV1 {
-    pub fn new(probe_weights: Vec<ProbeWeightV1>) -> Self {
-        Self { probe_weights }
-    }
-}
-
-impl ProbeSetAPI for ProbeSetV1 {
-    fn probe_weights(&self) -> Vec<ProbeWeight> {
-        self.probe_weights
-            .iter()
-            .map(|pw| ProbeWeight::V1(pw.clone()))
-            .collect()
-    }
-}
-
-pub(crate) fn verify_probe_set(
-    probe_set: &ProbeSet,
-    encoder_committee: &EncoderCommittee,
-) -> SharedResult<()> {
-    // TODO: adjust the probe set verification to have a max number of probes as well
-    // TODO: fix the msim tests to actually construct valid probe sets
-    if !cfg!(msim) {
-        let mut voting_power = 0;
-        for pw in probe_set.probe_weights() {
-            match encoder_committee.encoder_by_key(pw.encoder()) {
-                Some(encoder) => {
-                    voting_power += encoder.voting_power;
-                    // if encoder.probe_checksum != pw.metadata().checksum() {
-                    //     return Err(SharedError::FailedTypeVerification(
-                    //         "probe weight checksum does not match committee".to_string(),
-                    //     ));
-                    // }
-                }
-                None => {
-                    return Err(SharedError::FailedTypeVerification(
-                        "probe weight encoder not found in committee".to_string(),
-                    ))
-                }
-            }
-        }
-        // TODO: CHANGE THIS TO BE THE CORRECT MINIMUM VOTING POWER
-        if voting_power < 1 {
-            return Err(SharedError::FailedTypeVerification(
-                "probe set did not meet minimum voting power".to_string(),
-            ));
-        }
-    }
-    Ok(())
-}

@@ -13,12 +13,9 @@ use objects::{
 use tokio_util::sync::CancellationToken;
 
 use types::{
-    actors::{ActorHandle, ActorMessage, Processor},
+    actors::{ActorMessage, Processor},
     error::{ShardError, ShardResult},
-    evaluation::{
-        EvaluationInput, EvaluationInputAPI, EvaluationOutput, EvaluationOutputV1, ProbeSetAPI,
-        ProbeWeightAPI,
-    },
+    evaluation::{EvaluationInput, EvaluationInputAPI, EvaluationOutput, EvaluationOutputV1},
     metadata::{DownloadMetadata, ObjectPath},
 };
 
@@ -175,24 +172,17 @@ impl<
             )
             .await?;
 
-            for (_encoder, (download_metadata, object_path)) in input.probe_set_data() {
-                self.load_data(object_path, download_metadata, msg.cancellation.clone())
-                    .await?;
-            }
-
-            let mut probes = Vec::new();
-            for pw in input.probe_set().probe_weights() {
-                if let Some((_, object_path)) = input.probe_set_data().get(pw.encoder()) {
-                    probes.push((pw.weight(), object_path.clone()));
-                } else {
-                    return Err(ShardError::MissingData);
-                }
-            }
+            self.load_data(
+                input.probe_object_path(),
+                input.probe_download_metadata(),
+                msg.cancellation.clone(),
+            )
+            .await?;
 
             let evaluator_input = EvaluatorInput::V1(EvaluatorInputV1::new(
                 input.input_object_path().clone(),
                 input.embedding_object_path().clone(),
-                probes,
+                input.probe_object_path().clone(),
             ));
 
             let evaluator_output = self
@@ -229,21 +219,19 @@ impl<
                 .await
                 .map_err(ShardError::ObjectError)?;
 
-            for (_encoder, (download_metadata, object_path)) in input.probe_set_data() {
-                let reader = Arc::new(ObjectStoreReader::new(
-                    self.ephemeral_store.object_store().clone(),
-                    object_path.clone(),
-                ));
-                self.downloader
-                    .download(
-                        reader,
-                        self.persistent_store.object_store().clone(),
-                        object_path.clone(),
-                        download_metadata.metadata().clone(),
-                    )
-                    .await
-                    .map_err(ShardError::ObjectError)?;
-            }
+            let reader = Arc::new(ObjectStoreReader::new(
+                self.ephemeral_store.object_store().clone(),
+                input.probe_object_path().clone(),
+            ));
+            self.downloader
+                .download(
+                    reader,
+                    self.persistent_store.object_store().clone(),
+                    input.probe_object_path().clone(),
+                    input.probe_download_metadata().metadata().clone(),
+                )
+                .await
+                .map_err(ShardError::ObjectError)?;
 
             Ok(EvaluationOutput::V1(EvaluationOutputV1::new(
                 evaluator_output.score().clone(),

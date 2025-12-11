@@ -9,7 +9,7 @@ use objects::{
 };
 use tokio_util::sync::CancellationToken;
 use types::{
-    actors::{ActorHandle, ActorMessage, Processor},
+    actors::{ActorMessage, Processor},
     error::{ShardError, ShardResult},
     metadata::{DownloadMetadata, Metadata, ObjectPath},
 };
@@ -180,15 +180,14 @@ impl<
         let result: ShardResult<Self::Output> = async {
             let input = msg.input;
             self.load_data(
-                input.object_path(),
-                input.download_metadata(),
+                input.input_object_path(),
+                input.input_download_metadata(),
                 msg.cancellation.clone(),
             )
             .await?;
             let module_input = ModuleInput::V1(ModuleInputV1::new(
                 input.epoch(),
-                input.download_metadata().metadata().clone(),
-                input.object_path().clone(),
+                input.input_object_path().clone(),
             ));
 
             let module_output = self
@@ -197,8 +196,11 @@ impl<
                 .await
                 .map_err(ShardError::InferenceError)?;
 
-            self.store_to_persistent(input.object_path(), input.download_metadata().metadata())
-                .await?;
+            self.store_to_persistent(
+                input.input_object_path(),
+                input.input_download_metadata().metadata(),
+            )
+            .await?;
 
             let download_metadata = self
                 .persistent_store
@@ -214,7 +216,8 @@ impl<
 
             Ok(InferenceOutput::V1(InferenceOutputV1::new(
                 download_metadata,
-                module_output.probe_set().clone(),
+                module_output.object_path().clone(),
+                module_output.probe_encoder().clone(),
             )))
         }
         .await;

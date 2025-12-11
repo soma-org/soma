@@ -242,7 +242,7 @@ impl EncoderNode {
             ObjectHttpClient::new(network_keypair.clone(), Arc::new(HttpParameters::default()))
                 .unwrap();
 
-        let module_client = Arc::new(MockModule::new());
+        let module_client = Arc::new(MockModule::new(encoder_keypair.public().clone()));
 
         let inference_core_processor = InferenceCoreProcessor::new(
             persistent_store.clone(),

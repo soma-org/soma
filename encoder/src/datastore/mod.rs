@@ -85,23 +85,15 @@ pub trait Store: Send + Sync + 'static {
         shard: &Shard,
     ) -> ShardResult<Vec<(EncoderPublicKey, Digest<Submission>)>>;
 
-    fn add_submission(
-        &self,
-        shard: &Shard,
-        submission: Submission,
-        embedding_download_metadata: DownloadMetadata,
-    ) -> ShardResult<()>;
+    fn add_submission(&self, shard: &Shard, submission: Submission) -> ShardResult<()>;
 
     fn get_submission(
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(Submission, Instant, DownloadMetadata)>;
+    ) -> ShardResult<(Submission, Instant)>;
 
-    fn get_all_submissions(
-        &self,
-        shard: &Shard,
-    ) -> ShardResult<Vec<(Submission, Instant, DownloadMetadata)>>;
+    fn get_all_submissions(&self, shard: &Shard) -> ShardResult<Vec<(Submission, Instant)>>;
 
     fn add_report_vote(&self, shard: &Shard, report_vote: &Verified<ReportVote>)
         -> ShardResult<()>;

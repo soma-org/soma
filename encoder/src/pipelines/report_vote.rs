@@ -8,7 +8,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use tokio::sync::RwLock;
-use sdk::wallet_context::{self, WalletContext};
+use sdk::wallet_context::{WalletContext};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},

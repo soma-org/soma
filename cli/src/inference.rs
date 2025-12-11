@@ -19,7 +19,6 @@ use types::{
     checksum::Checksum,
     committee::get_available_local_address,
     crypto::NetworkKeyPair,
-    evaluation::ProbeSet,
     metadata::{Metadata, MetadataV1, ObjectPath},
     parameters::HttpParameters,
     shard::Shard,
@@ -43,7 +42,6 @@ pub enum InferenceCommand {
 #[serde(rename_all = "camelCase")]
 pub struct InferenceOutput {
     metadata: Metadata,
-    probe_set: ProbeSet,
 }
 
 #[derive(Serialize)]

@@ -89,7 +89,6 @@ pub struct ShardAuthToken {
     /// VDF output computed on checkpoint_digest
     pub checkpoint_entropy: CheckpointEntropy,
     pub checkpoint_entropy_proof: CheckpointEntropyProof,
-    pub metadata: Metadata,
     pub shard_input_ref: ObjectRef,
 }
 
@@ -98,14 +97,12 @@ impl ShardAuthToken {
         finality_proof: FinalityProof,
         checkpoint_entropy: CheckpointEntropy,
         checkpoint_entropy_proof: CheckpointEntropyProof,
-        metadata: Metadata,
         shard_input_ref: ObjectRef,
     ) -> Self {
         Self {
             finality_proof,
             checkpoint_entropy,
             checkpoint_entropy_proof,
-            metadata,
             shard_input_ref,
         }
     }
@@ -120,10 +117,6 @@ impl ShardAuthToken {
 
     pub fn checkpoint_entropy_proof(&self) -> CheckpointEntropyProof {
         self.checkpoint_entropy_proof.clone()
-    }
-
-    pub fn metadata(&self) -> Metadata {
-        self.metadata.clone()
     }
 
     pub fn shard_input_ref(&self) -> ObjectRef {
@@ -148,21 +141,28 @@ pub enum Input {
 #[enum_dispatch]
 pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
-    fn download_metadata(&self) -> &DownloadMetadata;
+    fn input_download_metadata(&self) -> &DownloadMetadata;
+    fn target_embedding(&self) -> &Option<Embedding>;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InputV1 {
     auth_token: ShardAuthToken,
-    download_metadata: DownloadMetadata,
-    // TODO: needs full optional target embedding
+    // TODO: replace with the actual on-chain objects
+    input_download_metadata: DownloadMetadata,
+    target_embedding: Option<Embedding>,
 }
 
 impl InputV1 {
-    pub fn new(auth_token: ShardAuthToken, download_metadata: DownloadMetadata) -> Self {
+    pub fn new(
+        auth_token: ShardAuthToken,
+        input_download_metadata: DownloadMetadata,
+        target_embedding: Option<Embedding>,
+    ) -> Self {
         Self {
             auth_token,
-            download_metadata,
+            input_download_metadata,
+            target_embedding,
         }
     }
 }
@@ -171,22 +171,15 @@ impl InputAPI for InputV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
-    fn download_metadata(&self) -> &DownloadMetadata {
-        &self.download_metadata
+    fn input_download_metadata(&self) -> &DownloadMetadata {
+        &self.input_download_metadata
+    }
+    fn target_embedding(&self) -> &Option<Embedding> {
+        &self.target_embedding
     }
 }
 
 pub fn verify_input(input: &Input, shard: &Shard, peer: &NetworkPublicKey) -> SharedResult<()> {
-    match input.download_metadata() {
-        DownloadMetadata::Mtls(download_metadata) => {
-            if download_metadata.peer() != peer {
-                return Err(SharedError::FailedTypeVerification(
-                    "sending peer must match tls key in input".to_string(),
-                ));
-            }
-        }
-        _ => {}
-    }
     Ok(())
 }
 

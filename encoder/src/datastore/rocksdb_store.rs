@@ -77,10 +77,7 @@ pub struct RocksDBStore {
         DBMap<(Epoch, Digest<Shard>, EncoderPublicKey), TimestampedData<Digest<Submission>>>,
 
     /// Stores actual submissions with metadata
-    submissions: DBMap<
-        (Epoch, Digest<Shard>, Digest<Submission>),
-        TimestampedData<(Bytes, DownloadMetadata)>,
-    >,
+    submissions: DBMap<(Epoch, Digest<Shard>, Digest<Submission>), TimestampedData<Bytes>>,
 
     /// Stores commit votes
     commit_votes: DBMap<(Epoch, Digest<Shard>, EncoderPublicKey), Bytes>,
@@ -355,12 +352,7 @@ impl Store for RocksDBStore {
         Ok(results)
     }
 
-    fn add_submission(
-        &self,
-        shard: &Shard,
-        submission: Submission,
-        embedding_download_metadata: DownloadMetadata,
-    ) -> ShardResult<()> {
+    fn add_submission(&self, shard: &Shard, submission: Submission) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = submission.shard_digest();
         let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
@@ -372,8 +364,7 @@ impl Store for RocksDBStore {
 
         let serialized = bcs::to_bytes(&submission)
             .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
-        let timestamped =
-            TimestampedData::new((Bytes::from(serialized), embedding_download_metadata));
+        let timestamped = TimestampedData::new(Bytes::from(serialized));
         self.submissions.insert(&key, &timestamped)?;
         Ok(())
     }
@@ -382,7 +373,7 @@ impl Store for RocksDBStore {
         &self,
         shard: &Shard,
         submission_digest: Digest<Submission>,
-    ) -> ShardResult<(Submission, Instant, DownloadMetadata)> {
+    ) -> ShardResult<(Submission, Instant)> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest, submission_digest);
@@ -390,17 +381,14 @@ impl Store for RocksDBStore {
         self.submissions
             .get(&key)?
             .map(|timestamped| {
-                let submission: Submission = bcs::from_bytes(&timestamped.data.0)
+                let submission: Submission = bcs::from_bytes(&timestamped.data)
                     .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
-                Ok((submission, timestamped.instant(), timestamped.data.1))
+                Ok((submission, timestamped.instant()))
             })
             .ok_or_else(|| ShardError::NotFound("submission".to_string()))?
     }
 
-    fn get_all_submissions(
-        &self,
-        shard: &Shard,
-    ) -> ShardResult<Vec<(Submission, Instant, DownloadMetadata)>> {
+    fn get_all_submissions(&self, shard: &Shard) -> ShardResult<Vec<(Submission, Instant)>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
 
@@ -409,9 +397,9 @@ impl Store for RocksDBStore {
         for item in self.submissions.safe_iter() {
             let ((e, sd, _), timestamped) = item?;
             if e == epoch && sd == shard_digest {
-                let submission: Submission = bcs::from_bytes(&timestamped.data.0)
+                let submission: Submission = bcs::from_bytes(&timestamped.data)
                     .map_err(|e| ShardError::SerializationFailure(e.to_string()))?;
-                results.push((submission, timestamped.instant(), timestamped.data.1));
+                results.push((submission, timestamped.instant()));
             }
             if e > epoch || (e == epoch && sd > shard_digest) {
                 break;

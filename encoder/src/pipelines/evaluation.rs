@@ -12,15 +12,14 @@ use crate::{
 use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
 use intelligence::evaluation::messaging::EvaluationClient;
-use object_store::ObjectStore;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     committee::Epoch,
     error::{ShardError, ShardResult},
-    evaluation::{EvaluationInput, EvaluationInputV1, ProbeSetAPI, ProbeWeightAPI, ScoreAPI},
-    metadata::{DownloadMetadata, Metadata, MetadataAPI, ObjectPath},
+    evaluation::{EvaluationInput, EvaluationInputV1, ScoreAPI},
+    metadata::{MetadataAPI, ObjectPath},
     report::{Report, ReportV1},
     shard::Shard,
     shard_crypto::{
@@ -87,24 +86,24 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for Evaluat
                     .map(|(encoder, digest)| (encoder, digest))
                     .collect();
 
-            let mut valid_submissions: Vec<(Submission, DownloadMetadata)> = all_submissions
+            let mut valid_submissions: Vec<Submission> = all_submissions
                 .into_iter()
-                .filter_map(|(submission, _instant, embedding_download_metadata)| {
+                .filter_map(|(submission, _instant)| {
                     accepted_lookup
                         .get(submission.encoder())
                         .filter(|accepted_digest| {
                             **accepted_digest == Digest::new(&submission).unwrap()
                         })
-                        .map(|_| (submission, embedding_download_metadata))
+                        .map(|_| (submission))
                 })
                 .collect();
 
             // TODO: ANY ACCEPTED COMMITS THAT DO NOT REVEAL SHOULD BE TALLIED
 
             valid_submissions.sort_by(|a, b| {
-                a.0.score()
+                a.score()
                     .value()
-                    .partial_cmp(&b.0.score().value())
+                    .partial_cmp(&b.score().value())
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
@@ -170,29 +169,18 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> EvaluationProcessor<C
     async fn process_submissions(
         &self,
         epoch: Epoch,
-        shard_digest: Digest<Shard>,
-        input_download_metadata: DownloadMetadata,
-        submissions: Vec<(Submission, DownloadMetadata)>,
-        data_metadata: Metadata,
+        submissions: Vec<Submission>,
         context: &Context,
         cancellation: CancellationToken,
     ) -> ShardResult<Submission> {
-        for (submission, embedding_download_metadata) in submissions {
+        for submission in submissions {
             let result: ShardResult<()> = {
                 if submission.encoder().inner() == self.context.own_encoder_key().inner() {
                     // skip early if your own representations
                     return Ok(submission);
                 }
-                let mut probe_set_download_metadata = HashMap::new();
-                for pw in submission.probe_set().probe_weights() {
-                    let probe_download_metadata = self.context.probe(epoch, pw.encoder())?;
-                    let probe_object_path =
-                        ObjectPath::Probes(epoch, probe_download_metadata.metadata().checksum());
-                    probe_set_download_metadata.insert(
-                        pw.encoder().clone(),
-                        (probe_download_metadata, probe_object_path),
-                    );
-                }
+                let probe_download_metadata =
+                    self.context.probe(epoch, submission.probe_encoder())?;
 
                 let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
                     input_download_metadata.clone(),
@@ -207,8 +195,9 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> EvaluationProcessor<C
                         shard_digest,
                         embedding_download_metadata.metadata().checksum(),
                     ),
-                    probe_set_download_metadata,
-                    submission.probe_set().clone(),
+                    submission.probe_encoder().clone(),
+                    probe_download_metadata.clone(),
+                    ObjectPath::Probes(epoch, probe_download_metadata.metadata().checksum()),
                 ));
 
                 let evaluation_timeout = Duration::from_secs(1);

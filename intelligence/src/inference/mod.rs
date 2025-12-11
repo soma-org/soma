@@ -1,8 +1,8 @@
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use types::committee::Epoch;
-use types::evaluation::{EmbeddingDigest, ProbeSet};
 use types::metadata::{DownloadMetadata, ObjectPath};
+use types::shard_crypto::keys::EncoderPublicKey;
 pub mod core_processor;
 pub mod messaging;
 pub mod module;
@@ -10,23 +10,27 @@ pub mod module;
 #[enum_dispatch]
 pub(crate) trait InferenceInputAPI {
     fn epoch(&self) -> Epoch;
-    fn object_path(&self) -> &ObjectPath;
-    fn download_metadata(&self) -> &DownloadMetadata;
+    fn input_download_metadata(&self) -> &DownloadMetadata;
+    fn input_object_path(&self) -> &ObjectPath;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct InferenceInputV1 {
     epoch: Epoch,
-    object_path: ObjectPath,
-    download_metadata: DownloadMetadata,
+    input_download_metadata: DownloadMetadata,
+    input_object_path: ObjectPath,
 }
 
 impl InferenceInputV1 {
-    pub fn new(epoch: Epoch, object_path: ObjectPath, download_metadata: DownloadMetadata) -> Self {
+    pub fn new(
+        epoch: Epoch,
+        input_download_metadata: DownloadMetadata,
+        input_object_path: ObjectPath,
+    ) -> Self {
         Self {
             epoch,
-            object_path,
-            download_metadata,
+            input_download_metadata,
+            input_object_path,
         }
     }
 }
@@ -35,11 +39,11 @@ impl InferenceInputAPI for InferenceInputV1 {
     fn epoch(&self) -> Epoch {
         self.epoch
     }
-    fn object_path(&self) -> &ObjectPath {
-        &self.object_path
+    fn input_download_metadata(&self) -> &DownloadMetadata {
+        &self.input_download_metadata
     }
-    fn download_metadata(&self) -> &DownloadMetadata {
-        &self.download_metadata
+    fn input_object_path(&self) -> &ObjectPath {
+        &self.input_object_path
     }
 }
 
@@ -51,30 +55,40 @@ pub enum InferenceInput {
 
 #[enum_dispatch]
 pub trait InferenceOutputAPI {
-    fn download_metadata(&self) -> &DownloadMetadata;
-    fn probe_set(&self) -> &ProbeSet;
+    fn output_download_metadata(&self) -> &DownloadMetadata;
+    fn output_object_path(&self) -> &ObjectPath;
+    fn probe_encoder(&self) -> &EncoderPublicKey;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InferenceOutputV1 {
-    download_metadata: DownloadMetadata,
-    probe_set: ProbeSet,
+    output_download_metadata: DownloadMetadata,
+    output_object_path: ObjectPath,
+    probe_encoder: EncoderPublicKey,
 }
 
 impl InferenceOutputV1 {
-    pub fn new(download_metadata: DownloadMetadata, probe_set: ProbeSet) -> Self {
+    pub fn new(
+        output_download_metadata: DownloadMetadata,
+        output_object_path: ObjectPath,
+        probe_encoder: EncoderPublicKey,
+    ) -> Self {
         Self {
-            download_metadata,
-            probe_set,
+            output_download_metadata,
+            output_object_path,
+            probe_encoder,
         }
     }
 }
 impl InferenceOutputAPI for InferenceOutputV1 {
-    fn download_metadata(&self) -> &DownloadMetadata {
-        &self.download_metadata
+    fn output_download_metadata(&self) -> &DownloadMetadata {
+        &self.output_download_metadata
     }
-    fn probe_set(&self) -> &ProbeSet {
-        &self.probe_set
+    fn output_object_path(&self) -> &ObjectPath {
+        &self.output_object_path
+    }
+    fn probe_encoder(&self) -> &EncoderPublicKey {
+        &self.probe_encoder
     }
 }
 

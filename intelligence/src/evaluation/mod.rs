@@ -16,26 +16,26 @@ pub mod messaging;
 pub(crate) trait EvaluatorInputAPI {
     fn input_object_path(&self) -> &ObjectPath;
     fn embedding_object_path(&self) -> &ObjectPath;
-    fn probes(&self) -> &Vec<(u64, ObjectPath)>;
+    fn probe_object_path(&self) -> &ObjectPath;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct EvaluatorInputV1 {
     input_object_path: ObjectPath,
     embedding_object_path: ObjectPath,
-    probes: Vec<(u64, ObjectPath)>,
+    probe_object_path: ObjectPath,
 }
 
 impl EvaluatorInputV1 {
     pub fn new(
         input_object_path: ObjectPath,
         embedding_object_path: ObjectPath,
-        probes: Vec<(u64, ObjectPath)>,
+        probe_object_path: ObjectPath,
     ) -> Self {
         Self {
             input_object_path,
             embedding_object_path,
-            probes,
+            probe_object_path,
         }
     }
 }
@@ -47,8 +47,8 @@ impl EvaluatorInputAPI for EvaluatorInputV1 {
     fn embedding_object_path(&self) -> &ObjectPath {
         &self.embedding_object_path
     }
-    fn probes(&self) -> &Vec<(u64, ObjectPath)> {
-        &self.probes
+    fn probe_object_path(&self) -> &ObjectPath {
+        &self.probe_object_path
     }
 }
 

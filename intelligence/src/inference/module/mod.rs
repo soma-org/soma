@@ -6,29 +6,27 @@ use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
 use types::committee::Epoch;
 use types::error::{InferenceError, InferenceResult};
-use types::evaluation::{EmbeddingDigest, ProbeSet, ProbeSetV1};
-use types::metadata::{Metadata, ObjectPath};
+use types::evaluation::EmbeddingDigest;
+use types::metadata::{Metadata, MetadataV1, ObjectPath};
+use types::shard_crypto::keys::EncoderPublicKey;
 
 #[enum_dispatch]
 pub(crate) trait ModuleInputAPI {
     fn epoch(&self) -> Epoch;
-    fn metadata(&self) -> &Metadata;
-    fn object_path(&self) -> &ObjectPath;
+    fn input_object_path(&self) -> &ObjectPath;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ModuleInputV1 {
     epoch: Epoch,
-    metadata: Metadata,
-    object_path: ObjectPath,
+    input_object_path: ObjectPath,
 }
 
 impl ModuleInputV1 {
-    pub fn new(epoch: Epoch, metadata: Metadata, object_path: ObjectPath) -> Self {
+    pub fn new(epoch: Epoch, input_object_path: ObjectPath) -> Self {
         Self {
             epoch,
-            metadata,
-            object_path,
+            input_object_path,
         }
     }
 }
@@ -37,11 +35,8 @@ impl ModuleInputAPI for ModuleInputV1 {
     fn epoch(&self) -> Epoch {
         self.epoch
     }
-    fn metadata(&self) -> &Metadata {
-        &self.metadata
-    }
-    fn object_path(&self) -> &ObjectPath {
-        &self.object_path
+    fn input_object_path(&self) -> &ObjectPath {
+        &self.input_object_path
     }
 }
 
@@ -55,22 +50,26 @@ pub enum ModuleInput {
 pub trait ModuleOutputAPI {
     fn object_path(&self) -> &ObjectPath;
     fn metadata(&self) -> &Metadata;
-    fn probe_set(&self) -> &ProbeSet;
+    fn probe_encoder(&self) -> &EncoderPublicKey;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ModuleOutputV1 {
     object_path: ObjectPath,
     metadata: Metadata,
-    probe_set: ProbeSet,
+    probe_encoder: EncoderPublicKey,
 }
 
 impl ModuleOutputV1 {
-    pub fn new(object_path: ObjectPath, metadata: Metadata, probe_set: ProbeSet) -> Self {
+    pub fn new(
+        object_path: ObjectPath,
+        metadata: Metadata,
+        probe_encoder: EncoderPublicKey,
+    ) -> Self {
         Self {
             object_path,
             metadata,
-            probe_set,
+            probe_encoder,
         }
     }
 }
@@ -81,8 +80,8 @@ impl ModuleOutputAPI for ModuleOutputV1 {
     fn metadata(&self) -> &Metadata {
         &self.metadata
     }
-    fn probe_set(&self) -> &ProbeSet {
-        &self.probe_set
+    fn probe_encoder(&self) -> &EncoderPublicKey {
+        &self.probe_encoder
     }
 }
 
@@ -101,11 +100,13 @@ pub trait ModuleClient: Send + Sync + Sized + 'static {
     ) -> InferenceResult<ModuleOutput>;
 }
 
-pub struct MockModule {}
+pub struct MockModule {
+    probe_encoder: EncoderPublicKey,
+}
 
 impl MockModule {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(probe_encoder: EncoderPublicKey) -> Self {
+        Self { probe_encoder }
     }
 }
 
@@ -116,16 +117,22 @@ impl ModuleClient for MockModule {
         input: ModuleInput,
         storage: Arc<dyn ObjectStore>,
     ) -> InferenceResult<ModuleOutput> {
-        if let ObjectPath::Inputs(epoch, shard_digest, checksum) = input.object_path().clone() {
+        if let ObjectPath::Inputs(epoch, shard_digest, checksum) = input.input_object_path().clone()
+        {
             let object_path = ObjectPath::Embeddings(epoch, shard_digest, checksum);
             storage
-                .copy(&input.object_path().path(), &object_path.path())
+                .copy(&input.input_object_path().path(), &object_path.path())
                 .await
                 .map_err(InferenceError::ObjectStoreError)?;
+            let head = storage
+                .head(&object_path.path())
+                .await
+                .map_err(InferenceError::ObjectStoreError)?;
+            let metadata = Metadata::V1(MetadataV1::new(object_path.checksum(), head.size));
             Ok(ModuleOutput::V1(ModuleOutputV1::new(
                 object_path,
-                input.metadata().clone(),
-                ProbeSet::V1(ProbeSetV1::new(vec![])),
+                metadata,
+                self.probe_encoder.clone(),
             )))
         } else {
             Err(InferenceError::ValidationError(

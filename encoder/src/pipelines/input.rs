@@ -14,34 +14,18 @@ use intelligence::{
 
 use fastcrypto::traits::KeyPair;
 use intelligence::inference::{InferenceInput, InferenceInputV1, InferenceOutputAPI};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 use tracing::error;
+use types::shard::{Input, InputAPI};
 use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     error::{ShardError, ShardResult},
-    evaluation::{
-        EvaluationInput, EvaluationInputV1, EvaluationOutputAPI, ProbeSetAPI, ProbeWeightAPI,
-    },
-    metadata::{
-        DownloadMetadata, MetadataAPI, MtlsDownloadMetadata, MtlsDownloadMetadataV1, ObjectPath,
-    },
+    evaluation::{EvaluationInput, EvaluationInputV1, EvaluationOutputAPI},
+    metadata::{MetadataAPI, ObjectPath},
     shard::Shard,
-    shard_crypto::{
-        digest::Digest,
-        keys::{EncoderKeyPair, EncoderPublicKey},
-        verified::Verified,
-    },
+    shard_crypto::{digest::Digest, keys::EncoderKeyPair, verified::Verified},
     submission::{Submission, SubmissionV1},
 };
-use types::{
-    multiaddr::Multiaddr,
-    shard::{Input, InputAPI},
-};
-use url::Url;
 
 use super::commit::CommitProcessor;
 
@@ -116,8 +100,8 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
 
             let inference_input = InferenceInput::V1(InferenceInputV1::new(
                 epoch,
-                input_object_path.clone(),
                 input_download_metadata.clone(),
+                input_object_path.clone(),
             ));
 
             // TODO: make this adjusted with size and coefficient configured by Parameters
@@ -129,28 +113,28 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
                 .await
                 .map_err(ShardError::InferenceError)?;
 
-            let mut probe_set_download_metadata = HashMap::new();
-            for pw in inference_output.probe_set().probe_weights() {
-                let probe_download_metadata = self.context.probe(epoch, pw.encoder())?;
-                let probe_object_path =
-                    ObjectPath::Probes(epoch, probe_download_metadata.metadata().checksum());
-                probe_set_download_metadata.insert(
-                    pw.encoder().clone(),
-                    (probe_download_metadata, probe_object_path),
-                );
-            }
+            let probe_download_metadata = self
+                .context
+                .probe(epoch, inference_output.probe_encoder())?;
+
+            let probe_object_path =
+                ObjectPath::Probes(epoch, probe_download_metadata.metadata().checksum());
 
             let evaluation_input = EvaluationInput::V1(EvaluationInputV1::new(
                 input_download_metadata.clone(),
                 input_object_path,
-                inference_output.download_metadata().clone(),
+                inference_output.output_download_metadata().clone(),
                 ObjectPath::Embeddings(
                     epoch,
                     shard_digest,
-                    inference_output.download_metadata().metadata().checksum(),
+                    inference_output
+                        .output_download_metadata()
+                        .metadata()
+                        .checksum(),
                 ),
-                probe_set_download_metadata,
-                inference_output.probe_set().clone(),
+                inference_output.probe_encoder().clone(),
+                probe_download_metadata,
+                probe_object_path,
             ));
 
             // TODO: make this based on size
@@ -165,8 +149,11 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
             let submission = Submission::V1(SubmissionV1::new(
                 self.encoder_keypair.public(),
                 shard_digest,
-                inference_output.download_metadata().metadata().clone(),
-                inference_output.probe_set().clone(),
+                inference_output
+                    .output_download_metadata()
+                    .metadata()
+                    .clone(),
+                inference_output.probe_encoder().clone(),
                 evaluation_output.score(),
                 evaluation_output.summary_digest().clone(),
             ));
@@ -175,7 +162,7 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
             let _ = self.store.add_submission(
                 &shard,
                 submission,
-                inference_output.download_metadata().clone(),
+                inference_output.output_download_metadata().clone(),
             )?;
 
             let commit = Commit::V1(CommitV1::new(

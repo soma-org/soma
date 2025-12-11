@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use types::encoder_committee::EncoderCommittee;
-use types::metadata::DownloadMetadata;
 use types::submission::{verify_submission, Submission, SubmissionAPI};
 use types::{
     error::{SharedError, SharedResult},
@@ -27,7 +24,6 @@ pub(crate) trait RevealAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn author(&self) -> &EncoderPublicKey;
     fn submission(&self) -> &Submission;
-    fn embedding_download_metadata(&self) -> &DownloadMetadata;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -35,7 +31,6 @@ pub(crate) struct RevealV1 {
     auth_token: ShardAuthToken,
     author: EncoderPublicKey,
     submission: Submission,
-    embedding_download_metadata: DownloadMetadata,
 }
 
 impl RevealV1 {
@@ -43,13 +38,11 @@ impl RevealV1 {
         auth_token: ShardAuthToken,
         author: EncoderPublicKey,
         submission: Submission,
-        embedding_download_metadata: DownloadMetadata,
     ) -> Self {
         Self {
             auth_token,
             author,
             submission,
-            embedding_download_metadata,
         }
     }
 }
@@ -63,9 +56,6 @@ impl RevealAPI for RevealV1 {
     }
     fn submission(&self) -> &Submission {
         &self.submission
-    }
-    fn embedding_download_metadata(&self) -> &DownloadMetadata {
-        &self.embedding_download_metadata
     }
 }
 
