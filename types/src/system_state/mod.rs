@@ -84,6 +84,8 @@ pub struct SystemParameters {
     pub epoch_duration_ms: u64,
 
     pub vdf_iterations: u64,
+
+    pub target_selection_rate_bps: u64,
 }
 
 impl Default for SystemParameters {
@@ -91,11 +93,12 @@ impl Default for SystemParameters {
     ///
     /// Note: These default values are primarily for testing and development.
     /// Production deployments should configure these parameters explicitly.
-    // TODO: make this configurable
+    // TODO: don't use Default, instead fill in SystemParameters from NodeConfig in Genesis
     fn default() -> Self {
         Self {
-            epoch_duration_ms: 1000 * 60, // TODO: 1000 * 60 * 60 * 24, // 1 day
-            vdf_iterations: 1,            // TODO: Tweak based on block times
+            epoch_duration_ms: 1000 * 60,    // TODO: 1000 * 60 * 60 * 24, // 1 day
+            vdf_iterations: 1,               // TODO: Tweak based on block times
+            target_selection_rate_bps: 2500, // 25% chance of hitting target
         }
     }
 }
@@ -885,6 +888,181 @@ impl SystemState {
         // For simplicity in this implementation, we're just returning validator rewards
         // In a full implementation, you'd want to return both and handle them appropriately
         Ok(validator_rewards)
+    }
+
+    /// Get an encoder's SomaAddress from their public key
+    /// Searches both active and inactive encoders
+    pub fn get_encoder_address(&self, encoder_pubkey: &EncoderPublicKey) -> Option<SomaAddress> {
+        // Search active encoders
+        for encoder in &self.encoders.active_encoders {
+            if &encoder.metadata.encoder_pubkey == encoder_pubkey {
+                return Some(encoder.metadata.soma_address);
+            }
+        }
+
+        // Search pending encoders
+        for encoder in &self.encoders.pending_active_encoders {
+            if &encoder.metadata.encoder_pubkey == encoder_pubkey {
+                return Some(encoder.metadata.soma_address);
+            }
+        }
+
+        // Search inactive encoders (they may have won before being removed)
+        for encoder in self.encoders.inactive_encoders.values() {
+            if &encoder.metadata.encoder_pubkey == encoder_pubkey {
+                return Some(encoder.metadata.soma_address);
+            }
+        }
+
+        None
+    }
+
+    /// Return funds to the emissions pool (used when system targets have no valid winner)
+    pub fn return_to_emissions_pool(&mut self, amount: u64) {
+        self.emission_pool.balance += amount;
+    }
+
+    /// Increment the target count for a given epoch
+    pub fn increment_target_count(&mut self, epoch: EpochId) {
+        *self.targets_created_per_epoch.entry(epoch).or_insert(0) += 1;
+    }
+
+    /// Get the epoch seed for deterministic randomness
+    pub fn get_epoch_seed(&self, epoch: EpochId) -> Option<Vec<u8>> {
+        self.epoch_seeds.get(&epoch).cloned()
+    }
+
+    /// Set the epoch seed (called during epoch transitions)
+    pub fn set_epoch_seed(&mut self, epoch: EpochId, seed: Vec<u8>) {
+        self.epoch_seeds.insert(epoch, seed);
+    }
+
+    /// Get the reward amount per target for a given epoch
+    /// This should be calculated based on emissions allocated for that epoch
+    /// divided by the number of targets created
+    pub fn get_target_reward(&self, epoch: EpochId) -> Option<u64> {
+        // First check if we have a pre-calculated reward
+        if let Some(&reward) = self.target_rewards_per_epoch.get(&epoch) {
+            return Some(reward);
+        }
+
+        // If not pre-calculated, we can't determine it retroactively
+        // (this shouldn't happen if calculate_target_rewards is called at epoch end)
+        None
+    }
+
+    /// Calculate and store target rewards for an epoch
+    /// Should be called during epoch transition after all targets for that epoch are known
+    pub fn calculate_target_rewards(&mut self, epoch: EpochId, total_target_emissions: u64) {
+        let target_count = self
+            .targets_created_per_epoch
+            .get(&epoch)
+            .copied()
+            .unwrap_or(0);
+
+        if target_count == 0 {
+            // No targets created, return emissions to pool
+            self.emission_pool.balance += total_target_emissions;
+            return;
+        }
+
+        let reward_per_target = total_target_emissions / target_count;
+        self.target_rewards_per_epoch
+            .insert(epoch, reward_per_target);
+
+        // Handle remainder - return to emissions pool
+        let remainder = total_target_emissions % target_count;
+        if remainder > 0 {
+            self.emission_pool.balance += remainder;
+        }
+    }
+    /// Check if an encoder has been "tallied" (slashed/removed from the committee)
+    /// relative to a shard's lifecycle.
+    ///
+    /// An encoder is considered tallied if they were removed from the active committee
+    /// in either shard.created_epoch + 1 or shard.created_epoch + 2.
+    ///
+    /// This is used to invalidate wins by encoders who were later found to be malicious.
+    pub fn is_encoder_tallied(
+        &self,
+        encoder_pubkey: &EncoderPublicKey,
+        shard_created_epoch: EpochId,
+    ) -> bool {
+        let report_epoch = shard_created_epoch + 1;
+        let claim_epoch = shard_created_epoch + 2;
+
+        // Check if encoder was tallied in either relevant epoch
+        self.was_encoder_tallied_in_epoch(encoder_pubkey, report_epoch)
+            || self.was_encoder_tallied_in_epoch(encoder_pubkey, claim_epoch)
+    }
+
+    /// Check if an encoder was tallied (removed/slashed) in a specific epoch.
+    ///
+    /// Returns true if:
+    /// - The encoder was in the previous epoch's committee, AND
+    /// - The encoder is NOT in this epoch's committee
+    ///
+    /// This indicates they were removed during the transition to this epoch.
+    fn was_encoder_tallied_in_epoch(
+        &self,
+        encoder_pubkey: &EncoderPublicKey,
+        epoch: EpochId,
+    ) -> bool {
+        // Can't be tallied in epoch 0
+        if epoch == 0 {
+            return false;
+        }
+
+        // We need both the previous and current epoch's committee to determine
+        // if an encoder was removed during a transition
+        let previous_epoch = epoch - 1;
+
+        // Get previous epoch committee
+        let prev_committees = match self.committees(previous_epoch) {
+            Ok(c) => c,
+            Err(_) => {
+                // If we can't access previous committee, we can't determine tallying
+                // This might happen for very old epochs - conservatively return false
+                return false;
+            }
+        };
+
+        // Get current epoch committee
+        let curr_committees = match self.committees(epoch) {
+            Ok(c) => c,
+            Err(_) => {
+                // If checking current epoch and committees not yet built,
+                // check against current active encoders directly
+                if epoch == self.epoch {
+                    let was_in_previous = prev_committees
+                        .encoder_set
+                        .active_encoders
+                        .iter()
+                        .any(|e| &e.metadata.encoder_pubkey == encoder_pubkey);
+                    let is_in_current = self
+                        .encoders
+                        .active_encoders
+                        .iter()
+                        .any(|e| &e.metadata.encoder_pubkey == encoder_pubkey);
+                    return was_in_previous && !is_in_current;
+                }
+                return false;
+            }
+        };
+
+        // Encoder was tallied if they were in previous but not in current
+        let was_in_previous = prev_committees
+            .encoder_set
+            .active_encoders
+            .iter()
+            .any(|e| &e.metadata.encoder_pubkey == encoder_pubkey);
+        let is_in_current = curr_committees
+            .encoder_set
+            .active_encoders
+            .iter()
+            .any(|e| &e.metadata.encoder_pubkey == encoder_pubkey);
+
+        was_in_previous && !is_in_current
     }
 }
 

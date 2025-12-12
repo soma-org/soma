@@ -26,17 +26,25 @@ pub enum Report {
     V1(ReportV1),
 }
 
+impl Report {
+    pub fn as_v1(&self) -> &ReportV1 {
+        match self {
+            Self::V1(v1) => v1,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ReportV1 {
-    encoder: EncoderPublicKey,
+    pub encoder: EncoderPublicKey,
     shard_digest: Digest<Shard>,
-    input_download_metadata: DownloadMetadata,
-    embedding_download_metadata: DownloadMetadata,
+    pub input_download_metadata: DownloadMetadata,
+    pub embedding_download_metadata: DownloadMetadata,
     probe_encoder: EncoderPublicKey,
-    evaluation_scores: EvaluationScores,
-    summary_embedding: Embedding,
-    sampled_embedding: Embedding,
-    target_scores: Option<TargetScores>,
+    pub evaluation_scores: EvaluationScores,
+    pub summary_embedding: Embedding,
+    pub sampled_embedding: Embedding,
+    pub target_scores: Option<TargetScores>,
 }
 
 impl ReportV1 {

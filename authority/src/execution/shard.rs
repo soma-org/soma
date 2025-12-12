@@ -6,9 +6,10 @@ use types::{
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
     error::{ConsensusError, ExecutionResult, SomaError},
+    evaluation::TargetScoresAPI as _,
     metadata::{DownloadMetadata, MetadataAPI as _},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    report::Report,
+    report::{Report, ReportAPI},
     shard::ShardAuthToken,
     shard_crypto::{
         keys::{EncoderAggregateSignature, EncoderPublicKey},
@@ -253,6 +254,9 @@ impl ShardExecutor {
             )))
         })?;
 
+        // TODO: if we have multiple report versions, unwrap differently
+        let report_v1 = report.as_v1();
+
         // 5. Deserialize shard auth token
         let shard_auth_token: ShardAuthToken =
             bcs::from_bytes(&shard_auth_token_bytes).map_err(|e| {
@@ -270,7 +274,7 @@ impl ShardExecutor {
 
         let authority_committee = committees.build_validator_committee().committee().clone();
         let encoder_committee = committees.build_encoder_committee();
-        let vdf_iterations = state.parameters.vdf_iterations;
+        let vdf_iterations = state.parameters.vdf_iterations; // TODO: vdf iterations will depend on the specific one for that epoch
 
         let (verified_shard, _) = self
             .shard_verifier
@@ -330,13 +334,13 @@ impl ShardExecutor {
 
         // 9. Update shard object with winner and embeddings
         let mut updated_shard_data = shard_data.clone();
-        updated_shard_data.winning_encoder = Some(report.winner.clone());
+        updated_shard_data.winning_encoder = Some(report_v1.encoder.clone());
         updated_shard_data.embeddings_download_metadata =
-            Some(report.embeddings_download_metadata.clone());
-        updated_shard_data.evaluation_scores = Some(report.scores);
-        updated_shard_data.target_scores = Some(report.distance);
-        updated_shard_data.sampled_embedding = Some(report.sampled_embedding.clone());
-        updated_shard_data.summary_embedding = Some(report.summary_embedding.clone());
+            Some(report_v1.embedding_download_metadata.clone());
+        updated_shard_data.evaluation_scores = Some(report_v1.evaluation_scores.clone());
+        updated_shard_data.target_scores = report_v1.target_scores.clone();
+        updated_shard_data.sampled_embedding = Some(report_v1.sampled_embedding.clone().into());
+        updated_shard_data.summary_embedding = Some(report_v1.summary_embedding.clone().into());
 
         let mut updated_shard = shard_object.clone();
         updated_shard
@@ -364,12 +368,16 @@ impl ShardExecutor {
 
         info!(
             "ReportWinner: Shard {} won by encoder {:?}",
-            shard_id, report.winner
+            shard_id,
+            report.encoder()
         );
 
         Ok(())
     }
 
+    // =========================================================================
+    // TRY UPDATE TARGET WINNER
+    // =========================================================================
     // =========================================================================
     // TRY UPDATE TARGET WINNER
     // =========================================================================
@@ -426,39 +434,55 @@ impl ShardExecutor {
             });
         }
 
-        // 4. Determine if we should update
+        // 4. Get target_scores from report - required when competing for a target
+        let report_target_scores = report.target_scores().clone().ok_or_else(|| {
+            ExecutionFailureStatus::InvalidArguments {
+                reason: "Report must have target_scores when competing for a target".to_string(),
+            }
+        })?;
+
+        // 5. Determine if we should update
         let should_update = match &target_data.winning_shard {
             None => true, // No winner yet
             Some(current_winner) => {
                 // Check if current winner's encoder was tallied
-                if state.is_encoder_tallied(&current_winner.winning_encoder) {
+                if state.is_encoder_tallied(
+                    &current_winner.winning_encoder,
+                    current_winner.shard_created_epoch,
+                ) {
                     // Current winner was slashed, allow replacement
                     true
                 } else {
-                    // Compare distances - lower is better
-                    report.distance < current_winner.distance
+                    // Compare scores - lower composite score is better
+                    report_target_scores.score() < current_winner.target_scores.score()
                 }
             }
         };
 
         if !should_update {
             debug!(
-                "Target {} not updated - current winner has better distance",
-                target_id
+                "Target {} not updated - current winner has better score ({} vs {})",
+                target_id,
+                target_data
+                    .winning_shard
+                    .as_ref()
+                    .map(|w| w.target_scores.score())
+                    .unwrap_or_default(),
+                report_target_scores.score()
             );
             return Ok(());
         }
 
-        // 5. Create winning shard info
+        // 6. Create winning shard info
         let winning_info = WinningShardInfo {
             shard_ref,
             data_submitter: shard_data.data_submitter,
-            winning_encoder: report.winner.clone(),
-            distance: report.distance,
+            winning_encoder: report.encoder().clone(),
+            target_scores: report_target_scores.clone(),
             shard_created_epoch: shard_data.created_epoch,
         };
 
-        // 6. Update target
+        // 7. Update target
         let mut updated_target_data = target_data.clone();
         updated_target_data.winning_shard = Some(winning_info);
 
@@ -474,8 +498,10 @@ impl ShardExecutor {
         store.mutate_input_object(updated_target);
 
         info!(
-            "Updated target {} winning shard - encoder: {:?}, distance: {}",
-            target_id, report.winner, report.distance
+            "Updated target {} winning shard - encoder: {:?}, score: {}",
+            target_id,
+            report.encoder(),
+            report_target_scores.score()
         );
 
         Ok(())
@@ -636,7 +662,7 @@ impl ShardExecutor {
             }
             Some(winner) => {
                 // Check if winner has been tallied (slashed)
-                if state.is_encoder_tallied(winner) {
+                if state.is_encoder_tallied(winner, shard.created_epoch) {
                     // Winner was slashed - return to data submitter, no target creation
                     Ok((EscrowDistribution::CoinToSubmitter { amount }, false))
                 } else {
@@ -708,8 +734,8 @@ impl ShardExecutor {
         let target_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
         let target = Object::new_target(
             target_id,
-            None,          // Network-created target (no creator)
-            current_epoch, // created_epoch
+            TargetOrigin::System, // Network-created target (no creator)
+            current_epoch,        // created_epoch
             sampled_embedding_ref,
             Owner::Shared {
                 initial_shared_version: Version::new(),
@@ -856,7 +882,12 @@ impl ShardExecutor {
         state: &SystemState,
     ) -> ExecutionResult<RewardRecipient> {
         match &target.winning_shard {
-            Some(winner_info) if !state.is_encoder_tallied(&winner_info.winning_encoder) => {
+            Some(winner_info)
+                if !state.is_encoder_tallied(
+                    &winner_info.winning_encoder,
+                    winner_info.shard_created_epoch,
+                ) =>
+            {
                 // Valid winner - reward goes to data submitter
                 Ok(RewardRecipient::Address(winner_info.data_submitter))
             }

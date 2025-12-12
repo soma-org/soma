@@ -1069,7 +1069,6 @@ impl CheckpointExecutor {
                 finality_proof,
                 checkpoint_entropy,
                 entropy_proof,
-                download_metadata.metadata().clone(),
                 shard_input_ref,
             );
 

@@ -470,6 +470,7 @@ pub fn create_test_system_state(
     let parameters = SystemParameters {
         epoch_duration_ms: 42, // Doesn't matter what number we put here for tests
         vdf_iterations: 1,
+        target_selection_rate_bps: 2500,
     };
 
     // Create system state

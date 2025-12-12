@@ -193,13 +193,13 @@ pub trait TargetScoresAPI {
 }
 
 // TODO: convert this to use fixed point math directly!
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[enum_dispatch(TargetScoresAPI)]
 pub enum TargetScores {
     V1(TargetScoresV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq, Hash)]
 pub struct TargetScoresV1 {
     distance: FixedNum,
     evaluation_score: FixedNum,

@@ -1588,7 +1588,7 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             encoders: Some(domain_state.encoders.try_into()?),
             validator_report_records,
             encoder_report_records,
-            stake_subsidy: Some(domain_state.stake_subsidy.try_into()?),
+            emission_pool: Some(domain_state.emission_pool.try_into()?),
             shard_results,
         })
     }

@@ -68,6 +68,7 @@ impl EncoderClientService {
         download_metadata: DownloadMetadata,
         timeout: Duration,
     ) -> SharedResult<()> {
+        // TODO: load Shard and Option<Target> objects for triggering shard input here
         // Create and sign the shard input
         let input = Input::V1(InputV1::new(token.clone(), download_metadata));
         // Send to each shard member

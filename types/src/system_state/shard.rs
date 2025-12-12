@@ -1,7 +1,8 @@
-use crate::metadata::DownloadMetadata;
+use crate::evaluation::TargetScores;
 use crate::object::ObjectRef;
 use crate::report::Report;
 use crate::shard_crypto::keys::EncoderPublicKey;
+use crate::{evaluation::EvaluationScores, metadata::DownloadMetadata};
 use serde::{Deserialize, Serialize};
 
 use crate::{base::SomaAddress, committee::EpochId};
@@ -23,9 +24,9 @@ pub struct Shard {
     /// Metadata for how to download the winner's complete embeddings (defaults to None, set on shard completion)
     pub embeddings_download_metadata: Option<DownloadMetadata>,
     /// Evaluation scores (defaults to None, set on shard completion)
-    pub evaluation_scores: Option<u64>, // TODO: change this when score types are defined
+    pub evaluation_scores: Option<EvaluationScores>,
     /// Target scores (defaults on None, set on shard completion)
-    pub target_scores: Option<u64>, // TODO change this when score types are defined
+    pub target_scores: Option<TargetScores>,
     /// Winner's summary embedding (defaults to None, set on shard completion)
     pub summary_embedding: Option<Vec<u8>>,
     /// Winner's sampled embedding - may become a new target (defaults to None, set on shard completion)
@@ -77,6 +78,6 @@ pub struct WinningShardInfo {
     pub shard_ref: ObjectRef,
     pub data_submitter: SomaAddress,
     pub winning_encoder: EncoderPublicKey,
-    pub distance: u64,
+    pub target_scores: TargetScores,
     pub shard_created_epoch: EpochId,
 }
