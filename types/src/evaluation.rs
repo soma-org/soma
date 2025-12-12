@@ -1,7 +1,8 @@
 use crate::{
     metadata::{DownloadMetadata, ObjectPath},
-    shard_crypto::{digest::Digest, keys::EncoderPublicKey},
+    shard_crypto::keys::EncoderPublicKey,
 };
+use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +15,7 @@ pub trait EvaluationInputAPI {
     fn probe_encoder(&self) -> &EncoderPublicKey;
     fn probe_download_metadata(&self) -> &DownloadMetadata;
     fn probe_object_path(&self) -> &ObjectPath;
+    fn target_embedding(&self) -> &Option<Embedding>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -31,6 +33,7 @@ pub struct EvaluationInputV1 {
     probe_encoder: EncoderPublicKey,
     probe_download_metadata: DownloadMetadata,
     probe_object_path: ObjectPath,
+    target_embedding: Option<Embedding>,
 }
 
 impl EvaluationInputV1 {
@@ -42,6 +45,7 @@ impl EvaluationInputV1 {
         probe_encoder: EncoderPublicKey,
         probe_download_metadata: DownloadMetadata,
         probe_object_path: ObjectPath,
+        target_embedding: Option<Embedding>,
     ) -> Self {
         Self {
             input_download_metadata,
@@ -51,6 +55,7 @@ impl EvaluationInputV1 {
             probe_encoder,
             probe_download_metadata,
             probe_object_path,
+            target_embedding,
         }
     }
 }
@@ -80,6 +85,9 @@ impl EvaluationInputAPI for EvaluationInputV1 {
     }
     fn probe_object_path(&self) -> &ObjectPath {
         &self.probe_object_path
+    }
+    fn target_embedding(&self) -> &Option<Embedding> {
+        &self.target_embedding
     }
 }
 
@@ -136,9 +144,11 @@ impl EvaluationOutputAPI for EvaluationOutputV1 {
     }
 }
 
+pub type FixedNum = fixed::types::U32F32;
+
 #[enum_dispatch]
 pub trait EvaluationScoresAPI {
-    fn value(&self) -> u64;
+    fn score(&self) -> FixedNum;
 }
 
 // TODO: convert this to use fixed point math directly!
@@ -150,13 +160,18 @@ pub enum EvaluationScores {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
 pub struct EvaluationScoresV1 {
-    flow_matching: u64,
-    sig_reg: u64,
-    compression: u64,
-    composite: u64,
+    flow_matching: FixedNum,
+    sig_reg: FixedNum,
+    compression: FixedNum,
+    composite: FixedNum,
 }
 impl EvaluationScoresV1 {
-    pub fn new(flow_matching: u64, sig_reg: u64, compression: u64, composite: u64) -> Self {
+    pub fn new(
+        flow_matching: FixedNum,
+        sig_reg: FixedNum,
+        compression: FixedNum,
+        composite: FixedNum,
+    ) -> Self {
         Self {
             flow_matching,
             sig_reg,
@@ -167,14 +182,14 @@ impl EvaluationScoresV1 {
 }
 
 impl EvaluationScoresAPI for EvaluationScoresV1 {
-    fn value(&self) -> u64 {
+    fn score(&self) -> FixedNum {
         self.composite
     }
 }
 
 #[enum_dispatch]
 pub trait TargetScoresAPI {
-    fn value(&self) -> u64;
+    fn score(&self) -> FixedNum;
 }
 
 // TODO: convert this to use fixed point math directly!
@@ -186,26 +201,31 @@ pub enum TargetScores {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
 pub struct TargetScoresV1 {
-    value: u64,
+    distance: FixedNum,
+    evaluation_score: FixedNum,
+    composite: FixedNum,
 }
+
 impl TargetScoresV1 {
-    pub fn new(value: u64) -> Self {
-        Self { value }
+    pub fn new(distance: FixedNum, evaluation_score: FixedNum, composite: FixedNum) -> Self {
+        Self {
+            distance,
+            evaluation_score,
+            composite,
+        }
     }
 }
 
 impl TargetScoresAPI for TargetScoresV1 {
-    fn value(&self) -> u64 {
-        self.value
+    fn score(&self) -> FixedNum {
+        self.composite
     }
 }
 
-// TODO: change this to actually be accurate
-pub type Embedding = Digest<Vec<u8>>;
-
 #[enum_dispatch]
 pub trait TargetDetailsAPI {
-    fn value(&self) -> u64;
+    fn target_scores(&self) -> &TargetScores;
+    fn target_embedding(&self) -> &Embedding;
 }
 
 // TODO: convert this to use fixed point math directly!
@@ -215,18 +235,28 @@ pub enum TargetDetails {
     V1(TargetDetailsV1),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct TargetDetailsV1 {
-    value: u64,
+    target_scores: TargetScores,
+    target_embedding: Embedding,
 }
 impl TargetDetailsV1 {
-    pub fn new(value: u64) -> Self {
-        Self { value }
+    pub fn new(target_scores: TargetScores, target_embedding: Embedding) -> Self {
+        Self {
+            target_scores,
+            target_embedding,
+        }
     }
 }
 
 impl TargetDetailsAPI for TargetDetailsV1 {
-    fn value(&self) -> u64 {
-        self.value
+    fn target_scores(&self) -> &TargetScores {
+        &self.target_scores
+    }
+    fn target_embedding(&self) -> &Embedding {
+        &self.target_embedding
     }
 }
+
+// TODO: change this to actually be accurate
+pub type Embedding = Bytes;
