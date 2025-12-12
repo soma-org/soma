@@ -285,21 +285,9 @@ pub struct GenesisCeremonyParameters {
     #[serde(default)]
     pub stake_subsidy_start_epoch: u64,
 
-    /// The amount of stake subsidy to be drawn down per distribution.
-    /// This amount decays and decreases over time.
-    #[serde(
-        default = "GenesisCeremonyParameters::default_initial_stake_subsidy_distribution_amount"
-    )]
-    pub stake_subsidy_initial_distribution_amount: u64,
-
-    /// Number of distributions to occur before the distribution amount decays.
-    #[serde(default = "GenesisCeremonyParameters::default_stake_subsidy_period_length")]
-    pub stake_subsidy_period_length: u64,
-
-    /// The rate at which the distribution amount decays at the end of each
-    /// period. Expressed in basis points.
-    #[serde(default = "GenesisCeremonyParameters::default_stake_subsidy_decrease_rate")]
-    pub stake_subsidy_decrease_rate: u16,
+    /// The amount of rewards to be drawn down per distribution.
+    #[serde(default = "GenesisCeremonyParameters::default_emission_per_epoch")]
+    pub emission_per_epoch: u64,
 }
 
 impl GenesisCeremonyParameters {
@@ -309,10 +297,7 @@ impl GenesisCeremonyParameters {
             protocol_version: ProtocolVersion::max(),
             epoch_duration_ms: Self::default_epoch_duration_ms(),
             stake_subsidy_start_epoch: 0,
-            stake_subsidy_initial_distribution_amount:
-                Self::default_initial_stake_subsidy_distribution_amount(),
-            stake_subsidy_period_length: Self::default_stake_subsidy_period_length(),
-            stake_subsidy_decrease_rate: Self::default_stake_subsidy_decrease_rate(),
+            emission_per_epoch: Self::default_emission_per_epoch(),
         }
     }
 
@@ -328,19 +313,9 @@ impl GenesisCeremonyParameters {
         24 * 60 * 60 * 1000
     }
 
-    fn default_initial_stake_subsidy_distribution_amount() -> u64 {
+    fn default_emission_per_epoch() -> u64 {
         // 1M SOMA
-        1_000_000 * SHANNONS_PER_SOMA
-    }
-
-    fn default_stake_subsidy_period_length() -> u64 {
-        // 10 distributions or epochs
-        10
-    }
-
-    fn default_stake_subsidy_decrease_rate() -> u16 {
-        // 10% in basis points
-        1000
+        1_000_000 * SHANNONS_PER_SOMA // TODO: set the emission slope here!
     }
 }
 
@@ -364,13 +339,13 @@ pub struct TokenAllocation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct TokenDistributionSchedule {
-    pub stake_subsidy_fund_shannons: u64,
+    pub emission_fund_shannons: u64,
     pub allocations: Vec<TokenAllocation>,
 }
 
 impl TokenDistributionSchedule {
     pub fn validate(&self) {
-        let mut total = self.stake_subsidy_fund_shannons;
+        let mut total = self.emission_fund_shannons;
 
         for allocation in &self.allocations {
             total += allocation.amount_shannons;
@@ -430,7 +405,7 @@ impl TokenDistributionScheduleBuilder {
 
     pub fn build(&self) -> TokenDistributionSchedule {
         let schedule = TokenDistributionSchedule {
-            stake_subsidy_fund_shannons: self.pool,
+            emission_fund_shannons: self.pool,
             allocations: self.allocations.clone(),
         };
 

@@ -228,13 +228,9 @@ impl GenesisBuilder {
             },
             self.token_distribution_schedule
                 .as_ref()
-                .map(|s| s.stake_subsidy_fund_shannons)
+                .map(|s| s.emission_fund_shannons)
                 .unwrap_or(0),
-            self.parameters
-                .parameters
-                .stake_subsidy_initial_distribution_amount,
-            self.parameters.parameters.stake_subsidy_period_length,
-            self.parameters.parameters.stake_subsidy_decrease_rate,
+            self.parameters.parameters.emission_per_epoch,
         );
 
         // Process token allocations

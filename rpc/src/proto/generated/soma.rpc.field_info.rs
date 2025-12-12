@@ -3353,11 +3353,11 @@ mod _field_impls {
             number: 8i32,
             message_fields: None,
         };
-        pub const STAKE_SUBSIDY_FIELD: &'static MessageField = &MessageField {
-            name: "stake_subsidy",
-            json_name: "stakeSubsidy",
+        pub const EMISSION_POOL_FIELD: &'static MessageField = &MessageField {
+            name: "emission_pool",
+            json_name: "emissionPool",
             number: 9i32,
-            message_fields: Some(StakeSubsidy::FIELDS),
+            message_fields: Some(EmissionPool::FIELDS),
         };
         pub const SHARD_RESULTS_FIELD: &'static MessageField = &MessageField {
             name: "shard_results",
@@ -3376,7 +3376,7 @@ mod _field_impls {
             Self::ENCODERS_FIELD,
             Self::VALIDATOR_REPORT_RECORDS_FIELD,
             Self::ENCODER_REPORT_RECORDS_FIELD,
-            Self::STAKE_SUBSIDY_FIELD,
+            Self::EMISSION_POOL_FIELD,
             Self::SHARD_RESULTS_FIELD,
         ];
     }
@@ -3432,9 +3432,9 @@ mod _field_impls {
             self.path.push(SystemState::ENCODER_REPORT_RECORDS_FIELD.name);
             self.finish()
         }
-        pub fn stake_subsidy(mut self) -> StakeSubsidyFieldPathBuilder {
-            self.path.push(SystemState::STAKE_SUBSIDY_FIELD.name);
-            StakeSubsidyFieldPathBuilder::new_with_base(self.path)
+        pub fn emission_pool(mut self) -> EmissionPoolFieldPathBuilder {
+            self.path.push(SystemState::EMISSION_POOL_FIELD.name);
+            EmissionPoolFieldPathBuilder::new_with_base(self.path)
         }
         pub fn shard_results(mut self) -> String {
             self.path.push(SystemState::SHARD_RESULTS_FIELD.name);
@@ -3526,56 +3526,35 @@ mod _field_impls {
             self.finish()
         }
     }
-    impl StakeSubsidy {
+    impl EmissionPool {
         pub const BALANCE_FIELD: &'static MessageField = &MessageField {
             name: "balance",
             json_name: "balance",
             number: 1i32,
             message_fields: None,
         };
-        pub const DISTRIBUTION_COUNTER_FIELD: &'static MessageField = &MessageField {
-            name: "distribution_counter",
-            json_name: "distributionCounter",
+        pub const EMISSION_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "emission_per_epoch",
+            json_name: "emissionPerEpoch",
             number: 2i32,
             message_fields: None,
         };
-        pub const CURRENT_DISTRIBUTION_AMOUNT_FIELD: &'static MessageField = &MessageField {
-            name: "current_distribution_amount",
-            json_name: "currentDistributionAmount",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const PERIOD_LENGTH_FIELD: &'static MessageField = &MessageField {
-            name: "period_length",
-            json_name: "periodLength",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const DECREASE_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "decrease_rate",
-            json_name: "decreaseRate",
-            number: 5i32,
-            message_fields: None,
-        };
     }
-    impl MessageFields for StakeSubsidy {
+    impl MessageFields for EmissionPool {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::BALANCE_FIELD,
-            Self::DISTRIBUTION_COUNTER_FIELD,
-            Self::CURRENT_DISTRIBUTION_AMOUNT_FIELD,
-            Self::PERIOD_LENGTH_FIELD,
-            Self::DECREASE_RATE_FIELD,
+            Self::EMISSION_PER_EPOCH_FIELD,
         ];
     }
-    impl StakeSubsidy {
-        pub fn path_builder() -> StakeSubsidyFieldPathBuilder {
-            StakeSubsidyFieldPathBuilder::new()
+    impl EmissionPool {
+        pub fn path_builder() -> EmissionPoolFieldPathBuilder {
+            EmissionPoolFieldPathBuilder::new()
         }
     }
-    pub struct StakeSubsidyFieldPathBuilder {
+    pub struct EmissionPoolFieldPathBuilder {
         path: Vec<&'static str>,
     }
-    impl StakeSubsidyFieldPathBuilder {
+    impl EmissionPoolFieldPathBuilder {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
             Self { path: Default::default() }
@@ -3588,23 +3567,11 @@ mod _field_impls {
             self.path.join(".")
         }
         pub fn balance(mut self) -> String {
-            self.path.push(StakeSubsidy::BALANCE_FIELD.name);
+            self.path.push(EmissionPool::BALANCE_FIELD.name);
             self.finish()
         }
-        pub fn distribution_counter(mut self) -> String {
-            self.path.push(StakeSubsidy::DISTRIBUTION_COUNTER_FIELD.name);
-            self.finish()
-        }
-        pub fn current_distribution_amount(mut self) -> String {
-            self.path.push(StakeSubsidy::CURRENT_DISTRIBUTION_AMOUNT_FIELD.name);
-            self.finish()
-        }
-        pub fn period_length(mut self) -> String {
-            self.path.push(StakeSubsidy::PERIOD_LENGTH_FIELD.name);
-            self.finish()
-        }
-        pub fn decrease_rate(mut self) -> String {
-            self.path.push(StakeSubsidy::DECREASE_RATE_FIELD.name);
+        pub fn emission_per_epoch(mut self) -> String {
+            self.path.push(EmissionPool::EMISSION_PER_EPOCH_FIELD.name);
             self.finish()
         }
     }

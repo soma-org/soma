@@ -10,8 +10,8 @@ use crate::{
     multiaddr::Multiaddr,
     object::ObjectID,
     system_state::{
+        emission::EmissionPool,
         staking::{PoolTokenExchangeRate, StakedSoma, StakingPool},
-        subsidy::StakeSubsidy,
         validator::{Validator, ValidatorSet},
         PublicKey, SystemParameters, SystemState,
     },
@@ -464,9 +464,7 @@ pub fn create_test_system_state(
     validators: Vec<Validator>,
     encoders: Vec<Encoder>,
     supply_amount: u64,
-    stake_subsidy_initial_amount: u64,
-    stake_subsidy_period_length: u64,
-    stake_subsidy_decrease_rate: u16,
+    emission_per_epoch: u64,
 ) -> SystemState {
     // System parameters
     let parameters = SystemParameters {
@@ -486,9 +484,7 @@ pub fn create_test_system_state(
         epoch_start_timestamp_ms,
         parameters,
         stake_subsidy_fund,
-        stake_subsidy_initial_amount * SHANNONS_PER_SOMA,
-        stake_subsidy_period_length,
-        stake_subsidy_decrease_rate,
+        emission_per_epoch * SHANNONS_PER_SOMA,
     )
 }
 
@@ -500,7 +496,7 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
         validators.push(create_validator_for_testing(addr, 100 * SHANNONS_PER_SOMA));
     }
 
-    create_test_system_state(validators, vec![], 1000, 0, 10, 500)
+    create_test_system_state(validators, vec![], 1000, 0)
 }
 
 /// Advance epoch with rewards

@@ -2835,9 +2835,9 @@ pub struct SystemState {
         ::prost::alloc::string::String,
         ReporterSet,
     >,
-    /// Stake subsidy
+    /// Emission pool
     #[prost(message, optional, tag = "9")]
-    pub stake_subsidy: ::core::option::Option<StakeSubsidy>,
+    pub emission_pool: ::core::option::Option<EmissionPool>,
     /// Shard results (digest -> result)
     #[prost(btree_map = "string, message", tag = "10")]
     pub shard_results: ::prost::alloc::collections::BTreeMap<
@@ -2861,17 +2861,11 @@ pub struct SystemParameters {
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
-pub struct StakeSubsidy {
+pub struct EmissionPool {
     #[prost(uint64, optional, tag = "1")]
     pub balance: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "2")]
-    pub distribution_counter: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "3")]
-    pub current_distribution_amount: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "4")]
-    pub period_length: ::core::option::Option<u64>,
-    #[prost(uint32, optional, tag = "5")]
-    pub decrease_rate: ::core::option::Option<u32>,
+    pub emission_per_epoch: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

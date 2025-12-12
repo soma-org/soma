@@ -50,7 +50,7 @@ mod networking_validator_tests {
             create_validator_for_testing(validator_addr(4), 50_000 * SHANNONS_PER_SOMA),
         ];
 
-        create_test_system_state(validators, vec![], 1000, 0, 10, 500)
+        create_test_system_state(validators, vec![], 1000, 0)
     }
 
     #[test]
@@ -328,7 +328,7 @@ mod networking_validator_tests {
             create_validator_for_testing(validator_addr(4), 400_000 * SHANNONS_PER_SOMA),
         ];
 
-        let mut system_state = create_test_system_state(validators, vec![], 1000, 0, 10, 500);
+        let mut system_state = create_test_system_state(validators, vec![], 1000, 0);
 
         // Advance to apply initial placement
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();

@@ -23,8 +23,8 @@ message SystemState {
   map<string, ReporterSet> validator_report_records = 7;
   map<string, ReporterSet> encoder_report_records = 8;
   
-  // Stake subsidy
-  optional StakeSubsidy stake_subsidy = 9;
+  // Emission pool
+  optional EmissionPool emission_pool = 9;
   
   // Shard results (digest -> result)
   map<string, ShardResult> shard_results = 10;
@@ -39,12 +39,9 @@ message SystemParameters {
   optional uint64 vdf_iterations = 2;
 }
 
-message StakeSubsidy {
+message EmissionPool {
   optional uint64 balance = 1;
-  optional uint64 distribution_counter = 2;
-  optional uint64 current_distribution_amount = 3;
-  optional uint64 period_length = 4;
-  optional uint32 decrease_rate = 5;
+  optional uint64 emission_per_epoch = 2;
 }
 
 message ValidatorSet {

@@ -1009,20 +1009,15 @@ impl TryFrom<SystemParameters> for types::system_state::SystemParameters {
     }
 }
 
-impl TryFrom<StakeSubsidy> for types::system_state::subsidy::StakeSubsidy {
+impl TryFrom<EmissionPool> for types::system_state::emission::EmissionPool {
     type Error = String;
 
-    fn try_from(proto_subsidy: StakeSubsidy) -> Result<Self, Self::Error> {
-        Ok(types::system_state::subsidy::StakeSubsidy {
-            balance: proto_subsidy.balance.ok_or("Missing balance")?,
-            distribution_counter: proto_subsidy
-                .distribution_counter
-                .ok_or("Missing distribution_counter")?,
-            current_distribution_amount: proto_subsidy
-                .current_distribution_amount
-                .ok_or("Missing current_distribution_amount")?,
-            period_length: proto_subsidy.period_length.ok_or("Missing period_length")?,
-            decrease_rate: proto_subsidy.decrease_rate.ok_or("Missing decrease_rate")? as u16,
+    fn try_from(proto_emission_pool: EmissionPool) -> Result<Self, Self::Error> {
+        Ok(types::system_state::emission::EmissionPool {
+            balance: proto_emission_pool.balance.ok_or("Missing balance")?,
+            emission_per_epoch: proto_emission_pool
+                .emission_per_epoch
+                .ok_or("Missing emission_per_epoch")?,
         })
     }
 }
@@ -1610,18 +1605,15 @@ impl TryFrom<types::system_state::SystemParameters> for SystemParameters {
     }
 }
 
-impl TryFrom<types::system_state::subsidy::StakeSubsidy> for StakeSubsidy {
+impl TryFrom<types::system_state::emission::EmissionPool> for EmissionPool {
     type Error = String;
 
     fn try_from(
-        domain_subsidy: types::system_state::subsidy::StakeSubsidy,
+        domain_emission_pool: types::system_state::emission::EmissionPool,
     ) -> Result<Self, Self::Error> {
-        Ok(StakeSubsidy {
-            balance: Some(domain_subsidy.balance),
-            distribution_counter: Some(domain_subsidy.distribution_counter),
-            current_distribution_amount: Some(domain_subsidy.current_distribution_amount),
-            period_length: Some(domain_subsidy.period_length),
-            decrease_rate: Some(domain_subsidy.decrease_rate as u32),
+        Ok(EmissionPool {
+            balance: Some(domain_emission_pool.balance),
+            emission_per_epoch: Some(domain_emission_pool.emission_per_epoch),
         })
     }
 }

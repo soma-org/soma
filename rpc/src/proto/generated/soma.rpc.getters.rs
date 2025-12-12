@@ -2133,7 +2133,7 @@ mod _getter_impls {
                 encoders: None,
                 validator_report_records: std::collections::BTreeMap::new(),
                 encoder_report_records: std::collections::BTreeMap::new(),
-                stake_subsidy: None,
+                emission_pool: None,
                 shard_results: std::collections::BTreeMap::new(),
             }
         }
@@ -2211,23 +2211,23 @@ mod _getter_impls {
             self.encoders = Some(field.into());
             self
         }
-        pub fn stake_subsidy(&self) -> &StakeSubsidy {
-            self.stake_subsidy
+        pub fn emission_pool(&self) -> &EmissionPool {
+            self.emission_pool
                 .as_ref()
                 .map(|field| field as _)
-                .unwrap_or_else(|| StakeSubsidy::default_instance() as _)
+                .unwrap_or_else(|| EmissionPool::default_instance() as _)
         }
-        pub fn stake_subsidy_opt(&self) -> Option<&StakeSubsidy> {
-            self.stake_subsidy.as_ref().map(|field| field as _)
+        pub fn emission_pool_opt(&self) -> Option<&EmissionPool> {
+            self.emission_pool.as_ref().map(|field| field as _)
         }
-        pub fn stake_subsidy_opt_mut(&mut self) -> Option<&mut StakeSubsidy> {
-            self.stake_subsidy.as_mut().map(|field| field as _)
+        pub fn emission_pool_opt_mut(&mut self) -> Option<&mut EmissionPool> {
+            self.emission_pool.as_mut().map(|field| field as _)
         }
-        pub fn stake_subsidy_mut(&mut self) -> &mut StakeSubsidy {
-            self.stake_subsidy.get_or_insert_default()
+        pub fn emission_pool_mut(&mut self) -> &mut EmissionPool {
+            self.emission_pool.get_or_insert_default()
         }
-        pub fn with_stake_subsidy(mut self, field: StakeSubsidy) -> Self {
-            self.stake_subsidy = Some(field.into());
+        pub fn with_emission_pool(mut self, field: EmissionPool) -> Self {
+            self.emission_pool = Some(field.into());
             self
         }
     }
@@ -2272,39 +2272,24 @@ mod _getter_impls {
             self
         }
     }
-    impl StakeSubsidy {
+    impl EmissionPool {
         pub const fn const_default() -> Self {
             Self {
                 balance: None,
-                distribution_counter: None,
-                current_distribution_amount: None,
-                period_length: None,
-                decrease_rate: None,
+                emission_per_epoch: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: StakeSubsidy = StakeSubsidy::const_default();
+            static DEFAULT: EmissionPool = EmissionPool::const_default();
             &DEFAULT
         }
         pub fn with_balance(mut self, field: u64) -> Self {
             self.balance = Some(field.into());
             self
         }
-        pub fn with_distribution_counter(mut self, field: u64) -> Self {
-            self.distribution_counter = Some(field.into());
-            self
-        }
-        pub fn with_current_distribution_amount(mut self, field: u64) -> Self {
-            self.current_distribution_amount = Some(field.into());
-            self
-        }
-        pub fn with_period_length(mut self, field: u64) -> Self {
-            self.period_length = Some(field.into());
-            self
-        }
-        pub fn with_decrease_rate(mut self, field: u32) -> Self {
-            self.decrease_rate = Some(field.into());
+        pub fn with_emission_per_epoch(mut self, field: u64) -> Self {
+            self.emission_per_epoch = Some(field.into());
             self
         }
     }

@@ -12,6 +12,7 @@ use crate::{
     shard_crypto::{digest::Digest, keys::EncoderPublicKey},
 };
 use crate::{encoder_committee::CountUnit, shard::Shard};
+use emission::EmissionPool;
 use encoder::{Encoder, EncoderSet};
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
 use fastcrypto::{
@@ -21,7 +22,6 @@ use fastcrypto::{
 };
 use serde::{Deserialize, Serialize};
 use staking::StakedSoma;
-use subsidy::StakeSubsidy;
 use tracing::{error, info};
 use url::Url;
 use validator::{Validator, ValidatorSet};
@@ -50,11 +50,11 @@ use crate::{
     storage::object_store::ObjectStore,
 };
 
+pub mod emission;
 pub mod encoder;
 pub mod epoch_start;
 pub mod shard;
 pub mod staking;
-pub mod subsidy;
 pub mod validator;
 
 #[cfg(test)]
@@ -160,7 +160,7 @@ pub struct SystemState {
 
     pub validator_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
 
-    pub stake_subsidy: StakeSubsidy,
+    pub emission_pool: EmissionPool,
 
     pub encoders: EncoderSet,
     pub encoder_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
@@ -199,18 +199,11 @@ impl SystemState {
         protocol_version: u64,
         epoch_start_timestamp_ms: u64,
         parameters: SystemParameters,
-        stake_subsidy_fund: u64,
-        initial_distribution_amount: u64,
-        stake_subsidy_period_length: u64,
-        stake_subsidy_decrease_rate: u16,
+        emission_fund: u64,
+        emission_per_epoch: u64,
     ) -> Self {
-        // Create stake subsidy
-        let stake_subsidy = StakeSubsidy::new(
-            stake_subsidy_fund,
-            initial_distribution_amount,
-            stake_subsidy_period_length,
-            stake_subsidy_decrease_rate,
-        );
+        // Create Emission Pool
+        let emission_pool = EmissionPool::new(emission_fund, emission_per_epoch);
 
         let mut validators = ValidatorSet::new(consensus_validators, networking_validators);
         let mut encoders = EncoderSet::new(encoders);
@@ -236,7 +229,7 @@ impl SystemState {
             epoch_start_timestamp_ms,
             validator_report_records: BTreeMap::new(),
             encoder_report_records: BTreeMap::new(),
-            stake_subsidy,
+            emission_pool,
             committees: [None, None],
             target_rewards_per_epoch: BTreeMap::new(),
             targets_created_per_epoch: BTreeMap::new(),
@@ -843,15 +836,12 @@ impl SystemState {
         let prev_epoch_start_timestamp = self.epoch_start_timestamp_ms;
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
 
-        // Calculate stake subsidy if appropriate
+        // Calculate emission if appropriate
         let mut total_rewards = epoch_total_transaction_fees;
-        if self.epoch >= 0 // TODO: self.parameters.stake_subsidy_start_epoch
-            && epoch_start_timestamp_ms
-                >= prev_epoch_start_timestamp + self.parameters.epoch_duration_ms
+        if epoch_start_timestamp_ms
+            >= prev_epoch_start_timestamp + self.parameters.epoch_duration_ms
         {
-            // Add stake subsidy to rewards
-            let stake_subsidy = self.stake_subsidy.advance_epoch();
-            total_rewards += stake_subsidy;
+            total_rewards += self.emission_pool.advance_epoch();
         }
 
         // Cache current committees as previous before advancing
@@ -865,7 +855,8 @@ impl SystemState {
         // This can be adjusted based on desired incentive structure
         let validator_subsidy = (total_rewards * 100) / 100;
         let encoder_subsidy = total_rewards - validator_subsidy;
-
+        // TODO: don't do encoder rewards, just do slashing, redistribution of slash, and process stake pools
+        // TODO: instead calculate reward amount for targets created in the last epoch
         let mut total_validator_rewards = validator_subsidy;
         let mut total_encoder_rewards = encoder_subsidy;
 

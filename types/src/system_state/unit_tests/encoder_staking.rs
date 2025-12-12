@@ -55,7 +55,7 @@ mod encoder_staking_tests {
             create_encoder_for_testing(encoder_addr_2(), 100 * SHANNONS_PER_SOMA),
         ];
 
-        create_test_system_state(validators, encoders, 1000, 0, 10, 500)
+        create_test_system_state(validators, encoders, 1000, 0)
     }
 
     // Helper to set up a test system state with subsidy
@@ -70,7 +70,7 @@ mod encoder_staking_tests {
             create_encoder_for_testing(encoder_addr_2(), 100 * SHANNONS_PER_SOMA),
         ];
 
-        create_test_system_state(validators, encoders, 400, 0, 10, 0)
+        create_test_system_state(validators, encoders, 400, 0)
     }
 
     #[test]
@@ -381,8 +381,6 @@ mod encoder_staking_tests {
         let mut system_state = create_test_system_state(
             validators, encoders, 1000, // Supply amount
             10,   // Stake subsidy initial amount
-            10,   // Subsidy period
-            500,  // Subsidy decrease rate
         );
 
         // Verify validators were properly initialized
