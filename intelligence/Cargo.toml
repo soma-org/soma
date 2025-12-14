@@ -8,7 +8,6 @@ safetensors = []
 
 [dependencies]
 objects.workspace = true
-zstd.workspace = true
 bcs.workspace = true
 serde.workspace = true
 enum_dispatch.workspace = true
@@ -37,6 +36,9 @@ base64.workspace = true
 object_store.workspace = true
 uuid.workspace = true
 tonic-prost.workspace = true
+url.workspace=true
+fastcrypto.workspace=true
+futures.workspace=true
 
 [dependencies.burn]
 workspace = true

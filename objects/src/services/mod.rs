@@ -198,7 +198,7 @@ impl<S: ObjectStore> ObjectService<S> {
             .header(header::CONTENT_TYPE, "application/octet-stream")
             .header(header::ACCEPT_RANGES, "bytes")
             .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
-            .header(header::ETAG, path.checksum().to_string())
+            .header(header::ETAG, path.etag())
             .header(header::CONTENT_RANGE, content_range);
 
         let resp = resp

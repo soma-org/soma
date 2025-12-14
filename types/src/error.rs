@@ -1389,6 +1389,8 @@ pub enum InferenceError {
     CoreProcessorError(String),
     #[error("Object store error: {0}")]
     ObjectStoreError(object_store::Error),
+    #[error("Reqwest error: {0}")]
+    ReqwestError(reqwest::Error),
 }
 
 pub type EvaluationResult<T> = Result<T, EvaluationError>;
