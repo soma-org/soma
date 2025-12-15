@@ -548,6 +548,8 @@ pub struct ChangeEpoch {
     pub protocol_version: ProtocolVersion,
     /// The total amount of fees charged during the epoch.
     pub fees: u64,
+    /// Epoch randomness
+    pub epoch_randomness: Vec<u8>,
 }
 
 /// # CertificateProof
@@ -1200,12 +1202,14 @@ impl VerifiedTransaction {
         protocol_version: ProtocolVersion,
         fees: u64,
         epoch_start_timestamp_ms: u64,
+        epoch_randomness: Vec<u8>,
     ) -> Self {
         TransactionKind::ChangeEpoch(ChangeEpoch {
             epoch: next_epoch,
             protocol_version,
             fees,
             epoch_start_timestamp_ms,
+            epoch_randomness,
         })
         .pipe(Self::new_system_transaction)
     }

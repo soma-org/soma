@@ -148,11 +148,13 @@ pub fn advance_epoch_with_reward_amounts(
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
     // Advance the epoch
-    let rewards = system_state
+    let (rewards, _) = system_state
         .advance_epoch(
             next_epoch,
+            ProtocolVersion::max().as_u64(),
             reward_amount * SHANNONS_PER_SOMA,
             new_timestamp,
+            vec![0; 32],
             1000,
         )
         .expect("Failed to advance epoch");
@@ -175,11 +177,13 @@ pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
     // Advance the epoch
-    let rewards = system_state
+    let (rewards, _) = system_state
         .advance_epoch(
             next_epoch,
+            ProtocolVersion::max().as_u64(),
             reward_amount * SHANNONS_PER_SOMA,
             new_timestamp,
+            vec![0; 32],
             reward_slashing_rate,
         )
         .expect("Failed to advance epoch");
@@ -471,6 +475,8 @@ pub fn create_test_system_state(
         epoch_duration_ms: 42, // Doesn't matter what number we put here for tests
         vdf_iterations: 1,
         target_selection_rate_bps: 2500,
+        target_reward_allocation_bps: 7000,
+        encoder_tally_slash_rate_bps: 9500,
     };
 
     // Create system state
@@ -504,7 +510,10 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
     reward_amount: u64,
-) -> ExecutionResult<BTreeMap<SomaAddress, StakedSoma>> {
+) -> ExecutionResult<(
+    BTreeMap<SomaAddress, StakedSoma>,
+    BTreeMap<SomaAddress, StakedSoma>,
+)> {
     // Calculate next epoch
     let next_epoch = system_state.epoch + 1;
 
@@ -513,7 +522,14 @@ pub fn advance_epoch_with_rewards(
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
     // Advance the epoch
-    system_state.advance_epoch(next_epoch, reward_amount, new_timestamp, 1000)
+    system_state.advance_epoch(
+        next_epoch,
+        ProtocolVersion::max().as_u64(),
+        reward_amount,
+        new_timestamp,
+        vec![0; 32],
+        1000,
+    )
 }
 
 // Helper to add a validator candidate

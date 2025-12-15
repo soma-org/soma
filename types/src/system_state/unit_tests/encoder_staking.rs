@@ -395,7 +395,7 @@ mod encoder_staking_tests {
 
         // Verify initial reference byte price (only one encoder)
         // With only one encoder, its price becomes the reference price
-        assert_eq!(system_state.encoders.reference_byte_price, 45);
+        assert_eq!(system_state.encoders.derive_reference_byte_price(), 45);
 
         // Add some stake to the first encoder from a staker
         let staked_soma = stake_with_encoder(&mut system_state, staker_addr, encoder_addr_1, 4);
@@ -438,7 +438,7 @@ mod encoder_staking_tests {
         // - Encoder 1 (price 45) + Encoder 2 (price 42) are needed to reach the threshold
         // - Since we process in descending price order, encoder 2 pushes us over the threshold
         // - Therefore, the reference price is 42
-        assert_eq!(system_state.encoders.reference_byte_price, 42);
+        assert_eq!(system_state.encoders.derive_reference_byte_price(), 42);
 
         // Add the third encoder and advance epoch
         system_state
@@ -453,7 +453,7 @@ mod encoder_staking_tests {
         // - Processing in price order: encoder 1 (45) + encoder 2 (42) + encoder 3 (40)
         // - Encoder 3 pushes us over the threshold
         // - Therefore, the reference price is 40
-        assert_eq!(system_state.encoders.reference_byte_price, 40);
+        assert_eq!(system_state.encoders.derive_reference_byte_price(), 40);
 
         // Add the fourth encoder and advance epoch
         system_state
@@ -468,7 +468,7 @@ mod encoder_staking_tests {
         // - Processing in price order (45, 42, 41, 40)
         // - Encoder 4 (price 41) is the one that pushes voting power over threshold
         // - Therefore, the reference price is 41
-        assert_eq!(system_state.encoders.reference_byte_price, 41);
+        assert_eq!(system_state.encoders.derive_reference_byte_price(), 41);
 
         // Add the fifth encoder and advance epoch
         system_state
@@ -482,7 +482,7 @@ mod encoder_staking_tests {
         // - The reference price is 41, which means adding encoder 5 didn't
         //   change the outcome despite its higher stake and price (43)
         // - This suggests the threshold was reached at encoder 4 which has price 41
-        assert_eq!(system_state.encoders.reference_byte_price, 41);
+        assert_eq!(system_state.encoders.derive_reference_byte_price(), 41);
 
         // Test setting a byte price through a transaction
         system_state
@@ -503,7 +503,7 @@ mod encoder_staking_tests {
 
         // Reference price remains at 41, showing that changing encoder 1's price
         // from 45 to 50 didn't affect the reference price calculation
-        assert_eq!(system_state.encoders.reference_byte_price, 41);
+        assert_eq!(system_state.encoders.derive_reference_byte_price(), 41);
 
         // Test the integration with epoch_start_state
         // The reference byte price should be available via EpochStartSystemState

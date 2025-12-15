@@ -1,10 +1,10 @@
 use std::{
     cmp::Reverse,
-    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, BinaryHeap, HashSet},
     str::FromStr,
 };
 
-use crate::shard_crypto::keys::EncoderPublicKey;
+use crate::{shard_crypto::keys::EncoderPublicKey, system_state::BPS_DENOMINATOR};
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -26,18 +26,6 @@ use crate::{
 
 use super::staking::{PoolTokenExchangeRate, StakedSoma, StakingPool};
 
-/// # EncoderMetadata
-///
-/// Contains the identifying information and network address for an encoder.
-///
-/// ## Purpose
-/// Stores all the necessary information to identify an encoder and communicate
-/// with it over the network. This includes a cryptographic key and network address.
-///
-/// ## Lifecycle
-/// EncoderMetadata is created when an encoder joins the network and is updated
-/// when an encoder changes its key or network address. The next_epoch_* fields
-/// allow for smooth transitions when encoders update their information.
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, Hash)]
 pub struct EncoderMetadata {
     /// The Soma blockchain address of the encoder
@@ -64,19 +52,6 @@ pub struct EncoderMetadata {
     pub next_epoch_object_server_address: Option<Multiaddr>,
 }
 
-/// # Encoder
-///
-/// Represents an encoder in the Soma blockchain with its metadata and voting power.
-///
-/// ## Purpose
-/// Combines encoder metadata with voting power to represent an encoder's
-/// complete state in the system. The voting power determines the encoder's
-/// influence in the encoder committee.
-///
-/// ## Usage
-/// Encoders are stored in the EncoderSet and are used to form the committee
-/// for encoding operations. They are added, removed, and updated during epoch
-/// transitions.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Encoder {
     /// The encoder's metadata including key and network address
@@ -99,20 +74,6 @@ pub struct Encoder {
 }
 
 impl Encoder {
-    /// # Create a new encoder
-    ///
-    /// Creates a new encoder with the specified metadata and voting power.
-    ///
-    /// ## Arguments
-    /// * `soma_address` - The Soma blockchain address of the encoder
-    /// * `network_pubkey` - The network public key for network identity
-    /// * `net_address` - The network address for general communication
-    /// * `voting_power` - The encoder's voting power
-    /// * `commission_rate` - The encoder's initial commission rate
-    /// * `staking_pool_id` - The ID for the encoder's staking pool
-    ///
-    /// ## Returns
-    /// A new Encoder instance with the specified metadata and voting power
     pub fn new(
         soma_address: SomaAddress,
         encoder_pubkey: EncoderPublicKey,
@@ -378,19 +339,6 @@ impl Encoder {
     }
 }
 
-/// # EncoderSet
-///
-/// Manages the set of encoders in the Soma blockchain.
-///
-/// ## Purpose
-/// Maintains the current set of active encoders, pending encoders, and
-/// encoders scheduled for removal. It also tracks the total stake in the system
-/// and provides operations for adding and removing encoders.
-///
-/// ## Lifecycle
-/// The EncoderSet is updated during epoch transitions, when pending changes
-/// are applied to the active encoder set. Encoders can be added to the
-/// pending set during an epoch and will become active in the next epoch.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct EncoderSet {
     /// The total stake across all active encoders
@@ -410,21 +358,9 @@ pub struct EncoderSet {
     pub inactive_encoders: BTreeMap<ObjectID, Encoder>,
 
     pub at_risk_encoders: BTreeMap<SomaAddress, u64>,
-
-    pub reference_byte_price: u64,
 }
 
 impl EncoderSet {
-    /// # Create a new encoder set
-    ///
-    /// Creates a new encoder set with the specified initial active encoders.
-    ///
-    /// ## Arguments
-    /// * `init_active_encoders` - The initial set of active encoders
-    ///
-    /// ## Returns
-    /// A new EncoderSet instance with the specified active encoders and
-    /// calculated total stake
     pub fn new(init_active_encoders: Vec<Encoder>) -> Self {
         let total_stake = init_active_encoders
             .iter()
@@ -446,13 +382,10 @@ impl EncoderSet {
             staking_pool_mappings,
             inactive_encoders: BTreeMap::new(),
             at_risk_encoders: BTreeMap::new(),
-            reference_byte_price: 1,
         };
 
         // Set initial voting power and reference byte price
         encoder_set.set_voting_power();
-
-        encoder_set.calculate_reference_byte_price();
 
         encoder_set
     }
@@ -460,13 +393,13 @@ impl EncoderSet {
     /// Calculate the reference byte price using a weighted approach based on voting power
     /// The reference byte price is the price at which ≥2/3 of the voting power agrees
     /// (i.e., the price is greater than or equal to what 2/3 of validators want, weighted by stake)
-    fn calculate_reference_byte_price(&mut self) {
+    /// Derive the reference byte price based on encoder voting power.
+    /// Returns the price at which ≥2/3 of voting power agrees.
+    pub fn derive_reference_byte_price(&self) -> u64 {
         if self.active_encoders.is_empty() {
-            self.reference_byte_price = 1; // Default if no encoders
-            return;
+            return 1; // Default if no encoders
         }
 
-        // Get total voting power
         let total_voting_power: u64 = self
             .active_encoders
             .iter()
@@ -474,38 +407,30 @@ impl EncoderSet {
             .sum();
 
         if total_voting_power == 0 {
-            self.reference_byte_price = 1; // Default if no voting power
-            return;
+            return 1;
         }
 
-        // Calculate the quorum threshold (2/3 of total voting power)
-        // This is the amount of voting power needed to reach consensus
-        let quorum_threshold = (total_voting_power * 2 + 2) / 3; // Ceiling division for 2/3
+        // 2/3 quorum threshold
+        let quorum_threshold = (total_voting_power * 2 + 2) / 3;
 
-        // Create entries sorted by byte price (descending)
+        // Sort by byte price descending
         let mut entries: Vec<_> = self
             .active_encoders
             .iter()
             .map(|encoder| (encoder.byte_price, encoder.voting_power))
             .collect();
-
-        // Sort by byte price in descending order
         entries.sort_by(|a, b| b.0.cmp(&a.0));
 
-        // Find the highest price where accumulated voting power >= quorum threshold
+        // Find highest price where accumulated power >= threshold
         let mut accumulated_power = 0;
-        let mut result = 1; // Default to minimum byte price
-
         for (byte_price, voting_power) in entries {
             accumulated_power += voting_power;
-            // The moment we reach the threshold, we have our price
             if accumulated_power >= quorum_threshold {
-                result = byte_price;
-                break;
+                return byte_price;
             }
         }
 
-        self.reference_byte_price = result;
+        1 // Default fallback
     }
 
     /// Request to add an encoder (either new or previously removed)
@@ -532,14 +457,6 @@ impl EncoderSet {
         Ok(())
     }
 
-    /// # Request to remove an encoder
-    ///
-    /// Requests to remove an encoder from the active set in the next epoch.
-    ///
-    /// ## Behavior
-    /// The encoder's index is added to the pending_removals list and the
-    /// encoder will be removed from the active set in the next epoch when
-    /// advance_epoch() is called.
     pub fn request_remove_encoder(&mut self, address: SomaAddress) -> ExecutionResult {
         let encoder = self
             .active_encoders
@@ -563,61 +480,22 @@ impl EncoderSet {
     pub fn advance_epoch(
         &mut self,
         new_epoch: u64,
-        total_rewards: &mut u64,
-        reward_slashing_rate: u64,
         encoder_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         encoder_low_stake_grace_period: u64,
-    ) -> HashMap<SomaAddress, StakedSoma> {
-        // Calculate total voting power
-        let total_voting_power = self.active_encoders.iter().map(|v| v.voting_power).sum();
-
-        // Compute basic reward distribution
-        let unadjusted_reward_amounts =
-            self.compute_unadjusted_reward_distribution(total_voting_power, *total_rewards);
-
-        // Identify encoders to be slashed
-        // TODO: Base this off the shards that each encoder has been in rather than the whole EncoderCommittee's stake
-        let slashed_encoders = self.compute_slashed_encoders(encoder_report_records);
-
-        // Calculate total voting power of slashed encoders
-        let total_slashed_encoder_voting_power =
-            self.sum_voting_power_by_addresses(&slashed_encoders);
-
-        // Get indices of slashed encoders
-        let slashed_indices = self.get_encoder_indices(&slashed_encoders);
-
-        // Compute reward adjustments for slashed encoders
-        let (total_adjustment, individual_adjustments) = self.compute_reward_adjustments(
-            slashed_indices,
-            reward_slashing_rate,
-            &unadjusted_reward_amounts,
-        );
-
-        // Calculate adjusted rewards
-        let adjusted_reward_amounts = self.compute_adjusted_reward_distribution(
-            total_voting_power,
-            total_slashed_encoder_voting_power,
-            unadjusted_reward_amounts,
-            total_adjustment,
-            &individual_adjustments,
-        );
-
-        // Distribute rewards to encoders
-        let encoder_rewards =
-            self.distribute_rewards(&adjusted_reward_amounts, total_rewards, new_epoch);
-
+    ) {
+        // Apply commission rate and byte price changes
         self.adjust_commission_rates();
 
         // Process pending stakes and withdrawals for active encoders
         self.process_active_encoder_stakes(new_epoch);
 
         // Process pending stakes and withdrawals for pending encoders
-        // This ensures pending encoders accumulate stake during epoch changes
         self.process_pending_encoder_stakes(new_epoch);
 
+        // Process pending removals (includes tallied encoders marked for removal)
         self.process_pending_removals(encoder_report_records, new_epoch);
 
-        // Process encoders with low voting power and get new total stake
+        // Process encoders with low voting power
         let new_total_stake = self.update_encoder_positions_and_calculate_total_stake(
             encoder_low_stake_grace_period,
             encoder_report_records,
@@ -625,18 +503,153 @@ impl EncoderSet {
         );
         self.total_stake = new_total_stake;
 
-        // Now process pending encoders AFTER processing low voting power encoders
+        // Process pending encoders
         self.process_pending_encoders(new_epoch);
 
+        // Apply staged metadata changes
         self.effectuate_staged_metadata();
 
-        // Finally readjust voting power after all encoder changes
+        // Recalculate voting power after all changes
         self.set_voting_power();
+    }
 
-        // Recalculate reference byte price for the new epoch
-        self.calculate_reference_byte_price();
+    /// Process tally-based slashing for encoders reported by quorum.
+    ///
+    /// Returns the total amount slashed, which should be redistributed.
+    /// Tallied encoders have 95% of stake slashed and are removed from active set.
+    pub fn process_tally_slashing(
+        &mut self,
+        encoder_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+        new_epoch: u64,
+        tally_slash_rate_bps: u64,
+    ) -> u64 {
+        // 1. Identify tallied encoders (those with quorum reports against them)
+        let tallied_encoders = self.compute_slashed_encoders(encoder_report_records);
 
-        return encoder_rewards;
+        if tallied_encoders.is_empty() {
+            return 0;
+        }
+
+        let mut total_slashed = 0u64;
+
+        // 2. Process each tallied encoder - slash stake and mark for removal
+        for address in &tallied_encoders {
+            if let Some(encoder) = self.find_encoder_mut(*address) {
+                let stake = encoder.staking_pool.soma_balance;
+                let slash_amount = (stake * tally_slash_rate_bps) / BPS_DENOMINATOR;
+
+                // Apply slash to staking pool
+                encoder.staking_pool.soma_balance = stake.saturating_sub(slash_amount);
+                encoder.next_epoch_stake = encoder.staking_pool.soma_balance;
+
+                total_slashed += slash_amount;
+
+                info!(
+                    "Tallied encoder {} slashed {} SOMA ({}% of {})",
+                    address,
+                    slash_amount,
+                    tally_slash_rate_bps / 100,
+                    stake
+                );
+            }
+        }
+
+        // 3. Mark tallied encoders for removal (will be processed in process_pending_removals)
+        for address in &tallied_encoders {
+            // Find index and add to pending_removals if not already there
+            if let Some((idx, _)) = self
+                .active_encoders
+                .iter()
+                .find_position(|e| e.metadata.soma_address == *address)
+            {
+                if !self.pending_removals.contains(&idx) {
+                    self.pending_removals.push(idx);
+                }
+            }
+
+            // Clean up report records for this encoder
+            encoder_report_records.remove(address);
+        }
+
+        total_slashed
+    }
+
+    /// Distribute slashed funds to remaining (non-tallied) encoders proportionally.
+    ///
+    /// Called after process_tally_slashing to redistribute the slash pool.
+    pub fn distribute_tally_slash(
+        &mut self,
+        slash_amount: u64,
+        tallied_addresses: &HashSet<SomaAddress>,
+        new_epoch: u64,
+    ) -> BTreeMap<SomaAddress, StakedSoma> {
+        if slash_amount == 0 {
+            return BTreeMap::new();
+        }
+
+        // Calculate total voting power of non-tallied encoders
+        let eligible_voting_power: u64 = self
+            .active_encoders
+            .iter()
+            .filter(|e| !tallied_addresses.contains(&e.metadata.soma_address))
+            .map(|e| e.voting_power)
+            .sum();
+
+        if eligible_voting_power == 0 {
+            // No eligible encoders to receive slash redistribution
+            // This shouldn't happen in practice, but handle gracefully
+            return BTreeMap::new();
+        }
+
+        let mut rewards = BTreeMap::new();
+
+        // Distribute proportionally by voting power
+        for encoder in &mut self.active_encoders {
+            if tallied_addresses.contains(&encoder.metadata.soma_address) {
+                continue;
+            }
+
+            let share = (slash_amount as u128 * encoder.voting_power as u128
+                / eligible_voting_power as u128) as u64;
+
+            if share > 0 {
+                let staked = encoder.request_add_stake(
+                    share,
+                    encoder.metadata.soma_address,
+                    new_epoch - 1, // Activates in new_epoch
+                );
+                rewards.insert(encoder.metadata.soma_address, staked);
+            }
+        }
+
+        rewards
+    }
+
+    /// Combined tally processing: slash, redistribute, and return rewards.
+    ///
+    /// This is a convenience method that combines process_tally_slashing
+    /// and distribute_tally_slash.
+    pub fn process_and_redistribute_tally_slashing(
+        &mut self,
+        encoder_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
+        new_epoch: u64,
+        tally_slash_rate_bps: u64,
+    ) -> BTreeMap<SomaAddress, StakedSoma> {
+        // Get tallied addresses before slashing (for exclusion from redistribution)
+        let tallied_addresses: HashSet<SomaAddress> = self
+            .compute_slashed_encoders(encoder_report_records)
+            .into_iter()
+            .collect();
+
+        // Process slashing
+        let slash_amount =
+            self.process_tally_slashing(encoder_report_records, new_epoch, tally_slash_rate_bps);
+
+        // Redistribute to remaining encoders
+        let slash_rewards =
+            self.distribute_tally_slash(slash_amount, &tallied_addresses, new_epoch);
+
+        slash_rewards
     }
 
     /// Effectuate pending next epoch metadata changes for all active encoders.
@@ -835,12 +848,12 @@ impl EncoderSet {
         adjusted_rewards: &[u64],
         total_rewards: &mut u64,
         new_epoch: u64,
-    ) -> HashMap<SomaAddress, StakedSoma> {
+    ) -> BTreeMap<SomaAddress, StakedSoma> {
         if self.active_encoders.is_empty() {
-            return HashMap::new();
+            return BTreeMap::new();
         }
 
-        let mut rewards = HashMap::new();
+        let mut rewards = BTreeMap::new();
         let mut distributed_total = 0;
 
         for (i, encoder) in self.active_encoders.iter_mut().enumerate() {

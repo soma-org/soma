@@ -2306,6 +2306,7 @@ impl AuthorityState {
         // This may be less than `checkpoint - 1` if the end-of-epoch PendingCheckpoint produced
         // >1 checkpoint.
         last_checkpoint: CheckpointSequenceNumber,
+        epoch_randomness: Vec<u8>,
     ) -> CheckpointBuilderResult<(SystemState, TransactionEffects)> {
         let next_epoch = epoch_store.epoch() + 1;
 
@@ -2328,6 +2329,7 @@ impl AuthorityState {
             next_epoch_protocol_version,
             transaction_fees.total_fee,
             epoch_start_timestamp_ms,
+            epoch_randomness,
         );
 
         let executable_tx = VerifiedExecutableTransaction::new_from_checkpoint(

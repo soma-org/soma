@@ -9,9 +9,10 @@ use crate::checkpoints::causal_order::CausalOrder;
 use crate::checkpoints::checkpoint_output::{CertifiedCheckpointOutput, CheckpointOutput};
 use crate::consensus_handler::SequencedConsensusTransactionKey;
 use crate::consensus_manager::ReplayWaiter;
-use crate::global_state_hasher::GlobalStateHasher;
+use crate::global_state_hasher::{accumulate_effects, GlobalStateHasher};
 use crate::stake_aggregator::{InsertResult, MultiStakeAggregator};
 use diffy::create_patch;
+use fastcrypto::hash::MultisetHash as _;
 use itertools::Itertools as _;
 use nonempty::NonEmpty;
 use parking_lot::Mutex;
@@ -1665,9 +1666,9 @@ impl CheckpointBuilder {
                 if last_checkpoint.timestamp_ms > timestamp_ms {
                     // First consensus commit of an epoch can have zero timestamp.
                     debug!(
-                    "Decrease of checkpoint timestamp, possibly due to epoch change. Sequence: {}, previous: {}, current: {}",
-                    sequence_number, last_checkpoint.timestamp_ms, timestamp_ms,
-                );
+                        "Decrease of checkpoint timestamp, possibly due to epoch change. Sequence: {}, previous: {}, current: {}",
+                        sequence_number, last_checkpoint.timestamp_ms, timestamp_ms,
+                    );
                     // enforce timestamp monotonicity
                     timestamp_ms = last_checkpoint.timestamp_ms;
                 }
@@ -1825,6 +1826,11 @@ impl CheckpointBuilder {
         // >1 checkpoint.
         last_checkpoint: CheckpointSequenceNumber,
     ) -> CheckpointBuilderResult<SystemState> {
+        // Derive randomness from the effects accumulated so far in this checkpoint
+        // This is deterministic across all validators and contains good entropy
+        let effects_acc = accumulate_effects(checkpoint_effects);
+        let epoch_randomness = effects_acc.digest().digest;
+
         let (system_state, effects) = self
             .state
             .create_and_execute_advance_epoch_tx(
@@ -1833,6 +1839,7 @@ impl CheckpointBuilder {
                 checkpoint,
                 epoch_start_timestamp_ms,
                 last_checkpoint,
+                epoch_randomness.to_vec(),
             )
             .await?;
         checkpoint_effects.push(effects);

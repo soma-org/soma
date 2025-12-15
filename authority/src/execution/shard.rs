@@ -72,7 +72,7 @@ impl ShardExecutor {
         // 2. Load and validate system state
         let state = self.load_system_state(store)?;
         let current_epoch = state.epoch;
-        let byte_price = state.encoders.reference_byte_price;
+        let byte_price = state.reference_byte_price;
 
         // 3. Calculate embed price
         let embed_price = byte_price.saturating_mul(data_size);
@@ -375,9 +375,6 @@ impl ShardExecutor {
         Ok(())
     }
 
-    // =========================================================================
-    // TRY UPDATE TARGET WINNER
-    // =========================================================================
     // =========================================================================
     // TRY UPDATE TARGET WINNER
     // =========================================================================
@@ -1048,7 +1045,7 @@ impl FeeCalculator for ShardExecutor {
                 download_metadata, ..
             } => {
                 if let Ok(state) = self.load_system_state(store) {
-                    let byte_price = state.encoders.reference_byte_price;
+                    let byte_price = state.reference_byte_price;
                     let embed_cost =
                         byte_price.saturating_mul(download_metadata.metadata().size() as u64);
                     let fee = (embed_cost * 5) / 10000;

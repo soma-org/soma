@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     checksum::Checksum,
+    crypto::DefaultHash,
     metadata::{
         DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
         ObjectPath,
@@ -18,6 +19,7 @@ use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
 use fastcrypto::{
     bls12381::{self, min_sig::BLS12381PublicKey},
     ed25519::Ed25519PublicKey,
+    hash::HashFunction as _,
     traits::ToFromBytes,
 };
 use serde::{Deserialize, Serialize};
@@ -86,22 +88,26 @@ pub struct SystemParameters {
     pub vdf_iterations: u64,
 
     pub target_selection_rate_bps: u64,
+
+    pub target_reward_allocation_bps: u64,
+
+    pub encoder_tally_slash_rate_bps: u64,
 }
 
 impl Default for SystemParameters {
-    /// Creates a default set of system parameters
-    ///
-    /// Note: These default values are primarily for testing and development.
-    /// Production deployments should configure these parameters explicitly.
     // TODO: don't use Default, instead fill in SystemParameters from NodeConfig in Genesis
     fn default() -> Self {
         Self {
             epoch_duration_ms: 1000 * 60,    // TODO: 1000 * 60 * 60 * 24, // 1 day
             vdf_iterations: 1,               // TODO: Tweak based on block times
             target_selection_rate_bps: 2500, // 25% chance of hitting target
+            target_reward_allocation_bps: 7000, // 70% of emissions + fees go towards targets
+            encoder_tally_slash_rate_bps: 9500, // 95% of encoder stake is slashed when encoders are tallied
         }
     }
 }
+
+const BPS_DENOMINATOR: u64 = 10000;
 
 pub trait SystemStateTrait {
     /// Get the current epoch number
@@ -128,23 +134,6 @@ pub trait SystemStateTrait {
     fn protocol_version(&self) -> u64;
 }
 
-/// # SystemState
-///
-/// The global system state of the Soma blockchain.
-///
-/// ## Purpose
-/// Represents the current state of the blockchain system, including the
-/// current epoch, validator set, and system parameters. This is the primary
-/// data structure for managing the blockchain's global state.
-///
-/// ## Lifecycle
-/// The SystemState is created at genesis and updated during epoch transitions.
-/// It is stored as a special object in the object store and can be accessed
-/// using the SYSTEM_STATE_OBJECT_ID.
-///
-/// ## Thread Safety
-/// This struct is not thread-safe on its own and should be protected by
-/// appropriate synchronization mechanisms when accessed concurrently.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct SystemState {
     /// The current epoch number
@@ -160,6 +149,9 @@ pub struct SystemState {
 
     /// The timestamp when the current epoch started (in milliseconds)
     pub epoch_start_timestamp_ms: u64,
+
+    /// The reference byte price for the current epoch
+    pub reference_byte_price: u64,
 
     pub validator_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
 
@@ -184,17 +176,6 @@ pub struct SystemState {
 }
 
 impl SystemState {
-    /// # Create a new system state
-    ///
-    /// Creates a new system state with the specified validators, timestamp, and parameters.
-    ///
-    /// ## Arguments
-    /// * `validators` - The initial set of validators
-    /// * `epoch_start_timestamp_ms` - The timestamp when the epoch starts (in milliseconds)
-    /// * `parameters` - The system parameters
-    ///
-    /// ## Returns
-    /// A new SystemState instance with epoch 0 and the specified validators, parameters, and timestamp
     pub fn create(
         consensus_validators: Vec<Validator>,
         networking_validators: Vec<Validator>,
@@ -223,6 +204,9 @@ impl SystemState {
             encoder.activate(0);
         }
 
+        // Derive initial reference byte price
+        let reference_byte_price = encoders.derive_reference_byte_price();
+
         let mut system_state = Self {
             epoch: 0,
             validators,
@@ -230,6 +214,7 @@ impl SystemState {
             encoders,
             parameters,
             epoch_start_timestamp_ms,
+            reference_byte_price,
             validator_report_records: BTreeMap::new(),
             encoder_report_records: BTreeMap::new(),
             emission_pool,
@@ -280,30 +265,6 @@ impl SystemState {
         )))
     }
 
-    /// # Request to add a validator
-    ///
-    /// Requests to add a validator to the active set in the next epoch.
-    ///
-    /// ## Behavior
-    /// Creates a new validator from the provided information and adds it to the
-    /// pending_active_validators list in the validator set.
-    ///
-    /// ## Arguments
-    /// * `signer` - The Soma address of the validator
-    /// * `pubkey_bytes` - The BLS public key bytes for consensus operations
-    /// * `network_pubkey_bytes` - The network public key bytes for network identity
-    /// * `worker_pubkey_bytes` - The worker public key bytes for worker operations
-    /// * `net_address` - The network address bytes for general communication
-    /// * `p2p_address` - The p2p address bytes for peer-to-peer communication
-    /// * `primary_address` - The primary address bytes for validator services
-    ///
-    /// ## Returns
-    /// Ok(()) if the validator was successfully added to the pending set,
-    /// or an error if the validator is already active or pending
-    ///
-    /// ## Errors
-    /// Returns SomaError::DuplicateValidator if the validator is already
-    /// in the active or pending set
     pub fn request_add_validator(
         &mut self,
         signer: SomaAddress,
@@ -340,24 +301,6 @@ impl SystemState {
             .map_err(|e| e) // Pass through error
     }
 
-    /// # Request to remove a validator
-    ///
-    /// Requests to remove a validator from the active set in the next epoch.
-    ///
-    /// ## Behavior
-    /// Adds the validator's index to the pending_removals list in the validator set.
-    ///
-    /// ## Arguments
-    /// * `signer` - The Soma address of the validator to remove
-    /// * `pubkey_bytes` - The BLS public key bytes of the validator (unused)
-    ///
-    /// ## Returns
-    /// Ok(()) if the validator was successfully marked for removal,
-    /// or an error if the validator is not active or already marked for removal
-    ///
-    /// ## Errors
-    /// Returns SomaError::NotAValidator if the validator is not in the active set
-    /// Returns SomaError::ValidatorAlreadyRemoved if the validator is already marked for removal
     pub fn request_remove_validator(
         &mut self,
         signer: SomaAddress,
@@ -801,93 +744,105 @@ impl SystemState {
         Ok(())
     }
 
-    /// # Advance to the next epoch
-    ///
-    /// Processes pending validator changes and advances the system state to the next epoch.
-    ///
-    /// ## Behavior
-    /// This method:
-    /// 1. Updates the epoch start timestamp
-    /// 2. Increments the epoch number
-    /// 3. Calls advance_epoch() on the validator set to process pending validator changes
-    ///
-    /// ## Arguments
-    /// * `new_epoch` - The expected new epoch number (must be current epoch + 1)
-    /// * `epoch_start_timestamp_ms` - The timestamp when the new epoch starts (in milliseconds)
-    ///
-    /// ## Returns
-    /// Ok(()) if the epoch was successfully advanced,
-    /// or an error if the new epoch number is invalid
-    ///
-    /// ## Errors
-    /// Returns SomaError::AdvancedToWrongEpoch if the new epoch number is not
-    /// the current epoch + 1
-    /// Advance the system to the next epoch
     pub fn advance_epoch(
         &mut self,
         new_epoch: u64,
+        next_protocol_version: u64,
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
+        epoch_randomness: Vec<u8>,
         reward_slashing_rate: u64,
-    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSoma>> {
-        // Verify we're advancing to the correct epoch
+    ) -> ExecutionResult<(
+        BTreeMap<SomaAddress, StakedSoma>,
+        BTreeMap<SomaAddress, StakedSoma>,
+    )> {
+        // 1. Verify we're advancing to the correct epoch
         if new_epoch != self.epoch + 1 {
             return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);
         }
 
-        // Save previous epoch timestamp
+        let prev_epoch = self.epoch;
         let prev_epoch_start_timestamp = self.epoch_start_timestamp_ms;
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
 
-        // Calculate emission if appropriate
+        // 2. Calculate total rewards (emissions + fees)
         let mut total_rewards = epoch_total_transaction_fees;
         if epoch_start_timestamp_ms
             >= prev_epoch_start_timestamp + self.parameters.epoch_duration_ms
         {
             total_rewards += self.emission_pool.advance_epoch();
         }
+        // 3. Generate and store epoch seed for deterministic randomness
+        let epoch_seed = self.generate_epoch_seed(new_epoch, &epoch_randomness);
+        self.set_epoch_seed(new_epoch, epoch_seed);
 
-        // Cache current committees as previous before advancing
+        // 4. Cache current committees as previous before any changes
         self.committees[0] = self.committees[1].take();
 
-        // Actually increment the epoch number
+        // 5. Process tally-based encoder slashing and redistribution (BEFORE epoch increment)
+        let slash_rewards = self.encoders.process_and_redistribute_tally_slashing(
+            &mut self.encoder_report_records,
+            new_epoch,
+            self.parameters.encoder_tally_slash_rate_bps,
+        );
+
+        // 6. Increment epoch
         self.epoch = new_epoch;
 
-        // TODO: Split rewards between validators and encoders
-        // For example, allocate 70% to validators, 30% to encoders
-        // This can be adjusted based on desired incentive structure
-        let validator_subsidy = (total_rewards * 100) / 100;
-        let encoder_subsidy = total_rewards - validator_subsidy;
-        // TODO: don't do encoder rewards, just do slashing, redistribution of slash, and process stake pools
-        // TODO: instead calculate reward amount for targets created in the last epoch
-        let mut total_validator_rewards = validator_subsidy;
-        let mut total_encoder_rewards = encoder_subsidy;
+        // 7. Allocate rewards: targets vs validators
+        let target_allocation =
+            (total_rewards * self.parameters.target_reward_allocation_bps) / BPS_DENOMINATOR;
+        let validator_allocation = total_rewards - target_allocation;
 
-        // Process validator set epoch advancement
+        // 8. Calculate and store target rewards for the PREVIOUS epoch
+        // Targets created in prev_epoch are valid in new_epoch, claimable in new_epoch + 1
+        self.calculate_target_rewards(prev_epoch, target_allocation);
+
+        // 9. Process validator rewards (minimal - just for consensus participation)
+        let mut validator_reward_pool = validator_allocation;
         let validator_rewards = self.validators.advance_epoch(
             new_epoch,
-            &mut total_validator_rewards,
-            reward_slashing_rate,
+            &mut validator_reward_pool,
+            reward_slashing_rate, // 50% of tallied rewards get slashed and redistributed to other validators
             &mut self.validator_report_records,
             VALIDATOR_LOW_STAKE_GRACE_PERIOD,
         );
 
-        // Process encoder set epoch advancement
-        let _encoder_rewards = self.encoders.advance_epoch(
+        // 10. Process encoder epoch transition (no direct rewards - they earn via shards)
+        self.encoders.advance_epoch(
             new_epoch,
-            &mut total_encoder_rewards,
-            reward_slashing_rate,
             &mut self.encoder_report_records,
             ENCODER_LOW_STAKE_GRACE_PERIOD,
         );
 
-        // Build and cache new current committees after validator/encoder sets are updated
+        // 11. Derive reference byte price for new epoch
+        self.reference_byte_price = self.encoders.derive_reference_byte_price();
+
+        // 12. Build new committees
         let new_committees = self.build_committees_for_epoch(new_epoch);
         self.committees[1] = Some(new_committees);
 
-        // For simplicity in this implementation, we're just returning validator rewards
-        // In a full implementation, you'd want to return both and handle them appropriately
-        Ok(validator_rewards)
+        // 13. Return remainder to emission pool
+        if validator_reward_pool > 0 {
+            self.emission_pool.balance += validator_reward_pool;
+        }
+
+        Ok((validator_rewards, slash_rewards))
+    }
+
+    fn generate_epoch_seed(&self, epoch: EpochId, state_hash_digest: &[u8]) -> Vec<u8> {
+        let mut hasher = DefaultHash::default();
+        hasher.update(&epoch.to_le_bytes());
+        hasher.update(state_hash_digest);
+
+        // Chain with previous seed for continuity
+        if epoch > 0 {
+            if let Some(prev_seed) = self.epoch_seeds.get(&(epoch - 1)) {
+                hasher.update(prev_seed);
+            }
+        }
+
+        hasher.finalize().to_vec()
     }
 
     /// Get an encoder's SomaAddress from their public key
@@ -963,6 +918,10 @@ impl SystemState {
         if target_count == 0 {
             // No targets created, return emissions to pool
             self.emission_pool.balance += total_target_emissions;
+            info!(
+                "No targets in epoch {}, returning {} to emission pool",
+                epoch, total_target_emissions
+            );
             return;
         }
 
@@ -975,6 +934,11 @@ impl SystemState {
         if remainder > 0 {
             self.emission_pool.balance += remainder;
         }
+
+        info!(
+            "Epoch {} target rewards: {} per target ({} targets, {} total)",
+            epoch, reward_per_target, target_count, total_target_emissions
+        );
     }
     /// Check if an encoder has been "tallied" (slashed/removed from the committee)
     /// relative to a shard's lifecycle.
@@ -1241,7 +1205,7 @@ impl SystemStateTrait for SystemState {
                     }
                 })
                 .collect(),
-            reference_byte_price: self.encoders.reference_byte_price,
+            reference_byte_price: self.reference_byte_price,
         }
     }
 }
