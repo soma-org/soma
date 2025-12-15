@@ -15,7 +15,7 @@ pub struct InferenceNetworkService<
     ES: ObjectStore,
     P: PersistentStore<PS>,
     E: EphemeralStore<ES>,
-    M: ModuleClient,
+    M: ModuleClient<ES>,
 > {
     core_processor: ActorHandle<InferenceCoreProcessor<PS, ES, P, E, M>>,
 }
@@ -25,7 +25,7 @@ impl<
         ES: ObjectStore,
         P: PersistentStore<PS>,
         E: EphemeralStore<ES>,
-        M: ModuleClient,
+        M: ModuleClient<ES>,
     > InferenceNetworkService<PS, ES, P, E, M>
 {
     pub fn new(core_processor: ActorHandle<InferenceCoreProcessor<PS, ES, P, E, M>>) -> Self {
@@ -39,7 +39,7 @@ impl<
         ES: ObjectStore,
         P: PersistentStore<PS>,
         E: EphemeralStore<ES>,
-        M: ModuleClient,
+        M: ModuleClient<ES>,
     > InferenceService for InferenceNetworkService<PS, ES, P, E, M>
 {
     async fn handle_inference(&self, input_bytes: Bytes) -> InferenceResult<Bytes> {

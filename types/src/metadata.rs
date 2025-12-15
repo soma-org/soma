@@ -9,19 +9,18 @@ use enum_dispatch::enum_dispatch;
 use object_store::path::Path;
 use serde::{Deserialize, Serialize};
 use url::Url;
+use uuid::Uuid;
 
 use crate::{
     checksum::Checksum,
     committee::Epoch,
     crypto::{NetworkKeyPair, NetworkPublicKey, NetworkSignature},
     error::{ShardError, ShardResult, SharedError, SharedResult},
-    multiaddr::Multiaddr,
     shard::Shard,
     shard_crypto::{
         digest::Digest,
         scope::{Scope, ScopedMessage},
     },
-    sync::to_host_port_str,
 };
 
 type SizeInBytes = usize;
@@ -31,7 +30,7 @@ pub enum ObjectPath {
     Inputs(Epoch, Digest<Shard>, Checksum),
     Embeddings(Epoch, Digest<Shard>, Checksum),
     Probes(Epoch, Checksum),
-    Uploads(Checksum),
+    Tmp(Epoch, Digest<Shard>, Uuid),
 }
 
 impl ObjectPath {
@@ -48,15 +47,22 @@ impl ObjectPath {
             Self::Probes(epoch, checksum) => {
                 Path::from(format!("epochs/{}/probes/{}", epoch, checksum))
             }
-            Self::Uploads(checksum) => Path::from(format!("uploads/{}", checksum)),
+            Self::Tmp(epoch, shard_digest, uuid) => Path::from(format!(
+                "epochs/{}/shards/{}/tmp/{}",
+                epoch, shard_digest, uuid
+            )),
         }
     }
-    pub fn checksum(&self) -> Checksum {
+
+    pub fn new_tmp(epoch: Epoch, shard_digest: Digest<Shard>) -> Self {
+        Self::Tmp(epoch, shard_digest, Uuid::new_v4())
+    }
+    pub fn etag(&self) -> String {
         match self {
-            Self::Inputs(_, _, checksum) => checksum.clone(),
-            Self::Embeddings(_, _, checksum) => checksum.clone(),
-            Self::Probes(_, checksum) => checksum.clone(),
-            Self::Uploads(checksum) => checksum.clone(),
+            Self::Inputs(_, _, checksum) => checksum.to_string(),
+            Self::Embeddings(_, _, checksum) => checksum.to_string(),
+            Self::Probes(_, checksum) => checksum.to_string(),
+            Self::Tmp(_, _, uuid) => uuid.to_string(),
         }
     }
 }

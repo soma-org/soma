@@ -4,10 +4,7 @@ use async_trait::async_trait;
 use object_store::ObjectStore;
 use objects::{
     downloader::ObjectDownloader,
-    readers::{
-        store::ObjectStoreReader,
-        url::{ObjectHttpClient, ObjectHttpReader},
-    },
+    readers::{store::ObjectStoreReader, url::ObjectHttpClient},
     stores::{EphemeralStore, PersistentStore},
 };
 use tokio_util::sync::CancellationToken;
@@ -15,11 +12,11 @@ use tokio_util::sync::CancellationToken;
 use types::{
     actors::{ActorMessage, Processor},
     error::{ShardError, ShardResult},
-    evaluation::{EvaluationInput, EvaluationInputAPI, EvaluationOutput, EvaluationOutputV1},
+    evaluation::{EvaluationInput, EvaluationInputAPI, EvaluationOutput},
     metadata::{DownloadMetadata, ObjectPath},
 };
 
-use crate::evaluation::{EvaluatorClient, EvaluatorInput, EvaluatorInputV1, EvaluatorOutputAPI};
+use crate::evaluation::EvaluatorClient;
 
 pub struct EvaluationCoreProcessor<
     PS: ObjectStore,
@@ -179,15 +176,9 @@ impl<
             )
             .await?;
 
-            let evaluator_input = EvaluatorInput::V1(EvaluatorInputV1::new(
-                input.input_object_path().clone(),
-                input.embedding_object_path().clone(),
-                input.probe_object_path().clone(),
-            ));
-
-            let evaluator_output = self
+            let evaluation_output = self
                 .evaluator_client
-                .call(evaluator_input, self.ephemeral_store.object_store().clone())
+                .call(input.clone(), self.ephemeral_store.object_store().clone())
                 .await
                 .map_err(ShardError::EvaluationError)?;
 
@@ -233,10 +224,7 @@ impl<
                 .await
                 .map_err(ShardError::ObjectError)?;
 
-            Ok(EvaluationOutput::V1(EvaluationOutputV1::new(
-                evaluator_output.score().clone(),
-                evaluator_output.summary_digest().clone(),
-            )))
+            Ok(evaluation_output)
         }
         .await;
         let _ = msg.sender.send(result);

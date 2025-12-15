@@ -2,6 +2,8 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use types::committee::Epoch;
 use types::metadata::{DownloadMetadata, ObjectPath};
+use types::shard::Shard;
+use types::shard_crypto::digest::Digest;
 use types::shard_crypto::keys::EncoderPublicKey;
 pub mod core_processor;
 pub mod messaging;
@@ -10,6 +12,7 @@ pub mod module;
 #[enum_dispatch]
 pub(crate) trait InferenceInputAPI {
     fn epoch(&self) -> Epoch;
+    fn shard_digest(&self) -> &Digest<Shard>;
     fn input_download_metadata(&self) -> &DownloadMetadata;
     fn input_object_path(&self) -> &ObjectPath;
 }
@@ -17,6 +20,7 @@ pub(crate) trait InferenceInputAPI {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct InferenceInputV1 {
     epoch: Epoch,
+    shard_digest: Digest<Shard>,
     input_download_metadata: DownloadMetadata,
     input_object_path: ObjectPath,
 }
@@ -24,11 +28,13 @@ pub struct InferenceInputV1 {
 impl InferenceInputV1 {
     pub fn new(
         epoch: Epoch,
+        shard_digest: Digest<Shard>,
         input_download_metadata: DownloadMetadata,
         input_object_path: ObjectPath,
     ) -> Self {
         Self {
             epoch,
+            shard_digest,
             input_download_metadata,
             input_object_path,
         }
@@ -38,6 +44,9 @@ impl InferenceInputV1 {
 impl InferenceInputAPI for InferenceInputV1 {
     fn epoch(&self) -> Epoch {
         self.epoch
+    }
+    fn shard_digest(&self) -> &Digest<Shard> {
+        &self.shard_digest
     }
     fn input_download_metadata(&self) -> &DownloadMetadata {
         &self.input_download_metadata

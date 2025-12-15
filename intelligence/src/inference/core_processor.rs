@@ -1,6 +1,8 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use fastcrypto::hash::HashFunction;
+use futures::StreamExt;
 use object_store::ObjectStore;
 use objects::{
     downloader::ObjectDownloader,
@@ -10,8 +12,10 @@ use objects::{
 use tokio_util::sync::CancellationToken;
 use types::{
     actors::{ActorMessage, Processor},
+    checksum::Checksum,
+    crypto::DefaultHash,
     error::{ShardError, ShardResult},
-    metadata::{DownloadMetadata, Metadata, ObjectPath},
+    metadata::{DownloadMetadata, Metadata, MetadataV1, ObjectPath},
 };
 
 use crate::inference::{
@@ -24,7 +28,7 @@ pub struct InferenceCoreProcessor<
     ES: ObjectStore,
     P: PersistentStore<PS>,
     E: EphemeralStore<ES>,
-    M: ModuleClient,
+    M: ModuleClient<ES>,
 > {
     persistent_store: P,
     ephemeral_store: E,
@@ -40,7 +44,7 @@ impl<
         ES: ObjectStore,
         P: PersistentStore<PS>,
         E: EphemeralStore<ES>,
-        M: ModuleClient,
+        M: ModuleClient<ES>,
     > InferenceCoreProcessor<PS, ES, P, E, M>
 {
     pub fn new(
@@ -170,7 +174,7 @@ impl<
         ES: ObjectStore,
         P: PersistentStore<PS>,
         E: EphemeralStore<ES>,
-        M: ModuleClient,
+        M: ModuleClient<ES>,
     > Processor for InferenceCoreProcessor<PS, ES, P, E, M>
 {
     type Input = InferenceInput;
@@ -185,14 +189,20 @@ impl<
                 msg.cancellation.clone(),
             )
             .await?;
+
+            let tmp_output_path = ObjectPath::new_tmp(input.epoch(), input.shard_digest().clone());
+
             let module_input = ModuleInput::V1(ModuleInputV1::new(
                 input.epoch(),
                 input.input_object_path().clone(),
+                tmp_output_path.clone(),
             ));
+
+            let timeout = Duration::from_secs(10);
 
             let module_output = self
                 .module_client
-                .call(module_input, self.ephemeral_store.object_store().clone())
+                .call(module_input, timeout)
                 .await
                 .map_err(ShardError::InferenceError)?;
 
@@ -202,21 +212,48 @@ impl<
             )
             .await?;
 
+            let get_output_result = self
+                .ephemeral_store
+                .object_store()
+                .get(&tmp_output_path.path())
+                .await
+                .map_err(ShardError::ObjectStoreError)?;
+
+            let output_size = get_output_result.meta.size;
+            let mut output_hasher = DefaultHash::new();
+            let mut output_stream = get_output_result.into_stream();
+
+            while let Some(chunk) = output_stream.next().await {
+                let bytes = chunk.map_err(ShardError::ObjectStoreError)?;
+                output_hasher.update(&bytes);
+            }
+
+            let output_checksum = Checksum::new_from_hash(output_hasher.finalize().into());
+            let output_path = ObjectPath::Embeddings(
+                input.epoch(),
+                input.shard_digest().clone(),
+                output_checksum,
+            );
+
+            self.ephemeral_store
+                .object_store()
+                .copy(&tmp_output_path.path(), &output_path.path())
+                .await
+                .map_err(ShardError::ObjectStoreError)?;
+
+            let output_metadata = Metadata::V1(MetadataV1::new(output_checksum, output_size));
+            self.store_to_persistent(&output_path, &output_metadata)
+                .await?;
+
             let download_metadata = self
                 .persistent_store
-                .download_metadata(
-                    module_output.object_path().clone(),
-                    module_output.metadata().clone(),
-                )
+                .download_metadata(output_path.clone(), output_metadata)
                 .await
                 .map_err(ShardError::ObjectError)?;
 
-            self.store_to_persistent(module_output.object_path(), download_metadata.metadata())
-                .await?;
-
             Ok(InferenceOutput::V1(InferenceOutputV1::new(
                 download_metadata,
-                module_output.object_path().clone(),
+                output_path,
                 module_output.probe_encoder().clone(),
             )))
         }
