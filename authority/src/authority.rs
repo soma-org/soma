@@ -1046,6 +1046,7 @@ impl AuthorityState {
             gas_payment,
             input_objects,
             execution_params,
+            epoch_store.epoch_start_state().fee_parameters,
         );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
@@ -1191,6 +1192,7 @@ impl AuthorityState {
             gas_payment,
             checked_input_objects,
             execution_params,
+            epoch_store.epoch_start_state().fee_parameters,
         );
 
         let execution_result: ExecutionResult = match execution_error_opt {

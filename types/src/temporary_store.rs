@@ -1,36 +1,3 @@
-//! # Temporary Store Module
-//!
-//! ## Overview
-//! This module provides a temporary storage mechanism for transaction execution in the Soma blockchain.
-//! It manages the state of objects during transaction execution, tracking modifications, creations,
-//! and deletions before they are committed to permanent storage.
-//!
-//! ## Responsibilities
-//! - Maintain a temporary view of object state during transaction execution
-//! - Track object modifications, creations, and deletions
-//! - Generate transaction effects based on state changes
-//! - Enforce ownership and access control rules
-//! - Handle version management for objects
-//! - Support shared object access patterns
-//!
-//! ## Component Relationships
-//! - Used by the transaction executor to manage object state during execution
-//! - Provides input to the effects generator for creating transaction effects
-//! - Interfaces with the permanent storage layer for committing changes
-//! - Supports the object model defined in the object module
-//!
-//! ## Key Workflows
-//! 1. Object loading and access during transaction execution
-//! 2. Tracking object modifications and ownership changes
-//! 3. Generating transaction effects from execution results
-//! 4. Enforcing object ownership and access control rules
-//!
-//! ## Design Patterns
-//! - Temporary view pattern for isolated state changes
-//! - Version management for object consistency
-//! - Ownership tracking for access control
-//! - Effects generation from state changes
-
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
@@ -47,6 +14,7 @@ use crate::{
     error::SomaResult,
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
     storage::InputKey,
+    system_state::FeeParameters,
     transaction::InputObjects,
     transaction_outputs::WrittenObjects,
     tx_fee::TransactionFee,
@@ -270,6 +238,9 @@ pub struct TemporaryStore {
     cur_epoch: EpochId,
 
     pub gas_object_id: Option<ObjectID>,
+
+    /// Fee parameters for this epoch
+    pub fee_parameters: FeeParameters,
 }
 
 impl TemporaryStore {
@@ -278,6 +249,7 @@ impl TemporaryStore {
         receiving_objects: Vec<ObjectRef>,
         tx_digest: TransactionDigest,
         cur_epoch: EpochId,
+        fee_parameters: FeeParameters,
     ) -> Self {
         let mutable_input_refs = input_objects.mutable_inputs();
         let lamport_timestamp = input_objects.lamport_timestamp(&receiving_objects);
@@ -311,6 +283,7 @@ impl TemporaryStore {
             deleted_consensus_objects,
             gas_object_id: None,
             creation_counter: 0,
+            fee_parameters,
         }
     }
 

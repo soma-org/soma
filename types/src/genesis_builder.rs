@@ -12,7 +12,7 @@ use crate::object::{ObjectData, ObjectType, Version};
 use crate::system_state::encoder::Encoder;
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::validator::Validator;
-use crate::system_state::{get_system_state, SystemParameters};
+use crate::system_state::{get_system_state, FeeParameters, SystemParameters};
 use crate::transaction::InputObjects;
 use crate::tx_fee::TransactionFee;
 use crate::{
@@ -123,7 +123,8 @@ impl GenesisBuilder {
         }
 
         let (system_state, objects) = self.create_genesis_state();
-        let (transaction, effects, final_objects) = self.create_genesis_transaction(objects);
+        let (transaction, effects, final_objects) =
+            self.create_genesis_transaction(objects, system_state);
         let (checkpoint, checkpoint_contents) =
             self.create_genesis_checkpoint(&transaction, &effects);
 
@@ -309,6 +310,7 @@ impl GenesisBuilder {
     fn create_genesis_transaction(
         &self,
         objects: Vec<Object>,
+        system_state: SystemState,
     ) -> (Transaction, TransactionEffects, Vec<Object>) {
         let unsigned_tx =
             VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
@@ -321,6 +323,7 @@ impl GenesisBuilder {
             Vec::new(), // receiving_objects
             genesis_digest,
             0, // epoch_id
+            system_state.fee_parameters(),
         );
 
         // Add all objects to the store

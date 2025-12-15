@@ -8,6 +8,8 @@ use types::{
     transaction::TransactionKind,
 };
 
+use crate::execution::BPS_DENOMINATOR;
+
 use super::{object::check_ownership, FeeCalculator, TransactionExecutor};
 
 /// Executor for coin-related transactions
@@ -51,7 +53,7 @@ impl CoinExecutor {
                 // If this is a gas coin, we need to ensure there's enough left for fees
                 if is_gas_coin {
                     // For write fee, we'll create one new coin and update the source
-                    let write_fee = self.calculate_operation_fee(2);
+                    let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total fee needed
                     let total_fee = value_fee + write_fee;
@@ -120,7 +122,7 @@ impl CoinExecutor {
                     // Use the FeeCalculator trait methods to calculate fees
 
                     // For write fee, we know we'll create one new object and update the original
-                    let write_fee = self.calculate_operation_fee(2);
+                    let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total fee is value_fee + write_fee (base fee already deducted)
                     let remaining_fee = write_fee + value_fee;
@@ -243,7 +245,7 @@ impl CoinExecutor {
                 // Calculate estimated remaining fees (base fee already deducted)
 
                 // Write fee: 1 update for gas coin + 1 for each recipient
-                let write_fee = self.calculate_operation_fee(1 + recipients.len() as u64);
+                let write_fee = self.calculate_operation_fee(store, 1 + recipients.len() as u64);
 
                 // Total remaining fee
                 let remaining_fee = value_fee + write_fee;
@@ -340,7 +342,7 @@ impl CoinExecutor {
                     // Calculate value fee using the trait method
 
                     // For write fee, we know we'll create one new object and keep gas coin
-                    let write_fee = self.calculate_operation_fee(2);
+                    let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total remaining fee (base fee already deducted)
                     let remaining_fee = value_fee + write_fee;
@@ -476,60 +478,47 @@ impl TransactionExecutor for CoinExecutor {
 
 impl FeeCalculator for CoinExecutor {
     fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
+        let value_fee_bps = store.fee_parameters.value_fee_bps;
+
         match kind {
             TransactionKind::TransferCoin { coin, amount, .. } => {
-                // For TransferCoin, value fee is percentage of amount being transferred
-                if let Some(specific_amount) = amount {
-                    if *specific_amount == 0 {
-                        return 0;
-                    }
-                    // Calculate 0.1% (10 basis points)
-                    let fee = (specific_amount * 10) / 10000;
-                    fee
+                let transfer_amount = if let Some(specific_amount) = amount {
+                    *specific_amount
                 } else {
                     // For full transfer, get the actual coin balance
-                    if let Some(coin_obj) = store.read_object(&coin.0) {
-                        if let Some(balance) = coin_obj.as_coin() {
-                            if balance == 0 {
-                                return 0;
-                            }
-                            let fee = (balance * 10) / 10000;
-                            return fee;
-                        }
-                    }
-                    // Default if we can't determine the actual value
-                    0
-                }
-            }
-            TransactionKind::PayCoins { coins, amounts, .. } => {
-                // For specific amounts
-                if let Some(specific_amounts) = amounts {
-                    let total: u64 = specific_amounts.iter().sum();
-                    if total == 0 {
-                        return 0;
-                    }
-                    let fee = (total * 10) / 10000;
-                    return fee;
-                }
+                    store
+                        .read_object(&coin.0)
+                        .and_then(|obj| obj.as_coin())
+                        .unwrap_or(0)
+                };
 
-                // For pay_all, calculate total of actual balances
-                let mut total_balance = 0;
-                for coin_ref in coins {
-                    if let Some(coin_obj) = store.read_object(&coin_ref.0) {
-                        if let Some(balance) = coin_obj.as_coin() {
-                            total_balance += balance;
-                        }
-                    }
-                }
-
-                if total_balance == 0 {
+                if transfer_amount == 0 {
                     return 0;
                 }
-                // Calculate fee as 0.1% of total transferred
-                let fee = (total_balance * 10) / 10000;
-                return fee;
+
+                (transfer_amount * value_fee_bps) / BPS_DENOMINATOR
             }
-            _ => 0, // Default fee
+
+            TransactionKind::PayCoins { coins, amounts, .. } => {
+                let total_amount: u64 = if let Some(specific_amounts) = amounts {
+                    specific_amounts.iter().copied().sum::<u64>()
+                } else {
+                    // For pay_all, calculate total of actual balances
+                    coins
+                        .iter()
+                        .filter_map(|coin_ref| store.read_object(&coin_ref.0))
+                        .filter_map(|obj| obj.as_coin())
+                        .sum::<u64>()
+                };
+
+                if total_amount == 0 {
+                    return 0;
+                }
+
+                (total_amount * value_fee_bps) / BPS_DENOMINATOR
+            }
+
+            _ => 0,
         }
     }
 }

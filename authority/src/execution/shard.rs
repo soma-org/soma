@@ -25,10 +25,9 @@ use types::{
     SYSTEM_STATE_OBJECT_ID,
 };
 
-use super::{FeeCalculator, TransactionExecutor};
+use crate::execution::BPS_DENOMINATOR;
 
-/// Basis points for percentage calculations (10000 = 100%)
-const BPS_DENOMINATOR: u64 = 10000;
+use super::{FeeCalculator, TransactionExecutor};
 
 /// Percentage of escrow/reward given to claim submitter (basis points)
 /// e.g., 50 = 0.5%
@@ -142,7 +141,7 @@ impl ShardExecutor {
                 })?;
 
         // 6. Calculate total required
-        let operation_fee = self.calculate_operation_fee(2);
+        let operation_fee = self.calculate_operation_fee(store, 2);
         let total_required = if is_gas_coin {
             embed_price
                 .saturating_add(value_fee)
@@ -1040,6 +1039,10 @@ impl TransactionExecutor for ShardExecutor {
 
 impl FeeCalculator for ShardExecutor {
     fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
+        // Shard operations use half the normal value fee (similar to staking)
+        let value_fee_bps = store.fee_parameters.value_fee_bps / 2;
+        let base_fee = store.fee_parameters.base_fee;
+
         match kind {
             TransactionKind::EmbedData {
                 download_metadata, ..
@@ -1048,24 +1051,24 @@ impl FeeCalculator for ShardExecutor {
                     let byte_price = state.reference_byte_price;
                     let embed_cost =
                         byte_price.saturating_mul(download_metadata.metadata().size() as u64);
-                    let fee = (embed_cost * 5) / 10000;
-                    std::cmp::max(fee, self.base_fee())
+                    let fee = (embed_cost * value_fee_bps) / BPS_DENOMINATOR;
+                    std::cmp::max(fee, base_fee)
                 } else {
-                    self.base_fee()
+                    base_fee
                 }
             }
 
             TransactionKind::ClaimEscrow { shard_ref } => {
                 if let Some(shard_obj) = store.read_object(&shard_ref.0) {
                     if let Some(shard) = shard_obj.as_shard() {
-                        let fee = (shard.amount * 5) / 10000;
-                        return std::cmp::max(fee, self.base_fee());
+                        let fee = (shard.amount * value_fee_bps) / BPS_DENOMINATOR;
+                        return std::cmp::max(fee, base_fee);
                     }
                 }
-                self.base_fee()
+                base_fee
             }
 
-            TransactionKind::ReportWinner { .. } => self.base_fee(),
+            TransactionKind::ReportWinner { .. } => base_fee,
 
             TransactionKind::ClaimReward { target_ref } => {
                 if let Ok(state) = self.load_system_state(store) {
@@ -1073,24 +1076,16 @@ impl FeeCalculator for ShardExecutor {
                         if let Some(target) = target_obj.as_target() {
                             let reward_epoch = target.created_epoch + 1;
                             if let Some(reward) = state.get_target_reward(reward_epoch) {
-                                let fee = (reward * 5) / 10000;
-                                return std::cmp::max(fee, self.base_fee());
+                                let fee = (reward * value_fee_bps) / BPS_DENOMINATOR;
+                                return std::cmp::max(fee, base_fee);
                             }
                         }
                     }
                 }
-                self.base_fee()
+                base_fee
             }
 
             _ => 0,
         }
-    }
-
-    fn base_fee(&self) -> u64 {
-        1500
-    }
-
-    fn write_fee_per_object(&self) -> u64 {
-        300
     }
 }

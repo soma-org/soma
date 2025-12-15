@@ -75,6 +75,35 @@ mod rewards_distribution_tests;
 #[path = "unit_tests/test_utils.rs"]
 pub mod test_utils;
 
+/// Fee parameters for transaction execution
+/// Derived from SystemParameters at epoch start
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+pub struct FeeParameters {
+    pub base_fee: u64,
+    pub write_object_fee: u64,
+    pub value_fee_bps: u64,
+}
+
+impl FeeParameters {
+    pub fn from_system_parameters(params: &SystemParameters) -> Self {
+        Self {
+            base_fee: params.base_fee,
+            write_object_fee: params.write_object_fee,
+            value_fee_bps: params.value_fee_bps,
+        }
+    }
+
+    /// Calculate value fee for a given amount
+    pub fn calculate_value_fee(&self, amount: u64) -> u64 {
+        (amount * self.value_fee_bps) / BPS_DENOMINATOR
+    }
+
+    /// Calculate operation fee for N object writes
+    pub fn calculate_operation_fee(&self, num_objects: u64) -> u64 {
+        num_objects * self.write_object_fee
+    }
+}
+
 /// The public key type used for validator protocol keys
 ///
 /// This is a BLS12-381 public key used for validator signatures in the consensus protocol.
@@ -92,6 +121,28 @@ pub struct SystemParameters {
     pub target_reward_allocation_bps: u64,
 
     pub encoder_tally_slash_rate_bps: u64,
+
+    // === Fee Parameters ===
+    /// Target fee collection per epoch (network adjusts fees to hit this)
+    pub target_epoch_fee_collection: u64,
+
+    /// Base fee per transaction (in shannons)
+    pub base_fee: u64,
+
+    /// Fee per object write (in shannons)
+    pub write_object_fee: u64,
+
+    /// Current value fee rate in basis points (e.g., 10 = 0.1%)
+    pub value_fee_bps: u64,
+
+    /// Minimum value fee rate (floor)
+    pub min_value_fee_bps: u64,
+
+    /// Maximum value fee rate (ceiling)
+    pub max_value_fee_bps: u64,
+
+    /// Max adjustment per epoch in basis points (e.g., 1250 = 12.5% max change)
+    pub fee_adjustment_rate_bps: u64,
 }
 
 impl Default for SystemParameters {
@@ -103,6 +154,14 @@ impl Default for SystemParameters {
             target_selection_rate_bps: 2500, // 25% chance of hitting target
             target_reward_allocation_bps: 7000, // 70% of emissions + fees go towards targets
             encoder_tally_slash_rate_bps: 9500, // 95% of encoder stake is slashed when encoders are tallied
+
+            target_epoch_fee_collection: 1_000_000_000, // 1000 SOMA worth of fees
+            base_fee: 1000,
+            write_object_fee: 300,
+            value_fee_bps: 10,             // 0.1% default
+            min_value_fee_bps: 1,          // 0.01% floor
+            max_value_fee_bps: 100,        // 1% ceiling
+            fee_adjustment_rate_bps: 1250, // 12.5% max change per epoch
         }
     }
 }
@@ -779,6 +838,9 @@ impl SystemState {
         // 4. Cache current committees as previous before any changes
         self.committees[0] = self.committees[1].take();
 
+        // Adjust fees for next epoch BEFORE processing rewards
+        self.adjust_value_fee(epoch_total_transaction_fees);
+
         // 5. Process tally-based encoder slashing and redistribution (BEFORE epoch increment)
         let slash_rewards = self.encoders.process_and_redistribute_tally_slashing(
             &mut self.encoder_report_records,
@@ -1028,6 +1090,65 @@ impl SystemState {
 
         was_in_previous && !is_in_current
     }
+
+    /// Adjust value fee based on actual vs target fee collection
+    /// Called during advance_epoch
+    fn adjust_value_fee(&mut self, actual_fees_collected: u64) {
+        let target = self.parameters.target_epoch_fee_collection;
+        let current_bps = self.parameters.value_fee_bps;
+        let adjustment_rate = self.parameters.fee_adjustment_rate_bps;
+
+        // Avoid division by zero
+        if target == 0 {
+            return;
+        }
+
+        // Calculate ratio: actual / target (scaled by BPS_DENOMINATOR)
+        // ratio > 10000 means over target (network busy)
+        // ratio < 10000 means under target (network quiet)
+        let ratio = (actual_fees_collected.saturating_mul(BPS_DENOMINATOR))
+            .checked_div(target)
+            .unwrap_or(BPS_DENOMINATOR);
+
+        let new_bps = if ratio > BPS_DENOMINATOR {
+            // Over target - increase fees to reduce demand
+            // Scale increase by how much we exceeded
+            let excess_ratio = ratio - BPS_DENOMINATOR;
+            let increase = std::cmp::min(
+                (current_bps * excess_ratio) / BPS_DENOMINATOR,
+                (current_bps * adjustment_rate) / BPS_DENOMINATOR,
+            );
+            std::cmp::min(
+                current_bps.saturating_add(increase),
+                self.parameters.max_value_fee_bps,
+            )
+        } else {
+            // Under target - decrease fees to encourage activity
+            let deficit_ratio = BPS_DENOMINATOR - ratio;
+            let decrease = std::cmp::min(
+                (current_bps * deficit_ratio) / BPS_DENOMINATOR,
+                (current_bps * adjustment_rate) / BPS_DENOMINATOR,
+            );
+            std::cmp::max(
+                current_bps.saturating_sub(decrease),
+                self.parameters.min_value_fee_bps,
+            )
+        };
+
+        if new_bps != current_bps {
+            info!(
+                "Fee adjustment: {} -> {} bps (collected {} vs target {})",
+                current_bps, new_bps, actual_fees_collected, target
+            );
+        }
+
+        self.parameters.value_fee_bps = new_bps;
+    }
+
+    /// Get current fee parameters for transaction execution
+    pub fn fee_parameters(&self) -> FeeParameters {
+        FeeParameters::from_system_parameters(&self.parameters)
+    }
 }
 
 impl SystemStateTrait for SystemState {
@@ -1129,7 +1250,7 @@ impl SystemStateTrait for SystemState {
                 })
                 .collect();
 
-            // TODO: Calculate shard size based on number of encoders
+            // TODO: Calculate shard size based on number of encoders or protocol config
             let encoder_count = encoders.len() as CountUnit;
             let shard_size = std::cmp::min(encoder_count, std::cmp::max(3, encoder_count / 2));
 
@@ -1206,6 +1327,7 @@ impl SystemStateTrait for SystemState {
                 })
                 .collect(),
             reference_byte_price: self.reference_byte_price,
+            fee_parameters: self.fee_parameters(),
         }
     }
 }

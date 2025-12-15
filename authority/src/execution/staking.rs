@@ -10,6 +10,8 @@ use types::{
     SYSTEM_STATE_OBJECT_ID,
 };
 
+use crate::execution::BPS_DENOMINATOR;
+
 use super::{object::check_ownership, FeeCalculator, TransactionExecutor};
 
 pub struct StakingExecutor;
@@ -67,7 +69,7 @@ impl StakingExecutor {
                 // If this is a gas coin, we need to ensure there's enough left for fees
                 if is_gas_coin {
                     // For write fee, we'll create one new StakedSoma object and update the source
-                    let write_fee = self.calculate_operation_fee(2);
+                    let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total fee needed
                     let total_fee = value_fee + write_fee;
@@ -135,7 +137,7 @@ impl StakingExecutor {
                 if is_gas_coin {
                     // For gas coin, we need to account for fees
                     // For write fee, we'll create one new StakedSoma object
-                    let write_fee = self.calculate_operation_fee(1);
+                    let write_fee = self.calculate_operation_fee(store, 1);
 
                     // Total fee needed
                     let total_fee = value_fee + write_fee;
@@ -247,7 +249,7 @@ impl StakingExecutor {
                 // If this is a gas coin, we need to ensure there's enough left for fees
                 if is_gas_coin {
                     // For write fee, we'll create one new StakedSoma object and update the source
-                    let write_fee = self.calculate_operation_fee(2);
+                    let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total fee needed
                     let total_fee = value_fee + write_fee;
@@ -323,7 +325,7 @@ impl StakingExecutor {
                 if is_gas_coin {
                     // For gas coin, we need to account for fees
                     // For write fee, we'll create one new StakedSoma object
-                    let write_fee = self.calculate_operation_fee(1);
+                    let write_fee = self.calculate_operation_fee(store, 1);
 
                     // Total fee needed
                     let total_fee = value_fee + write_fee;
@@ -554,81 +556,45 @@ impl TransactionExecutor for StakingExecutor {
 
 impl FeeCalculator for StakingExecutor {
     fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
+        // Staking gets half the normal value fee to incentivize participation
+        let value_fee_bps = store.fee_parameters.value_fee_bps / 2;
+
         match kind {
             TransactionKind::AddStake {
                 coin_ref, amount, ..
-            } => {
-                // For AddStake, value fee is percentage of amount being staked
-                if let Some(specific_amount) = amount {
-                    if *specific_amount == 0 {
-                        return 0;
-                    }
-                    // Calculate 0.05% (5 basis points) - half of the coin transfer fee
-                    let fee = (specific_amount * 5) / 10000;
-                    fee
-                } else {
-                    // For full amount staking, get the actual coin balance
-                    if let Some(coin_obj) = store.read_object(&coin_ref.0) {
-                        if let Some(balance) = coin_obj.as_coin() {
-                            if balance == 0 {
-                                return 0;
-                            }
-                            let fee = (balance * 5) / 10000;
-                            return fee;
-                        }
-                    }
-                    // Default if we can't determine the actual value
-                    0
-                }
             }
-            TransactionKind::AddStakeToEncoder {
+            | TransactionKind::AddStakeToEncoder {
                 coin_ref, amount, ..
             } => {
-                // For AddStakeToEncoder, use the same fee calculation as AddStake
-                if let Some(specific_amount) = amount {
-                    if *specific_amount == 0 {
-                        return 0;
-                    }
-                    // Calculate 0.05% (5 basis points) - half of the coin transfer fee
-                    let fee = (specific_amount * 5) / 10000;
-                    fee
+                let stake_amount = if let Some(specific_amount) = amount {
+                    *specific_amount
                 } else {
-                    // For full amount staking, get the actual coin balance
-                    if let Some(coin_obj) = store.read_object(&coin_ref.0) {
-                        if let Some(balance) = coin_obj.as_coin() {
-                            if balance == 0 {
-                                return 0;
-                            }
-                            let fee = (balance * 5) / 10000;
-                            return fee;
-                        }
-                    }
-                    // Default if we can't determine the actual value
-                    0
+                    store
+                        .read_object(&coin_ref.0)
+                        .and_then(|obj| obj.as_coin())
+                        .unwrap_or(0)
+                };
+
+                if stake_amount == 0 {
+                    return 0;
                 }
+
+                (stake_amount * value_fee_bps) / BPS_DENOMINATOR
             }
+
             TransactionKind::WithdrawStake { staked_soma } => {
-                // For withdrawals, we apply a 0.05% fee on the withdrawn amount
-                // Since we don't know the exact withdrawal amount until execution,
-                // we use the principal amount as an estimate
                 if let Some(staked_obj) = store.read_object(&staked_soma.0) {
                     if let Some(staked_soma_data) = Object::as_staked_soma(&staked_obj) {
-                        // Use principal as estimate (this doesn't include rewards)
                         let principal = staked_soma_data.principal;
-                        let fee = (principal * 5) / 10000;
-                        return fee;
+                        return (principal * value_fee_bps) / BPS_DENOMINATOR;
                     }
                 }
-                // Default fee if we can't determine value
-                100
+                // Fallback to base fee if we can't read the object
+                store.fee_parameters.base_fee
             }
-            _ => 0, // Default fee
-        }
-    }
 
-    // Lower base fee than CoinExecutor since staking is incentivized
-    fn base_fee(&self) -> u64 {
-        500 // Half the standard base fee
+            _ => 0,
+        }
     }
 }
 

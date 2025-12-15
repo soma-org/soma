@@ -21,6 +21,7 @@ use types::{
     execution::ExecutionOrEarlyError,
     object::{Object, ObjectID, ObjectRef, Version},
     storage::object_store::ObjectStore,
+    system_state::FeeParameters,
     temporary_store::{self, InnerTemporaryStore, SharedInput, TemporaryStore},
     transaction::{
         CheckedInputObjects, InputObjectKind, InputObjects, ObjectReadResultKind, TransactionKind,
@@ -39,6 +40,9 @@ mod staking;
 mod system;
 mod validator;
 
+/// Basis points for percentage calculations (10000 = 100%)
+pub(crate) const BPS_DENOMINATOR: u64 = 10000;
+
 /// Core trait for all transaction executors
 trait TransactionExecutor: FeeCalculator {
     fn execute(
@@ -55,25 +59,23 @@ trait TransactionExecutor: FeeCalculator {
 pub trait FeeCalculator {
     /// Calculate the value-based fee for a transaction
     fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
-        // Default value fee
+        // Default: use the store's fee parameters
         0
     }
 
-    /// Get the base fee for transaction type
-    fn base_fee(&self) -> u64 {
-        // Default base fee
-        1000
+    /// Get the base fee (now reads from store)
+    fn base_fee(&self, store: &TemporaryStore) -> u64 {
+        store.fee_parameters.base_fee
     }
 
     /// Calculate fee per object write
-    fn write_fee_per_object(&self) -> u64 {
-        // Default per-write fee
-        300
+    fn write_fee_per_object(&self, store: &TemporaryStore) -> u64 {
+        store.fee_parameters.write_object_fee
     }
 
     /// Calculate operation fee for a given number of objects
-    fn calculate_operation_fee(&self, num_objects: u64) -> u64 {
-        num_objects * self.write_fee_per_object()
+    fn calculate_operation_fee(&self, store: &TemporaryStore, num_objects: u64) -> u64 {
+        num_objects * self.write_fee_per_object(store)
     }
 }
 
@@ -86,6 +88,7 @@ pub fn execute_transaction(
     gas_payment: Vec<ObjectRef>,
     input_objects: CheckedInputObjects,
     execution_params: ExecutionOrEarlyError,
+    fee_parameters: FeeParameters,
 ) -> (
     InnerTemporaryStore,
     TransactionEffects,
@@ -102,6 +105,7 @@ pub fn execute_transaction(
         kind.receiving_objects(),
         tx_digest,
         epoch_id,
+        fee_parameters,
     );
 
     let mut executor = create_executor(&kind);

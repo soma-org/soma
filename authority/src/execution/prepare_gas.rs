@@ -57,7 +57,7 @@ pub fn prepare_gas(
     temporary_store.gas_object_id = primary_gas_id;
 
     // Deduct base fee for DOS protection
-    let base_fee = executor.base_fee();
+    let base_fee = executor.base_fee(temporary_store);
 
     // Get gas object with merged balance
     let gas_obj = temporary_store.read_object(&gas_id).unwrap();
@@ -224,7 +224,7 @@ pub fn calculate_and_deduct_remaining_fees(
 
     // Calculate operation fee (without recalculating value fee)
     let operation_fee = temporary_store.execution_results.written_objects.len() as u64
-        * executor.write_fee_per_object();
+        * executor.write_fee_per_object(temporary_store);
 
     // Get gas object
     let gas_obj = match temporary_store.read_object(&gas_id) {

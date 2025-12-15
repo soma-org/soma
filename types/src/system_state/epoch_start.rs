@@ -11,6 +11,7 @@ use crate::{
     crypto::{self, ProtocolPublicKey},
     multiaddr::Multiaddr,
     peer_id::PeerId,
+    system_state::{FeeParameters, SystemParameters},
 };
 
 use super::PublicKey;
@@ -32,6 +33,8 @@ pub struct EpochStartSystemState {
     pub reference_byte_price: u64,
 
     pub protocol_version: u64,
+
+    pub fee_parameters: FeeParameters,
 }
 
 impl EpochStartSystemState {
@@ -42,6 +45,7 @@ impl EpochStartSystemState {
         epoch_duration_ms: u64,
         active_validators: Vec<EpochStartValidatorInfo>,
         reference_byte_price: u64,
+        fee_parameters: FeeParameters,
     ) -> Self {
         Self {
             epoch,
@@ -50,6 +54,7 @@ impl EpochStartSystemState {
             epoch_duration_ms,
             active_validators,
             reference_byte_price,
+            fee_parameters,
         }
     }
 
@@ -65,6 +70,7 @@ impl EpochStartSystemState {
             epoch_start_timestamp_ms: 0,
             epoch_duration_ms: 1000,
             active_validators: vec![],
+            fee_parameters: FeeParameters::from_system_parameters(&SystemParameters::default()),
         }
     }
 }

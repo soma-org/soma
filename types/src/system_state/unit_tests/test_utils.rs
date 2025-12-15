@@ -477,6 +477,13 @@ pub fn create_test_system_state(
         target_selection_rate_bps: 2500,
         target_reward_allocation_bps: 7000,
         encoder_tally_slash_rate_bps: 9500,
+        base_fee: 1000,
+        target_epoch_fee_collection: 1_000_000_000,
+        write_object_fee: 300,
+        value_fee_bps: 10,
+        min_value_fee_bps: 1,
+        max_value_fee_bps: 100,
+        fee_adjustment_rate_bps: 1250,
     };
 
     // Create system state
