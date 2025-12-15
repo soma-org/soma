@@ -97,29 +97,30 @@ impl ShardExecutor {
                 }
             })?;
 
-            // Target validity check: valid at created_epoch + 1
-            if current_epoch < target_data.created_epoch + 1 {
+            // Genesis targets are valid immediately in their creation epoch
+            // System/User targets are valid at created_epoch + 1
+            let (valid_epoch, competition_epoch) = match &target_data.origin {
+                TargetOrigin::Genesis { .. } => {
+                    (target_data.created_epoch, target_data.created_epoch)
+                }
+                _ => (target_data.created_epoch + 1, target_data.created_epoch + 1),
+            };
+
+            if current_epoch < valid_epoch {
                 return Err(ExecutionFailureStatus::InvalidArguments {
                     reason: format!(
                         "Target {} not yet valid. Created: {}, Current: {}, Valid at: {}",
-                        target.0,
-                        target_data.created_epoch,
-                        current_epoch,
-                        target_data.created_epoch + 1
+                        target.0, target_data.created_epoch, current_epoch, valid_epoch
                     ),
                 });
             }
 
-            // Shard created_epoch must equal target.created_epoch + 1
-            // (Target created in E, valid in E+1, shards competing must be from E+1)
-            if current_epoch != target_data.created_epoch + 1 {
+            if current_epoch != competition_epoch {
                 return Err(ExecutionFailureStatus::InvalidArguments {
                     reason: format!(
-                        "Target epoch mismatch. Target created: {}, Current: {}, Required: {}",
-                        target_data.created_epoch,
-                        current_epoch,
-                        target_data.created_epoch + 1
-                    ),
+                "Target epoch mismatch. Target created: {}, Current: {}, Competition epoch: {}",
+                target_data.created_epoch, current_epoch, competition_epoch
+            ),
                 });
             }
         }
@@ -406,26 +407,32 @@ impl ShardExecutor {
                 })?;
 
         // 2. Verify target is valid (valid at created_epoch + 1)
-        if current_epoch < target_data.created_epoch + 1 {
+        // Genesis targets are valid immediately, others at created_epoch + 1
+        let valid_epoch = match &target_data.origin {
+            TargetOrigin::Genesis { .. } => target_data.created_epoch,
+            _ => target_data.created_epoch + 1,
+        };
+
+        if current_epoch < valid_epoch {
             return Err(ExecutionFailureStatus::InvalidArguments {
                 reason: format!(
                     "Target {} not yet valid. Created: {}, Current: {}, Valid at: {}",
-                    target_id,
-                    target_data.created_epoch,
-                    current_epoch,
-                    target_data.created_epoch + 1
+                    target_id, target_data.created_epoch, current_epoch, valid_epoch
                 ),
             });
         }
-
         // 3. Verify epoch compatibility
-        // Shard must be created in target.created_epoch + 1
-        if shard_data.created_epoch != target_data.created_epoch + 1 {
+        // Genesis targets: shard must be from created_epoch
+        // System/User targets: shard must be from created_epoch + 1
+        let expected_shard_epoch = match &target_data.origin {
+            TargetOrigin::Genesis { .. } => target_data.created_epoch,
+            _ => target_data.created_epoch + 1,
+        };
+        if shard_data.created_epoch != expected_shard_epoch {
             return Err(ExecutionFailureStatus::InvalidArguments {
                 reason: format!(
                     "Shard epoch {} incompatible with target. Expected shard from epoch {}",
-                    shard_data.created_epoch,
-                    target_data.created_epoch + 1
+                    shard_data.created_epoch, expected_shard_epoch
                 ),
             });
         }
@@ -822,6 +829,7 @@ impl ShardExecutor {
                     }
                 })?
             }
+            TargetOrigin::Genesis { reward_amount } => *reward_amount,
             TargetOrigin::User { reward_amount, .. } => *reward_amount,
         };
 
@@ -892,6 +900,7 @@ impl ShardExecutor {
                 match &target.origin {
                     TargetOrigin::User { creator, .. } => Ok(RewardRecipient::Address(*creator)),
                     TargetOrigin::System => Ok(RewardRecipient::EmissionsPool),
+                    TargetOrigin::Genesis { .. } => Ok(RewardRecipient::EmissionsPool),
                 }
             }
         }
@@ -1071,14 +1080,24 @@ impl FeeCalculator for ShardExecutor {
             TransactionKind::ReportWinner { .. } => base_fee,
 
             TransactionKind::ClaimReward { target_ref } => {
-                if let Ok(state) = self.load_system_state(store) {
-                    if let Some(target_obj) = store.read_object(&target_ref.0) {
-                        if let Some(target) = target_obj.as_target() {
-                            let reward_epoch = target.created_epoch + 1;
-                            if let Some(reward) = state.get_target_reward(reward_epoch) {
-                                let fee = (reward * value_fee_bps) / BPS_DENOMINATOR;
-                                return std::cmp::max(fee, base_fee);
+                if let Some(target_obj) = store.read_object(&target_ref.0) {
+                    if let Some(target) = target_obj.as_target() {
+                        let reward = match &target.origin {
+                            TargetOrigin::Genesis { reward_amount } => *reward_amount,
+                            TargetOrigin::User { reward_amount, .. } => *reward_amount,
+                            TargetOrigin::System => {
+                                if let Ok(state) = self.load_system_state(store) {
+                                    let reward_epoch = target.created_epoch + 1;
+                                    state.get_target_reward(reward_epoch).unwrap_or(0)
+                                } else {
+                                    0
+                                }
                             }
+                        };
+
+                        if reward > 0 {
+                            let fee = (reward * value_fee_bps) / BPS_DENOMINATOR;
+                            return std::cmp::max(fee, base_fee);
                         }
                     }
                 }

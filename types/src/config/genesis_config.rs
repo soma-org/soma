@@ -277,17 +277,13 @@ pub struct GenesisCeremonyParameters {
     #[serde(default = "GenesisCeremonyParameters::default_epoch_duration_ms")]
     pub epoch_duration_ms: u64,
 
-    /// TODO: protocol version that the chain starts at.
-    //  #[serde(default = "ProtocolVersion::max")]
-    //  pub protocol_version: ProtocolVersion,
-
-    /// The starting epoch in which stake subsidies start being paid out.
-    #[serde(default)]
-    pub stake_subsidy_start_epoch: u64,
-
     /// The amount of rewards to be drawn down per distribution.
     #[serde(default = "GenesisCeremonyParameters::default_emission_per_epoch")]
     pub emission_per_epoch: u64,
+
+    /// Seed target embeddings (if empty, random embeddings will be generated)
+    #[serde(default)] // TODO: define seed target embeddings
+    pub seed_target_embeddings: Vec<Vec<u8>>,
 }
 
 impl GenesisCeremonyParameters {
@@ -296,8 +292,8 @@ impl GenesisCeremonyParameters {
             chain_start_timestamp_ms: Self::default_timestamp_ms(),
             protocol_version: ProtocolVersion::max(),
             epoch_duration_ms: Self::default_epoch_duration_ms(),
-            stake_subsidy_start_epoch: 0,
             emission_per_epoch: Self::default_emission_per_epoch(),
+            seed_target_embeddings: vec![],
         }
     }
 

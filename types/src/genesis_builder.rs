@@ -11,6 +11,7 @@ use crate::intent::{IntentMessage, IntentScope};
 use crate::object::{ObjectData, ObjectType, Version};
 use crate::system_state::encoder::Encoder;
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
+use crate::system_state::shard::{Target, TargetOrigin};
 use crate::system_state::validator::Validator;
 use crate::system_state::{get_system_state, FeeParameters, SystemParameters};
 use crate::transaction::InputObjects;
@@ -280,6 +281,62 @@ impl GenesisBuilder {
                     objects.push(coin_object);
                 }
             }
+        }
+
+        // === Create seed targets for genesis bootstrap ===
+        let embeddings = &self.parameters.parameters.seed_target_embeddings;
+
+        if !embeddings.is_empty() {
+            let emission_per_epoch = self.parameters.parameters.emission_per_epoch;
+            let target_allocation_bps = system_state.parameters.target_reward_allocation_bps;
+            let seed_reward_pool = (emission_per_epoch * target_allocation_bps) / 10_000;
+
+            let seed_count = embeddings.len() as u64;
+            let reward_per_target = seed_reward_pool / seed_count;
+
+            for (i, embedding) in embeddings.iter().enumerate() {
+                let target = Target {
+                    origin: TargetOrigin::Genesis {
+                        reward_amount: reward_per_target,
+                    },
+                    created_epoch: 0,
+                    target_embedding: embedding.clone(),
+                    winning_shard: None,
+                };
+
+                let target_object = Object::new(
+                    ObjectData::new_with_id(
+                        ObjectID::derive_id(TransactionDigest::default(), i as u64),
+                        ObjectType::Target,
+                        Version::MIN,
+                        bcs::to_bytes(&target).unwrap(),
+                    ),
+                    Owner::Shared {
+                        initial_shared_version: Version::new(),
+                    },
+                    TransactionDigest::default(),
+                );
+                objects.push(target_object);
+            }
+
+            // Deduct from emission pool
+            system_state.emission_pool.balance = system_state
+                .emission_pool
+                .balance
+                .saturating_sub(seed_reward_pool);
+
+            // Handle remainder
+            let remainder = seed_reward_pool % seed_count;
+            if remainder > 0 {
+                system_state.emission_pool.balance += remainder;
+            }
+
+            tracing::info!(
+                "Genesis: Created {} seed targets with {} reward each (total pool: {})",
+                seed_count,
+                reward_per_target,
+                seed_reward_pool
+            );
         }
 
         // Set voting power and build committees

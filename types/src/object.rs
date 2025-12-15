@@ -467,7 +467,7 @@ impl Object {
 
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::Shard,
+            ObjectType::Target,
             Version::MIN,
             bcs::to_bytes(&target).unwrap(),
         );

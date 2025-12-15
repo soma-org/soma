@@ -45,6 +45,8 @@ pub enum TargetOrigin {
         creator: SomaAddress,
         reward_amount: u64,
     },
+    /// Genesis bootstrap targets - valid immediately, fixed reward
+    Genesis { reward_amount: u64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -62,7 +64,7 @@ pub struct Target {
 impl Target {
     pub fn creator(&self) -> Option<SomaAddress> {
         match &self.origin {
-            TargetOrigin::System => None,
+            TargetOrigin::System | TargetOrigin::Genesis { .. } => None,
             TargetOrigin::User { creator, .. } => Some(*creator),
         }
     }
