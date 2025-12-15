@@ -198,6 +198,23 @@ pub struct ProtocolConfig {
 
     /// Number of iterations to run vdf for shard randomness.
     vdf_iterations: Option<u64>,
+    epoch_duration_ms: Option<u64>,
+
+    // === Reward/Emission Parameters ===
+    target_selection_rate_bps: Option<u64>,
+    target_reward_allocation_bps: Option<u64>,
+    encoder_tally_slash_rate_bps: Option<u64>,
+    reward_slashing_rate_bps: Option<u64>,
+    claim_incentive_bps: Option<u64>,
+
+    // === Fee Parameters ===
+    target_epoch_fee_collection: Option<u64>,
+    base_fee: Option<u64>,
+    write_object_fee: Option<u64>,
+    initial_value_fee_bps: Option<u64>,
+    min_value_fee_bps: Option<u64>,
+    max_value_fee_bps: Option<u64>,
+    fee_adjustment_rate_bps: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -271,24 +288,26 @@ impl ProtocolConfig {
             buffer_stake_for_protocol_upgrade_bps: Some(5000),
 
             vdf_iterations: Some(1000),
-            // When adding a new constant, set it to None in the earliest version, like this:
-            // new_constant: None,
+            epoch_duration_ms: Some(24 * 60 * 60), // 1 day
 
-            //   cfg.consensus_max_transaction_size_bytes = Some(256 * 1024); // 256KB
-            //    // Assume 1KB per transaction and 500 transactions per block.
-            //         cfg.consensus_max_transactions_in_block_bytes = Some(512 * 1024);
-            //         // Assume 20_000 TPS * 5% max stake per validator / (minimum) 4 blocks per round = 250 transactions per block maximum
-            //         // Using a higher limit that is 512, to account for bursty traffic and system transactions.
-            //         cfg.consensus_max_num_transactions_in_block = Some(512);
-            // max_tx_size_bytes: Some(128 * 1024),
-            //     cfg.consensus_voting_rounds = Some(40);
+            // Reward parameters
+            target_selection_rate_bps: Some(2500),    // 25%
+            target_reward_allocation_bps: Some(7000), // 70%
+            encoder_tally_slash_rate_bps: Some(9500), // 95%
+            reward_slashing_rate_bps: Some(5000),     // 50%
+            claim_incentive_bps: Some(500),           // 5% - adjust as needed
 
-            //      cfg.consensus_gc_depth = Some(60);
-            //     cfg.consensus_bad_nodes_stake_threshold = Some(30)
-            //     cfg.max_transactions_per_checkpoint = Some(20_000);
+            // Fee parameters
+            target_epoch_fee_collection: Some(1_000_000_000),
+            base_fee: Some(1000),
+            write_object_fee: Some(300),
+            initial_value_fee_bps: Some(10), // 0.1%
+            min_value_fee_bps: Some(1),      // 0.01%
+            max_value_fee_bps: Some(100),    // 1%
+            fee_adjustment_rate_bps: Some(1250), // 12.5%
 
-            // reward_slashing_rate: Some(5000),
-            // max_checkpoint_size_bytes: Some(30 * 1024 * 1024),
+                                             // When adding a new constant, set it to None in the earliest version, like this:
+                                             // new_constant: None,
         };
         for cur in 2..=version.0 {
             match cur {
@@ -313,6 +332,8 @@ impl ProtocolConfig {
             cfg.consensus_gc_depth = Some(5);
 
             cfg.vdf_iterations = Some(1);
+
+            cfg.epoch_duration_ms = Some(1000 * 60);
         }
 
         cfg
@@ -371,4 +392,64 @@ impl ProtocolConfig {
 
         window_size
     }
+
+    /// Build SystemParameters from protocol config.
+    /// Note: value_fee_bps is dynamic and may differ from initial_value_fee_bps
+    /// after fee adjustments. Pass the current value when updating.
+    pub fn build_system_parameters(&self, current_value_fee_bps: Option<u64>) -> SystemParameters {
+        SystemParameters {
+            epoch_duration_ms: self.epoch_duration_ms(),
+            vdf_iterations: self.vdf_iterations(),
+            target_selection_rate_bps: self.target_selection_rate_bps(),
+            target_reward_allocation_bps: self.target_reward_allocation_bps(),
+            encoder_tally_slash_rate_bps: self.encoder_tally_slash_rate_bps(),
+            target_epoch_fee_collection: self.target_epoch_fee_collection(),
+            base_fee: self.base_fee(),
+            write_object_fee: self.write_object_fee(),
+            // Use current value if provided (preserves fee adjustments), otherwise use initial
+            value_fee_bps: current_value_fee_bps.unwrap_or_else(|| self.initial_value_fee_bps()),
+            min_value_fee_bps: self.min_value_fee_bps(),
+            max_value_fee_bps: self.max_value_fee_bps(),
+            fee_adjustment_rate_bps: self.fee_adjustment_rate_bps(),
+            claim_incentive_bps: self.claim_incentive_bps(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub struct SystemParameters {
+    /// The duration of an epoch, in milliseconds.
+    pub epoch_duration_ms: u64,
+
+    pub vdf_iterations: u64,
+
+    pub target_selection_rate_bps: u64,
+
+    pub target_reward_allocation_bps: u64,
+
+    pub encoder_tally_slash_rate_bps: u64,
+
+    // === Fee Parameters ===
+    /// Target fee collection per epoch (network adjusts fees to hit this)
+    pub target_epoch_fee_collection: u64,
+
+    /// Base fee per transaction (in shannons)
+    pub base_fee: u64,
+
+    /// Fee per object write (in shannons)
+    pub write_object_fee: u64,
+
+    /// Current value fee rate in basis points (e.g., 10 = 0.1%)
+    pub value_fee_bps: u64,
+
+    /// Minimum value fee rate (floor)
+    pub min_value_fee_bps: u64,
+
+    /// Maximum value fee rate (ceiling)
+    pub max_value_fee_bps: u64,
+
+    /// Max adjustment per epoch in basis points (e.g., 1250 = 12.5% max change)
+    pub fee_adjustment_rate_bps: u64,
+
+    pub claim_incentive_bps: u64,
 }

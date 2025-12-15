@@ -34,7 +34,7 @@ use crate::{
         encoder::Encoder,
         epoch_start::EpochStartSystemStateTrait,
         validator::{self, Validator},
-        SystemParameters, SystemState, SystemStateTrait,
+        SystemState, SystemStateTrait,
     },
     temporary_store::TemporaryStore,
     transaction::{

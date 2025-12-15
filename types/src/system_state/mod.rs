@@ -22,6 +22,7 @@ use fastcrypto::{
     hash::HashFunction as _,
     traits::ToFromBytes,
 };
+use protocol_config::{ProtocolConfig, SystemParameters};
 use serde::{Deserialize, Serialize};
 use staking::StakedSoma;
 use tracing::{error, info};
@@ -109,63 +110,6 @@ impl FeeParameters {
 /// This is a BLS12-381 public key used for validator signatures in the consensus protocol.
 pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-pub struct SystemParameters {
-    /// The duration of an epoch, in milliseconds.
-    pub epoch_duration_ms: u64,
-
-    pub vdf_iterations: u64,
-
-    pub target_selection_rate_bps: u64,
-
-    pub target_reward_allocation_bps: u64,
-
-    pub encoder_tally_slash_rate_bps: u64,
-
-    // === Fee Parameters ===
-    /// Target fee collection per epoch (network adjusts fees to hit this)
-    pub target_epoch_fee_collection: u64,
-
-    /// Base fee per transaction (in shannons)
-    pub base_fee: u64,
-
-    /// Fee per object write (in shannons)
-    pub write_object_fee: u64,
-
-    /// Current value fee rate in basis points (e.g., 10 = 0.1%)
-    pub value_fee_bps: u64,
-
-    /// Minimum value fee rate (floor)
-    pub min_value_fee_bps: u64,
-
-    /// Maximum value fee rate (ceiling)
-    pub max_value_fee_bps: u64,
-
-    /// Max adjustment per epoch in basis points (e.g., 1250 = 12.5% max change)
-    pub fee_adjustment_rate_bps: u64,
-}
-
-impl Default for SystemParameters {
-    // TODO: don't use Default, instead fill in SystemParameters from NodeConfig in Genesis
-    fn default() -> Self {
-        Self {
-            epoch_duration_ms: 1000 * 60,    // TODO: 1000 * 60 * 60 * 24, // 1 day
-            vdf_iterations: 1,               // TODO: Tweak based on block times
-            target_selection_rate_bps: 2500, // 25% chance of hitting target
-            target_reward_allocation_bps: 7000, // 70% of emissions + fees go towards targets
-            encoder_tally_slash_rate_bps: 9500, // 95% of encoder stake is slashed when encoders are tallied
-
-            target_epoch_fee_collection: 1_000_000_000, // 1000 SOMA worth of fees
-            base_fee: 1000,
-            write_object_fee: 300,
-            value_fee_bps: 10,             // 0.1% default
-            min_value_fee_bps: 1,          // 0.01% floor
-            max_value_fee_bps: 100,        // 1% ceiling
-            fee_adjustment_rate_bps: 1250, // 12.5% max change per epoch
-        }
-    }
-}
-
 const BPS_DENOMINATOR: u64 = 10000;
 
 pub trait SystemStateTrait {
@@ -241,13 +185,13 @@ impl SystemState {
         encoders: Vec<Encoder>,
         protocol_version: u64,
         epoch_start_timestamp_ms: u64,
-        parameters: SystemParameters,
+        protocol_config: &ProtocolConfig,
         emission_fund: u64,
         emission_per_epoch: u64,
     ) -> Self {
         // Create Emission Pool
         let emission_pool = EmissionPool::new(emission_fund, emission_per_epoch);
-
+        let parameters = protocol_config.build_system_parameters(None);
         let mut validators = ValidatorSet::new(consensus_validators, networking_validators);
         let mut encoders = EncoderSet::new(encoders);
 
@@ -284,16 +228,22 @@ impl SystemState {
         };
 
         // Initialize current epoch committees
-        let current_committees = system_state.build_committees_for_epoch(0);
+        let current_committees =
+            system_state.build_committees_for_epoch(0, protocol_config.vdf_iterations());
         system_state.committees[1] = Some(current_committees);
 
         system_state
     }
 
     /// Build committees for a specific epoch using current validator and encoder sets
-    pub fn build_committees_for_epoch(&self, epoch: u64) -> Committees {
+    pub fn build_committees_for_epoch(&self, epoch: u64, vdf_iterations: u64) -> Committees {
         // Create snapshots of the current validator and encoder sets
-        Committees::new(epoch, self.validators.clone(), self.encoders.clone())
+        Committees::new(
+            epoch,
+            self.validators.clone(),
+            self.encoders.clone(),
+            vdf_iterations,
+        )
     }
 
     /// Get the current epoch committees
@@ -806,11 +756,10 @@ impl SystemState {
     pub fn advance_epoch(
         &mut self,
         new_epoch: u64,
-        next_protocol_version: u64,
+        next_protocol_config: &ProtocolConfig,
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
         epoch_randomness: Vec<u8>,
-        reward_slashing_rate: u64,
     ) -> ExecutionResult<(
         BTreeMap<SomaAddress, StakedSoma>,
         BTreeMap<SomaAddress, StakedSoma>,
@@ -823,6 +772,24 @@ impl SystemState {
         let prev_epoch = self.epoch;
         let prev_epoch_start_timestamp = self.epoch_start_timestamp_ms;
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
+
+        let next_protocol_version = next_protocol_config.version.as_u64();
+
+        // Check if protocol version is changing
+        if next_protocol_version != self.protocol_version {
+            info!(
+                "Protocol upgrade: {} -> {}",
+                self.protocol_version, next_protocol_version
+            );
+
+            // Update parameters from new protocol config
+            // Preserve current value_fee_bps since it's dynamically adjusted
+            self.parameters =
+                next_protocol_config.build_system_parameters(Some(self.parameters.value_fee_bps));
+        }
+
+        // Get reward_slashing_rate from protocol config
+        let reward_slashing_rate = next_protocol_config.reward_slashing_rate_bps();
 
         // 2. Calculate total rewards (emissions + fees)
         let mut total_rewards = epoch_total_transaction_fees;
@@ -879,9 +846,11 @@ impl SystemState {
 
         // 11. Derive reference byte price for new epoch
         self.reference_byte_price = self.encoders.derive_reference_byte_price();
+        self.protocol_version = next_protocol_version;
 
-        // 12. Build new committees
-        let new_committees = self.build_committees_for_epoch(new_epoch);
+        // 12. Build new committees with new epoch's vdf_iterations
+        let new_committees =
+            self.build_committees_for_epoch(new_epoch, next_protocol_config.vdf_iterations());
         self.committees[1] = Some(new_committees);
 
         // 13. Return remainder to emission pool
@@ -1379,15 +1348,23 @@ pub struct Committees {
     pub validator_set: ValidatorSet,
     /// Snapshot of the encoder set for this epoch
     pub encoder_set: EncoderSet,
+    /// VDF iterations for this epoch
+    pub vdf_iterations: u64,
 }
 
 impl Committees {
     /// Create new committees for the given epoch
-    pub fn new(epoch: u64, validator_set: ValidatorSet, encoder_set: EncoderSet) -> Self {
+    pub fn new(
+        epoch: u64,
+        validator_set: ValidatorSet,
+        encoder_set: EncoderSet,
+        vdf_iterations: u64,
+    ) -> Self {
         Self {
             epoch,
             validator_set,
             encoder_set,
+            vdf_iterations,
         }
     }
 

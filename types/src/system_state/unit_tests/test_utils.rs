@@ -147,15 +147,19 @@ pub fn advance_epoch_with_reward_amounts(
     let new_timestamp =
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
+    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
+        ProtocolVersion::MAX,
+        protocol_config::Chain::Mainnet,
+    );
+
     // Advance the epoch
     let (rewards, _) = system_state
         .advance_epoch(
             next_epoch,
-            ProtocolVersion::max().as_u64(),
+            &protocol_config,
             reward_amount * SHANNONS_PER_SOMA,
             new_timestamp,
             vec![0; 32],
-            1000,
         )
         .expect("Failed to advance epoch");
 
@@ -176,15 +180,19 @@ pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
     let new_timestamp =
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
+    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
+        ProtocolVersion::MAX,
+        protocol_config::Chain::Mainnet,
+    );
+
     // Advance the epoch
     let (rewards, _) = system_state
         .advance_epoch(
             next_epoch,
-            ProtocolVersion::max().as_u64(),
+            &protocol_config,
             reward_amount * SHANNONS_PER_SOMA,
             new_timestamp,
             vec![0; 32],
-            reward_slashing_rate,
         )
         .expect("Failed to advance epoch");
 
@@ -470,22 +478,10 @@ pub fn create_test_system_state(
     supply_amount: u64,
     emission_per_epoch: u64,
 ) -> SystemState {
-    // System parameters
-    let parameters = SystemParameters {
-        epoch_duration_ms: 42, // Doesn't matter what number we put here for tests
-        vdf_iterations: 1,
-        target_selection_rate_bps: 2500,
-        target_reward_allocation_bps: 7000,
-        encoder_tally_slash_rate_bps: 9500,
-        base_fee: 1000,
-        target_epoch_fee_collection: 1_000_000_000,
-        write_object_fee: 300,
-        value_fee_bps: 10,
-        min_value_fee_bps: 1,
-        max_value_fee_bps: 100,
-        fee_adjustment_rate_bps: 1250,
-    };
-
+    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
+        ProtocolVersion::MAX,
+        protocol_config::Chain::Mainnet,
+    );
     // Create system state
     let epoch_start_timestamp_ms = 1000;
     let stake_subsidy_fund = supply_amount * SHANNONS_PER_SOMA;
@@ -496,7 +492,7 @@ pub fn create_test_system_state(
         encoders,
         ProtocolVersion::MAX.as_u64(),
         epoch_start_timestamp_ms,
-        parameters,
+        &protocol_config,
         stake_subsidy_fund,
         emission_per_epoch * SHANNONS_PER_SOMA,
     )
@@ -528,14 +524,18 @@ pub fn advance_epoch_with_rewards(
     let new_timestamp =
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
+    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
+        ProtocolVersion::MAX,
+        protocol_config::Chain::Mainnet,
+    );
+
     // Advance the epoch
     system_state.advance_epoch(
         next_epoch,
-        ProtocolVersion::max().as_u64(),
+        &protocol_config,
         reward_amount,
         new_timestamp,
         vec![0; 32],
-        1000,
     )
 }
 

@@ -13,7 +13,7 @@ use crate::system_state::encoder::Encoder;
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::shard::{Target, TargetOrigin};
 use crate::system_state::validator::Validator;
-use crate::system_state::{get_system_state, FeeParameters, SystemParameters};
+use crate::system_state::{get_system_state, FeeParameters};
 use crate::transaction::InputObjects;
 use crate::tx_fee::TransactionFee;
 use crate::{
@@ -167,6 +167,13 @@ impl GenesisBuilder {
     fn create_genesis_state(&self) -> (SystemState, Vec<Object>) {
         let mut objects = Vec::new();
 
+        // TODO: allow for non-mainnet chains here
+
+        let protocol_config = protocol_config::ProtocolConfig::get_for_version(
+            self.parameters.parameters.protocol_version,
+            protocol_config::Chain::Mainnet,
+        );
+
         // Create system state with validators and encoders
         let mut system_state = SystemState::create(
             self.validators
@@ -224,10 +231,7 @@ impl GenesisBuilder {
                 .collect(),
             self.parameters.parameters.protocol_version.as_u64(),
             self.parameters.parameters.chain_start_timestamp_ms,
-            SystemParameters {
-                epoch_duration_ms: self.parameters.parameters.epoch_duration_ms,
-                ..Default::default()
-            },
+            &protocol_config,
             self.token_distribution_schedule
                 .as_ref()
                 .map(|s| s.emission_fund_shannons)
@@ -343,7 +347,8 @@ impl GenesisBuilder {
         system_state.validators.set_voting_power();
         system_state.encoders.set_voting_power();
 
-        let current_committees = system_state.build_committees_for_epoch(0);
+        let current_committees =
+            system_state.build_committees_for_epoch(0, protocol_config.vdf_iterations());
         system_state.committees[1] = Some(current_committees);
 
         // Create system state object

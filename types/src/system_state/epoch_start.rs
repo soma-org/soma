@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use protocol_config::ProtocolVersion;
+use protocol_config::{Chain, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -63,6 +63,8 @@ impl EpochStartSystemState {
     }
 
     pub fn new_for_testing_with_epoch(epoch: EpochId) -> Self {
+        let protocol_config =
+            protocol_config::ProtocolConfig::get_for_version(ProtocolVersion::MAX, Chain::Mainnet);
         Self {
             epoch,
             protocol_version: ProtocolVersion::MAX.as_u64(),
@@ -70,7 +72,9 @@ impl EpochStartSystemState {
             epoch_start_timestamp_ms: 0,
             epoch_duration_ms: 1000,
             active_validators: vec![],
-            fee_parameters: FeeParameters::from_system_parameters(&SystemParameters::default()),
+            fee_parameters: FeeParameters::from_system_parameters(
+                &protocol_config.build_system_parameters(None),
+            ),
         }
     }
 }

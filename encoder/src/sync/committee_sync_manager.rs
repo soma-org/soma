@@ -187,7 +187,7 @@ impl CommitteeSyncManager {
             committees.validator_committee.clone(),
             committees.encoder_committee.clone(),
             committees.networking_committee.clone(),
-            self.context.inner().current_committees().vdf_iterations,
+            committees.vdf_iterations,
         );
 
         // Update allowed public keys

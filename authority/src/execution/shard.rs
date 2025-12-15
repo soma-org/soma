@@ -29,10 +29,6 @@ use crate::execution::BPS_DENOMINATOR;
 
 use super::{FeeCalculator, TransactionExecutor};
 
-/// Percentage of escrow/reward given to claim submitter (basis points)
-/// e.g., 50 = 0.5%
-const CLAIM_INCENTIVE_BPS: u64 = 50;
-
 pub struct ShardExecutor {
     shard_verifier: ShardVerifier,
 }
@@ -266,7 +262,7 @@ impl ShardExecutor {
                 )))
             })?;
 
-        // 6. Verify shard auth token
+        // 6. Verify shard auth token using the SHARD'S epoch committees
         let token_epoch = shard_auth_token.epoch();
         let committees = state
             .committees(token_epoch)
@@ -274,7 +270,9 @@ impl ShardExecutor {
 
         let authority_committee = committees.build_validator_committee().committee().clone();
         let encoder_committee = committees.build_encoder_committee();
-        let vdf_iterations = state.parameters.vdf_iterations; // TODO: vdf iterations will depend on the specific one for that epoch
+
+        // Use vdf_iterations from the shard's epoch, not current epoch!
+        let vdf_iterations = committees.vdf_iterations;
 
         let (verified_shard, _) = self
             .shard_verifier
@@ -555,7 +553,8 @@ impl ShardExecutor {
         }
 
         // 4. Calculate claim incentive for signer
-        let claim_incentive = (shard_data.amount * CLAIM_INCENTIVE_BPS) / BPS_DENOMINATOR;
+        let claim_incentive =
+            (shard_data.amount * state.parameters.claim_incentive_bps) / BPS_DENOMINATOR;
         let remaining_amount = shard_data.amount.saturating_sub(claim_incentive);
 
         // 5. Pay claim incentive to signer
@@ -834,7 +833,8 @@ impl ShardExecutor {
         };
 
         // Calculate claim incentive
-        let claim_incentive = (reward_amount * CLAIM_INCENTIVE_BPS) / BPS_DENOMINATOR;
+        let claim_incentive =
+            (reward_amount * state.parameters.claim_incentive_bps) / BPS_DENOMINATOR;
         let remaining_amount = reward_amount.saturating_sub(claim_incentive);
 
         // Pay claim incentive

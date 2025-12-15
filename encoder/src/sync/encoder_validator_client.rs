@@ -25,6 +25,7 @@ pub struct VerifiedEpochCommittees {
     pub encoder_committee: EncoderCommittee,
     pub networking_committee: NetworkingCommittee,
     pub epoch_start_timestamp_ms: u64,
+    pub vdf_iterations: u64,
 }
 
 /// Client for fetching and verifying committees from validators
@@ -135,6 +136,7 @@ impl EncoderValidatorClient {
             encoder_committee: end_of_epoch.next_epoch_encoder_committee.clone(),
             networking_committee: end_of_epoch.next_epoch_networking_committee.clone(),
             epoch_start_timestamp_ms: checkpoint.data().timestamp_ms,
+            vdf_iterations: end_of_epoch.next_epoch_vdf_iterations,
         })
     }
 

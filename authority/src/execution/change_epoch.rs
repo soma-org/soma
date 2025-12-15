@@ -54,15 +54,17 @@ impl TransactionExecutor for ChangeEpochExecutor {
         // Process the transaction
         let (validator_rewards, encoder_rewards) = match kind {
             TransactionKind::ChangeEpoch(change_epoch) => {
-                // TODO: Fixed reward slashing rate at 50% in protocol config
-                let reward_slashing_rate: u64 = 5000; // 50% in basis points
+                let next_protocol_config = protocol_config::ProtocolConfig::get_for_version(
+                    change_epoch.protocol_version,
+                    protocol_config::Chain::Mainnet,
+                );
+
                 let (validator_rewards, encoder_rewards) = state.advance_epoch(
                     change_epoch.epoch,
-                    change_epoch.protocol_version.as_u64(),
+                    &next_protocol_config,
                     change_epoch.fees,
                     change_epoch.epoch_start_timestamp_ms,
                     change_epoch.epoch_randomness,
-                    reward_slashing_rate,
                 )?;
 
                 Ok((validator_rewards, encoder_rewards))
