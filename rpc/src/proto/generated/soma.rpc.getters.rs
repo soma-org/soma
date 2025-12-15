@@ -5010,6 +5010,56 @@ mod _getter_impls {
             self
         }
     }
+    impl InitiateShardWorkRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                tx_digest: None,
+                checkpoint_seq: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: InitiateShardWorkRequest = InitiateShardWorkRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_tx_digest(mut self, field: String) -> Self {
+            self.tx_digest = Some(field.into());
+            self
+        }
+        pub fn with_checkpoint_seq(mut self, field: u64) -> Self {
+            self.checkpoint_seq = Some(field.into());
+            self
+        }
+    }
+    impl InitiateShardWorkResponse {
+        pub const fn const_default() -> Self {
+            Self { shard: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: InitiateShardWorkResponse = InitiateShardWorkResponse::const_default();
+            &DEFAULT
+        }
+        pub fn shard(&self) -> &Shard {
+            self.shard
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Shard::default_instance() as _)
+        }
+        pub fn shard_opt(&self) -> Option<&Shard> {
+            self.shard.as_ref().map(|field| field as _)
+        }
+        pub fn shard_opt_mut(&mut self) -> Option<&mut Shard> {
+            self.shard.as_mut().map(|field| field as _)
+        }
+        pub fn shard_mut(&mut self) -> &mut Shard {
+            self.shard.get_or_insert_default()
+        }
+        pub fn with_shard(mut self, field: Shard) -> Self {
+            self.shard = Some(field.into());
+            self
+        }
+    }
     impl TransactionFee {
         pub const fn const_default() -> Self {
             Self {

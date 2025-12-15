@@ -5,6 +5,8 @@ use crate::proto::soma::ErrorReason;
 use crate::proto::soma::ExecuteTransactionRequest;
 use crate::proto::soma::ExecuteTransactionResponse;
 use crate::proto::soma::ExecutedTransaction;
+use crate::proto::soma::InitiateShardWorkRequest;
+use crate::proto::soma::InitiateShardWorkResponse;
 use crate::proto::soma::Object;
 use crate::proto::soma::ObjectSet;
 use crate::proto::soma::SimulateTransactionRequest;
@@ -22,6 +24,7 @@ use tap::Pipe;
 use types::balance_change::derive_balance_changes;
 use types::transaction_executor::TransactionExecutor;
 
+mod initiate_shard_work;
 mod simulate;
 
 #[tonic::async_trait]
@@ -46,6 +49,16 @@ impl TransactionExecutionService for RpcService {
         request: tonic::Request<SimulateTransactionRequest>,
     ) -> Result<tonic::Response<SimulateTransactionResponse>, tonic::Status> {
         simulate::simulate_transaction(self, request.into_inner())
+            .map(tonic::Response::new)
+            .map_err(Into::into)
+    }
+
+    async fn initiate_shard_work(
+        &self,
+        request: tonic::Request<InitiateShardWorkRequest>,
+    ) -> Result<tonic::Response<InitiateShardWorkResponse>, tonic::Status> {
+        initiate_shard_work::initiate_shard_work(self, request.into_inner())
+            .await
             .map(tonic::Response::new)
             .map_err(Into::into)
     }

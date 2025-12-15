@@ -1,5 +1,6 @@
 use futures::Stream;
 use rpc::proto::soma::ListOwnedObjectsRequest;
+use rpc::proto::soma::{InitiateShardWorkRequest, InitiateShardWorkResponse};
 use rpc::{api::client::Client, proto::soma::ledger_service_client::LedgerServiceClient};
 use std::pin::Pin;
 use std::{sync::Arc, time::Duration};
@@ -148,5 +149,14 @@ impl SomaClient {
     pub async fn get_chain_identifier(&self) -> Result<String, tonic::Status> {
         let mut client = self.inner.write().await;
         client.get_chain_identifier().await
+    }
+
+    /// Initiate shard work for encoding
+    pub async fn initiate_shard_work(
+        &self,
+        request: impl tonic::IntoRequest<InitiateShardWorkRequest>,
+    ) -> Result<InitiateShardWorkResponse, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.initiate_shard_work(request).await
     }
 }

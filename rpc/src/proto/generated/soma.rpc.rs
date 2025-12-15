@@ -3593,6 +3593,20 @@ pub struct SimulateTransactionResponse {
     #[prost(message, optional, tag = "1")]
     pub transaction: ::core::option::Option<ExecutedTransaction>,
 }
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InitiateShardWorkRequest {
+    #[prost(string, optional, tag = "1")]
+    pub tx_digest: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "2")]
+    pub checkpoint_seq: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InitiateShardWorkResponse {
+    #[prost(message, optional, tag = "1")]
+    pub shard: ::core::option::Option<Shard>,
+}
 /// Generated client implementations.
 pub mod transaction_execution_service_client {
     #![allow(
@@ -3744,6 +3758,35 @@ pub mod transaction_execution_service_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn initiate_shard_work(
+            &mut self,
+            request: impl tonic::IntoRequest<super::InitiateShardWorkRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::InitiateShardWorkResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.TransactionExecutionService/InitiateShardWork",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "soma.rpc.TransactionExecutionService",
+                        "InitiateShardWork",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -3771,6 +3814,13 @@ pub mod transaction_execution_service_server {
             request: tonic::Request<super::SimulateTransactionRequest>,
         ) -> std::result::Result<
             tonic::Response<super::SimulateTransactionResponse>,
+            tonic::Status,
+        >;
+        async fn initiate_shard_work(
+            &self,
+            request: tonic::Request<super::InitiateShardWorkRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::InitiateShardWorkResponse>,
             tonic::Status,
         >;
     }
@@ -3938,6 +3988,57 @@ pub mod transaction_execution_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = SimulateTransactionSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.TransactionExecutionService/InitiateShardWork" => {
+                    #[allow(non_camel_case_types)]
+                    struct InitiateShardWorkSvc<T: TransactionExecutionService>(
+                        pub Arc<T>,
+                    );
+                    impl<
+                        T: TransactionExecutionService,
+                    > tonic::server::UnaryService<super::InitiateShardWorkRequest>
+                    for InitiateShardWorkSvc<T> {
+                        type Response = super::InitiateShardWorkResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::InitiateShardWorkRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TransactionExecutionService>::initiate_shard_work(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = InitiateShardWorkSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

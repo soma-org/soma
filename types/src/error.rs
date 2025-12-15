@@ -404,6 +404,21 @@ pub enum SomaError {
 
     #[error("Gas payment error {0}")]
     GasPaymentError(String),
+
+    #[error("Encoder service unavailable")]
+    EncoderServiceUnavailable,
+
+    #[error("Transaction not finalized in a checkpoint")]
+    TransactionNotFinalized,
+
+    #[error("Not an EmbedData transaction")]
+    NotEmbedDataTransaction,
+
+    #[error("Transaction execution failed: {0}")]
+    TransactionFailed(String),
+
+    #[error("VDF computation failed: {0}")]
+    VdfComputationFailed(String),
 }
 
 impl SomaError {

@@ -90,7 +90,7 @@ pub struct ShardAuthToken {
     /// VDF output computed on checkpoint_digest
     pub checkpoint_entropy: CheckpointEntropy,
     pub checkpoint_entropy_proof: CheckpointEntropyProof,
-    pub shard_input_ref: ObjectRef,
+    pub shard_ref: ObjectRef,
 }
 
 impl ShardAuthToken {
@@ -98,13 +98,13 @@ impl ShardAuthToken {
         finality_proof: FinalityProof,
         checkpoint_entropy: CheckpointEntropy,
         checkpoint_entropy_proof: CheckpointEntropyProof,
-        shard_input_ref: ObjectRef,
+        shard_ref: ObjectRef,
     ) -> Self {
         Self {
             finality_proof,
             checkpoint_entropy,
             checkpoint_entropy_proof,
-            shard_input_ref,
+            shard_ref,
         }
     }
 
@@ -120,8 +120,8 @@ impl ShardAuthToken {
         self.checkpoint_entropy_proof.clone()
     }
 
-    pub fn shard_input_ref(&self) -> ObjectRef {
-        self.shard_input_ref.clone()
+    pub fn shard_ref(&self) -> ObjectRef {
+        self.shard_ref.clone()
     }
 
     pub fn checkpoint_digest(&self) -> &CheckpointDigest {

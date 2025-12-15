@@ -8,10 +8,12 @@ import "google/protobuf/field_mask.proto";
 import "soma/rpc/executed_transaction.proto";
 import "soma/rpc/signature.proto";
 import "soma/rpc/transaction.proto";
+import "soma/rpc/shard.proto";
 
 service TransactionExecutionService {
   rpc ExecuteTransaction(ExecuteTransactionRequest) returns (ExecuteTransactionResponse);
   rpc SimulateTransaction(SimulateTransactionRequest) returns (SimulateTransactionResponse);
+  rpc InitiateShardWork(InitiateShardWorkRequest) returns (InitiateShardWorkResponse);
 }
 
 message ExecuteTransactionRequest {
@@ -50,4 +52,13 @@ message SimulateTransactionRequest {
 
 message SimulateTransactionResponse {
   optional ExecutedTransaction transaction = 1;
+}
+
+message InitiateShardWorkRequest {
+  optional string tx_digest = 1;
+  optional uint64 checkpoint_seq = 2;
+}
+
+message InitiateShardWorkResponse {
+  optional Shard shard = 1;
 }

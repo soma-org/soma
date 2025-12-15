@@ -6830,6 +6830,91 @@ mod _field_impls {
             ExecutedTransactionFieldPathBuilder::new_with_base(self.path)
         }
     }
+    impl InitiateShardWorkRequest {
+        pub const TX_DIGEST_FIELD: &'static MessageField = &MessageField {
+            name: "tx_digest",
+            json_name: "txDigest",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CHECKPOINT_SEQ_FIELD: &'static MessageField = &MessageField {
+            name: "checkpoint_seq",
+            json_name: "checkpointSeq",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for InitiateShardWorkRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TX_DIGEST_FIELD,
+            Self::CHECKPOINT_SEQ_FIELD,
+        ];
+    }
+    impl InitiateShardWorkRequest {
+        pub fn path_builder() -> InitiateShardWorkRequestFieldPathBuilder {
+            InitiateShardWorkRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct InitiateShardWorkRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl InitiateShardWorkRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn tx_digest(mut self) -> String {
+            self.path.push(InitiateShardWorkRequest::TX_DIGEST_FIELD.name);
+            self.finish()
+        }
+        pub fn checkpoint_seq(mut self) -> String {
+            self.path.push(InitiateShardWorkRequest::CHECKPOINT_SEQ_FIELD.name);
+            self.finish()
+        }
+    }
+    impl InitiateShardWorkResponse {
+        pub const SHARD_FIELD: &'static MessageField = &MessageField {
+            name: "shard",
+            json_name: "shard",
+            number: 1i32,
+            message_fields: Some(Shard::FIELDS),
+        };
+    }
+    impl MessageFields for InitiateShardWorkResponse {
+        const FIELDS: &'static [&'static MessageField] = &[Self::SHARD_FIELD];
+    }
+    impl InitiateShardWorkResponse {
+        pub fn path_builder() -> InitiateShardWorkResponseFieldPathBuilder {
+            InitiateShardWorkResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct InitiateShardWorkResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl InitiateShardWorkResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn shard(mut self) -> ShardFieldPathBuilder {
+            self.path.push(InitiateShardWorkResponse::SHARD_FIELD.name);
+            ShardFieldPathBuilder::new_with_base(self.path)
+        }
+    }
     impl TransactionFee {
         pub const BASE_FEE_FIELD: &'static MessageField = &MessageField {
             name: "base_fee",

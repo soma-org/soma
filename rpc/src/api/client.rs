@@ -11,6 +11,8 @@ use crate::api::rpc_client;
 use crate::api::rpc_client::HeadersInterceptor;
 use crate::proto::TryFromProtoError;
 use crate::proto::soma as proto;
+use crate::proto::soma::InitiateShardWorkRequest;
+use crate::proto::soma::InitiateShardWorkResponse;
 use crate::proto::soma::ListOwnedObjectsRequest;
 use crate::utils::field::FieldMaskUtil;
 use crate::utils::types_conversions::SdkTypeConversionError;
@@ -241,6 +243,21 @@ impl Client {
         response
             .chain_id
             .ok_or_else(|| tonic::Status::not_found("chain_id not found in service info response"))
+    }
+
+    /// Initiate shard work for a given shard input
+    pub async fn initiate_shard_work(
+        &mut self,
+        request: impl tonic::IntoRequest<InitiateShardWorkRequest>,
+    ) -> Result<InitiateShardWorkResponse> {
+        let (metadata, response, _extensions) = self
+            .0
+            .execution_client()
+            .initiate_shard_work(request)
+            .await?
+            .into_parts();
+
+        Ok(response)
     }
 }
 

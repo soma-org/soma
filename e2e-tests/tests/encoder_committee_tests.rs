@@ -2,12 +2,14 @@ use e2e_tests::integration_helpers::{
     extract_shard_input_id, setup_integrated_encoder_validator_test, wait_for_shard_completion,
 };
 use rand::rngs::OsRng;
+use rpc::proto::soma::InitiateShardWorkRequest;
 use std::time::Duration;
 use test_cluster::TestCluster;
 use tokio::time::sleep;
 use tracing::info;
 use types::checksum::Checksum;
 use types::crypto::{KeypairTraits, NetworkKeyPair};
+use types::digests::TransactionDigest;
 use types::effects::{self, TransactionEffects, TransactionEffectsAPI as _};
 use types::full_checkpoint_content::ObjectSet;
 use types::metadata::{DownloadMetadata, Metadata, MetadataAPI as _, MetadataV1, ObjectPath};
@@ -121,8 +123,10 @@ async fn test_integrated_encoder_validator_system() {
         "Uploaded test data to object server"
     );
 
-    // Execute EmbedData transaction
-    let (effects, objects) = execute_embed_data(
+    // Execute EmbedData transaction AND wait for it to be checkpointed
+    // This is important because initiate_shard_work needs the checkpoint_seq
+    // TODO: modify wait for tx to get sequence number
+    let (effects, objects, checkpoint_seq) = execute_embed_data_and_wait(
         new_encoder_genesis.account_key_pair.copy(),
         &mut test_cluster,
         new_encoder_address,
@@ -130,10 +134,13 @@ async fn test_integrated_encoder_validator_system() {
     )
     .await;
 
+    let tx_digest = effects.transaction_digest();
+
     info!(
-        tx_digest = ?effects.transaction_digest(),
+        tx_digest = ?tx_digest,
+        checkpoint = checkpoint_seq,
         status = ?effects.status(),
-        "EmbedData transaction executed"
+        "EmbedData transaction executed and checkpointed"
     );
 
     // Extract the ShardInput object ID from the effects
@@ -141,6 +148,13 @@ async fn test_integrated_encoder_validator_system() {
         .expect("Should find ShardInput object in EmbedData effects");
 
     info!(shard_input = %shard_input_id, "Created ShardInput object");
+
+    // Initiate shard work with the transaction digest and checkpoint sequence
+    let shard = initiate_shard_work(&test_cluster, tx_digest, checkpoint_seq)
+        .await
+        .expect("Should initiate shard work");
+
+    info!("Shard work initiated, shard: {:?}", shard);
 
     // Get the client for subscription
     let client = test_cluster
@@ -190,6 +204,7 @@ async fn execute_embed_data(
             TransactionKind::EmbedData {
                 download_metadata,
                 coin_ref: gas_object,
+                target_ref: None, // TODO: test with target
             },
             address,
             vec![gas_object],
@@ -280,4 +295,35 @@ async fn execute_add_stake_transaction(
 
     tracing::info!(?tx, "Executing stake encoder tx for {}", address);
     let response = test_cluster.execute_transaction(tx).await;
+}
+
+/// Initiate shard work after an EmbedData transaction has been checkpointed
+async fn initiate_shard_work(
+    test_cluster: &TestCluster,
+    tx_digest: &TransactionDigest,
+    checkpoint_seq: u64,
+) -> Result<rpc::proto::soma::Shard, anyhow::Error> {
+    let client = test_cluster.wallet.get_client().await?;
+
+    let request = InitiateShardWorkRequest {
+        tx_digest: Some(tx_digest.to_string()),
+        checkpoint_seq: Some(checkpoint_seq),
+    };
+
+    let response = client
+        .initiate_shard_work(request)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to initiate shard work: {}", e))?;
+
+    let shard = response
+        .shard
+        .ok_or_else(|| anyhow::anyhow!("No shard returned in response"))?;
+
+    info!(
+        tx_digest = %tx_digest,
+        checkpoint = checkpoint_seq,
+        "Initiated shard work"
+    );
+
+    Ok(shard)
 }
