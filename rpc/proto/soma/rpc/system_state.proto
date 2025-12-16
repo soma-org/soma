@@ -25,9 +25,12 @@ message SystemState {
   
   // Emission pool
   optional EmissionPool emission_pool = 9;
-  
-  // Shard results (digest -> result)
-  map<string, ShardResult> shard_results = 10;
+
+  optional uint64 reference_byte_price = 10;
+
+  map<uint64, uint64> target_rewards_per_epoch = 11;
+  map<uint64, uint64> targets_created_per_epoch = 12;
+  map<uint64, bytes> epoch_seeds = 13;
 }
 
 message ReporterSet {
@@ -37,6 +40,17 @@ message ReporterSet {
 message SystemParameters {
   optional uint64 epoch_duration_ms = 1;
   optional uint64 vdf_iterations = 2;
+  optional uint64 target_selection_rate_bps = 3;
+  optional uint64 target_reward_allocation_bps = 4;
+  optional uint64 encoder_tally_slash_rate_bps = 5;
+  optional uint64 target_epoch_fee_collection = 6;
+  optional uint64 base_fee = 7;
+  optional uint64 write_object_fee = 8;
+  optional uint64 value_fee_bps = 9;
+  optional uint64 min_value_fee_bps = 10;
+  optional uint64 max_value_fee_bps = 11;
+  optional uint64 fee_adjustment_rate_bps = 12;
+  optional uint64 claim_incentive_bps = 13;
 }
 
 message EmissionPool {
@@ -113,7 +127,6 @@ message EncoderSet {
   map<string, string> staking_pool_mappings = 5; // pool_id -> encoder_address
   map<string, Encoder> inactive_encoders = 6; // pool_id -> encoder
   map<string, uint64> at_risk_encoders = 7; // address -> epochs_at_risk
-  optional uint64 reference_byte_price = 8;
 }
 
 message Encoder {
@@ -138,10 +151,4 @@ message Encoder {
   optional string next_epoch_internal_network_address = 15;
   optional string next_epoch_external_network_address = 16;
   optional string next_epoch_object_server_address = 17;
-}
-
-message ShardResult {
-  optional DownloadMetadata download_metadata = 1;
-  optional uint64 amount = 2;
-  optional bytes report = 3;
 }

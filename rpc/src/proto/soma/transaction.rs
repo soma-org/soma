@@ -362,30 +362,35 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             EmbedData {
                 download_metadata,
                 coin_ref,
+                target_ref,
             } => Kind::EmbedData(
                 EmbedDataArgs {
                     download_metadata,
                     coin_ref,
+                    target_ref,
                 }
                 .into(),
             ),
-            ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(shard_input_ref.into()),
+            ClaimEscrow { shard_ref } => Kind::ClaimEscrow(shard_ref.into()),
             ReportWinner {
-                shard_input_ref,
-                signed_report,
-                encoder_aggregate_signature,
+                shard_ref,
+                target_ref,
+                report,
+                signature,
                 signers,
                 shard_auth_token,
             } => Kind::ReportWinner(
                 ReportWinnerArgs {
-                    shard_input_ref,
-                    signed_report,
-                    encoder_aggregate_signature,
+                    shard_ref,
+                    target_ref,
+                    report,
+                    signature,
                     signers,
                     shard_auth_token,
                 }
                 .into(),
             ),
+            ClaimReward { target_ref } => Kind::ClaimReward(target_ref.into()),
         };
 
         TransactionKind { kind: Some(kind) }
@@ -565,29 +570,39 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
                     .try_into()?,
+                target_ref: embed
+                    .target_ref
+                    .as_ref()
+                    .map(|r| r.try_into())
+                    .transpose()?,
             },
             Kind::ClaimEscrow(claim) => Self::ClaimEscrow {
-                shard_input_ref: claim
-                    .shard_input_ref
+                shard_ref: claim
+                    .shard_ref
                     .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("shard_input_ref"))?
+                    .ok_or_else(|| TryFromProtoError::missing("shard_ref"))?
                     .try_into()?,
             },
             Kind::ReportWinner(report) => Self::ReportWinner {
-                shard_input_ref: report
-                    .shard_input_ref
+                shard_ref: report
+                    .shard_ref
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("shard_input_ref"))?
                     .try_into()?,
-                signed_report: report
-                    .signed_report
+                target_ref: report
+                    .target_ref
+                    .as_ref()
+                    .map(|r| r.try_into())
+                    .transpose()?,
+                report: report
+                    .report
                     .clone()
                     .ok_or_else(|| TryFromProtoError::missing("scores"))?
                     .into(),
-                encoder_aggregate_signature: report
-                    .encoder_aggregate_signature
+                signature: report
+                    .signature
                     .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("encoder_aggregate_signature"))?
+                    .ok_or_else(|| TryFromProtoError::missing("signature"))?
                     .into(),
                 signers: report
                     .signers
@@ -602,6 +617,13 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .clone()
                     .ok_or_else(|| TryFromProtoError::missing("scores"))?
                     .into(),
+            },
+            Kind::ClaimReward(claim) => Self::ClaimReward {
+                target_ref: claim
+                    .target_ref
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("target_ref"))?
+                    .try_into()?,
             },
         }
         .pipe(Ok)
@@ -920,7 +942,6 @@ impl TryFrom<&GenesisTransaction> for crate::types::GenesisTransaction {
 //
 // ChangeEpoch
 //
-
 impl From<crate::types::ChangeEpoch> for ChangeEpoch {
     fn from(value: crate::types::ChangeEpoch) -> Self {
         Self {
@@ -930,6 +951,7 @@ impl From<crate::types::ChangeEpoch> for ChangeEpoch {
             epoch_start_timestamp: Some(crate::proto::timestamp_ms_to_proto(
                 value.epoch_start_timestamp_ms,
             )),
+            epoch_randomness: Some(value.epoch_randomness.into()),
         }
     }
 }
@@ -943,23 +965,27 @@ impl TryFrom<&ChangeEpoch> for crate::types::ChangeEpoch {
             protocol_version,
             fees,
             epoch_start_timestamp,
+            epoch_randomness,
         }: &ChangeEpoch,
     ) -> Result<Self, Self::Error> {
         let epoch = epoch.ok_or_else(|| TryFromProtoError::missing("epoch"))?;
-
         let protocol_version =
             protocol_version.ok_or_else(|| TryFromProtoError::missing("protocol_version"))?;
         let fees = fees.ok_or_else(|| TryFromProtoError::missing("fees"))?;
-
         let epoch_start_timestamp_ms = epoch_start_timestamp
-            .ok_or_else(|| TryFromProtoError::missing("epoch_start_timestamp_ms"))?
+            .ok_or_else(|| TryFromProtoError::missing("epoch_start_timestamp"))?
             .pipe(crate::proto::proto_to_timestamp_ms)?;
+        let epoch_randomness = epoch_randomness
+            .clone()
+            .ok_or_else(|| TryFromProtoError::missing("epoch_randomness"))?
+            .into();
 
         Ok(Self {
             epoch,
             protocol_version,
             fees,
             epoch_start_timestamp_ms,
+            epoch_randomness,
         })
     }
 }
@@ -1123,6 +1149,7 @@ impl From<crate::types::ObjectReference> for WithdrawStake {
 pub struct EmbedDataArgs {
     pub download_metadata: crate::types::DownloadMetadata,
     pub coin_ref: crate::types::ObjectReference,
+    pub target_ref: Option<crate::types::ObjectReference>,
 }
 
 impl From<EmbedDataArgs> for EmbedData {
@@ -1130,24 +1157,34 @@ impl From<EmbedDataArgs> for EmbedData {
         Self {
             download_metadata: Some(args.download_metadata.into()),
             coin_ref: Some(args.coin_ref.into()),
+            target_ref: args.target_ref.map(|r| r.into()),
         }
     }
 }
 
 // ClaimEscrow conversions
 impl From<crate::types::ObjectReference> for ClaimEscrow {
-    fn from(shard_input_ref: crate::types::ObjectReference) -> Self {
+    fn from(shard_ref: crate::types::ObjectReference) -> Self {
         Self {
-            shard_input_ref: Some(shard_input_ref.into()),
+            shard_ref: Some(shard_ref.into()),
+        }
+    }
+}
+
+impl From<crate::types::ObjectReference> for ClaimReward {
+    fn from(target_ref: crate::types::ObjectReference) -> Self {
+        Self {
+            target_ref: Some(target_ref.into()),
         }
     }
 }
 
 // ReportScores conversions
 pub struct ReportWinnerArgs {
-    pub shard_input_ref: crate::types::ObjectReference,
-    pub signed_report: Vec<u8>,
-    pub encoder_aggregate_signature: Vec<u8>,
+    pub shard_ref: crate::types::ObjectReference,
+    pub target_ref: Option<crate::types::ObjectReference>,
+    pub report: Vec<u8>,
+    pub signature: Vec<u8>,
     pub signers: Vec<String>,
     pub shard_auth_token: Vec<u8>,
 }
@@ -1155,9 +1192,10 @@ pub struct ReportWinnerArgs {
 impl From<ReportWinnerArgs> for ReportWinner {
     fn from(args: ReportWinnerArgs) -> Self {
         Self {
-            shard_input_ref: Some(args.shard_input_ref.into()),
-            signed_report: Some(args.signed_report.into()),
-            encoder_aggregate_signature: Some(args.encoder_aggregate_signature.into()),
+            shard_ref: Some(args.shard_ref.into()),
+            target_ref: args.target_ref.map(|r| r.into()),
+            report: Some(args.report.into()),
+            signature: Some(args.signature.into()),
             signers: args.signers,
             shard_auth_token: Some(args.shard_auth_token.into()),
         }

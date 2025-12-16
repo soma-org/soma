@@ -136,12 +136,20 @@ pub struct EndOfEpochData {
     /// The set of validators that will be in the `ValidatorCommittee` for the next epoch.
     #[prost(message, optional, tag = "1")]
     pub next_epoch_validator_committee: ::core::option::Option<ValidatorCommittee>,
-    /// TODO: add encoder committee & network committees
+    /// The encoder committee for the next epoch.
+    #[prost(message, optional, tag = "2")]
+    pub next_epoch_encoder_committee: ::core::option::Option<EncoderCommittee>,
+    /// The networking committee for the next epoch.
+    #[prost(message, optional, tag = "3")]
+    pub next_epoch_networking_committee: ::core::option::Option<NetworkingCommittee>,
     /// The protocol version that is in effect during the next epoch.
-    #[prost(uint64, optional, tag = "2")]
+    #[prost(uint64, optional, tag = "4")]
     pub next_epoch_protocol_version: ::core::option::Option<u64>,
+    /// VDF iterations for the next epoch.
+    #[prost(uint64, optional, tag = "5")]
+    pub next_epoch_vdf_iterations: ::core::option::Option<u64>,
     /// Commitments to epoch specific state (live object set)
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag = "6")]
     pub epoch_commitments: ::prost::alloc::vec::Vec<CheckpointCommitment>,
 }
 /// A commitment made by a checkpoint.
@@ -202,6 +210,67 @@ pub mod checkpoint_commitment {
             }
         }
     }
+}
+/// Encoder committee for an epoch
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EncoderCommittee {
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    /// Maps encoder public key -> Encoder (voting_power, encoder_key, probe)
+    #[prost(message, repeated, tag = "2")]
+    pub members: ::prost::alloc::vec::Vec<EncoderCommitteeMember>,
+    #[prost(uint32, optional, tag = "3")]
+    pub shard_size: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag = "4")]
+    pub quorum_threshold: ::core::option::Option<u32>,
+}
+/// Combines Encoder + EncoderNetworkMetadata
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EncoderCommitteeMember {
+    /// From Encoder
+    #[prost(uint64, optional, tag = "1")]
+    pub voting_power: ::core::option::Option<u64>,
+    /// EncoderPublicKey (BLS)
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub encoder_key: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(message, optional, tag = "3")]
+    pub probe: ::core::option::Option<DownloadMetadata>,
+    /// From EncoderNetworkMetadata
+    #[prost(string, optional, tag = "4")]
+    pub internal_network_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub external_network_address: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "6")]
+    pub object_server_address: ::core::option::Option<::prost::alloc::string::String>,
+    /// NetworkPublicKey (Ed25519)
+    #[prost(bytes = "bytes", optional, tag = "7")]
+    pub network_key: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(string, optional, tag = "8")]
+    pub hostname: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// The Networking committee for a particular epoch.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NetworkingCommittee {
+    /// The epoch where this committee governs.
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    /// The committee members.
+    #[prost(message, repeated, tag = "2")]
+    pub members: ::prost::alloc::vec::Vec<NetworkingCommitteeMember>,
+}
+/// A member of a networking committee with full authority information.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NetworkingCommitteeMember {
+    /// The BLS12381 public key bytes (becomes AuthorityName)
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub authority_key: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Network metadata for this validator
+    #[prost(message, optional, tag = "2")]
+    pub network_metadata: ::core::option::Option<ValidatorNetworkMetadata>,
 }
 /// The effects of executing a transaction.
 #[non_exhaustive]
@@ -2838,12 +2907,14 @@ pub struct SystemState {
     /// Emission pool
     #[prost(message, optional, tag = "9")]
     pub emission_pool: ::core::option::Option<EmissionPool>,
-    /// Shard results (digest -> result)
-    #[prost(btree_map = "string, message", tag = "10")]
-    pub shard_results: ::prost::alloc::collections::BTreeMap<
-        ::prost::alloc::string::String,
-        ShardResult,
-    >,
+    #[prost(uint64, optional, tag = "10")]
+    pub reference_byte_price: ::core::option::Option<u64>,
+    #[prost(btree_map = "uint64, uint64", tag = "11")]
+    pub target_rewards_per_epoch: ::prost::alloc::collections::BTreeMap<u64, u64>,
+    #[prost(btree_map = "uint64, uint64", tag = "12")]
+    pub targets_created_per_epoch: ::prost::alloc::collections::BTreeMap<u64, u64>,
+    #[prost(btree_map = "uint64, bytes", tag = "13")]
+    pub epoch_seeds: ::prost::alloc::collections::BTreeMap<u64, ::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2858,6 +2929,28 @@ pub struct SystemParameters {
     pub epoch_duration_ms: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "2")]
     pub vdf_iterations: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "3")]
+    pub target_selection_rate_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "4")]
+    pub target_reward_allocation_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub encoder_tally_slash_rate_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "6")]
+    pub target_epoch_fee_collection: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "7")]
+    pub base_fee: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "8")]
+    pub write_object_fee: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "9")]
+    pub value_fee_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "10")]
+    pub min_value_fee_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "11")]
+    pub max_value_fee_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "12")]
+    pub fee_adjustment_rate_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "13")]
+    pub claim_incentive_bps: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -3022,8 +3115,6 @@ pub struct EncoderSet {
         ::prost::alloc::string::String,
         u64,
     >,
-    #[prost(uint64, optional, tag = "8")]
-    pub reference_byte_price: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3070,16 +3161,6 @@ pub struct Encoder {
         ::prost::alloc::string::String,
     >,
 }
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ShardResult {
-    #[prost(message, optional, tag = "1")]
-    pub download_metadata: ::core::option::Option<DownloadMetadata>,
-    #[prost(uint64, optional, tag = "2")]
-    pub amount: ::core::option::Option<u64>,
-    #[prost(bytes = "bytes", optional, tag = "3")]
-    pub report: ::core::option::Option<::prost::bytes::Bytes>,
-}
 /// A transaction.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3100,7 +3181,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -3165,6 +3246,8 @@ pub mod transaction_kind {
         ClaimEscrow(super::ClaimEscrow),
         #[prost(message, tag = "25")]
         ReportWinner(super::ReportWinner),
+        #[prost(message, tag = "26")]
+        ClaimReward(super::ClaimReward),
     }
 }
 #[non_exhaustive]
@@ -3437,30 +3520,41 @@ pub struct EmbedData {
     pub download_metadata: ::core::option::Option<DownloadMetadata>,
     #[prost(message, optional, tag = "2")]
     pub coin_ref: ::core::option::Option<ObjectReference>,
+    #[prost(message, optional, tag = "3")]
+    pub target_ref: ::core::option::Option<ObjectReference>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClaimEscrow {
     #[prost(message, optional, tag = "1")]
-    pub shard_input_ref: ::core::option::Option<ObjectReference>,
+    pub shard_ref: ::core::option::Option<ObjectReference>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ReportWinner {
     #[prost(message, optional, tag = "1")]
-    pub shard_input_ref: ::core::option::Option<ObjectReference>,
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub signed_report: ::core::option::Option<::prost::bytes::Bytes>,
+    pub shard_ref: ::core::option::Option<ObjectReference>,
+    #[prost(message, optional, tag = "2")]
+    pub target_ref: ::core::option::Option<ObjectReference>,
     #[prost(bytes = "bytes", optional, tag = "3")]
-    pub encoder_aggregate_signature: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(string, repeated, tag = "4")]
+    pub report: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub signature: ::core::option::Option<::prost::bytes::Bytes>,
+    /// TODO: should this be bytes?
+    #[prost(string, repeated, tag = "5")]
     pub signers: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(bytes = "bytes", optional, tag = "5")]
+    #[prost(bytes = "bytes", optional, tag = "6")]
     pub shard_auth_token: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClaimReward {
+    #[prost(message, optional, tag = "1")]
+    pub target_ref: ::core::option::Option<ObjectReference>,
 }
 /// System transaction used to change the epoch.
 #[non_exhaustive]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ChangeEpoch {
     /// The next (to become) epoch ID.
     #[prost(uint64, optional, tag = "1")]
@@ -3474,6 +3568,9 @@ pub struct ChangeEpoch {
     /// The total amount of fees charged during the epoch.
     #[prost(uint64, optional, tag = "4")]
     pub fees: ::core::option::Option<u64>,
+    /// / Epoch randomness
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub epoch_randomness: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// The genesis transaction.
 #[non_exhaustive]

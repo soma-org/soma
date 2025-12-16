@@ -305,7 +305,10 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 next_epoch_validator_committee: None,
+                next_epoch_encoder_committee: None,
+                next_epoch_networking_committee: None,
                 next_epoch_protocol_version: None,
+                next_epoch_vdf_iterations: None,
                 epoch_commitments: Vec::new(),
             }
         }
@@ -338,8 +341,64 @@ mod _getter_impls {
             self.next_epoch_validator_committee = Some(field.into());
             self
         }
+        pub fn next_epoch_encoder_committee(&self) -> &EncoderCommittee {
+            self.next_epoch_encoder_committee
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| EncoderCommittee::default_instance() as _)
+        }
+        pub fn next_epoch_encoder_committee_opt(&self) -> Option<&EncoderCommittee> {
+            self.next_epoch_encoder_committee.as_ref().map(|field| field as _)
+        }
+        pub fn next_epoch_encoder_committee_opt_mut(
+            &mut self,
+        ) -> Option<&mut EncoderCommittee> {
+            self.next_epoch_encoder_committee.as_mut().map(|field| field as _)
+        }
+        pub fn next_epoch_encoder_committee_mut(&mut self) -> &mut EncoderCommittee {
+            self.next_epoch_encoder_committee.get_or_insert_default()
+        }
+        pub fn with_next_epoch_encoder_committee(
+            mut self,
+            field: EncoderCommittee,
+        ) -> Self {
+            self.next_epoch_encoder_committee = Some(field.into());
+            self
+        }
+        pub fn next_epoch_networking_committee(&self) -> &NetworkingCommittee {
+            self.next_epoch_networking_committee
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| NetworkingCommittee::default_instance() as _)
+        }
+        pub fn next_epoch_networking_committee_opt(
+            &self,
+        ) -> Option<&NetworkingCommittee> {
+            self.next_epoch_networking_committee.as_ref().map(|field| field as _)
+        }
+        pub fn next_epoch_networking_committee_opt_mut(
+            &mut self,
+        ) -> Option<&mut NetworkingCommittee> {
+            self.next_epoch_networking_committee.as_mut().map(|field| field as _)
+        }
+        pub fn next_epoch_networking_committee_mut(
+            &mut self,
+        ) -> &mut NetworkingCommittee {
+            self.next_epoch_networking_committee.get_or_insert_default()
+        }
+        pub fn with_next_epoch_networking_committee(
+            mut self,
+            field: NetworkingCommittee,
+        ) -> Self {
+            self.next_epoch_networking_committee = Some(field.into());
+            self
+        }
         pub fn with_next_epoch_protocol_version(mut self, field: u64) -> Self {
             self.next_epoch_protocol_version = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_vdf_iterations(mut self, field: u64) -> Self {
+            self.next_epoch_vdf_iterations = Some(field.into());
             self
         }
         pub fn epoch_commitments(&self) -> &[CheckpointCommitment] {
@@ -367,6 +426,174 @@ mod _getter_impls {
         }
         pub fn with_digest(mut self, field: String) -> Self {
             self.digest = Some(field.into());
+            self
+        }
+    }
+    impl EncoderCommittee {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                members: Vec::new(),
+                shard_size: None,
+                quorum_threshold: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: EncoderCommittee = EncoderCommittee::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn members(&self) -> &[EncoderCommitteeMember] {
+            &self.members
+        }
+        pub fn members_mut(&mut self) -> &mut Vec<EncoderCommitteeMember> {
+            &mut self.members
+        }
+        pub fn with_members(mut self, field: Vec<EncoderCommitteeMember>) -> Self {
+            self.members = field;
+            self
+        }
+        pub fn with_shard_size(mut self, field: u32) -> Self {
+            self.shard_size = Some(field.into());
+            self
+        }
+        pub fn with_quorum_threshold(mut self, field: u32) -> Self {
+            self.quorum_threshold = Some(field.into());
+            self
+        }
+    }
+    impl EncoderCommitteeMember {
+        pub const fn const_default() -> Self {
+            Self {
+                voting_power: None,
+                encoder_key: None,
+                probe: None,
+                internal_network_address: None,
+                external_network_address: None,
+                object_server_address: None,
+                network_key: None,
+                hostname: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: EncoderCommitteeMember = EncoderCommitteeMember::const_default();
+            &DEFAULT
+        }
+        pub fn with_voting_power(mut self, field: u64) -> Self {
+            self.voting_power = Some(field.into());
+            self
+        }
+        pub fn with_encoder_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.encoder_key = Some(field.into());
+            self
+        }
+        pub fn probe(&self) -> &DownloadMetadata {
+            self.probe
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| DownloadMetadata::default_instance() as _)
+        }
+        pub fn probe_opt(&self) -> Option<&DownloadMetadata> {
+            self.probe.as_ref().map(|field| field as _)
+        }
+        pub fn probe_opt_mut(&mut self) -> Option<&mut DownloadMetadata> {
+            self.probe.as_mut().map(|field| field as _)
+        }
+        pub fn probe_mut(&mut self) -> &mut DownloadMetadata {
+            self.probe.get_or_insert_default()
+        }
+        pub fn with_probe(mut self, field: DownloadMetadata) -> Self {
+            self.probe = Some(field.into());
+            self
+        }
+        pub fn with_internal_network_address(mut self, field: String) -> Self {
+            self.internal_network_address = Some(field.into());
+            self
+        }
+        pub fn with_external_network_address(mut self, field: String) -> Self {
+            self.external_network_address = Some(field.into());
+            self
+        }
+        pub fn with_object_server_address(mut self, field: String) -> Self {
+            self.object_server_address = Some(field.into());
+            self
+        }
+        pub fn with_network_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.network_key = Some(field.into());
+            self
+        }
+        pub fn with_hostname(mut self, field: String) -> Self {
+            self.hostname = Some(field.into());
+            self
+        }
+    }
+    impl NetworkingCommittee {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                members: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: NetworkingCommittee = NetworkingCommittee::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn members(&self) -> &[NetworkingCommitteeMember] {
+            &self.members
+        }
+        pub fn members_mut(&mut self) -> &mut Vec<NetworkingCommitteeMember> {
+            &mut self.members
+        }
+        pub fn with_members(mut self, field: Vec<NetworkingCommitteeMember>) -> Self {
+            self.members = field;
+            self
+        }
+    }
+    impl NetworkingCommitteeMember {
+        pub const fn const_default() -> Self {
+            Self {
+                authority_key: None,
+                network_metadata: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: NetworkingCommitteeMember = NetworkingCommitteeMember::const_default();
+            &DEFAULT
+        }
+        pub fn with_authority_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.authority_key = Some(field.into());
+            self
+        }
+        pub fn network_metadata(&self) -> &ValidatorNetworkMetadata {
+            self.network_metadata
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ValidatorNetworkMetadata::default_instance() as _)
+        }
+        pub fn network_metadata_opt(&self) -> Option<&ValidatorNetworkMetadata> {
+            self.network_metadata.as_ref().map(|field| field as _)
+        }
+        pub fn network_metadata_opt_mut(
+            &mut self,
+        ) -> Option<&mut ValidatorNetworkMetadata> {
+            self.network_metadata.as_mut().map(|field| field as _)
+        }
+        pub fn network_metadata_mut(&mut self) -> &mut ValidatorNetworkMetadata {
+            self.network_metadata.get_or_insert_default()
+        }
+        pub fn with_network_metadata(mut self, field: ValidatorNetworkMetadata) -> Self {
+            self.network_metadata = Some(field.into());
             self
         }
     }
@@ -2134,7 +2361,10 @@ mod _getter_impls {
                 validator_report_records: std::collections::BTreeMap::new(),
                 encoder_report_records: std::collections::BTreeMap::new(),
                 emission_pool: None,
-                shard_results: std::collections::BTreeMap::new(),
+                reference_byte_price: None,
+                target_rewards_per_epoch: std::collections::BTreeMap::new(),
+                targets_created_per_epoch: std::collections::BTreeMap::new(),
+                epoch_seeds: std::collections::BTreeMap::new(),
             }
         }
         #[doc(hidden)]
@@ -2230,6 +2460,10 @@ mod _getter_impls {
             self.emission_pool = Some(field.into());
             self
         }
+        pub fn with_reference_byte_price(mut self, field: u64) -> Self {
+            self.reference_byte_price = Some(field.into());
+            self
+        }
     }
     impl ReporterSet {
         pub const fn const_default() -> Self {
@@ -2256,6 +2490,17 @@ mod _getter_impls {
             Self {
                 epoch_duration_ms: None,
                 vdf_iterations: None,
+                target_selection_rate_bps: None,
+                target_reward_allocation_bps: None,
+                encoder_tally_slash_rate_bps: None,
+                target_epoch_fee_collection: None,
+                base_fee: None,
+                write_object_fee: None,
+                value_fee_bps: None,
+                min_value_fee_bps: None,
+                max_value_fee_bps: None,
+                fee_adjustment_rate_bps: None,
+                claim_incentive_bps: None,
             }
         }
         #[doc(hidden)]
@@ -2269,6 +2514,50 @@ mod _getter_impls {
         }
         pub fn with_vdf_iterations(mut self, field: u64) -> Self {
             self.vdf_iterations = Some(field.into());
+            self
+        }
+        pub fn with_target_selection_rate_bps(mut self, field: u64) -> Self {
+            self.target_selection_rate_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_reward_allocation_bps(mut self, field: u64) -> Self {
+            self.target_reward_allocation_bps = Some(field.into());
+            self
+        }
+        pub fn with_encoder_tally_slash_rate_bps(mut self, field: u64) -> Self {
+            self.encoder_tally_slash_rate_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_epoch_fee_collection(mut self, field: u64) -> Self {
+            self.target_epoch_fee_collection = Some(field.into());
+            self
+        }
+        pub fn with_base_fee(mut self, field: u64) -> Self {
+            self.base_fee = Some(field.into());
+            self
+        }
+        pub fn with_write_object_fee(mut self, field: u64) -> Self {
+            self.write_object_fee = Some(field.into());
+            self
+        }
+        pub fn with_value_fee_bps(mut self, field: u64) -> Self {
+            self.value_fee_bps = Some(field.into());
+            self
+        }
+        pub fn with_min_value_fee_bps(mut self, field: u64) -> Self {
+            self.min_value_fee_bps = Some(field.into());
+            self
+        }
+        pub fn with_max_value_fee_bps(mut self, field: u64) -> Self {
+            self.max_value_fee_bps = Some(field.into());
+            self
+        }
+        pub fn with_fee_adjustment_rate_bps(mut self, field: u64) -> Self {
+            self.fee_adjustment_rate_bps = Some(field.into());
+            self
+        }
+        pub fn with_claim_incentive_bps(mut self, field: u64) -> Self {
+            self.claim_incentive_bps = Some(field.into());
             self
         }
     }
@@ -2603,7 +2892,6 @@ mod _getter_impls {
                 staking_pool_mappings: std::collections::BTreeMap::new(),
                 inactive_encoders: std::collections::BTreeMap::new(),
                 at_risk_encoders: std::collections::BTreeMap::new(),
-                reference_byte_price: None,
             }
         }
         #[doc(hidden)]
@@ -2643,10 +2931,6 @@ mod _getter_impls {
         }
         pub fn with_pending_removals(mut self, field: Vec<u32>) -> Self {
             self.pending_removals = field;
-            self
-        }
-        pub fn with_reference_byte_price(mut self, field: u64) -> Self {
-            self.reference_byte_price = Some(field.into());
             self
         }
     }
@@ -2767,47 +3051,6 @@ mod _getter_impls {
         }
         pub fn with_next_epoch_object_server_address(mut self, field: String) -> Self {
             self.next_epoch_object_server_address = Some(field.into());
-            self
-        }
-    }
-    impl ShardResult {
-        pub const fn const_default() -> Self {
-            Self {
-                download_metadata: None,
-                amount: None,
-                report: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: ShardResult = ShardResult::const_default();
-            &DEFAULT
-        }
-        pub fn download_metadata(&self) -> &DownloadMetadata {
-            self.download_metadata
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| DownloadMetadata::default_instance() as _)
-        }
-        pub fn download_metadata_opt(&self) -> Option<&DownloadMetadata> {
-            self.download_metadata.as_ref().map(|field| field as _)
-        }
-        pub fn download_metadata_opt_mut(&mut self) -> Option<&mut DownloadMetadata> {
-            self.download_metadata.as_mut().map(|field| field as _)
-        }
-        pub fn download_metadata_mut(&mut self) -> &mut DownloadMetadata {
-            self.download_metadata.get_or_insert_default()
-        }
-        pub fn with_download_metadata(mut self, field: DownloadMetadata) -> Self {
-            self.download_metadata = Some(field.into());
-            self
-        }
-        pub fn with_amount(mut self, field: u64) -> Self {
-            self.amount = Some(field.into());
-            self
-        }
-        pub fn with_report(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.report = Some(field.into());
             self
         }
     }
@@ -3793,6 +4036,39 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::ReportWinner(field.into()));
             self
         }
+        pub fn claim_reward(&self) -> &ClaimReward {
+            if let Some(transaction_kind::Kind::ClaimReward(field)) = &self.kind {
+                field as _
+            } else {
+                ClaimReward::default_instance() as _
+            }
+        }
+        pub fn claim_reward_opt(&self) -> Option<&ClaimReward> {
+            if let Some(transaction_kind::Kind::ClaimReward(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn claim_reward_opt_mut(&mut self) -> Option<&mut ClaimReward> {
+            if let Some(transaction_kind::Kind::ClaimReward(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn claim_reward_mut(&mut self) -> &mut ClaimReward {
+            if self.claim_reward_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::ClaimReward(ClaimReward::default()),
+                );
+            }
+            self.claim_reward_opt_mut().unwrap()
+        }
+        pub fn with_claim_reward(mut self, field: ClaimReward) -> Self {
+            self.kind = Some(transaction_kind::Kind::ClaimReward(field.into()));
+            self
+        }
     }
     impl AddValidator {
         pub const fn const_default() -> Self {
@@ -4657,6 +4933,7 @@ mod _getter_impls {
             Self {
                 download_metadata: None,
                 coin_ref: None,
+                target_ref: None,
             }
         }
         #[doc(hidden)]
@@ -4702,42 +4979,62 @@ mod _getter_impls {
             self.coin_ref = Some(field.into());
             self
         }
+        pub fn target_ref(&self) -> &ObjectReference {
+            self.target_ref
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn target_ref_opt(&self) -> Option<&ObjectReference> {
+            self.target_ref.as_ref().map(|field| field as _)
+        }
+        pub fn target_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.target_ref.as_mut().map(|field| field as _)
+        }
+        pub fn target_ref_mut(&mut self) -> &mut ObjectReference {
+            self.target_ref.get_or_insert_default()
+        }
+        pub fn with_target_ref(mut self, field: ObjectReference) -> Self {
+            self.target_ref = Some(field.into());
+            self
+        }
     }
     impl ClaimEscrow {
         pub const fn const_default() -> Self {
-            Self { shard_input_ref: None }
+            Self { shard_ref: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: ClaimEscrow = ClaimEscrow::const_default();
             &DEFAULT
         }
-        pub fn shard_input_ref(&self) -> &ObjectReference {
-            self.shard_input_ref
+        pub fn shard_ref(&self) -> &ObjectReference {
+            self.shard_ref
                 .as_ref()
                 .map(|field| field as _)
                 .unwrap_or_else(|| ObjectReference::default_instance() as _)
         }
-        pub fn shard_input_ref_opt(&self) -> Option<&ObjectReference> {
-            self.shard_input_ref.as_ref().map(|field| field as _)
+        pub fn shard_ref_opt(&self) -> Option<&ObjectReference> {
+            self.shard_ref.as_ref().map(|field| field as _)
         }
-        pub fn shard_input_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.shard_input_ref.as_mut().map(|field| field as _)
+        pub fn shard_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.shard_ref.as_mut().map(|field| field as _)
         }
-        pub fn shard_input_ref_mut(&mut self) -> &mut ObjectReference {
-            self.shard_input_ref.get_or_insert_default()
+        pub fn shard_ref_mut(&mut self) -> &mut ObjectReference {
+            self.shard_ref.get_or_insert_default()
         }
-        pub fn with_shard_input_ref(mut self, field: ObjectReference) -> Self {
-            self.shard_input_ref = Some(field.into());
+        pub fn with_shard_ref(mut self, field: ObjectReference) -> Self {
+            self.shard_ref = Some(field.into());
             self
         }
     }
     impl ReportWinner {
         pub const fn const_default() -> Self {
             Self {
-                shard_input_ref: None,
-                signed_report: None,
-                encoder_aggregate_signature: None,
+                shard_ref: None,
+                target_ref: None,
+                report: None,
+                signature: None,
                 signers: Vec::new(),
                 shard_auth_token: None,
             }
@@ -4747,34 +5044,50 @@ mod _getter_impls {
             static DEFAULT: ReportWinner = ReportWinner::const_default();
             &DEFAULT
         }
-        pub fn shard_input_ref(&self) -> &ObjectReference {
-            self.shard_input_ref
+        pub fn shard_ref(&self) -> &ObjectReference {
+            self.shard_ref
                 .as_ref()
                 .map(|field| field as _)
                 .unwrap_or_else(|| ObjectReference::default_instance() as _)
         }
-        pub fn shard_input_ref_opt(&self) -> Option<&ObjectReference> {
-            self.shard_input_ref.as_ref().map(|field| field as _)
+        pub fn shard_ref_opt(&self) -> Option<&ObjectReference> {
+            self.shard_ref.as_ref().map(|field| field as _)
         }
-        pub fn shard_input_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.shard_input_ref.as_mut().map(|field| field as _)
+        pub fn shard_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.shard_ref.as_mut().map(|field| field as _)
         }
-        pub fn shard_input_ref_mut(&mut self) -> &mut ObjectReference {
-            self.shard_input_ref.get_or_insert_default()
+        pub fn shard_ref_mut(&mut self) -> &mut ObjectReference {
+            self.shard_ref.get_or_insert_default()
         }
-        pub fn with_shard_input_ref(mut self, field: ObjectReference) -> Self {
-            self.shard_input_ref = Some(field.into());
+        pub fn with_shard_ref(mut self, field: ObjectReference) -> Self {
+            self.shard_ref = Some(field.into());
             self
         }
-        pub fn with_signed_report(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.signed_report = Some(field.into());
+        pub fn target_ref(&self) -> &ObjectReference {
+            self.target_ref
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn target_ref_opt(&self) -> Option<&ObjectReference> {
+            self.target_ref.as_ref().map(|field| field as _)
+        }
+        pub fn target_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.target_ref.as_mut().map(|field| field as _)
+        }
+        pub fn target_ref_mut(&mut self) -> &mut ObjectReference {
+            self.target_ref.get_or_insert_default()
+        }
+        pub fn with_target_ref(mut self, field: ObjectReference) -> Self {
+            self.target_ref = Some(field.into());
             self
         }
-        pub fn with_encoder_aggregate_signature(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.encoder_aggregate_signature = Some(field.into());
+        pub fn with_report(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.report = Some(field.into());
+            self
+        }
+        pub fn with_signature(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.signature = Some(field.into());
             self
         }
         pub fn signers(&self) -> &[String] {
@@ -4792,6 +5105,35 @@ mod _getter_impls {
             self
         }
     }
+    impl ClaimReward {
+        pub const fn const_default() -> Self {
+            Self { target_ref: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ClaimReward = ClaimReward::const_default();
+            &DEFAULT
+        }
+        pub fn target_ref(&self) -> &ObjectReference {
+            self.target_ref
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn target_ref_opt(&self) -> Option<&ObjectReference> {
+            self.target_ref.as_ref().map(|field| field as _)
+        }
+        pub fn target_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.target_ref.as_mut().map(|field| field as _)
+        }
+        pub fn target_ref_mut(&mut self) -> &mut ObjectReference {
+            self.target_ref.get_or_insert_default()
+        }
+        pub fn with_target_ref(mut self, field: ObjectReference) -> Self {
+            self.target_ref = Some(field.into());
+            self
+        }
+    }
     impl ChangeEpoch {
         pub const fn const_default() -> Self {
             Self {
@@ -4799,6 +5141,7 @@ mod _getter_impls {
                 epoch_start_timestamp: None,
                 protocol_version: None,
                 fees: None,
+                epoch_randomness: None,
             }
         }
         #[doc(hidden)]
@@ -4816,6 +5159,10 @@ mod _getter_impls {
         }
         pub fn with_fees(mut self, field: u64) -> Self {
             self.fees = Some(field.into());
+            self
+        }
+        pub fn with_epoch_randomness(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.epoch_randomness = Some(field.into());
             self
         }
     }

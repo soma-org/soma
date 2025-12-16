@@ -457,6 +457,16 @@ impl SomaNode {
         let (end_of_epoch_channel, end_of_epoch_receiver) =
             broadcast::channel(config.end_of_epoch_broadcast_channel_capacity);
 
+        let encoder_client_service = if is_full_node {
+            // Only fullnodes send to encoders, not validators
+            Some(Arc::new(EncoderClientService::new(
+                config.protocol_key_pair().copy(),
+                config.network_key_pair(),
+            )))
+        } else {
+            None
+        };
+
         let transaction_orchestrator = if is_full_node && run_with_range.is_none() {
             Some(Arc::new(TransactionOrchestrator::new_with_auth_aggregator(
                 auth_agg.load_full(),
@@ -464,6 +474,7 @@ impl SomaNode {
                 end_of_epoch_receiver,
                 &config.db_path(),
                 &config,
+                encoder_client_service.clone(),
             )))
         } else {
             None
@@ -516,16 +527,6 @@ impl SomaNode {
 
         // setup shutdown channel
         let (shutdown_channel, _) = broadcast::channel::<Option<RunWithRange>>(1);
-
-        let encoder_client_service = if is_full_node {
-            // Only fullnodes send to encoders, not validators
-            Some(Arc::new(EncoderClientService::new(
-                config.protocol_key_pair().copy(),
-                config.network_key_pair(),
-            )))
-        } else {
-            None
-        };
 
         let encoder_validator_server_handle = if is_full_node {
             info!("Starting encoder validator service for fullnode");
@@ -1062,7 +1063,6 @@ impl SomaNode {
                 self.backpressure_manager.clone(),
                 self.config.checkpoint_executor_config.clone(),
                 self.subscription_service_checkpoint_sender.clone(),
-                self.encoder_client_service.clone(),
             );
 
             let run_with_range = self.config.run_with_range;

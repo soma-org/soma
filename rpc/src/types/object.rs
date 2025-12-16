@@ -162,5 +162,6 @@ pub enum ObjectType {
     SystemState,
     Coin,
     StakedSoma,
-    ShardInput,
+    Shard,
+    Target,
 }

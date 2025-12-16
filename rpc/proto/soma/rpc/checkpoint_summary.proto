@@ -5,6 +5,7 @@ package soma.rpc;
 import "google/protobuf/timestamp.proto";
 import "soma/rpc/signature.proto";
 import "soma/rpc/transaction_fee.proto";
+import "soma/rpc/transaction.proto";
 
 // A header for a checkpoint on the Soma blockchain.
 //
@@ -67,11 +68,21 @@ message CheckpointSummary {
 message EndOfEpochData {
   // The set of validators that will be in the `ValidatorCommittee` for the next epoch.
   optional ValidatorCommittee next_epoch_validator_committee = 1;
-  // TODO: add encoder committee & network committees
+  
+  // The encoder committee for the next epoch.
+  optional EncoderCommittee next_epoch_encoder_committee = 2;
+  
+  // The networking committee for the next epoch.
+  optional NetworkingCommittee next_epoch_networking_committee = 3;
+
   // The protocol version that is in effect during the next epoch.
-  optional uint64 next_epoch_protocol_version = 2;
+  optional uint64 next_epoch_protocol_version = 4;
+
+  // VDF iterations for the next epoch.
+  optional uint64 next_epoch_vdf_iterations = 5;
+
   // Commitments to epoch specific state (live object set)
-  repeated CheckpointCommitment epoch_commitments = 3;
+  repeated CheckpointCommitment epoch_commitments = 6;
 }
 
 // A commitment made by a checkpoint.
@@ -90,4 +101,48 @@ message CheckpointCommitment {
   optional CheckpointCommitmentKind kind = 1;
 
   optional string digest = 2;
+}
+
+// Encoder committee for an epoch
+message EncoderCommittee {
+  optional uint64 epoch = 1;
+  
+  // Maps encoder public key -> Encoder (voting_power, encoder_key, probe)
+  repeated EncoderCommitteeMember members = 2;
+  
+  optional uint32 shard_size = 3;
+  optional uint32 quorum_threshold = 4;
+}
+
+// Combines Encoder + EncoderNetworkMetadata
+message EncoderCommitteeMember {
+  // From Encoder
+  optional uint64 voting_power = 1;
+  optional bytes encoder_key = 2;  // EncoderPublicKey (BLS)
+  optional DownloadMetadata probe = 3;
+  
+  // From EncoderNetworkMetadata
+  optional string internal_network_address = 4;
+  optional string external_network_address = 5;
+  optional string object_server_address = 6;
+  optional bytes network_key = 7;  // NetworkPublicKey (Ed25519)
+  optional string hostname = 8;
+}
+
+// The Networking committee for a particular epoch.
+message NetworkingCommittee {
+  // The epoch where this committee governs.
+  optional uint64 epoch = 1;
+
+  // The committee members.
+  repeated NetworkingCommitteeMember members = 2;
+}
+
+// A member of a networking committee with full authority information.
+message NetworkingCommitteeMember {
+  // The BLS12381 public key bytes (becomes AuthorityName)
+  optional bytes authority_key = 1;
+
+  // Network metadata for this validator
+  optional ValidatorNetworkMetadata network_metadata = 2;
 }

@@ -549,23 +549,27 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::EmbedData {
                 download_metadata,
                 coin_ref,
+                target_ref,
             } => Kind::EmbedData(EmbedData {
                 download_metadata: Some(download_metadata.into()),
                 coin_ref: Some(object_ref_to_proto(coin_ref)),
+                target_ref: target_ref.map(|r| object_ref_to_proto(r)),
             }),
-            K::ClaimEscrow { shard_input_ref } => Kind::ClaimEscrow(ClaimEscrow {
-                shard_input_ref: Some(object_ref_to_proto(shard_input_ref)),
+            K::ClaimEscrow { shard_ref } => Kind::ClaimEscrow(ClaimEscrow {
+                shard_ref: Some(object_ref_to_proto(shard_ref)),
             }),
             K::ReportWinner {
-                shard_input_ref,
-                signed_report,
+                shard_ref,
+                target_ref,
+                report,
                 signature,
                 signers,
                 shard_auth_token,
             } => Kind::ReportWinner(ReportWinner {
-                shard_input_ref: Some(object_ref_to_proto(shard_input_ref)),
-                signed_report: Some(signed_report.into()),
-                encoder_aggregate_signature: Some(signature.into()),
+                shard_ref: Some(object_ref_to_proto(shard_ref)),
+                target_ref: target_ref.map(|r| object_ref_to_proto(r)),
+                report: Some(report.into()),
+                signature: Some(signature.into()),
                 signers: signers
                     .into_iter()
                     .map(|s| {
@@ -574,6 +578,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                     })
                     .collect(),
                 shard_auth_token: Some(shard_auth_token.into()),
+            }),
+            K::ClaimReward { target_ref } => Kind::ClaimReward(ClaimReward {
+                target_ref: Some(object_ref_to_proto(target_ref)),
             }),
         };
 
@@ -690,12 +697,15 @@ impl From<types::transaction::GenesisTransaction> for GenesisTransaction {
 
 impl From<types::transaction::ChangeEpoch> for ChangeEpoch {
     fn from(value: types::transaction::ChangeEpoch) -> Self {
-        let mut message = Self::default();
-        message.epoch = Some(value.epoch);
-        message.epoch_start_timestamp = Some(crate::proto::timestamp_ms_to_proto(
-            value.epoch_start_timestamp_ms,
-        ));
-        message
+        Self {
+            epoch: Some(value.epoch),
+            epoch_start_timestamp: Some(crate::proto::timestamp_ms_to_proto(
+                value.epoch_start_timestamp_ms,
+            )),
+            protocol_version: Some(value.protocol_version.as_u64()),
+            fees: Some(value.fees),
+            epoch_randomness: Some(value.epoch_randomness.into()),
+        }
     }
 }
 
@@ -937,14 +947,14 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
 
     fn try_from(proto_state: SystemState) -> Result<Self, Self::Error> {
         let epoch = proto_state.epoch.ok_or("Missing epoch")?;
-
-        let protocol_version = proto_state.epoch.ok_or("Missing protocol version")?;
-
+        let protocol_version = proto_state
+            .protocol_version
+            .ok_or("Missing protocol_version")?;
         let epoch_start_timestamp_ms = proto_state
             .epoch_start_timestamp_ms
             .ok_or("Missing epoch_start_timestamp_ms")?;
 
-        let parameters = proto_state
+        let parameters: protocol_config::SystemParameters = proto_state
             .parameters
             .ok_or("Missing parameters")?
             .try_into()?;
@@ -956,10 +966,23 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
 
         let encoders = proto_state.encoders.ok_or("Missing encoders")?.try_into()?;
 
-        let stake_subsidy = proto_state
-            .stake_subsidy
-            .ok_or("Missing stake_subsidy")?
+        let emission_pool = proto_state
+            .emission_pool
+            .ok_or("Missing emission_pool")?
             .try_into()?;
+
+        let reference_byte_price = proto_state
+            .reference_byte_price
+            .ok_or("Missing reference_byte_price")?;
+
+        // Convert map fields
+        let target_rewards_per_epoch = proto_state.target_rewards_per_epoch;
+        let targets_created_per_epoch = proto_state.targets_created_per_epoch;
+        let epoch_seeds = proto_state
+            .epoch_seeds
+            .into_iter()
+            .map(|(k, v)| (k, v.to_vec()))
+            .collect();
 
         // Convert validator report records
         let validator_report_records =
@@ -968,8 +991,7 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
         // Convert encoder report records
         let encoder_report_records = convert_report_records(proto_state.encoder_report_records)?;
 
-        // Convert shard results
-        let shard_results = convert_shard_results(proto_state.shard_results)?;
+        let vdf_iterations = parameters.vdf_iterations;
 
         // Build initial committees
         let mut system_state = types::system_state::SystemState {
@@ -981,30 +1003,62 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
             encoders,
             validator_report_records,
             encoder_report_records,
-            stake_subsidy,
-            shard_results,
-            committees: [None, None], // Will be initialized below
+            emission_pool,
+            reference_byte_price,
+            target_rewards_per_epoch,
+            targets_created_per_epoch,
+            epoch_seeds,
+            committees: [None, None],
         };
 
         // Initialize current epoch committees
-        let current_committees = system_state.build_committees_for_epoch(epoch);
+        let current_committees = system_state.build_committees_for_epoch(epoch, vdf_iterations);
         system_state.committees[1] = Some(current_committees);
 
         Ok(system_state)
     }
 }
 
-impl TryFrom<SystemParameters> for types::system_state::SystemParameters {
+impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
     type Error = String;
 
     fn try_from(proto_params: SystemParameters) -> Result<Self, Self::Error> {
-        Ok(types::system_state::SystemParameters {
+        Ok(protocol_config::SystemParameters {
             epoch_duration_ms: proto_params
                 .epoch_duration_ms
                 .ok_or("Missing epoch_duration_ms")?,
             vdf_iterations: proto_params
                 .vdf_iterations
                 .ok_or("Missing vdf_iterations")?,
+            target_selection_rate_bps: proto_params
+                .target_selection_rate_bps
+                .ok_or("Missing target_selection_rate_bps")?,
+            target_reward_allocation_bps: proto_params
+                .target_reward_allocation_bps
+                .ok_or("Missing target_reward_allocation_bps")?,
+            encoder_tally_slash_rate_bps: proto_params
+                .encoder_tally_slash_rate_bps
+                .ok_or("Missing encoder_tally_slash_rate_bps")?,
+            target_epoch_fee_collection: proto_params
+                .target_epoch_fee_collection
+                .ok_or("Missing target_epoch_fee_collection")?,
+            base_fee: proto_params.base_fee.ok_or("Missing base_fee")?,
+            write_object_fee: proto_params
+                .write_object_fee
+                .ok_or("Missing write_object_fee")?,
+            value_fee_bps: proto_params.value_fee_bps.ok_or("Missing value_fee_bps")?,
+            min_value_fee_bps: proto_params
+                .min_value_fee_bps
+                .ok_or("Missing min_value_fee_bps")?,
+            max_value_fee_bps: proto_params
+                .max_value_fee_bps
+                .ok_or("Missing max_value_fee_bps")?,
+            fee_adjustment_rate_bps: proto_params
+                .fee_adjustment_rate_bps
+                .ok_or("Missing fee_adjustment_rate_bps")?,
+            claim_incentive_bps: proto_params
+                .claim_incentive_bps
+                .ok_or("Missing claim_incentive_bps")?,
         })
     }
 }
@@ -1364,9 +1418,6 @@ impl TryFrom<EncoderSet> for types::system_state::encoder::EncoderSet {
             staking_pool_mappings,
             inactive_encoders,
             at_risk_encoders,
-            reference_byte_price: proto_set
-                .reference_byte_price
-                .ok_or("Missing reference_byte_price")?,
         })
     }
 }
@@ -1493,31 +1544,6 @@ impl TryFrom<Encoder> for types::system_state::encoder::Encoder {
     }
 }
 
-impl TryFrom<ShardResult> for types::system_state::shard::ShardResult {
-    type Error = String;
-
-    fn try_from(proto_shard: ShardResult) -> Result<Self, Self::Error> {
-        // Convert proto Metadata to domain Metadata
-        let download_metadata = proto_shard
-            .download_metadata
-            .as_ref()
-            .ok_or("Missing metadata")?
-            .try_into()
-            .map_err(|e: TryFromProtoError| format!("Invalid metadata: {}", e))?;
-
-        let report_bytes = proto_shard.report.ok_or("Missing report")?.to_vec();
-
-        // Deserialize the report from bytes
-        let report = bcs::from_bytes(&report_bytes)
-            .map_err(|e| format!("Failed to deserialize report: {}", e))?;
-
-        Ok(types::system_state::shard::ShardResult {
-            download_metadata,
-            amount: proto_shard.amount.ok_or("Missing amount")?,
-            report,
-        })
-    }
-}
 // Helper functions
 fn convert_report_records(
     proto_records: BTreeMap<String, ReporterSet>,
@@ -1536,34 +1562,6 @@ fn convert_report_records(
         .collect()
 }
 
-fn convert_shard_results(
-    proto_results: BTreeMap<String, ShardResult>,
-) -> Result<
-    BTreeMap<
-        types::shard_crypto::digest::Digest<types::shard::Shard>,
-        types::system_state::shard::ShardResult,
-    >,
-    String,
-> {
-    proto_results
-        .into_iter()
-        .map(|(k, v)| {
-            // The key is likely base64 encoded (based on the Display impl of Digest)
-            let digest_bytes =
-                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &k)
-                    .map_err(|e| format!("Failed to decode base64 digest key: {}", e))?;
-
-            // Convert bytes to Digest<Shard> using TryFrom
-            let digest: types::shard_crypto::digest::Digest<types::shard::Shard> =
-                types::shard_crypto::digest::Digest::try_from(digest_bytes)
-                    .map_err(|e| format!("Invalid digest key: {:?}", e))?;
-
-            let result = v.try_into()?;
-            Ok((digest, result))
-        })
-        .collect()
-}
-
 impl TryFrom<types::system_state::SystemState> for SystemState {
     type Error = String;
 
@@ -1576,8 +1574,12 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
         let encoder_report_records =
             convert_report_records_to_proto(domain_state.encoder_report_records)?;
 
-        // Convert shard results
-        let shard_results = convert_shard_results_to_proto(domain_state.shard_results)?;
+        // Convert epoch_seeds: BTreeMap<u64, Vec<u8>> -> BTreeMap<u64, Bytes>
+        let epoch_seeds = domain_state
+            .epoch_seeds
+            .into_iter()
+            .map(|(k, v)| (k, v.into()))
+            .collect();
 
         Ok(SystemState {
             epoch: Some(domain_state.epoch),
@@ -1589,18 +1591,32 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             validator_report_records,
             encoder_report_records,
             emission_pool: Some(domain_state.emission_pool.try_into()?),
-            shard_results,
+            reference_byte_price: Some(domain_state.reference_byte_price),
+            target_rewards_per_epoch: domain_state.target_rewards_per_epoch,
+            targets_created_per_epoch: domain_state.targets_created_per_epoch,
+            epoch_seeds,
         })
     }
 }
 
-impl TryFrom<types::system_state::SystemParameters> for SystemParameters {
+impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
     type Error = String;
 
-    fn try_from(domain_params: types::system_state::SystemParameters) -> Result<Self, Self::Error> {
+    fn try_from(domain_params: protocol_config::SystemParameters) -> Result<Self, Self::Error> {
         Ok(SystemParameters {
             epoch_duration_ms: Some(domain_params.epoch_duration_ms),
             vdf_iterations: Some(domain_params.vdf_iterations),
+            target_selection_rate_bps: Some(domain_params.target_selection_rate_bps),
+            target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
+            encoder_tally_slash_rate_bps: Some(domain_params.encoder_tally_slash_rate_bps),
+            target_epoch_fee_collection: Some(domain_params.target_epoch_fee_collection),
+            base_fee: Some(domain_params.base_fee),
+            write_object_fee: Some(domain_params.write_object_fee),
+            value_fee_bps: Some(domain_params.value_fee_bps),
+            min_value_fee_bps: Some(domain_params.min_value_fee_bps),
+            max_value_fee_bps: Some(domain_params.max_value_fee_bps),
+            fee_adjustment_rate_bps: Some(domain_params.fee_adjustment_rate_bps),
+            claim_incentive_bps: Some(domain_params.claim_incentive_bps),
         })
     }
 }
@@ -1840,7 +1856,6 @@ impl TryFrom<types::system_state::encoder::EncoderSet> for EncoderSet {
             staking_pool_mappings,
             inactive_encoders,
             at_risk_encoders,
-            reference_byte_price: Some(domain_set.reference_byte_price),
         })
     }
 }
@@ -1890,29 +1905,6 @@ impl TryFrom<types::system_state::encoder::Encoder> for Encoder {
     }
 }
 
-impl TryFrom<types::system_state::shard::ShardResult> for ShardResult {
-    type Error = String;
-
-    fn try_from(
-        domain_shard: types::system_state::shard::ShardResult,
-    ) -> Result<Self, Self::Error> {
-        use bytes::Bytes;
-
-        // Convert domain Metadata to proto Metadata
-        let download_metadata: DownloadMetadata = domain_shard.download_metadata.into();
-
-        // Serialize the report to bytes
-        let report_bytes = bcs::to_bytes(&domain_shard.report)
-            .map_err(|e| format!("Failed to serialize report: {}", e))?;
-
-        Ok(ShardResult {
-            download_metadata: Some(download_metadata),
-            amount: Some(domain_shard.amount),
-            report: Some(Bytes::from(report_bytes)),
-        })
-    }
-}
-
 // Helper functions for reverse conversion
 fn convert_report_records_to_proto(
     domain_records: BTreeMap<types::base::SomaAddress, BTreeSet<types::base::SomaAddress>>,
@@ -1927,23 +1919,6 @@ fn convert_report_records_to_proto(
         .collect()
 }
 
-fn convert_shard_results_to_proto(
-    domain_results: BTreeMap<
-        types::shard_crypto::digest::Digest<types::shard::Shard>,
-        types::system_state::shard::ShardResult,
-    >,
-) -> Result<BTreeMap<String, ShardResult>, String> {
-    domain_results
-        .into_iter()
-        .map(|(digest, result)| {
-            // Convert Digest to base64 string (matching the Display impl)
-            let bytes: &[u8] = digest.as_ref();
-            let key = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
-            let proto_result = result.try_into()?;
-            Ok((key, proto_result))
-        })
-        .collect()
-}
 //
 // TransactionChecks
 //
@@ -2376,21 +2351,204 @@ impl From<types::checkpoints::CheckpointCommitment> for CheckpointCommitment {
 //
 
 impl From<types::checkpoints::EndOfEpochData> for EndOfEpochData {
-    fn from(
-        types::checkpoints::EndOfEpochData {
-            next_epoch_validator_committee,
-            // next_epoch_protocol_version,
-            epoch_commitments,
-            ..
-        }: types::checkpoints::EndOfEpochData,
-    ) -> Self {
-        let mut message = Self::default();
+    fn from(value: types::checkpoints::EndOfEpochData) -> Self {
+        Self {
+            next_epoch_validator_committee: Some(value.next_epoch_validator_committee.into()),
+            next_epoch_encoder_committee: Some(value.next_epoch_encoder_committee.into()),
+            next_epoch_networking_committee: Some(value.next_epoch_networking_committee.into()),
+            next_epoch_protocol_version: Some(value.next_epoch_protocol_version.as_u64()),
+            next_epoch_vdf_iterations: Some(value.next_epoch_vdf_iterations),
+            epoch_commitments: value
+                .epoch_commitments
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
 
-        message.next_epoch_validator_committee = Some(next_epoch_validator_committee.into());
-        // message.next_epoch_protocol_version = Some(next_epoch_protocol_version.as_u64());
-        message.epoch_commitments = epoch_commitments.into_iter().map(Into::into).collect();
+//
+// EncoderCommittee (domain -> proto)
+//
 
-        message
+impl From<types::encoder_committee::EncoderCommittee> for EncoderCommittee {
+    fn from(value: types::encoder_committee::EncoderCommittee) -> Self {
+        // Combine Encoder and EncoderNetworkMetadata into EncoderCommitteeMember
+        let members: Vec<EncoderCommitteeMember> = value
+            .members()
+            .into_iter()
+            .map(|(encoder_key, voting_power)| {
+                let encoder = value.encoder_by_key(&encoder_key);
+                let network_metadata = value.network_metadata.get(&encoder_key);
+
+                let mut member = EncoderCommitteeMember::default();
+                member.voting_power = Some(voting_power);
+                member.encoder_key = Some(encoder_key.to_bytes().to_vec().into());
+
+                // Add probe from Encoder if available
+                if let Some(enc) = encoder {
+                    member.probe = Some(enc.probe.clone().into());
+                }
+
+                // Add network metadata if available
+                if let Some(net_meta) = network_metadata {
+                    member.internal_network_address =
+                        Some(net_meta.internal_network_address.to_string());
+                    member.external_network_address =
+                        Some(net_meta.external_network_address.to_string());
+                    member.object_server_address = Some(net_meta.object_server_address.to_string());
+                    member.network_key = Some(net_meta.network_key.to_bytes().to_vec().into());
+                    member.hostname = Some(net_meta.hostname.clone());
+                }
+
+                member
+            })
+            .collect();
+
+        Self {
+            epoch: Some(value.epoch),
+            members,
+            shard_size: Some(value.shard_size()),
+            quorum_threshold: Some(value.quorum_threshold()),
+        }
+    }
+}
+
+//
+// EncoderCommittee (proto -> domain)
+//
+
+impl TryFrom<&EncoderCommittee> for types::encoder_committee::EncoderCommittee {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: &EncoderCommittee) -> Result<Self, Self::Error> {
+        use std::collections::BTreeMap;
+        use types::encoder_committee::{Encoder, EncoderNetworkMetadata};
+        use types::shard_crypto::keys::EncoderPublicKey;
+
+        let epoch = value
+            .epoch
+            .ok_or_else(|| TryFromProtoError::missing("epoch"))?;
+        let shard_size = value
+            .shard_size
+            .ok_or_else(|| TryFromProtoError::missing("shard_size"))?;
+        let quorum_threshold = value
+            .quorum_threshold
+            .ok_or_else(|| TryFromProtoError::missing("quorum_threshold"))?;
+
+        let mut encoders = Vec::new();
+        let mut network_metadata = BTreeMap::new();
+
+        for member in &value.members {
+            let encoder_key_bytes = member
+                .encoder_key
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("encoder_key"))?;
+            let encoder_key = EncoderPublicKey::from_bytes(encoder_key_bytes)
+                .map_err(|e| TryFromProtoError::invalid("encoder_key", e))?;
+
+            let voting_power = member
+                .voting_power
+                .ok_or_else(|| TryFromProtoError::missing("voting_power"))?;
+
+            let probe = member
+                .probe
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("probe"))?
+                .try_into()
+                .map_err(|e| TryFromProtoError::invalid("probe", e))?;
+
+            let encoder = Encoder {
+                voting_power,
+                encoder_key: encoder_key.clone(),
+                probe,
+            };
+            encoders.push(encoder);
+
+            // Build network metadata
+            let internal_network_address = member
+                .internal_network_address
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("internal_network_address"))?
+                .parse()
+                .map_err(|e| TryFromProtoError::invalid("internal_network_address", e))?;
+
+            let external_network_address = member
+                .external_network_address
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("external_network_address"))?
+                .parse()
+                .map_err(|e| TryFromProtoError::invalid("external_network_address", e))?;
+
+            let object_server_address = member
+                .object_server_address
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("object_server_address"))?
+                .parse()
+                .map_err(|e| TryFromProtoError::invalid("object_server_address", e))?;
+
+            let network_key_bytes = member
+                .network_key
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("network_key"))?;
+            let ed25519_key = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(network_key_bytes)
+                .map_err(|e| TryFromProtoError::invalid("network_key", e))?;
+            let network_key = types::crypto::NetworkPublicKey::new(ed25519_key);
+
+            let hostname = member
+                .hostname
+                .clone()
+                .ok_or_else(|| TryFromProtoError::missing("hostname"))?;
+
+            let net_meta = EncoderNetworkMetadata {
+                internal_network_address,
+                external_network_address,
+                object_server_address,
+                network_key,
+                hostname,
+            };
+            network_metadata.insert(encoder_key, net_meta);
+        }
+
+        Ok(types::encoder_committee::EncoderCommittee::new(
+            epoch,
+            encoders,
+            shard_size,
+            quorum_threshold,
+            network_metadata,
+        ))
+    }
+}
+//
+// NetworkingCommittee (domain -> proto)
+//
+
+impl From<types::committee::NetworkingCommittee> for NetworkingCommittee {
+    fn from(value: types::committee::NetworkingCommittee) -> Self {
+        use fastcrypto::traits::ToFromBytes;
+
+        let members: Vec<NetworkingCommitteeMember> = value
+            .members
+            .into_iter()
+            .map(
+                |(authority_name, network_metadata)| NetworkingCommitteeMember {
+                    authority_key: Some(authority_name.as_ref().to_vec().into()),
+                    network_metadata: Some(ValidatorNetworkMetadata {
+                        consensus_address: Some(network_metadata.consensus_address.to_string()),
+                        hostname: Some(network_metadata.hostname),
+                        protocol_key: Some(
+                            network_metadata.protocol_key.to_bytes().to_vec().into(),
+                        ),
+                        network_key: Some(network_metadata.network_key.to_bytes().to_vec().into()),
+                    }),
+                },
+            )
+            .collect();
+
+        Self {
+            epoch: Some(value.epoch),
+            members,
+        }
     }
 }
 

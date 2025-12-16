@@ -162,16 +162,21 @@ pub enum TransactionKind {
     EmbedData {
         download_metadata: DownloadMetadata,
         coin_ref: ObjectReference,
+        target_ref: Option<ObjectReference>,
     },
     ClaimEscrow {
-        shard_input_ref: ObjectReference,
+        shard_ref: ObjectReference,
     },
     ReportWinner {
-        shard_input_ref: ObjectReference,
-        signed_report: Vec<u8>,
-        encoder_aggregate_signature: Vec<u8>,
+        shard_ref: ObjectReference,
+        target_ref: Option<ObjectReference>,
+        report: Vec<u8>, // TODO: should I specify this so that it's easier to get info like scores and embeddings?
+        signature: Vec<u8>,
         signers: Vec<String>,
         shard_auth_token: Vec<u8>,
+    },
+    ClaimReward {
+        target_ref: ObjectReference,
     },
 }
 
@@ -282,6 +287,9 @@ pub struct ChangeEpoch {
 
     /// The total amount of fees charged during the epoch.
     pub fees: u64,
+
+    /// Epoch randomness
+    pub epoch_randomness: Vec<u8>,
 }
 
 /// The genesis transaction
