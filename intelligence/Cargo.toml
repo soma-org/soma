@@ -38,7 +38,7 @@ url.workspace = true
 fastcrypto.workspace = true
 futures.workspace = true
 burn.workspace = true
-
+ndarray-safetensors = "0.3.0"
 
 [dev-dependencies]
 tempdir = "0.3"
