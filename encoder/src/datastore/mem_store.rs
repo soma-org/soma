@@ -8,7 +8,7 @@ use types::{
     committee::Epoch,
     error::{ShardError, ShardResult},
     metadata::DownloadMetadata,
-    shard::Shard,
+    shard::{Input, Shard},
     shard_crypto::{
         digest::Digest,
         keys::{EncoderAggregateSignature, EncoderPublicKey},
@@ -36,7 +36,7 @@ type Encoder = EncoderPublicKey;
 pub(crate) struct Inner {
     shard_stage_messages: BTreeMap<(Epoch, Digest<Shard>, ShardStage), HashSet<EncoderPublicKey>>,
     shard_stage_dispatches: BTreeMap<(Epoch, Digest<Shard>, ShardStage), ()>,
-    input_download_metadata: BTreeMap<(Epoch, Digest<Shard>), DownloadMetadata>,
+    inputs: BTreeMap<(Epoch, Digest<Shard>), Verified<Input>>,
     submission_digests: BTreeMap<(Epoch, Digest<Shard>, Encoder), (Digest<Submission>, Instant)>,
     submissions: BTreeMap<(Epoch, Digest<Shard>, Digest<Submission>), (Submission, Instant)>,
     commit_votes: BTreeMap<(Epoch, Digest<Shard>, Encoder), CommitVotes>,
@@ -52,7 +52,7 @@ impl MemStore {
             inner: RwLock::new(Inner {
                 shard_stage_messages: BTreeMap::new(),
                 shard_stage_dispatches: BTreeMap::new(),
-                input_download_metadata: BTreeMap::new(),
+                inputs: BTreeMap::new(),
                 submission_digests: BTreeMap::new(),
                 submissions: BTreeMap::new(),
                 commit_votes: BTreeMap::new(),
@@ -99,37 +99,33 @@ impl Store for MemStore {
             Err(ShardError::Conflict("stage already exists".to_string()))
         }
     }
-    fn add_input_download_metadata(
-        &self,
-        shard: &Shard,
-        download_metadata: DownloadMetadata,
-    ) -> ShardResult<()> {
+    fn add_input(&self, shard: &Shard, input: Verified<Input>) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest);
 
         let mut guard = self.inner.write();
 
-        match guard.input_download_metadata.get(&key) {
+        match guard.inputs.get(&key) {
             Some(_existing) => Err(ShardError::Conflict(
-                "encoder has existing download metadata".to_string(),
+                "encoder has existing input".to_string(),
             )),
             None => {
-                guard.input_download_metadata.insert(key, download_metadata);
+                guard.inputs.insert(key, input);
                 Ok(())
             }
         }
     }
-    fn get_input_download_metadata(&self, shard: &Shard) -> ShardResult<DownloadMetadata> {
+    fn get_input(&self, shard: &Shard) -> ShardResult<Verified<Input>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest);
 
         let inner = self.inner.read();
-        if let Some(input_download_metadata) = inner.input_download_metadata.get(&key) {
-            Ok(input_download_metadata.clone())
+        if let Some(verified_input) = inner.inputs.get(&key) {
+            Ok(verified_input.clone())
         } else {
-            Err(ShardError::NotFound("score set".to_string()))
+            Err(ShardError::NotFound("input".to_string()))
         }
     }
 
@@ -274,7 +270,7 @@ impl Store for MemStore {
 
     fn add_submission(&self, shard: &Shard, submission: Submission) -> ShardResult<()> {
         let epoch = shard.epoch();
-        let shard_digest = submission.shard_digest();
+        let shard_digest = submission.shard_digest().clone();
         let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
         let key = (epoch, shard_digest, submission_digest);
 

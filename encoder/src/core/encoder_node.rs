@@ -34,7 +34,7 @@ use types::actors::ActorManager;
 use types::base::SomaAddress;
 use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
 use types::crypto::NetworkKeyPair;
-use types::evaluation::{Score, ScoreV1};
+use types::evaluation::{EvaluationOutput, EvaluationOutputV1};
 use types::multiaddr::Multiaddr;
 use types::parameters::HttpParameters;
 use types::shard_crypto::keys::EncoderPublicKey;
@@ -109,7 +109,7 @@ pub struct EncoderNode {
             InMemory,
             PersistentInMemoryStore,
             EphemeralInMemoryStore,
-            MockModule,
+            MockModule<InMemory>,
         >,
     >,
     evaluation_processor_manager: ActorManager<
@@ -123,7 +123,7 @@ pub struct EncoderNode {
     >,
     store: Arc<dyn Store>,
     pub context: Context,
-    object_storage: Arc<InMemory>,
+    object_storage: Arc<InMemory>, // TODO: make this use generic ObjectStore
     committee_sync_manager: Arc<CommitteeSyncManager>,
     wallet_context: Arc<RwLock<WalletContext>>,
 
@@ -242,7 +242,10 @@ impl EncoderNode {
             ObjectHttpClient::new(network_keypair.clone(), Arc::new(HttpParameters::default()))
                 .unwrap();
 
-        let module_client = Arc::new(MockModule::new(encoder_keypair.public().clone()));
+        let module_client = Arc::new(MockModule::new(
+            encoder_keypair.public().clone(),
+            object_storage.clone(),
+        ));
 
         let inference_core_processor = InferenceCoreProcessor::new(
             persistent_store.clone(),
@@ -272,9 +275,9 @@ impl EncoderNode {
             .unwrap(),
         );
 
-        let evaluator_client = Arc::new(MockEvaluator::new(Score::V1(ScoreV1::new(
-            rand::thread_rng().gen(),
-        ))));
+        let evaluator_client = Arc::new(MockEvaluator::new(EvaluationOutput::V1(
+            EvaluationOutputV1::mock(),
+        )));
 
         let evaluation_core_processor = EvaluationCoreProcessor::new(
             persistent_store.clone(),
@@ -507,7 +510,7 @@ impl EncoderNode {
                 InMemory,
                 PersistentInMemoryStore,
                 EphemeralInMemoryStore,
-                MockModule,
+                MockModule<InMemory>,
             >,
         >>::stop(&mut self.inference_network_manager)
         .await;

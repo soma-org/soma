@@ -11,6 +11,7 @@ use crate::types::report_vote::ReportVote;
 use serde::{Deserialize, Serialize};
 use types::error::ShardResult;
 use types::metadata::DownloadMetadata;
+use types::shard::Input;
 use types::submission::Submission;
 use types::{
     shard::Shard,
@@ -43,13 +44,9 @@ pub trait Store: Send + Sync + 'static {
 
     fn add_shard_stage_dispatch(&self, shard: &Shard, stage: ShardStage) -> ShardResult<()>;
 
-    fn add_input_download_metadata(
-        &self,
-        shard: &Shard,
-        download_metadata: DownloadMetadata,
-    ) -> ShardResult<()>;
+    fn add_input(&self, shard: &Shard, input: Verified<Input>) -> ShardResult<()>;
 
-    fn get_input_download_metadata(&self, shard: &Shard) -> ShardResult<DownloadMetadata>;
+    fn get_input(&self, shard: &Shard) -> ShardResult<Verified<Input>>;
 
     fn add_submission_digest(
         &self,

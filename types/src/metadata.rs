@@ -27,6 +27,7 @@ type SizeInBytes = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ObjectPath {
+    Uploads(Checksum),
     Inputs(Epoch, Digest<Shard>, Checksum),
     Embeddings(Epoch, Digest<Shard>, Checksum),
     Probes(Epoch, Checksum),
@@ -36,6 +37,7 @@ pub enum ObjectPath {
 impl ObjectPath {
     pub fn path(&self) -> Path {
         match self {
+            Self::Uploads(checksum) => Path::from(format!("uploads/{}", checksum)),
             Self::Inputs(epoch, shard_digest, checksum) => Path::from(format!(
                 "epochs/{}/shards/{}/inputs/{}",
                 epoch, shard_digest, checksum
@@ -59,6 +61,7 @@ impl ObjectPath {
     }
     pub fn etag(&self) -> String {
         match self {
+            Self::Uploads(checksum) => checksum.to_string(),
             Self::Inputs(_, _, checksum) => checksum.to_string(),
             Self::Embeddings(_, _, checksum) => checksum.to_string(),
             Self::Probes(_, checksum) => checksum.to_string(),

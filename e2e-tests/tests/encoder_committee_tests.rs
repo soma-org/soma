@@ -305,10 +305,9 @@ async fn initiate_shard_work(
 ) -> Result<rpc::proto::soma::Shard, anyhow::Error> {
     let client = test_cluster.wallet.get_client().await?;
 
-    let request = InitiateShardWorkRequest {
-        tx_digest: Some(tx_digest.to_string()),
-        checkpoint_seq: Some(checkpoint_seq),
-    };
+    let request = InitiateShardWorkRequest::default()
+        .with_checkpoint_seq(checkpoint_seq)
+        .with_tx_digest(tx_digest.to_string());
 
     let response = client
         .initiate_shard_work(request)
@@ -326,4 +325,51 @@ async fn initiate_shard_work(
     );
 
     Ok(shard)
+}
+
+/// Execute EmbedData transaction and wait for it to be checkpointed
+/// Returns effects, objects, and the checkpoint sequence number
+async fn execute_embed_data_and_wait(
+    signer: SomaKeyPair,
+    test_cluster: &mut TestCluster,
+    address: SomaAddress,
+    download_metadata: DownloadMetadata,
+) -> (TransactionEffects, ObjectSet, u64) {
+    // Get gas object for the transaction
+    let gas_object = test_cluster
+        .wallet
+        .get_one_gas_object_owned_by_address(address)
+        .await
+        .unwrap()
+        .expect("Can't get gas object for encoder address");
+
+    // Create EmbedData transaction
+    let tx = Transaction::from_data_and_signer(
+        TransactionData::new(
+            TransactionKind::EmbedData {
+                download_metadata,
+                coin_ref: gas_object,
+                target_ref: None, // TODO: test with target
+            },
+            address,
+            vec![gas_object],
+        ),
+        vec![&signer],
+    );
+
+    info!(
+        tx_digest = ?tx.digest(),
+        "Executing EmbedData transaction for {}",
+        address
+    );
+
+    // Execute and wait for checkpointing (ensures we have checkpoint_seq)
+    // TODO: Get the checkpoint sequence, the checkpoint_seq should be available after waiting for indexing
+    let response = test_cluster
+        .wallet
+        .execute_transaction_and_wait_for_indexing(tx)
+        .await
+        .expect("Transaction should execute and be checkpointed");
+
+    (response.effects, response.objects, 0)
 }

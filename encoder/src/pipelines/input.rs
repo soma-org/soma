@@ -88,18 +88,18 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
                 .add_shard_stage_dispatch(&shard, ShardStage::Input)?;
             let shard_digest = shard.digest()?;
 
-            let input_download_metadata = verified_input.download_metadata();
+            let input_download_metadata = verified_input.input_download_metadata();
             let input_object_path = ObjectPath::Inputs(
                 epoch,
                 shard_digest,
                 input_download_metadata.metadata().checksum(),
             );
 
-            self.store
-                .add_input_download_metadata(&shard, input_download_metadata.clone())?;
+            self.store.add_input(&shard, verified_input.clone())?;
 
             let inference_input = InferenceInput::V1(InferenceInputV1::new(
                 epoch,
+                shard_digest,
                 input_download_metadata.clone(),
                 input_object_path.clone(),
             ));
@@ -135,6 +135,7 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
                 inference_output.probe_encoder().clone(),
                 probe_download_metadata,
                 probe_object_path,
+                verified_input.target_embedding().map(Into::into),
             ));
 
             // TODO: make this based on size
@@ -149,21 +150,17 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient, I: InferenceClient> P
             let submission = Submission::V1(SubmissionV1::new(
                 self.encoder_keypair.public(),
                 shard_digest,
-                inference_output
-                    .output_download_metadata()
-                    .metadata()
-                    .clone(),
+                input_download_metadata.clone(),
+                inference_output.output_download_metadata().clone(),
                 inference_output.probe_encoder().clone(),
-                evaluation_output.score(),
-                evaluation_output.summary_digest().clone(),
+                evaluation_output.evaluation_scores().clone(),
+                evaluation_output.summary_embedding().clone(),
+                evaluation_output.sampled_embedding().clone(),
+                evaluation_output.target_details().clone(),
             ));
 
             let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
-            let _ = self.store.add_submission(
-                &shard,
-                submission,
-                inference_output.output_download_metadata().clone(),
-            )?;
+            let _ = self.store.add_submission(&shard, submission)?;
 
             let commit = Commit::V1(CommitV1::new(
                 verified_input.auth_token().clone(),

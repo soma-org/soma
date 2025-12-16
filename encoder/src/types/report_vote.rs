@@ -75,27 +75,15 @@ pub fn verify_report_vote(
         ));
     }
 
-    // perhaps redundant but we reverify the submission
-    let _ = verify_submission(
-        report_vote.signed_report().winning_submission(),
-        shard,
-        encoder_committee,
-    )?;
-
-    // redundant but we reverify the accepted commits
-    let mut unique_encoders = HashSet::new();
-    for (encoder, _commit_digest) in report_vote.signed_report().accepted_commits() {
-        if !unique_encoders.insert(encoder) {
-            return Err(SharedError::ValidationError(format!(
-                "redundant encoder detected: {:?}",
-                encoder
-            )));
-        }
-        if !shard.contains(encoder) {
-            return Err(types::error::SharedError::ValidationError(
-                "encoder not in shard".to_string(),
-            ));
-        }
+    if !shard.contains(report_vote.signed_report().encoder()) {
+        return Err(types::error::SharedError::ValidationError(
+            "encoder not in shard".to_string(),
+        ));
+    }
+    if shard.digest()? != *report_vote.signed_report().shard_digest() {
+        return Err(types::error::SharedError::ValidationError(
+            "wrong shard digest".to_string(),
+        ));
     }
 
     let _ = report_vote

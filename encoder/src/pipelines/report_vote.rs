@@ -10,16 +10,10 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use sdk::wallet_context::{WalletContext};
 use types::{
-    actors::{ActorHandle, ActorMessage, Processor},
-    error::{ShardError, ShardResult},
-    report::ReportAPI,
-    shard::Shard,
-    shard_crypto::{
+    actors::{ActorHandle, ActorMessage, Processor}, error::{ShardError, ShardResult}, object::ObjectRef, report::ReportAPI, shard::{InputAPI, Shard}, shard_crypto::{
         keys::{EncoderAggregateSignature, EncoderKeyPair, EncoderPublicKey, EncoderSignature},
         verified::Verified,
-    },
-    submission::SubmissionAPI,
-    transaction::{TransactionData, TransactionKind},
+    }, submission::SubmissionAPI, transaction::{TransactionData, TransactionKind}
 };
 
 use tokio::time::sleep;
@@ -78,8 +72,9 @@ impl<E: EncoderInternalNetworkClient> ReportVoteProcessor<E> {
         report_vote: &ReportVote,
         agg: &EncoderAggregateSignature,
         evaluators: Vec<EncoderPublicKey>,
+        target_ref: Option<ObjectRef>,
     ) -> ShardResult<()> {
-        if report_vote.signed_report().winning_submission().encoder() != &self.encoder_keypair.public() {
+        if report_vote.signed_report().encoder() != &self.encoder_keypair.public() {
             return Ok(());
         }
         
@@ -97,8 +92,9 @@ impl<E: EncoderInternalNetworkClient> ReportVoteProcessor<E> {
             TransactionKind::ReportWinner {
                 shard_auth_token: bcs::to_bytes(report_vote.auth_token())
                     .map_err(|e| ShardError::SerializationError(e.to_string()))?,
-                shard_input_ref: report_vote.auth_token().shard_input_ref(),
-                signed_report: bcs::to_bytes(&report_vote.signed_report())
+                shard_ref: report_vote.auth_token().shard_ref(),
+                target_ref,
+                report: bcs::to_bytes(&report_vote.signed_report().into_inner())
                     .map_err(|e| ShardError::SerializationError(e.to_string()))?,
                 signature: bcs::to_bytes(agg)
                     .map_err(|e| ShardError::SerializationError(e.to_string()))?,
@@ -201,7 +197,11 @@ impl<E: EncoderInternalNetworkClient> Processor for ReportVoteProcessor<E> {
                 self.store
                     .add_aggregate_score(&shard, (agg.clone(), evaluators.clone()))?;
 
-                self.submit_winner_transaction(&report_vote, &agg, evaluators).await?;
+
+                let verified_input = self.store.get_input(&shard)?;
+                let target_ref = verified_input.target_ref();
+
+                self.submit_winner_transaction(&report_vote, &agg, evaluators, target_ref).await?;
                 
 
                 info!(

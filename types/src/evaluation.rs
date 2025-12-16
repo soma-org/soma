@@ -4,6 +4,8 @@ use crate::{
 };
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
+use fixed::types::U32F32;
+use rand::Rng as _;
 use serde::{Deserialize, Serialize};
 
 #[enum_dispatch]
@@ -110,7 +112,7 @@ pub struct EvaluationOutputV1 {
     evaluation_scores: EvaluationScores,
     summary_embedding: Embedding,
     sampled_embedding: Embedding,
-    target_details: Option<TargetDetails>,
+    pub target_details: Option<TargetDetails>,
 }
 
 impl EvaluationOutputV1 {
@@ -126,6 +128,41 @@ impl EvaluationOutputV1 {
             sampled_embedding,
             target_details,
         }
+    }
+
+    pub fn mock() -> Self {
+        let mut rng = rand::thread_rng();
+
+        // Create the evaluation scores with random values between 0 and 1
+        let evaluation_scores = EvaluationScores::V1(EvaluationScoresV1::new(
+            U32F32::from_num(rng.gen::<f64>()), // flow_matching
+            U32F32::from_num(rng.gen::<f64>()), // sig_reg
+            U32F32::from_num(rng.gen::<f64>()), // compression
+            U32F32::from_num(rng.gen::<f64>()), // composite
+        ));
+
+        // Create embeddings with random bytes
+        let summary_embedding: Embedding = Bytes::from(rng.gen::<[u8; 32]>().to_vec());
+        let sampled_embedding: Embedding = Bytes::from(rng.gen::<[u8; 32]>().to_vec());
+
+        // Create target scores
+        let target_scores = TargetScores::V1(TargetScoresV1::new(
+            U32F32::from_num(rng.gen::<f64>()), // distance
+            U32F32::from_num(rng.gen::<f64>()), // evaluation_score
+            U32F32::from_num(rng.gen::<f64>()), // composite
+        ));
+
+        // Create target details
+        let target_embedding: Embedding = Bytes::from(rng.gen::<[u8; 32]>().to_vec());
+        let target_details =
+            TargetDetails::V1(TargetDetailsV1::new(target_scores, target_embedding));
+
+        EvaluationOutputV1::new(
+            evaluation_scores,
+            summary_embedding,
+            sampled_embedding,
+            Some(target_details),
+        )
     }
 }
 

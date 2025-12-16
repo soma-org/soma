@@ -100,10 +100,10 @@ pub fn verify_submission(
     encoder_committee: &EncoderCommittee,
 ) -> SharedResult<()> {
     if !shard.contains(submission.encoder()) {
-        // return error
+        // TODO: return error
     }
     if shard.digest()? != *submission.shard_digest() {
-        // return error
+        // TODO: return error
     }
 
     // TODO: optionally add constraint on probe_encoder's stake being greater than or equal to the encoder

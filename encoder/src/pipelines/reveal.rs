@@ -88,11 +88,9 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for RevealP
                 verified_reveal.author(),
             )?;
 
-            let _ = self.store.add_submission(
-                &shard,
-                verified_reveal.submission().clone(),
-                verified_reveal.embedding_download_metadata().clone(),
-            )?;
+            let _ = self
+                .store
+                .add_submission(&shard, verified_reveal.submission().clone())?;
 
             let quorum_threshold = shard.quorum_threshold() as usize;
             let shard_digest = shard.digest()?;
@@ -110,7 +108,7 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for RevealP
 
             let count = all_submissions
                 .iter()
-                .filter(|(submission, _instant, _embedding_download_metadata)| {
+                .filter(|(submission, _instant)| {
                     accepted_lookup
                         .get(submission.encoder())
                         .map_or(false, |accepted_digest| {
@@ -130,7 +128,7 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for RevealP
                     let _ = self
                         .store
                         .add_shard_stage_dispatch(&shard, ShardStage::Evaluation)?;
-                    let earliest = all_submissions.iter().map(|(_, t, _)| t).min().unwrap();
+                    let earliest = all_submissions.iter().map(|(_, t)| t).min().unwrap();
 
                     let duration = std::cmp::max(earliest.elapsed(), Duration::from_secs(5));
 

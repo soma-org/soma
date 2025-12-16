@@ -17,6 +17,7 @@ use futures::FutureExt;
 use types::entropy::SimpleVDF;
 use types::envelope::Message as _;
 use types::finality::FinalityProof;
+use types::object::ObjectRef;
 use types::shard::{Input, InputV1, ShardAuthToken, ShardEntropy};
 use types::shard_crypto::digest::Digest;
 use types::storage::write_path_pending_tx_log::WritePathPendingTransactionLog;
@@ -792,7 +793,7 @@ where
         };
 
         // 8. Load Target at the version actually used during execution
-        let target_object: Option<Target> = if let Some(target_ref) = target_ref {
+        let target_object: Option<(ObjectRef, Target)> = if let Some(target_ref) = target_ref {
             let target = self
                 .validator_state
                 .get_object_cache_reader()
@@ -802,9 +803,12 @@ where
                     version: None,
                 })?;
 
-            Some(target.as_target().ok_or_else(|| {
-                SomaError::InvalidRequest("Target object could not be deserialized".into())
-            })?)
+            Some((
+                target_ref,
+                target.as_target().ok_or_else(|| {
+                    SomaError::InvalidRequest("Target object could not be deserialized".into())
+                })?,
+            ))
         } else {
             None
         };

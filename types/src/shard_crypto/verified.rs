@@ -3,12 +3,12 @@ use crate::{
     shard_crypto::digest::Digest,
 };
 use bytes::Bytes;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::serialized::Serialized;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Verified<T: Serialize> {
     inner: Arc<T>,
     digest: Digest<T>,

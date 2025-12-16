@@ -18,10 +18,13 @@ use types::{
     actors::{ActorHandle, ActorMessage, Processor},
     committee::Epoch,
     error::{ShardError, ShardResult},
-    evaluation::{EvaluationInput, EvaluationInputV1, ScoreAPI},
-    metadata::{MetadataAPI, ObjectPath},
+    evaluation::{
+        Embedding, EvaluationInput, EvaluationInputV1, EvaluationScoresAPI as _,
+        TargetDetailsAPI as _,
+    },
+    metadata::{DownloadMetadata, MetadataAPI, ObjectPath},
     report::{Report, ReportV1},
-    shard::Shard,
+    shard::{InputAPI, Shard},
     shard_crypto::{
         digest::Digest,
         keys::{EncoderKeyPair, EncoderPublicKey},
@@ -77,7 +80,8 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for Evaluat
 
             let all_submissions = self.store.get_all_submissions(&shard)?;
             let all_accepted_commits = self.store.get_all_accepted_commits(&shard)?;
-            let input_download_metadata = self.store.get_input_download_metadata(&shard)?;
+            let input = self.store.get_input(&shard)?;
+            let input_download_metadata = input.input_download_metadata();
 
             let accepted_lookup: HashMap<EncoderPublicKey, Digest<Submission>> =
                 all_accepted_commits
@@ -101,27 +105,39 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> Processor for Evaluat
             // TODO: ANY ACCEPTED COMMITS THAT DO NOT REVEAL SHOULD BE TALLIED
 
             valid_submissions.sort_by(|a, b| {
-                a.score()
-                    .value()
-                    .partial_cmp(&b.score().value())
+                a.evaluation_scores()
+                    .score()
+                    .partial_cmp(&b.evaluation_scores().score())
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            let best_score = self
+            let best_submission = self
                 .process_submissions(
                     auth_token.epoch(),
                     shard_digest.clone(),
-                    input_download_metadata,
+                    input_download_metadata.clone(),
                     valid_submissions,
-                    auth_token.metadata(),
-                    &self.context,
+                    input.target_embedding().map(Into::into),
                     msg.cancellation.clone(),
                 )
                 .await?;
 
-            debug!("BEST SCORE: {:?}", best_score);
+            let target_scores = best_submission
+                .target_details()
+                .as_ref()
+                .map(|td| td.target_scores().clone());
 
-            let report = Report::V1(ReportV1::new(best_score, all_accepted_commits));
+            let report = Report::V1(ReportV1::new(
+                best_submission.encoder().clone(),
+                shard_digest,
+                input_download_metadata.clone(),
+                best_submission.embedding_download_metadata().clone(),
+                best_submission.probe_encoder().clone(),
+                best_submission.evaluation_scores().clone(),
+                best_submission.summary_embedding().clone(),
+                best_submission.sampled_embedding().clone(),
+                target_scores,
+            ));
 
             let inner_keypair = self.encoder_keypair.inner().copy();
 
@@ -169,8 +185,10 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> EvaluationProcessor<C
     async fn process_submissions(
         &self,
         epoch: Epoch,
+        shard_digest: Digest<Shard>,
+        input_download_metadata: DownloadMetadata,
         submissions: Vec<Submission>,
-        context: &Context,
+        target_embedding: Option<Embedding>,
         cancellation: CancellationToken,
     ) -> ShardResult<Submission> {
         for submission in submissions {
@@ -179,6 +197,8 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> EvaluationProcessor<C
                     // skip early if your own representations
                     return Ok(submission);
                 }
+
+                let embedding_download_metadata = submission.embedding_download_metadata();
                 let probe_download_metadata =
                     self.context.probe(epoch, submission.probe_encoder())?;
 
@@ -186,18 +206,19 @@ impl<C: EncoderInternalNetworkClient, E: EvaluationClient> EvaluationProcessor<C
                     input_download_metadata.clone(),
                     ObjectPath::Inputs(
                         epoch,
-                        shard_digest,
+                        shard_digest.clone(),
                         input_download_metadata.metadata().checksum(),
                     ),
                     embedding_download_metadata.clone(),
                     ObjectPath::Embeddings(
                         epoch,
-                        shard_digest,
+                        shard_digest.clone(),
                         embedding_download_metadata.metadata().checksum(),
                     ),
                     submission.probe_encoder().clone(),
                     probe_download_metadata.clone(),
                     ObjectPath::Probes(epoch, probe_download_metadata.metadata().checksum()),
+                    target_embedding.clone(),
                 ));
 
                 let evaluation_timeout = Duration::from_secs(1);

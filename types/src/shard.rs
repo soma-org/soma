@@ -144,6 +144,7 @@ pub trait InputAPI {
     fn auth_token(&self) -> &ShardAuthToken;
     fn input_download_metadata(&self) -> &DownloadMetadata;
     fn target_embedding(&self) -> Option<Vec<u8>>;
+    fn target_ref(&self) -> Option<ObjectRef>;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -151,7 +152,7 @@ pub struct InputV1 {
     auth_token: ShardAuthToken,
     input_download_metadata: DownloadMetadata,
     shard_object: ShardObject,
-    target_object: Option<Target>,
+    target_object: Option<(ObjectRef, Target)>,
 }
 
 impl InputV1 {
@@ -159,7 +160,7 @@ impl InputV1 {
         auth_token: ShardAuthToken,
         input_download_metadata: DownloadMetadata,
         shard_object: ShardObject,
-        target_object: Option<Target>,
+        target_object: Option<(ObjectRef, Target)>,
     ) -> Self {
         Self {
             auth_token,
@@ -174,15 +175,22 @@ impl InputAPI for InputV1 {
     fn auth_token(&self) -> &ShardAuthToken {
         &self.auth_token
     }
+
     fn input_download_metadata(&self) -> &DownloadMetadata {
         &self.input_download_metadata
     }
+
     fn target_embedding(&self) -> Option<Vec<u8>> {
-        self.target_object.clone().map(|o| o.target_embedding)
+        self.target_object.clone().map(|(_, o)| o.target_embedding)
+    }
+
+    fn target_ref(&self) -> Option<ObjectRef> {
+        self.target_object.clone().map(|(r, _)| r)
     }
 }
 
 pub fn verify_input(input: &Input, shard: &Shard, peer: &NetworkPublicKey) -> SharedResult<()> {
+    // TODO: verify this
     Ok(())
 }
 

@@ -162,7 +162,7 @@ pub async fn wait_for_shard_completion(
                 if let Some(Kind::ReportWinner(report)) = tx_kind {
                     // Check if this ReportWinner references our shard
                     let matches = report
-                        .shard_input_ref
+                        .shard_ref
                         .as_ref()
                         .and_then(|r| r.object_id.as_ref())
                         .map(|id| id == &expected_object_id_hex)

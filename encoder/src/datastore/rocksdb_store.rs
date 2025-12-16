@@ -8,6 +8,7 @@ use store::{
     Map,
 };
 use tracing::{debug, error};
+use types::shard::Input;
 
 use crate::types::{
     commit_votes::{CommitVotes, CommitVotesAPI},
@@ -70,7 +71,7 @@ pub struct RocksDBStore {
     /// Stores dispatch markers for shard stages
     shard_stage_dispatches: DBMap<(Epoch, Digest<Shard>, ShardStage), ()>,
 
-    input_download_metadata: DBMap<(Epoch, Digest<Shard>), DownloadMetadata>,
+    inputs: DBMap<(Epoch, Digest<Shard>), Verified<Input>>,
 
     /// Stores submission digests with timestamps
     submission_digests:
@@ -95,7 +96,7 @@ pub struct RocksDBStore {
 impl RocksDBStore {
     const SHARD_STAGE_MESSAGES_CF: &'static str = "shard_stage_messages";
     const SHARD_STAGE_DISPATCHES_CF: &'static str = "shard_stage_dispatches";
-    const INPUT_DOWNLOAD_METADATA_CF: &'static str = "input_download_metadata";
+    const INPUTS_CF: &'static str = "inputs";
     const SUBMISSION_DIGESTS_CF: &'static str = "submission_digests";
     const SUBMISSIONS_CF: &'static str = "submissions";
     const COMMIT_VOTES_CF: &'static str = "commit_votes";
@@ -118,10 +119,7 @@ impl RocksDBStore {
                 Self::SHARD_STAGE_DISPATCHES_CF.to_string(),
                 cf_options.clone(),
             ),
-            (
-                Self::INPUT_DOWNLOAD_METADATA_CF.to_string(),
-                cf_options.clone(),
-            ),
+            (Self::INPUTS_CF.to_string(), cf_options.clone()),
             (Self::SUBMISSION_DIGESTS_CF.to_string(), cf_options.clone()),
             (
                 Self::SUBMISSIONS_CF.to_string(),
@@ -184,32 +182,27 @@ impl Store for RocksDBStore {
         }
     }
 
-    fn add_input_download_metadata(
-        &self,
-        shard: &Shard,
-        download_metadata: DownloadMetadata,
-    ) -> ShardResult<()> {
+    fn add_input(&self, shard: &Shard, input: Verified<Input>) -> ShardResult<()> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest);
 
-        if self.input_download_metadata.contains_key(&key)? {
+        if self.inputs.contains_key(&key)? {
             return Err(ShardError::RecvDuplicate);
         }
 
-        self.input_download_metadata
-            .insert(&key, &download_metadata)?;
+        self.inputs.insert(&key, &input)?;
         Ok(())
     }
 
-    fn get_input_download_metadata(&self, shard: &Shard) -> ShardResult<DownloadMetadata> {
+    fn get_input(&self, shard: &Shard) -> ShardResult<Verified<Input>> {
         let epoch = shard.epoch();
         let shard_digest = shard.digest()?;
         let key = (epoch, shard_digest);
 
-        self.input_download_metadata
+        self.inputs
             .get(&key)?
-            .ok_or_else(|| ShardError::NotFound("submission digest".to_string()))
+            .ok_or_else(|| ShardError::NotFound("input".to_string()))
     }
 
     fn add_submission_digest(
@@ -354,7 +347,7 @@ impl Store for RocksDBStore {
 
     fn add_submission(&self, shard: &Shard, submission: Submission) -> ShardResult<()> {
         let epoch = shard.epoch();
-        let shard_digest = submission.shard_digest();
+        let shard_digest = *submission.shard_digest();
         let submission_digest = Digest::new(&submission).map_err(ShardError::DigestFailure)?;
         let key = (epoch, shard_digest, submission_digest);
 
