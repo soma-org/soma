@@ -4788,70 +4788,82 @@ mod _field_impls {
             number: 6i32,
             message_fields: None,
         };
+        pub const PROBE_FIELD: &'static MessageField = &MessageField {
+            name: "probe",
+            json_name: "probe",
+            number: 7i32,
+            message_fields: None,
+        };
         pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
             name: "voting_power",
             json_name: "votingPower",
-            number: 7i32,
+            number: 8i32,
             message_fields: None,
         };
         pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "commission_rate",
             json_name: "commissionRate",
-            number: 8i32,
+            number: 9i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_STAKE_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_stake",
             json_name: "nextEpochStake",
-            number: 9i32,
+            number: 10i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_commission_rate",
             json_name: "nextEpochCommissionRate",
-            number: 10i32,
+            number: 11i32,
             message_fields: None,
         };
         pub const BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
             name: "byte_price",
             json_name: "bytePrice",
-            number: 11i32,
+            number: 12i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_byte_price",
             json_name: "nextEpochBytePrice",
-            number: 12i32,
+            number: 13i32,
             message_fields: None,
         };
         pub const STAKING_POOL_FIELD: &'static MessageField = &MessageField {
             name: "staking_pool",
             json_name: "stakingPool",
-            number: 13i32,
+            number: 14i32,
             message_fields: Some(StakingPool::FIELDS),
         };
         pub const NEXT_EPOCH_NETWORK_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_network_pubkey",
             json_name: "nextEpochNetworkPubkey",
-            number: 14i32,
+            number: 15i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_internal_network_address",
             json_name: "nextEpochInternalNetworkAddress",
-            number: 15i32,
+            number: 16i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_external_network_address",
             json_name: "nextEpochExternalNetworkAddress",
-            number: 16i32,
+            number: 17i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_object_server_address",
             json_name: "nextEpochObjectServerAddress",
-            number: 17i32,
+            number: 18i32,
+            message_fields: None,
+        };
+        pub const NEXT_EPOCH_PROBE_FIELD: &'static MessageField = &MessageField {
+            name: "next_epoch_probe",
+            json_name: "nextEpochProbe",
+            number: 19i32,
             message_fields: None,
         };
     }
@@ -4863,6 +4875,7 @@ mod _field_impls {
             Self::INTERNAL_NETWORK_ADDRESS_FIELD,
             Self::EXTERNAL_NETWORK_ADDRESS_FIELD,
             Self::OBJECT_SERVER_ADDRESS_FIELD,
+            Self::PROBE_FIELD,
             Self::VOTING_POWER_FIELD,
             Self::COMMISSION_RATE_FIELD,
             Self::NEXT_EPOCH_STAKE_FIELD,
@@ -4874,6 +4887,7 @@ mod _field_impls {
             Self::NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD,
             Self::NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD,
             Self::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD,
+            Self::NEXT_EPOCH_PROBE_FIELD,
         ];
     }
     impl Encoder {
@@ -4920,6 +4934,10 @@ mod _field_impls {
             self.path.push(Encoder::OBJECT_SERVER_ADDRESS_FIELD.name);
             self.finish()
         }
+        pub fn probe(mut self) -> String {
+            self.path.push(Encoder::PROBE_FIELD.name);
+            self.finish()
+        }
         pub fn voting_power(mut self) -> String {
             self.path.push(Encoder::VOTING_POWER_FIELD.name);
             self.finish()
@@ -4962,6 +4980,10 @@ mod _field_impls {
         }
         pub fn next_epoch_object_server_address(mut self) -> String {
             self.path.push(Encoder::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn next_epoch_probe(mut self) -> String {
+            self.path.push(Encoder::NEXT_EPOCH_PROBE_FIELD.name);
             self.finish()
         }
     }
@@ -5733,6 +5755,12 @@ mod _field_impls {
             number: 5i32,
             message_fields: None,
         };
+        pub const PROBE_FIELD: &'static MessageField = &MessageField {
+            name: "probe",
+            json_name: "probe",
+            number: 6i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for AddEncoder {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5741,6 +5769,7 @@ mod _field_impls {
             Self::INTERNAL_NETWORK_ADDRESS_FIELD,
             Self::EXTERNAL_NETWORK_ADDRESS_FIELD,
             Self::OBJECT_SERVER_ADDRESS_FIELD,
+            Self::PROBE_FIELD,
         ];
     }
     impl AddEncoder {
@@ -5781,6 +5810,10 @@ mod _field_impls {
         }
         pub fn object_server_address(mut self) -> String {
             self.path.push(AddEncoder::OBJECT_SERVER_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn probe(mut self) -> String {
+            self.path.push(AddEncoder::PROBE_FIELD.name);
             self.finish()
         }
     }
@@ -5919,6 +5952,12 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
+        pub const NEXT_EPOCH_PROBE_FIELD: &'static MessageField = &MessageField {
+            name: "next_epoch_probe",
+            json_name: "nextEpochProbe",
+            number: 5i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for UpdateEncoderMetadata {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5926,6 +5965,7 @@ mod _field_impls {
             Self::NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD,
             Self::NEXT_EPOCH_NETWORK_PUBKEY_FIELD,
             Self::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD,
+            Self::NEXT_EPOCH_PROBE_FIELD,
         ];
     }
     impl UpdateEncoderMetadata {
@@ -5971,6 +6011,10 @@ mod _field_impls {
                 .push(
                     UpdateEncoderMetadata::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD.name,
                 );
+            self.finish()
+        }
+        pub fn next_epoch_probe(mut self) -> String {
+            self.path.push(UpdateEncoderMetadata::NEXT_EPOCH_PROBE_FIELD.name);
             self.finish()
         }
     }

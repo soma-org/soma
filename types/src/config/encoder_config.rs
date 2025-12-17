@@ -1,6 +1,7 @@
 use crate::base::SomaAddress;
 use crate::config::{PersistedConfig, SOMA_KEYSTORE_FILENAME};
 use crate::crypto::{NetworkKeyPair, NetworkPublicKey};
+use crate::metadata::DownloadMetadata;
 use crate::parameters::{HttpParameters, TonicParameters};
 use crate::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey};
 use crate::{
@@ -69,6 +70,9 @@ pub struct EncoderConfig {
     pub epoch_duration_ms: u64,
 
     pub db_path: PathBuf,
+
+    /// Probe for this encoder
+    pub probe: DownloadMetadata,
 }
 
 impl EncoderConfig {
@@ -89,6 +93,7 @@ impl EncoderConfig {
         validator_sync_network_key: NetworkPublicKey,
         genesis: Genesis,
         db_path: PathBuf,
+        probe: DownloadMetadata,
     ) -> Self {
         // Create default parameters
         // TODO: let parameters = Arc::new(Parameters::default());
@@ -116,6 +121,7 @@ impl EncoderConfig {
             validator_sync_network_key,
             rpc_address,
             genesis,
+            probe,
             epoch_duration_ms: 1000, //TODO: Default epoch duration
         }
     }
@@ -276,8 +282,8 @@ pub struct EncoderGenesisConfig {
     pub stake: u64,
     pub commission_rate: u64,
     pub byte_price: u64,
+    pub probe: DownloadMetadata,
 }
-
 impl Clone for EncoderGenesisConfig {
     fn clone(&self) -> Self {
         Self {
@@ -292,6 +298,7 @@ impl Clone for EncoderGenesisConfig {
             stake: self.stake.clone(),
             commission_rate: self.commission_rate.clone(),
             byte_price: self.byte_price.clone(),
+            probe: self.probe.clone(),
         }
     }
 }
@@ -305,6 +312,7 @@ pub struct EncoderGenesisConfigBuilder {
     ip: Option<String>,
     port_offset: Option<u16>,
     stake: Option<u64>,
+    probe: Option<DownloadMetadata>,
 }
 
 impl EncoderGenesisConfigBuilder {
@@ -342,6 +350,11 @@ impl EncoderGenesisConfigBuilder {
         self
     }
 
+    pub fn with_probe(mut self, probe: DownloadMetadata) -> Self {
+        self.probe = Some(probe);
+        self
+    }
+
     pub fn build<R: rand::RngCore + rand::CryptoRng>(self, rng: &mut R) -> EncoderGenesisConfig {
         let ip = self.ip.unwrap_or_else(local_ip_utils::get_new_ip);
         let stake = self.stake.unwrap_or(default_encoder_stake());
@@ -358,6 +371,8 @@ impl EncoderGenesisConfigBuilder {
         let network_key_pair = self
             .network_key_pair
             .unwrap_or_else(|| NetworkKeyPair::new(get_key_pair_from_rng(rng).1));
+
+        let probe = self.probe.expect("Probe must be set for Genesis Encoder");
 
         // Generate network addresses
         let (
@@ -394,6 +409,7 @@ impl EncoderGenesisConfigBuilder {
             inference_address,
             evaluation_address,
             stake,
+            probe,
             commission_rate: DEFAULT_ENCODER_COMMISSION_RATE,
             byte_price: DEFAULT_ENCODER_BYTE_PRICE,
         }

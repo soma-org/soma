@@ -2,7 +2,7 @@ use crate::SomaClient;
 use crate::client_config::{SomaClientConfig, SomaEnv};
 use anyhow::anyhow;
 use futures::TryStreamExt as _;
-use rpc::api::client::TransactionExecutionResponse;
+use rpc::api::client::{TransactionExecutionResponse, TransactionExecutionResponseWithCheckpoint};
 use rpc::proto::soma::owner::OwnerKind;
 use rpc::types::ObjectType;
 use rpc::utils::field::{FieldMask, FieldMaskUtil};
@@ -451,7 +451,7 @@ impl WalletContext {
     pub async fn execute_transaction_and_wait_for_indexing(
         &self,
         tx: Transaction,
-    ) -> anyhow::Result<TransactionExecutionResponse> {
+    ) -> anyhow::Result<TransactionExecutionResponseWithCheckpoint> {
         let mut client = self.get_client().await?;
         client
             .execute_transaction_and_wait_for_checkpoint(&tx, Duration::from_secs(30))

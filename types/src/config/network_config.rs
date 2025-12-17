@@ -319,6 +319,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             EncoderCommitteeConfig::Size(size) => (0..size.get())
                 .map(|_| {
                     let mut builder = EncoderGenesisConfigBuilder::new();
+                    println!("hitting size");
                     builder.build(&mut rng)
                 })
                 .collect::<Vec<_>>(),
@@ -328,6 +329,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 .map(|encoder_key| {
                     let mut builder =
                         EncoderGenesisConfigBuilder::new().with_encoder_key_pair(encoder_key);
+                    println!("hitting keys");
                     builder.build(&mut rng)
                 })
                 .collect::<Vec<_>>(),
@@ -338,6 +340,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         .map(|_| EncoderKeyPair::new(get_key_pair_from_rng(&mut rng).1))
                         .collect(),
                 );
+
+                println!("hitting deterministic");
 
                 let mut configs = vec![];
                 for (i, key) in keys.into_iter().enumerate() {
@@ -535,14 +539,15 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     rpc_address
                         .to_socket_addr()
                         .expect("Could not turn rpc address into socket address"),
-                    PathBuf::from("/project/root"), // Default path, should be configurable
-                    PathBuf::from("/entry/point.py"), // Default path, should be configurable
+                    PathBuf::from("/project/root"), // TODO: Default path, should be configurable
+                    PathBuf::from("/entry/point.py"), // TODO: Default path, should be configurable
                     validator_sync_address.clone(),
                     validator_sync_network_key.clone(),
                     genesis.clone(),
                     db_path
                         .clone()
                         .join(get_key_path(encoder.encoder_key_pair.inner())),
+                    encoder.probe.clone(),
                 )
                 .with_epoch_duration(genesis_config.parameters.epoch_duration_ms)
             })

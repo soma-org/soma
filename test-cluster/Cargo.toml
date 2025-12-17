@@ -24,4 +24,5 @@ bytes.workspace = true
 object_store.workspace = true
 url.workspace = true
 soma-http.workspace = true
+hex.workspace = true
 tempfile = "3.12.0"

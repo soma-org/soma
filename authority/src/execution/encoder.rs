@@ -36,6 +36,7 @@ impl EncoderExecutor {
                 args.internal_network_address.clone(),
                 args.external_network_address.clone(),
                 args.object_server_address.clone(),
+                args.probe.clone(),
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
             ),
             TransactionKind::RemoveEncoder(args) => state.request_remove_encoder(signer),

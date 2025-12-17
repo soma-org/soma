@@ -123,6 +123,7 @@ message AddEncoder {
   optional bytes internal_network_address = 3;
   optional bytes external_network_address = 4;
   optional bytes object_server_address = 5;
+  optional bytes probe = 6;
 }
 
 message RemoveEncoder {
@@ -142,6 +143,7 @@ message UpdateEncoderMetadata {
   optional bytes next_epoch_internal_network_address = 2;
   optional bytes next_epoch_network_pubkey = 3;
   optional bytes next_epoch_object_server_address = 4;
+  optional bytes next_epoch_probe = 5;
 }
 
 message SetEncoderCommissionRate {

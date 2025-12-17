@@ -222,6 +222,7 @@ impl GenesisBuilder {
                         e.internal_network_address.clone(),
                         e.external_network_address.clone(),
                         e.object_address.clone(),
+                        e.probe.clone(),
                         0,
                         e.commission_rate,
                         e.byte_price,

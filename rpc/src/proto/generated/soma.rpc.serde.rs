@@ -21,6 +21,9 @@ impl serde::Serialize for AddEncoder {
         if self.object_server_address.is_some() {
             len += 1;
         }
+        if self.probe.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.AddEncoder", len)?;
         if let Some(v) = self.encoder_pubkey_bytes.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -47,6 +50,11 @@ impl serde::Serialize for AddEncoder {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("objectServerAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
+        if let Some(v) = self.probe.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("probe", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -67,6 +75,7 @@ impl<'de> serde::Deserialize<'de> for AddEncoder {
             "externalNetworkAddress",
             "object_server_address",
             "objectServerAddress",
+            "probe",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -76,6 +85,7 @@ impl<'de> serde::Deserialize<'de> for AddEncoder {
             InternalNetworkAddress,
             ExternalNetworkAddress,
             ObjectServerAddress,
+            Probe,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -103,6 +113,7 @@ impl<'de> serde::Deserialize<'de> for AddEncoder {
                             "internalNetworkAddress" | "internal_network_address" => Ok(GeneratedField::InternalNetworkAddress),
                             "externalNetworkAddress" | "external_network_address" => Ok(GeneratedField::ExternalNetworkAddress),
                             "objectServerAddress" | "object_server_address" => Ok(GeneratedField::ObjectServerAddress),
+                            "probe" => Ok(GeneratedField::Probe),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -129,6 +140,7 @@ impl<'de> serde::Deserialize<'de> for AddEncoder {
                 let mut internal_network_address__ = None;
                 let mut external_network_address__ = None;
                 let mut object_server_address__ = None;
+                let mut probe__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::EncoderPubkeyBytes => {
@@ -171,6 +183,14 @@ impl<'de> serde::Deserialize<'de> for AddEncoder {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::Probe => {
+                            if probe__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("probe"));
+                            }
+                            probe__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -182,6 +202,7 @@ impl<'de> serde::Deserialize<'de> for AddEncoder {
                     internal_network_address: internal_network_address__,
                     external_network_address: external_network_address__,
                     object_server_address: object_server_address__,
+                    probe: probe__,
                 })
             }
         }
@@ -3868,6 +3889,9 @@ impl serde::Serialize for Encoder {
         if self.object_server_address.is_some() {
             len += 1;
         }
+        if self.probe.is_some() {
+            len += 1;
+        }
         if self.voting_power.is_some() {
             len += 1;
         }
@@ -3901,6 +3925,9 @@ impl serde::Serialize for Encoder {
         if self.next_epoch_object_server_address.is_some() {
             len += 1;
         }
+        if self.next_epoch_probe.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Encoder", len)?;
         if let Some(v) = self.soma_address.as_ref() {
             struct_ser.serialize_field("somaAddress", v)?;
@@ -3923,6 +3950,11 @@ impl serde::Serialize for Encoder {
         }
         if let Some(v) = self.object_server_address.as_ref() {
             struct_ser.serialize_field("objectServerAddress", v)?;
+        }
+        if let Some(v) = self.probe.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("probe", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.voting_power.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -3971,6 +4003,11 @@ impl serde::Serialize for Encoder {
         if let Some(v) = self.next_epoch_object_server_address.as_ref() {
             struct_ser.serialize_field("nextEpochObjectServerAddress", v)?;
         }
+        if let Some(v) = self.next_epoch_probe.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProbe", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -3993,6 +4030,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
             "externalNetworkAddress",
             "object_server_address",
             "objectServerAddress",
+            "probe",
             "voting_power",
             "votingPower",
             "commission_rate",
@@ -4015,6 +4053,8 @@ impl<'de> serde::Deserialize<'de> for Encoder {
             "nextEpochExternalNetworkAddress",
             "next_epoch_object_server_address",
             "nextEpochObjectServerAddress",
+            "next_epoch_probe",
+            "nextEpochProbe",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -4025,6 +4065,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
             InternalNetworkAddress,
             ExternalNetworkAddress,
             ObjectServerAddress,
+            Probe,
             VotingPower,
             CommissionRate,
             NextEpochStake,
@@ -4036,6 +4077,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
             NextEpochInternalNetworkAddress,
             NextEpochExternalNetworkAddress,
             NextEpochObjectServerAddress,
+            NextEpochProbe,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -4064,6 +4106,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                             "internalNetworkAddress" | "internal_network_address" => Ok(GeneratedField::InternalNetworkAddress),
                             "externalNetworkAddress" | "external_network_address" => Ok(GeneratedField::ExternalNetworkAddress),
                             "objectServerAddress" | "object_server_address" => Ok(GeneratedField::ObjectServerAddress),
+                            "probe" => Ok(GeneratedField::Probe),
                             "votingPower" | "voting_power" => Ok(GeneratedField::VotingPower),
                             "commissionRate" | "commission_rate" => Ok(GeneratedField::CommissionRate),
                             "nextEpochStake" | "next_epoch_stake" => Ok(GeneratedField::NextEpochStake),
@@ -4075,6 +4118,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                             "nextEpochInternalNetworkAddress" | "next_epoch_internal_network_address" => Ok(GeneratedField::NextEpochInternalNetworkAddress),
                             "nextEpochExternalNetworkAddress" | "next_epoch_external_network_address" => Ok(GeneratedField::NextEpochExternalNetworkAddress),
                             "nextEpochObjectServerAddress" | "next_epoch_object_server_address" => Ok(GeneratedField::NextEpochObjectServerAddress),
+                            "nextEpochProbe" | "next_epoch_probe" => Ok(GeneratedField::NextEpochProbe),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -4102,6 +4146,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                 let mut internal_network_address__ = None;
                 let mut external_network_address__ = None;
                 let mut object_server_address__ = None;
+                let mut probe__ = None;
                 let mut voting_power__ = None;
                 let mut commission_rate__ = None;
                 let mut next_epoch_stake__ = None;
@@ -4113,6 +4158,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                 let mut next_epoch_internal_network_address__ = None;
                 let mut next_epoch_external_network_address__ = None;
                 let mut next_epoch_object_server_address__ = None;
+                let mut next_epoch_probe__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::SomaAddress => {
@@ -4154,6 +4200,14 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                                 return Err(serde::de::Error::duplicate_field("objectServerAddress"));
                             }
                             object_server_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::Probe => {
+                            if probe__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("probe"));
+                            }
+                            probe__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::VotingPower => {
                             if voting_power__.is_some() {
@@ -4235,6 +4289,14 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                             }
                             next_epoch_object_server_address__ = map_.next_value()?;
                         }
+                        GeneratedField::NextEpochProbe => {
+                            if next_epoch_probe__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProbe"));
+                            }
+                            next_epoch_probe__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -4247,6 +4309,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                     internal_network_address: internal_network_address__,
                     external_network_address: external_network_address__,
                     object_server_address: object_server_address__,
+                    probe: probe__,
                     voting_power: voting_power__,
                     commission_rate: commission_rate__,
                     next_epoch_stake: next_epoch_stake__,
@@ -4258,6 +4321,7 @@ impl<'de> serde::Deserialize<'de> for Encoder {
                     next_epoch_internal_network_address: next_epoch_internal_network_address__,
                     next_epoch_external_network_address: next_epoch_external_network_address__,
                     next_epoch_object_server_address: next_epoch_object_server_address__,
+                    next_epoch_probe: next_epoch_probe__,
                 })
             }
         }
@@ -15582,6 +15646,9 @@ impl serde::Serialize for UpdateEncoderMetadata {
         if self.next_epoch_object_server_address.is_some() {
             len += 1;
         }
+        if self.next_epoch_probe.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.UpdateEncoderMetadata", len)?;
         if let Some(v) = self.next_epoch_external_network_address.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -15603,6 +15670,11 @@ impl serde::Serialize for UpdateEncoderMetadata {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("nextEpochObjectServerAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
+        if let Some(v) = self.next_epoch_probe.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProbe", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -15621,6 +15693,8 @@ impl<'de> serde::Deserialize<'de> for UpdateEncoderMetadata {
             "nextEpochNetworkPubkey",
             "next_epoch_object_server_address",
             "nextEpochObjectServerAddress",
+            "next_epoch_probe",
+            "nextEpochProbe",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -15629,6 +15703,7 @@ impl<'de> serde::Deserialize<'de> for UpdateEncoderMetadata {
             NextEpochInternalNetworkAddress,
             NextEpochNetworkPubkey,
             NextEpochObjectServerAddress,
+            NextEpochProbe,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -15655,6 +15730,7 @@ impl<'de> serde::Deserialize<'de> for UpdateEncoderMetadata {
                             "nextEpochInternalNetworkAddress" | "next_epoch_internal_network_address" => Ok(GeneratedField::NextEpochInternalNetworkAddress),
                             "nextEpochNetworkPubkey" | "next_epoch_network_pubkey" => Ok(GeneratedField::NextEpochNetworkPubkey),
                             "nextEpochObjectServerAddress" | "next_epoch_object_server_address" => Ok(GeneratedField::NextEpochObjectServerAddress),
+                            "nextEpochProbe" | "next_epoch_probe" => Ok(GeneratedField::NextEpochProbe),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -15680,6 +15756,7 @@ impl<'de> serde::Deserialize<'de> for UpdateEncoderMetadata {
                 let mut next_epoch_internal_network_address__ = None;
                 let mut next_epoch_network_pubkey__ = None;
                 let mut next_epoch_object_server_address__ = None;
+                let mut next_epoch_probe__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::NextEpochExternalNetworkAddress => {
@@ -15714,6 +15791,14 @@ impl<'de> serde::Deserialize<'de> for UpdateEncoderMetadata {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::NextEpochProbe => {
+                            if next_epoch_probe__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProbe"));
+                            }
+                            next_epoch_probe__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -15724,6 +15809,7 @@ impl<'de> serde::Deserialize<'de> for UpdateEncoderMetadata {
                     next_epoch_internal_network_address: next_epoch_internal_network_address__,
                     next_epoch_network_pubkey: next_epoch_network_pubkey__,
                     next_epoch_object_server_address: next_epoch_object_server_address__,
+                    next_epoch_probe: next_epoch_probe__,
                 })
             }
         }

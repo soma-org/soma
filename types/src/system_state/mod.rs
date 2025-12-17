@@ -551,17 +551,19 @@ impl SystemState {
         internal_net_address: Vec<u8>,
         external_net_address: Vec<u8>,
         object_server_address: Vec<u8>,
+        probe: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         let encoder = Encoder::new(
             signer,
-            EncoderPublicKey::new(BLS12381PublicKey::from_bytes(&encoder_pubkey_bytes).unwrap()),
+            EncoderPublicKey::new(BLS12381PublicKey::from_bytes(&encoder_pubkey_bytes).unwrap()), // TODO: error handle here better
             crypto::NetworkPublicKey::new(
                 Ed25519PublicKey::from_bytes(&network_pubkey_bytes).unwrap(),
             ),
             Multiaddr::from_str(bcs::from_bytes(&internal_net_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&external_net_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&object_server_address).unwrap()).unwrap(),
+            bcs::from_bytes::<DownloadMetadata>(&probe).unwrap(),
             0,     // Initial voting power
             10,    // Default commission rate (0.1%)
             1_000, // TODO: Default Shannons per byte
@@ -1189,13 +1191,7 @@ impl SystemStateTrait for SystemState {
                 .map(|encoder| crate::encoder_committee::Encoder {
                     voting_power: encoder.voting_power,
                     encoder_key: encoder.metadata.encoder_pubkey.clone(),
-                    // TODO: actually correctly set the probes
-                    probe: DownloadMetadata::Default(DefaultDownloadMetadata::V1(
-                        DefaultDownloadMetadataV1::new(
-                            Url::from_str("https://example.com").unwrap(),
-                            Metadata::V1(MetadataV1::new(Checksum::default(), 0)),
-                        ),
-                    )),
+                    probe: encoder.metadata.probe.clone(),
                 })
                 .collect();
 
@@ -1421,13 +1417,7 @@ impl Committees {
             .map(|encoder| crate::encoder_committee::Encoder {
                 voting_power: encoder.voting_power,
                 encoder_key: encoder.metadata.encoder_pubkey.clone(),
-                // TODO: correctly handle the probe
-                probe: DownloadMetadata::Default(DefaultDownloadMetadata::V1(
-                    DefaultDownloadMetadataV1::new(
-                        Url::from_str("https://example.com").unwrap(),
-                        Metadata::V1(MetadataV1::new(Checksum::default(), 0)),
-                    ),
-                )),
+                probe: encoder.metadata.probe.clone(),
             })
             .collect();
 

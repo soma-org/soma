@@ -8,13 +8,14 @@ use test_cluster::TestCluster;
 use tokio::time::sleep;
 use tracing::info;
 use types::checksum::Checksum;
-use types::crypto::{KeypairTraits, NetworkKeyPair};
+use types::crypto::{get_key_pair_from_rng, KeypairTraits, NetworkKeyPair};
 use types::digests::TransactionDigest;
 use types::effects::{self, TransactionEffects, TransactionEffectsAPI as _};
 use types::full_checkpoint_content::ObjectSet;
 use types::metadata::{DownloadMetadata, Metadata, MetadataAPI as _, MetadataV1, ObjectPath};
 use types::shard::{Shard, ShardAuthToken};
 use types::shard_crypto::digest::Digest;
+use types::shard_crypto::keys::EncoderKeyPair;
 use types::{
     base::SomaAddress,
     config::encoder_config::{EncoderConfig, EncoderGenesisConfigBuilder},
@@ -33,10 +34,14 @@ async fn test_integrated_encoder_validator_system() {
     let initial_validators = 4;
     let initial_encoders = 4;
 
-    // Generate a new encoder for later addition
+    // Generate keypairs for the new encoder (NOT the full genesis config)
     let mut rng = OsRng;
-    let new_encoder_genesis = EncoderGenesisConfigBuilder::new().build(&mut rng);
-    let new_encoder_address = (&new_encoder_genesis.account_key_pair.public()).into();
+    let new_encoder_keypair = EncoderKeyPair::new(get_key_pair_from_rng(&mut rng).1);
+    let new_account_keypair = SomaKeyPair::Ed25519(get_key_pair_from_rng(&mut rng).1);
+    let new_network_keypair = NetworkKeyPair::new(get_key_pair_from_rng(&mut rng).1);
+
+    // Get the address from the account keypair
+    let new_encoder_address: SomaAddress = (&new_account_keypair.public()).into();
 
     // Set up test with the new encoder address as a candidate
     let (mut test_cluster, mut encoder_cluster) = setup_integrated_encoder_validator_test(
@@ -54,19 +59,21 @@ async fn test_integrated_encoder_validator_system() {
         initial_encoders
     );
 
-    // Create the encoder config for the new encoder
-    let encoder_config = test_cluster.create_new_encoder_config(
-        new_encoder_genesis.encoder_key_pair.clone(),
-        new_encoder_genesis.account_key_pair.copy(),
-        new_encoder_genesis.network_key_pair.clone(),
-    );
+    // NOW create the encoder config - this will create and upload the probe
+    let encoder_config = test_cluster
+        .create_new_encoder_config(
+            new_encoder_keypair.clone(),
+            new_account_keypair.copy(),
+            new_network_keypair.clone(),
+        )
+        .await;
 
     // Register the new encoder
     execute_add_encoder_transaction(&mut test_cluster, &encoder_config, new_encoder_address).await;
 
     // Stake the encoder
     execute_add_stake_transaction(
-        new_encoder_genesis.account_key_pair.copy(),
+        new_account_keypair.copy(), // Use the keypair directly
         &mut test_cluster,
         new_encoder_address,
         ENCODER_STARTING_STAKE,
@@ -125,9 +132,8 @@ async fn test_integrated_encoder_validator_system() {
 
     // Execute EmbedData transaction AND wait for it to be checkpointed
     // This is important because initiate_shard_work needs the checkpoint_seq
-    // TODO: modify wait for tx to get sequence number
     let (effects, objects, checkpoint_seq) = execute_embed_data_and_wait(
-        new_encoder_genesis.account_key_pair.copy(),
+        new_account_keypair.copy(),
         &mut test_cluster,
         new_encoder_address,
         download_metadata.clone(),
@@ -252,7 +258,7 @@ async fn execute_add_encoder_transaction(
                 internal_network_address: bcs::to_bytes(&encoder_config.internal_network_address)
                     .unwrap(),
                 object_server_address: bcs::to_bytes(&encoder_config.object_address).unwrap(),
-                // probe_address: bcs::to_bytes(&encoder_config.probe_address).unwrap(),
+                probe: bcs::to_bytes(&encoder_config.probe).unwrap(),
             }),
             encoder_address,
             vec![gas_object],
@@ -364,12 +370,15 @@ async fn execute_embed_data_and_wait(
     );
 
     // Execute and wait for checkpointing (ensures we have checkpoint_seq)
-    // TODO: Get the checkpoint sequence, the checkpoint_seq should be available after waiting for indexing
     let response = test_cluster
         .wallet
         .execute_transaction_and_wait_for_indexing(tx)
         .await
         .expect("Transaction should execute and be checkpointed");
 
-    (response.effects, response.objects, 0)
+    (
+        response.effects,
+        response.objects,
+        response.checkpoint_sequence_number,
+    )
 }

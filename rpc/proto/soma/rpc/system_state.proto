@@ -136,19 +136,21 @@ message Encoder {
   optional string internal_network_address = 4;
   optional string external_network_address = 5;
   optional string object_server_address = 6;
+  optional bytes probe = 7;
   
-  optional uint64 voting_power = 7;
-  optional uint64 commission_rate = 8;
-  optional uint64 next_epoch_stake = 9;
-  optional uint64 next_epoch_commission_rate = 10;
-  optional uint64 byte_price = 11;
-  optional uint64 next_epoch_byte_price = 12;
+  optional uint64 voting_power = 8;
+  optional uint64 commission_rate = 9;
+  optional uint64 next_epoch_stake = 10;
+  optional uint64 next_epoch_commission_rate = 11;
+  optional uint64 byte_price = 12;
+  optional uint64 next_epoch_byte_price = 13;
   
-  optional StakingPool staking_pool = 13;
+  optional StakingPool staking_pool = 14;
   
   // Next epoch metadata (only if set)
-  optional bytes next_epoch_network_pubkey = 14;
-  optional string next_epoch_internal_network_address = 15;
-  optional string next_epoch_external_network_address = 16;
-  optional string next_epoch_object_server_address = 17;
+  optional bytes next_epoch_network_pubkey = 15;
+  optional string next_epoch_internal_network_address = 16;
+  optional string next_epoch_external_network_address = 17;
+  optional string next_epoch_object_server_address = 18;
+  optional bytes next_epoch_probe = 19;
 }

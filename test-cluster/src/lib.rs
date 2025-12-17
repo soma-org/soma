@@ -12,7 +12,7 @@ use futures::future::join_all;
 use node::handle::SomaNodeHandle;
 use object_store::{memory::InMemory, ObjectStore as _};
 use rand::rngs::OsRng;
-use rpc::api::client::TransactionExecutionResponse;
+use rpc::api::client::{TransactionExecutionResponse, TransactionExecutionResponseWithCheckpoint};
 use sdk::{
     client_config::{SomaClientConfig, SomaEnv},
     wallet_context::WalletContext,
@@ -27,7 +27,7 @@ use types::{
     checksum::Checksum,
     committee::{CommitteeTrait, EpochId},
     config::{
-        encoder_config::{EncoderConfig, EncoderGenesisConfig},
+        encoder_config::{EncoderConfig, EncoderGenesisConfig, EncoderGenesisConfigBuilder},
         genesis_config::{
             AccountConfig, GenesisConfig, ValidatorGenesisConfig, DEFAULT_GAS_AMOUNT,
         },
@@ -458,7 +458,7 @@ impl TestCluster {
     pub async fn sign_and_execute_transaction(
         &self,
         tx_data: &TransactionData,
-    ) -> TransactionExecutionResponse {
+    ) -> TransactionExecutionResponseWithCheckpoint {
         let tx = self.wallet.sign_transaction(tx_data).await;
         self.execute_transaction(tx).await
     }
@@ -467,7 +467,10 @@ impl TestCluster {
     /// Also expects the effects status to be ExecutionStatus::Success.
     /// This function is recommended for transaction execution since it most resembles the
     /// production path.
-    pub async fn execute_transaction(&self, tx: Transaction) -> TransactionExecutionResponse {
+    pub async fn execute_transaction(
+        &self,
+        tx: Transaction,
+    ) -> TransactionExecutionResponseWithCheckpoint {
         self.wallet
             .execute_transaction_and_wait_for_indexing(tx) // TODO: set good default
             .await
@@ -522,7 +525,7 @@ impl TestCluster {
     }
 
     // Create an encoder config for a new encoder (not from genesis)
-    pub fn create_new_encoder_config(
+    pub async fn create_new_encoder_config(
         &self,
         encoder_keypair: EncoderKeyPair,
         account_keypair: SomaKeyPair,
@@ -568,6 +571,13 @@ impl TestCluster {
             .join(ENCODERS_DB_NAME)
             .join(key_path.clone());
 
+        let pubkey = encoder_keypair.public().clone();
+        let pubkey_bytes = pubkey.to_bytes();
+        let probe_data =
+            format!("SOMA_ENCODER_PROBE_{}", hex::encode(&pubkey_bytes[..8])).into_bytes();
+
+        let probe = self.create_probe(&probe_data).await;
+
         // Create the encoder config
         let mut config = EncoderConfig::new(
             account_keypair,
@@ -585,12 +595,31 @@ impl TestCluster {
             validator_sync_network_key,
             genesis,
             db_path,
+            probe,
         );
 
         // Set epoch duration to match the validator system
         config.epoch_duration_ms = epoch_duration;
 
         config
+    }
+
+    pub async fn create_probe(&self, probe_data: &[u8]) -> DownloadMetadata {
+        let checksum = compute_checksum(probe_data);
+        let metadata = Metadata::V1(MetadataV1::new(checksum.clone(), probe_data.len()));
+
+        let path = ObjectPath::Uploads(checksum.clone());
+        self.shared_object_store
+            .put(&path.path(), Bytes::copy_from_slice(probe_data).into())
+            .await
+            .expect("Failed to store probe data");
+
+        let url =
+            Url::parse(&format!("memory:///uploads/{}", checksum)).expect("Failed to create URL");
+
+        DownloadMetadata::Default(DefaultDownloadMetadata::V1(DefaultDownloadMetadataV1::new(
+            url, metadata,
+        )))
     }
 
     pub fn get_encoder_committee_size(&self) -> usize {
@@ -645,6 +674,7 @@ pub struct TestClusterBuilder {
     validators: Option<Vec<ValidatorGenesisConfig>>,
     encoders: Option<Vec<EncoderGenesisConfig>>,
     validator_supported_protocol_versions_config: ProtocolVersionsConfig,
+    shared_object_store: Arc<InMemory>,
 }
 
 impl TestClusterBuilder {
@@ -657,6 +687,7 @@ impl TestClusterBuilder {
             validators: None,
             encoders: None,
             validator_supported_protocol_versions_config: ProtocolVersionsConfig::Default,
+            shared_object_store: Arc::new(InMemory::new()),
         }
     }
 
@@ -726,8 +757,32 @@ impl TestClusterBuilder {
         self
     }
 
+    pub async fn create_probe(&self, probe_data: &[u8]) -> DownloadMetadata {
+        let checksum = compute_checksum(probe_data);
+        let metadata = Metadata::V1(MetadataV1::new(checksum.clone(), probe_data.len()));
+
+        let path = ObjectPath::Uploads(checksum.clone());
+        self.shared_object_store
+            .put(&path.path(), Bytes::copy_from_slice(probe_data).into())
+            .await
+            .expect("Failed to store probe data");
+
+        let url = Url::parse(&format!("memory:///uploads/{}", checksum)).unwrap();
+
+        DownloadMetadata::Default(DefaultDownloadMetadata::V1(DefaultDownloadMetadataV1::new(
+            url, metadata,
+        )))
+    }
+
     pub async fn build(mut self) -> TestCluster {
-        let shared_object_store = Arc::new(InMemory::new());
+        if self.encoders.is_none() {
+            let num = self.num_encoders.unwrap_or(1); // Default to 1 encoder
+            if num > 0 {
+                let encoders = self.generate_encoder_configs_with_probes(num).await;
+                self.encoders = Some(encoders);
+            }
+        }
+
         let swarm = self.start_swarm().await.unwrap();
         let working_dir = swarm.dir();
 
@@ -779,8 +834,34 @@ impl TestClusterBuilder {
             wallet,
             fullnode_handle,
             swarm,
-            shared_object_store,
+            shared_object_store: self.shared_object_store,
         }
+    }
+
+    /// Create a default probe for an encoder index
+    pub async fn create_default_probe(&self, encoder_index: usize) -> DownloadMetadata {
+        let probe_data = format!("SOMA_TEST_PROBE_ENCODER_{}", encoder_index).into_bytes();
+        self.create_probe(&probe_data).await
+    }
+
+    /// Generate encoder configs with probes uploaded to the shared object store
+    async fn generate_encoder_configs_with_probes(&self, num: usize) -> Vec<EncoderGenesisConfig> {
+        let mut rng = OsRng;
+        let mut configs = Vec::with_capacity(num);
+
+        for i in 0..num {
+            // Create and upload probe
+            let probe = self.create_default_probe(i).await;
+
+            // Build encoder config with the probe
+            let config = EncoderGenesisConfigBuilder::new()
+                .with_probe(probe)
+                .build(&mut rng);
+
+            configs.push(config);
+        }
+
+        configs
     }
 
     async fn start_swarm(&mut self) -> Result<Swarm, anyhow::Error> {
@@ -795,11 +876,8 @@ impl TestClusterBuilder {
         };
 
         if let Some(encoders) = self.encoders.take() {
+            info!("calling builder with encoders: {}", encoders.len());
             builder = builder.with_encoders(encoders);
-        } else if let Some(num_encoders) = self.num_encoders {
-            if num_encoders > 0 {
-                builder = builder.encoder_committee_size(NonZeroUsize::new(num_encoders).unwrap());
-            }
         }
 
         if let Some(genesis_config) = self.genesis_config.take() {
@@ -869,4 +947,10 @@ impl Default for TestClusterBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn compute_checksum(data: &[u8]) -> Checksum {
+    let mut hasher = DefaultHash::default();
+    hasher.update(data);
+    Checksum::new_from_hash(hasher.finalize().into())
 }

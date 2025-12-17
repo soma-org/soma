@@ -2943,6 +2943,7 @@ mod _getter_impls {
                 internal_network_address: None,
                 external_network_address: None,
                 object_server_address: None,
+                probe: None,
                 voting_power: None,
                 commission_rate: None,
                 next_epoch_stake: None,
@@ -2954,6 +2955,7 @@ mod _getter_impls {
                 next_epoch_internal_network_address: None,
                 next_epoch_external_network_address: None,
                 next_epoch_object_server_address: None,
+                next_epoch_probe: None,
             }
         }
         #[doc(hidden)]
@@ -2983,6 +2985,10 @@ mod _getter_impls {
         }
         pub fn with_object_server_address(mut self, field: String) -> Self {
             self.object_server_address = Some(field.into());
+            self
+        }
+        pub fn with_probe(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.probe = Some(field.into());
             self
         }
         pub fn with_voting_power(mut self, field: u64) -> Self {
@@ -3051,6 +3057,10 @@ mod _getter_impls {
         }
         pub fn with_next_epoch_object_server_address(mut self, field: String) -> Self {
             self.next_epoch_object_server_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_probe(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_epoch_probe = Some(field.into());
             self
         }
     }
@@ -4245,6 +4255,7 @@ mod _getter_impls {
                 internal_network_address: None,
                 external_network_address: None,
                 object_server_address: None,
+                probe: None,
             }
         }
         #[doc(hidden)]
@@ -4285,6 +4296,10 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.object_server_address = Some(field.into());
+            self
+        }
+        pub fn with_probe(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.probe = Some(field.into());
             self
         }
     }
@@ -4340,6 +4355,7 @@ mod _getter_impls {
                 next_epoch_internal_network_address: None,
                 next_epoch_network_pubkey: None,
                 next_epoch_object_server_address: None,
+                next_epoch_probe: None,
             }
         }
         #[doc(hidden)]
@@ -4373,6 +4389,10 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.next_epoch_object_server_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_probe(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_epoch_probe = Some(field.into());
             self
         }
     }

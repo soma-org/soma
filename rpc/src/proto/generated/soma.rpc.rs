@@ -3131,35 +3131,39 @@ pub struct Encoder {
     pub external_network_address: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "6")]
     pub object_server_address: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(uint64, optional, tag = "7")]
-    pub voting_power: ::core::option::Option<u64>,
+    #[prost(bytes = "bytes", optional, tag = "7")]
+    pub probe: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(uint64, optional, tag = "8")]
-    pub commission_rate: ::core::option::Option<u64>,
+    pub voting_power: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "9")]
-    pub next_epoch_stake: ::core::option::Option<u64>,
+    pub commission_rate: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "10")]
-    pub next_epoch_commission_rate: ::core::option::Option<u64>,
+    pub next_epoch_stake: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "11")]
-    pub byte_price: ::core::option::Option<u64>,
+    pub next_epoch_commission_rate: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "12")]
+    pub byte_price: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "13")]
     pub next_epoch_byte_price: ::core::option::Option<u64>,
-    #[prost(message, optional, tag = "13")]
+    #[prost(message, optional, tag = "14")]
     pub staking_pool: ::core::option::Option<StakingPool>,
     /// Next epoch metadata (only if set)
-    #[prost(bytes = "bytes", optional, tag = "14")]
+    #[prost(bytes = "bytes", optional, tag = "15")]
     pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(string, optional, tag = "15")]
+    #[prost(string, optional, tag = "16")]
     pub next_epoch_internal_network_address: ::core::option::Option<
         ::prost::alloc::string::String,
     >,
-    #[prost(string, optional, tag = "16")]
+    #[prost(string, optional, tag = "17")]
     pub next_epoch_external_network_address: ::core::option::Option<
         ::prost::alloc::string::String,
     >,
-    #[prost(string, optional, tag = "17")]
+    #[prost(string, optional, tag = "18")]
     pub next_epoch_object_server_address: ::core::option::Option<
         ::prost::alloc::string::String,
     >,
+    #[prost(bytes = "bytes", optional, tag = "19")]
+    pub next_epoch_probe: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// A transaction.
 #[non_exhaustive]
@@ -3321,6 +3325,8 @@ pub struct AddEncoder {
     pub external_network_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "5")]
     pub object_server_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "6")]
+    pub probe: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3355,6 +3361,8 @@ pub struct UpdateEncoderMetadata {
     pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "4")]
     pub next_epoch_object_server_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub next_epoch_probe: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]

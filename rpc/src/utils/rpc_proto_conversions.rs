@@ -634,6 +634,7 @@ impl From<types::transaction::AddEncoderArgs> for AddEncoder {
             internal_network_address: Some(args.internal_network_address.into()),
             external_network_address: Some(args.external_network_address.into()),
             object_server_address: Some(args.object_server_address.into()),
+            probe: Some(args.probe.into()),
         }
     }
 }
@@ -659,6 +660,7 @@ impl From<types::transaction::UpdateEncoderMetadataArgs> for UpdateEncoderMetada
             next_epoch_object_server_address: args
                 .next_epoch_object_server_address
                 .map(|bytes| bytes.into()),
+            next_epoch_probe: args.next_epoch_probe.map(|bytes| bytes.into()),
         }
     }
 }
@@ -1473,6 +1475,11 @@ impl TryFrom<Encoder> for types::system_state::encoder::Encoder {
         )
         .map_err(|e| format!("Invalid object_server_address: {}", e))?;
 
+        let probe = bcs::from_bytes::<types::metadata::DownloadMetadata>(
+            &proto_enc.probe.ok_or("Missing probe")?,
+        )
+        .map_err(|e| format!("Invalid probe: {}", e))?;
+
         // Convert optional next epoch fields
         let next_epoch_network_pubkey = proto_enc
             .next_epoch_network_pubkey
@@ -1507,6 +1514,14 @@ impl TryFrom<Encoder> for types::system_state::encoder::Encoder {
             })
             .transpose()?;
 
+        let next_epoch_probe: Option<types::metadata::DownloadMetadata> = proto_enc
+            .next_epoch_probe
+            .map(|addr| {
+                bcs::from_bytes::<types::metadata::DownloadMetadata>(&addr)
+                    .map_err(|e| format!("Invalid next_epoch_probe: {}", e))
+            })
+            .transpose()?;
+
         let metadata = types::system_state::encoder::EncoderMetadata {
             soma_address,
             encoder_pubkey,
@@ -1514,10 +1529,12 @@ impl TryFrom<Encoder> for types::system_state::encoder::Encoder {
             internal_network_address,
             external_network_address,
             object_server_address,
+            probe,
             next_epoch_network_pubkey,
             next_epoch_internal_network_address,
             next_epoch_external_network_address,
             next_epoch_object_server_address,
+            next_epoch_probe,
         };
 
         let staking_pool = proto_enc
@@ -1866,6 +1883,10 @@ impl TryFrom<types::system_state::encoder::Encoder> for Encoder {
     fn try_from(domain_enc: types::system_state::encoder::Encoder) -> Result<Self, Self::Error> {
         let metadata = domain_enc.metadata;
 
+        let probe = bcs::to_bytes(&metadata.probe)
+            .map_err(|e| format!("Invalid probe download metadata: {}", e))?
+            .into();
+
         // Convert optional next epoch fields
         let next_epoch_network_pubkey = metadata
             .next_epoch_network_pubkey
@@ -1883,6 +1904,15 @@ impl TryFrom<types::system_state::encoder::Encoder> for Encoder {
             .next_epoch_object_server_address
             .map(|addr| addr.to_string());
 
+        let next_epoch_probe = metadata
+            .next_epoch_probe
+            .map(|addr| {
+                bcs::to_bytes(&addr)
+                    .map_err(|e| format!("Invalid next epoch probe download metadata: {}", e))
+            })
+            .transpose()?
+            .map(Into::into);
+
         Ok(Encoder {
             soma_address: Some(metadata.soma_address.to_string()),
             encoder_pubkey: Some(metadata.encoder_pubkey.to_bytes().to_vec().into()),
@@ -1896,11 +1926,13 @@ impl TryFrom<types::system_state::encoder::Encoder> for Encoder {
             next_epoch_commission_rate: Some(domain_enc.next_epoch_commission_rate),
             byte_price: Some(domain_enc.byte_price),
             next_epoch_byte_price: Some(domain_enc.next_epoch_byte_price),
+            probe: Some(probe),
             staking_pool: Some(domain_enc.staking_pool.try_into()?),
             next_epoch_network_pubkey,
             next_epoch_internal_network_address,
             next_epoch_external_network_address,
             next_epoch_object_server_address,
+            next_epoch_probe,
         })
     }
 }

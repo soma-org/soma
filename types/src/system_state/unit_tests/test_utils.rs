@@ -1,3 +1,7 @@
+use crate::checksum::Checksum;
+use crate::metadata::{
+    DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
+};
 use crate::shard_crypto::keys::EncoderKeyPair;
 use crate::{
     base::SomaAddress,
@@ -29,6 +33,7 @@ use std::{
     str::FromStr,
 };
 use tracing_subscriber::fmt::init;
+use url::Url;
 
 use super::encoder::Encoder;
 
@@ -379,6 +384,11 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
     let external_net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
     let object_server_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8081").unwrap();
     let internal_net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8082").unwrap();
+    let url = Url::parse("http://localhost:8080/probe").unwrap();
+
+    let probe = DownloadMetadata::Default(DefaultDownloadMetadata::V1(
+        DefaultDownloadMetadataV1::new(url, Metadata::V1(MetadataV1::new(Checksum::default(), 0))),
+    ));
 
     // Create encoder
     let mut encoder = Encoder::new(
@@ -388,6 +398,7 @@ pub fn create_encoder_for_testing(addr: SomaAddress, init_stake_amount: u64) -> 
         internal_net_address,
         external_net_address,
         object_server_address,
+        probe,
         0, // Initial voting power is 0, will be set later
         0,
         1_000,

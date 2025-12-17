@@ -49,7 +49,7 @@ impl<
             .core_processor
             .process(evaluation_input, CancellationToken::new())
             .await
-            .unwrap();
+            .unwrap(); // TODO: handle this error better
 
         let serialized_evaluation_output = Bytes::copy_from_slice(
             &bcs::to_bytes(&evaluation_output).map_err(EvaluationError::SerializationFailure)?,

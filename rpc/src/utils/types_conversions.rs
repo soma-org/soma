@@ -380,6 +380,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 internal_network_address: args.internal_network_address,
                 external_network_address: args.external_network_address,
                 object_server_address: args.object_server_address,
+                probe: args.probe,
             }),
 
             TK::RemoveEncoder(args) => TransactionKind::RemoveEncoder(RemoveEncoderArgs {
@@ -400,6 +401,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     next_epoch_internal_network_address: args.next_epoch_internal_network_address,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
                     next_epoch_object_server_address: args.next_epoch_object_server_address,
+                    next_epoch_probe: args.next_epoch_probe,
                 })
             }
 
@@ -588,6 +590,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     internal_network_address: args.internal_network_address,
                     external_network_address: args.external_network_address,
                     object_server_address: args.object_server_address,
+                    probe: args.probe,
                 })
             }
 
@@ -611,6 +614,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     next_epoch_internal_network_address: args.next_epoch_internal_network_address,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
                     next_epoch_object_server_address: args.next_epoch_object_server_address,
+                    next_epoch_probe: args.next_epoch_probe,
                 })
             }
 

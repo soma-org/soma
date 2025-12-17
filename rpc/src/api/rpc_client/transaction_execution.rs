@@ -12,6 +12,12 @@ use std::fmt;
 use std::time::Duration;
 use tonic::Response;
 
+/// Response from execute_transaction_and_wait_for_checkpoint
+pub struct ExecuteAndWaitResponse {
+    pub response: Response<ExecuteTransactionResponse>,
+    pub checkpoint_sequence_number: u64,
+}
+
 /// Error types that can occur when executing a transaction and waiting for checkpoint
 #[derive(Debug)]
 #[non_exhaustive]
@@ -83,9 +89,9 @@ impl Client {
         &mut self,
         request: impl tonic::IntoRequest<ExecuteTransactionRequest>,
         timeout: Duration,
-    ) -> Result<Response<ExecuteTransactionResponse>, ExecuteAndWaitError> {
+    ) -> Result<ExecuteAndWaitResponse, ExecuteAndWaitError> {
         // Subscribe to checkpoint stream before execution to avoid missing the transaction.
-        // Uses minimal read mask for efficiency since we only nee digest confirmation.
+        // Uses minimal read mask for efficiency since we only need digest confirmation.
         // Once server-side filtering is available, we should filter by transaction digest to
         // further reduce bandwidth.
         let mut checkpoint_stream = match self
@@ -107,12 +113,6 @@ impl Client {
             None => return Err(ExecuteAndWaitError::MissingTransaction),
         };
 
-        // TODO: there are some problems converting the proto Transaction to the SDK type for some TransactionKind's (specifically EmbedData)
-        // let executed_txn_digest = match crate::types::Transaction::try_from(transaction) {
-        //     Ok(tx) => tx.digest().to_string(),
-        //     Err(e) => return Err(ExecuteAndWaitError::ProtoConversionError(e)),
-        // };
-
         let executed_txn_digest = transaction.digest.clone().ok_or_else(|| {
             ExecuteAndWaitError::ProtoConversionError(TryFromProtoError::missing("digest"))
         })?;
@@ -126,14 +126,15 @@ impl Client {
         // updated.
         let timeout_future = tokio::time::sleep(timeout);
         let checkpoint_future = async {
-            while let Some(response) = checkpoint_stream.try_next().await? {
-                let checkpoint = response.checkpoint();
+            while let Some(checkpoint_response) = checkpoint_stream.try_next().await? {
+                let checkpoint = checkpoint_response.checkpoint();
+                let sequence_number = checkpoint_response.cursor.unwrap_or(0);
 
                 for tx in checkpoint.transactions() {
                     let digest = tx.digest();
 
                     if digest == executed_txn_digest {
-                        return Ok(());
+                        return Ok(sequence_number);
                     }
                 }
             }
@@ -145,12 +146,15 @@ impl Client {
         tokio::select! {
             result = checkpoint_future => {
                 match result {
-                    Ok(()) => Ok(response),
+                    Ok(checkpoint_sequence_number) => Ok(ExecuteAndWaitResponse {
+                        response,
+                        checkpoint_sequence_number,
+                    }),
                     Err(e) => Err(ExecuteAndWaitError::CheckpointStreamError { response, error: e })
                 }
             },
             _ = timeout_future => {
-                Err(ExecuteAndWaitError::CheckpointTimeout ( response))
+                Err(ExecuteAndWaitError::CheckpointTimeout(response))
             }
         }
     }

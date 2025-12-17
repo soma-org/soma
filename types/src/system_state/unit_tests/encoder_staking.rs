@@ -270,6 +270,7 @@ mod encoder_staking_tests {
             next_epoch_external_network_address: None,
             next_epoch_network_pubkey: None,
             next_epoch_object_server_address: None,
+            next_epoch_probe: None,
         };
 
         // Request metadata update

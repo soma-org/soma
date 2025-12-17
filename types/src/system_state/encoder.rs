@@ -4,7 +4,9 @@ use std::{
     str::FromStr,
 };
 
-use crate::{shard_crypto::keys::EncoderPublicKey, system_state::BPS_DENOMINATOR};
+use crate::{
+    metadata::DownloadMetadata, shard_crypto::keys::EncoderPublicKey, system_state::BPS_DENOMINATOR,
+};
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -41,6 +43,9 @@ pub struct EncoderMetadata {
 
     pub object_server_address: Multiaddr,
 
+    /// Probe metadata for encoder committee participation
+    pub probe: DownloadMetadata,
+
     /// Optional new network public key for the next epoch
     pub next_epoch_network_pubkey: Option<crate::crypto::NetworkPublicKey>,
 
@@ -50,6 +55,9 @@ pub struct EncoderMetadata {
 
     /// Optional new object server address for the next epoch
     pub next_epoch_object_server_address: Option<Multiaddr>,
+
+    /// Optional new probe for the next epoch
+    pub next_epoch_probe: Option<DownloadMetadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
@@ -81,6 +89,7 @@ impl Encoder {
         internal_network_address: Multiaddr,
         external_network_address: Multiaddr,
         object_server_address: Multiaddr,
+        probe: DownloadMetadata,
         voting_power: u64,
         commission_rate: u64,
         byte_price: u64,
@@ -94,10 +103,12 @@ impl Encoder {
                 internal_network_address,
                 external_network_address,
                 object_server_address,
+                probe,
                 next_epoch_network_pubkey: None,
                 next_epoch_external_network_address: None,
                 next_epoch_internal_network_address: None,
                 next_epoch_object_server_address: None,
+                next_epoch_probe: None,
             },
             voting_power,
             commission_rate,
@@ -300,6 +311,15 @@ impl Encoder {
             self.metadata.next_epoch_network_pubkey = Some(network_pubkey);
         }
 
+        if let Some(ref probe_bytes) = args.next_epoch_probe {
+            let probe: DownloadMetadata = bcs::from_bytes(probe_bytes).map_err(|_| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: "Failed to BCS deserialize probe metadata".to_string(),
+                }
+            })?;
+            self.metadata.next_epoch_probe = Some(probe);
+        }
+
         Ok(())
     }
 
@@ -316,6 +336,9 @@ impl Encoder {
         }
         if let Some(key) = self.metadata.next_epoch_network_pubkey.take() {
             self.metadata.network_pubkey = key;
+        }
+        if let Some(probe) = self.metadata.next_epoch_probe.take() {
+            self.metadata.probe = probe;
         }
     }
 }

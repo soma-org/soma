@@ -187,7 +187,7 @@ impl Client {
         &mut self,
         transaction: &Transaction,
         timeout: Duration,
-    ) -> Result<TransactionExecutionResponse> {
+    ) -> Result<TransactionExecutionResponseWithCheckpoint> {
         let tx_data = transaction.inner().intent_message.value.clone();
         let proto_transaction: proto::Transaction = tx_data.into();
 
@@ -207,16 +207,23 @@ impl Client {
                 "objects",
             ]));
 
-        let response = self
+        let execute_and_wait_response = self
             .0
             .clone()
             .execute_transaction_and_wait_for_checkpoint(request, timeout)
             .await
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
 
-        let (metadata, response, _) = response.into_parts();
-        execute_transaction_response_try_from_proto(&response)
-            .map_err(|e| status_from_error_with_metadata(e, metadata))
+        let (metadata, response, _) = execute_and_wait_response.response.into_parts();
+        let base_response = execute_transaction_response_try_from_proto(&response)
+            .map_err(|e| status_from_error_with_metadata(e, metadata))?;
+
+        Ok(TransactionExecutionResponseWithCheckpoint {
+            effects: base_response.effects,
+            balance_changes: base_response.balance_changes,
+            objects: base_response.objects,
+            checkpoint_sequence_number: execute_and_wait_response.checkpoint_sequence_number,
+        })
     }
 
     /// Subscribe to checkpoints stream
@@ -259,6 +266,14 @@ impl Client {
 
         Ok(response)
     }
+}
+
+#[derive(Debug)]
+pub struct TransactionExecutionResponseWithCheckpoint {
+    pub effects: TransactionEffects,
+    pub balance_changes: Vec<types::balance_change::BalanceChange>,
+    pub objects: ObjectSet,
+    pub checkpoint_sequence_number: CheckpointSequenceNumber,
 }
 
 #[derive(Debug)]

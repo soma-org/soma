@@ -102,7 +102,7 @@ impl SomaClient {
         &self,
         transaction: &types::transaction::Transaction,
         timeout: Duration,
-    ) -> Result<rpc::api::client::TransactionExecutionResponse, tonic::Status> {
+    ) -> Result<rpc::api::client::TransactionExecutionResponseWithCheckpoint, tonic::Status> {
         let mut client = self.inner.write().await;
         client
             .execute_transaction_and_wait_for_checkpoint(transaction, timeout)

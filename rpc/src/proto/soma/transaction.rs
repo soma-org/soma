@@ -752,6 +752,7 @@ impl From<crate::types::AddEncoderArgs> for AddEncoder {
             internal_network_address: Some(value.internal_network_address.into()),
             external_network_address: Some(value.external_network_address.into()),
             object_server_address: Some(value.object_server_address.into()),
+            probe: Some(value.probe.into()),
         }
     }
 }
@@ -785,6 +786,11 @@ impl TryFrom<&AddEncoder> for crate::types::AddEncoderArgs {
                 .object_server_address
                 .clone()
                 .ok_or_else(|| TryFromProtoError::missing("object_server_address"))?
+                .into(),
+            probe: value
+                .probe
+                .clone()
+                .ok_or_else(|| TryFromProtoError::missing("probe"))?
                 .into(),
         })
     }
@@ -827,6 +833,7 @@ impl From<crate::types::UpdateEncoderMetadataArgs> for UpdateEncoderMetadata {
             next_epoch_object_server_address: value
                 .next_epoch_object_server_address
                 .map(|v| v.into()),
+            next_epoch_probe: value.next_epoch_probe.map(|v| v.into()),
         }
     }
 }
@@ -849,6 +856,7 @@ impl TryFrom<&UpdateEncoderMetadata> for crate::types::UpdateEncoderMetadataArgs
                 .next_epoch_object_server_address
                 .clone()
                 .map(|v| v.into()),
+            next_epoch_probe: value.next_epoch_probe.clone().map(|v| v.into()),
         })
     }
 }
