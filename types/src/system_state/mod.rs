@@ -565,7 +565,7 @@ impl SystemState {
             Multiaddr::from_str(bcs::from_bytes(&object_server_address).unwrap()).unwrap(),
             bcs::from_bytes::<DownloadMetadata>(&probe).unwrap(),
             0,     // Initial voting power
-            10,    // Default commission rate (0.1%)
+            10,    // TODO: Default commission rate (0.1%)
             1_000, // TODO: Default Shannons per byte
             staking_pool_id,
         );

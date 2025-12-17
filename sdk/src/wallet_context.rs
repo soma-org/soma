@@ -2,7 +2,11 @@ use crate::SomaClient;
 use crate::client_config::{SomaClientConfig, SomaEnv};
 use anyhow::anyhow;
 use futures::TryStreamExt as _;
-use rpc::api::client::{TransactionExecutionResponse, TransactionExecutionResponseWithCheckpoint};
+use rpc::api::client::{
+    ShardCompletionInfo, ShardError, TransactionExecutionResponse,
+    TransactionExecutionResponseWithCheckpoint,
+};
+use rpc::proto::soma::InitiateShardWorkRequest;
 use rpc::proto::soma::owner::OwnerKind;
 use rpc::types::ObjectType;
 use rpc::utils::field::{FieldMask, FieldMaskUtil};
@@ -20,10 +24,11 @@ use tracing::info;
 use types::base::SomaAddress;
 use types::config::{Config, PersistedConfig};
 use types::crypto::{Signature, SomaKeyPair};
-use types::digests::ObjectDigest;
+use types::digests::{ObjectDigest, TransactionDigest};
 use types::intent::Intent;
+use types::metadata::DownloadMetadata;
 use types::object::{ObjectID, ObjectRef, Version};
-use types::transaction::{Transaction, TransactionData};
+use types::transaction::{Transaction, TransactionData, TransactionKind};
 
 pub struct WalletContext {
     pub config: PersistedConfig<SomaClientConfig>,
@@ -457,6 +462,97 @@ impl WalletContext {
             .execute_transaction_and_wait_for_checkpoint(&tx, Duration::from_secs(30))
             .await
             .map_err(|e| anyhow::anyhow!("Transaction execution failed: {}", e))
+    }
+
+    /// Execute EmbedData and wait for shard completion.
+    ///
+    /// This is the main entry point for embedding data and waiting for encoding.
+    /// It handles:
+    /// 1. Building and executing the EmbedData transaction
+    /// 2. Waiting for the transaction to be checkpointed
+    /// 3. Initiating shard work with the validators
+    /// 4. Subscribing and waiting for the ReportWinner transaction
+    ///
+    /// Returns the execution response and shard completion info.
+    pub async fn embed_data_and_wait(
+        &self,
+        signer: &SomaKeyPair,
+        address: SomaAddress,
+        download_metadata: DownloadMetadata,
+        timeout: Duration,
+    ) -> Result<
+        (
+            TransactionExecutionResponseWithCheckpoint,
+            ShardCompletionInfo,
+        ),
+        ShardError,
+    > {
+        let tx = self
+            .build_embed_data_tx(signer, address, download_metadata, None)
+            .await
+            .map_err(|e| ShardError::Rpc(tonic::Status::internal(e.to_string())))?;
+
+        info!(tx_digest = ?tx.digest(), "Executing EmbedData for {}", address);
+
+        let client = self
+            .get_client()
+            .await
+            .map_err(|e| ShardError::Rpc(tonic::Status::internal(e.to_string())))?;
+
+        client
+            .execute_embed_data_and_wait_for_completion(&tx, timeout)
+            .await
+    }
+
+    /// Initiate shard work after an EmbedData transaction has been checkpointed
+    pub async fn initiate_shard_work(
+        &self,
+        tx_digest: &TransactionDigest,
+        checkpoint_seq: u64,
+    ) -> anyhow::Result<rpc::proto::soma::Shard> {
+        let client = self.get_client().await?;
+
+        let request = InitiateShardWorkRequest::default()
+            .with_checkpoint_seq(checkpoint_seq)
+            .with_tx_digest(tx_digest.to_string());
+
+        let response = client
+            .initiate_shard_work(request)
+            .await
+            .map_err(|e| anyhow!("Failed to initiate shard work: {}", e))?;
+
+        response
+            .shard
+            .ok_or_else(|| anyhow!("No shard returned in response"))
+    }
+
+    /// Build and sign an EmbedData transaction
+    pub async fn build_embed_data_tx(
+        &self,
+        signer: &SomaKeyPair,
+        address: SomaAddress,
+        download_metadata: DownloadMetadata,
+        target_ref: Option<ObjectRef>,
+    ) -> anyhow::Result<Transaction> {
+        let gas_object = self
+            .get_one_gas_object_owned_by_address(address)
+            .await?
+            .ok_or_else(|| anyhow!("No gas object for address {}", address))?;
+
+        let tx = Transaction::from_data_and_signer(
+            TransactionData::new(
+                TransactionKind::EmbedData {
+                    download_metadata,
+                    coin_ref: gas_object,
+                    target_ref,
+                },
+                address,
+                vec![gas_object],
+            ),
+            vec![signer],
+        );
+
+        Ok(tx)
     }
 
     /// Get one address managed by the wallet (for testing)

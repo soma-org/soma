@@ -1251,7 +1251,7 @@ mod _field_impls {
         pub const PROTOCOL_CONFIG_FIELD: &'static MessageField = &MessageField {
             name: "protocol_config",
             json_name: "protocolConfig",
-            number: 9i32,
+            number: 8i32,
             message_fields: Some(ProtocolConfig::FIELDS),
         };
     }
@@ -2328,6 +2328,879 @@ mod _field_impls {
         pub fn epoch(mut self) -> EpochFieldPathBuilder {
             self.path.push(GetEpochResponse::EPOCH_FIELD.name);
             EpochFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ShardInfo {
+        pub const SHARD_ID_FIELD: &'static MessageField = &MessageField {
+            name: "shard_id",
+            json_name: "shardId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CREATED_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "created_epoch",
+            json_name: "createdEpoch",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const DATA_SUBMITTER_FIELD: &'static MessageField = &MessageField {
+            name: "data_submitter",
+            json_name: "dataSubmitter",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const TARGET_FIELD: &'static MessageField = &MessageField {
+            name: "target",
+            json_name: "target",
+            number: 5i32,
+            message_fields: Some(ObjectReference::FIELDS),
+        };
+        pub const HAS_WINNER_FIELD: &'static MessageField = &MessageField {
+            name: "has_winner",
+            json_name: "hasWinner",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const WINNING_ENCODER_FIELD: &'static MessageField = &MessageField {
+            name: "winning_encoder",
+            json_name: "winningEncoder",
+            number: 7i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ShardInfo {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SHARD_ID_FIELD,
+            Self::CREATED_EPOCH_FIELD,
+            Self::AMOUNT_FIELD,
+            Self::DATA_SUBMITTER_FIELD,
+            Self::TARGET_FIELD,
+            Self::HAS_WINNER_FIELD,
+            Self::WINNING_ENCODER_FIELD,
+        ];
+    }
+    impl ShardInfo {
+        pub fn path_builder() -> ShardInfoFieldPathBuilder {
+            ShardInfoFieldPathBuilder::new()
+        }
+    }
+    pub struct ShardInfoFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ShardInfoFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn shard_id(mut self) -> String {
+            self.path.push(ShardInfo::SHARD_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn created_epoch(mut self) -> String {
+            self.path.push(ShardInfo::CREATED_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(ShardInfo::AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn data_submitter(mut self) -> String {
+            self.path.push(ShardInfo::DATA_SUBMITTER_FIELD.name);
+            self.finish()
+        }
+        pub fn target(mut self) -> ObjectReferenceFieldPathBuilder {
+            self.path.push(ShardInfo::TARGET_FIELD.name);
+            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn has_winner(mut self) -> String {
+            self.path.push(ShardInfo::HAS_WINNER_FIELD.name);
+            self.finish()
+        }
+        pub fn winning_encoder(mut self) -> String {
+            self.path.push(ShardInfo::WINNING_ENCODER_FIELD.name);
+            self.finish()
+        }
+    }
+    impl TargetInfo {
+        pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
+            name: "target_id",
+            json_name: "targetId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CREATED_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "created_epoch",
+            json_name: "createdEpoch",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const VALID_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "valid_epoch",
+            json_name: "validEpoch",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const ORIGIN_FIELD: &'static MessageField = &MessageField {
+            name: "origin",
+            json_name: "origin",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const CREATOR_FIELD: &'static MessageField = &MessageField {
+            name: "creator",
+            json_name: "creator",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const REWARD_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "reward_amount",
+            json_name: "rewardAmount",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const HAS_WINNER_FIELD: &'static MessageField = &MessageField {
+            name: "has_winner",
+            json_name: "hasWinner",
+            number: 7i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for TargetInfo {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGET_ID_FIELD,
+            Self::CREATED_EPOCH_FIELD,
+            Self::VALID_EPOCH_FIELD,
+            Self::ORIGIN_FIELD,
+            Self::CREATOR_FIELD,
+            Self::REWARD_AMOUNT_FIELD,
+            Self::HAS_WINNER_FIELD,
+        ];
+    }
+    impl TargetInfo {
+        pub fn path_builder() -> TargetInfoFieldPathBuilder {
+            TargetInfoFieldPathBuilder::new()
+        }
+    }
+    pub struct TargetInfoFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl TargetInfoFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn target_id(mut self) -> String {
+            self.path.push(TargetInfo::TARGET_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn created_epoch(mut self) -> String {
+            self.path.push(TargetInfo::CREATED_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn valid_epoch(mut self) -> String {
+            self.path.push(TargetInfo::VALID_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn origin(mut self) -> String {
+            self.path.push(TargetInfo::ORIGIN_FIELD.name);
+            self.finish()
+        }
+        pub fn creator(mut self) -> String {
+            self.path.push(TargetInfo::CREATOR_FIELD.name);
+            self.finish()
+        }
+        pub fn reward_amount(mut self) -> String {
+            self.path.push(TargetInfo::REWARD_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn has_winner(mut self) -> String {
+            self.path.push(TargetInfo::HAS_WINNER_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetShardsByEpochRequest {
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "cursor",
+            json_name: "cursor",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
+            name: "limit",
+            json_name: "limit",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetShardsByEpochRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::EPOCH_FIELD,
+            Self::CURSOR_FIELD,
+            Self::LIMIT_FIELD,
+        ];
+    }
+    impl GetShardsByEpochRequest {
+        pub fn path_builder() -> GetShardsByEpochRequestFieldPathBuilder {
+            GetShardsByEpochRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetShardsByEpochRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetShardsByEpochRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn epoch(mut self) -> String {
+            self.path.push(GetShardsByEpochRequest::EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn cursor(mut self) -> String {
+            self.path.push(GetShardsByEpochRequest::CURSOR_FIELD.name);
+            self.finish()
+        }
+        pub fn limit(mut self) -> String {
+            self.path.push(GetShardsByEpochRequest::LIMIT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetShardsByEpochResponse {
+        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
+            name: "shards",
+            json_name: "shards",
+            number: 1i32,
+            message_fields: Some(ShardInfo::FIELDS),
+        };
+        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "next_cursor",
+            json_name: "nextCursor",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetShardsByEpochResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SHARDS_FIELD,
+            Self::NEXT_CURSOR_FIELD,
+        ];
+    }
+    impl GetShardsByEpochResponse {
+        pub fn path_builder() -> GetShardsByEpochResponseFieldPathBuilder {
+            GetShardsByEpochResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetShardsByEpochResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetShardsByEpochResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
+            self.path.push(GetShardsByEpochResponse::SHARDS_FIELD.name);
+            ShardInfoFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_cursor(mut self) -> String {
+            self.path.push(GetShardsByEpochResponse::NEXT_CURSOR_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetShardsBySubmitterRequest {
+        pub const SUBMITTER_FIELD: &'static MessageField = &MessageField {
+            name: "submitter",
+            json_name: "submitter",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "cursor",
+            json_name: "cursor",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
+            name: "limit",
+            json_name: "limit",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetShardsBySubmitterRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SUBMITTER_FIELD,
+            Self::EPOCH_FIELD,
+            Self::CURSOR_FIELD,
+            Self::LIMIT_FIELD,
+        ];
+    }
+    impl GetShardsBySubmitterRequest {
+        pub fn path_builder() -> GetShardsBySubmitterRequestFieldPathBuilder {
+            GetShardsBySubmitterRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetShardsBySubmitterRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetShardsBySubmitterRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn submitter(mut self) -> String {
+            self.path.push(GetShardsBySubmitterRequest::SUBMITTER_FIELD.name);
+            self.finish()
+        }
+        pub fn epoch(mut self) -> String {
+            self.path.push(GetShardsBySubmitterRequest::EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn cursor(mut self) -> String {
+            self.path.push(GetShardsBySubmitterRequest::CURSOR_FIELD.name);
+            self.finish()
+        }
+        pub fn limit(mut self) -> String {
+            self.path.push(GetShardsBySubmitterRequest::LIMIT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetShardsBySubmitterResponse {
+        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
+            name: "shards",
+            json_name: "shards",
+            number: 1i32,
+            message_fields: Some(ShardInfo::FIELDS),
+        };
+        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "next_cursor",
+            json_name: "nextCursor",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetShardsBySubmitterResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SHARDS_FIELD,
+            Self::NEXT_CURSOR_FIELD,
+        ];
+    }
+    impl GetShardsBySubmitterResponse {
+        pub fn path_builder() -> GetShardsBySubmitterResponseFieldPathBuilder {
+            GetShardsBySubmitterResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetShardsBySubmitterResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetShardsBySubmitterResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
+            self.path.push(GetShardsBySubmitterResponse::SHARDS_FIELD.name);
+            ShardInfoFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_cursor(mut self) -> String {
+            self.path.push(GetShardsBySubmitterResponse::NEXT_CURSOR_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetShardsByEncoderRequest {
+        pub const ENCODER_FIELD: &'static MessageField = &MessageField {
+            name: "encoder",
+            json_name: "encoder",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "cursor",
+            json_name: "cursor",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
+            name: "limit",
+            json_name: "limit",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetShardsByEncoderRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::ENCODER_FIELD,
+            Self::CURSOR_FIELD,
+            Self::LIMIT_FIELD,
+        ];
+    }
+    impl GetShardsByEncoderRequest {
+        pub fn path_builder() -> GetShardsByEncoderRequestFieldPathBuilder {
+            GetShardsByEncoderRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetShardsByEncoderRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetShardsByEncoderRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn encoder(mut self) -> String {
+            self.path.push(GetShardsByEncoderRequest::ENCODER_FIELD.name);
+            self.finish()
+        }
+        pub fn cursor(mut self) -> String {
+            self.path.push(GetShardsByEncoderRequest::CURSOR_FIELD.name);
+            self.finish()
+        }
+        pub fn limit(mut self) -> String {
+            self.path.push(GetShardsByEncoderRequest::LIMIT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetShardsByEncoderResponse {
+        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
+            name: "shards",
+            json_name: "shards",
+            number: 1i32,
+            message_fields: Some(ShardInfo::FIELDS),
+        };
+        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "next_cursor",
+            json_name: "nextCursor",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetShardsByEncoderResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SHARDS_FIELD,
+            Self::NEXT_CURSOR_FIELD,
+        ];
+    }
+    impl GetShardsByEncoderResponse {
+        pub fn path_builder() -> GetShardsByEncoderResponseFieldPathBuilder {
+            GetShardsByEncoderResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetShardsByEncoderResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetShardsByEncoderResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
+            self.path.push(GetShardsByEncoderResponse::SHARDS_FIELD.name);
+            ShardInfoFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_cursor(mut self) -> String {
+            self.path.push(GetShardsByEncoderResponse::NEXT_CURSOR_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetClaimableEscrowsRequest {
+        pub const CURRENT_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "current_epoch",
+            json_name: "currentEpoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "cursor",
+            json_name: "cursor",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
+            name: "limit",
+            json_name: "limit",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetClaimableEscrowsRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CURRENT_EPOCH_FIELD,
+            Self::CURSOR_FIELD,
+            Self::LIMIT_FIELD,
+        ];
+    }
+    impl GetClaimableEscrowsRequest {
+        pub fn path_builder() -> GetClaimableEscrowsRequestFieldPathBuilder {
+            GetClaimableEscrowsRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetClaimableEscrowsRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetClaimableEscrowsRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn current_epoch(mut self) -> String {
+            self.path.push(GetClaimableEscrowsRequest::CURRENT_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn cursor(mut self) -> String {
+            self.path.push(GetClaimableEscrowsRequest::CURSOR_FIELD.name);
+            self.finish()
+        }
+        pub fn limit(mut self) -> String {
+            self.path.push(GetClaimableEscrowsRequest::LIMIT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetClaimableEscrowsResponse {
+        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
+            name: "shards",
+            json_name: "shards",
+            number: 1i32,
+            message_fields: Some(ShardInfo::FIELDS),
+        };
+        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "next_cursor",
+            json_name: "nextCursor",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetClaimableEscrowsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::SHARDS_FIELD,
+            Self::NEXT_CURSOR_FIELD,
+        ];
+    }
+    impl GetClaimableEscrowsResponse {
+        pub fn path_builder() -> GetClaimableEscrowsResponseFieldPathBuilder {
+            GetClaimableEscrowsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetClaimableEscrowsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetClaimableEscrowsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
+            self.path.push(GetClaimableEscrowsResponse::SHARDS_FIELD.name);
+            ShardInfoFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_cursor(mut self) -> String {
+            self.path.push(GetClaimableEscrowsResponse::NEXT_CURSOR_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetValidTargetsRequest {
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "cursor",
+            json_name: "cursor",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
+            name: "limit",
+            json_name: "limit",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetValidTargetsRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::EPOCH_FIELD,
+            Self::CURSOR_FIELD,
+            Self::LIMIT_FIELD,
+        ];
+    }
+    impl GetValidTargetsRequest {
+        pub fn path_builder() -> GetValidTargetsRequestFieldPathBuilder {
+            GetValidTargetsRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetValidTargetsRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetValidTargetsRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn epoch(mut self) -> String {
+            self.path.push(GetValidTargetsRequest::EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn cursor(mut self) -> String {
+            self.path.push(GetValidTargetsRequest::CURSOR_FIELD.name);
+            self.finish()
+        }
+        pub fn limit(mut self) -> String {
+            self.path.push(GetValidTargetsRequest::LIMIT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetValidTargetsResponse {
+        pub const TARGETS_FIELD: &'static MessageField = &MessageField {
+            name: "targets",
+            json_name: "targets",
+            number: 1i32,
+            message_fields: Some(TargetInfo::FIELDS),
+        };
+        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "next_cursor",
+            json_name: "nextCursor",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetValidTargetsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGETS_FIELD,
+            Self::NEXT_CURSOR_FIELD,
+        ];
+    }
+    impl GetValidTargetsResponse {
+        pub fn path_builder() -> GetValidTargetsResponseFieldPathBuilder {
+            GetValidTargetsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetValidTargetsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetValidTargetsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn targets(mut self) -> TargetInfoFieldPathBuilder {
+            self.path.push(GetValidTargetsResponse::TARGETS_FIELD.name);
+            TargetInfoFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_cursor(mut self) -> String {
+            self.path.push(GetValidTargetsResponse::NEXT_CURSOR_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetClaimableRewardsRequest {
+        pub const CURRENT_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "current_epoch",
+            json_name: "currentEpoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "cursor",
+            json_name: "cursor",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
+            name: "limit",
+            json_name: "limit",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetClaimableRewardsRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CURRENT_EPOCH_FIELD,
+            Self::CURSOR_FIELD,
+            Self::LIMIT_FIELD,
+        ];
+    }
+    impl GetClaimableRewardsRequest {
+        pub fn path_builder() -> GetClaimableRewardsRequestFieldPathBuilder {
+            GetClaimableRewardsRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetClaimableRewardsRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetClaimableRewardsRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn current_epoch(mut self) -> String {
+            self.path.push(GetClaimableRewardsRequest::CURRENT_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn cursor(mut self) -> String {
+            self.path.push(GetClaimableRewardsRequest::CURSOR_FIELD.name);
+            self.finish()
+        }
+        pub fn limit(mut self) -> String {
+            self.path.push(GetClaimableRewardsRequest::LIMIT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetClaimableRewardsResponse {
+        pub const TARGETS_FIELD: &'static MessageField = &MessageField {
+            name: "targets",
+            json_name: "targets",
+            number: 1i32,
+            message_fields: Some(TargetInfo::FIELDS),
+        };
+        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
+            name: "next_cursor",
+            json_name: "nextCursor",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetClaimableRewardsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGETS_FIELD,
+            Self::NEXT_CURSOR_FIELD,
+        ];
+    }
+    impl GetClaimableRewardsResponse {
+        pub fn path_builder() -> GetClaimableRewardsResponseFieldPathBuilder {
+            GetClaimableRewardsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetClaimableRewardsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetClaimableRewardsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn targets(mut self) -> TargetInfoFieldPathBuilder {
+            self.path.push(GetClaimableRewardsResponse::TARGETS_FIELD.name);
+            TargetInfoFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_cursor(mut self) -> String {
+            self.path.push(GetClaimableRewardsResponse::NEXT_CURSOR_FIELD.name);
+            self.finish()
         }
     }
     impl Object {

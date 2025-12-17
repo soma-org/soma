@@ -1,11 +1,15 @@
 use std::pin::Pin;
 use std::time::Duration;
 
+use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
+use futures::TryStreamExt;
 use tap::Pipe;
 use tonic::metadata::MetadataMap;
 use tracing::info;
+use types::effects::TransactionEffectsAPI as _;
+use types::effects::object_change::IDOperation;
 
 use crate::api::rpc_client;
 use crate::api::rpc_client::HeadersInterceptor;
@@ -14,6 +18,15 @@ use crate::proto::soma as proto;
 use crate::proto::soma::InitiateShardWorkRequest;
 use crate::proto::soma::InitiateShardWorkResponse;
 use crate::proto::soma::ListOwnedObjectsRequest;
+use crate::proto::soma::SubscribeCheckpointsRequest;
+use crate::proto::soma::transaction_kind::Kind;
+use crate::proto::soma::{
+    GetClaimableEscrowsRequest, GetClaimableEscrowsResponse, GetClaimableRewardsRequest,
+    GetClaimableRewardsResponse, GetShardsByEncoderRequest, GetShardsByEncoderResponse,
+    GetShardsByEpochRequest, GetShardsByEpochResponse, GetShardsBySubmitterRequest,
+    GetShardsBySubmitterResponse, GetValidTargetsRequest, GetValidTargetsResponse, ShardInfo,
+    TargetInfo,
+};
 use crate::utils::field::FieldMaskUtil;
 use crate::utils::types_conversions::SdkTypeConversionError;
 use prost_types::FieldMask;
@@ -134,6 +147,16 @@ impl Client {
     ) -> Result<Object> {
         let mut request = proto::GetObjectRequest::new(&object_id.into());
         request.version = version;
+
+        request.read_mask = Some(FieldMask::from_paths([
+            "object_id",
+            "version",
+            "digest",
+            "object_type",
+            "owner",
+            "contents",
+            "previous_transaction",
+        ]));
 
         let (metadata, object, _extentions) = self
             .0
@@ -266,6 +289,428 @@ impl Client {
 
         Ok(response)
     }
+
+    // =========================================================================
+    // SHARD QUERIES
+    // =========================================================================
+
+    /// Get all shards created in a specific epoch
+    pub async fn get_shards_by_epoch(&mut self, epoch: u64) -> Result<GetShardsByEpochResponse> {
+        let request = GetShardsByEpochRequest {
+            epoch: Some(epoch),
+            cursor: None,
+            limit: None,
+        };
+
+        self.0
+            .ledger_client()
+            .get_shards_by_epoch(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get all shards created in a specific epoch with pagination
+    pub async fn get_shards_by_epoch_with_pagination(
+        &mut self,
+        epoch: u64,
+        cursor: Option<Bytes>,
+        limit: Option<u32>,
+    ) -> Result<GetShardsByEpochResponse> {
+        let request = GetShardsByEpochRequest {
+            epoch: Some(epoch),
+            cursor,
+            limit,
+        };
+
+        self.0
+            .ledger_client()
+            .get_shards_by_epoch(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get shards submitted by a specific address
+    pub async fn get_shards_by_submitter(
+        &mut self,
+        submitter: &[u8],
+        epoch: Option<u64>,
+    ) -> Result<GetShardsBySubmitterResponse> {
+        let request = GetShardsBySubmitterRequest {
+            submitter: Some(submitter.to_vec().into()),
+            epoch,
+            cursor: None,
+            limit: None,
+        };
+
+        self.0
+            .ledger_client()
+            .get_shards_by_submitter(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get shards submitted by a specific address with pagination
+    pub async fn get_shards_by_submitter_with_pagination(
+        &mut self,
+        submitter: &[u8],
+        epoch: Option<u64>,
+        cursor: Option<Bytes>,
+        limit: Option<u32>,
+    ) -> Result<GetShardsBySubmitterResponse> {
+        let request = GetShardsBySubmitterRequest {
+            submitter: Some(submitter.to_vec().into()),
+            epoch,
+            cursor,
+            limit,
+        };
+
+        self.0
+            .ledger_client()
+            .get_shards_by_submitter(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get shards won by a specific encoder
+    pub async fn get_shards_by_encoder(
+        &mut self,
+        encoder: &[u8],
+    ) -> Result<GetShardsByEncoderResponse> {
+        let request = GetShardsByEncoderRequest {
+            encoder: Some(encoder.to_vec().into()),
+            cursor: None,
+            limit: None,
+        };
+
+        self.0
+            .ledger_client()
+            .get_shards_by_encoder(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get shards won by a specific encoder with pagination
+    pub async fn get_shards_by_encoder_with_pagination(
+        &mut self,
+        encoder: &[u8],
+        cursor: Option<Bytes>,
+        limit: Option<u32>,
+    ) -> Result<GetShardsByEncoderResponse> {
+        let request = GetShardsByEncoderRequest {
+            encoder: Some(encoder.to_vec().into()),
+            cursor,
+            limit,
+        };
+
+        self.0
+            .ledger_client()
+            .get_shards_by_encoder(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get claimable escrows for the current epoch
+    pub async fn get_claimable_escrows(
+        &mut self,
+        current_epoch: u64,
+    ) -> Result<GetClaimableEscrowsResponse> {
+        let request = GetClaimableEscrowsRequest {
+            current_epoch: Some(current_epoch),
+            cursor: None,
+            limit: None,
+        };
+
+        self.0
+            .ledger_client()
+            .get_claimable_escrows(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get claimable escrows with pagination
+    pub async fn get_claimable_escrows_with_pagination(
+        &mut self,
+        current_epoch: u64,
+        cursor: Option<Bytes>,
+        limit: Option<u32>,
+    ) -> Result<GetClaimableEscrowsResponse> {
+        let request = GetClaimableEscrowsRequest {
+            current_epoch: Some(current_epoch),
+            cursor,
+            limit,
+        };
+
+        self.0
+            .ledger_client()
+            .get_claimable_escrows(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    // =========================================================================
+    // TARGET QUERIES
+    // =========================================================================
+
+    /// Get all targets valid for competition in the given epoch
+    pub async fn get_valid_targets(&mut self, epoch: u64) -> Result<GetValidTargetsResponse> {
+        let request = GetValidTargetsRequest {
+            epoch: Some(epoch),
+            cursor: None,
+            limit: None,
+        };
+
+        self.0
+            .ledger_client()
+            .get_valid_targets(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get all targets valid for competition with pagination
+    pub async fn get_valid_targets_with_pagination(
+        &mut self,
+        epoch: u64,
+        cursor: Option<Bytes>,
+        limit: Option<u32>,
+    ) -> Result<GetValidTargetsResponse> {
+        let request = GetValidTargetsRequest {
+            epoch: Some(epoch),
+            cursor,
+            limit,
+        };
+
+        self.0
+            .ledger_client()
+            .get_valid_targets(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get claimable rewards for the current epoch
+    pub async fn get_claimable_rewards(
+        &mut self,
+        current_epoch: u64,
+    ) -> Result<GetClaimableRewardsResponse> {
+        let request = GetClaimableRewardsRequest {
+            current_epoch: Some(current_epoch),
+            cursor: None,
+            limit: None,
+        };
+
+        self.0
+            .ledger_client()
+            .get_claimable_rewards(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Get claimable rewards with pagination
+    pub async fn get_claimable_rewards_with_pagination(
+        &mut self,
+        current_epoch: u64,
+        cursor: Option<Bytes>,
+        limit: Option<u32>,
+    ) -> Result<GetClaimableRewardsResponse> {
+        let request = GetClaimableRewardsRequest {
+            current_epoch: Some(current_epoch),
+            cursor,
+            limit,
+        };
+
+        self.0
+            .ledger_client()
+            .get_claimable_rewards(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// Extract the ShardInput object ID from EmbedData transaction effects.
+    ///
+    /// The EmbedData transaction creates a ShardInput object which tracks
+    /// the encoding process and eventually becomes a Shard object.
+    pub fn extract_shard_input_id(effects: &TransactionEffects) -> Result<ObjectID, ShardError> {
+        // Look for newly created objects in the effects
+        let created_objects: Vec<_> = effects
+            .changed_objects
+            .iter()
+            .filter(|(_, change)| change.id_operation == IDOperation::Created)
+            .collect();
+
+        match created_objects.first() {
+            Some((object_id, _)) => Ok(*object_id),
+            None => Err(ShardError::NoShardInputFound),
+        }
+    }
+
+    /// Subscribe to checkpoints and wait for a ReportWinner transaction
+    /// for the specified shard input object.
+    ///
+    /// Returns information about the completed shard when the ReportWinner
+    /// transaction is found.
+    ///
+    /// # Arguments
+    /// * `shard_input_id` - The ObjectID of the ShardInput created by EmbedData
+    /// * `timeout` - Maximum time to wait for completion
+    ///
+    /// # Example
+    /// ```no_run
+    /// let effects = client.execute_transaction(&embed_tx).await?;
+    /// let shard_input_id = Client::extract_shard_input_id(&effects.effects)?;
+    /// let completion = client.wait_for_shard_completion(&shard_input_id, Duration::from_secs(60)).await?;
+    /// println!("Shard completed in checkpoint {}", completion.checkpoint_sequence);
+    /// ```
+    pub async fn wait_for_shard_completion(
+        &mut self,
+        shard_input_id: &ObjectID,
+        timeout: Duration,
+    ) -> Result<ShardCompletionInfo, ShardError> {
+        // Create subscription request with fields needed to inspect transactions
+        let mut request = SubscribeCheckpointsRequest::default();
+        request.read_mask = Some(FieldMask::from_paths([
+            "sequence_number",
+            "transactions.digest",
+            "transactions.transaction.kind",
+        ]));
+
+        let mut stream = self
+            .0
+            .subscription_client()
+            .subscribe_checkpoints(request)
+            .await
+            .map_err(ShardError::Rpc)?
+            .into_inner();
+
+        let expected_object_id_hex = shard_input_id.to_hex();
+        let shard_id = *shard_input_id;
+
+        let wait_future = async {
+            while let Some(response) = stream.try_next().await.map_err(ShardError::Rpc)? {
+                let checkpoint = response
+                    .checkpoint
+                    .ok_or(ShardError::MissingField("checkpoint"))?;
+
+                let seq_num = response.cursor.unwrap_or(0);
+
+                for executed_tx in checkpoint.transactions.iter() {
+                    let tx_kind = executed_tx
+                        .transaction
+                        .as_ref()
+                        .and_then(|tx| tx.kind.as_ref())
+                        .and_then(|k| k.kind.as_ref());
+
+                    if let Some(Kind::ReportWinner(report)) = tx_kind {
+                        let matches = report
+                            .shard_ref
+                            .as_ref()
+                            .and_then(|r| r.object_id.as_ref())
+                            .map(|id| id == &expected_object_id_hex)
+                            .unwrap_or(false);
+
+                        if matches {
+                            let digest = executed_tx
+                                .digest
+                                .clone()
+                                .ok_or(ShardError::MissingField("digest"))?;
+
+                            return Ok(ShardCompletionInfo {
+                                winner_tx_digest: digest,
+                                checkpoint_sequence: seq_num,
+                                signers: report.signers.clone(),
+                                shard_id,
+                            });
+                        }
+                    }
+                }
+            }
+
+            Err(ShardError::StreamEnded)
+        };
+
+        tokio::select! {
+            result = wait_future => result,
+            _ = tokio::time::sleep(timeout) => {
+                Err(ShardError::Timeout(timeout))
+            }
+        }
+    }
+
+    /// Execute an EmbedData transaction and wait for the shard to complete.
+    ///
+    /// This is a high-level helper that:
+    /// 1. Executes the transaction and waits for it to be checkpointed
+    /// 2. Extracts the ShardInput object ID from the effects
+    /// 3. Subscribes and waits for the ReportWinner transaction
+    ///
+    /// # Arguments
+    /// * `transaction` - The EmbedData transaction to execute
+    /// * `timeout` - Maximum time to wait for shard completion after execution
+    ///
+    /// # Returns
+    /// A tuple of (TransactionExecutionResponse, ShardCompletionInfo)
+    pub async fn execute_embed_data_and_wait_for_completion(
+        &mut self,
+        transaction: &Transaction,
+        timeout: Duration,
+    ) -> Result<
+        (
+            TransactionExecutionResponseWithCheckpoint,
+            ShardCompletionInfo,
+        ),
+        ShardError,
+    > {
+        // Execute and wait for checkpointing
+        let response = self
+            .execute_transaction_and_wait_for_checkpoint(transaction, timeout)
+            .await
+            .map_err(ShardError::Rpc)?;
+
+        // Extract shard input ID
+        let shard_input_id = Self::extract_shard_input_id(&response.effects)?;
+
+        // Initiate shard work - this is required before encoders will process the shard
+        let tx_digest = response.effects.transaction_digest();
+        let request = proto::InitiateShardWorkRequest::default()
+            .with_checkpoint_seq(response.checkpoint_sequence_number)
+            .with_tx_digest(tx_digest.to_string());
+        self.initiate_shard_work(request)
+            .await
+            .map_err(ShardError::Rpc)?;
+
+        // Wait for completion
+        let completion = self
+            .wait_for_shard_completion(&shard_input_id, timeout)
+            .await?;
+
+        Ok((response, completion))
+    }
+}
+
+/// Information about a completed shard encoding round
+#[derive(Debug, Clone)]
+pub struct ShardCompletionInfo {
+    /// The digest of the ReportWinner transaction
+    pub winner_tx_digest: String,
+    /// The checkpoint sequence number where the ReportWinner was included
+    pub checkpoint_sequence: u64,
+    /// The encoder public keys that signed the report (as hex strings)
+    pub signers: Vec<String>,
+    /// The shard object ID (same as shard_input_id for now)
+    pub shard_id: ObjectID,
+}
+
+/// Error type for shard operations
+#[derive(Debug, thiserror::Error)]
+pub enum ShardError {
+    #[error("No ShardInput object found in transaction effects")]
+    NoShardInputFound,
+    #[error("Timeout waiting for shard completion after {0:?}")]
+    Timeout(Duration),
+    #[error("Checkpoint stream ended unexpectedly")]
+    StreamEnded,
+    #[error("RPC error: {0}")]
+    Rpc(#[from] tonic::Status),
+    #[error("Missing field in response: {0}")]
+    MissingField(&'static str),
 }
 
 #[derive(Debug)]

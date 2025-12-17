@@ -25,6 +25,7 @@ tonic = { version = "0.13", default-features = false, features = [
     "tls-webpki-roots",
     "zstd",
 ] }
+bytes.workspace = true
 
 [lints]
 workspace = true

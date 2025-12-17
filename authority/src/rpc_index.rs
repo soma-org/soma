@@ -15,14 +15,16 @@ use tracing::{debug, info};
 use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
+use types::shard_crypto::keys::EncoderPublicKey;
 use types::storage::WriteKind;
+use types::system_state::shard::{Shard, Target, TargetOrigin};
 use types::transaction_outputs::WrittenObjects;
 
 use types::committee::EpochId;
 use types::consensus::ConsensusTransactionKind;
 use types::digests::TransactionDigest;
-use types::object::LiveObject;
-use types::storage::read_store::{EpochInfo, TransactionInfo};
+use types::object::{LiveObject, ObjectRef};
+use types::storage::read_store::{EpochInfo, ShardIndexInfo, TargetIndexInfo, TransactionInfo};
 use types::storage::storage_error::Error as StorageError;
 use types::system_state::SystemStateTrait;
 use types::{
@@ -219,6 +221,40 @@ impl From<BalanceIndexInfo> for types::storage::read_store::BalanceInfo {
     }
 }
 
+/// Key for indexing shards by their creation epoch
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct ShardEpochKey {
+    pub epoch: EpochId,
+    pub shard_id: ObjectID,
+}
+
+/// Key for indexing shards by data submitter
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct ShardSubmitterKey {
+    pub submitter: SomaAddress,
+    pub epoch: EpochId,
+    pub shard_id: ObjectID,
+}
+
+/// Key for indexing shards by winning encoder
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct ShardEncoderKey {
+    pub encoder: EncoderPublicKey,
+    pub epoch: EpochId,
+    pub shard_id: ObjectID,
+}
+
+// =============================================================================
+// TARGET INDEX TYPES
+// =============================================================================
+
+/// Key for indexing targets by their valid epoch
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct TargetValidEpochKey {
+    pub valid_epoch: EpochId,
+    pub target_id: ObjectID,
+}
+
 /// RocksDB tables for the RpcIndexStore
 ///
 /// Anytime a new table is added, or and existing one has it's schema changed, make sure to also
@@ -265,6 +301,19 @@ struct IndexStoreTables {
     ///
     /// Allows looking up balances by owner address and coin type.
     balance: DBMap<BalanceKey, BalanceIndexInfo>,
+
+    /// Shards indexed by creation epoch
+    shard_by_epoch: DBMap<ShardEpochKey, ShardIndexInfo>,
+
+    /// Shards indexed by data submitter
+    shard_by_submitter: DBMap<ShardSubmitterKey, ShardIndexInfo>,
+
+    /// Shards indexed by winning encoder
+    shard_by_encoder: DBMap<ShardEncoderKey, ShardIndexInfo>,
+
+    // ----- Target Tables -----
+    /// Targets indexed by their valid epoch
+    target_by_valid_epoch: DBMap<TargetValidEpochKey, TargetIndexInfo>,
 }
 
 impl IndexStoreTables {
@@ -410,8 +459,8 @@ impl IndexStoreTables {
 
             let mut batch = self.transactions.batch();
 
-            self.index_epoch(&checkpoint_data, &mut batch);
-            self.index_transactions(&checkpoint_data, &mut batch);
+            self.index_epoch(&checkpoint_data, &mut batch)?;
+            self.index_transactions(&checkpoint_data, &mut batch)?;
 
             batch
                 .write_opt(&(bulk_ingestion_write_options()))
@@ -573,6 +622,9 @@ impl IndexStoreTables {
 
                     Owner::Shared { .. } | Owner::Immutable => {}
                 }
+
+                // Remove shard/target from indexes
+                self.remove_shard_target_index(removed_object, batch)?;
             }
 
             // determine changes from changed objects
@@ -610,12 +662,300 @@ impl IndexStoreTables {
 
                     Owner::Shared { .. } | Owner::Immutable => {}
                 }
+
+                // Index shard/target objects
+                self.index_shard_target_object(object, batch)?;
             }
         }
 
         batch.partial_merge_batch(&self.balance, balance_changes)?;
 
         Ok(())
+    }
+
+    fn index_shard_target_object(
+        &self,
+        object: &Object,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        match object.type_() {
+            ObjectType::Shard => {
+                if let Some(shard) = object.as_shard() {
+                    self.index_shard(object.id(), &shard, batch)?;
+                }
+            }
+            ObjectType::Target => {
+                if let Some(target) = object.as_target() {
+                    self.index_target(object.id(), &target, batch)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn remove_shard_target_index(
+        &self,
+        object: &Object,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        match object.type_() {
+            ObjectType::Shard => {
+                if let Some(shard) = object.as_shard() {
+                    self.remove_shard(object.id(), &shard, batch)?;
+                }
+            }
+            ObjectType::Target => {
+                if let Some(target) = object.as_target() {
+                    self.remove_target(object.id(), &target, batch)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn index_shard(
+        &self,
+        shard_id: ObjectID,
+        shard: &Shard,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        let info = ShardIndexInfo::from_shard(shard_id, shard);
+
+        // Index by epoch
+        let epoch_key = ShardEpochKey {
+            epoch: shard.created_epoch,
+            shard_id,
+        };
+        batch.insert_batch(&self.shard_by_epoch, [(epoch_key, info.clone())])?;
+
+        // Index by submitter
+        let submitter_key = ShardSubmitterKey {
+            submitter: shard.data_submitter,
+            epoch: shard.created_epoch,
+            shard_id,
+        };
+        batch.insert_batch(&self.shard_by_submitter, [(submitter_key, info.clone())])?;
+
+        // Index by winning encoder if present
+        if let Some(encoder) = &shard.winning_encoder {
+            let encoder_key = ShardEncoderKey {
+                encoder: encoder.clone(),
+                epoch: shard.created_epoch,
+                shard_id,
+            };
+            batch.insert_batch(&self.shard_by_encoder, [(encoder_key, info)])?;
+        }
+
+        Ok(())
+    }
+
+    fn remove_shard(
+        &self,
+        shard_id: ObjectID,
+        shard: &Shard,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        // Remove from epoch index
+        let epoch_key = ShardEpochKey {
+            epoch: shard.created_epoch,
+            shard_id,
+        };
+        batch.delete_batch(&self.shard_by_epoch, [epoch_key])?;
+
+        // Remove from submitter index
+        let submitter_key = ShardSubmitterKey {
+            submitter: shard.data_submitter,
+            epoch: shard.created_epoch,
+            shard_id,
+        };
+        batch.delete_batch(&self.shard_by_submitter, [submitter_key])?;
+
+        // Remove from encoder index if present
+        if let Some(encoder) = &shard.winning_encoder {
+            let encoder_key = ShardEncoderKey {
+                encoder: encoder.clone(),
+                epoch: shard.created_epoch,
+                shard_id,
+            };
+            batch.delete_batch(&self.shard_by_encoder, [encoder_key])?;
+        }
+
+        Ok(())
+    }
+
+    fn index_target(
+        &self,
+        target_id: ObjectID,
+        target: &Target,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        let info = TargetIndexInfo::from_target(target_id, target);
+
+        // Index by valid epoch
+        let epoch_key = TargetValidEpochKey {
+            valid_epoch: info.valid_epoch,
+            target_id,
+        };
+        batch.insert_batch(&self.target_by_valid_epoch, [(epoch_key, info)])?;
+
+        Ok(())
+    }
+
+    fn remove_target(
+        &self,
+        target_id: ObjectID,
+        target: &Target,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        let info = TargetIndexInfo::from_target(target_id, target);
+
+        // Remove from epoch index
+        let epoch_key = TargetValidEpochKey {
+            valid_epoch: info.valid_epoch,
+            target_id,
+        };
+        batch.delete_batch(&self.target_by_valid_epoch, [epoch_key])?;
+
+        Ok(())
+    }
+
+    // =========================================================================
+    // SHARD QUERY METHODS
+    // =========================================================================
+
+    /// Get all shards created in a specific epoch
+    pub fn get_shards_by_epoch(
+        &self,
+        epoch: EpochId,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        let lower_bound = ShardEpochKey {
+            epoch,
+            shard_id: ObjectID::ZERO,
+        };
+
+        self.shard_by_epoch
+            .safe_iter_with_bounds(Some(lower_bound), None)
+            .take_while(|item| match item {
+                Ok((key, _)) => key.epoch == epoch,
+                Err(_) => true,
+            })
+            .map(|item| item.map(|(_, info)| info))
+            .collect()
+    }
+
+    /// Get shards submitted by a specific address
+    pub fn get_shards_by_submitter(
+        &self,
+        submitter: SomaAddress,
+        epoch: Option<EpochId>,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        let lower_bound = ShardSubmitterKey {
+            submitter,
+            epoch: epoch.unwrap_or(0),
+            shard_id: ObjectID::ZERO,
+        };
+
+        self.shard_by_submitter
+            .safe_iter_with_bounds(Some(lower_bound), None)
+            .take_while(|item| match item {
+                Ok((key, _)) => {
+                    key.submitter == submitter && epoch.map(|e| key.epoch == e).unwrap_or(true)
+                }
+                Err(_) => true,
+            })
+            .map(|item| item.map(|(_, info)| info))
+            .collect()
+    }
+
+    /// Get shards won by a specific encoder
+    pub fn get_shards_by_encoder(
+        &self,
+        encoder: &EncoderPublicKey,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        let lower_bound = ShardEncoderKey {
+            encoder: encoder.clone(),
+            epoch: 0,
+            shard_id: ObjectID::ZERO,
+        };
+
+        self.shard_by_encoder
+            .safe_iter_with_bounds(Some(lower_bound), None)
+            .take_while(|item| match item {
+                Ok((key, _)) => &key.encoder == encoder,
+                Err(_) => true,
+            })
+            .map(|item| item.map(|(_, info)| info))
+            .collect()
+    }
+
+    /// Get claimable escrows (shards where created_epoch + 2 <= current_epoch)
+    pub fn get_claimable_escrows(
+        &self,
+        current_epoch: EpochId,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        if current_epoch < 2 {
+            return Ok(Vec::new());
+        }
+
+        let max_epoch = current_epoch - 2;
+        let mut results = Vec::new();
+
+        for epoch in 0..=max_epoch {
+            let shards = self.get_shards_by_epoch(epoch)?;
+            results.extend(shards);
+        }
+
+        Ok(results)
+    }
+
+    // =========================================================================
+    // TARGET QUERY METHODS
+    // =========================================================================
+
+    /// Get all targets valid for competition in the given epoch
+    pub fn get_valid_targets(
+        &self,
+        epoch: EpochId,
+    ) -> Result<Vec<TargetIndexInfo>, TypedStoreError> {
+        let lower_bound = TargetValidEpochKey {
+            valid_epoch: epoch,
+            target_id: ObjectID::ZERO,
+        };
+
+        self.target_by_valid_epoch
+            .safe_iter_with_bounds(Some(lower_bound), None)
+            .take_while(|item| match item {
+                Ok((key, _)) => key.valid_epoch == epoch,
+                Err(_) => true,
+            })
+            .map(|item| item.map(|(_, info)| info))
+            .collect()
+    }
+
+    /// Get claimable rewards (targets where created_epoch + 2 <= current_epoch)
+    pub fn get_claimable_rewards(
+        &self,
+        current_epoch: EpochId,
+    ) -> Result<Vec<TargetIndexInfo>, TypedStoreError> {
+        if current_epoch < 2 {
+            return Ok(Vec::new());
+        }
+
+        let max_valid_epoch = current_epoch - 1;
+        let mut results = Vec::new();
+
+        for epoch in 0..=max_valid_epoch {
+            let targets = self.get_valid_targets(epoch)?;
+            for target in targets {
+                if target.is_reward_claimable(current_epoch) {
+                    results.push(target);
+                }
+            }
+        }
+
+        Ok(results)
     }
 
     fn get_epoch_info(&self, epoch: EpochId) -> Result<Option<EpochInfo>, TypedStoreError> {
@@ -1199,6 +1539,63 @@ impl RpcIndexStore {
     ) -> Result<(), StorageError> {
         self.tables
             .index_executed_tx_objects(effects, written, input_objects)
+    }
+
+    // =========================================================================
+    // SHARD QUERY METHODS
+    // =========================================================================
+
+    /// Get all shards created in a specific epoch
+    pub fn get_shards_by_epoch(
+        &self,
+        epoch: EpochId,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        self.tables.get_shards_by_epoch(epoch)
+    }
+
+    /// Get shards submitted by a specific address
+    pub fn get_shards_by_submitter(
+        &self,
+        submitter: SomaAddress,
+        epoch: Option<EpochId>,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        self.tables.get_shards_by_submitter(submitter, epoch)
+    }
+
+    /// Get shards won by a specific encoder
+    pub fn get_shards_by_encoder(
+        &self,
+        encoder: &EncoderPublicKey,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        self.tables.get_shards_by_encoder(encoder)
+    }
+
+    /// Get claimable escrows
+    pub fn get_claimable_escrows(
+        &self,
+        current_epoch: EpochId,
+    ) -> Result<Vec<ShardIndexInfo>, TypedStoreError> {
+        self.tables.get_claimable_escrows(current_epoch)
+    }
+
+    // =========================================================================
+    // TARGET QUERY METHODS
+    // =========================================================================
+
+    /// Get all targets valid for competition in the given epoch
+    pub fn get_valid_targets(
+        &self,
+        epoch: EpochId,
+    ) -> Result<Vec<TargetIndexInfo>, TypedStoreError> {
+        self.tables.get_valid_targets(epoch)
+    }
+
+    /// Get claimable rewards
+    pub fn get_claimable_rewards(
+        &self,
+        current_epoch: EpochId,
+    ) -> Result<Vec<TargetIndexInfo>, TypedStoreError> {
+        self.tables.get_claimable_rewards(current_epoch)
     }
 }
 

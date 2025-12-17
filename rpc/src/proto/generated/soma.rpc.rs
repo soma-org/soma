@@ -571,7 +571,7 @@ pub struct Epoch {
     pub start: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(message, optional, tag = "7")]
     pub end: ::core::option::Option<::prost_types::Timestamp>,
-    #[prost(message, optional, tag = "9")]
+    #[prost(message, optional, tag = "8")]
     pub protocol_config: ::core::option::Option<ProtocolConfig>,
 }
 #[non_exhaustive]
@@ -985,6 +985,185 @@ pub struct GetEpochResponse {
     #[prost(message, optional, tag = "1")]
     pub epoch: ::core::option::Option<Epoch>,
 }
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShardInfo {
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub shard_id: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "2")]
+    pub created_epoch: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "3")]
+    pub amount: ::core::option::Option<u64>,
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub data_submitter: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(message, optional, tag = "5")]
+    pub target: ::core::option::Option<ObjectReference>,
+    #[prost(bool, optional, tag = "6")]
+    pub has_winner: ::core::option::Option<bool>,
+    #[prost(bytes = "bytes", optional, tag = "7")]
+    pub winning_encoder: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TargetInfo {
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "2")]
+    pub created_epoch: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "3")]
+    pub valid_epoch: ::core::option::Option<u64>,
+    #[prost(enumeration = "TargetOriginType", optional, tag = "4")]
+    pub origin: ::core::option::Option<i32>,
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub creator: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "6")]
+    pub reward_amount: ::core::option::Option<u64>,
+    #[prost(bool, optional, tag = "7")]
+    pub has_winner: ::core::option::Option<bool>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetShardsByEpochRequest {
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub cursor: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint32, optional, tag = "3")]
+    pub limit: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetShardsByEpochResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub shards: ::prost::alloc::vec::Vec<ShardInfo>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetShardsBySubmitterRequest {
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub submitter: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "2")]
+    pub epoch: ::core::option::Option<u64>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub cursor: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint32, optional, tag = "4")]
+    pub limit: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetShardsBySubmitterResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub shards: ::prost::alloc::vec::Vec<ShardInfo>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetShardsByEncoderRequest {
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub encoder: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub cursor: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint32, optional, tag = "3")]
+    pub limit: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetShardsByEncoderResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub shards: ::prost::alloc::vec::Vec<ShardInfo>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetClaimableEscrowsRequest {
+    #[prost(uint64, optional, tag = "1")]
+    pub current_epoch: ::core::option::Option<u64>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub cursor: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint32, optional, tag = "3")]
+    pub limit: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetClaimableEscrowsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub shards: ::prost::alloc::vec::Vec<ShardInfo>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetValidTargetsRequest {
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub cursor: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint32, optional, tag = "3")]
+    pub limit: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetValidTargetsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub targets: ::prost::alloc::vec::Vec<TargetInfo>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetClaimableRewardsRequest {
+    #[prost(uint64, optional, tag = "1")]
+    pub current_epoch: ::core::option::Option<u64>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub cursor: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint32, optional, tag = "3")]
+    pub limit: ::core::option::Option<u32>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetClaimableRewardsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub targets: ::prost::alloc::vec::Vec<TargetInfo>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TargetOriginType {
+    TargetOriginUnspecified = 0,
+    TargetOriginSystem = 1,
+    TargetOriginUser = 2,
+    TargetOriginGenesis = 3,
+}
+impl TargetOriginType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::TargetOriginUnspecified => "TARGET_ORIGIN_UNSPECIFIED",
+            Self::TargetOriginSystem => "TARGET_ORIGIN_SYSTEM",
+            Self::TargetOriginUser => "TARGET_ORIGIN_USER",
+            Self::TargetOriginGenesis => "TARGET_ORIGIN_GENESIS",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TARGET_ORIGIN_UNSPECIFIED" => Some(Self::TargetOriginUnspecified),
+            "TARGET_ORIGIN_SYSTEM" => Some(Self::TargetOriginSystem),
+            "TARGET_ORIGIN_USER" => Some(Self::TargetOriginUser),
+            "TARGET_ORIGIN_GENESIS" => Some(Self::TargetOriginGenesis),
+            _ => None,
+        }
+    }
+}
 /// Generated client implementations.
 pub mod ledger_service_client {
     #![allow(
@@ -1247,6 +1426,158 @@ pub mod ledger_service_client {
                 .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetEpoch"));
             self.inner.unary(req, path, codec).await
         }
+        /// Shard queries
+        pub async fn get_shards_by_epoch(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetShardsByEpochRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetShardsByEpochResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetShardsByEpoch",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetShardsByEpoch"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_shards_by_submitter(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetShardsBySubmitterRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetShardsBySubmitterResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetShardsBySubmitter",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("soma.rpc.LedgerService", "GetShardsBySubmitter"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_shards_by_encoder(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetShardsByEncoderRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetShardsByEncoderResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetShardsByEncoder",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetShardsByEncoder"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_claimable_escrows(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetClaimableEscrowsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetClaimableEscrowsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetClaimableEscrows",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("soma.rpc.LedgerService", "GetClaimableEscrows"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Target queries
+        pub async fn get_valid_targets(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetValidTargetsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetValidTargetsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetValidTargets",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.LedgerService", "GetValidTargets"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_claimable_rewards(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetClaimableRewardsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetClaimableRewardsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.LedgerService/GetClaimableRewards",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("soma.rpc.LedgerService", "GetClaimableRewards"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -1310,6 +1641,50 @@ pub mod ledger_service_server {
             request: tonic::Request<super::GetEpochRequest>,
         ) -> std::result::Result<
             tonic::Response<super::GetEpochResponse>,
+            tonic::Status,
+        >;
+        /// Shard queries
+        async fn get_shards_by_epoch(
+            &self,
+            request: tonic::Request<super::GetShardsByEpochRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetShardsByEpochResponse>,
+            tonic::Status,
+        >;
+        async fn get_shards_by_submitter(
+            &self,
+            request: tonic::Request<super::GetShardsBySubmitterRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetShardsBySubmitterResponse>,
+            tonic::Status,
+        >;
+        async fn get_shards_by_encoder(
+            &self,
+            request: tonic::Request<super::GetShardsByEncoderRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetShardsByEncoderResponse>,
+            tonic::Status,
+        >;
+        async fn get_claimable_escrows(
+            &self,
+            request: tonic::Request<super::GetClaimableEscrowsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetClaimableEscrowsResponse>,
+            tonic::Status,
+        >;
+        /// Target queries
+        async fn get_valid_targets(
+            &self,
+            request: tonic::Request<super::GetValidTargetsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetValidTargetsResponse>,
+            tonic::Status,
+        >;
+        async fn get_claimable_rewards(
+            &self,
+            request: tonic::Request<super::GetClaimableRewardsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetClaimableRewardsResponse>,
             tonic::Status,
         >;
     }
@@ -1695,6 +2070,285 @@ pub mod ledger_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = GetEpochSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetShardsByEpoch" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetShardsByEpochSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetShardsByEpochRequest>
+                    for GetShardsByEpochSvc<T> {
+                        type Response = super::GetShardsByEpochResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetShardsByEpochRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_shards_by_epoch(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetShardsByEpochSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetShardsBySubmitter" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetShardsBySubmitterSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetShardsBySubmitterRequest>
+                    for GetShardsBySubmitterSvc<T> {
+                        type Response = super::GetShardsBySubmitterResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetShardsBySubmitterRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_shards_by_submitter(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetShardsBySubmitterSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetShardsByEncoder" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetShardsByEncoderSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetShardsByEncoderRequest>
+                    for GetShardsByEncoderSvc<T> {
+                        type Response = super::GetShardsByEncoderResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetShardsByEncoderRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_shards_by_encoder(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetShardsByEncoderSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetClaimableEscrows" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetClaimableEscrowsSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetClaimableEscrowsRequest>
+                    for GetClaimableEscrowsSvc<T> {
+                        type Response = super::GetClaimableEscrowsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetClaimableEscrowsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_claimable_escrows(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetClaimableEscrowsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetValidTargets" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetValidTargetsSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetValidTargetsRequest>
+                    for GetValidTargetsSvc<T> {
+                        type Response = super::GetValidTargetsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetValidTargetsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_valid_targets(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetValidTargetsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.LedgerService/GetClaimableRewards" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetClaimableRewardsSvc<T: LedgerService>(pub Arc<T>);
+                    impl<
+                        T: LedgerService,
+                    > tonic::server::UnaryService<super::GetClaimableRewardsRequest>
+                    for GetClaimableRewardsSvc<T> {
+                        type Response = super::GetClaimableRewardsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetClaimableRewardsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as LedgerService>::get_claimable_rewards(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetClaimableRewardsSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

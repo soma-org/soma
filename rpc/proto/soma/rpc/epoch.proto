@@ -24,8 +24,5 @@ message Epoch {
   optional google.protobuf.Timestamp start = 6;
   optional google.protobuf.Timestamp end = 7;
 
-  // TODO: Reference byte price
-  // optional uint64 reference_byte_price = 8;
-
-  optional ProtocolConfig protocol_config = 9;
+  optional ProtocolConfig protocol_config = 8;
 }

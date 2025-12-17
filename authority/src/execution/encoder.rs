@@ -47,6 +47,9 @@ impl EncoderExecutor {
             TransactionKind::SetEncoderCommissionRate { new_rate } => {
                 state.request_set_encoder_commission_rate(signer, *new_rate)
             }
+            TransactionKind::SetEncoderBytePrice { new_price } => {
+                state.request_set_encoder_byte_price(signer, *new_price)
+            }
             TransactionKind::UpdateEncoderMetadata(args) => {
                 state.request_update_encoder_metadata(signer, args)
             }

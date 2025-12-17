@@ -1,5 +1,5 @@
 use e2e_tests::integration_helpers::{
-    extract_shard_input_id, setup_integrated_encoder_validator_test, wait_for_shard_completion,
+    setup_integrated_encoder_validator_test, verify_encoder_committee_sync,
 };
 use rand::rngs::OsRng;
 use rpc::proto::soma::InitiateShardWorkRequest;
@@ -92,29 +92,10 @@ async fn test_integrated_encoder_validator_system() {
         "Encoder committee should have one more member after reconfiguration"
     );
 
-    // Start the new encoder in the encoder cluster
+    // Start the new encoder and verify sync
     let _encoder_handle = encoder_cluster.spawn_new_encoder(encoder_config).await;
-
-    // Wait for a moment to allow the encoder to sync
     tokio::time::sleep(Duration::from_secs(2)).await;
-
-    // Verify all encoders are in sync with the new committee
-    for handle in encoder_cluster.all_encoder_handles() {
-        handle.with(|node| {
-            let context = node.context.clone();
-            let inner_context = context.inner();
-            let epoch = inner_context.current_epoch;
-            let committees = inner_context
-                .committees(epoch)
-                .expect("Should have committees data");
-
-            assert_eq!(
-                committees.encoder_committee.size(),
-                initial_encoders + 1,
-                "All encoders should see correct committee size"
-            );
-        });
-    }
+    verify_encoder_committee_sync(&encoder_cluster, initial_encoders + 1);
 
     let data_size = 1024 * 10; // 10KB of data
     let mut data = vec![0u8; data_size];
@@ -130,61 +111,42 @@ async fn test_integrated_encoder_validator_system() {
         "Uploaded test data to object server"
     );
 
-    // Execute EmbedData transaction AND wait for it to be checkpointed
-    // This is important because initiate_shard_work needs the checkpoint_seq
-    let (effects, objects, checkpoint_seq) = execute_embed_data_and_wait(
-        new_account_keypair.copy(),
-        &mut test_cluster,
-        new_encoder_address,
-        download_metadata.clone(),
-    )
-    .await;
-
-    let tx_digest = effects.transaction_digest();
-
-    info!(
-        tx_digest = ?tx_digest,
-        checkpoint = checkpoint_seq,
-        status = ?effects.status(),
-        "EmbedData transaction executed and checkpointed"
-    );
-
-    // Extract the ShardInput object ID from the effects
-    let shard_input_id = extract_shard_input_id(&effects)
-        .expect("Should find ShardInput object in EmbedData effects");
-
-    info!(shard_input = %shard_input_id, "Created ShardInput object");
-
-    // Initiate shard work with the transaction digest and checkpoint sequence
-    let shard = initiate_shard_work(&test_cluster, tx_digest, checkpoint_seq)
-        .await
-        .expect("Should initiate shard work");
-
-    info!("Shard work initiated, shard: {:?}", shard);
-
-    // Get the client for subscription
-    let client = test_cluster
+    // Embed data and wait for completion - single high-level call
+    let (exec_response, completion) = test_cluster
         .wallet
-        .get_client()
+        .embed_data_and_wait(
+            &new_account_keypair,
+            new_encoder_address,
+            download_metadata,
+            Duration::from_secs(60),
+        )
         .await
-        .expect("Should get RPC client");
-
-    // Wait for the shard to complete (ReportWinner transaction)
-    let completion_info =
-        wait_for_shard_completion(&client, &shard_input_id, Duration::from_secs(60))
-            .await
-            .expect("Should receive ReportWinner transaction");
+        .expect("EmbedData and shard completion should succeed");
 
     info!(
-        winner_tx = %completion_info.winner_tx_digest,
-        checkpoint = completion_info.checkpoint_sequence,
-        signers = ?completion_info.signers,
+        tx_digest = ?exec_response.effects.transaction_digest(),
+        checkpoint = exec_response.checkpoint_sequence_number,
+        shard_id = %completion.shard_id,
+        winner_tx = %completion.winner_tx_digest,
+        signers = completion.signers.len(),
         "Shard encoding completed successfully"
     );
 
-    // Verify we got a valid completion
+    // Fetch the shard to get embedding metadata
+    let client = test_cluster.wallet.get_client().await.unwrap();
+    let shard = client
+        .get_shard(completion.shard_id)
+        .await
+        .expect("Should fetch completed shard");
+
+    // TODO: check that embeddings are available
+    // assert!(
+    //     shard.embeddings_download_metadata.is_some(),
+    //     "Embeddings should be available"
+    // );
+
     assert!(
-        !completion_info.signers.is_empty(),
+        !completion.signers.is_empty(),
         "ReportWinner should have at least one signer"
     );
 }

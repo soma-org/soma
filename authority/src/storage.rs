@@ -538,4 +538,67 @@ impl RpcIndexes for RestReadStore {
             .get_highest_indexed_checkpoint_seq_number()
             .map_err(Into::into)
     }
+
+    // =========================================================================
+    // SHARD QUERY METHODS
+    // =========================================================================
+
+    fn get_shards_by_epoch(
+        &self,
+        epoch: EpochId,
+    ) -> Result<Vec<types::storage::read_store::ShardIndexInfo>> {
+        self.index()?
+            .get_shards_by_epoch(epoch)
+            .map_err(StorageError::custom)
+    }
+
+    fn get_shards_by_submitter(
+        &self,
+        submitter: SomaAddress,
+        epoch: Option<EpochId>,
+    ) -> Result<Vec<types::storage::read_store::ShardIndexInfo>> {
+        self.index()?
+            .get_shards_by_submitter(submitter, epoch)
+            .map_err(StorageError::custom)
+    }
+
+    fn get_shards_by_encoder(
+        &self,
+        encoder: &types::shard_crypto::keys::EncoderPublicKey,
+    ) -> Result<Vec<types::storage::read_store::ShardIndexInfo>> {
+        self.index()?
+            .get_shards_by_encoder(encoder)
+            .map_err(StorageError::custom)
+    }
+
+    fn get_claimable_escrows(
+        &self,
+        current_epoch: EpochId,
+    ) -> Result<Vec<types::storage::read_store::ShardIndexInfo>> {
+        self.index()?
+            .get_claimable_escrows(current_epoch)
+            .map_err(StorageError::custom)
+    }
+
+    // =========================================================================
+    // TARGET QUERY METHODS
+    // =========================================================================
+
+    fn get_valid_targets(
+        &self,
+        epoch: EpochId,
+    ) -> Result<Vec<types::storage::read_store::TargetIndexInfo>> {
+        self.index()?
+            .get_valid_targets(epoch)
+            .map_err(StorageError::custom)
+    }
+
+    fn get_claimable_rewards(
+        &self,
+        current_epoch: EpochId,
+    ) -> Result<Vec<types::storage::read_store::TargetIndexInfo>> {
+        self.index()?
+            .get_claimable_rewards(current_epoch)
+            .map_err(StorageError::custom)
+    }
 }

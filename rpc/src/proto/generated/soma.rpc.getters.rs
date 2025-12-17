@@ -1651,6 +1651,432 @@ mod _getter_impls {
             self
         }
     }
+    impl ShardInfo {
+        pub const fn const_default() -> Self {
+            Self {
+                shard_id: None,
+                created_epoch: None,
+                amount: None,
+                data_submitter: None,
+                target: None,
+                has_winner: None,
+                winning_encoder: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ShardInfo = ShardInfo::const_default();
+            &DEFAULT
+        }
+        pub fn with_shard_id(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.shard_id = Some(field.into());
+            self
+        }
+        pub fn with_created_epoch(mut self, field: u64) -> Self {
+            self.created_epoch = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+        pub fn with_data_submitter(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.data_submitter = Some(field.into());
+            self
+        }
+        pub fn target(&self) -> &ObjectReference {
+            self.target
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn target_opt(&self) -> Option<&ObjectReference> {
+            self.target.as_ref().map(|field| field as _)
+        }
+        pub fn target_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.target.as_mut().map(|field| field as _)
+        }
+        pub fn target_mut(&mut self) -> &mut ObjectReference {
+            self.target.get_or_insert_default()
+        }
+        pub fn with_target(mut self, field: ObjectReference) -> Self {
+            self.target = Some(field.into());
+            self
+        }
+        pub fn with_has_winner(mut self, field: bool) -> Self {
+            self.has_winner = Some(field.into());
+            self
+        }
+        pub fn with_winning_encoder(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.winning_encoder = Some(field.into());
+            self
+        }
+    }
+    impl TargetInfo {
+        pub const fn const_default() -> Self {
+            Self {
+                target_id: None,
+                created_epoch: None,
+                valid_epoch: None,
+                origin: None,
+                creator: None,
+                reward_amount: None,
+                has_winner: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: TargetInfo = TargetInfo::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+        pub fn with_created_epoch(mut self, field: u64) -> Self {
+            self.created_epoch = Some(field.into());
+            self
+        }
+        pub fn with_valid_epoch(mut self, field: u64) -> Self {
+            self.valid_epoch = Some(field.into());
+            self
+        }
+        pub fn with_creator(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.creator = Some(field.into());
+            self
+        }
+        pub fn with_reward_amount(mut self, field: u64) -> Self {
+            self.reward_amount = Some(field.into());
+            self
+        }
+        pub fn with_has_winner(mut self, field: bool) -> Self {
+            self.has_winner = Some(field.into());
+            self
+        }
+    }
+    impl GetShardsByEpochRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                cursor: None,
+                limit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetShardsByEpochRequest = GetShardsByEpochRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.cursor = Some(field.into());
+            self
+        }
+        pub fn with_limit(mut self, field: u32) -> Self {
+            self.limit = Some(field.into());
+            self
+        }
+    }
+    impl GetShardsByEpochResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                shards: Vec::new(),
+                next_cursor: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetShardsByEpochResponse = GetShardsByEpochResponse::const_default();
+            &DEFAULT
+        }
+        pub fn shards(&self) -> &[ShardInfo] {
+            &self.shards
+        }
+        pub fn shards_mut(&mut self) -> &mut Vec<ShardInfo> {
+            &mut self.shards
+        }
+        pub fn with_shards(mut self, field: Vec<ShardInfo>) -> Self {
+            self.shards = field;
+            self
+        }
+        pub fn with_next_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_cursor = Some(field.into());
+            self
+        }
+    }
+    impl GetShardsBySubmitterRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                submitter: None,
+                epoch: None,
+                cursor: None,
+                limit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetShardsBySubmitterRequest = GetShardsBySubmitterRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_submitter(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.submitter = Some(field.into());
+            self
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.cursor = Some(field.into());
+            self
+        }
+        pub fn with_limit(mut self, field: u32) -> Self {
+            self.limit = Some(field.into());
+            self
+        }
+    }
+    impl GetShardsBySubmitterResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                shards: Vec::new(),
+                next_cursor: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetShardsBySubmitterResponse = GetShardsBySubmitterResponse::const_default();
+            &DEFAULT
+        }
+        pub fn shards(&self) -> &[ShardInfo] {
+            &self.shards
+        }
+        pub fn shards_mut(&mut self) -> &mut Vec<ShardInfo> {
+            &mut self.shards
+        }
+        pub fn with_shards(mut self, field: Vec<ShardInfo>) -> Self {
+            self.shards = field;
+            self
+        }
+        pub fn with_next_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_cursor = Some(field.into());
+            self
+        }
+    }
+    impl GetShardsByEncoderRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                encoder: None,
+                cursor: None,
+                limit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetShardsByEncoderRequest = GetShardsByEncoderRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_encoder(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.encoder = Some(field.into());
+            self
+        }
+        pub fn with_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.cursor = Some(field.into());
+            self
+        }
+        pub fn with_limit(mut self, field: u32) -> Self {
+            self.limit = Some(field.into());
+            self
+        }
+    }
+    impl GetShardsByEncoderResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                shards: Vec::new(),
+                next_cursor: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetShardsByEncoderResponse = GetShardsByEncoderResponse::const_default();
+            &DEFAULT
+        }
+        pub fn shards(&self) -> &[ShardInfo] {
+            &self.shards
+        }
+        pub fn shards_mut(&mut self) -> &mut Vec<ShardInfo> {
+            &mut self.shards
+        }
+        pub fn with_shards(mut self, field: Vec<ShardInfo>) -> Self {
+            self.shards = field;
+            self
+        }
+        pub fn with_next_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_cursor = Some(field.into());
+            self
+        }
+    }
+    impl GetClaimableEscrowsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                current_epoch: None,
+                cursor: None,
+                limit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetClaimableEscrowsRequest = GetClaimableEscrowsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_current_epoch(mut self, field: u64) -> Self {
+            self.current_epoch = Some(field.into());
+            self
+        }
+        pub fn with_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.cursor = Some(field.into());
+            self
+        }
+        pub fn with_limit(mut self, field: u32) -> Self {
+            self.limit = Some(field.into());
+            self
+        }
+    }
+    impl GetClaimableEscrowsResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                shards: Vec::new(),
+                next_cursor: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetClaimableEscrowsResponse = GetClaimableEscrowsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn shards(&self) -> &[ShardInfo] {
+            &self.shards
+        }
+        pub fn shards_mut(&mut self) -> &mut Vec<ShardInfo> {
+            &mut self.shards
+        }
+        pub fn with_shards(mut self, field: Vec<ShardInfo>) -> Self {
+            self.shards = field;
+            self
+        }
+        pub fn with_next_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_cursor = Some(field.into());
+            self
+        }
+    }
+    impl GetValidTargetsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                cursor: None,
+                limit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetValidTargetsRequest = GetValidTargetsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.cursor = Some(field.into());
+            self
+        }
+        pub fn with_limit(mut self, field: u32) -> Self {
+            self.limit = Some(field.into());
+            self
+        }
+    }
+    impl GetValidTargetsResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                targets: Vec::new(),
+                next_cursor: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetValidTargetsResponse = GetValidTargetsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn targets(&self) -> &[TargetInfo] {
+            &self.targets
+        }
+        pub fn targets_mut(&mut self) -> &mut Vec<TargetInfo> {
+            &mut self.targets
+        }
+        pub fn with_targets(mut self, field: Vec<TargetInfo>) -> Self {
+            self.targets = field;
+            self
+        }
+        pub fn with_next_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_cursor = Some(field.into());
+            self
+        }
+    }
+    impl GetClaimableRewardsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                current_epoch: None,
+                cursor: None,
+                limit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetClaimableRewardsRequest = GetClaimableRewardsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_current_epoch(mut self, field: u64) -> Self {
+            self.current_epoch = Some(field.into());
+            self
+        }
+        pub fn with_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.cursor = Some(field.into());
+            self
+        }
+        pub fn with_limit(mut self, field: u32) -> Self {
+            self.limit = Some(field.into());
+            self
+        }
+    }
+    impl GetClaimableRewardsResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                targets: Vec::new(),
+                next_cursor: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetClaimableRewardsResponse = GetClaimableRewardsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn targets(&self) -> &[TargetInfo] {
+            &self.targets
+        }
+        pub fn targets_mut(&mut self) -> &mut Vec<TargetInfo> {
+            &mut self.targets
+        }
+        pub fn with_targets(mut self, field: Vec<TargetInfo>) -> Self {
+            self.targets = field;
+            self
+        }
+        pub fn with_next_cursor(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_cursor = Some(field.into());
+            self
+        }
+    }
     impl Object {
         pub const fn const_default() -> Self {
             Self {
