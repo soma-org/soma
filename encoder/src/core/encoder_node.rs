@@ -5,10 +5,10 @@ use std::{collections::BTreeSet, future::Future, sync::Arc};
 
 use fastcrypto::traits::KeyPair;
 use intelligence::evaluation::core_processor::EvaluationCoreProcessor;
+use intelligence::evaluation::evaluator::{mock::MockEvaluator, EvaluatorClient};
 use intelligence::evaluation::messaging::service::EvaluationNetworkService;
 use intelligence::evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
 use intelligence::evaluation::messaging::{EvaluationManager, EvaluationService};
-use intelligence::evaluation::{EvaluatorClient, MockEvaluator};
 use intelligence::inference::core_processor::InferenceCoreProcessor;
 use intelligence::inference::messaging::service::InferenceNetworkService;
 use intelligence::inference::messaging::tonic::{InferenceTonicClient, InferenceTonicManager};
@@ -118,7 +118,7 @@ pub struct EncoderNode {
             InMemory,
             PersistentInMemoryStore,
             EphemeralInMemoryStore,
-            MockEvaluator,
+            MockEvaluator<InMemory, EphemeralInMemoryStore>,
         >,
     >,
     store: Arc<dyn Store>,
@@ -275,9 +275,10 @@ impl EncoderNode {
             .unwrap(),
         );
 
-        let evaluator_client = Arc::new(MockEvaluator::new(EvaluationOutput::V1(
-            EvaluationOutputV1::mock(),
-        )));
+        let evaluator_client = Arc::new(MockEvaluator::new(
+            EvaluationOutput::V1(EvaluationOutputV1::mock()),
+            ephemeral_store.clone(),
+        ));
 
         let evaluation_core_processor = EvaluationCoreProcessor::new(
             persistent_store.clone(),
@@ -521,7 +522,7 @@ impl EncoderNode {
                 InMemory,
                 PersistentInMemoryStore,
                 EphemeralInMemoryStore,
-                MockEvaluator,
+                MockEvaluator<InMemory, EphemeralInMemoryStore>,
             >,
         >>::stop(&mut self.evaluation_network_manager)
         .await;

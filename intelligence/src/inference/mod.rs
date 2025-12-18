@@ -64,6 +64,8 @@ pub enum InferenceInput {
 
 #[enum_dispatch]
 pub trait InferenceOutputAPI {
+    fn input_download_metadata(&self) -> &DownloadMetadata;
+    fn input_object_path(&self) -> &ObjectPath;
     fn output_download_metadata(&self) -> &DownloadMetadata;
     fn output_object_path(&self) -> &ObjectPath;
     fn probe_encoder(&self) -> &EncoderPublicKey;
@@ -71,6 +73,8 @@ pub trait InferenceOutputAPI {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InferenceOutputV1 {
+    input_download_metadata: DownloadMetadata,
+    input_object_path: ObjectPath,
     output_download_metadata: DownloadMetadata,
     output_object_path: ObjectPath,
     probe_encoder: EncoderPublicKey,
@@ -78,11 +82,15 @@ pub struct InferenceOutputV1 {
 
 impl InferenceOutputV1 {
     pub fn new(
+        input_download_metadata: DownloadMetadata,
+        input_object_path: ObjectPath,
         output_download_metadata: DownloadMetadata,
         output_object_path: ObjectPath,
         probe_encoder: EncoderPublicKey,
     ) -> Self {
         Self {
+            input_download_metadata,
+            input_object_path,
             output_download_metadata,
             output_object_path,
             probe_encoder,
@@ -90,6 +98,12 @@ impl InferenceOutputV1 {
     }
 }
 impl InferenceOutputAPI for InferenceOutputV1 {
+    fn input_download_metadata(&self) -> &DownloadMetadata {
+        &self.input_download_metadata
+    }
+    fn input_object_path(&self) -> &ObjectPath {
+        &self.input_object_path
+    }
     fn output_download_metadata(&self) -> &DownloadMetadata {
         &self.output_download_metadata
     }

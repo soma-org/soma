@@ -245,14 +245,25 @@ impl<
             self.store_to_persistent(&output_path, &output_metadata)
                 .await?;
 
-            let download_metadata = self
+            let input_download_metadata = self
+                .persistent_store
+                .download_metadata(
+                    input.input_object_path().clone(),
+                    input.input_download_metadata().metadata().clone(),
+                )
+                .await
+                .map_err(ShardError::ObjectError)?;
+
+            let output_download_metadata = self
                 .persistent_store
                 .download_metadata(output_path.clone(), output_metadata)
                 .await
                 .map_err(ShardError::ObjectError)?;
 
             Ok(InferenceOutput::V1(InferenceOutputV1::new(
-                download_metadata,
+                input_download_metadata,
+                input.input_object_path().clone(),
+                output_download_metadata,
                 output_path,
                 module_output.probe_encoder().clone(),
             )))

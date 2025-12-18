@@ -1,6 +1,6 @@
 use super::EvaluationService;
 use crate::evaluation::core_processor::EvaluationCoreProcessor;
-use crate::evaluation::EvaluatorClient;
+use crate::evaluation::evaluator::EvaluatorClient;
 use async_trait::async_trait;
 use bytes::Bytes;
 use object_store::ObjectStore;

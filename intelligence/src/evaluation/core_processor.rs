@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use object_store::ObjectStore;
@@ -16,7 +16,7 @@ use types::{
     metadata::{DownloadMetadata, ObjectPath},
 };
 
-use crate::evaluation::EvaluatorClient;
+use crate::evaluation::evaluator::EvaluatorClient;
 
 pub struct EvaluationCoreProcessor<
     PS: ObjectStore,
@@ -157,12 +157,6 @@ impl<
             let input = msg.input;
 
             self.load_data(
-                input.input_object_path(),
-                input.input_download_metadata(),
-                msg.cancellation.clone(),
-            )
-            .await?;
-            self.load_data(
                 input.embedding_object_path(),
                 input.embedding_download_metadata(),
                 msg.cancellation.clone(),
@@ -176,9 +170,11 @@ impl<
             )
             .await?;
 
+            // TODO: make this adjusted with size and coefficient configured by Parameters
+            let evalauation_timeout = Duration::from_secs(60);
             let evaluation_output = self
                 .evaluator_client
-                .call(input.clone(), self.ephemeral_store.object_store().clone())
+                .call(input.clone(), evalauation_timeout)
                 .await
                 .map_err(ShardError::EvaluationError)?;
 
@@ -186,6 +182,7 @@ impl<
                 self.ephemeral_store.object_store().clone(),
                 input.input_object_path().clone(),
             ));
+
             self.downloader
                 .download(
                     reader,
