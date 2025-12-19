@@ -22,6 +22,10 @@ use std::{
     fmt::{Debug, Display, Formatter},
     path::{Path, PathBuf},
 };
+use tabled::{
+    builder::Builder,
+    settings::{object::Rows, Modify, Rotate, Width},
+};
 use tracing::info;
 use types::{
     base::SomaAddress,
@@ -651,13 +655,45 @@ impl KeyToolCommand {
 impl Display for CommandOutput {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            // CommandOutput::Alias(update) => {
-            //     write!(
-            //         formatter,
-            //         "Old alias {} was updated to {}",
-            //         update.old_alias, update.new_alias
-            //     )
-            // }
+            CommandOutput::Alias(update) => {
+                write!(
+                    formatter,
+                    "Old alias {} was updated to {}",
+                    update.old_alias, update.new_alias
+                )
+            }
+            // Sign needs to be manually built because we need to wrap the very long
+            // rawTxData string and rawIntentMsg strings into multiple rows due to
+            // their lengths, which we cannot do with a JsonTable
+            CommandOutput::Sign(data) => {
+                let intent_table = json_to_table(&json!(&data.intent))
+                    .with(tabled::settings::Style::rounded().horizontals([]))
+                    .to_string();
+
+                let mut builder = Builder::default();
+                builder
+                    .set_header([
+                        "somaSignature",
+                        "digest",
+                        "rawIntentMsg",
+                        "intent",
+                        "rawTxData",
+                        "somaAddress",
+                    ])
+                    .push_record([
+                        &data.soma_signature,
+                        &data.digest,
+                        &data.raw_intent_msg,
+                        &intent_table,
+                        &data.raw_tx_data,
+                        &data.soma_address.to_string(),
+                    ]);
+                let mut table = builder.build();
+                table.with(Rotate::Left);
+                table.with(tabled::settings::Style::rounded().horizontals([]));
+                table.with(Modify::new(Rows::new(0..)).with(Width::wrap(160).keep_words()));
+                write!(formatter, "{}", table)
+            }
             _ => {
                 let json_obj = json![self];
                 let mut table = json_to_table(&json_obj);

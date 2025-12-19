@@ -3,6 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use super::local_ip_utils;
 use crate::{
     base::SomaAddress,
+    config::Config,
     crypto::{
         get_key_pair_from_rng, AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair,
     },
@@ -25,8 +26,6 @@ pub struct ValidatorGenesisConfig {
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub encoder_validator_address: Multiaddr,
-    pub internal_object_address: Multiaddr,
-    pub external_object_address: Multiaddr,
     pub rpc_address: Multiaddr,
     #[serde(default = "default_stake")]
     pub stake: u64,
@@ -45,8 +44,6 @@ impl Clone for ValidatorGenesisConfig {
             consensus_address: self.consensus_address.clone(),
             p2p_address: self.p2p_address.clone(),
             encoder_validator_address: self.encoder_validator_address.clone(),
-            internal_object_address: self.internal_object_address.clone(),
-            external_object_address: self.external_object_address.clone(),
             rpc_address: self.rpc_address.clone(),
             stake: self.stake.clone(),
             commission_rate: self.commission_rate.clone(),
@@ -62,17 +59,10 @@ pub struct AccountConfig {
     pub gas_amounts: Vec<u64>,
 }
 
-// All information needed to build a NodeConfig for a state sync fullnode.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SsfnGenesisConfig {
-    pub p2p_address: Multiaddr,
-    pub network_key_pair: Option<NetworkKeyPair>,
-}
-
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct GenesisConfig {
-    pub ssfn_config_info: Option<Vec<SsfnGenesisConfig>>,
     pub validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
+    pub networking_validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
     pub parameters: GenesisCeremonyParameters,
     pub accounts: Vec<AccountConfig>,
 }
@@ -100,12 +90,34 @@ impl GenesisConfig {
         )
     }
 
+    pub fn for_local_testing_with_addresses(addresses: Vec<SomaAddress>) -> Self {
+        Self::custom_genesis_with_addresses(addresses, DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT)
+    }
+
     pub fn custom_genesis(num_accounts: usize, num_objects_per_account: usize) -> Self {
         let mut accounts = Vec::new();
         for _ in 0..num_accounts {
             accounts.push(AccountConfig {
                 address: None,
                 gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10; num_objects_per_account],
+            })
+        }
+
+        Self {
+            accounts,
+            ..Default::default()
+        }
+    }
+
+    pub fn custom_genesis_with_addresses(
+        addresses: Vec<SomaAddress>,
+        num_objects_per_account: usize,
+    ) -> Self {
+        let mut accounts = Vec::new();
+        for address in addresses {
+            accounts.push(AccountConfig {
+                address: Some(address),
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
             })
         }
 
@@ -150,6 +162,8 @@ impl GenesisConfig {
         Ok((keys, allocations))
     }
 }
+
+impl Config for GenesisConfig {}
 
 #[derive(Default)]
 pub struct ValidatorGenesisConfigBuilder {
@@ -220,8 +234,6 @@ impl ValidatorGenesisConfigBuilder {
             p2p_address,
             encoder_validator_address,
             rpc_address,
-            internal_object_address,
-            external_object_address,
         ) = if let Some(offset) = self.port_offset {
             (
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
@@ -229,13 +241,9 @@ impl ValidatorGenesisConfigBuilder {
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 5),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 6),
             )
         } else {
             (
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-                local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -253,8 +261,6 @@ impl ValidatorGenesisConfigBuilder {
             consensus_address,
             p2p_address,
             encoder_validator_address,
-            internal_object_address,
-            external_object_address,
             rpc_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,

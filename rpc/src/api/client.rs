@@ -11,6 +11,7 @@ use tracing::info;
 use types::effects::TransactionEffectsAPI as _;
 use types::effects::object_change::IDOperation;
 
+use crate::api::ServerVersion;
 use crate::api::rpc_client;
 use crate::api::rpc_client::HeadersInterceptor;
 use crate::proto::TryFromProtoError;
@@ -273,6 +274,20 @@ impl Client {
         response
             .chain_id
             .ok_or_else(|| tonic::Status::not_found("chain_id not found in service info response"))
+    }
+
+    pub async fn get_server_version(&mut self) -> Result<String> {
+        let request = crate::proto::soma::GetServiceInfoRequest::default();
+        let response = self
+            .0
+            .ledger_client()
+            .get_service_info(request)
+            .await?
+            .into_inner();
+
+        response.server.ok_or_else(|| {
+            tonic::Status::not_found("server_version not found in service info response")
+        })
     }
 
     /// Initiate shard work for a given shard input

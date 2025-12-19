@@ -51,6 +51,7 @@ pub mod transaction_executor;
 pub mod transaction_outputs;
 pub mod tx_fee;
 pub mod unit_tests;
+pub mod validator_info;
 
 use base::SomaAddress;
 use object::{ObjectID, Version, OBJECT_START_VERSION};

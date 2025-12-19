@@ -30,6 +30,13 @@ object_store.workspace = true
 anyhow.workspace = true
 bcs.workspace = true
 fastcrypto.workspace = true
+sdk.workspace = true
+test-cluster.workspace = true
+url.workspace = true
+tempfile.workspace = true
+tap.workspace = true
+protocol-config.workspace = true
+serde_yaml = "0.8.26"
 
 [lints]
 workspace = true

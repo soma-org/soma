@@ -22,7 +22,7 @@ use tokio::io::{AsyncRead, AsyncSeek};
 use tokio::sync::RwLock;
 use tracing::info;
 use types::base::SomaAddress;
-use types::config::{Config, PersistedConfig};
+use types::config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG};
 use types::crypto::{Signature, SomaKeyPair};
 use types::digests::{ObjectDigest, TransactionDigest};
 use types::intent::Intent;
@@ -428,7 +428,7 @@ impl WalletContext {
     pub async fn execute_transaction_must_succeed(
         &self,
         tx: Transaction,
-    ) -> TransactionExecutionResponse {
+    ) -> TransactionExecutionResponseWithCheckpoint {
         tracing::debug!("Executing transaction: {:?}", tx);
         let response = self.execute_transaction_may_fail(tx).await.unwrap();
 
@@ -446,9 +446,8 @@ impl WalletContext {
     pub async fn execute_transaction_may_fail(
         &self,
         tx: Transaction,
-    ) -> anyhow::Result<TransactionExecutionResponse> {
-        let client = self.get_client().await?;
-        Ok(client.execute_transaction(&tx).await?)
+    ) -> anyhow::Result<TransactionExecutionResponseWithCheckpoint> {
+        Ok(self.execute_transaction_and_wait_for_indexing(tx).await?)
     }
 
     /// Execute a transaction and wait for it to be indexed (checkpointed)
@@ -570,4 +569,18 @@ impl WalletContext {
         self.config.save()?;
         Ok(())
     }
+}
+
+pub const DEFAULT_WALLET_TIMEOUT_SEC: u64 = 60;
+
+pub fn create_wallet_context(
+    timeout_secs: u64,
+    config_dir: PathBuf,
+) -> Result<WalletContext, anyhow::Error> {
+    let wallet_conf = config_dir.join(SOMA_CLIENT_CONFIG);
+    info!("Initialize wallet from config path: {:?}", wallet_conf);
+    WalletContext::new(&wallet_conf).map(|ctx| {
+        ctx.with_request_timeout(Duration::from_secs(timeout_secs))
+        //TODO: .with_max_concurrent_requests(1000)
+    })
 }

@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use futures::Stream;
+use rpc::api::ServerVersion;
 use rpc::api::client::{ShardCompletionInfo, ShardError};
 use rpc::proto::soma::ListOwnedObjectsRequest;
 use rpc::proto::soma::{InitiateShardWorkRequest, InitiateShardWorkResponse};
@@ -21,6 +22,8 @@ use rpc::proto::soma::{
     GetShardsByEpochResponse, GetShardsBySubmitterResponse, GetValidTargetsResponse,
 };
 
+use crate::error::SomaRpcResult;
+
 pub mod client_config;
 pub mod error;
 pub mod wallet_context;
@@ -34,14 +37,12 @@ pub const SOMA_MAINNET_URL: &str = "https://fullnode.mainnet.soma.org:443";
 /// Builder for configuring a SomaClient
 pub struct SomaClientBuilder {
     request_timeout: Duration,
-    tus_chunk_size: Option<usize>,
 }
 
 impl Default for SomaClientBuilder {
     fn default() -> Self {
         Self {
             request_timeout: Duration::from_secs(60),
-            tus_chunk_size: None,
         }
     }
 }
@@ -53,11 +54,7 @@ impl SomaClientBuilder {
         self
     }
     /// Build the client with RPC and object storage URLs
-    pub async fn build(
-        self,
-        rpc_url: impl AsRef<str>,
-        object_storage_url: impl AsRef<str>,
-    ) -> Result<SomaClient, error::Error> {
+    pub async fn build(self, rpc_url: impl AsRef<str>) -> Result<SomaClient, error::Error> {
         // Create gRPC client
         let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
@@ -69,20 +66,17 @@ impl SomaClientBuilder {
 
     /// Build a client for the local network with default addresses
     pub async fn build_localnet(self) -> Result<SomaClient, error::Error> {
-        self.build(SOMA_LOCAL_NETWORK_URL, "http://127.0.0.1:8080")
-            .await
+        self.build(SOMA_LOCAL_NETWORK_URL).await
     }
 
     /// Build a client for devnet with default addresses
     pub async fn build_devnet(self) -> Result<SomaClient, error::Error> {
-        self.build(SOMA_DEVNET_URL, "http://fullnode.devnet.soma.org:8080")
-            .await
+        self.build(SOMA_DEVNET_URL).await
     }
 
     /// Build a client for testnet with default addresses
     pub async fn build_testnet(self) -> Result<SomaClient, error::Error> {
-        self.build(SOMA_TESTNET_URL, "http://fullnode.testnet.soma.org:8080")
-            .await
+        self.build(SOMA_TESTNET_URL).await
     }
 }
 
@@ -161,6 +155,12 @@ impl SomaClient {
         client.get_chain_identifier().await
     }
 
+    /// Get the server version from the network
+    pub async fn get_server_version(&self) -> Result<String, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_server_version().await
+    }
+
     /// Initiate shard work for encoding
     pub async fn initiate_shard_work(
         &self,
@@ -168,6 +168,22 @@ impl SomaClient {
     ) -> Result<InitiateShardWorkResponse, tonic::Status> {
         let mut client = self.inner.write().await;
         client.initiate_shard_work(request).await
+    }
+
+    /// Verifies if the API version matches the server version and returns an error if they do not match.
+    pub async fn check_api_version(&self) -> SomaRpcResult<()> {
+        let server_version = self
+            .get_server_version()
+            .await
+            .map_err(|e| crate::error::Error::RpcError(e.into()))?;
+        let client_version = env!("CARGO_PKG_VERSION");
+        if server_version != client_version {
+            return Err(crate::error::Error::ServerVersionMismatch {
+                client_version: client_version.to_string(),
+                server_version: server_version,
+            });
+        };
+        Ok(())
     }
 
     // =========================================================================

@@ -17,7 +17,8 @@ use types::{
 };
 
 use crate::{
-    SOMA_DEVNET_URL, SOMA_LOCAL_NETWORK_URL, SOMA_TESTNET_URL, SomaClient, SomaClientBuilder,
+    SOMA_DEVNET_URL, SOMA_LOCAL_NETWORK_URL, SOMA_MAINNET_URL, SOMA_TESTNET_URL, SomaClient,
+    SomaClientBuilder,
 };
 
 #[serde_as]
@@ -109,7 +110,6 @@ pub async fn encoder_config_to_client_config(
     let env = SomaEnv {
         alias: "encoder-env".to_string(),
         rpc: format!("http://{}", encoder_config.rpc_address),
-        internal_object_address: format!("http://{}", encoder_config.rpc_address),
         basic_auth: None,
         chain_id: None, // TODO: change this chain_id?
     };
@@ -132,7 +132,6 @@ impl Config for SomaClientConfig {}
 pub struct SomaEnv {
     pub alias: String,
     pub rpc: String, // This is now the gRPC endpoint URL
-    pub internal_object_address: String,
     pub basic_auth: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chain_id: Option<String>,
@@ -160,25 +159,31 @@ impl SomaEnv {
         //     builder = builder.basic_auth(fields[0], fields[1]);
         // }
 
-        Ok(builder
-            .build(&self.rpc, &self.internal_object_address)
-            .await?)
+        Ok(builder.build(&self.rpc).await?)
+    }
+
+    pub fn mainnet() -> Self {
+        Self {
+            alias: "mainnet".to_string(),
+            rpc: SOMA_MAINNET_URL.into(),
+            basic_auth: None,
+            chain_id: None,
+        }
     }
 
     pub fn devnet() -> Self {
         Self {
             alias: "devnet".to_string(),
             rpc: SOMA_DEVNET_URL.into(),
-            internal_object_address: "http://fullnode.devnet.soma.org:8080".into(),
             basic_auth: None,
             chain_id: None,
         }
     }
+
     pub fn testnet() -> Self {
         Self {
             alias: "testnet".to_string(),
             rpc: SOMA_TESTNET_URL.into(),
-            internal_object_address: "http://fullnode.testnet.soma.org:8080".into(),
             basic_auth: None,
             chain_id: None,
         }
@@ -188,7 +193,6 @@ impl SomaEnv {
         Self {
             alias: "local".to_string(),
             rpc: SOMA_LOCAL_NETWORK_URL.into(),
-            internal_object_address: "http://127.0.0.1:8080".into(),
             basic_auth: None,
             chain_id: None,
         }
