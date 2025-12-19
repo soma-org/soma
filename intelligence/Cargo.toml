@@ -38,6 +38,7 @@ url.workspace = true
 fastcrypto.workspace = true
 futures.workspace = true
 burn.workspace = true
+probes.workspace = true
 
 [dev-dependencies]
 tempdir = "0.3"

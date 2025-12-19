@@ -213,6 +213,7 @@ soma-network = { path = "soma-network" }
 objects = { path = "objects" }
 test-encoder-cluster = { path = "test-encoder-cluster" }
 arrgen = { path = "arrgen" }
+probes = { path = "probes" }
 
 
 # external deps
@@ -259,7 +260,7 @@ mockall = "0.13.1"
 quick_cache = "0.6.10"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = { version = "0.19.1", features = ["ndarray", "store"] }
+burn = { version = "0.19.1", features = ["ndarray", "store", "wgpu"] }
 http = "1"
 http-body = "1"
 http-body-util = "0.1"

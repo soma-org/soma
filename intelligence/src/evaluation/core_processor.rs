@@ -178,49 +178,6 @@ impl<
                 .await
                 .map_err(ShardError::EvaluationError)?;
 
-            let reader = Arc::new(ObjectStoreReader::new(
-                self.ephemeral_store.object_store().clone(),
-                input.input_object_path().clone(),
-            ));
-
-            self.downloader
-                .download(
-                    reader,
-                    self.persistent_store.object_store().clone(),
-                    input.input_object_path().clone(),
-                    input.input_download_metadata().metadata().clone(),
-                )
-                .await
-                .map_err(ShardError::ObjectError)?;
-
-            let reader = Arc::new(ObjectStoreReader::new(
-                self.ephemeral_store.object_store().clone(),
-                input.embedding_object_path().clone(),
-            ));
-            self.downloader
-                .download(
-                    reader,
-                    self.persistent_store.object_store().clone(),
-                    input.embedding_object_path().clone(),
-                    input.embedding_download_metadata().metadata().clone(),
-                )
-                .await
-                .map_err(ShardError::ObjectError)?;
-
-            let reader = Arc::new(ObjectStoreReader::new(
-                self.ephemeral_store.object_store().clone(),
-                input.probe_object_path().clone(),
-            ));
-            self.downloader
-                .download(
-                    reader,
-                    self.persistent_store.object_store().clone(),
-                    input.probe_object_path().clone(),
-                    input.probe_download_metadata().metadata().clone(),
-                )
-                .await
-                .map_err(ShardError::ObjectError)?;
-
             Ok(evaluation_output)
         }
         .await;
