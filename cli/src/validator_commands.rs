@@ -180,7 +180,6 @@ impl SomaValidatorCommand {
         context: &mut WalletContext,
     ) -> Result<ValidatorCommandResponse, anyhow::Error> {
         let sender = context.active_address()?;
-        let builder = TransactionBuilder::new(context);
 
         match self {
             SomaValidatorCommand::MakeValidatorInfo {
@@ -193,7 +192,7 @@ impl SomaValidatorCommand {
 
             SomaValidatorCommand::JoinCommittee { file, tx_args } => {
                 let kind = build_join_committee_tx(&file)?;
-                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+                execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
             SomaValidatorCommand::LeaveCommittee { tx_args } => {
@@ -207,7 +206,7 @@ impl SomaValidatorCommand {
                 let kind = TransactionKind::RemoveValidator(RemoveValidatorArgs {
                     pubkey_bytes: vec![], // The signer is inferred from tx sender
                 });
-                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+                execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
             SomaValidatorCommand::DisplayMetadata {
@@ -232,7 +231,7 @@ impl SomaValidatorCommand {
                 .await?;
 
                 let kind = build_update_metadata_tx(metadata)?;
-                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+                execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
             SomaValidatorCommand::SetCommissionRate {
@@ -258,7 +257,7 @@ impl SomaValidatorCommand {
                 let kind = TransactionKind::SetCommissionRate {
                     new_rate: commission_rate,
                 };
-                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+                execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
             SomaValidatorCommand::ReportValidator {
@@ -287,7 +286,7 @@ impl SomaValidatorCommand {
                         reportee: reportee_address,
                     }
                 };
-                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+                execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
         }
     }
@@ -316,11 +315,12 @@ fn check_address(
 /// Execute a transaction or serialize it for offline signing
 async fn execute_or_serialize(
     context: &mut WalletContext,
-    builder: &TransactionBuilder<'_>,
     sender: SomaAddress,
     kind: TransactionKind,
     options: ExecutionOptions,
 ) -> Result<ValidatorCommandResponse> {
+    let builder = TransactionBuilder::new(context);
+
     if options.serialize_unsigned {
         let serialized = builder
             .build_serialized_unsigned(sender, kind, options.gas)
@@ -330,6 +330,7 @@ async fn execute_or_serialize(
         })
     } else {
         let tx = builder.build_transaction(sender, kind, options.gas).await?;
+        drop(builder); // Release the borrow before execute_transaction
         let response = execute_transaction(context, tx).await?;
         Ok(ValidatorCommandResponse::Transaction(response))
     }
@@ -350,35 +351,28 @@ async fn execute_transaction(
     ))
 }
 
-fn make_key_file(
-    file_name: PathBuf,
-    is_protocol_key: bool,
-    key: Option<SomaKeyPair>,
-) -> Result<()> {
-    if file_name.exists() {
-        println!("Use existing {:?} key file.", file_name);
+/// Create a key file if it doesn't exist
+fn make_key_file(path: &PathBuf, is_protocol_key: bool, key: Option<SomaKeyPair>) -> Result<()> {
+    if path.exists() {
+        println!("Using existing key file: {:?}", path);
         return Ok(());
-    } else if is_protocol_key {
+    }
+
+    if is_protocol_key {
         let (_, keypair) = get_authority_key_pair();
-        write_authority_keypair_to_file(&keypair, file_name.clone())?;
-        println!("Generated new key file: {:?}.", file_name);
+        write_authority_keypair_to_file(&keypair, path)?;
     } else {
         let kp = match key {
-            Some(key) => {
-                println!(
-                    "Generated new key file {:?} based on soma.keystore file.",
-                    file_name
-                );
-                key
-            }
+            Some(k) => k,
             None => {
                 let (_, kp, _, _) = generate_new_key(SignatureScheme::ED25519, None, None)?;
-                println!("Generated new key file: {:?}.", file_name);
                 kp
             }
         };
-        write_keypair_to_file(&kp, &file_name)?;
+        write_keypair_to_file(&kp, path)?;
     }
+
+    println!("Generated new key file: {:?}", path);
     Ok(())
 }
 
@@ -403,10 +397,10 @@ fn make_validator_info(
         _ => bail!("Only Ed25519 account keys are currently supported"),
     };
 
-    make_key_file(protocol_key_file, true, None)?;
-    make_key_file(account_key_file, false, Some(account_key))?;
-    make_key_file(network_key_file, false, None)?;
-    make_key_file(worker_key_file, false, None)?;
+    make_key_file(&protocol_key_file, true, None)?;
+    make_key_file(&account_key_file, false, Some(account_key))?;
+    make_key_file(&network_key_file, false, None)?;
+    make_key_file(&worker_key_file, false, None)?;
 
     // Read back keys to build validator info
     let protocol_keypair: AuthorityKeyPair = read_authority_keypair_from_file(&protocol_key_file)?;

@@ -227,11 +227,6 @@ pub enum SomaCommand {
         #[clap(long, global = true)]
         json: bool,
     },
-    /// Tool for Fire Drill
-    FireDrill {
-        #[clap(subcommand)]
-        fire_drill: FireDrill,
-    },
 }
 
 impl SomaCommand {
@@ -354,7 +349,6 @@ impl SomaCommand {
                 }
                 Ok(())
             }
-            SomaCommand::FireDrill { fire_drill } => run_fire_drill(fire_drill).await,
         }
     }
 }

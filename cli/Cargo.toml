@@ -36,6 +36,8 @@ url.workspace = true
 tempfile.workspace = true
 tap.workspace = true
 protocol-config.workspace = true
+rpc.workspace = true
+futures.workspace = true
 serde_yaml = "0.8.26"
 
 [lints]
