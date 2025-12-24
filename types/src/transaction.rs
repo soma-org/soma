@@ -223,6 +223,19 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
 }
 
+impl Default for UpdateValidatorMetadataArgs {
+    fn default() -> Self {
+        Self {
+            next_epoch_network_address: None,
+            next_epoch_p2p_address: None,
+            next_epoch_primary_address: None,
+            next_epoch_protocol_pubkey: None,
+            next_epoch_worker_pubkey: None,
+            next_epoch_network_pubkey: None,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct AddEncoderArgs {
     pub encoder_pubkey_bytes: Vec<u8>,

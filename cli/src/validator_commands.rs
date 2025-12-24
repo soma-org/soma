@@ -23,14 +23,21 @@ use types::{
     crypto::{AuthorityPublicKey, NetworkPublicKey, Signable},
     multiaddr::Multiaddr,
     object::{ObjectID, ObjectRef, Owner},
+    system_state::{validator::Validator, SystemState},
+    transaction::{
+        AddValidatorArgs, RemoveValidatorArgs, TransactionKind, UpdateValidatorMetadataArgs,
+    },
 };
 use types::{
     intent::{Intent, IntentMessage, IntentScope},
     validator_info::GenesisValidatorInfo,
 };
 
-use sdk::wallet_context::WalletContext;
 use sdk::SomaClient;
+use sdk::{
+    transaction_builder::{ExecutionOptions, TransactionBuilder},
+    wallet_context::WalletContext,
+};
 use soma_keys::{
     key_derive::generate_new_key,
     keypair_file::{
@@ -43,6 +50,10 @@ use types::crypto::{get_authority_key_pair, AuthorityPublicKeyBytes};
 use types::crypto::{AuthorityKeyPair, NetworkKeyPair, SignatureScheme, SomaKeyPair};
 use types::transaction::{Transaction, TransactionData};
 
+use crate::response::{
+    TransactionResponse, ValidatorCommandResponse, ValidatorStatus, ValidatorSummary,
+};
+
 /// Arguments related to transaction processing
 #[derive(Args, Debug, Default)]
 pub struct TxProcessingArgs {
@@ -53,33 +64,58 @@ pub struct TxProcessingArgs {
     pub serialize_unsigned_transaction: bool,
 }
 
+impl From<TxProcessingArgs> for ExecutionOptions {
+    fn from(args: TxProcessingArgs) -> Self {
+        let mut opts = ExecutionOptions::new();
+        if args.serialize_unsigned_transaction {
+            opts = opts.serialize_unsigned();
+        }
+        opts
+    }
+}
+
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum SomaValidatorCommand {
+    /// Generate validator key files and info
     #[clap(name = "make-validator-info")]
     MakeValidatorInfo {
+        /// Hostname for the validator (e.g., validator.example.com)
         host_name: String,
+        /// Commission rate in basis points (100 = 1%)
+        #[clap(default_value_t = DEFAULT_COMMISSION_RATE)]
         commission_rate: u64,
     },
+
+    /// Request to join the validator committee
     #[clap(name = "join-committee")]
-    AddValidator {
+    JoinCommittee {
+        /// Path to the validator.info file
         #[clap(name = "validator-info-path")]
         file: PathBuf,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
+
+    /// Request to leave the validator committee
     #[clap(name = "leave-committee")]
-    RemoveValidator {
+    LeaveCommittee {
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
+
+    /// Display validator metadata
     #[clap(name = "display-metadata")]
     DisplayMetadata {
+        /// Validator address (defaults to active address)
         #[clap(name = "validator-address")]
         validator_address: Option<SomaAddress>,
-        #[clap(name = "json", long)]
-        json: Option<bool>,
+        /// Output as JSON
+        #[clap(long, default_value_t = false)]
+        json: bool,
     },
+
+    /// Update validator metadata
     #[clap(name = "update-metadata")]
     UpdateMetadata {
         #[clap(subcommand)]
@@ -87,61 +123,234 @@ pub enum SomaValidatorCommand {
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
-    /// Set commission rate
+
+    /// Set commission rate for the next epoch
     #[clap(name = "set-commission-rate")]
     SetCommissionRate {
+        /// Commission rate in basis points (100 = 1%, max 10000 = 100%)
         #[clap(name = "commission-rate")]
         commission_rate: u64,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
-    /// Report or un-report a validator.
+
+    /// Report or un-report a validator
     #[clap(name = "report-validator")]
     ReportValidator {
-        /// Optional when sender is reporter validator itself and it holds the Cap object.
-        /// Required when sender is not the reporter validator itself.
-        /// Validator's OperationCap ID can be found by using the `display-metadata` subcommand.
-        #[clap(name = "operation-cap-id", long)]
-        operation_cap_id: Option<ObjectID>,
-        /// The Soma Address of the validator is being reported or un-reported
+        /// The Soma address of the validator being reported
         #[clap(name = "reportee-address")]
         reportee_address: SomaAddress,
-        /// If true, undo an existing report.
-        #[clap(name = "undo-report", long)]
-        undo_report: Option<bool>,
+        /// If true, undo an existing report
+        #[clap(long, default_value_t = false)]
+        undo_report: bool,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
-pub enum SomaValidatorCommandResponse {
-    MakeValidatorInfo,
-    DisplayMetadata,
-    AddValidator {
-        response: Option<SomaTransactionBlockResponse>,
-        serialized_unsigned_transaction: Option<String>,
+#[derive(Subcommand, Clone)]
+#[clap(rename_all = "kebab-case")]
+pub enum MetadataUpdate {
+    /// Update network address (takes effect next epoch)
+    NetworkAddress { network_address: Multiaddr },
+    /// Update primary address (takes effect next epoch)
+    PrimaryAddress { primary_address: Multiaddr },
+    /// Update P2P address (takes effect next epoch)
+    P2pAddress { p2p_address: Multiaddr },
+    /// Update network public key (takes effect next epoch)
+    NetworkPubKey {
+        #[clap(name = "network-key-path")]
+        file: PathBuf,
     },
-    RemoveValidator {
-        response: Option<SomaTransactionBlockResponse>,
-        serialized_unsigned_transaction: Option<String>,
+    /// Update worker public key (takes effect next epoch)
+    WorkerPubKey {
+        #[clap(name = "worker-key-path")]
+        file: PathBuf,
     },
-    UpdateMetadata {
-        response: Option<SomaTransactionBlockResponse>,
-        serialized_unsigned_transaction: Option<String>,
-    },
-    SetCommissionRate {
-        response: Option<SomaTransactionBlockResponse>,
-        serialized_unsigned_transaction: Option<String>,
-    },
-    ReportValidator {
-        response: Option<SomaTransactionBlockResponse>,
-        serialized_unsigned_transaction: Option<String>,
+    /// Update protocol public key (takes effect next epoch)
+    ProtocolPubKey {
+        #[clap(name = "protocol-key-path")]
+        file: PathBuf,
     },
 }
 
-fn make_key_files(
+impl SomaValidatorCommand {
+    pub async fn execute(
+        self,
+        context: &mut WalletContext,
+    ) -> Result<ValidatorCommandResponse, anyhow::Error> {
+        let sender = context.active_address()?;
+        let builder = TransactionBuilder::new(context);
+
+        match self {
+            SomaValidatorCommand::MakeValidatorInfo {
+                host_name,
+                commission_rate,
+            } => {
+                make_validator_info(context, &host_name, commission_rate)?;
+                Ok(ValidatorCommandResponse::MakeValidatorInfo)
+            }
+
+            SomaValidatorCommand::JoinCommittee { file, tx_args } => {
+                let kind = build_join_committee_tx(&file)?;
+                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+            }
+
+            SomaValidatorCommand::LeaveCommittee { tx_args } => {
+                // Verify sender is an active validator before building tx
+                check_status(
+                    context,
+                    HashSet::from([ValidatorStatus::Consensus, ValidatorStatus::Networking]),
+                )
+                .await?;
+
+                let kind = TransactionKind::RemoveValidator(RemoveValidatorArgs {
+                    pubkey_bytes: vec![], // The signer is inferred from tx sender
+                });
+                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+            }
+
+            SomaValidatorCommand::DisplayMetadata {
+                validator_address,
+                json,
+            } => {
+                let address = validator_address.unwrap_or(sender);
+                display_metadata(context, address, json).await?;
+                Ok(ValidatorCommandResponse::DisplayMetadata)
+            }
+
+            SomaValidatorCommand::UpdateMetadata { metadata, tx_args } => {
+                // Verify sender is active or pending
+                check_status(
+                    context,
+                    HashSet::from([
+                        ValidatorStatus::Consensus,
+                        ValidatorStatus::Networking,
+                        ValidatorStatus::Pending,
+                    ]),
+                )
+                .await?;
+
+                let kind = build_update_metadata_tx(metadata)?;
+                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+            }
+
+            SomaValidatorCommand::SetCommissionRate {
+                commission_rate,
+                tx_args,
+            } => {
+                // Verify sender is active or pending
+                check_status(
+                    context,
+                    HashSet::from([
+                        ValidatorStatus::Consensus,
+                        ValidatorStatus::Networking,
+                        ValidatorStatus::Pending,
+                    ]),
+                )
+                .await?;
+
+                // Validate commission rate (max 10000 = 100%)
+                if commission_rate > 10000 {
+                    bail!("Commission rate cannot exceed 10000 (100%)");
+                }
+
+                let kind = TransactionKind::SetCommissionRate {
+                    new_rate: commission_rate,
+                };
+                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+            }
+
+            SomaValidatorCommand::ReportValidator {
+                reportee_address,
+                undo_report,
+                tx_args,
+            } => {
+                // Only active validators can report
+                check_status(
+                    context,
+                    HashSet::from([ValidatorStatus::Consensus, ValidatorStatus::Networking]),
+                )
+                .await?;
+
+                // Can't report yourself
+                if sender == reportee_address {
+                    bail!("Cannot report yourself");
+                }
+
+                let kind = if undo_report {
+                    TransactionKind::UndoReportValidator {
+                        reportee: reportee_address,
+                    }
+                } else {
+                    TransactionKind::ReportValidator {
+                        reportee: reportee_address,
+                    }
+                };
+                execute_or_serialize(context, &builder, sender, kind, tx_args.into()).await
+            }
+        }
+    }
+}
+
+fn check_address(
+    active_address: SomaAddress,
+    validator_address: Option<SomaAddress>,
+    print_unsigned_transaction_only: bool,
+) -> Result<SomaAddress, anyhow::Error> {
+    if !print_unsigned_transaction_only {
+        if let Some(validator_address) = validator_address {
+            if validator_address != active_address {
+                bail!(
+                    "`--validator-address` must be the same as the current active address: {}",
+                    active_address
+                );
+            }
+        }
+        Ok(active_address)
+    } else {
+        validator_address
+            .ok_or_else(|| anyhow!("--validator-address must be provided when `print_unsigned_transaction_only` is true"))
+    }
+}
+/// Execute a transaction or serialize it for offline signing
+async fn execute_or_serialize(
+    context: &mut WalletContext,
+    builder: &TransactionBuilder<'_>,
+    sender: SomaAddress,
+    kind: TransactionKind,
+    options: ExecutionOptions,
+) -> Result<ValidatorCommandResponse> {
+    if options.serialize_unsigned {
+        let serialized = builder
+            .build_serialized_unsigned(sender, kind, options.gas)
+            .await?;
+        Ok(ValidatorCommandResponse::SerializedTransaction {
+            serialized_unsigned_transaction: serialized,
+        })
+    } else {
+        let tx = builder.build_transaction(sender, kind, options.gas).await?;
+        let response = execute_transaction(context, tx).await?;
+        Ok(ValidatorCommandResponse::Transaction(response))
+    }
+}
+
+/// Execute a signed transaction and wait for checkpoint
+async fn execute_transaction(
+    context: &WalletContext,
+    tx: Transaction,
+) -> Result<TransactionResponse> {
+    // Execute and wait for checkpoint finality
+    let response = context.execute_transaction_may_fail(tx).await?;
+
+    Ok(TransactionResponse::from_effects_with_balance_changes(
+        &response.effects,
+        Some(response.checkpoint_sequence_number),
+        response.balance_changes,
+    ))
+}
+
+fn make_key_file(
     file_name: PathBuf,
     is_protocol_key: bool,
     key: Option<SomaKeyPair>,
@@ -173,765 +382,252 @@ fn make_key_files(
     Ok(())
 }
 
-impl SomaValidatorCommand {
-    pub async fn execute(
-        self,
-        context: &mut WalletContext,
-    ) -> Result<SomaValidatorCommandResponse, anyhow::Error> {
-        let soma_address = context.active_address()?;
-
-        Ok(match self {
-            SomaValidatorCommand::MakeValidatorInfo {
-                host_name,
-                commission_rate,
-            } => {
-                let dir = std::env::current_dir()?;
-                let protocol_key_file_name = dir.join("protocol.key");
-                let account_key = match context.config.keystore.export(&soma_address)? {
-                    SomaKeyPair::Ed25519(account_key) => SomaKeyPair::Ed25519(account_key.copy()),
-                    _ => panic!(
-                        "Other account key types supported yet, please use Ed25519 keys for now."
-                    ),
-                };
-                let account_key_file_name = dir.join("account.key");
-                let network_key_file_name = dir.join("network.key");
-                let worker_key_file_name = dir.join("worker.key");
-                make_key_files(protocol_key_file_name.clone(), true, None)?;
-                make_key_files(account_key_file_name.clone(), false, Some(account_key))?;
-                make_key_files(network_key_file_name.clone(), false, None)?;
-                make_key_files(worker_key_file_name.clone(), false, None)?;
-
-                let keypair: AuthorityKeyPair =
-                    read_authority_keypair_from_file(protocol_key_file_name)?;
-                let account_keypair: SomaKeyPair = read_keypair_from_file(account_key_file_name)?;
-                let worker_keypair: NetworkKeyPair =
-                    read_network_keypair_from_file(worker_key_file_name)?;
-                let network_keypair: NetworkKeyPair =
-                    read_network_keypair_from_file(network_key_file_name)?;
-                let validator_info = GenesisValidatorInfo {
-                    info: types::validator_info::ValidatorInfo {
-                        protocol_key: keypair.public().into(),
-                        worker_key: worker_keypair.public().clone(),
-                        account_address: SomaAddress::from(&account_keypair.public()),
-                        network_key: network_keypair.public().clone(),
-                        commission_rate: DEFAULT_COMMISSION_RATE,
-                        network_address: Multiaddr::try_from(format!(
-                            "/dns/{}/tcp/8080/http",
-                            host_name
-                        ))?,
-                        p2p_address: Multiaddr::try_from(format!(
-                            "/dns/{}/tcp/8084/http",
-                            host_name
-                        ))?,
-                        primary_address: Multiaddr::try_from(format!(
-                            "/dns/{}/tcp/8081/http",
-                            host_name
-                        ))?,
-                        worker_address: Multiaddr::try_from(format!(
-                            "/dns/{}/tcp/8082/http",
-                            host_name
-                        ))?,
-                    },
-                };
-                // TODO set key files permission
-                let validator_info_file_name = dir.join("validator.info");
-                let validator_info_bytes = serde_yaml::to_string(&validator_info)?;
-                fs::write(validator_info_file_name.clone(), validator_info_bytes)?;
-                println!(
-                    "Generated validator info file: {:?}.",
-                    validator_info_file_name
-                );
-                SomaValidatorCommandResponse::MakeValidatorInfo
-            }
-            SomaValidatorCommand::AddValidator { file, tx_args } => {
-                let gas_budget = tx_args.gas_budget.unwrap_or(DEFAULT_GAS_BUDGET);
-                let validator_info_bytes = fs::read(file)?;
-                // Note: we should probably rename the struct or evolve it accordingly.
-                let validator_info: GenesisValidatorInfo =
-                    serde_yaml::from_slice(&validator_info_bytes)?;
-                let validator = validator_info.info;
-
-                let args = vec![
-                    CallArg::Pure(
-                        bcs::to_bytes(&AuthorityPublicKeyBytes::from_bytes(
-                            validator.protocol_key().as_bytes(),
-                        )?)
-                        .unwrap(),
-                    ),
-                    CallArg::Pure(
-                        bcs::to_bytes(&validator.network_key().as_bytes().to_vec()).unwrap(),
-                    ),
-                    CallArg::Pure(
-                        bcs::to_bytes(&validator.worker_key().as_bytes().to_vec()).unwrap(),
-                    ),
-                    CallArg::Pure(
-                        bcs::to_bytes(&validator_info.proof_of_possession.as_ref().to_vec())
-                            .unwrap(),
-                    ),
-                    CallArg::Pure(
-                        bcs::to_bytes(&validator.name().to_owned().into_bytes()).unwrap(),
-                    ),
-                    CallArg::Pure(
-                        bcs::to_bytes(&validator.description.clone().into_bytes()).unwrap(),
-                    ),
-                    CallArg::Pure(
-                        bcs::to_bytes(&validator.image_url.clone().into_bytes()).unwrap(),
-                    ),
-                    CallArg::Pure(
-                        bcs::to_bytes(&validator.project_url.clone().into_bytes()).unwrap(),
-                    ),
-                    CallArg::Pure(bcs::to_bytes(validator.network_address()).unwrap()),
-                    CallArg::Pure(bcs::to_bytes(validator.p2p_address()).unwrap()),
-                    CallArg::Pure(bcs::to_bytes(validator.narwhal_primary_address()).unwrap()),
-                    CallArg::Pure(bcs::to_bytes(validator.narwhal_worker_address()).unwrap()),
-                    CallArg::Pure(bcs::to_bytes(&validator.gas_price()).unwrap()),
-                    CallArg::Pure(bcs::to_bytes(&validator.commission_rate()).unwrap()),
-                ];
-                let (response, serialized_unsigned_transaction) = call_0x5(
-                    context,
-                    "request_add_validator_candidate",
-                    args,
-                    gas_budget,
-                    tx_args.serialize_unsigned_transaction,
-                )
-                .await?;
-                SomaValidatorCommandResponse::AddValidator {
-                    response,
-                    serialized_unsigned_transaction,
-                }
-            }
-
-            SomaValidatorCommand::RemoveValidator { tx_args } => {
-                // Only an active validator can leave committee.
-                let _status =
-                    check_status(context, HashSet::from([ValidatorStatus::Active])).await?;
-                let gas_budget = tx_args.gas_budget.unwrap_or(DEFAULT_GAS_BUDGET);
-                let (response, serialized_unsigned_transaction) = call_0x5(
-                    context,
-                    "request_remove_validator",
-                    vec![],
-                    gas_budget,
-                    tx_args.serialize_unsigned_transaction,
-                )
-                .await?;
-                SomaValidatorCommandResponse::RemoveValidator {
-                    response,
-                    serialized_unsigned_transaction,
-                }
-            }
-
-            SomaValidatorCommand::DisplayMetadata {
-                validator_address,
-                json,
-            } => {
-                let validator_address = validator_address.unwrap_or(context.active_address()?);
-                // Default display with json serialization for better UX.
-                let soma_client = context.get_client().await?;
-                display_metadata(&soma_client, validator_address, json.unwrap_or(true)).await?;
-                SomaValidatorCommandResponse::DisplayMetadata
-            }
-
-            SomaValidatorCommand::UpdateMetadata { metadata, tx_args } => {
-                let gas_budget = tx_args.gas_budget.unwrap_or(DEFAULT_GAS_BUDGET);
-                let (response, serialized_unsigned_transaction) = update_metadata(
-                    context,
-                    metadata,
-                    gas_budget,
-                    tx_args.serialize_unsigned_transaction,
-                )
-                .await?;
-                SomaValidatorCommandResponse::UpdateMetadata {
-                    response,
-                    serialized_unsigned_transaction,
-                }
-            }
-
-            SomaValidatorCommand::SetCommissionRate {
-                commission_rate,
-                tx_args,
-            } => {
-                let gas_budget = tx_args.gas_budget.unwrap_or(DEFAULT_GAS_BUDGET);
-                let (response, serialized_unsigned_transaction) = update_gas_price(
-                    context,
-                    operation_cap_id,
-                    gas_price,
-                    gas_budget,
-                    tx_args.serialize_unsigned_transaction,
-                )
-                .await?;
-                SomaValidatorCommandResponse::SetCommissionRate {
-                    response,
-                    serialized_unsigned_transaction,
-                }
-            }
-
-            SomaValidatorCommand::ReportValidator {
-                operation_cap_id,
-                reportee_address,
-                undo_report,
-                tx_args,
-            } => {
-                let gas_budget = tx_args.gas_budget.unwrap_or(DEFAULT_GAS_BUDGET);
-                let undo_report = undo_report.unwrap_or(false);
-                let (response, serialized_unsigned_transaction) = report_validator(
-                    context,
-                    reportee_address,
-                    operation_cap_id,
-                    undo_report,
-                    gas_budget,
-                    tx_args.serialize_unsigned_transaction,
-                )
-                .await?;
-                SomaValidatorCommandResponse::ReportValidator {
-                    response,
-                    serialized_unsigned_transaction,
-                }
-            }
-        })
-    }
-}
-
-fn check_address(
-    active_address: SomaAddress,
-    validator_address: Option<SomaAddress>,
-    print_unsigned_transaction_only: bool,
-) -> Result<SomaAddress, anyhow::Error> {
-    if !print_unsigned_transaction_only {
-        if let Some(validator_address) = validator_address {
-            if validator_address != active_address {
-                bail!(
-                    "`--validator-address` must be the same as the current active address: {}",
-                    active_address
-                );
-            }
-        }
-        Ok(active_address)
-    } else {
-        validator_address
-            .ok_or_else(|| anyhow!("--validator-address must be provided when `print_unsigned_transaction_only` is true"))
-    }
-}
-
-async fn update_commission_rate(
+/// Generate validator info files
+fn make_validator_info(
     context: &mut WalletContext,
+    host_name: &str,
     commission_rate: u64,
-    serialize_unsigned_transaction: bool,
-) -> Result<(Option<SomaTransactionBlockResponse>, Option<String>)> {
-    // TODO: Only active/pending validators can set commission rate.
+) -> Result<()> {
+    let sender = context.active_address()?;
+    let dir = std::env::current_dir()?;
 
-    let args = vec![
-        CallArg::Object(ObjectArg::ImmOrOwnedObject(cap_obj_ref)),
-        CallArg::Pure(bcs::to_bytes(&gas_price).unwrap()),
-    ];
-    call_0x5(
-        context,
-        "request_set_gas_price",
-        args,
-        gas_budget,
-        serialize_unsigned_transaction,
-    )
-    .await
-}
+    // Key file paths
+    let protocol_key_file = dir.join("protocol.key");
+    let account_key_file = dir.join("account.key");
+    let network_key_file = dir.join("network.key");
+    let worker_key_file = dir.join("worker.key");
 
-async fn report_validator(
-    context: &mut WalletContext,
-    reportee_address: SomaAddress,
-    undo_report: bool,
-    serialize_unsigned_transaction: bool,
-) -> Result<(Option<SomaTransactionBlockResponse>, Option<String>)> {
-    let validator_address = summary.soma_address;
-    // Only active validators can report/un-report.
-    if !matches!(status, ValidatorStatus::Active) {
-        anyhow::bail!(
-            "Only active Validator can report/un-report Validators, but {} is {:?}.",
-            validator_address,
-            status
-        );
-    }
-    let args = vec![
-        CallArg::Object(ObjectArg::ImmOrOwnedObject(cap_obj_ref)),
-        CallArg::Pure(bcs::to_bytes(&reportee_address).unwrap()),
-    ];
-    let function_name = if undo_report {
-        "undo_report_validator"
-    } else {
-        "report_validator"
+    // Generate keys
+    let account_key = match context.config.keystore.export(&sender)? {
+        SomaKeyPair::Ed25519(key) => SomaKeyPair::Ed25519(key.copy()),
+        _ => bail!("Only Ed25519 account keys are currently supported"),
     };
-    call_0x5(
-        context,
-        function_name,
-        args,
-        gas_budget,
-        serialize_unsigned_transaction,
-    )
-    .await
+
+    make_key_file(protocol_key_file, true, None)?;
+    make_key_file(account_key_file, false, Some(account_key))?;
+    make_key_file(network_key_file, false, None)?;
+    make_key_file(worker_key_file, false, None)?;
+
+    // Read back keys to build validator info
+    let protocol_keypair: AuthorityKeyPair = read_authority_keypair_from_file(&protocol_key_file)?;
+    let account_keypair: SomaKeyPair = read_keypair_from_file(&account_key_file)?;
+    let network_keypair: NetworkKeyPair = read_network_keypair_from_file(&network_key_file)?;
+    let worker_keypair: NetworkKeyPair = read_network_keypair_from_file(&worker_key_file)?;
+
+    let validator_info = GenesisValidatorInfo {
+        info: types::validator_info::ValidatorInfo {
+            protocol_key: protocol_keypair.public().into(),
+            worker_key: worker_keypair.public().clone(),
+            account_address: SomaAddress::from(&account_keypair.public()),
+            network_key: network_keypair.public().clone(),
+            commission_rate,
+            network_address: Multiaddr::try_from(format!("/dns/{}/tcp/8080/http", host_name))?,
+            p2p_address: Multiaddr::try_from(format!("/dns/{}/tcp/8084/http", host_name))?,
+            primary_address: Multiaddr::try_from(format!("/dns/{}/tcp/8081/http", host_name))?,
+            encoder_validator_address: Multiaddr::try_from(format!(
+                "/dns/{}/tcp/8082/http",
+                host_name
+            ))?,
+        },
+    };
+
+    let validator_info_file = dir.join("validator.info");
+    let validator_info_yaml = serde_yaml::to_string(&validator_info)?;
+    fs::write(&validator_info_file, validator_info_yaml)?;
+
+    println!("Generated key files in: {}", dir.display());
+    println!(
+        "Generated validator info: {}",
+        validator_info_file.display()
+    );
+
+    Ok(())
 }
 
-impl Display for SomaValidatorCommandResponse {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut writer = String::new();
-        match self {
-            SomaValidatorCommandResponse::MakeValidatorInfo => {}
-            SomaValidatorCommandResponse::DisplayMetadata => {}
-            SomaValidatorCommandResponse::BecomeCandidate {
-                response,
-                serialized_unsigned_transaction,
+/// Build a JoinCommittee (AddValidator) transaction from validator info file
+fn build_join_committee_tx(file: &PathBuf) -> Result<TransactionKind> {
+    let validator_info_bytes = fs::read(file)?;
+    let validator_info: GenesisValidatorInfo = serde_yaml::from_slice(&validator_info_bytes)?;
+    let info = validator_info.info;
+
+    Ok(TransactionKind::AddValidator(AddValidatorArgs {
+        pubkey_bytes: info.protocol_key.as_bytes().to_vec(),
+        network_pubkey_bytes: info.network_key.to_bytes().to_vec(),
+        worker_pubkey_bytes: info.worker_key.to_bytes().to_vec(),
+        net_address: bcs::to_bytes(&info.network_address.to_string())?,
+        p2p_address: bcs::to_bytes(&info.p2p_address.to_string())?,
+        primary_address: bcs::to_bytes(&info.primary_address.to_string())?,
+        encoder_validator_address: bcs::to_bytes(&info.encoder_validator_address.to_string())?,
+    }))
+}
+
+/// Build an UpdateValidatorMetadata transaction
+fn build_update_metadata_tx(metadata: MetadataUpdate) -> Result<TransactionKind> {
+    let args = match metadata {
+        MetadataUpdate::NetworkAddress { network_address } => {
+            // Validate TCP address
+            if !network_address.is_loosely_valid_tcp_addr() {
+                bail!("Network address must be a TCP address");
             }
-            | SomaValidatorCommandResponse::JoinCommittee {
-                response,
-                serialized_unsigned_transaction,
-            }
-            | SomaValidatorCommandResponse::LeaveCommittee {
-                response,
-                serialized_unsigned_transaction,
-            }
-            | SomaValidatorCommandResponse::UpdateMetadata {
-                response,
-                serialized_unsigned_transaction,
-            }
-            | SomaValidatorCommandResponse::UpdateGasPrice {
-                response,
-                serialized_unsigned_transaction,
-            }
-            | SomaValidatorCommandResponse::ReportValidator {
-                response,
-                serialized_unsigned_transaction,
-            } => {
-                if let Some(response) = response {
-                    write!(writer, "{}", write_transaction_response(response)?)?;
-                } else {
-                    write!(
-                        writer,
-                        "Serialized transaction for signing: {:?}",
-                        serialized_unsigned_transaction
-                    )?;
-                }
-            }
-            SomaValidatorCommandResponse::SerializedPayload(response) => {
-                write!(writer, "Serialized payload: {}", response)?;
-            }
-            SomaValidatorCommandResponse::DisplayGasPriceUpdateRawTxn {
-                data,
-                serialized_data,
-            } => {
-                write!(
-                    writer,
-                    "Transaction: {:?}, \nSerialized transaction: {:?}",
-                    data, serialized_data
-                )?;
-            }
-            SomaValidatorCommandResponse::RegisterBridgeCommittee {
-                execution_response,
-                serialized_unsigned_transaction,
-            }
-            | SomaValidatorCommandResponse::UpdateBridgeCommitteeURL {
-                execution_response,
-                serialized_unsigned_transaction,
-            } => {
-                if let Some(response) = execution_response {
-                    write!(writer, "{}", write_transaction_response(response)?)?;
-                } else {
-                    write!(
-                        writer,
-                        "Serialized transaction for signing: {:?}",
-                        serialized_unsigned_transaction
-                    )?;
-                }
+            UpdateValidatorMetadataArgs {
+                next_epoch_network_address: Some(bcs::to_bytes(&network_address.to_string())?),
+                ..Default::default()
             }
         }
-        write!(f, "{}", writer.trim_end_matches('\n'))
-    }
-}
-
-pub fn write_transaction_response(
-    response: &SomaTransactionBlockResponse,
-) -> Result<String, fmt::Error> {
-    // we requested with for full_content, so the following content should be available.
-    let success = response.status_ok().unwrap();
-    let lines = vec![
-        String::from("----- Transaction Digest ----"),
-        response.digest.to_string(),
-        String::from("\n----- Transaction Data ----"),
-        response.transaction.as_ref().unwrap().to_string(),
-        String::from("----- Transaction Effects ----"),
-        response.effects.as_ref().unwrap().to_string(),
-    ];
-    let mut writer = String::new();
-    for line in lines {
-        let colorized_line = if success { line.green() } else { line.red() };
-        writeln!(writer, "{}", colorized_line)?;
-    }
-    Ok(writer)
-}
-
-impl Debug for SomaValidatorCommandResponse {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let string = serde_json::to_string_pretty(self);
-        let s = match string {
-            Ok(s) => s,
-            Err(err) => format!("{err}").red().to_string(),
-        };
-        write!(f, "{}", s)
-    }
-}
-
-impl SomaValidatorCommandResponse {
-    pub fn print(&self, pretty: bool) {
-        match self {
-            // Don't print empty responses
-            SomaValidatorCommandResponse::MakeValidatorInfo
-            | SomaValidatorCommandResponse::DisplayMetadata => {}
-            other => {
-                let line = if pretty {
-                    format!("{other}")
-                } else {
-                    format!("{:?}", other)
-                };
-                // Log line by line
-                for line in line.lines() {
-                    println!("{line}");
-                }
+        MetadataUpdate::PrimaryAddress { primary_address } => UpdateValidatorMetadataArgs {
+            next_epoch_primary_address: Some(bcs::to_bytes(&primary_address.to_string())?),
+            ..Default::default()
+        },
+        MetadataUpdate::P2pAddress { p2p_address } => UpdateValidatorMetadataArgs {
+            next_epoch_p2p_address: Some(bcs::to_bytes(&p2p_address.to_string())?),
+            ..Default::default()
+        },
+        MetadataUpdate::NetworkPubKey { file } => {
+            let keypair: NetworkKeyPair = read_network_keypair_from_file(file)?;
+            UpdateValidatorMetadataArgs {
+                next_epoch_network_pubkey: Some(keypair.public().to_bytes().to_vec()),
+                ..Default::default()
             }
         }
-    }
+        MetadataUpdate::WorkerPubKey { file } => {
+            let keypair: NetworkKeyPair = read_network_keypair_from_file(file)?;
+            UpdateValidatorMetadataArgs {
+                next_epoch_worker_pubkey: Some(keypair.public().to_bytes().to_vec()),
+                ..Default::default()
+            }
+        }
+        MetadataUpdate::ProtocolPubKey { file } => {
+            let keypair: AuthorityKeyPair = read_authority_keypair_from_file(file)?;
+            UpdateValidatorMetadataArgs {
+                next_epoch_protocol_pubkey: Some(keypair.public().as_bytes().to_vec()),
+                ..Default::default()
+            }
+        }
+    };
+
+    Ok(TransactionKind::UpdateValidatorMetadata(args))
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub enum ValidatorStatus {
-    Active,
-    Pending,
-}
-
+/// Get validator summary from the current system state
+///
+/// Queries the latest SystemState and searches for the validator in:
+/// 1. consensus_validators (ValidatorStatus::Consensus)
+/// 2. networking_validators (ValidatorStatus::Networking)  
+/// 3. pending_validators (ValidatorStatus::Pending)
 pub async fn get_validator_summary(
     client: &SomaClient,
-    validator_address: SomaAddress,
-) -> anyhow::Result<Option<(ValidatorStatus, SomaValidatorSummary)>> {
-    let SomaSystemStateSummary {
-        active_validators,
-        pending_active_validators_id,
-        ..
-    } = client
-        .governance_api()
-        .get_latest_soma_system_state()
-        .await?;
-    let mut status = None;
-    let mut active_validators = active_validators
-        .into_iter()
-        .map(|s| (s.soma_address, s))
-        .collect::<BTreeMap<_, _>>();
-    let validator_info = if active_validators.contains_key(&validator_address) {
-        status = Some(ValidatorStatus::Active);
-        Some(active_validators.remove(&validator_address).unwrap())
-    } else {
-        // Check panding validators
-        get_pending_candidate_summary(validator_address, client, pending_active_validators_id)
-            .await?
-            .map(|v| v.into_soma_validator_summary())
-            .tap_some(|_s| status = Some(ValidatorStatus::Pending))
+    address: SomaAddress,
+) -> Result<Option<(ValidatorStatus, ValidatorSummary)>> {
+    // Get the latest system state from the RPC
+    let system_state = client
+        .get_latest_system_state()
+        .await
+        .map_err(|e| anyhow!("Failed to get system state: {}", e))?;
 
-        // TODO also check candidate and inactive valdiators
-    };
-    if validator_info.is_none() {
-        return Ok(None);
-    }
-    // status is safe unwrap because it has to be Some when the code recahes here
-    // validator_info is safe to unwrap because of the above check
-    Ok(Some((status.unwrap(), validator_info.unwrap())))
+    // Search for the validator in the system state
+    Ok(find_validator_in_system_state(&system_state, address))
 }
 
+/// Display validator metadata
 async fn display_metadata(
-    client: &SomaClient,
-    validator_address: SomaAddress,
+    context: &mut WalletContext,
+    address: SomaAddress,
     json: bool,
-) -> anyhow::Result<()> {
-    match get_validator_summary(client, validator_address).await? {
-        None => println!(
-            "{} is not an active or pending Validator.",
-            validator_address
-        ),
-        Some((status, info)) => {
-            println!("{}'s valdiator status: {:?}", validator_address, status);
+) -> Result<()> {
+    let client = context.get_client().await?;
+
+    match get_validator_summary(&client, address).await? {
+        Some((status, summary)) => {
+            println!("{}'s validator status: {}", address, status);
             if json {
-                println!("{}", serde_json::to_string_pretty(&info)?);
+                println!("{}", serde_json::to_string_pretty(&summary)?);
             } else {
-                println!("{:#?}", info);
+                println!("{}", summary);
             }
+        }
+        None => {
+            println!(
+                "{} is not an active, networking, or pending validator.",
+                address
+            );
         }
     }
     Ok(())
 }
 
-#[derive(Subcommand)]
-#[clap(rename_all = "kebab-case")]
-pub enum MetadataUpdate {
-    /// Update Network Address. Effectuate from next epoch.
-    NetworkAddress { network_address: Multiaddr },
-    /// Update Primary Address. Effectuate from next epoch.
-    PrimaryAddress { primary_address: Multiaddr },
-    /// Update Worker Address. Effectuate from next epoch.
-    WorkerAddress { worker_address: Multiaddr },
-    /// Update P2P Address. Effectuate from next epoch.
-    P2pAddress { p2p_address: Multiaddr },
-    /// Update Network Public Key. Effectuate from next epoch.
-    NetworkPubKey {
-        #[clap(name = "network-key-path")]
-        file: PathBuf,
-    },
-    /// Update Worker Public Key. Effectuate from next epoch.
-    WorkerPubKey {
-        #[clap(name = "worker-key-path")]
-        file: PathBuf,
-    },
-    /// Update Protocol Public Key and Proof and Possession. Effectuate from next epoch.
-    ProtocolPubKey {
-        #[clap(name = "protocol-key-path")]
-        file: PathBuf,
-    },
-}
-
-async fn update_metadata(
-    context: &mut WalletContext,
-    metadata: MetadataUpdate,
-    gas_budget: u64,
-    serialize_unsigned_transaction: bool,
-) -> anyhow::Result<(Option<SomaTransactionBlockResponse>, Option<String>)> {
-    use ValidatorStatus::*;
-    match metadata {
-        MetadataUpdate::NetworkAddress { network_address } => {
-            // Check the network address to be in TCP.
-            if !network_address.is_loosely_valid_tcp_addr() {
-                bail!("Network address must be a TCP address");
-            }
-            let _status = check_status(context, HashSet::from([Pending, Active])).await?;
-            let args = vec![CallArg::Pure(bcs::to_bytes(&network_address).unwrap())];
-            call_0x5(
-                context,
-                "update_validator_next_epoch_network_address",
-                args,
-                gas_budget,
-                serialize_unsigned_transaction,
-            )
-            .await
-        }
-        MetadataUpdate::PrimaryAddress { primary_address } => {
-            let _status = check_status(context, HashSet::from([Pending, Active])).await?;
-            let args = vec![CallArg::Pure(bcs::to_bytes(&primary_address).unwrap())];
-            call_0x5(
-                context,
-                "update_validator_next_epoch_primary_address",
-                args,
-                gas_budget,
-                serialize_unsigned_transaction,
-            )
-            .await
-        }
-        MetadataUpdate::WorkerAddress { worker_address } => {
-            // Only an active validator can leave committee.
-            let _status = check_status(context, HashSet::from([Pending, Active])).await?;
-            let args = vec![CallArg::Pure(bcs::to_bytes(&worker_address).unwrap())];
-            call_0x5(
-                context,
-                "update_validator_next_epoch_worker_address",
-                args,
-                gas_budget,
-                serialize_unsigned_transaction,
-            )
-            .await
-        }
-        MetadataUpdate::P2pAddress { p2p_address } => {
-            let _status = check_status(context, HashSet::from([Pending, Active])).await?;
-            let args = vec![CallArg::Pure(bcs::to_bytes(&p2p_address).unwrap())];
-            call_0x5(
-                context,
-                "update_validator_next_epoch_p2p_address",
-                args,
-                gas_budget,
-                serialize_unsigned_transaction,
-            )
-            .await
-        }
-        MetadataUpdate::NetworkPubKey { file } => {
-            let _status = check_status(context, HashSet::from([Pending, Active])).await?;
-            let network_pub_key: NetworkPublicKey =
-                read_network_keypair_from_file(file)?.public().clone();
-            let args = vec![CallArg::Pure(
-                bcs::to_bytes(&network_pub_key.as_bytes().to_vec()).unwrap(),
-            )];
-            call_0x5(
-                context,
-                "update_validator_next_epoch_network_pubkey",
-                args,
-                gas_budget,
-                serialize_unsigned_transaction,
-            )
-            .await
-        }
-        MetadataUpdate::WorkerPubKey { file } => {
-            let _status = check_status(context, HashSet::from([Pending, Active])).await?;
-            let worker_pub_key: NetworkPublicKey =
-                read_network_keypair_from_file(file)?.public().clone();
-            let args = vec![CallArg::Pure(
-                bcs::to_bytes(&worker_pub_key.as_bytes().to_vec()).unwrap(),
-            )];
-            call_0x5(
-                context,
-                "update_validator_next_epoch_worker_pubkey",
-                args,
-                gas_budget,
-                serialize_unsigned_transaction,
-            )
-            .await
-        }
-        MetadataUpdate::ProtocolPubKey { file } => {
-            let _status = check_status(context, HashSet::from([Pending, Active])).await?;
-            let soma_address = context.active_address()?;
-            let protocol_key_pair: AuthorityKeyPair = read_authority_keypair_from_file(file)?;
-            let protocol_pub_key: AuthorityPublicKey = protocol_key_pair.public().clone();
-            let pop = generate_proof_of_possession(&protocol_key_pair, soma_address);
-            let args = vec![
-                CallArg::Pure(
-                    bcs::to_bytes(&AuthorityPublicKeyBytes::from_bytes(
-                        protocol_pub_key.as_bytes(),
-                    )?)
-                    .unwrap(),
-                ),
-                CallArg::Pure(bcs::to_bytes(&pop.as_ref().to_vec()).unwrap()),
-            ];
-            call_0x5(
-                context,
-                "update_validator_next_epoch_protocol_pubkey",
-                args,
-                gas_budget,
-                serialize_unsigned_transaction,
-            )
-            .await
-        }
-    }
-}
-
+/// Check that the sender has the required validator status
 async fn check_status(
     context: &mut WalletContext,
-    allowed_status: HashSet<ValidatorStatus>,
+    allowed_statuses: HashSet<ValidatorStatus>,
 ) -> Result<ValidatorStatus> {
-    let soma_client = context.get_client().await?;
     let validator_address = context.active_address()?;
-    let summary = get_validator_summary(&soma_client, validator_address).await?;
-    if summary.is_none() {
-        bail!("{validator_address} is not a Validator.");
+    let client = context.get_client().await?;
+
+    match get_validator_summary(&client, validator_address).await? {
+        Some((status, _)) if allowed_statuses.contains(&status) => Ok(status),
+        Some((status, _)) => bail!(
+            "Validator {} is {:?}, but this operation requires one of: {:?}",
+            validator_address,
+            status,
+            allowed_statuses
+        ),
+        None => bail!("{} is not a validator", validator_address),
     }
-    let (status, _summary) = summary.unwrap();
-    if allowed_status.contains(&status) {
-        return Ok(status);
-    }
-    bail!(
-        "Validator {validator_address} is {:?}, this operation is not supported in this tool or prohibited.",
-        status
-    )
 }
 
-async fn construct_unsigned_0x5_txn(
-    context: &mut WalletContext,
-    sender: SomaAddress,
-    function: &'static str,
-    call_args: Vec<CallArg>,
-    gas_budget: u64,
-) -> anyhow::Result<TransactionData> {
-    let soma_client = context.get_client().await?;
-    let mut args = vec![CallArg::SOMA_SYSTEM_MUT];
-    args.extend(call_args);
-    let rgp = soma_client
-        .governance_api()
-        .get_reference_gas_price()
-        .await?;
+/// Convert a Validator to a ValidatorSummary for display
+fn validator_to_summary(validator: &Validator, status: ValidatorStatus) -> ValidatorSummary {
+    let metadata = &validator.metadata;
 
-    let gas_obj_ref = get_gas_obj_ref(sender, &soma_client, gas_budget).await?;
-    TransactionData::new_move_call(
-        sender,
-        SOMA_SYSTEM_PACKAGE_ID,
-        ident_str!("soma_system").to_owned(),
-        ident_str!(function).to_owned(),
-        vec![],
-        gas_obj_ref,
-        args,
-        gas_budget,
-        rgp,
-    )
-}
-
-async fn call_0x5(
-    context: &mut WalletContext,
-    function: &'static str,
-    call_args: Vec<CallArg>,
-    gas_budget: u64,
-    serialize_unsigned_transaction: bool,
-) -> anyhow::Result<(Option<SomaTransactionBlockResponse>, Option<String>)> {
-    let sender = context.active_address()?;
-    let tx_data =
-        construct_unsigned_0x5_txn(context, sender, function, call_args, gas_budget).await?;
-    if serialize_unsigned_transaction {
-        let serialized_data = Base64::encode(bcs::to_bytes(&tx_data)?);
-        return Ok((None, Some(serialized_data)));
+    ValidatorSummary {
+        address: metadata.soma_address,
+        status,
+        voting_power: validator.voting_power,
+        commission_rate: validator.commission_rate,
+        network_address: metadata.net_address.to_string(),
+        p2p_address: metadata.p2p_address.to_string(),
+        primary_address: metadata.primary_address.to_string(),
+        encoder_validator_address: metadata.encoder_validator_address.to_string(),
+        protocol_pubkey: metadata.protocol_pubkey.to_string(),
+        network_pubkey: metadata.network_pubkey.clone().into_inner().to_string(),
+        worker_pubkey: metadata.worker_pubkey.clone().into_inner().to_string(),
     }
-    let signature = context
-        .config
-        .keystore
-        .sign_secure(&sender, &tx_data, Intent::soma_transaction())
-        .await?;
-    let transaction = Transaction::from_data(tx_data, vec![signature]);
-    let soma_client = context.get_client().await?;
-    let response = soma_client
-        .quorum_driver_api()
-        .execute_transaction_block(
-            transaction,
-            SomaTransactionBlockResponseOptions::new()
-                .with_input()
-                .with_effects(),
-            Some(soma_types::quorum_driver_types::ExecuteTransactionRequestType::WaitForLocalExecution),
-        )
-        .await
-        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    Ok((Some(response), None))
 }
 
-async fn get_pending_candidate_summary(
-    validator_address: SomaAddress,
-    soma_client: &SomaClient,
-    pending_active_validators_id: ObjectID,
-) -> anyhow::Result<Option<ValidatorV1>> {
-    let pending_validators = soma_client
-        .read_api()
-        .get_dynamic_fields(pending_active_validators_id, None, None)
-        .await?
-        .data
-        .into_iter()
-        .map(|dyi| dyi.object_id)
-        .collect::<Vec<_>>();
-    let resps = soma_client
-        .read_api()
-        .multi_get_object_with_options(
-            pending_validators,
-            SomaObjectDataOptions::default().with_bcs(),
-        )
-        .await?;
-    for resp in resps {
-        // We always expect an objectId from the response as one of data/error should be included.
-        let object_id = resp.object_id()?;
-        let bcs = resp.move_object_bcs().ok_or_else(|| {
-            anyhow::anyhow!(
-                "Object {} does not exist or does not return bcs bytes",
-                object_id
-            )
-        })?;
-        let field = bcs::from_bytes::<Field<u64, ValidatorV1>>(bcs).map_err(|e| {
-            anyhow::anyhow!(
-                "Can't convert bcs bytes of object {} to ValidatorV1: {}",
-                object_id,
-                e,
-            )
-        })?;
-        if field.value.verified_metadata().soma_address == validator_address {
-            return Ok(Some(field.value));
+/// Find a validator by address in the SystemState and return its summary
+fn find_validator_in_system_state(
+    system_state: &SystemState,
+    address: SomaAddress,
+) -> Option<(ValidatorStatus, ValidatorSummary)> {
+    // Check consensus validators
+    for validator in &system_state.validators.consensus_validators {
+        if validator.metadata.soma_address == address {
+            return Some((
+                ValidatorStatus::Consensus,
+                validator_to_summary(validator, ValidatorStatus::Consensus),
+            ));
         }
     }
-    Ok(None)
+
+    // Check networking validators
+    for validator in &system_state.validators.networking_validators {
+        if validator.metadata.soma_address == address {
+            return Some((
+                ValidatorStatus::Networking,
+                validator_to_summary(validator, ValidatorStatus::Networking),
+            ));
+        }
+    }
+
+    // Check pending validators
+    for validator in &system_state.validators.pending_validators {
+        if validator.metadata.soma_address == address {
+            return Some((
+                ValidatorStatus::Pending,
+                validator_to_summary(validator, ValidatorStatus::Pending),
+            ));
+        }
+    }
+
+    None
 }

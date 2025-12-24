@@ -16,6 +16,7 @@ use crate::api::rpc_client;
 use crate::api::rpc_client::HeadersInterceptor;
 use crate::proto::TryFromProtoError;
 use crate::proto::soma as proto;
+use crate::proto::soma::GetEpochResponse;
 use crate::proto::soma::InitiateShardWorkRequest;
 use crate::proto::soma::InitiateShardWorkResponse;
 use crate::proto::soma::ListOwnedObjectsRequest;
@@ -260,6 +261,34 @@ impl Client {
             .subscribe_checkpoints(request)
             .await
             .map(|r| r.into_inner())
+    }
+
+    pub async fn get_latest_system_state(&mut self) -> Result<types::system_state::SystemState> {
+        let request = proto::GetEpochRequest::latest()
+            .with_read_mask(FieldMask::from_paths(["system_state", "epoch"]));
+        let response = self
+            .0
+            .ledger_client()
+            .get_epoch(request)
+            .await?
+            .into_inner();
+
+        (*response
+            .epoch
+            .ok_or_else(|| {
+                tonic::Status::not_found("epoch not found in get system state response")
+            })?
+            .system_state
+            .ok_or_else(|| {
+                tonic::Status::not_found("system_state not found in get system state response")
+            })?)
+        .try_into()
+        .map_err(|e| {
+            tonic::Status::internal(format!(
+                "system_state could not be converted to domain type: {}",
+                e
+            ))
+        })
     }
 
     pub async fn get_chain_identifier(&mut self) -> Result<String> {

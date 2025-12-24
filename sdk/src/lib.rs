@@ -26,7 +26,9 @@ use crate::error::SomaRpcResult;
 
 pub mod client_config;
 pub mod error;
+pub mod transaction_builder;
 pub mod wallet_context;
+
 pub const SOMA_LOCAL_NETWORK_URL: &str = "http://127.0.0.1:9000";
 pub const SOMA_LOCAL_NETWORK_URL_0: &str = "http://0.0.0.0:9000";
 pub const SOMA_DEVNET_URL: &str = "https://fullnode.devnet.soma.org:443";
@@ -184,6 +186,13 @@ impl SomaClient {
             });
         };
         Ok(())
+    }
+
+    pub async fn get_latest_system_state(
+        &self,
+    ) -> Result<types::system_state::SystemState, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_latest_system_state().await
     }
 
     // =========================================================================
