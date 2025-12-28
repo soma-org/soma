@@ -1,18 +1,23 @@
 use crate::response::{
     AddressesOutput, BalanceOutput, ChainInfoOutput, ClientCommandResponse, EnvsOutput,
     GasCoinsOutput, NewAddressOutput, NewEnvOutput, ObjectOutput, ObjectsOutput,
-    RemoveAddressOutput, SwitchOutput, TransactionResponse,
+    RemoveAddressOutput, SimulationResponse, SwitchOutput, TransactionQueryResponse,
+    TransactionResponse, TransactionStatus,
 };
 use anyhow::{anyhow, bail, ensure, Result};
 use bip32::DerivationPath;
 use clap::*;
+use colored::Colorize;
 use fastcrypto::encoding::{Base64, Encoding};
 use fastcrypto::traits::ToFromBytes;
 use futures::TryStreamExt;
+use protocol_config::ProtocolVersion;
 use rpc::types::ObjectType;
 use rpc::utils::field::{FieldMask, FieldMaskUtil};
+use sdk::SomaClient;
 use std::path::PathBuf;
 use std::str::FromStr as _;
+use types::effects::{ExecutionStatus, TransactionEffectsAPI as _};
 
 use sdk::{
     client_config::SomaEnv,
@@ -556,9 +561,16 @@ impl SomaClientCommands {
             // TRANSACTION QUERIES
             // =================================================================
             SomaClientCommands::GetTransaction { digest } => {
-                // TODO: Implement GetTransaction RPC call
-                // For now, return an error indicating this needs implementation
-                bail!("GetTransaction query not yet implemented - needs GetTransaction RPC")
+                let client = context.get_client().await?;
+
+                let result = client
+                    .get_transaction(digest)
+                    .await
+                    .map_err(|e| anyhow!("Failed to get transaction: {}", e))?;
+
+                Ok(ClientCommandResponse::TransactionQuery(
+                    TransactionQueryResponse::from_query_result(&result),
+                ))
             }
 
             // =================================================================
@@ -769,6 +781,11 @@ async fn execute_or_serialize(
         "Cannot specify both --serialize-unsigned-transaction and --serialize-signed-transaction"
     );
 
+    // Check protocol version compatibility
+    let client = context.get_client().await?;
+    // Check protocol version compatibility (non-blocking on failure)
+    let _ = check_protocol_version_and_warn(&client).await;
+
     // Build transaction data
     let builder = TransactionBuilder::new(context);
     let tx_data = builder.build_transaction_data(sender, kind, gas).await?;
@@ -779,10 +796,43 @@ async fn execute_or_serialize(
         return Ok(ClientCommandResponse::TransactionDigest(tx_data.digest()));
     }
 
-    // Handle simulation mode
+    // Handle simulation mode (no signature required)
     if processing.simulate {
-        // TODO: Call SimulateTransaction RPC
-        bail!("Simulation not yet implemented - needs SimulateTransaction RPC integration");
+        let result = client
+            .simulate_transaction(&tx_data)
+            .await
+            .map_err(|e| anyhow!("Simulation failed: {}", e))?;
+
+        let status = match result.effects.status() {
+            ExecutionStatus::Success => TransactionStatus::Success,
+            ExecutionStatus::Failure { error } => TransactionStatus::Failure {
+                error: format!("{}", error),
+            },
+        };
+
+        return Ok(ClientCommandResponse::Simulation(SimulationResponse {
+            status,
+            gas_used: result.effects.transaction_fee().total_fee,
+            created: result
+                .effects
+                .created()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            mutated: result
+                .effects
+                .mutated_excluding_gas()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            deleted: result
+                .effects
+                .deleted()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            balance_changes: result.balance_changes,
+        }));
     }
 
     // Handle serialize-unsigned mode
@@ -810,6 +860,33 @@ async fn execute_or_serialize(
     Ok(ClientCommandResponse::Transaction(
         TransactionResponse::from_response(&response),
     ))
+}
+
+/// Warn the user if the CLI falls behind more than 2 protocol versions.
+async fn check_protocol_version_and_warn(client: &SomaClient) -> Result<()> {
+    let on_chain_version = match client.get_protocol_version().await {
+        Ok(v) => v,
+        Err(_) => return Ok(()), // Silently skip if we can't fetch
+    };
+
+    let cli_version = protocol_config::ProtocolVersion::MAX.as_u64();
+
+    if (cli_version + 2) < on_chain_version {
+        eprintln!(
+            "{}",
+            format!(
+                // TODO: replace this with the actual url when docs are ready
+                "[warning] CLI's protocol version is {cli_version}, but the active \
+                network's protocol version is {on_chain_version}. \
+                \nConsider installing the latest version of the CLI - \
+                https://docs.soma.org/guides/getting-started/install"
+            )
+            .yellow()
+            .bold()
+        );
+    }
+
+    Ok(())
 }
 
 // impl Display for SomaClientCommandResult {
@@ -1438,29 +1515,4 @@ async fn execute_or_serialize(
 //     fractional.truncate(format_decimals);
 
 //     format!("{whole}.{fractional}{suffix}")
-// }
-
-// /// Warn the user if the CLI falls behind more than 2 protocol versions.
-// async fn check_protocol_version_and_warn(read_api: &ReadApi) -> Result<(), anyhow::Error> {
-//     let protocol_cfg = read_api.get_protocol_config(None).await?;
-//     let on_chain_protocol_version = protocol_cfg.protocol_version.as_u64();
-//     let cli_protocol_version = ProtocolVersion::MAX.as_u64();
-//     if (cli_protocol_version + 2) < on_chain_protocol_version {
-//         // TODO: modify this message according to actual docs url
-//         eprintln!(
-//             "{}",
-//             format!(
-//                 "[warning] CLI's protocol version is {cli_protocol_version}, but the active \
-//                 network's protocol version is {on_chain_protocol_version}. \
-//                 \n Consider installing the latest version of the CLI - \
-//                 https://docs.soma.org/guides/developer/getting-started/soma-install \n\n \
-//                 If publishing/upgrading returns a dependency verification error, then install the \
-//                 latest CLI version."
-//             )
-//             .yellow()
-//             .bold()
-//         );
-//     }
-
-//     Ok(())
 // }

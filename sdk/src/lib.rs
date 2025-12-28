@@ -195,6 +195,39 @@ impl SomaClient {
         client.get_latest_system_state().await
     }
 
+    /// Get epoch information
+    pub async fn get_epoch(
+        &self,
+        epoch: Option<u64>,
+    ) -> Result<rpc::proto::soma::GetEpochResponse, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_epoch(epoch).await
+    }
+
+    /// Get the current protocol version from the network
+    pub async fn get_protocol_version(&self) -> Result<u64, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_protocol_version().await
+    }
+
+    /// Simulate a transaction without executing it (no signature required)
+    pub async fn simulate_transaction(
+        &self,
+        tx_data: &types::transaction::TransactionData,
+    ) -> Result<rpc::api::client::SimulationResult, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.simulate_transaction(tx_data).await
+    }
+
+    /// Get a transaction by its digest
+    pub async fn get_transaction(
+        &self,
+        digest: types::digests::TransactionDigest,
+    ) -> Result<rpc::api::client::TransactionQueryResult, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_transaction(digest).await
+    }
+
     // =========================================================================
     // SHARD QUERIES
     // =========================================================================
