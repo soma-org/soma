@@ -39,6 +39,7 @@ protocol-config.workspace = true
 rpc.workspace = true
 futures.workspace = true
 chrono.workspace = true
+hex.workspace = true
 serde_yaml = "0.8.26"
 
 [lints]

@@ -1,6 +1,10 @@
 use crate::{
-    client_commands::SomaClientCommands, keytool::KeyToolCommand,
-    validator_commands::SomaValidatorCommand,
+    client_commands::SomaClientCommands,
+    commands::{
+        EnvCommand, ObjectsCommand, ShardsCommand, SomaEncoderCommand, SomaValidatorCommand,
+        WalletCommand,
+    },
+    keytool::KeyToolCommand,
 };
 use anyhow::{anyhow, bail, ensure, Context as _};
 use clap::{Command, CommandFactory as _, Parser};
@@ -14,6 +18,7 @@ use sdk::{
 };
 use soma_keys::{
     key_derive::generate_new_key,
+    key_identity::KeyIdentity,
     keystore::{AccountKeystore as _, FileBasedKeystore, Keystore},
 };
 use std::{
@@ -38,6 +43,8 @@ use types::{
         SOMA_FULLNODE_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
     },
     crypto::SignatureScheme,
+    digests::TransactionDigest,
+    object::ObjectID,
     peer_id::PeerId,
 };
 use types::{
@@ -46,9 +53,10 @@ use types::{
 };
 use url::Url;
 
-const DEFAULT_EPOCH_DURATION_MS: u64 = 60_000;
+use crate::client_commands::TxProcessingArgs;
+use crate::commands;
 
-// TODO: RpcArgs for starting indexer and GraphQL server
+const DEFAULT_EPOCH_DURATION_MS: u64 = 60_000;
 
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
@@ -74,91 +82,284 @@ impl SomaEnvConfig {
     }
 }
 
+impl Default for SomaEnvConfig {
+    fn default() -> Self {
+        Self {
+            config: None,
+            env: None,
+            accept_defaults: false,
+        }
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum SomaCommand {
+    // =========================================================================
+    // COMMON USER ACTIONS (Top-level for convenience)
+    // =========================================================================
+    /// Check SOMA balance for an address
+    #[clap(name = "balance")]
+    Balance {
+        /// Address to check (defaults to active address)
+        address: Option<KeyIdentity>,
+        /// Show individual coin details
+        #[clap(long)]
+        with_coins: bool,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Send SOMA to a recipient
+    #[clap(name = "send")]
+    Send {
+        /// Recipient address or alias
+        #[clap(long)]
+        to: KeyIdentity,
+        /// Amount to send in shannons
+        #[clap(long)]
+        amount: u64,
+        /// Specific coin to send from (auto-selected if not provided)
+        #[clap(long)]
+        coin: Option<ObjectID>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Transfer an object to a recipient
+    #[clap(name = "transfer")]
+    Transfer {
+        /// Recipient address or alias
+        #[clap(long)]
+        to: KeyIdentity,
+        /// Object ID to transfer
+        #[clap(long)]
+        object_id: ObjectID,
+        /// Gas object (auto-selected if not provided)
+        #[clap(long)]
+        gas: Option<ObjectID>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Pay SOMA to multiple recipients
+    #[clap(name = "pay")]
+    Pay {
+        /// Recipient addresses
+        #[clap(long, num_args(1..))]
+        recipients: Vec<KeyIdentity>,
+        /// Amounts to send to each recipient (in shannons)
+        #[clap(long, num_args(1..))]
+        amounts: Vec<u64>,
+        /// Input coin object IDs (auto-selected if not provided)
+        #[clap(long, num_args(1..))]
+        coins: Option<Vec<ObjectID>>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Stake SOMA with a validator or encoder
+    #[clap(name = "stake")]
+    Stake {
+        /// Validator address to stake with
+        #[clap(long, group = "stake_target")]
+        validator: Option<SomaAddress>,
+        /// Encoder address to stake with
+        #[clap(long, group = "stake_target")]
+        encoder: Option<SomaAddress>,
+        /// Amount to stake (uses entire coin if not specified)
+        #[clap(long)]
+        amount: Option<u64>,
+        /// Coin to use for staking (auto-selected if not provided)
+        #[clap(long)]
+        coin: Option<ObjectID>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Withdraw staked SOMA
+    #[clap(name = "unstake")]
+    Unstake {
+        /// StakedSoma object ID to withdraw
+        staked_soma_id: ObjectID,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Embed data on the Soma network
+    #[clap(name = "embed")]
+    Embed {
+        /// URL where data can be downloaded by encoders
+        #[clap(long)]
+        url: String,
+        /// Target embedding to compete against (optional)
+        #[clap(long)]
+        target: Option<ObjectID>,
+        /// Coin for escrow payment (auto-selected if not provided)
+        #[clap(long)]
+        coin: Option<ObjectID>,
+        /// Timeout in seconds when using --wait
+        #[clap(long, default_value_t = 120)]
+        timeout: u64,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Claim escrow or rewards
+    #[clap(name = "claim")]
+    Claim {
+        /// Shard ID to claim escrow from (for failed/expired shards)
+        #[clap(long, group = "claim_type")]
+        escrow: Option<ObjectID>,
+        /// Target ID to claim reward from (for completed targets)
+        #[clap(long, group = "claim_type")]
+        reward: Option<ObjectID>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    // =========================================================================
+    // QUERY COMMANDS
+    // =========================================================================
+    /// Query objects
+    #[clap(name = "objects")]
+    Objects {
+        #[clap(subcommand)]
+        cmd: ObjectsCommand,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Get transaction details by digest
+    #[clap(name = "tx")]
+    Tx {
+        /// Transaction digest
+        digest: TransactionDigest,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Query shards and embeddings
+    #[clap(name = "shards")]
+    Shards {
+        #[clap(subcommand)]
+        cmd: ShardsCommand,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    // =========================================================================
+    // MANAGEMENT COMMANDS
+    // =========================================================================
+    /// Manage wallet addresses and keys
+    #[clap(name = "wallet")]
+    Wallet {
+        #[clap(subcommand)]
+        cmd: WalletCommand,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Manage network environments
+    #[clap(name = "env")]
+    Env {
+        #[clap(subcommand)]
+        cmd: EnvCommand,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    // =========================================================================
+    // OPERATOR COMMANDS
+    // =========================================================================
+    /// Encoder committee operations
+    #[clap(name = "encoder")]
+    Encoder {
+        #[clap(flatten)]
+        config: SomaEnvConfig,
+        #[clap(subcommand)]
+        cmd: Option<SomaEncoderCommand>,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// A tool for validators and validator candidates
+    #[clap(name = "validator")]
+    Validator {
+        #[clap(flatten)]
+        config: SomaEnvConfig,
+        #[clap(subcommand)]
+        cmd: Option<SomaValidatorCommand>,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    // =========================================================================
+    // ADVANCED CLIENT OPERATIONS (backward compatibility)
+    // =========================================================================
+    /// Advanced client operations
+    #[clap(name = "client")]
+    Client {
+        #[clap(flatten)]
+        config: SomaEnvConfig,
+        #[clap(subcommand)]
+        cmd: Option<SomaClientCommands>,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    // =========================================================================
+    // NODE OPERATIONS
+    // =========================================================================
     /// Start a local network in two modes: saving state between re-runs and not saving state
     /// between re-runs. Please use (--help) to see the full description.
-    ///
-    /// By default, soma start will start a local network from the genesis blob that exists in
-    /// the Soma config default dir or in the config_dir that was passed. If the default directory
-    /// does not exist and the config_dir is not passed, it will generate a new default directory,
-    /// generate the genesis blob, and start the network.
-    ///
-    /// Note that if you want to start an indexer, Postgres DB is required.
-    ///
-    /// ProtocolConfig parameters can be overridden individually by setting env variables as
-    /// follows:
-    /// - SOMA_PROTOCOL_CONFIG_OVERRIDE_ENABLE=1
-    /// - Then, to configure an override, use the prefix `SOMA_PROTOCOL_CONFIG_OVERRIDE_`
-    ///   along with the parameter name. For example, to increase the interval between
-    ///   checkpoint creation to >1/s, you might set:
-    ///   SOMA_PROTOCOL_CONFIG_OVERRIDE_min_checkpoint_interval_ms=1000
-    ///
-    /// Note that ProtocolConfig parameters must match between all nodes, or the network
-    /// may break. Changing these values outside of local networks is very dangerous.
     #[clap(name = "start", verbatim_doc_comment)]
     Start {
         /// Config directory that will be used to store network config, node db, keystore.
-        /// soma genesis -f --with-faucet generates a genesis config that can be used to start this
-        /// process. Use with caution as the `-f` flag will overwrite the existing config directory.
-        /// We can use any config dir that is generated by the `soma genesis`.
         #[clap(long = "network.config")]
         config_dir: Option<std::path::PathBuf>,
 
         /// A new genesis is created each time this flag is set, and state is not persisted between
-        /// runs. Only use this flag when you want to start the network from scratch every time you
-        /// run this command.
-        ///
-        /// To run with persisted state, do not pass this flag and use the `soma genesis` command
-        /// to generate a genesis that can be used to start the network with.
+        /// runs.
         #[clap(long)]
         force_regenesis: bool,
-
-        // TODO: faucet command
-        /// Start a faucet with default host and port: 0.0.0.0:9123. This flag accepts also a
-        /// port, a host, or both (e.g., 0.0.0.0:9123).
-        /// When providing a specific value, please use the = sign between the flag and value:
-        /// `--with-faucet=6124` or `--with-faucet=0.0.0.0`, or `--with-faucet=0.0.0.0:9123`
-        // #[clap(
-        //     long,
-        //     default_missing_value = "0.0.0.0:9123",
-        //     num_args = 0..=1,
-        //     require_equals = true,
-        //     value_name = "FAUCET_HOST_PORT",
-        // )]
-        // with_faucet: Option<String>,
-
-        // #[clap(flatten)]
-        // rpc_args: RpcArgs,
 
         /// Port to start the Fullnode RPC server on. Default port is 9000.
         #[clap(long, default_value = "9000")]
         fullnode_rpc_port: u16,
 
-        /// Set the epoch duration. Can only be used when `--force-regenesis` flag is passed or if
-        /// there's no genesis config and one will be auto-generated. When this flag is not set but
-        /// `--force-regenesis` is set, the epoch duration will be set to 60 seconds.
+        /// Set the epoch duration. Can only be used when `--force-regenesis` flag is passed.
         #[clap(long)]
         epoch_duration_ms: Option<u64>,
 
-        /// Make the fullnode dump executed checkpoints as files to this directory. This is
-        /// incompatible with --no-full-node.
-        ///
-        /// If --with-indexer is set, this defaults to a temporary directory.
+        /// Directory for data ingestion.
         #[clap(long, value_name = "DATA_INGESTION_DIR")]
         data_ingestion_dir: Option<PathBuf>,
 
         /// Start the network without a fullnode
         #[clap(long = "no-full-node")]
         no_full_node: bool,
-        /// Set the number of validators in the network. If a genesis was already generated with a
-        /// specific number of validators, this will not override it; the user should recreate the
-        /// genesis with the desired number of validators.
+
+        /// Set the number of validators in the network.
         #[clap(long)]
         committee_size: Option<usize>,
     },
+
     #[clap(name = "network")]
     Network {
         #[clap(long = "network.config")]
@@ -166,6 +367,7 @@ pub enum SomaCommand {
         #[clap(short, long, help = "Dump the public keys of all authorities")]
         dump_addresses: bool,
     },
+
     /// Bootstrap and initialize a new soma network
     #[clap(name = "genesis")]
     Genesis {
@@ -191,47 +393,247 @@ pub enum SomaCommand {
         #[clap(long)]
         committee_size: Option<usize>,
     },
-    GenesisCeremony(Ceremony),
+
+    GenesisCeremony(crate::genesis_ceremony::Ceremony),
+
     /// Soma keystore tool.
     #[clap(name = "keytool")]
     KeyTool {
         #[clap(long)]
         keystore_path: Option<PathBuf>,
-        ///Return command outputs in json format
         #[clap(long, global = true)]
         json: bool,
-        /// Subcommands.
         #[clap(subcommand)]
         cmd: KeyToolCommand,
-    },
-    /// Client for interacting with the Soma network.
-    #[clap(name = "client")]
-    Client {
-        #[clap(flatten)]
-        config: SomaEnvConfig,
-        #[clap(subcommand)]
-        cmd: Option<SomaClientCommands>,
-        /// Return command outputs in json format.
-        #[clap(long, global = true)]
-        json: bool,
-    },
-    /// A tool for validators and validator candidates.
-    #[clap(name = "validator")]
-    Validator {
-        /// Sets the file storing the state of our user accounts (an empty one will be created if missing)
-        #[clap(flatten)]
-        config: SomaEnvConfig,
-        #[clap(subcommand)]
-        cmd: Option<SomaValidatorCommand>,
-        /// Return command outputs in json format.
-        #[clap(long, global = true)]
-        json: bool,
     },
 }
 
 impl SomaCommand {
     pub async fn execute(self) -> Result<(), anyhow::Error> {
         match self {
+            // =================================================================
+            // COMMON USER ACTIONS
+            // =================================================================
+            SomaCommand::Balance {
+                address,
+                with_coins,
+                json,
+            } => {
+                let context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::balance::execute(&context, address, with_coins).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Send {
+                to,
+                amount,
+                coin,
+                tx_args,
+                json,
+            } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::send::execute(&mut context, to, amount, coin, tx_args).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Transfer {
+                to,
+                object_id,
+                gas,
+                tx_args,
+                json,
+            } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::transfer::execute(&mut context, to, object_id, gas, tx_args).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Pay {
+                recipients,
+                amounts,
+                coins,
+                tx_args,
+                json,
+            } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::pay::execute(&mut context, recipients, amounts, coins, tx_args)
+                        .await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Stake {
+                validator,
+                encoder,
+                amount,
+                coin,
+                tx_args,
+                json,
+            } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::stake::execute_stake(
+                    &mut context,
+                    validator,
+                    encoder,
+                    amount,
+                    coin,
+                    tx_args,
+                )
+                .await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Unstake {
+                staked_soma_id,
+                tx_args,
+                json,
+            } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::stake::execute_unstake(&mut context, staked_soma_id, tx_args).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Embed {
+                url,
+                target,
+                coin,
+                timeout,
+                tx_args,
+                json,
+            } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::embed::execute(&mut context, url, target, coin, timeout, tx_args)
+                        .await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Claim {
+                escrow,
+                reward,
+                tx_args,
+                json,
+            } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::claim::execute(&mut context, escrow, reward, tx_args).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            // =================================================================
+            // QUERY COMMANDS
+            // =================================================================
+            SomaCommand::Objects { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::objects::execute(&mut context, cmd).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Tx { digest, json } => {
+                let context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::tx::execute(&context, digest).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Shards { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::shards::execute(&mut context, cmd).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            // =================================================================
+            // MANAGEMENT COMMANDS
+            // =================================================================
+            SomaCommand::Wallet { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::wallet::execute(&mut context, cmd).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            SomaCommand::Env { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::env::execute(&mut context, cmd).await?;
+                result.print(!json);
+                Ok(())
+            }
+
+            // =================================================================
+            // OPERATOR COMMANDS
+            // =================================================================
+            SomaCommand::Encoder { config, cmd, json } => {
+                let mut context = get_wallet_context(&config).await?;
+                if let Some(cmd) = cmd {
+                    if let Ok(client) = context.get_client().await {
+                        if let Err(e) = client.check_api_version().await {
+                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                        }
+                    }
+                    let result = cmd.execute(&mut context).await?;
+                    result.print(!json);
+                } else {
+                    let mut app: Command = SomaCommand::command();
+                    app.build();
+                    app.find_subcommand_mut("encoder").unwrap().print_help()?;
+                }
+                Ok(())
+            }
+
+            SomaCommand::Validator { config, cmd, json } => {
+                let mut context = get_wallet_context(&config).await?;
+                if let Some(cmd) = cmd {
+                    if let Ok(client) = context.get_client().await {
+                        if let Err(e) = client.check_api_version().await {
+                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                        }
+                    }
+                    cmd.execute(&mut context).await?.print(!json);
+                } else {
+                    let mut app: Command = SomaCommand::command();
+                    app.build();
+                    app.find_subcommand_mut("validator").unwrap().print_help()?;
+                }
+                Ok(())
+            }
+
+            // =================================================================
+            // ADVANCED CLIENT OPERATIONS
+            // =================================================================
+            SomaCommand::Client { config, cmd, json } => {
+                if let Some(cmd) = cmd {
+                    let mut context = get_wallet_context(&config).await?;
+
+                    if let Ok(client) = context.get_client().await {
+                        if let Err(e) = client.check_api_version().await {
+                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                        }
+                    }
+                    cmd.execute(&mut context).await?.print(!json);
+                } else {
+                    let mut app: Command = SomaCommand::command();
+                    app.build();
+                    app.find_subcommand_mut("client").unwrap().print_help()?;
+                }
+                Ok(())
+            }
+
+            // =================================================================
+            // NODE OPERATIONS
+            // =================================================================
             SomaCommand::Network {
                 config,
                 dump_addresses,
@@ -255,11 +657,10 @@ impl SomaCommand {
                 }
                 Ok(())
             }
+
             SomaCommand::Start {
                 config_dir,
                 force_regenesis,
-                // with_faucet,
-                // rpc_args,
                 fullnode_rpc_port,
                 data_ingestion_dir,
                 no_full_node,
@@ -268,8 +669,6 @@ impl SomaCommand {
             } => {
                 start(
                     config_dir.clone(),
-                    // with_faucet,
-                    // rpc_args,
                     force_regenesis,
                     epoch_duration_ms,
                     fullnode_rpc_port,
@@ -278,9 +677,9 @@ impl SomaCommand {
                     committee_size,
                 )
                 .await?;
-
                 Ok(())
             }
+
             SomaCommand::Genesis {
                 working_dir,
                 force,
@@ -301,7 +700,9 @@ impl SomaCommand {
                 )
                 .await
             }
-            SomaCommand::GenesisCeremony(cmd) => run(cmd),
+
+            SomaCommand::GenesisCeremony(cmd) => crate::genesis_ceremony::run(cmd),
+
             SomaCommand::KeyTool {
                 keystore_path,
                 json,
@@ -314,50 +715,17 @@ impl SomaCommand {
                 cmd.execute(&mut keystore).await?.print(!json);
                 Ok(())
             }
-            SomaCommand::Client { config, cmd, json } => {
-                if let Some(cmd) = cmd {
-                    let mut context = get_wallet_context(&config).await?;
-
-                    if let Ok(client) = context.get_client().await {
-                        if let Err(e) = client.check_api_version().await {
-                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
-                        }
-                    }
-                    cmd.execute(&mut context).await?.print(!json);
-                } else {
-                    // Print help
-                    let mut app: Command = SomaCommand::command();
-                    app.build();
-                    app.find_subcommand_mut("client").unwrap().print_help()?;
-                }
-                Ok(())
-            }
-            SomaCommand::Validator { config, cmd, json } => {
-                let mut context = get_wallet_context(&config).await?;
-                if let Some(cmd) = cmd {
-                    if let Ok(client) = context.get_client().await {
-                        if let Err(e) = client.check_api_version().await {
-                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
-                        }
-                    }
-                    cmd.execute(&mut context).await?.print(!json);
-                } else {
-                    // Print help
-                    let mut app: Command = SomaCommand::command();
-                    app.build();
-                    app.find_subcommand_mut("validator").unwrap().print_help()?;
-                }
-                Ok(())
-            }
         }
     }
 }
 
+// =============================================================================
+// Helper functions (start, genesis, get_wallet_context, etc.)
+// =============================================================================
+
 /// Starts a local network with the given configuration.
 async fn start(
     config: Option<PathBuf>,
-    // with_faucet: Option<String>,
-    // rpc_args: RpcArgs,
     force_regenesis: bool,
     epoch_duration_ms: Option<u64>,
     fullnode_rpc_port: u16,
@@ -382,8 +750,6 @@ async fn start(
 
     let mut swarm_builder = Swarm::builder();
 
-    // If this is set, then no data will be persisted between runs, and a new genesis will be
-    // generated each run.
     let config_dir = if force_regenesis {
         let committee_size = match committee_size {
             Some(x) => NonZeroUsize::new(x),
@@ -397,9 +763,6 @@ async fn start(
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);
         tempfile::tempdir()?.keep()
     } else {
-        // If the config path looks like a YAML file, it is treated as if it is the network.yaml
-        // overriding the network.yaml found in the soma config directry. Otherwise it is treated as
-        // the soma config directory for backwards compatibility with `soma-test-validator`.
         let (network_config_path, soma_config_path) = match config {
             Some(config)
                 if config.is_file()
@@ -410,11 +773,8 @@ async fn start(
                 if committee_size.is_some() {
                     eprintln!(
                         "{}",
-                        "[warning] The committee-size arg wil be ignored as a network \
-                            configuration already exists. To change the committee-size, you'll \
-                            have to adjust the network configuration file or regenerate a genesis \
-                            with the desired committee size. See `soma genesis --help` for more \
-                            information."
+                        "[warning] The committee-size arg will be ignored as a network \
+                            configuration already exists."
                             .yellow()
                             .bold()
                     );
@@ -426,11 +786,8 @@ async fn start(
                 if committee_size.is_some() {
                     eprintln!(
                         "{}",
-                        "[warning] The committee-size arg wil be ignored as a network \
-                            configuration already exists. To change the committee-size, you'll \
-                            have to adjust the network configuration file or regenerate a genesis \
-                            with the desired committee size. See `soma genesis --help` for more \
-                            information."
+                        "[warning] The committee-size arg will be ignored as a network \
+                            configuration already exists."
                             .yellow()
                             .bold()
                     );
@@ -457,22 +814,15 @@ async fn start(
                         anyhow!(
                             "Cannot run genesis with non-empty Soma config directory: {}.\n\n\
                                 If you are trying to run a local network without persisting the \
-                                data (so a new genesis that is randomly generated and will not be \
-                                saved once the network is shut down), use --force-regenesis flag.\n\
-                                If you are trying to persist the network data and start from a new \
-                                genesis, use soma genesis --help to see how to generate a new \
-                                genesis.",
+                                data, use --force-regenesis flag.",
                             soma_config.display(),
                         )
                     })?;
                 } else if committee_size.is_some() {
                     eprintln!(
                         "{}",
-                        "[warning] The committee-size arg wil be ignored as a network \
-                            configuration already exists. To change the committee-size, you'll \
-                            have to adjust the network configuration file or regenerate a genesis \
-                            with the desired committee size. See `soma genesis --help` for more \
-                            information."
+                        "[warning] The committee-size arg will be ignored as a network \
+                            configuration already exists."
                             .yellow()
                             .bold()
                     );
@@ -482,7 +832,6 @@ async fn start(
             }
         };
 
-        // Load the config of the Soma authority.
         let network_config: NetworkConfig =
             PersistedConfig::read(&network_config_path).map_err(|err| {
                 err.context(format!(
@@ -521,7 +870,6 @@ async fn start(
 
     let mut swarm = swarm_builder.build();
     swarm.launch().await?;
-    // Let nodes connect to one another
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     info!("Cluster started");
 
@@ -531,9 +879,6 @@ async fn start(
         .to_string();
     info!("Fullnode RPC URL: {fullnode_rpc_url}");
 
-    // Update the wallet_context with the configured fullnode rpc url so client operations will
-    // succeed if a non-default port was provided.
-
     if config_dir.join(SOMA_CLIENT_CONFIG).exists() {
         let _ = update_wallet_config_rpc(config_dir.clone(), fullnode_rpc_url.clone())?;
     }
@@ -542,69 +887,6 @@ async fn start(
         let _ = update_wallet_config_rpc(soma_config_dir()?, fullnode_rpc_url.clone())?;
     }
 
-    // TODO: with_faucet
-    // if let Some(input) = with_faucet {
-    //     let faucet_address = parse_host_port(input, DEFAULT_FAUCET_PORT)
-    //         .map_err(|_| anyhow!("Invalid faucet host and port"))?;
-
-    //     info!("Starting the faucet service at {faucet_address}");
-
-    //     let host_ip = match faucet_address {
-    //         SocketAddr::V4(addr) => *addr.ip(),
-    //         _ => bail!("Faucet configuration requires an IPv4 address"),
-    //     };
-
-    //     let config = FaucetConfig {
-    //         host_ip,
-    //         port: faucet_address.port(),
-    //         amount: DEFAULT_FAUCET_MIST_AMOUNT,
-    //         ..Default::default()
-    //     };
-
-    //     if force_regenesis {
-    //         let kp = swarm.config_mut().account_keys.swap_remove(0);
-    //         let keystore_path = config_dir.join(SOMA_KEYSTORE_FILENAME);
-    //         let mut keystore =
-    //             Keystore::from(FileBasedKeystore::load_or_create(&keystore_path).unwrap());
-    //         let address: SomaAddress = kp.public().into();
-    //         keystore
-    //             .import(None, SomaKeyPair::Ed25519(kp))
-    //             .await
-    //             .unwrap();
-
-    //         SomaClientConfig {
-    //             keystore,
-    //             external_keys: None,
-    //             envs: vec![SomaEnv {
-    //                 alias: "localnet".to_string(),
-    //                 rpc: fullnode_rpc_url.clone(),
-    //                 ws: None,
-    //                 basic_auth: None,
-    //                 chain_id: None,
-    //             }],
-    //             active_address: Some(address),
-    //             active_env: Some("localnet".to_string()),
-    //         }
-    //         .persisted(config_dir.join(SOMA_CLIENT_CONFIG).as_path())
-    //         .save()
-    //         .unwrap();
-    //     }
-
-    //     let local_faucet = LocalFaucet::new(
-    //         create_wallet_context(config.wallet_client_timeout_secs, config_dir.clone())?,
-    //         config.clone(),
-    //     )
-    //     .await?;
-
-    //     let app_state = Arc::new(AppState {
-    //         faucet: local_faucet,
-    //         config,
-    //     });
-
-    //     start_faucet(app_state).await?;
-    // }
-
-    // Run health check loop until Ctrl+C or failure
     let mut interval = interval(Duration::from_secs(3));
 
     loop {
@@ -721,7 +1003,6 @@ async fn genesis(
     .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
 
     let mut network_config = match (validator_info, networking_validator_info) {
-        // Both consensus and networking validators specified in config
         (Some(mut validators), Some(networking_validators)) => {
             let networking_validators: Vec<_> = networking_validators
                 .into_iter()
@@ -737,7 +1018,6 @@ async fn genesis(
                 .with_validators(validators)
                 .build()
         }
-        // Only consensus validators specified, generate one networking validator
         (Some(mut validators), None) => {
             let networking_validator = ValidatorGenesisConfigBuilder::new()
                 .as_networking_only()
@@ -750,7 +1030,6 @@ async fn genesis(
                 .with_validators(validators)
                 .build()
         }
-        // Only networking validators specified in config
         (None, Some(networking_validators)) => {
             let networking_validators: Vec<_> = networking_validators
                 .into_iter()
@@ -769,7 +1048,6 @@ async fn genesis(
                 .with_genesis_config(genesis_conf)
                 .build()
         }
-        // Neither specified, generate both using Mixed config
         (None, None) => builder
             .committee(CommitteeConfig::Mixed {
                 consensus_count: committee_size,
@@ -795,7 +1073,6 @@ async fn genesis(
     info!("Network config file is stored in {:?}.", network_path);
     info!("Client keystore is stored in {:?}.", keystore_path);
 
-    // Save individual validator configs
     for (i, validator) in network_config.validator_configs().iter().enumerate() {
         let config_type = if validator.consensus_config.is_some() {
             "validator"
@@ -807,7 +1084,6 @@ async fn genesis(
         info!("{} config saved to {:?}", config_type, path);
     }
 
-    // Save the first networking validator as SOMA_FULLNODE_CONFIG for backwards compatibility
     if let Some(networking_validator) = network_config
         .validator_configs()
         .iter()
@@ -820,7 +1096,6 @@ async fn genesis(
         );
     }
 
-    // Build client config
     let mut client_config = if client_path.exists() {
         PersistedConfig::read(&client_path)?
     } else {
@@ -831,7 +1106,6 @@ async fn genesis(
         client_config.active_address = active_address;
     }
 
-    // Get RPC URL from the first networking validator (or first validator if none)
     let rpc_address = network_config
         .validator_configs()
         .iter()
@@ -860,9 +1134,7 @@ async fn genesis(
     Ok(())
 }
 
-/// If `wallet_conf_file` (or the default config file if None) doesn't exist, prompt the user and
-/// then create it (along with a new keystore file in the same directory). The prompt is skipped if
-/// `accept_defaults` is true.
+/// If `wallet_conf_file` doesn't exist, prompt the user and create it.
 async fn prompt_if_no_config(
     wallet_conf_file: &Path,
     accept_defaults: bool,
@@ -871,7 +1143,6 @@ async fn prompt_if_no_config(
         return Ok(());
     }
 
-    // prompt user
     if !accept_defaults {
         println!(
             "No soma config found in `{}`, create one [Y/n]?",
@@ -883,7 +1154,6 @@ async fn prompt_if_no_config(
         }
     }
 
-    // make keystore
     let config_dir = wallet_conf_file
         .parent()
         .ok_or_else(|| anyhow!("Error: {wallet_conf_file:?} is an invalid file path"))?;
@@ -891,7 +1161,6 @@ async fn prompt_if_no_config(
     let (keystore, address) =
         create_default_keystore(&config_dir.join(SOMA_KEYSTORE_FILENAME)).await?;
 
-    // make config file
     let default_env = SomaEnv::testnet();
     let default_env_name = default_env.alias.clone();
     SomaClientConfig {
@@ -914,8 +1183,6 @@ async fn prompt_if_no_config(
     Ok(())
 }
 
-/// Create a keystore with a single key at `keystore_file`; returns the created keystore and
-/// address
 async fn create_default_keystore(keystore_file: &Path) -> anyhow::Result<(Keystore, SomaAddress)> {
     let mut keystore = Keystore::from(FileBasedKeystore::load_or_create(
         &keystore_file.to_path_buf(),
@@ -934,7 +1201,6 @@ async fn create_default_keystore(keystore_file: &Path) -> anyhow::Result<(Keysto
     Ok((keystore, new_address))
 }
 
-/// Read a single line from stdin and return it
 fn read_line() -> Result<String, anyhow::Error> {
     let mut s = String::new();
     let _ = stdout().flush();
@@ -942,8 +1208,9 @@ fn read_line() -> Result<String, anyhow::Error> {
     Ok(s.trim_end().to_string())
 }
 
-/// Get the currently configured wallet context, creating one if it doesn't exist
-async fn get_wallet_context(client_config: &SomaEnvConfig) -> Result<WalletContext, anyhow::Error> {
+pub async fn get_wallet_context(
+    client_config: &SomaEnvConfig,
+) -> Result<WalletContext, anyhow::Error> {
     let wallet_conf_file = client_config
         .config
         .clone()
@@ -959,69 +1226,12 @@ async fn get_wallet_context(client_config: &SomaEnvConfig) -> Result<WalletConte
     Ok(context)
 }
 
-/// Get the currently configured client.
-async fn get_client(
-    client_config: SomaEnvConfig,
-    command_err_string: &str,
-) -> Result<SomaClient, anyhow::Error> {
-    let context = get_wallet_context(&client_config).await?;
-    let Ok(client) = context.get_client().await else {
-        bail!(
-            "`{command_err_string}` requires a connection to the network. \
-             Current active network is {} but failed to connect to it.",
-            context.config.active_env.as_ref().unwrap()
-        );
-    };
-
-    Ok(client)
-}
-
-/// Get the currently configured client, and the chain ID for that client.
-async fn get_chain_id_and_client(
-    client_config: SomaEnvConfig,
-    command_err_string: &str,
-) -> anyhow::Result<(Option<String>, Option<SomaClient>)> {
-    let client = get_client(client_config, command_err_string).await?;
-
-    if let Err(e) = client.check_api_version().await {
-        eprintln!("{}", format!("[warning] {e}").yellow().bold());
-    }
-
-    Ok((client.get_chain_identifier().await.ok(), Some(client)))
-}
-
-/// Parse the input string into a SocketAddr, with a default port if none is provided.
-pub fn parse_host_port(
-    input: String,
-    default_port_if_missing: u16,
-) -> Result<SocketAddr, AddrParseError> {
-    let default_host = "0.0.0.0";
-    let mut input = input;
-    if input.contains("localhost") {
-        input = input.replace("localhost", "127.0.0.1");
-    }
-    if input.contains(':') {
-        input.parse::<SocketAddr>()
-    } else if input.contains('.') {
-        format!("{input}:{default_port_if_missing}").parse::<SocketAddr>()
-    } else if input.is_empty() {
-        format!("{default_host}:{default_port_if_missing}").parse::<SocketAddr>()
-    } else if !input.is_empty() {
-        format!("{default_host}:{input}").parse::<SocketAddr>()
-    } else {
-        format!("{default_host}:{default_port_if_missing}").parse::<SocketAddr>()
-    }
-}
-
-/// Converts a socket address to a Url by setting the scheme to HTTP.
 fn socket_addr_to_url(addr: SocketAddr) -> Result<Url, anyhow::Error> {
     let ip = normalize_bind_addr(addr);
     Url::parse(&format!("http://{ip}:{}", addr.port()))
         .with_context(|| format!("Failed to parse {addr} into a Url"))
 }
 
-/// Resolves an unspecified ip address to a localhost IP address. Particularly on Windows, clients
-/// cannot connect to 0.0.0.0 addresses.
 fn normalize_bind_addr(addr: SocketAddr) -> IpAddr {
     match addr.ip() {
         IpAddr::V4(v4) if v4.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
