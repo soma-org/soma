@@ -18,7 +18,8 @@ use crate::utils::merge::Merge;
 use prost_types::FieldMask;
 use protocol_config::ProtocolConfigValue;
 
-pub const READ_MASK_DEFAULT: &str = "epoch,committee,first_checkpoint,last_checkpoint,start,end,reference_gas_price,protocol_config.protocol_version";
+pub const READ_MASK_DEFAULT: &str =
+    "epoch,committee,first_checkpoint,last_checkpoint,start,end,protocol_config.protocol_version";
 
 #[tracing::instrument(skip(service))]
 pub fn get_epoch(service: &RpcService, request: GetEpochRequest) -> Result<GetEpochResponse> {

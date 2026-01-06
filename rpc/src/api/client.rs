@@ -8,16 +8,21 @@ use futures::TryStreamExt;
 use tap::Pipe;
 use tonic::metadata::MetadataMap;
 use tracing::info;
+use types::digests::TransactionDigest;
 use types::effects::TransactionEffectsAPI as _;
 use types::effects::object_change::IDOperation;
 
+use crate::api::ServerVersion;
 use crate::api::rpc_client;
 use crate::api::rpc_client::HeadersInterceptor;
 use crate::proto::TryFromProtoError;
 use crate::proto::soma as proto;
+use crate::proto::soma::GetEpochResponse;
 use crate::proto::soma::InitiateShardWorkRequest;
 use crate::proto::soma::InitiateShardWorkResponse;
 use crate::proto::soma::ListOwnedObjectsRequest;
+use crate::proto::soma::SimulateTransactionRequest;
+use crate::proto::soma::SimulateTransactionResponse;
 use crate::proto::soma::SubscribeCheckpointsRequest;
 use crate::proto::soma::transaction_kind::Kind;
 use crate::proto::soma::{
@@ -261,6 +266,34 @@ impl Client {
             .map(|r| r.into_inner())
     }
 
+    pub async fn get_latest_system_state(&mut self) -> Result<types::system_state::SystemState> {
+        let request = proto::GetEpochRequest::latest()
+            .with_read_mask(FieldMask::from_paths(["system_state", "epoch"]));
+        let response = self
+            .0
+            .ledger_client()
+            .get_epoch(request)
+            .await?
+            .into_inner();
+
+        (*response
+            .epoch
+            .ok_or_else(|| {
+                tonic::Status::not_found("epoch not found in get system state response")
+            })?
+            .system_state
+            .ok_or_else(|| {
+                tonic::Status::not_found("system_state not found in get system state response")
+            })?)
+        .try_into()
+        .map_err(|e| {
+            tonic::Status::internal(format!(
+                "system_state could not be converted to domain type: {}",
+                e
+            ))
+        })
+    }
+
     pub async fn get_chain_identifier(&mut self) -> Result<String> {
         let request = crate::proto::soma::GetServiceInfoRequest::default();
         let response = self
@@ -273,6 +306,20 @@ impl Client {
         response
             .chain_id
             .ok_or_else(|| tonic::Status::not_found("chain_id not found in service info response"))
+    }
+
+    pub async fn get_server_version(&mut self) -> Result<String> {
+        let request = crate::proto::soma::GetServiceInfoRequest::default();
+        let response = self
+            .0
+            .ledger_client()
+            .get_service_info(request)
+            .await?
+            .into_inner();
+
+        response.server.ok_or_else(|| {
+            tonic::Status::not_found("server_version not found in service info response")
+        })
     }
 
     /// Initiate shard work for a given shard input
@@ -683,6 +730,86 @@ impl Client {
 
         Ok((response, completion))
     }
+
+    pub async fn get_epoch(&mut self, epoch: Option<u64>) -> Result<proto::GetEpochResponse> {
+        let request = match epoch {
+            Some(e) => proto::GetEpochRequest::new(e),
+            None => proto::GetEpochRequest::latest(),
+        }
+        .with_read_mask(FieldMask::from_paths([
+            "epoch",
+            "protocol_config.protocol_version",
+        ]));
+
+        self.0
+            .ledger_client()
+            .get_epoch(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    pub async fn get_protocol_version(&mut self) -> Result<u64> {
+        let response = self.get_epoch(None).await?;
+        response
+            .epoch
+            .and_then(|e| e.protocol_config)
+            .and_then(|c| c.protocol_version)
+            .ok_or_else(|| tonic::Status::not_found("protocol version not found"))
+    }
+
+    pub async fn simulate_transaction(
+        &mut self,
+        tx_data: &types::transaction::TransactionData,
+    ) -> Result<SimulationResult> {
+        let proto_transaction: proto::Transaction = tx_data.clone().into();
+
+        let request = proto::SimulateTransactionRequest::default()
+            .with_transaction(proto_transaction)
+            .with_read_mask(FieldMask::from_paths([
+                "transaction.effects",
+                "transaction.balance_changes",
+                "transaction.objects",
+            ]));
+
+        let (metadata, response, _extensions) = self
+            .0
+            .execution_client()
+            .simulate_transaction(request)
+            .await?
+            .into_parts();
+
+        simulation_result_try_from_proto(&response)
+            .map_err(|e| status_from_error_with_metadata(e, metadata))
+    }
+
+    pub async fn get_transaction(
+        &mut self,
+        digest: TransactionDigest,
+    ) -> Result<TransactionQueryResult> {
+        let request = proto::GetTransactionRequest::default()
+            .with_digest(digest.to_string())
+            .with_read_mask(FieldMask::from_paths([
+                "digest",
+                "effects",
+                "checkpoint",
+                "timestamp",
+                "balance_changes",
+            ]));
+
+        let (metadata, response, _extensions) = self
+            .0
+            .ledger_client()
+            .get_transaction(request)
+            .await?
+            .into_parts();
+
+        let executed_tx = response
+            .transaction
+            .ok_or_else(|| tonic::Status::not_found("transaction not found"))?;
+
+        transaction_query_result_try_from_proto(&executed_tx)
+            .map_err(|e| status_from_error_with_metadata(e, metadata))
+    }
 }
 
 /// Information about a completed shard encoding round
@@ -837,4 +964,105 @@ fn status_from_error_with_metadata<T: Into<BoxError>>(err: T, metadata: Metadata
     let mut status = Status::from_error(err.into());
     *status.metadata_mut() = metadata;
     status
+}
+
+#[derive(Debug)]
+pub struct SimulationResult {
+    pub effects: TransactionEffects,
+    pub balance_changes: Vec<types::balance_change::BalanceChange>,
+    pub objects: types::full_checkpoint_content::ObjectSet,
+}
+
+fn simulation_result_try_from_proto(
+    response: &proto::SimulateTransactionResponse,
+) -> Result<SimulationResult, TryFromProtoError> {
+    let executed_tx = response
+        .transaction
+        .as_ref()
+        .ok_or_else(|| TryFromProtoError::missing("transaction"))?;
+
+    let proto_effects = executed_tx
+        .effects
+        .as_ref()
+        .ok_or_else(|| TryFromProtoError::missing("effects"))?;
+
+    let sdk_effects: crate::types::TransactionEffects = proto_effects
+        .try_into()
+        .map_err(|e: TryFromProtoError| TryFromProtoError::invalid("effects", e))?;
+
+    let effects: TransactionEffects = sdk_effects
+        .try_into()
+        .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("effects", e))?;
+
+    let balance_changes = executed_tx
+        .balance_changes
+        .iter()
+        .map(|bc| bc.try_into())
+        .collect::<Result<Vec<types::balance_change::BalanceChange>, _>>()?;
+
+    let objects = executed_tx
+        .objects()
+        .try_into()
+        .map_err(|e: TryFromProtoError| TryFromProtoError::invalid("objects", e))?;
+
+    Ok(SimulationResult {
+        effects,
+        balance_changes,
+        objects,
+    })
+}
+
+#[derive(Debug)]
+pub struct TransactionQueryResult {
+    pub digest: TransactionDigest,
+    pub effects: TransactionEffects,
+    pub checkpoint: Option<u64>,
+    pub timestamp_ms: Option<u64>,
+    pub balance_changes: Vec<types::balance_change::BalanceChange>,
+}
+
+fn transaction_query_result_try_from_proto(
+    executed_tx: &proto::ExecutedTransaction,
+) -> Result<TransactionQueryResult, TryFromProtoError> {
+    let digest_str = executed_tx
+        .digest
+        .as_ref()
+        .ok_or_else(|| TryFromProtoError::missing("digest"))?;
+
+    let digest = digest_str
+        .parse()
+        .map_err(|e| TryFromProtoError::invalid("digest", format!("{}", e)))?;
+
+    let proto_effects = executed_tx
+        .effects
+        .as_ref()
+        .ok_or_else(|| TryFromProtoError::missing("effects"))?;
+
+    let sdk_effects: crate::types::TransactionEffects = proto_effects
+        .try_into()
+        .map_err(|e: TryFromProtoError| TryFromProtoError::invalid("effects", e))?;
+
+    let effects: TransactionEffects = sdk_effects
+        .try_into()
+        .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("effects", e))?;
+
+    let balance_changes = executed_tx
+        .balance_changes
+        .iter()
+        .map(|bc| bc.try_into())
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Extract timestamp from proto Timestamp
+    let timestamp_ms = executed_tx
+        .timestamp
+        .as_ref()
+        .map(|ts| (ts.seconds as u64 * 1000) + (ts.nanos as u64 / 1_000_000));
+
+    Ok(TransactionQueryResult {
+        digest,
+        effects,
+        checkpoint: executed_tx.checkpoint,
+        timestamp_ms,
+        balance_changes,
+    })
 }

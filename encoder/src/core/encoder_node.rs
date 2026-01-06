@@ -570,7 +570,6 @@ async fn init_wallet_context(
     let env = SomaEnv {
         alias: "localnet".to_string(),
         rpc: format!("http://{}", config.rpc_address),
-        internal_object_address: format!("http://{}", config.rpc_address), // TODO: remove this
         basic_auth: None,
         chain_id: None, // TODO: change this to have chain_id from config?
     };

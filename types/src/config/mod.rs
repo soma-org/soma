@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use tracing::debug;
 use tracing::trace;
 
+use crate::multiaddr::Multiaddr;
+
 pub mod certificate_deny_config;
 pub mod encoder_config;
 pub mod genesis_config;
@@ -50,6 +52,39 @@ pub fn soma_config_dir() -> Result<PathBuf, anyhow::Error> {
         }
         Ok(dir)
     })
+}
+
+/// Check if the genesis blob exists in the given directory or the default directory.
+pub fn genesis_blob_exists(config_dir: Option<PathBuf>) -> bool {
+    if let Some(dir) = config_dir {
+        dir.join(SOMA_GENESIS_FILENAME).exists()
+    } else if let Some(config_env) = std::env::var_os("SOMA_CONFIG_DIR") {
+        Path::new(&config_env).join(SOMA_GENESIS_FILENAME).exists()
+    } else if let Some(home) = dirs::home_dir() {
+        let mut config = PathBuf::new();
+        config.push(&home);
+        config.extend([SOMA_DIR, SOMA_CONFIG_DIR, SOMA_GENESIS_FILENAME]);
+        config.exists()
+    } else {
+        false
+    }
+}
+
+pub fn validator_config_file(address: Multiaddr, i: usize) -> String {
+    multiaddr_to_filename(address).unwrap_or(format!("validator-config-{}.yaml", i))
+}
+
+pub fn ssfn_config_file(address: Multiaddr, i: usize) -> String {
+    multiaddr_to_filename(address).unwrap_or(format!("ssfn-config-{}.yaml", i))
+}
+
+fn multiaddr_to_filename(address: Multiaddr) -> Option<String> {
+    if let Some(hostname) = address.hostname() {
+        if let Some(port) = address.port() {
+            return Some(format!("{}-{}.yaml", hostname, port));
+        }
+    }
+    None
 }
 
 pub trait Config

@@ -1,28 +1,36 @@
-use fastcrypto::traits::KeyPair as _;
+use std::{collections::BTreeMap, fs, path::Path};
+
+use anyhow::{bail, Context};
+use camino::Utf8Path;
+use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
+use fastcrypto::traits::{KeyPair as _, ToFromBytes};
 use protocol_config::ProtocolVersion;
+use tracing::trace;
 
 use crate::base::ExecutionDigests;
 use crate::config::encoder_config::EncoderGenesisConfig;
 use crate::config::genesis_config::{
-    GenesisConfig, TokenAllocation, TokenDistributionSchedule, ValidatorGenesisConfig,
+    GenesisCeremonyParameters, TokenDistributionSchedule, ValidatorGenesisConfig,
+    TOTAL_SUPPLY_SHANNONS,
 };
+use crate::crypto::AuthoritySignInfoTrait as _;
+use crate::encoder_info::GenesisEncoderInfo;
 use crate::envelope::Message as _;
 use crate::intent::{IntentMessage, IntentScope};
 use crate::object::{ObjectData, ObjectType, Version};
-use crate::system_state::encoder::Encoder;
+use crate::system_state::encoder::{Encoder, EncoderMetadata};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::shard::{Target, TargetOrigin};
-use crate::system_state::validator::Validator;
+use crate::system_state::staking::StakingPool;
+use crate::system_state::validator::{Validator, ValidatorMetadata};
 use crate::system_state::{get_system_state, FeeParameters};
 use crate::transaction::InputObjects;
 use crate::tx_fee::TransactionFee;
+use crate::validator_info::GenesisValidatorInfo;
 use crate::{
     base::SomaAddress,
     checkpoints::{CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary},
-    committee::Committee,
-    crypto::{
-        AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo,
-    },
+    crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo},
     digests::TransactionDigest,
     effects::{ExecutionStatus, TransactionEffects},
     genesis::{Genesis, UnsignedGenesis},
@@ -33,50 +41,60 @@ use crate::{
     transaction::{Transaction, VerifiedTransaction},
     SYSTEM_STATE_OBJECT_ID,
 };
-use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+const GENESIS_BUILDER_COMMITTEE_DIR: &str = "committee";
+const GENESIS_BUILDER_NETWORKING_COMMITTEE_DIR: &str = "networking-committee";
+const GENESIS_BUILDER_ENCODERS_DIR: &str = "encoders";
+const GENESIS_BUILDER_PARAMETERS_FILE: &str = "parameters";
+const GENESIS_BUILDER_TOKEN_DISTRIBUTION_SCHEDULE_FILE: &str = "token-distribution-schedule";
+const GENESIS_BUILDER_SEED_TARGETS_FILE: &str = "seed-target-embeddings";
+const GENESIS_BUILDER_SIGNATURE_DIR: &str = "signatures";
+const GENESIS_BUILDER_UNSIGNED_GENESIS_FILE: &str = "unsigned-genesis";
+
 pub struct GenesisBuilder {
-    parameters: GenesisConfig,
+    parameters: GenesisCeremonyParameters,
     token_distribution_schedule: Option<TokenDistributionSchedule>,
-    validators: Vec<ValidatorGenesisConfig>,
-    encoders: Vec<EncoderGenesisConfig>,
-    networking_validators: Vec<ValidatorGenesisConfig>,
+    validators: Vec<GenesisValidatorInfo>,
+    networking_validators: Vec<GenesisValidatorInfo>,
+    encoders: Vec<GenesisEncoderInfo>,
+    seed_target_embeddings: Vec<Vec<u8>>,
     signatures: BTreeMap<AuthorityPublicKeyBytes, AuthoritySignInfo>,
     built_genesis: Option<UnsignedGenesis>,
+}
+
+impl Default for GenesisBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GenesisBuilder {
     pub fn new() -> Self {
         Self {
-            parameters: GenesisConfig::for_local_testing(),
+            parameters: GenesisCeremonyParameters::default(),
             token_distribution_schedule: None,
             validators: Vec::new(),
             networking_validators: Vec::new(),
             encoders: Vec::new(),
+            seed_target_embeddings: Vec::new(),
             signatures: BTreeMap::new(),
             built_genesis: None,
         }
     }
 
-    pub fn with_parameters(mut self, parameters: GenesisConfig) -> Self {
+    pub fn with_parameters(mut self, parameters: GenesisCeremonyParameters) -> Self {
         self.parameters = parameters;
         self
     }
 
-    pub fn with_validators(mut self, validators: Vec<ValidatorGenesisConfig>) -> Self {
-        self.validators = validators;
+    pub fn with_protocol_version(mut self, v: ProtocolVersion) -> Self {
+        self.parameters.protocol_version = v;
         self
     }
 
-    pub fn with_networking_validators(mut self, validators: Vec<ValidatorGenesisConfig>) -> Self {
-        self.networking_validators = validators;
-        self
-    }
-
-    pub fn with_encoders(mut self, encoders: Vec<EncoderGenesisConfig>) -> Self {
-        self.encoders = encoders;
-        self
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.parameters.protocol_version
     }
 
     pub fn with_token_distribution_schedule(mut self, schedule: TokenDistributionSchedule) -> Self {
@@ -84,28 +102,101 @@ impl GenesisBuilder {
         self
     }
 
-    pub fn with_protocol_version(mut self, v: ProtocolVersion) -> Self {
-        self.parameters.parameters.protocol_version = v;
+    pub fn with_seed_target_embeddings(mut self, embeddings: Vec<Vec<u8>>) -> Self {
+        self.seed_target_embeddings = embeddings;
         self
     }
 
-    pub fn protocol_version(&self) -> ProtocolVersion {
-        self.parameters.parameters.protocol_version
+    /// Add a consensus validator from GenesisValidatorInfo (ceremony workflow)
+    pub fn add_validator(mut self, validator: GenesisValidatorInfo) -> Self {
+        self.validators.push(validator);
+        self.built_genesis = None;
+        self
+    }
+
+    /// Add a networking-only validator from GenesisValidatorInfo
+    pub fn add_networking_validator(mut self, validator: GenesisValidatorInfo) -> Self {
+        self.networking_validators.push(validator);
+        self.built_genesis = None;
+        self
+    }
+
+    /// Add an encoder from GenesisEncoderInfo (ceremony workflow)
+    pub fn add_encoder(mut self, encoder: GenesisEncoderInfo) -> Self {
+        self.encoders.push(encoder);
+        self.built_genesis = None;
+        self
+    }
+
+    // Convenience methods for local testing with config types
+
+    /// Add validators from ValidatorGenesisConfig (local testing workflow)
+    pub fn with_validator_configs(mut self, configs: Vec<ValidatorGenesisConfig>) -> Self {
+        use crate::crypto::AuthoritySignature;
+        use crate::validator_info::ValidatorInfo;
+
+        for config in configs {
+            let info = ValidatorInfo::from(&config);
+
+            self.validators.push(GenesisValidatorInfo { info });
+        }
+        self.built_genesis = None;
+        self
+    }
+
+    /// Add networking validators from ValidatorGenesisConfig (local testing workflow)
+    pub fn with_networking_validator_configs(
+        mut self,
+        configs: Vec<ValidatorGenesisConfig>,
+    ) -> Self {
+        use crate::crypto::AuthoritySignature;
+        use crate::validator_info::ValidatorInfo;
+
+        for config in configs {
+            let info = ValidatorInfo::from(&config);
+
+            self.networking_validators
+                .push(GenesisValidatorInfo { info });
+        }
+        self.built_genesis = None;
+        self
+    }
+
+    /// Add encoders from EncoderGenesisConfig (local testing workflow)
+    pub fn with_encoder_configs(mut self, configs: Vec<EncoderGenesisConfig>) -> Self {
+        for config in configs {
+            self.encoders.push(GenesisEncoderInfo::from(&config));
+        }
+        self.built_genesis = None;
+        self
+    }
+
+    pub fn validators(&self) -> &[GenesisValidatorInfo] {
+        &self.validators
+    }
+
+    pub fn networking_validators(&self) -> &[GenesisValidatorInfo] {
+        &self.networking_validators
+    }
+
+    pub fn encoders(&self) -> &[GenesisEncoderInfo] {
+        &self.encoders
+    }
+
+    pub fn unsigned_genesis_checkpoint(&self) -> Option<UnsignedGenesis> {
+        self.built_genesis.clone()
     }
 
     pub fn add_validator_signature(mut self, keypair: &AuthorityKeyPair) -> Self {
         let unsigned_genesis = self.build_unsigned_genesis();
-        let name = keypair.public().into();
+        let name: AuthorityPublicKeyBytes = keypair.public().into();
 
         // Ensure this validator exists
         assert!(
-            self.validators
-                .iter()
-                .any(|v| AuthorityPublicKeyBytes::from(v.key_pair.public()) == name),
+            self.validators.iter().any(|v| v.info.protocol_key == name),
             "provided keypair does not correspond to a validator in the validator set"
         );
 
-        // Sign the checkpoint summary
         let checkpoint_signature = AuthoritySignInfo::new(
             unsigned_genesis.checkpoint.epoch,
             &unsigned_genesis.checkpoint,
@@ -123,9 +214,11 @@ impl GenesisBuilder {
             return built.clone();
         }
 
+        self.validate().expect("Genesis validation failed");
+
         let (system_state, objects) = self.create_genesis_state();
         let (transaction, effects, final_objects) =
-            self.create_genesis_transaction(objects, system_state);
+            self.create_genesis_transaction(objects, &system_state);
         let (checkpoint, checkpoint_contents) =
             self.create_genesis_checkpoint(&transaction, &effects);
 
@@ -144,14 +237,11 @@ impl GenesisBuilder {
     pub fn build(mut self) -> Genesis {
         let unsigned = self.build_unsigned_genesis();
 
-        // Get committee from system state
         let system_state = get_system_state(&unsigned.objects()).expect("System state must exist");
         let committee = system_state.into_epoch_start_state().get_committee();
 
-        // Collect all signatures
         let signatures: Vec<AuthoritySignInfo> = self.signatures.into_values().collect();
 
-        // Create certified checkpoint
         let certified_checkpoint =
             CertifiedCheckpointSummary::new(unsigned.checkpoint, signatures, &committee).unwrap();
 
@@ -164,80 +254,429 @@ impl GenesisBuilder {
         )
     }
 
+    pub fn validate(&self) -> anyhow::Result<()> {
+        self.validate_inputs()?;
+        self.validate_output();
+        Ok(())
+    }
+
+    fn validate_inputs(&self) -> anyhow::Result<()> {
+        for validator in &self.validators {
+            validator.validate().with_context(|| {
+                format!(
+                    "metadata for validator {} is invalid",
+                    validator.info.account_address
+                )
+            })?;
+        }
+
+        for validator in &self.networking_validators {
+            validator.validate().with_context(|| {
+                format!(
+                    "metadata for networking validator {} is invalid",
+                    validator.info.account_address
+                )
+            })?;
+        }
+
+        for encoder in &self.encoders {
+            encoder.validate().with_context(|| {
+                format!("metadata for encoder {} is invalid", encoder.info.name)
+            })?;
+        }
+
+        if let Some(schedule) = &self.token_distribution_schedule {
+            schedule.validate();
+            schedule.check_all_stake_operations_are_for_valid_validators(
+                self.validators.iter().map(|v| v.info.account_address),
+            );
+        }
+
+        Ok(())
+    }
+
+    fn validate_output(&self) {
+        let Some(unsigned_genesis) = &self.built_genesis else {
+            return;
+        };
+
+        let system_state = get_system_state(&unsigned_genesis.objects())
+            .expect("System state must exist in genesis");
+
+        assert_eq!(
+            self.validators.len(),
+            system_state.validators.consensus_validators.len(),
+            "Validator count mismatch"
+        );
+
+        let committee = system_state.into_epoch_start_state().get_committee();
+        for signature in self.signatures.values() {
+            let validator_exists = self
+                .validators
+                .iter()
+                .any(|v| v.info.protocol_key == signature.authority);
+
+            if !validator_exists {
+                panic!(
+                    "found signature for unknown validator: {:?}",
+                    signature.authority
+                );
+            }
+
+            signature
+                .verify_secure(
+                    unsigned_genesis.checkpoint(),
+                    Intent::soma_app(IntentScope::CheckpointSummary),
+                    &committee,
+                )
+                .expect("signature should be valid");
+        }
+    }
+
+    pub fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        let path: &Utf8Path = path.try_into()?;
+        trace!("Reading Genesis Builder from {}", path);
+
+        if !path.is_dir() {
+            bail!("path must be a directory");
+        }
+
+        // Load parameters
+        let parameters_file = path.join(GENESIS_BUILDER_PARAMETERS_FILE);
+        let parameters: GenesisCeremonyParameters = serde_yaml::from_slice(
+            &fs::read(&parameters_file).context("unable to read genesis parameters file")?,
+        )
+        .context("unable to deserialize genesis parameters")?;
+
+        // Load token distribution schedule if present
+        let token_distribution_schedule_file =
+            path.join(GENESIS_BUILDER_TOKEN_DISTRIBUTION_SCHEDULE_FILE);
+        let token_distribution_schedule = if token_distribution_schedule_file.exists() {
+            Some(TokenDistributionSchedule::from_csv(fs::File::open(
+                token_distribution_schedule_file,
+            )?)?)
+        } else {
+            None
+        };
+
+        // Load seed target embeddings if present
+        let seed_targets_file = path.join(GENESIS_BUILDER_SEED_TARGETS_FILE);
+        let seed_target_embeddings: Vec<Vec<u8>> = if seed_targets_file.exists() {
+            let bytes = fs::read(&seed_targets_file)?;
+            serde_yaml::from_slice(&bytes)
+                .context("unable to deserialize seed target embeddings")?
+        } else {
+            Vec::new()
+        };
+
+        // Load validators
+        let mut validators = Vec::new();
+        let committee_dir = path.join(GENESIS_BUILDER_COMMITTEE_DIR);
+        if committee_dir.exists() {
+            for entry in committee_dir.read_dir_utf8()? {
+                let entry = entry?;
+                if entry.file_name().starts_with('.') {
+                    continue;
+                }
+                let validator_path = entry.path();
+                let validator_bytes = fs::read(validator_path)?;
+                let validator_info: GenesisValidatorInfo = serde_yaml::from_slice(&validator_bytes)
+                    .with_context(|| {
+                        format!("unable to load validator info for {}", validator_path)
+                    })?;
+                validators.push(validator_info);
+            }
+        }
+
+        // Load networking validators
+        let mut networking_validators = Vec::new();
+        let networking_committee_dir = path.join(GENESIS_BUILDER_NETWORKING_COMMITTEE_DIR);
+        if networking_committee_dir.exists() {
+            for entry in networking_committee_dir.read_dir_utf8()? {
+                let entry = entry?;
+                if entry.file_name().starts_with('.') {
+                    continue;
+                }
+                let validator_path = entry.path();
+                let validator_bytes = fs::read(validator_path)?;
+                let validator_info: GenesisValidatorInfo = serde_yaml::from_slice(&validator_bytes)
+                    .with_context(|| {
+                        format!(
+                            "unable to load networking validator info for {}",
+                            validator_path
+                        )
+                    })?;
+                networking_validators.push(validator_info);
+            }
+        }
+
+        // Load encoders
+        let mut encoders = Vec::new();
+        let encoders_dir = path.join(GENESIS_BUILDER_ENCODERS_DIR);
+        if encoders_dir.exists() {
+            for entry in encoders_dir.read_dir_utf8()? {
+                let entry = entry?;
+                if entry.file_name().starts_with('.') {
+                    continue;
+                }
+                let encoder_path = entry.path();
+                let encoder_bytes = fs::read(encoder_path)?;
+                let encoder_info: GenesisEncoderInfo = serde_yaml::from_slice(&encoder_bytes)
+                    .with_context(|| format!("unable to load encoder info for {}", encoder_path))?;
+                encoders.push(encoder_info);
+            }
+        }
+
+        // Load signatures
+        let mut signatures = BTreeMap::new();
+        let signature_dir = path.join(GENESIS_BUILDER_SIGNATURE_DIR);
+        if signature_dir.exists() {
+            for entry in signature_dir.read_dir_utf8()? {
+                let entry = entry?;
+                if entry.file_name().starts_with('.') {
+                    continue;
+                }
+                let sig_path = entry.path();
+                let sig_bytes = fs::read(sig_path)?;
+                let sig: AuthoritySignInfo = bcs::from_bytes(&sig_bytes).with_context(|| {
+                    format!("unable to load validator signature for {}", sig_path)
+                })?;
+                signatures.insert(sig.authority, sig);
+            }
+        }
+
+        let mut builder = Self {
+            parameters,
+            token_distribution_schedule,
+            validators,
+            networking_validators,
+            encoders,
+            seed_target_embeddings,
+            signatures,
+            built_genesis: None,
+        };
+
+        // Load unsigned genesis if present and verify
+        let unsigned_genesis_file = path.join(GENESIS_BUILDER_UNSIGNED_GENESIS_FILE);
+        if unsigned_genesis_file.exists() {
+            let unsigned_genesis_bytes = fs::read(&unsigned_genesis_file)?;
+            let loaded_genesis: UnsignedGenesis = bcs::from_bytes(&unsigned_genesis_bytes)?;
+
+            assert!(
+                builder.token_distribution_schedule.is_some(),
+                "If a built genesis is present, there must also be a token-distribution-schedule"
+            );
+
+            let built = builder.build_unsigned_genesis();
+            assert_eq!(
+                built, loaded_genesis,
+                "loaded genesis does not match built genesis"
+            );
+        }
+
+        Ok(builder)
+    }
+
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
+        let path = path.as_ref();
+        trace!("Writing Genesis Builder to {}", path.display());
+
+        fs::create_dir_all(path)?;
+
+        // Write parameters
+        let parameters_file = path.join(GENESIS_BUILDER_PARAMETERS_FILE);
+        fs::write(parameters_file, serde_yaml::to_string(&self.parameters)?)?;
+
+        // Write token distribution schedule if present
+        if let Some(schedule) = &self.token_distribution_schedule {
+            schedule.to_csv(fs::File::create(
+                path.join(GENESIS_BUILDER_TOKEN_DISTRIBUTION_SCHEDULE_FILE),
+            )?)?;
+        }
+
+        // Write seed target embeddings if present
+        if !self.seed_target_embeddings.is_empty() {
+            let seed_targets_file = path.join(GENESIS_BUILDER_SEED_TARGETS_FILE);
+            fs::write(
+                seed_targets_file,
+                serde_yaml::to_string(&self.seed_target_embeddings)?,
+            )?;
+        }
+
+        // Write validators
+        let committee_dir = path.join(GENESIS_BUILDER_COMMITTEE_DIR);
+        fs::create_dir_all(&committee_dir)?;
+        for validator in &self.validators {
+            let validator_bytes = serde_yaml::to_string(validator)?;
+            fs::write(
+                committee_dir.join(&validator.info.account_address.to_string()),
+                validator_bytes,
+            )?;
+        }
+
+        // Write networking validators
+        let networking_committee_dir = path.join(GENESIS_BUILDER_NETWORKING_COMMITTEE_DIR);
+        fs::create_dir_all(&networking_committee_dir)?;
+        for validator in &self.networking_validators {
+            let validator_bytes = serde_yaml::to_string(validator)?;
+            fs::write(
+                networking_committee_dir.join(&validator.info.account_address.to_string()),
+                validator_bytes,
+            )?;
+        }
+
+        // Write encoders
+        let encoders_dir = path.join(GENESIS_BUILDER_ENCODERS_DIR);
+        fs::create_dir_all(&encoders_dir)?;
+        for encoder in &self.encoders {
+            let encoder_bytes = serde_yaml::to_string(encoder)?;
+            fs::write(
+                encoders_dir.join(&encoder.info.account_address.to_string()),
+                encoder_bytes,
+            )?;
+        }
+
+        // Write signatures
+        let signature_dir = path.join(GENESIS_BUILDER_SIGNATURE_DIR);
+        fs::create_dir_all(&signature_dir)?;
+        for (pubkey, sig) in &self.signatures {
+            let sig_bytes = bcs::to_bytes(sig)?;
+            let name = self
+                .validators
+                .iter()
+                .find(|v| v.info.protocol_key == *pubkey)
+                .map(|v| v.info.account_address.clone().to_string())
+                .unwrap_or_else(|| format!("{:?}", pubkey));
+            fs::write(signature_dir.join(name), sig_bytes)?;
+        }
+
+        // Write unsigned genesis if present
+        if let Some(genesis) = &self.built_genesis {
+            let genesis_bytes = bcs::to_bytes(genesis)?;
+            fs::write(
+                path.join(GENESIS_BUILDER_UNSIGNED_GENESIS_FILE),
+                genesis_bytes,
+            )?;
+        }
+
+        Ok(())
+    }
+
     fn create_genesis_state(&self) -> (SystemState, Vec<Object>) {
         let mut objects = Vec::new();
 
-        // TODO: allow for non-mainnet chains here
-
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-            self.parameters.parameters.protocol_version,
+            self.parameters.protocol_version,
             protocol_config::Chain::Mainnet,
         );
 
-        // Create system state with validators and encoders
+        // Convert GenesisValidatorInfo to on-chain Validator
+        let validators: Vec<Validator> = self
+            .validators
+            .iter()
+            .map(|v| {
+                Validator {
+                    metadata: ValidatorMetadata {
+                        soma_address: v.info.account_address,
+                        protocol_pubkey: BLS12381PublicKey::from_bytes(
+                            v.info.protocol_key.as_bytes(),
+                        )
+                        .expect("Invalid protocol key"),
+                        network_pubkey: v.info.network_key.clone(),
+                        worker_pubkey: v.info.worker_key.clone(),
+                        net_address: v.info.network_address.clone(),
+                        p2p_address: v.info.p2p_address.clone(),
+                        primary_address: v.info.primary_address.clone(),
+                        encoder_validator_address: v.info.encoder_validator_address.clone(),
+                        next_epoch_protocol_pubkey: None,
+                        next_epoch_network_pubkey: None,
+                        next_epoch_net_address: None,
+                        next_epoch_p2p_address: None,
+                        next_epoch_primary_address: None,
+                        next_epoch_worker_pubkey: None,
+                        next_epoch_encoder_validator_address: None,
+                    },
+                    voting_power: 0, // Will be set by set_voting_power()
+                    staking_pool: StakingPool::new(ObjectID::random()),
+                    commission_rate: v.info.commission_rate,
+                    next_epoch_stake: 0,
+                    next_epoch_commission_rate: v.info.commission_rate,
+                }
+            })
+            .collect();
+
+        let networking_validators: Vec<Validator> = self
+            .networking_validators
+            .iter()
+            .map(|v| Validator {
+                metadata: ValidatorMetadata {
+                    soma_address: v.info.account_address,
+                    protocol_pubkey: BLS12381PublicKey::from_bytes(v.info.protocol_key.as_bytes())
+                        .expect("Invalid protocol key"),
+                    network_pubkey: v.info.network_key.clone(),
+                    worker_pubkey: v.info.worker_key.clone(),
+                    net_address: v.info.network_address.clone(),
+                    p2p_address: v.info.p2p_address.clone(),
+                    primary_address: v.info.primary_address.clone(),
+                    encoder_validator_address: v.info.encoder_validator_address.clone(),
+                    next_epoch_protocol_pubkey: None,
+                    next_epoch_network_pubkey: None,
+                    next_epoch_net_address: None,
+                    next_epoch_p2p_address: None,
+                    next_epoch_primary_address: None,
+                    next_epoch_worker_pubkey: None,
+                    next_epoch_encoder_validator_address: None,
+                },
+                voting_power: 0,
+                staking_pool: StakingPool::new(ObjectID::random()),
+                commission_rate: v.info.commission_rate,
+                next_epoch_stake: 0,
+                next_epoch_commission_rate: v.info.commission_rate,
+            })
+            .collect();
+
+        let encoders: Vec<Encoder> = self
+            .encoders
+            .iter()
+            .map(|e| Encoder {
+                metadata: EncoderMetadata {
+                    soma_address: e.info.account_address,
+                    encoder_pubkey: e.info.encoder_pubkey.clone(),
+                    network_pubkey: e.info.network_key.clone(),
+                    internal_network_address: e.info.internal_network_address.clone(),
+                    external_network_address: e.info.external_network_address.clone(),
+                    object_server_address: e.info.object_address.clone(),
+                    probe: e.probe.clone(),
+                    next_epoch_network_pubkey: None,
+                    next_epoch_internal_network_address: None,
+                    next_epoch_external_network_address: None,
+                    next_epoch_object_server_address: None,
+                    next_epoch_probe: None,
+                },
+                voting_power: 0,
+                staking_pool: StakingPool::new(ObjectID::random()),
+                commission_rate: e.info.commission_rate,
+                next_epoch_stake: 0,
+                next_epoch_commission_rate: e.info.commission_rate,
+                byte_price: e.info.byte_price,
+                next_epoch_byte_price: e.info.byte_price,
+            })
+            .collect();
+
+        // Create system state
         let mut system_state = SystemState::create(
-            self.validators
-                .iter()
-                .map(|v| {
-                    Validator::new(
-                        (&v.account_key_pair.public()).into(),
-                        (v.key_pair.public()).clone(),
-                        v.network_key_pair.public().into(),
-                        v.worker_key_pair.public().into(),
-                        v.network_address.clone(),
-                        v.consensus_address.clone(),
-                        v.network_address.clone(),
-                        v.encoder_validator_address.clone(),
-                        0,
-                        v.commission_rate,
-                        ObjectID::random(),
-                    )
-                })
-                .collect(),
-            self.networking_validators
-                .iter()
-                .map(|v| {
-                    Validator::new(
-                        (&v.account_key_pair.public()).into(),
-                        (v.key_pair.public()).clone(),
-                        v.network_key_pair.public().into(),
-                        v.worker_key_pair.public().into(),
-                        v.network_address.clone(),
-                        v.consensus_address.clone(),
-                        v.network_address.clone(),
-                        v.encoder_validator_address.clone(),
-                        0,
-                        v.commission_rate,
-                        ObjectID::random(),
-                    )
-                })
-                .collect(),
-            self.encoders
-                .iter()
-                .map(|e| {
-                    Encoder::new(
-                        (&e.account_key_pair.public()).into(),
-                        e.encoder_key_pair.public().clone(),
-                        e.network_key_pair.public().clone(),
-                        e.internal_network_address.clone(),
-                        e.external_network_address.clone(),
-                        e.object_address.clone(),
-                        e.probe.clone(),
-                        0,
-                        e.commission_rate,
-                        e.byte_price,
-                        ObjectID::random(),
-                    )
-                })
-                .collect(),
-            self.parameters.parameters.protocol_version.as_u64(),
-            self.parameters.parameters.chain_start_timestamp_ms,
+            validators,
+            networking_validators,
+            encoders,
+            self.parameters.protocol_version.as_u64(),
+            self.parameters.chain_start_timestamp_ms,
             &protocol_config,
             self.token_distribution_schedule
                 .as_ref()
                 .map(|s| s.emission_fund_shannons)
                 .unwrap_or(0),
-            self.parameters.parameters.emission_per_epoch,
+            self.parameters.emission_per_epoch,
         );
 
         // Process token allocations
@@ -276,7 +715,6 @@ impl GenesisBuilder {
                     );
                     objects.push(staked_object);
                 } else {
-                    // Regular coin object
                     let coin_object = Object::new_coin(
                         ObjectID::random(),
                         allocation.amount_shannons,
@@ -288,18 +726,16 @@ impl GenesisBuilder {
             }
         }
 
-        // === Create seed targets for genesis bootstrap ===
-        let embeddings = &self.parameters.parameters.seed_target_embeddings;
-
-        if !embeddings.is_empty() {
-            let emission_per_epoch = self.parameters.parameters.emission_per_epoch;
+        // Create seed targets
+        if !self.seed_target_embeddings.is_empty() {
+            let emission_per_epoch = self.parameters.emission_per_epoch;
             let target_allocation_bps = system_state.parameters.target_reward_allocation_bps;
             let seed_reward_pool = (emission_per_epoch * target_allocation_bps) / 10_000;
 
-            let seed_count = embeddings.len() as u64;
+            let seed_count = self.seed_target_embeddings.len() as u64;
             let reward_per_target = seed_reward_pool / seed_count;
 
-            for (i, embedding) in embeddings.iter().enumerate() {
+            for (i, embedding) in self.seed_target_embeddings.iter().enumerate() {
                 let target = Target {
                     origin: TargetOrigin::Genesis {
                         reward_amount: reward_per_target,
@@ -324,23 +760,20 @@ impl GenesisBuilder {
                 objects.push(target_object);
             }
 
-            // Deduct from emission pool
             system_state.emission_pool.balance = system_state
                 .emission_pool
                 .balance
                 .saturating_sub(seed_reward_pool);
 
-            // Handle remainder
             let remainder = seed_reward_pool % seed_count;
             if remainder > 0 {
                 system_state.emission_pool.balance += remainder;
             }
 
             tracing::info!(
-                "Genesis: Created {} seed targets with {} reward each (total pool: {})",
+                "Genesis: Created {} seed targets with {} reward each",
                 seed_count,
-                reward_per_target,
-                seed_reward_pool
+                reward_per_target
             );
         }
 
@@ -373,34 +806,31 @@ impl GenesisBuilder {
     fn create_genesis_transaction(
         &self,
         objects: Vec<Object>,
-        system_state: SystemState,
+        system_state: &SystemState,
     ) -> (Transaction, TransactionEffects, Vec<Object>) {
         let unsigned_tx =
             VerifiedTransaction::new_genesis_transaction(objects.clone()).into_inner();
         let genesis_digest = *unsigned_tx.digest();
 
-        // Create temporary store for effects generation
         let input_objects = InputObjects::new(Vec::new());
         let mut temp_store = TemporaryStore::new(
             input_objects,
-            Vec::new(), // receiving_objects
+            Vec::new(),
             genesis_digest,
-            0, // epoch_id
+            0,
             system_state.fee_parameters(),
         );
 
-        // Add all objects to the store
         for object in objects {
             temp_store.create_object(object);
         }
 
-        // Generate effects
         let (inner, effects) = temp_store.into_effects(
-            Vec::new(), // shared_object_refs
+            Vec::new(),
             &genesis_digest,
-            BTreeSet::new(), // dependencies
+            BTreeSet::new(),
             ExecutionStatus::Success,
-            0, // epoch_id
+            0,
             TransactionFee::default(),
             None,
         );
@@ -422,7 +852,7 @@ impl GenesisBuilder {
 
         let contents = CheckpointContents::new_with_digests_and_signatures(
             vec![execution_digests],
-            vec![vec![]], // No individual signatures for genesis
+            vec![vec![]],
         );
 
         let checkpoint = CheckpointSummary {
@@ -433,12 +863,10 @@ impl GenesisBuilder {
             previous_digest: None,
             epoch_rolling_transaction_fees: Default::default(),
             end_of_epoch_data: None,
-            timestamp_ms: self.parameters.parameters.chain_start_timestamp_ms,
+            timestamp_ms: self.parameters.chain_start_timestamp_ms,
             checkpoint_commitments: Default::default(),
         };
 
         (checkpoint, contents)
     }
-
-    // TODO: implement load() and save() functions to load and save Genesis from a local blob file.
 }

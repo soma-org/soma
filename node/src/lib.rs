@@ -229,7 +229,7 @@ impl SomaNode {
             "Initializing soma-node listening on {}", config.network_address
         );
 
-        let genesis = config.genesis().clone();
+        let genesis = config.genesis().genesis()?.clone();
 
         let secret = Arc::pin(config.protocol_key_pair().copy());
         let genesis_committee = genesis.committee()?;

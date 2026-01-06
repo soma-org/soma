@@ -47,6 +47,35 @@ impl RpcError {
     }
 }
 
+impl From<tonic::Status> for RpcError {
+    fn from(status: tonic::Status) -> Self {
+        use prost::Message;
+
+        let code = status.code();
+        let message = status.message();
+
+        // Try to decode the details as a google.rpc.Status proto
+        let details = if !status.details().is_empty() {
+            crate::proto::google::rpc::Status::decode(status.details())
+                .ok()
+                .and_then(|status_proto| ErrorDetails::from_status_details(status_proto.details))
+                .map(Box::new)
+        } else {
+            None
+        };
+
+        Self {
+            code,
+            message: if message.is_empty() {
+                None
+            } else {
+                Some(message.to_string())
+            },
+            details,
+        }
+    }
+}
+
 impl From<RpcError> for tonic::Status {
     fn from(value: RpcError) -> Self {
         use prost::Message;
@@ -291,6 +320,38 @@ impl ErrorDetails {
             );
         }
         details
+    }
+
+    pub fn from_status_details(details: Vec<prost_types::Any>) -> Option<Self> {
+        use prost::Name;
+
+        if details.is_empty() {
+            return None;
+        }
+
+        let mut error_details = Self::default();
+        let mut has_any = false;
+
+        for any in details {
+            if any.type_url == ErrorInfo::type_url() {
+                if let Ok(error_info) = any.to_msg() {
+                    error_details.error_info = Some(error_info);
+                    has_any = true;
+                }
+            } else if any.type_url == BadRequest::type_url() {
+                if let Ok(bad_request) = any.to_msg() {
+                    error_details.bad_request = Some(bad_request);
+                    has_any = true;
+                }
+            } else if any.type_url == RetryInfo::type_url() {
+                if let Ok(retry_info) = any.to_msg() {
+                    error_details.retry_info = Some(retry_info);
+                    has_any = true;
+                }
+            }
+        }
+
+        has_any.then_some(error_details)
     }
 }
 

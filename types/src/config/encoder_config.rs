@@ -1,5 +1,5 @@
 use crate::base::SomaAddress;
-use crate::config::{PersistedConfig, SOMA_KEYSTORE_FILENAME};
+use crate::config::{Config, PersistedConfig, SOMA_KEYSTORE_FILENAME};
 use crate::crypto::{NetworkKeyPair, NetworkPublicKey};
 use crate::metadata::DownloadMetadata;
 use crate::parameters::{HttpParameters, TonicParameters};
@@ -155,6 +155,8 @@ impl EncoderConfig {
         self
     }
 }
+
+impl Config for EncoderConfig {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPairWithPath {

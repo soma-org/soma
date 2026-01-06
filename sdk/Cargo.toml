@@ -17,6 +17,7 @@ tracing.workspace = true
 url.workspace = true
 uuid.workspace = true
 futures.workspace = true
+fastcrypto.workspace = true
 tonic = { version = "0.13", default-features = false, features = [
     "channel",
     "codegen",

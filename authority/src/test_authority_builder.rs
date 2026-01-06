@@ -165,7 +165,8 @@ impl<'a> TestAuthorityBuilder<'a> {
         // let _guard = protocol_config
         //     .map(|config| ProtocolConfig::apply_overrides_for_testing(move |_, _| config.clone()));
 
-        let mut local_network_config_builder = ConfigBuilder::new().with_accounts(self.accounts);
+        let mut local_network_config_builder =
+            ConfigBuilder::new_with_temp_dir().with_accounts(self.accounts);
         // if let Some(protocol_config) = &self.protocol_config {
         //     local_network_config_builder =
         //         local_network_config_builder.with_protocol_version(protocol_config.version);

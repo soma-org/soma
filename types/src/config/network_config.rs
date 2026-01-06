@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     num::NonZeroUsize,
     ops::Div,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
@@ -47,6 +47,7 @@ use crate::{config::Config, shard_crypto::keys::EncoderKeyPair};
 use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use tempfile::tempfile;
 use tracing::info;
 
 use super::{
@@ -128,6 +129,7 @@ impl NetworkConfig {
 
 pub struct ConfigBuilder<R = OsRng> {
     rng: Option<R>,
+    config_directory: PathBuf,
     committee: CommitteeConfig,
     encoder_committee: EncoderCommitteeConfig,
     genesis_config: Option<GenesisConfig>,
@@ -135,14 +137,19 @@ pub struct ConfigBuilder<R = OsRng> {
 }
 
 impl ConfigBuilder {
-    pub fn new() -> Self {
+    pub fn new<P: AsRef<Path>>(config_directory: P) -> Self {
         Self {
             rng: Some(OsRng),
+            config_directory: config_directory.as_ref().into(),
             committee: CommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             encoder_committee: EncoderCommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             genesis_config: None,
             supported_protocol_versions_config: None,
         }
+    }
+
+    pub fn new_with_temp_dir() -> Self {
+        Self::new(tempfile::tempdir().unwrap().keep())
     }
 }
 
@@ -173,9 +180,15 @@ impl<R> ConfigBuilder<R> {
         self
     }
 
+    pub fn with_validators(mut self, validators: Vec<ValidatorGenesisConfig>) -> Self {
+        self.committee = CommitteeConfig::Validators(validators);
+        self
+    }
+
     pub fn rng<N: rand::RngCore + rand::CryptoRng>(self, rng: N) -> ConfigBuilder<N> {
         ConfigBuilder {
             rng: Some(rng),
+            config_directory: self.config_directory,
             committee: self.committee,
             encoder_committee: self.encoder_committee,
             genesis_config: self.genesis_config,
@@ -319,7 +332,6 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             EncoderCommitteeConfig::Size(size) => (0..size.get())
                 .map(|_| {
                     let mut builder = EncoderGenesisConfigBuilder::new();
-                    println!("hitting size");
                     builder.build(&mut rng)
                 })
                 .collect::<Vec<_>>(),
@@ -329,7 +341,6 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 .map(|encoder_key| {
                     let mut builder =
                         EncoderGenesisConfigBuilder::new().with_encoder_key_pair(encoder_key);
-                    println!("hitting keys");
                     builder.build(&mut rng)
                 })
                 .collect::<Vec<_>>(),
@@ -340,8 +351,6 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                         .map(|_| EncoderKeyPair::new(get_key_pair_from_rng(&mut rng).1))
                         .collect(),
                 );
-
-                println!("hitting deterministic");
 
                 let mut configs = vec![];
                 for (i, key) in keys.into_iter().enumerate() {
@@ -469,10 +478,10 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         // Use GenesisBuilder
         let mut genesis_builder = GenesisBuilder::new()
-            .with_parameters(genesis_config.clone())
-            .with_validators(consensus_configs.clone())
-            .with_networking_validators(networking_configs.clone())
-            .with_encoders(encoders.clone())
+            .with_parameters(genesis_config.parameters.clone())
+            .with_validator_configs(consensus_configs.clone())
+            .with_networking_validator_configs(networking_configs.clone())
+            .with_encoder_configs(encoders.clone())
             .with_token_distribution_schedule(token_distribution_schedule);
 
         // Add validator signatures
@@ -501,7 +510,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             .into_iter()
             .enumerate()
             .map(|(idx, validator)| {
-                let mut builder = ValidatorConfigBuilder::new();
+                let mut builder = ValidatorConfigBuilder::new()
+                    .with_config_directory(self.config_directory.clone());
 
                 if let Some(spvc) = &self.supported_protocol_versions_config {
                     let supported_versions = match spvc {
@@ -521,6 +531,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             .collect();
 
         // let key_path = get_key_path(&account_keypair);
+        // TODO: set encoder_config_directory
         let encoder_config_directory = tempfile::tempdir().unwrap().into_path();
         let db_path = encoder_config_directory.join(ENCODERS_DB_NAME);
 

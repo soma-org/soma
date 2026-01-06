@@ -168,7 +168,9 @@ pub struct SwarmBuilder<R = OsRng> {
     fullnode_count: usize,
     fullnode_rpc_port: Option<u16>,
     fullnode_rpc_addr: Option<SocketAddr>,
+    fullnode_rpc_config: Option<types::config::rpc_config::RpcConfig>,
     supported_protocol_versions_config: ProtocolVersionsConfig,
+    data_ingestion_dir: Option<PathBuf>,
 }
 
 impl SwarmBuilder {
@@ -183,7 +185,9 @@ impl SwarmBuilder {
             fullnode_count: 0,
             fullnode_rpc_port: None,
             fullnode_rpc_addr: None,
+            fullnode_rpc_config: None,
             supported_protocol_versions_config: ProtocolVersionsConfig::Default,
+            data_ingestion_dir: None,
         }
     }
 }
@@ -200,7 +204,9 @@ impl<R> SwarmBuilder<R> {
             fullnode_count: self.fullnode_count,
             fullnode_rpc_port: self.fullnode_rpc_port,
             fullnode_rpc_addr: self.fullnode_rpc_addr,
+            fullnode_rpc_config: self.fullnode_rpc_config,
             supported_protocol_versions_config: self.supported_protocol_versions_config,
+            data_ingestion_dir: self.data_ingestion_dir,
         }
     }
 
@@ -303,8 +309,29 @@ impl<R> SwarmBuilder<R> {
         self.supported_protocol_versions_config = c;
         self
     }
+
+    pub fn with_fullnode_rpc_config(
+        mut self,
+        fullnode_rpc_config: types::config::rpc_config::RpcConfig,
+    ) -> Self {
+        self.fullnode_rpc_config = Some(fullnode_rpc_config);
+        self
+    }
+
+    pub fn with_epoch_duration_ms(mut self, epoch_duration_ms: u64) -> Self {
+        self.get_or_init_genesis_config()
+            .parameters
+            .epoch_duration_ms = epoch_duration_ms;
+        self
+    }
+
+    pub fn with_data_ingestion_dir(mut self, path: PathBuf) -> Self {
+        self.data_ingestion_dir = Some(path);
+        self
+    }
 }
 
+// TODO: modify this build to make use of fullnode configs and data ingestion urls
 impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
     /// Create the configured Swarm.
     pub fn build(self) -> Swarm {
@@ -315,7 +342,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
         };
 
         let mut network_config = self.network_config.unwrap_or_else(|| {
-            let mut config_builder = ConfigBuilder::new();
+            let mut config_builder = ConfigBuilder::new(dir.as_ref());
 
             if let Some(genesis_config) = self.genesis_config {
                 config_builder = config_builder.with_genesis_config(genesis_config);

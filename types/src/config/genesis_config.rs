@@ -3,6 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use super::local_ip_utils;
 use crate::{
     base::SomaAddress,
+    config::Config,
     crypto::{
         get_key_pair_from_rng, AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair,
     },
@@ -25,8 +26,6 @@ pub struct ValidatorGenesisConfig {
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub encoder_validator_address: Multiaddr,
-    pub internal_object_address: Multiaddr,
-    pub external_object_address: Multiaddr,
     pub rpc_address: Multiaddr,
     #[serde(default = "default_stake")]
     pub stake: u64,
@@ -45,8 +44,6 @@ impl Clone for ValidatorGenesisConfig {
             consensus_address: self.consensus_address.clone(),
             p2p_address: self.p2p_address.clone(),
             encoder_validator_address: self.encoder_validator_address.clone(),
-            internal_object_address: self.internal_object_address.clone(),
-            external_object_address: self.external_object_address.clone(),
             rpc_address: self.rpc_address.clone(),
             stake: self.stake.clone(),
             commission_rate: self.commission_rate.clone(),
@@ -62,17 +59,10 @@ pub struct AccountConfig {
     pub gas_amounts: Vec<u64>,
 }
 
-// All information needed to build a NodeConfig for a state sync fullnode.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SsfnGenesisConfig {
-    pub p2p_address: Multiaddr,
-    pub network_key_pair: Option<NetworkKeyPair>,
-}
-
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct GenesisConfig {
-    pub ssfn_config_info: Option<Vec<SsfnGenesisConfig>>,
     pub validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
+    pub networking_validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
     pub parameters: GenesisCeremonyParameters,
     pub accounts: Vec<AccountConfig>,
 }
@@ -100,12 +90,34 @@ impl GenesisConfig {
         )
     }
 
+    pub fn for_local_testing_with_addresses(addresses: Vec<SomaAddress>) -> Self {
+        Self::custom_genesis_with_addresses(addresses, DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT)
+    }
+
     pub fn custom_genesis(num_accounts: usize, num_objects_per_account: usize) -> Self {
         let mut accounts = Vec::new();
         for _ in 0..num_accounts {
             accounts.push(AccountConfig {
                 address: None,
                 gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10; num_objects_per_account],
+            })
+        }
+
+        Self {
+            accounts,
+            ..Default::default()
+        }
+    }
+
+    pub fn custom_genesis_with_addresses(
+        addresses: Vec<SomaAddress>,
+        num_objects_per_account: usize,
+    ) -> Self {
+        let mut accounts = Vec::new();
+        for address in addresses {
+            accounts.push(AccountConfig {
+                address: Some(address),
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
             })
         }
 
@@ -150,6 +162,8 @@ impl GenesisConfig {
         Ok((keys, allocations))
     }
 }
+
+impl Config for GenesisConfig {}
 
 #[derive(Default)]
 pub struct ValidatorGenesisConfigBuilder {
@@ -220,8 +234,6 @@ impl ValidatorGenesisConfigBuilder {
             p2p_address,
             encoder_validator_address,
             rpc_address,
-            internal_object_address,
-            external_object_address,
         ) = if let Some(offset) = self.port_offset {
             (
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
@@ -229,13 +241,9 @@ impl ValidatorGenesisConfigBuilder {
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
                 local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 5),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 6),
             )
         } else {
             (
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-                local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
                 local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -253,8 +261,6 @@ impl ValidatorGenesisConfigBuilder {
             consensus_address,
             p2p_address,
             encoder_validator_address,
-            internal_object_address,
-            external_object_address,
             rpc_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,
@@ -376,6 +382,67 @@ impl TokenDistributionSchedule {
                     allocation.amount_shannons;
             }
         }
+    }
+
+    /// Helper to read a TokenDistributionSchedule from a csv file.
+    ///
+    /// The file is encoded such that the final entry in the CSV file is used to denote the
+    /// allocation to the emission fund. It must be in the following format:
+    /// `0x0000000000000000000000000000000000000000000000000000000000000000,<amount to emission fund>,,`
+    ///
+    /// All entries in a token distribution schedule must add up to 10B Soma.
+    pub fn from_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Self> {
+        let mut reader = csv::Reader::from_reader(reader);
+        let mut allocations: Vec<TokenAllocation> =
+            reader.deserialize().collect::<Result<_, _>>()?;
+
+        assert_eq!(
+            TOTAL_SUPPLY_SHANNONS,
+            allocations.iter().map(|a| a.amount_shannons).sum::<u64>(),
+            "Token Distribution Schedule must add up to {} SHANNONS (10B SOMA)",
+            TOTAL_SUPPLY_SHANNONS,
+        );
+
+        let emission_fund_allocation = allocations.pop().unwrap();
+        assert_eq!(
+            SomaAddress::ZERO,
+            emission_fund_allocation.recipient_address,
+            "Final allocation must be for emission fund",
+        );
+        assert!(
+            emission_fund_allocation.staked_with_validator.is_none(),
+            "Can't stake the emission fund",
+        );
+        assert!(
+            emission_fund_allocation.staked_with_encoder.is_none(),
+            "Can't stake the emission fund",
+        );
+
+        let schedule = Self {
+            emission_fund_shannons: emission_fund_allocation.amount_shannons,
+            allocations,
+        };
+
+        schedule.validate();
+        Ok(schedule)
+    }
+
+    pub fn to_csv<W: std::io::Write>(&self, writer: W) -> anyhow::Result<()> {
+        let mut writer = csv::Writer::from_writer(writer);
+
+        for allocation in &self.allocations {
+            writer.serialize(allocation)?;
+        }
+
+        // Write emission fund as final entry
+        writer.serialize(TokenAllocation {
+            recipient_address: SomaAddress::default(),
+            amount_shannons: self.emission_fund_shannons,
+            staked_with_validator: None,
+            staked_with_encoder: None,
+        })?;
+
+        Ok(())
     }
 }
 

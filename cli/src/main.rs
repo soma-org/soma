@@ -1,12 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-mod commands;
-mod inference;
-mod keytool;
 use clap::*;
+use cli::soma_commands::SomaCommand;
 use colored::Colorize;
-use commands::SomaCommand;
 
 use tracing::{debug, Level};
 

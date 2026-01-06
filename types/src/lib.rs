@@ -11,6 +11,7 @@ pub mod crypto;
 pub mod digests;
 pub mod effects;
 pub mod encoder_committee;
+pub mod encoder_info;
 pub mod encoder_validator;
 pub mod entropy;
 pub mod envelope;
@@ -51,6 +52,7 @@ pub mod transaction_executor;
 pub mod transaction_outputs;
 pub mod tx_fee;
 pub mod unit_tests;
+pub mod validator_info;
 
 use base::SomaAddress;
 use object::{ObjectID, Version, OBJECT_START_VERSION};
