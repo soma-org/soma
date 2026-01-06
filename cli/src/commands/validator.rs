@@ -17,6 +17,8 @@ use fastcrypto::{
 };
 use serde::Serialize;
 use tap::tap::TapOptional;
+use tokio::time::Duration;
+use tracing::info;
 use types::{
     base::SomaAddress,
     config::node_config::DEFAULT_COMMISSION_RATE,
@@ -29,10 +31,12 @@ use types::{
     },
 };
 use types::{
+    config::{node_config::NodeConfig, PersistedConfig},
     intent::{Intent, IntentMessage, IntentScope},
     validator_info::GenesisValidatorInfo,
 };
 
+use node::SomaNode;
 use sdk::SomaClient;
 use sdk::{
     transaction_builder::{ExecutionOptions, TransactionBuilder},
@@ -77,6 +81,14 @@ impl From<TxProcessingArgs> for ExecutionOptions {
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum SomaValidatorCommand {
+    /// Start a validator node from a config file
+    #[clap(name = "start")]
+    Start {
+        /// Path to the validator config file (YAML)
+        #[clap(long = "config", short = 'c')]
+        config: PathBuf,
+    },
+
     /// Generate validator key files and info
     #[clap(name = "make-validator-info")]
     MakeValidatorInfo {
@@ -182,6 +194,11 @@ impl SomaValidatorCommand {
         let sender = context.active_address()?;
 
         match self {
+            SomaValidatorCommand::Start { config } => {
+                start_validator_node(config).await?;
+                Ok(ValidatorCommandResponse::Started)
+            }
+
             SomaValidatorCommand::MakeValidatorInfo {
                 host_name,
                 commission_rate,
@@ -292,6 +309,51 @@ impl SomaValidatorCommand {
     }
 }
 
+/// Start a validator node from a config file
+async fn start_validator_node(config_path: PathBuf) -> Result<()> {
+    info!("Loading validator config from {:?}", config_path);
+
+    let node_config: NodeConfig = PersistedConfig::read(&config_path).map_err(|err| {
+        anyhow!(
+            "Cannot open validator config file at {:?}: {}",
+            config_path,
+            err
+        )
+    })?;
+
+    info!(
+        "Starting validator node with protocol key: {:?}",
+        node_config.protocol_public_key()
+    );
+
+    // Start the validator node
+    let node = SomaNode::start(node_config)
+        .await
+        .map_err(|err| anyhow!("Failed to start validator node: {}", err))?;
+
+    info!("Validator node started successfully");
+
+    // Keep the node running until Ctrl+C
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received Ctrl+C, shutting down validator...");
+                break;
+            }
+            _ = interval.tick() => {
+                // Health check or status logging could go here
+            }
+        }
+    }
+
+    // Node will be dropped here, triggering graceful shutdown
+    drop(node);
+    info!("Validator node shut down");
+
+    Ok(())
+}
+
 fn check_address(
     active_address: SomaAddress,
     validator_address: Option<SomaAddress>,
@@ -312,6 +374,7 @@ fn check_address(
             .ok_or_else(|| anyhow!("--validator-address must be provided when `print_unsigned_transaction_only` is true"))
     }
 }
+
 /// Execute a transaction or serialize it for offline signing
 async fn execute_or_serialize(
     context: &mut WalletContext,

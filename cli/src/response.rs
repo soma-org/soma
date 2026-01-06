@@ -39,6 +39,7 @@ const SHANNONS_PER_SOMA: u128 = 1_000_000_000;
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum ValidatorCommandResponse {
+    Started,
     MakeValidatorInfo,
     DisplayMetadata,
     Transaction(TransactionResponse),
@@ -73,7 +74,7 @@ impl Display for ValidatorCommandResponse {
                 table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
                 write!(f, "{}", table)?;
             }
-            ValidatorCommandResponse::DisplayMetadata => {
+            ValidatorCommandResponse::DisplayMetadata | ValidatorCommandResponse::Started => {
                 // Metadata is printed separately via ValidatorSummary
             }
             ValidatorCommandResponse::Transaction(tx_response) => {
@@ -117,6 +118,7 @@ impl ValidatorCommandResponse {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum EncoderCommandResponse {
+    Started,
     MakeEncoderInfo,
     DisplayMetadata,
     Transaction(TransactionResponse),
@@ -148,9 +150,7 @@ impl Display for EncoderCommandResponse {
                 table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
                 write!(f, "{}", table)?;
             }
-            EncoderCommandResponse::DisplayMetadata => {
-                // Metadata is printed separately via EncoderSummary
-            }
+            EncoderCommandResponse::DisplayMetadata | EncoderCommandResponse::Started => {}
             EncoderCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)?;
             }

@@ -328,6 +328,9 @@ pub enum SomaCommand {
     // =========================================================================
     /// Start a local network in two modes: saving state between re-runs and not saving state
     /// between re-runs. Please use (--help) to see the full description.
+    ///
+    /// This is for development and testing. To run a single validator node
+    /// that connects to an existing network, use `soma validator start`.
     #[clap(name = "start", verbatim_doc_comment)]
     Start {
         /// Config directory that will be used to store network config, node db, keystore.

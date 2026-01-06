@@ -8,8 +8,12 @@ use rand::SeedableRng as _;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::time::Duration;
+use tracing::info;
 use url::Url;
 
+use encoder::core::encoder_node::EncoderNode;
 use sdk::wallet_context::WalletContext;
 use sdk::SomaClient;
 use soma_keys::key_derive::generate_new_key;
@@ -19,6 +23,7 @@ use soma_keys::keypair_file::{
 use soma_keys::keystore::AccountKeystore;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
+use types::config::{encoder_config::EncoderConfig, PersistedConfig};
 use types::crypto::{DefaultHash, NetworkKeyPair, SignatureScheme, SomaKeyPair};
 use types::metadata::{
     DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
@@ -35,6 +40,17 @@ use crate::response::{EncoderCommandResponse, EncoderStatus, EncoderSummary, Tra
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum SomaEncoderCommand {
+    /// Start an encoder node from a config file
+    #[clap(name = "start")]
+    Start {
+        /// Path to the encoder config file (YAML)
+        #[clap(long = "config", short = 'c')]
+        config: PathBuf,
+        /// Working directory for the encoder (defaults to current directory)
+        #[clap(long = "working-dir", short = 'w')]
+        working_dir: Option<PathBuf>,
+    },
+
     /// Generate encoder key files and registration info
     #[clap(name = "make-encoder-info")]
     MakeEncoderInfo {
@@ -147,6 +163,14 @@ impl SomaEncoderCommand {
         let sender = context.active_address()?;
 
         match self {
+            SomaEncoderCommand::Start {
+                config,
+                working_dir,
+            } => {
+                start_encoder_node(config, working_dir).await?;
+                Ok(EncoderCommandResponse::Started)
+            }
+
             SomaEncoderCommand::MakeEncoderInfo { host_name } => {
                 make_encoder_info(context, &host_name)?;
                 Ok(EncoderCommandResponse::MakeEncoderInfo)
@@ -220,6 +244,57 @@ impl SomaEncoderCommand {
             }
         }
     }
+}
+
+/// Start an encoder node from a config file
+async fn start_encoder_node(config_path: PathBuf, working_dir: Option<PathBuf>) -> Result<()> {
+    info!("Loading encoder config from {:?}", config_path);
+
+    let encoder_config: EncoderConfig = PersistedConfig::read(&config_path).map_err(|err| {
+        anyhow!(
+            "Cannot open encoder config file at {:?}: {}",
+            config_path,
+            err
+        )
+    })?;
+
+    // Use provided working dir or default to current directory
+    let working_dir = working_dir
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    info!(
+        "Starting encoder node with working directory: {:?}",
+        working_dir
+    );
+    info!(
+        "Encoder external address: {}",
+        encoder_config.external_network_address
+    );
+
+    // Start the encoder node (without shared object store for production use)
+    let node = Arc::new(EncoderNode::start(encoder_config, working_dir, None).await);
+
+    info!("Encoder node started successfully");
+
+    // Keep the node running until Ctrl+C
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received Ctrl+C, shutting down encoder...");
+                break;
+            }
+            _ = interval.tick() => {
+                // Health check or status logging could go here
+            }
+        }
+    }
+
+    // Node will be dropped here, triggering graceful shutdown
+    drop(node);
+    info!("Encoder node shut down");
+
+    Ok(())
 }
 
 /// Execute a transaction or serialize it for offline signing
