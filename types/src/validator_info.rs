@@ -1,7 +1,5 @@
 use crate::base::SomaAddress;
-use crate::crypto::{
-    AuthorityPublicKey, AuthorityPublicKeyBytes, AuthoritySignature, NetworkPublicKey,
-};
+use crate::crypto::{AuthorityPublicKey, AuthorityPublicKeyBytes, NetworkPublicKey};
 use crate::multiaddr::Multiaddr;
 use anyhow::bail;
 use fastcrypto::traits::ToFromBytes;
@@ -110,14 +108,53 @@ impl GenesisValidatorInfo {
     }
 }
 
+// Conversion from ValidatorGenesisConfig (for local testing)
+impl From<&crate::config::genesis_config::ValidatorGenesisConfig> for ValidatorInfo {
+    fn from(config: &crate::config::genesis_config::ValidatorGenesisConfig) -> Self {
+        use fastcrypto::traits::KeyPair;
+
+        // account_key_pair is SomaKeyPair, .public() returns PublicKey enum
+        let account_address = SomaAddress::from(&config.account_key_pair.public());
+
+        // key_pair is AuthorityKeyPair (BLS12381KeyPair)
+        // .public() returns &AuthorityPublicKey (BLS12381PublicKey)
+        // Convert to AuthorityPublicKeyBytes
+        let protocol_key: AuthorityPublicKeyBytes = config.key_pair.public().into();
+
+        // worker_key_pair is NetworkKeyPair, .public() returns NetworkPublicKey
+        let worker_key = config.worker_key_pair.public();
+
+        // network_key_pair is NetworkKeyPair, .public() returns NetworkPublicKey
+        let network_key = config.network_key_pair.public();
+
+        Self {
+            account_address,
+            protocol_key,
+            worker_key,
+            network_key,
+            network_address: config.network_address.clone(),
+            p2p_address: config.p2p_address.clone(),
+            primary_address: config.consensus_address.clone(), // consensus_address maps to primary_address
+            encoder_validator_address: config.encoder_validator_address.clone(),
+            commission_rate: config.commission_rate,
+        }
+    }
+}
+
+impl From<&crate::config::genesis_config::ValidatorGenesisConfig> for GenesisValidatorInfo {
+    fn from(config: &crate::config::genesis_config::ValidatorGenesisConfig) -> Self {
+        Self {
+            info: ValidatorInfo::from(config),
+        }
+    }
+}
+
 impl From<GenesisValidatorInfo> for GenesisValidatorMetadata {
     fn from(GenesisValidatorInfo { info }: GenesisValidatorInfo) -> Self {
         Self {
             soma_address: info.account_address,
-
             commission_rate: info.commission_rate,
-            protocol_public_key: info.protocol_key.as_bytes().to_vec(),
-
+            protocol_public_key: info.protocol_key.as_ref().to_vec(),
             network_public_key: info.network_key.to_bytes().to_vec(),
             worker_public_key: info.worker_key.to_bytes().to_vec(),
             network_address: info.network_address,
@@ -132,14 +169,10 @@ impl From<GenesisValidatorInfo> for GenesisValidatorMetadata {
 #[serde(rename_all = "kebab-case")]
 pub struct GenesisValidatorMetadata {
     pub soma_address: SomaAddress,
-
     pub commission_rate: u64,
-
-    pub protocol_public_key: Vec<u8>, //AuthorityPublicKeyBytes,
-
-    pub network_public_key: Vec<u8>, // NetworkPublicKey,
-    pub worker_public_key: Vec<u8>,  // NetworkPublicKey,
-
+    pub protocol_public_key: Vec<u8>, // BLS12381 public key bytes
+    pub network_public_key: Vec<u8>,  // Ed25519 public key bytes
+    pub worker_public_key: Vec<u8>,   // Ed25519 public key bytes
     pub network_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub primary_address: Multiaddr,

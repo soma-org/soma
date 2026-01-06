@@ -478,10 +478,10 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         // Use GenesisBuilder
         let mut genesis_builder = GenesisBuilder::new()
-            .with_parameters(genesis_config.clone())
-            .with_validators(consensus_configs.clone())
-            .with_networking_validators(networking_configs.clone())
-            .with_encoders(encoders.clone())
+            .with_parameters(genesis_config.parameters.clone())
+            .with_validator_configs(consensus_configs.clone())
+            .with_networking_validator_configs(networking_configs.clone())
+            .with_encoder_configs(encoders.clone())
             .with_token_distribution_schedule(token_distribution_schedule);
 
         // Add validator signatures

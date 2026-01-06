@@ -20,7 +20,7 @@ soma-keys.workspace = true
 bip32.workspace = true
 tabled.workspace = true
 json_to_table.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
 intelligence.workspace = true
 objects.workspace = true
 soma-tls.workspace = true
@@ -40,7 +40,10 @@ rpc.workspace = true
 futures.workspace = true
 chrono.workspace = true
 hex.workspace = true
+camino = "1.1.1"
+csv = "1.2.1"
 serde_yaml = "0.8.26"
+inquire = "0.6.0"
 
 [lints]
 workspace = true

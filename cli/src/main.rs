@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use clap::*;
+use cli::soma_commands::SomaCommand;
 use colored::Colorize;
-use commands::SomaCommand;
 
 use tracing::{debug, Level};
 

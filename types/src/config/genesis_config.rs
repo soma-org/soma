@@ -383,6 +383,67 @@ impl TokenDistributionSchedule {
             }
         }
     }
+
+    /// Helper to read a TokenDistributionSchedule from a csv file.
+    ///
+    /// The file is encoded such that the final entry in the CSV file is used to denote the
+    /// allocation to the emission fund. It must be in the following format:
+    /// `0x0000000000000000000000000000000000000000000000000000000000000000,<amount to emission fund>,,`
+    ///
+    /// All entries in a token distribution schedule must add up to 10B Soma.
+    pub fn from_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Self> {
+        let mut reader = csv::Reader::from_reader(reader);
+        let mut allocations: Vec<TokenAllocation> =
+            reader.deserialize().collect::<Result<_, _>>()?;
+
+        assert_eq!(
+            TOTAL_SUPPLY_SHANNONS,
+            allocations.iter().map(|a| a.amount_shannons).sum::<u64>(),
+            "Token Distribution Schedule must add up to {} SHANNONS (10B SOMA)",
+            TOTAL_SUPPLY_SHANNONS,
+        );
+
+        let emission_fund_allocation = allocations.pop().unwrap();
+        assert_eq!(
+            SomaAddress::ZERO,
+            emission_fund_allocation.recipient_address,
+            "Final allocation must be for emission fund",
+        );
+        assert!(
+            emission_fund_allocation.staked_with_validator.is_none(),
+            "Can't stake the emission fund",
+        );
+        assert!(
+            emission_fund_allocation.staked_with_encoder.is_none(),
+            "Can't stake the emission fund",
+        );
+
+        let schedule = Self {
+            emission_fund_shannons: emission_fund_allocation.amount_shannons,
+            allocations,
+        };
+
+        schedule.validate();
+        Ok(schedule)
+    }
+
+    pub fn to_csv<W: std::io::Write>(&self, writer: W) -> anyhow::Result<()> {
+        let mut writer = csv::Writer::from_writer(writer);
+
+        for allocation in &self.allocations {
+            writer.serialize(allocation)?;
+        }
+
+        // Write emission fund as final entry
+        writer.serialize(TokenAllocation {
+            recipient_address: SomaAddress::default(),
+            amount_shannons: self.emission_fund_shannons,
+            staked_with_validator: None,
+            staked_with_encoder: None,
+        })?;
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -11,6 +11,7 @@ pub mod crypto;
 pub mod digests;
 pub mod effects;
 pub mod encoder_committee;
+pub mod encoder_info;
 pub mod encoder_validator;
 pub mod entropy;
 pub mod envelope;
