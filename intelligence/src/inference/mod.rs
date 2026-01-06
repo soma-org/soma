@@ -5,9 +5,9 @@ use types::metadata::{DownloadMetadata, ObjectPath};
 use types::shard::Shard;
 use types::shard_crypto::digest::Digest;
 use types::shard_crypto::keys::EncoderPublicKey;
-pub mod core_processor;
-pub mod messaging;
-pub mod module;
+pub mod work_queue;
+pub mod networking;
+pub mod engine;
 
 #[enum_dispatch]
 pub(crate) trait InferenceInputAPI {

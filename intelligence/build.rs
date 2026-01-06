@@ -25,8 +25,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("inference")
                 .route_name("Inference")
-                .input_type("crate::inference::messaging::tonic::InferenceRequest")
-                .output_type("crate::inference::messaging::tonic::InferenceResponse")
+                .input_type("crate::inference::networking::tonic::InferenceRequest")
+                .output_type("crate::inference::networking::tonic::InferenceResponse")
                 .codec_path(codec_path)
                 .build(),
         )
@@ -39,8 +39,8 @@ fn build_tonic_services(out_dir: &Path) {
             tonic_build::manual::Method::builder()
                 .name("evaluation")
                 .route_name("Evaluation")
-                .input_type("crate::evaluation::messaging::tonic::EvaluationRequest")
-                .output_type("crate::evaluation::messaging::tonic::EvaluationResponse")
+                .input_type("crate::evaluation::networking::tonic::EvaluationRequest")
+                .output_type("crate::evaluation::networking::tonic::EvaluationResponse")
                 .codec_path(codec_path)
                 .build(),
         )

@@ -10,7 +10,7 @@ use types::{
     },
 };
 
-use crate::evaluation::evaluator::EvaluatorClient;
+use crate::evaluation::evaluators::EvaluatorAPI;
 
 pub struct MockEvaluator<ES: ObjectStore, E: EphemeralStore<ES>> {
     output: EvaluationOutput,
@@ -29,7 +29,7 @@ impl<ES: ObjectStore, E: EphemeralStore<ES>> MockEvaluator<ES, E> {
 }
 
 #[async_trait]
-impl<ES: ObjectStore, E: EphemeralStore<ES>> EvaluatorClient for MockEvaluator<ES, E> {
+impl<ES: ObjectStore, E: EphemeralStore<ES>> EvaluatorAPI for MockEvaluator<ES, E> {
     async fn call(
         &self,
         input: EvaluationInput,
