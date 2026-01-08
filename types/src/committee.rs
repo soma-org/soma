@@ -623,7 +623,7 @@ impl CommitteeWithNetworkMetadata {
                         *name,
                         Authority {
                             stake: *stake,
-                            address: meta.consensus_address.clone(),
+                            address: meta.primary_address.clone(),
                             hostname: meta.hostname.clone(),
                             protocol_key: meta.protocol_key.clone(),
                             network_key: meta.network_key.clone(),

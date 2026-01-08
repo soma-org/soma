@@ -288,7 +288,10 @@ impl GenesisBuilder {
         if let Some(schedule) = &self.token_distribution_schedule {
             schedule.validate();
             schedule.check_all_stake_operations_are_for_valid_validators(
-                self.validators.iter().map(|v| v.info.account_address),
+                self.validators
+                    .iter()
+                    .chain(self.networking_validators.iter().map(|v| v))
+                    .map(|v| v.info.account_address),
             );
         }
 
