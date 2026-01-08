@@ -1,6 +1,6 @@
-use crate::inference::core_processor::InferenceCoreProcessor;
-use crate::inference::messaging::InferenceService;
-use crate::inference::module::ModuleClient;
+use crate::inference::engine::InferenceEngineAPI;
+use crate::inference::work_queue::{InferenceWorkQueue};
+use crate::inference::networking::InferenceService;
 use crate::inference::InferenceInput;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -11,43 +11,32 @@ use types::actors::ActorHandle;
 use types::error::{InferenceError, InferenceResult};
 
 pub struct InferenceNetworkService<
-    PS: ObjectStore,
-    ES: ObjectStore,
-    P: PersistentStore<PS>,
-    E: EphemeralStore<ES>,
-    M: ModuleClient<ES>,
+    I: InferenceEngineAPI,
 > {
-    core_processor: ActorHandle<InferenceCoreProcessor<PS, ES, P, E, M>>,
+    work_queue: ActorHandle<InferenceWorkQueue<I>>,
 }
 
 impl<
-        PS: ObjectStore,
-        ES: ObjectStore,
-        P: PersistentStore<PS>,
-        E: EphemeralStore<ES>,
-        M: ModuleClient<ES>,
-    > InferenceNetworkService<PS, ES, P, E, M>
+    I: InferenceEngineAPI,
+    > InferenceNetworkService<I>
 {
-    pub fn new(core_processor: ActorHandle<InferenceCoreProcessor<PS, ES, P, E, M>>) -> Self {
-        Self { core_processor }
+    pub fn new(work_queue: ActorHandle<InferenceWorkQueue<I>>) -> Self {
+        Self { work_queue }
     }
 }
 
 #[async_trait]
 impl<
-        PS: ObjectStore,
-        ES: ObjectStore,
-        P: PersistentStore<PS>,
-        E: EphemeralStore<ES>,
-        M: ModuleClient<ES>,
-    > InferenceService for InferenceNetworkService<PS, ES, P, E, M>
+    I: InferenceEngineAPI,
+
+    > InferenceService for InferenceNetworkService<I>
 {
     async fn handle_inference(&self, input_bytes: Bytes) -> InferenceResult<Bytes> {
         let inference_input: InferenceInput =
             bcs::from_bytes(&input_bytes).map_err(InferenceError::MalformedType)?;
 
         let inference_output = self
-            .core_processor
+            .work_queue
             .process(inference_input, CancellationToken::new())
             .await
             .map_err(|e| InferenceError::CoreProcessorError(e.to_string()))?;

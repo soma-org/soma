@@ -11,7 +11,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
-use intelligence::evaluation::messaging::EvaluationClient;
+use intelligence::evaluation::networking::EvaluationClient;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use types::{

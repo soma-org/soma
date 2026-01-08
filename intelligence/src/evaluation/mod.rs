@@ -1,4 +1,3 @@
-pub mod core;
-pub mod core_processor;
-pub mod evaluator;
-pub mod messaging;
+pub mod work_queue;
+pub mod evaluators;
+pub mod networking;

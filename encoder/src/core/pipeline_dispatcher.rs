@@ -8,7 +8,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use intelligence::{
-    evaluation::messaging::EvaluationClient, inference::messaging::InferenceClient,
+    evaluation::networking::EvaluationClient, inference::networking::InferenceClient,
 };
 use tokio_util::sync::CancellationToken;
 use types::error::ShardResult;

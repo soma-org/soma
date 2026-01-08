@@ -9,7 +9,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
-use intelligence::evaluation::messaging::EvaluationClient;
+use intelligence::evaluation::networking::EvaluationClient;
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::{sync::oneshot, time::sleep};
 use tracing::info;

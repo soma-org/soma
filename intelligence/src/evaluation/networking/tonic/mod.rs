@@ -1,13 +1,12 @@
 mod generated {
-    include!(concat!(env!("OUT_DIR"), "/soma.InferenceTonicService.rs"));
+    include!(concat!(env!("OUT_DIR"), "/soma.EvaluationTonicService.rs"));
 }
-use super::{InferenceClient, InferenceService, InferenceServiceManager};
-use crate::inference::messaging::tonic::generated::inference_tonic_service_client::InferenceTonicServiceClient;
-use crate::inference::{InferenceInput, InferenceOutput};
+use super::{EvaluationClient, EvaluationManager, EvaluationService};
+use crate::evaluation::networking::tonic::generated::evaluation_tonic_service_client::EvaluationTonicServiceClient;
 use async_trait::async_trait;
 use bytes::Bytes;
-use generated::inference_tonic_service_server::{
-    InferenceTonicService, InferenceTonicServiceServer,
+use generated::evaluation_tonic_service_server::{
+    EvaluationTonicService, EvaluationTonicServiceServer,
 };
 use soma_http::ServerHandle;
 use std::{sync::Arc, time::Duration};
@@ -16,7 +15,8 @@ use tonic::codec::CompressionEncoding;
 use tonic::{Request, Response};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, info, trace, warn};
-use types::error::{InferenceError, InferenceResult};
+use types::error::{EvaluationError, EvaluationResult};
+use types::evaluation::{EvaluationInput, EvaluationOutput};
 use types::multiaddr::Multiaddr;
 use types::parameters::TonicParameters;
 use types::sync::{to_host_port_str, to_socket_addr};
@@ -28,23 +28,23 @@ pub(crate) type Channel = tower_http::trace::Trace<
     tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
 >;
 
-pub struct InferenceTonicClient {
+pub struct EvaluationTonicClient {
     address: Multiaddr,
     parameters: Arc<TonicParameters>,
     channel: Channel,
 }
-impl InferenceTonicClient {
+impl EvaluationTonicClient {
     pub async fn new(
         address: Multiaddr,
         parameters: Arc<TonicParameters>,
-    ) -> InferenceResult<Self> {
+    ) -> EvaluationResult<Self> {
         let config = parameters.clone();
         let address_string = to_host_port_str(&address).map_err(|e| {
-            InferenceError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
+            EvaluationError::NetworkConfig(format!("Cannot convert address to host:port: {e:?}"))
         })?;
         let address_string = format!("http://{address_string}");
         let endpoint = tonic::transport::Channel::from_shared(address_string.clone())
-            .map_err(|e| InferenceError::NetworkConfig(format!("Failed to create URI: {e}")))?
+            .map_err(|e| EvaluationError::NetworkConfig(format!("Failed to create URI: {e}")))?
             .connect_timeout(config.connect_timeout)
             .initial_connection_window_size(Some(config.connection_buffer_size as u32))
             .initial_stream_window_size(Some(config.connection_buffer_size as u32 / 2))
@@ -62,7 +62,7 @@ impl InferenceTonicClient {
                 Err(e) => {
                     debug!("Failed to connect to endpoint at {address_string}: {e:?}");
                     if tokio::time::Instant::now() >= deadline {
-                        return Err(InferenceError::NetworkClientConnection(format!(
+                        return Err(EvaluationError::NetworkClientConnection(format!(
                             "Timed out connecting to endpoint at {address_string}: {e:?}"
                         )));
                     }
@@ -85,9 +85,11 @@ impl InferenceTonicClient {
         })
     }
 
-    pub(crate) async fn get_client(&self) -> InferenceResult<InferenceTonicServiceClient<Channel>> {
+    pub(crate) async fn get_client(
+        &self,
+    ) -> EvaluationResult<EvaluationTonicServiceClient<Channel>> {
         let config = self.parameters.clone();
-        let client = InferenceTonicServiceClient::new(self.channel.clone())
+        let client = EvaluationTonicServiceClient::new(self.channel.clone())
             .max_encoding_message_size(config.message_size_limit)
             .max_decoding_message_size(config.message_size_limit)
             .send_compressed(CompressionEncoding::Zstd)
@@ -97,66 +99,66 @@ impl InferenceTonicClient {
 }
 
 #[async_trait]
-impl InferenceClient for InferenceTonicClient {
-    async fn inference(
+impl EvaluationClient for EvaluationTonicClient {
+    async fn evaluation(
         &self,
-        input: InferenceInput,
+        probe_input: EvaluationInput,
         timeout: Duration,
-    ) -> InferenceResult<InferenceOutput> {
-        let probe_input_bytes = Bytes::copy_from_slice(&bcs::to_bytes(&input).unwrap());
-        let mut request = Request::new(InferenceRequest {
+    ) -> EvaluationResult<EvaluationOutput> {
+        let probe_input_bytes = Bytes::copy_from_slice(&bcs::to_bytes(&probe_input).unwrap());
+        let mut request = Request::new(EvaluationRequest {
             input: probe_input_bytes,
         });
         request.set_timeout(timeout);
         let probe_output_response = self
             .get_client()
             .await?
-            .inference(request)
+            .evaluation(request)
             .await
-            .map_err(|e| InferenceError::NetworkRequest(format!("request failed: {e:?}")))?;
+            .map_err(|e| EvaluationError::NetworkRequest(format!("request failed: {e:?}")))?;
 
         let probe_output_bytes = probe_output_response.into_inner().output;
 
-        let probe_output: InferenceOutput =
-            bcs::from_bytes(&probe_output_bytes).map_err(InferenceError::MalformedType)?;
+        let probe_output: EvaluationOutput =
+            bcs::from_bytes(&probe_output_bytes).map_err(EvaluationError::MalformedType)?;
         Ok(probe_output)
     }
 }
 
-struct InferenceTonicServiceProxy<S: InferenceService> {
+struct EvaluationTonicServiceProxy<S: EvaluationService> {
     service: Arc<S>,
 }
 
-impl<S: InferenceService> InferenceTonicServiceProxy<S> {
+impl<S: EvaluationService> EvaluationTonicServiceProxy<S> {
     const fn new(service: Arc<S>) -> Self {
         Self { service }
     }
 }
 
 #[async_trait]
-impl<S: InferenceService> InferenceTonicService for InferenceTonicServiceProxy<S> {
-    async fn inference(
+impl<S: EvaluationService> EvaluationTonicService for EvaluationTonicServiceProxy<S> {
+    async fn evaluation(
         &self,
-        request: Request<InferenceRequest>,
-    ) -> Result<Response<InferenceResponse>, tonic::Status> {
+        request: Request<EvaluationRequest>,
+    ) -> Result<Response<EvaluationResponse>, tonic::Status> {
         let input = request.into_inner().input;
         let output = self
             .service
-            .handle_inference(input)
+            .handle_evaluation(input)
             .await
             .map_err(|e| tonic::Status::invalid_argument(format!("{e:?}")))?;
 
-        Ok(Response::new(InferenceResponse { output }))
+        Ok(Response::new(EvaluationResponse { output }))
     }
 }
 
-pub struct InferenceTonicManager {
+pub struct EvaluationTonicManager {
     parameters: Arc<TonicParameters>,
     address: Multiaddr,
     server: Option<ServerHandle>,
 }
 
-impl InferenceTonicManager {
+impl EvaluationTonicManager {
     /// Takes context, and network keypair and creates a new encoder tonic client
     pub fn new(parameters: Arc<TonicParameters>, address: Multiaddr) -> Self {
         Self {
@@ -167,7 +169,7 @@ impl InferenceTonicManager {
     }
 }
 
-impl<S: InferenceService> InferenceServiceManager<S> for InferenceTonicManager {
+impl<S: EvaluationService> EvaluationManager<S> for EvaluationTonicManager {
     fn new(parameters: Arc<TonicParameters>, address: Multiaddr) -> Self {
         Self::new(parameters, address)
     }
@@ -184,7 +186,7 @@ impl<S: InferenceService> InferenceServiceManager<S> for InferenceTonicManager {
 
         let config = &self.parameters;
 
-        let service = InferenceTonicServiceProxy::new(service);
+        let service = EvaluationTonicServiceProxy::new(service);
 
         let layers = tower::ServiceBuilder::new()
             .layer(
@@ -198,7 +200,7 @@ impl<S: InferenceService> InferenceServiceManager<S> for InferenceTonicManager {
                     DEFAULT_GRPC_REQUEST_TIMEOUT,
                 )
             });
-        let encoder_external_service_server = InferenceTonicServiceServer::new(service)
+        let encoder_external_service_server = EvaluationTonicServiceServer::new(service)
             .max_encoding_message_size(config.message_size_limit)
             .max_decoding_message_size(config.message_size_limit)
             .send_compressed(CompressionEncoding::Zstd)
@@ -244,7 +246,7 @@ impl<S: InferenceService> InferenceServiceManager<S> for InferenceTonicManager {
     }
 }
 
-impl Drop for InferenceTonicManager {
+impl Drop for EvaluationTonicManager {
     fn drop(&mut self) {
         if let Some(server) = self.server.as_ref() {
             server.trigger_shutdown();
@@ -253,13 +255,13 @@ impl Drop for InferenceTonicManager {
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct InferenceRequest {
+pub(crate) struct EvaluationRequest {
     #[prost(bytes = "bytes", tag = "1")]
     input: Bytes,
 }
 
 #[derive(Clone, prost::Message)]
-pub(crate) struct InferenceResponse {
+pub(crate) struct EvaluationResponse {
     #[prost(bytes = "bytes", tag = "1")]
     output: Bytes,
 }

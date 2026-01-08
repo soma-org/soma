@@ -3,17 +3,18 @@ use std::str::FromStr;
 use std::time::Duration;
 use std::{collections::BTreeSet, future::Future, sync::Arc};
 
+use fastcrypto::hash::HashFunction;
 use fastcrypto::traits::KeyPair;
-use intelligence::evaluation::core_processor::EvaluationCoreProcessor;
-use intelligence::evaluation::evaluator::{mock::MockEvaluator, EvaluatorClient};
-use intelligence::evaluation::messaging::service::EvaluationNetworkService;
-use intelligence::evaluation::messaging::tonic::{EvaluationTonicClient, EvaluationTonicManager};
-use intelligence::evaluation::messaging::{EvaluationManager, EvaluationService};
-use intelligence::inference::core_processor::InferenceCoreProcessor;
-use intelligence::inference::messaging::service::InferenceNetworkService;
-use intelligence::inference::messaging::tonic::{InferenceTonicClient, InferenceTonicManager};
-use intelligence::inference::messaging::InferenceServiceManager;
-use intelligence::inference::module::MockModule;
+use intelligence::evaluation::evaluators::{mock::MockEvaluator, EvaluatorAPI};
+use intelligence::evaluation::networking::service::EvaluationNetworkService;
+use intelligence::evaluation::networking::tonic::{EvaluationTonicClient, EvaluationTonicManager};
+use intelligence::evaluation::networking::{EvaluationManager, EvaluationService};
+use intelligence::evaluation::work_queue::EvaluationWorkQueue;
+use intelligence::inference::engine::mock::MockInferenceEngine;
+use intelligence::inference::work_queue::InferenceWorkQueue;
+use intelligence::inference::networking::service::InferenceNetworkService;
+use intelligence::inference::networking::tonic::{InferenceTonicClient, InferenceTonicManager};
+use intelligence::inference::networking::InferenceServiceManager;
 use object_store::memory::InMemory;
 use object_store::ObjectStore;
 use objects::downloader::ObjectDownloader;
@@ -21,7 +22,7 @@ use objects::readers::url::ObjectHttpClient;
 use objects::services::signed_url::ObjectServiceUrlGenerator;
 use objects::services::{ObjectService, ObjectServiceManager};
 use objects::stores::memory::{EphemeralInMemoryStore, PersistentInMemoryStore};
-use objects::stores::EphemeralStore;
+use objects::stores::{EphemeralStore, PersistentStore};
 use objects::MIN_PART_SIZE;
 use rand::Rng;
 use sdk::client_config::{SomaClientConfig, SomaEnv};
@@ -32,9 +33,11 @@ use tokio::sync::{Mutex, Semaphore};
 use tracing::{error, info, warn};
 use types::actors::ActorManager;
 use types::base::SomaAddress;
+use types::checksum::Checksum;
 use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
-use types::crypto::NetworkKeyPair;
+use types::crypto::{DefaultHash, NetworkKeyPair};
 use types::evaluation::{EvaluationOutput, EvaluationOutputV1};
+use types::metadata::{Metadata, MetadataV1, ObjectPath};
 use types::multiaddr::Multiaddr;
 use types::parameters::HttpParameters;
 use types::shard_crypto::keys::EncoderPublicKey;
@@ -104,20 +107,12 @@ pub struct EncoderNode {
         InputProcessor<EncoderInternalTonicClient, EvaluationTonicClient, InferenceTonicClient>,
     >,
     inference_processor_manager: ActorManager<
-        InferenceCoreProcessor<
-            InMemory,
-            InMemory,
-            PersistentInMemoryStore,
-            EphemeralInMemoryStore,
-            MockModule<InMemory>,
+        InferenceWorkQueue<
+            MockInferenceEngine,
         >,
     >,
     evaluation_processor_manager: ActorManager<
-        EvaluationCoreProcessor<
-            InMemory,
-            InMemory,
-            PersistentInMemoryStore,
-            EphemeralInMemoryStore,
+        EvaluationWorkQueue<
             MockEvaluator<InMemory, EphemeralInMemoryStore>,
         >,
     >,
@@ -241,18 +236,14 @@ impl EncoderNode {
         let object_http_client =
             ObjectHttpClient::new(network_keypair.clone(), Arc::new(HttpParameters::default()))
                 .unwrap();
-
-        let module_client = Arc::new(MockModule::new(
+    
+        let mock_inference_engine = Arc::new(MockInferenceEngine::new(
             encoder_keypair.public().clone(),
-            object_storage.clone(),
+            persistent_store.clone(),
         ));
 
-        let inference_core_processor = InferenceCoreProcessor::new(
-            persistent_store.clone(),
-            ephemeral_store.clone(),
-            module_client,
-            object_downloader.clone(),
-            object_http_client.clone(),
+        let inference_core_processor = InferenceWorkQueue::new(
+            mock_inference_engine,
         );
 
         let inference_processor_manager =
@@ -275,17 +266,13 @@ impl EncoderNode {
             .unwrap(),
         );
 
-        let evaluator_client = Arc::new(MockEvaluator::new(
+        let mock_evaluator = Arc::new(MockEvaluator::new(
             EvaluationOutput::V1(EvaluationOutputV1::mock()),
             ephemeral_store.clone(),
         ));
 
-        let evaluation_core_processor = EvaluationCoreProcessor::new(
-            persistent_store.clone(),
-            ephemeral_store,
-            evaluator_client,
-            object_downloader.clone(),
-            object_http_client.clone(),
+        let evaluation_core_processor = EvaluationWorkQueue::new(
+            mock_evaluator,
         );
 
         let evaluation_processor_manager =
@@ -507,21 +494,13 @@ impl EncoderNode {
 
         <InferenceTonicManager as InferenceServiceManager<
             InferenceNetworkService<
-                InMemory,
-                InMemory,
-                PersistentInMemoryStore,
-                EphemeralInMemoryStore,
-                MockModule<InMemory>,
+                MockInferenceEngine,
             >,
         >>::stop(&mut self.inference_network_manager)
         .await;
 
         <EvaluationTonicManager as EvaluationManager<
             EvaluationNetworkService<
-                InMemory,
-                InMemory,
-                PersistentInMemoryStore,
-                EphemeralInMemoryStore,
                 MockEvaluator<InMemory, EphemeralInMemoryStore>,
             >,
         >>::stop(&mut self.evaluation_network_manager)

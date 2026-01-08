@@ -4,11 +4,11 @@ use types::{
     error::EvaluationResult,
     evaluation::{EvaluationInput, EvaluationOutput},
 };
-pub mod evaluator;
+pub mod v1;
 pub mod mock;
 
 #[async_trait]
-pub trait EvaluatorClient: Send + Sync + Sized + 'static {
+pub trait EvaluatorAPI: Send + Sync + Sized + 'static {
     async fn call(
         &self,
         input: EvaluationInput,
