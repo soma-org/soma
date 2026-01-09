@@ -340,7 +340,6 @@ impl SystemState {
         address: SomaAddress,
         amount: u64,
     ) -> ExecutionResult<StakedSoma> {
-        // TODO: make this work for validators and encoders
         // Try to find the validator in active or pending validators
         let validator = self.validators.find_validator_with_pending_mut(address);
 

@@ -267,7 +267,7 @@ pub struct AuthorityState {
     pub validator_tx_finalizer: Option<Arc<ValidatorTxFinalizer<NetworkAuthorityClient>>>,
     // The chain identifier is derived from the digest of the genesis checkpoint.
     chain_identifier: ChainIdentifier,
-    //TODO: Traffic controller for Sui core servers (json-rpc, validator service)
+    //TODO: Traffic controller for core servers (json-rpc, validator service)
     // pub traffic_controller: Option<Arc<TrafficController>>,
     /// Fork recovery state for handling equivocation after forks
     fork_recovery_state: Option<ForkRecoveryState>,

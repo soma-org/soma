@@ -593,7 +593,6 @@ pub struct EpochInfo {
     pub end_timestamp_ms: Option<u64>,
     pub start_checkpoint: Option<u64>,
     pub end_checkpoint: Option<u64>,
-    // TODO: pub reference_byte_price: Option<u64>,
     pub system_state: Option<crate::system_state::SystemState>,
 }
 

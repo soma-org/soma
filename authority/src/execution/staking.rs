@@ -471,49 +471,6 @@ impl StakingExecutor {
 
         Ok(())
     }
-
-    // TODO: Execute SetCommissionRate transaction
-    // fn execute_set_commission_rate(
-    //     &self,
-    //     store: &mut TemporaryStore,
-    //     signer: SomaAddress,
-    //     new_rate: u64,
-    //     tx_digest: TransactionDigest,
-    // ) -> ExecutionResult<()> {
-    //     // Get system state object
-    //     let state_object = store
-    //         .read_object(&SYSTEM_STATE_OBJECT_ID)
-    //         .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
-    //             object_id: SYSTEM_STATE_OBJECT_ID,
-    //         })?
-    //         .clone();
-
-    //     // Deserialize system state
-    //     let mut state = bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents())
-    //         .map_err(|e| {
-    //             ExecutionFailureStatus::SomaError(SomaError::from(format!(
-    //                 "Failed to deserialize system state: {}",
-    //                 e
-    //             )))
-    //         })?;
-
-    //     // Request to set commission rate
-    //     state.request_set_commission_rate(signer, new_rate)?;
-
-    //     // Update system state
-    //     let state_bytes = bcs::to_bytes(&state).map_err(|e| {
-    //         ExecutionFailureStatus::SomaError(SomaError::from(format!(
-    //             "Failed to serialize updated system state: {}",
-    //             e
-    //         )))
-    //     })?;
-
-    //     let mut updated_state_object = state_object;
-    //     updated_state_object.data.update_contents(state_bytes);
-    //     store.mutate_input_object(updated_state_object);
-
-    //     Ok(())
-    // }
 }
 
 impl TransactionExecutor for StakingExecutor {

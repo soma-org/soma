@@ -90,42 +90,6 @@ impl SomaClientConfig {
     }
 }
 
-pub async fn encoder_config_to_client_config(
-    encoder_config: &EncoderConfig,
-    config_dir: &Path,
-) -> Result<PersistedConfig<SomaClientConfig>, anyhow::Error> {
-    let keystore_path = config_dir.join(SOMA_KEYSTORE_FILENAME);
-
-    // Create file-based keystore
-    let mut keystore = FileBasedKeystore::load_or_create(&keystore_path)?;
-
-    // Import the account keypair
-    let account_kp = encoder_config.account_keypair.keypair().copy();
-    let address = SomaAddress::from(&account_kp.public());
-    keystore
-        .import(Some("encoder-account".to_string()), account_kp)
-        .await?;
-
-    // TODO: should encoder config have the internal object address of the rpc?
-    let env = SomaEnv {
-        alias: "encoder-env".to_string(),
-        rpc: format!("http://{}", encoder_config.rpc_address),
-        basic_auth: None,
-        chain_id: None, // TODO: change this chain_id?
-    };
-
-    let config = SomaClientConfig {
-        keystore: Keystore::File(keystore),
-        external_keys: None,
-        envs: vec![env],
-        active_env: Some("encoder-env".to_string()),
-        active_address: Some(address),
-    };
-
-    let client_config_path = config_dir.join(SOMA_CLIENT_CONFIG);
-    Ok(config.persisted(&client_config_path))
-}
-
 impl Config for SomaClientConfig {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

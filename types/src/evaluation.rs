@@ -188,7 +188,6 @@ pub trait EvaluationScoresAPI {
     fn score(&self) -> FixedNum;
 }
 
-// TODO: convert this to use fixed point math directly!
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(EvaluationScoresAPI)]
 pub enum EvaluationScores {
@@ -229,7 +228,6 @@ pub trait TargetScoresAPI {
     fn score(&self) -> FixedNum;
 }
 
-// TODO: convert this to use fixed point math directly!
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[enum_dispatch(TargetScoresAPI)]
 pub enum TargetScores {
@@ -265,7 +263,6 @@ pub trait TargetDetailsAPI {
     fn target_embedding(&self) -> &Embedding;
 }
 
-// TODO: convert this to use fixed point math directly!
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[enum_dispatch(TargetDetailsAPI)]
 pub enum TargetDetails {
@@ -295,5 +292,4 @@ impl TargetDetailsAPI for TargetDetailsV1 {
     }
 }
 
-// TODO: change this to actually be accurate
 pub type Embedding = Bytes;

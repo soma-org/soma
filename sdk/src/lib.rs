@@ -29,12 +29,12 @@ pub mod error;
 pub mod transaction_builder;
 pub mod wallet_context;
 
+// TODO: define these when public rpcs are finalized
 pub const SOMA_LOCAL_NETWORK_URL: &str = "http://127.0.0.1:9000";
 pub const SOMA_LOCAL_NETWORK_URL_0: &str = "http://0.0.0.0:9000";
 pub const SOMA_DEVNET_URL: &str = "https://fullnode.devnet.soma.org:443";
 pub const SOMA_TESTNET_URL: &str = "https://fullnode.testnet.soma.org:443";
 pub const SOMA_MAINNET_URL: &str = "https://fullnode.mainnet.soma.org:443";
-// TODO: define default object storage urls for public RPCs and use it in the builder
 
 /// Builder for configuring a SomaClient
 pub struct SomaClientBuilder {

@@ -461,7 +461,7 @@ impl TestCluster {
         tx: Transaction,
     ) -> TransactionExecutionResponseWithCheckpoint {
         self.wallet
-            .execute_transaction_and_wait_for_indexing(tx) // TODO: set good default
+            .execute_transaction_and_wait_for_indexing(tx)
             .await
             .expect("Transaction must succeed")
     }

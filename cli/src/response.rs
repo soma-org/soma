@@ -370,7 +370,7 @@ impl Display for ShardsQueryResponse {
                 builder.push_record(["Status", &output.status.to_string()]);
                 builder.push_record(["Created Epoch", &output.created_epoch.to_string()]);
                 builder.push_record(["Submitter", &output.data_submitter.to_string()]);
-                builder.push_record(["Amount (SHNS)", &output.amount.to_string()]);
+                builder.push_record(["Amount (SHANNONS)", &output.amount.to_string()]);
                 if let Some(encoder) = &output.winning_encoder {
                     builder.push_record(["Winning Encoder", &encoder.to_hex_string()]);
                 }
@@ -458,7 +458,7 @@ impl Display for ShardsQueryResponse {
                 for item in &output.items {
                     builder.push_record([
                         item.object_id.to_string(),
-                        format!("{} SHNS", item.claimable_amount),
+                        format!("{} SHANNONS", item.claimable_amount),
                     ]);
                 }
                 let mut table = builder.build();
@@ -728,13 +728,16 @@ impl TransactionResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format!("{} SHNS", self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format!("{} SHNS", self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format!("{} SHNS", self.fee.value_fee)]);
+        builder.push_record(["Base Fee", &format!("{} SHANNONS", self.fee.base_fee)]);
+        builder.push_record([
+            "Operation Fee",
+            &format!("{} SHANNONS", self.fee.operation_fee),
+        ]);
+        builder.push_record(["Value Fee", &format!("{} SHANNONS", self.fee.value_fee)]);
         builder.push_record([
             "Total",
             &format!(
-                "{} SHNS ({})",
+                "{} SHANNONS ({})",
                 self.fee.total_fee,
                 format_soma(self.fee.total_fee as u128)
             ),
@@ -759,9 +762,9 @@ impl TransactionResponse {
 
             for change in &self.balance_changes {
                 let amount_str = if change.amount >= 0 {
-                    format!("+{} SHNS", change.amount).green().to_string()
+                    format!("+{} SHANNONS", change.amount).green().to_string()
                 } else {
-                    format!("{} SHNS", change.amount).red().to_string()
+                    format!("{} SHANNONS", change.amount).red().to_string()
                 };
                 builder.push_record([change.address.to_string(), amount_str]);
             }
@@ -1300,7 +1303,7 @@ impl Display for ObjectOutput {
             match content {
                 ObjectContent::Coin { balance } => {
                     let mut builder = TableBuilder::default();
-                    builder.push_record(["Balance (SHNS)", &balance.to_string()]);
+                    builder.push_record(["Balance (SHANNONS)", &balance.to_string()]);
                     builder.push_record(["Balance (SOMA)", &format_soma(*balance as u128)]);
 
                     let mut table = builder.build();
@@ -1316,7 +1319,7 @@ impl Display for ObjectOutput {
                 ObjectContent::StakedSoma(staked) => {
                     let mut builder = TableBuilder::default();
                     builder.push_record(["Pool ID", &staked.pool_id.to_string()]);
-                    builder.push_record(["Principal (SHNS)", &staked.principal.to_string()]);
+                    builder.push_record(["Principal (SHANNONS)", &staked.principal.to_string()]);
                     builder
                         .push_record(["Principal (SOMA)", &format_soma(staked.principal as u128)]);
                     builder.push_record([
@@ -1336,7 +1339,7 @@ impl Display for ObjectOutput {
                 }
                 ObjectContent::Shard(shard) => {
                     let mut builder = TableBuilder::default();
-                    builder.push_record(["Amount (SHNS)", &shard.amount.to_string()]);
+                    builder.push_record(["Amount (SHANNONS)", &shard.amount.to_string()]);
                     builder.push_record(["Created Epoch", &shard.created_epoch.to_string()]);
                     builder.push_record(["Data Submitter", &shard.data_submitter.to_string()]);
                     builder.push_record(["Has Target", &shard.has_target.to_string()]);
@@ -1458,7 +1461,7 @@ impl Display for GasCoinsOutput {
         }
 
         let mut builder = TableBuilder::default();
-        builder.push_record(["Object ID", "Balance (SHNS)", "Balance (SOMA)"]);
+        builder.push_record(["Object ID", "Balance (SHANNONS)", "Balance (SOMA)"]);
 
         let mut total: u128 = 0;
         for (obj_ref, balance) in &self.coins {
@@ -1477,7 +1480,7 @@ impl Display for GasCoinsOutput {
             self.coins.len()
         )));
         table.with(TablePanel::footer(format!(
-            "Total: {} SHNS ({})",
+            "Total: {} SHANNONS ({})",
             total,
             format_soma(total)
         )));
@@ -1513,7 +1516,7 @@ impl Display for BalanceOutput {
             "Total (SOMA)",
             &format_soma(self.total_balance).green().to_string(),
         ]);
-        builder.push_record(["Total (SHNS)", &self.total_balance.to_string()]);
+        builder.push_record(["Total (SHANNONS)", &self.total_balance.to_string()]);
         builder.push_record(["Coin Count", &self.coin_count.to_string()]);
 
         let mut table = builder.build();
@@ -1529,7 +1532,7 @@ impl Display for BalanceOutput {
         if let Some(coins) = &self.coins {
             writeln!(f)?;
             let mut builder = TableBuilder::default();
-            builder.push_record(["Object ID", "Balance (SHNS)"]);
+            builder.push_record(["Object ID", "Balance (SHANNONS)"]);
 
             for (id, balance) in coins {
                 builder.push_record([id.to_string(), balance.to_string()]);
@@ -1598,7 +1601,7 @@ impl Display for SimulationResponse {
         builder.push_record([
             "Estimated Gas",
             &format!(
-                "{} SHNS ({})",
+                "{} SHANNONS ({})",
                 self.gas_used,
                 format_soma(self.gas_used as u128)
             ),
@@ -1768,13 +1771,16 @@ impl TransactionQueryResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format!("{} SHNS", self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format!("{} SHNS", self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format!("{} SHNS", self.fee.value_fee)]);
+        builder.push_record(["Base Fee", &format!("{} SHANNONS", self.fee.base_fee)]);
+        builder.push_record([
+            "Operation Fee",
+            &format!("{} SHANNONS", self.fee.operation_fee),
+        ]);
+        builder.push_record(["Value Fee", &format!("{} SHANNONS", self.fee.value_fee)]);
         builder.push_record([
             "Total",
             &format!(
-                "{} SHNS ({})",
+                "{} SHANNONS ({})",
                 self.fee.total_fee,
                 format_soma(self.fee.total_fee as u128)
             ),
@@ -1798,9 +1804,9 @@ impl TransactionQueryResponse {
 
             for change in &self.balance_changes {
                 let amount_str = if change.amount >= 0 {
-                    format!("+{} SHNS", change.amount).green().to_string()
+                    format!("+{} SHANNONS", change.amount).green().to_string()
                 } else {
-                    format!("{} SHNS", change.amount).red().to_string()
+                    format!("{} SHANNONS", change.amount).red().to_string()
                 };
                 builder.push_record([change.address.to_string(), amount_str]);
             }
@@ -1958,7 +1964,7 @@ impl Display for EncoderSummary {
             "Commission Rate",
             &format!("{:.2}%", self.commission_rate as f64 / 100.0),
         ]);
-        builder.push_record(["Byte Price", &format!("{} SHNS/byte", self.byte_price)]);
+        builder.push_record(["Byte Price", &format!("{} SHANNONS/byte", self.byte_price)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());

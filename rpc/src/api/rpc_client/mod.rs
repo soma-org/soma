@@ -11,7 +11,6 @@ mod interceptors;
 pub use interceptors::HeadersInterceptor;
 
 // TODO: mod staking_rewards;
-// TODO: mod coin_selection;
 mod lists;
 // pub use staking_rewards::DelegatedStake;
 

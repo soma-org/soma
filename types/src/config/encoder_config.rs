@@ -46,11 +46,9 @@ pub struct EncoderConfig {
     pub inference_address: Multiaddr,
     /// The network address for evaluation service
     pub evaluation_address: Multiaddr,
-    /// Parameters for the encoder system
-    // TODO: pub parameters: Arc<Parameters>,
-    /// Parameters for the object system
+    /// Parameters for the object server
     pub object_parameters: Arc<HttpParameters>,
-    /// Parameters for the evaluation system
+    /// Parameters for evaluation server
     pub evaluation_parameters: Arc<TonicParameters>,
     /// Path to the project root for Python interpreter
     pub project_root: PathBuf,
@@ -95,8 +93,6 @@ impl EncoderConfig {
         db_path: PathBuf,
         probe: DownloadMetadata,
     ) -> Self {
-        // Create default parameters
-        // TODO: let parameters = Arc::new(Parameters::default());
         let object_parameters = Arc::new(HttpParameters::default());
         let evaluation_parameters = Arc::new(TonicParameters::default());
 

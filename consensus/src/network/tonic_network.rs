@@ -826,7 +826,7 @@ impl Drop for TonicManager {
     }
 }
 
-// TODO: improve sui-http to allow for providing a MakeService so that this can be done once per
+// TODO: improve soma-http to allow for providing a MakeService so that this can be done once per
 // connection
 fn peer_info_from_certs(
     connections_info: &ConnectionsInfo,

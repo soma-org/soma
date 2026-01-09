@@ -255,7 +255,7 @@ impl PeerBalancer {
             .filter_map(|(peer_id, info)| {
                 active_peers.get_state(peer_id).map(|peer| (peer, *info)) // TODO: balance peers by rtt (peer.connection_rtt(), peer, *info)
             })
-            // Filter out any peers who we aren't connected with.
+            // TODO: Filter out any peers who we aren't connected with.
             // .filter_map(|(peer_id, info)| {
             //     network
             //         .peer(*peer_id)

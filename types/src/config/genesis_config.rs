@@ -288,7 +288,7 @@ pub struct GenesisCeremonyParameters {
     pub emission_per_epoch: u64,
 
     /// Seed target embeddings (if empty, random embeddings will be generated)
-    #[serde(default)] // TODO: define seed target embeddings
+    #[serde(default)]
     pub seed_target_embeddings: Vec<Vec<u8>>,
 }
 

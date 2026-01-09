@@ -316,15 +316,9 @@ impl InMemoryStore {
         let sequence_number = *checkpoint.sequence_number();
 
         if let Some(end_of_epoch_data) = &checkpoint.data().end_of_epoch_data {
-            // TODO: update this when eoe data has the full authority network metadata
-            // let next_committee = end_of_epoch_data
-            //     .next_epoch_committee
-            //     .iter()
-            //     .cloned()
-            //     .collect();
-            // let committee =
-            //     Committee::new(checkpoint.epoch().checked_add(1).unwrap(), next_committee);
-            // self.insert_committee(committee);
+            let next_committee = end_of_epoch_data.next_epoch_validator_committee.clone();
+
+            self.insert_committee(next_committee);
         }
 
         self.checkpoints.insert(digest, checkpoint.clone());
