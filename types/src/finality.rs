@@ -1,5 +1,6 @@
 use crate::checkpoints::{
-    CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber,
+    CertifiedCheckpointSummary, CheckpointContents, CheckpointInclusionProof,
+    CheckpointSequenceNumber,
 };
 use crate::committee::Committee;
 use crate::digests::{CheckpointDigest, TransactionDigest};
@@ -21,11 +22,8 @@ pub struct FinalityProof {
     pub effects: TransactionEffects,
     /// The certified checkpoint containing this transaction
     pub checkpoint: CertifiedCheckpointSummary,
-    /// The checkpoint contents (for verifying transaction inclusion)
-    ///
-    /// Note: In the future, this could be replaced with a merkle proof
-    /// for more efficient verification of large checkpoints.
-    pub checkpoint_contents: CheckpointContents,
+    /// Merkle proof of transaction inclusion in checkpoint contents
+    pub inclusion_proof: CheckpointInclusionProof,
 }
 
 impl FinalityProof {
@@ -33,13 +31,13 @@ impl FinalityProof {
         transaction: Transaction,
         effects: TransactionEffects,
         checkpoint: CertifiedCheckpointSummary,
-        checkpoint_contents: CheckpointContents,
+        inclusion_proof: CheckpointInclusionProof,
     ) -> Self {
         Self {
             transaction,
             effects,
             checkpoint,
-            checkpoint_contents,
+            inclusion_proof,
         }
     }
 
@@ -67,56 +65,53 @@ impl FinalityProof {
     ///
     /// This verifies:
     /// 1. The checkpoint is properly certified by 2f+1 validators
-    /// 2. The checkpoint contents match the certified content digest
-    /// 3. The transaction is included in the checkpoint contents
+    /// 2. The Merkle inclusion proof is valid against the checkpoint's content_digest
+    /// 3. The proven leaf matches our transaction and effects digests
     /// 4. The transaction digest matches the effects
     /// 5. The transaction executed successfully
+    /// 6. Epoch consistency between checkpoint and effects
     pub fn verify(&self, committee: &Committee) -> SomaResult<()> {
         // 1. Verify checkpoint is properly certified by the committee
         self.checkpoint.verify_authority_signatures(committee)?;
 
-        // 2. Verify checkpoint contents match the certified content digest
-        let computed_content_digest = *self.checkpoint_contents.digest();
-        if computed_content_digest != self.checkpoint.data().content_digest {
-            return Err(SomaError::InvalidFinalityProof(format!(
-                "checkpoint contents digest mismatch: expected {}, got {}",
-                self.checkpoint.data().content_digest,
-                computed_content_digest
-            )));
-        }
+        // 2. Verify the Merkle inclusion proof against the checkpoint's content_digest
+        self.inclusion_proof
+            .verify(&self.checkpoint.data().content_digest)?;
 
-        // 3. Verify transaction is included in checkpoint contents
+        // 3. Verify the proven leaf matches our transaction and effects
         let tx_digest = self.transaction.digest();
         let effects_digest = self.effects.digest();
 
-        let found = self.checkpoint_contents.iter().any(|exec_digests| {
-            &exec_digests.transaction == tx_digest && exec_digests.effects == effects_digest
-        });
-
-        if !found {
+        if &self.inclusion_proof.leaf.transaction != tx_digest {
             return Err(SomaError::InvalidFinalityProof(
-                "transaction not found in checkpoint contents".to_string(),
+                "Inclusion proof leaf transaction doesn't match provided transaction".to_string(),
+            ));
+        }
+
+        if self.inclusion_proof.leaf.effects != effects_digest {
+            return Err(SomaError::InvalidFinalityProof(
+                "Inclusion proof leaf effects doesn't match provided effects".to_string(),
             ));
         }
 
         // 4. Verify transaction digest matches effects
         if tx_digest != self.effects.transaction_digest() {
             return Err(SomaError::InvalidFinalityProof(
-                "transaction digest does not match effects".to_string(),
+                "Transaction digest does not match effects".to_string(),
             ));
         }
 
         // 5. Verify execution was successful
         if !self.effects.status().is_ok() {
             return Err(SomaError::InvalidFinalityProof(
-                "transaction execution was not successful".to_string(),
+                "Transaction execution was not successful".to_string(),
             ));
         }
 
         // 6. Verify epoch consistency
         if self.checkpoint.data().epoch != self.effects.executed_epoch() {
             return Err(SomaError::InvalidFinalityProof(
-                "checkpoint epoch does not match effects epoch".to_string(),
+                "Checkpoint epoch does not match effects epoch".to_string(),
             ));
         }
 

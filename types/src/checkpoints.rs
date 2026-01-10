@@ -9,7 +9,8 @@ use crate::{
         AuthoritySignInfoTrait as _, AuthorityStrongQuorumSignInfo, GenericSignature, SomaKeyPair,
     },
     digests::{
-        CheckpointArtifactsDigest, CheckpointContentsDigest, CheckpointDigest, Digest, ObjectDigest,
+        CheckpointArtifactsDigest, CheckpointContentsDigest, CheckpointDigest, Digest,
+        ObjectDigest, TransactionDigest, TransactionEffectsDigest,
     },
     effects::{TransactionEffects, TransactionEffectsAPI as _},
     encoder_committee::EncoderCommittee,
@@ -24,7 +25,9 @@ use crate::{
 };
 use anyhow::Result;
 use fastcrypto::hash::{Blake2b256, MultisetHash as _};
+use fastcrypto::merkle::MerkleProof;
 use fastcrypto::merkle::MerkleTree;
+use fastcrypto::merkle::Node;
 use once_cell::sync::OnceCell;
 use protocol_config::ProtocolVersion;
 use schemars::JsonSchema;
@@ -505,6 +508,34 @@ impl CheckpointSignatureMessage {
     }
 }
 
+/// A proof that a specific ExecutionDigests is included in a checkpoint's contents.
+/// Size is O(log n) instead of O(n) where n = number of transactions in checkpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckpointInclusionProof {
+    /// The leaf being proven (the ExecutionDigests for our transaction)
+    pub leaf: ExecutionDigests,
+    /// The index of this leaf in the checkpoint contents
+    pub leaf_index: usize,
+    /// The Merkle proof (sibling hashes along path from leaf to root)
+    pub proof: MerkleProof<Blake2b256>,
+}
+
+impl CheckpointInclusionProof {
+    /// Verify this proof against an expected content digest (Merkle root)
+    pub fn verify(&self, expected_root: &CheckpointContentsDigest) -> SomaResult<()> {
+        let root_node = Node::Digest(expected_root.into_inner());
+
+        self.proof
+            .verify_proof_with_unserialized_leaf(&root_node, &self.leaf, self.leaf_index)
+            .map_err(|e| {
+                SomaError::InvalidFinalityProof(format!(
+                    "Merkle proof verification failed: {:?}",
+                    e
+                ))
+            })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CheckpointContents {
     V1(CheckpointContentsV1),
@@ -632,10 +663,83 @@ impl CheckpointContents {
         self.as_v1().transactions.len()
     }
 
+    /// Returns the Merkle root of the checkpoint contents.
+    /// Cached for efficiency.
     pub fn digest(&self) -> &CheckpointContentsDigest {
-        self.as_v1()
-            .digest
-            .get_or_init(|| CheckpointContentsDigest::new(default_hash(self)))
+        self.as_v1().digest.get_or_init(|| {
+            // Build Merkle tree and use root as digest
+            let leaves: Vec<_> = self.iter().cloned().collect();
+
+            if leaves.is_empty() {
+                return CheckpointContentsDigest::new(fastcrypto::merkle::EMPTY_NODE);
+            }
+
+            let tree = MerkleTree::<Blake2b256>::build_from_unserialized(leaves.iter())
+                .expect("Failed to build Merkle tree for checkpoint contents");
+
+            CheckpointContentsDigest::new(tree.root().bytes())
+        })
+    }
+
+    /// Build a Merkle tree over the execution digests and return the root as the digest.
+    /// This replaces the old hash-based digest computation.
+    pub fn compute_digest(&self) -> SomaResult<CheckpointContentsDigest> {
+        let leaves: Vec<_> = self.iter().cloned().collect();
+
+        if leaves.is_empty() {
+            // Empty checkpoint - use empty node hash
+            return Ok(CheckpointContentsDigest::new(
+                fastcrypto::merkle::EMPTY_NODE,
+            ));
+        }
+
+        let tree =
+            MerkleTree::<Blake2b256>::build_from_unserialized(leaves.iter()).map_err(|e| {
+                SomaError::GenericAuthorityError {
+                    error: format!("Failed to build Merkle tree: {:?}", e),
+                }
+            })?;
+
+        Ok(CheckpointContentsDigest::new(tree.root().bytes()))
+    }
+
+    /// Generate an inclusion proof for a specific transaction.
+    /// Returns the proof that can be verified against the checkpoint's content_digest.
+    pub fn generate_inclusion_proof(
+        &self,
+        tx_digest: &TransactionDigest,
+        effects_digest: &TransactionEffectsDigest,
+    ) -> SomaResult<CheckpointInclusionProof> {
+        let leaves: Vec<_> = self.iter().cloned().collect();
+
+        // Find the leaf index
+        let leaf_index = leaves
+            .iter()
+            .position(|ed| &ed.transaction == tx_digest && &ed.effects == effects_digest)
+            .ok_or_else(|| {
+                SomaError::InvalidFinalityProof(
+                    "Transaction not found in checkpoint contents".to_string(),
+                )
+            })?;
+
+        let tree =
+            MerkleTree::<Blake2b256>::build_from_unserialized(leaves.iter()).map_err(|e| {
+                SomaError::GenericAuthorityError {
+                    error: format!("Failed to build Merkle tree: {:?}", e),
+                }
+            })?;
+
+        let proof = tree
+            .get_proof(leaf_index)
+            .map_err(|e| SomaError::GenericAuthorityError {
+                error: format!("Failed to generate Merkle proof: {:?}", e),
+            })?;
+
+        Ok(CheckpointInclusionProof {
+            leaf: leaves[leaf_index].clone(),
+            leaf_index,
+            proof,
+        })
     }
 }
 

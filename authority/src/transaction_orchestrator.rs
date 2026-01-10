@@ -838,12 +838,16 @@ where
 
         encoder_client.update_encoder_committee(&encoder_committee);
 
+        // Generate Merkle inclusion proof
+        let inclusion_proof =
+            checkpoint_contents.generate_inclusion_proof(&tx_digest, &effects.digest())?;
+
         // 10. Build finality proof
         let finality_proof = FinalityProof::new(
             (*transaction).clone().into_inner(),
             effects.clone(),
             checkpoint.clone().into_inner(),
-            checkpoint_contents,
+            inclusion_proof,
         );
 
         // 11. Compute VDF
