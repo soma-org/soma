@@ -571,7 +571,7 @@ impl GenesisBuilder {
 
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
             self.parameters.protocol_version,
-            protocol_config::Chain::Mainnet,
+            protocol_config::Chain::Mainnet, // TODO: detect what chain to use here
         );
 
         // Convert GenesisValidatorInfo to on-chain Validator

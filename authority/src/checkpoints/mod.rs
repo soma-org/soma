@@ -1739,7 +1739,7 @@ impl CheckpointBuilder {
                     next_epoch_protocol_version: ProtocolVersion::new(
                         system_state_obj.protocol_version(),
                     ),
-                    next_epoch_vdf_iterations: system_state_obj.parameters.vdf_iterations,
+
                     epoch_commitments,
                 })
             } else {

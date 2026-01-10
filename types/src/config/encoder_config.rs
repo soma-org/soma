@@ -5,8 +5,8 @@ use crate::metadata::DownloadMetadata;
 use crate::parameters::{HttpParameters, TonicParameters};
 use crate::shard_crypto::keys::{EncoderKeyPair, EncoderPublicKey};
 use crate::{
+    config::node_config::Genesis,
     crypto::{get_key_pair_from_rng, EncodeDecodeBase64, SomaKeyPair},
-    genesis::Genesis,
     multiaddr::Multiaddr,
 };
 use anyhow::anyhow;

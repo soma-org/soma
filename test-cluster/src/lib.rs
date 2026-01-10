@@ -129,8 +129,8 @@ impl TestCluster {
         self.swarm.active_validators().map(|v| v.name()).collect()
     }
 
-    pub fn get_genesis(&self) -> Genesis {
-        self.swarm.config().genesis.clone()
+    pub fn get_genesis(&self) -> types::config::node_config::Genesis {
+        types::config::node_config::Genesis::new(self.swarm.config().genesis.clone())
     }
 
     pub fn stop_node(&self, name: &AuthorityName) {
@@ -547,9 +547,14 @@ impl TestCluster {
 
         // Get genesis
         let genesis = self.get_genesis();
-        let epoch_duration = genesis.system_object().parameters.epoch_duration_ms;
+        let epoch_duration = genesis
+            .genesis()
+            .expect("Cannot get genesis")
+            .system_object()
+            .parameters
+            .epoch_duration_ms;
 
-        // Default paths for testing
+        // TODO: Default paths for testing encoders
         let project_root = PathBuf::from("/tmp");
         let entry_point = PathBuf::from("test_module.py");
 

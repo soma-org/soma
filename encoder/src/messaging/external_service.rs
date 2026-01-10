@@ -63,7 +63,7 @@ impl<D: ExternalDispatcher, S: ObjectStore, P: PersistentStore<S>> EncoderExtern
         let (shard, cancellation) = self.shard_verifier.verify(
             committees.authority_committee.clone(),
             committees.encoder_committee.clone(),
-            committees.vdf_iterations,
+            committees.vdf_iterations(inner_context.chain()),
             &auth_token,
         )?;
 

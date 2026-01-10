@@ -78,11 +78,8 @@ message EndOfEpochData {
   // The protocol version that is in effect during the next epoch.
   optional uint64 next_epoch_protocol_version = 4;
 
-  // VDF iterations for the next epoch.
-  optional uint64 next_epoch_vdf_iterations = 5;
-
   // Commitments to epoch specific state (live object set)
-  repeated CheckpointCommitment epoch_commitments = 6;
+  repeated CheckpointCommitment epoch_commitments = 5;
 }
 
 // A commitment made by a checkpoint.

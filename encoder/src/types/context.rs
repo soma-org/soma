@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use protocol_config::{Chain, ProtocolConfig, ProtocolVersion};
 use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use types::metadata::{DownloadMetadata, Metadata};
 use types::multiaddr::Multiaddr;
@@ -87,6 +88,7 @@ pub struct InnerContext {
     pub current_epoch: Epoch,
     own_encoder_public_key: EncoderPublicKey,
     own_network_keypair: NetworkKeyPair,
+    chain: Chain,
 }
 
 impl InnerContext {
@@ -95,21 +97,25 @@ impl InnerContext {
         current_epoch: Epoch,
         own_encoder_public_key: EncoderPublicKey,
         own_network_keypair: NetworkKeyPair,
+        chain: Chain,
     ) -> Self {
         Self {
             current_epoch,
             own_encoder_public_key,
             committees,
             own_network_keypair,
+            chain,
         }
     }
 
     pub fn current_committees(&self) -> &Committees {
         &self.committees[1]
     }
+
     fn previous_committees(&self) -> &Committees {
         &self.committees[0]
     }
+
     pub fn committees(&self, epoch: Epoch) -> ShardResult<&Committees> {
         if epoch == self.current_epoch {
             return Ok(self.current_committees());
@@ -118,8 +124,21 @@ impl InnerContext {
         }
         Err(ShardError::WrongEpoch)
     }
+
     pub(crate) fn own_encoder_key(&self) -> &EncoderPublicKey {
         &self.own_encoder_public_key
+    }
+
+    pub fn protocol_config(&self) -> ProtocolConfig {
+        self.current_committees().protocol_config(self.chain)
+    }
+
+    pub fn vdf_iterations(&self) -> u64 {
+        self.protocol_config().vdf_iterations()
+    }
+
+    pub fn chain(&self) -> Chain {
+        self.chain
     }
 }
 
@@ -131,8 +150,7 @@ pub struct Committees {
     pub encoder_committee: EncoderCommittee,
     /// the committee of all validators with minimum stake for networking
     pub networking_committee: NetworkingCommittee,
-    // TODO: move this to a more robust protocol config
-    pub vdf_iterations: u64,
+    pub protocol_version: ProtocolVersion,
 }
 
 impl Committees {
@@ -141,14 +159,24 @@ impl Committees {
         authority_committee: Committee,
         encoder_committee: EncoderCommittee,
         networking_committee: NetworkingCommittee,
-        vdf_iterations: u64,
+        protocol_version: ProtocolVersion,
     ) -> Self {
         Self {
             epoch,
             authority_committee,
             encoder_committee,
             networking_committee,
-            vdf_iterations,
+            protocol_version,
         }
+    }
+
+    /// Get the protocol config for this committee's epoch
+    pub fn protocol_config(&self, chain: Chain) -> ProtocolConfig {
+        ProtocolConfig::get_for_version(self.protocol_version, chain)
+    }
+
+    /// Convenience method for vdf_iterations
+    pub fn vdf_iterations(&self, chain: Chain) -> u64 {
+        self.protocol_config(chain).vdf_iterations()
     }
 }

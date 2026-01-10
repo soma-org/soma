@@ -260,7 +260,7 @@ impl From<crate::types::EndOfEpochData> for EndOfEpochData {
             next_epoch_encoder_committee,
             next_epoch_networking_committee,
             next_epoch_protocol_version,
-            next_epoch_vdf_iterations,
+
             epoch_commitments,
         }: crate::types::EndOfEpochData,
     ) -> Self {
@@ -269,7 +269,7 @@ impl From<crate::types::EndOfEpochData> for EndOfEpochData {
             next_epoch_encoder_committee: Some(next_epoch_encoder_committee.into()),
             next_epoch_networking_committee: Some(next_epoch_networking_committee.into()),
             next_epoch_protocol_version: Some(next_epoch_protocol_version),
-            next_epoch_vdf_iterations: Some(next_epoch_vdf_iterations),
+
             epoch_commitments: epoch_commitments.into_iter().map(Into::into).collect(),
         }
     }
@@ -284,15 +284,12 @@ impl TryFrom<&EndOfEpochData> for crate::types::EndOfEpochData {
             next_epoch_encoder_committee,
             next_epoch_networking_committee,
             next_epoch_protocol_version,
-            next_epoch_vdf_iterations,
+
             epoch_commitments,
         }: &EndOfEpochData,
     ) -> Result<Self, Self::Error> {
         let next_epoch_protocol_version = next_epoch_protocol_version
             .ok_or_else(|| TryFromProtoError::missing("next_epoch_protocol_version"))?;
-
-        let next_epoch_vdf_iterations = next_epoch_vdf_iterations
-            .ok_or_else(|| TryFromProtoError::missing("next_epoch_vdf_iterations"))?;
 
         Ok(Self {
             next_epoch_validator_committee: next_epoch_validator_committee
@@ -312,7 +309,6 @@ impl TryFrom<&EndOfEpochData> for crate::types::EndOfEpochData {
                 .try_into()
                 .map_err(|e| TryFromProtoError::invalid("next_epoch_networking_committee", e))?,
             next_epoch_protocol_version,
-            next_epoch_vdf_iterations,
             epoch_commitments: epoch_commitments
                 .iter()
                 .map(TryInto::try_into)

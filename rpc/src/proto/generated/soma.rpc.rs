@@ -145,11 +145,8 @@ pub struct EndOfEpochData {
     /// The protocol version that is in effect during the next epoch.
     #[prost(uint64, optional, tag = "4")]
     pub next_epoch_protocol_version: ::core::option::Option<u64>,
-    /// VDF iterations for the next epoch.
-    #[prost(uint64, optional, tag = "5")]
-    pub next_epoch_vdf_iterations: ::core::option::Option<u64>,
     /// Commitments to epoch specific state (live object set)
-    #[prost(message, repeated, tag = "6")]
+    #[prost(message, repeated, tag = "5")]
     pub epoch_commitments: ::prost::alloc::vec::Vec<CheckpointCommitment>,
 }
 /// A commitment made by a checkpoint.

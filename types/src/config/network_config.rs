@@ -554,7 +554,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     PathBuf::from("/entry/point.py"), // TODO: Default path, should be configurable
                     validator_sync_address.clone(),
                     validator_sync_network_key.clone(),
-                    genesis.clone(),
+                    crate::config::node_config::Genesis::new(genesis.clone()),
                     db_path
                         .clone()
                         .join(get_key_path(encoder.encoder_key_pair.inner())),

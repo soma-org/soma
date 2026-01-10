@@ -187,7 +187,7 @@ impl CommitteeSyncManager {
             committees.validator_committee.clone(),
             committees.encoder_committee.clone(),
             committees.networking_committee.clone(),
-            committees.vdf_iterations,
+            committees.protocol_version,
         );
 
         // Update allowed public keys
@@ -223,6 +223,7 @@ impl CommitteeSyncManager {
             epoch,
             self.own_encoder_key.clone(),
             self.context.own_network_keypair(),
+            inner.chain(),
         );
         self.context.update(new_inner);
 

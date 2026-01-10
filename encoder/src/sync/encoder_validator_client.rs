@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use encoder_validator_api::tonic_gen::encoder_validator_api_client::EncoderValidatorApiClient;
+use protocol_config::ProtocolVersion;
 use std::sync::Arc;
 use tonic::transport::Channel;
 use tracing::{debug, info, warn};
@@ -25,7 +26,7 @@ pub struct VerifiedEpochCommittees {
     pub encoder_committee: EncoderCommittee,
     pub networking_committee: NetworkingCommittee,
     pub epoch_start_timestamp_ms: u64,
-    pub vdf_iterations: u64,
+    pub protocol_version: ProtocolVersion,
 }
 
 /// Client for fetching and verifying committees from validators
@@ -136,7 +137,7 @@ impl EncoderValidatorClient {
             encoder_committee: end_of_epoch.next_epoch_encoder_committee.clone(),
             networking_committee: end_of_epoch.next_epoch_networking_committee.clone(),
             epoch_start_timestamp_ms: checkpoint.data().timestamp_ms,
-            vdf_iterations: end_of_epoch.next_epoch_vdf_iterations,
+            protocol_version: end_of_epoch.next_epoch_protocol_version,
         })
     }
 

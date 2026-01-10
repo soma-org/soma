@@ -285,9 +285,6 @@ pub struct EndOfEpochData {
     ///checkpoint.
     pub next_epoch_protocol_version: ProtocolVersion,
 
-    /// VDF iterations for the next epoch
-    pub next_epoch_vdf_iterations: u64,
-
     /// Commitments to epoch specific state (e.g. live object set)
     pub epoch_commitments: Vec<CheckpointCommitment>,
 }

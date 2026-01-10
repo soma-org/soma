@@ -440,16 +440,10 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
-        pub const NEXT_EPOCH_VDF_ITERATIONS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_vdf_iterations",
-            json_name: "nextEpochVdfIterations",
-            number: 5i32,
-            message_fields: None,
-        };
         pub const EPOCH_COMMITMENTS_FIELD: &'static MessageField = &MessageField {
             name: "epoch_commitments",
             json_name: "epochCommitments",
-            number: 6i32,
+            number: 5i32,
             message_fields: Some(CheckpointCommitment::FIELDS),
         };
     }
@@ -459,7 +453,6 @@ mod _field_impls {
             Self::NEXT_EPOCH_ENCODER_COMMITTEE_FIELD,
             Self::NEXT_EPOCH_NETWORKING_COMMITTEE_FIELD,
             Self::NEXT_EPOCH_PROTOCOL_VERSION_FIELD,
-            Self::NEXT_EPOCH_VDF_ITERATIONS_FIELD,
             Self::EPOCH_COMMITMENTS_FIELD,
         ];
     }
@@ -503,10 +496,6 @@ mod _field_impls {
         }
         pub fn next_epoch_protocol_version(mut self) -> String {
             self.path.push(EndOfEpochData::NEXT_EPOCH_PROTOCOL_VERSION_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_vdf_iterations(mut self) -> String {
-            self.path.push(EndOfEpochData::NEXT_EPOCH_VDF_ITERATIONS_FIELD.name);
             self.finish()
         }
         pub fn epoch_commitments(mut self) -> CheckpointCommitmentFieldPathBuilder {

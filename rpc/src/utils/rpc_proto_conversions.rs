@@ -2389,7 +2389,6 @@ impl From<types::checkpoints::EndOfEpochData> for EndOfEpochData {
             next_epoch_encoder_committee: Some(value.next_epoch_encoder_committee.into()),
             next_epoch_networking_committee: Some(value.next_epoch_networking_committee.into()),
             next_epoch_protocol_version: Some(value.next_epoch_protocol_version.as_u64()),
-            next_epoch_vdf_iterations: Some(value.next_epoch_vdf_iterations),
             epoch_commitments: value
                 .epoch_commitments
                 .into_iter()

@@ -4962,9 +4962,6 @@ impl serde::Serialize for EndOfEpochData {
         if self.next_epoch_protocol_version.is_some() {
             len += 1;
         }
-        if self.next_epoch_vdf_iterations.is_some() {
-            len += 1;
-        }
         if !self.epoch_commitments.is_empty() {
             len += 1;
         }
@@ -4982,11 +4979,6 @@ impl serde::Serialize for EndOfEpochData {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("nextEpochProtocolVersion", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.next_epoch_vdf_iterations.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("nextEpochVdfIterations", ToString::to_string(&v).as_str())?;
         }
         if !self.epoch_commitments.is_empty() {
             struct_ser.serialize_field("epochCommitments", &self.epoch_commitments)?;
@@ -5009,8 +5001,6 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
             "nextEpochNetworkingCommittee",
             "next_epoch_protocol_version",
             "nextEpochProtocolVersion",
-            "next_epoch_vdf_iterations",
-            "nextEpochVdfIterations",
             "epoch_commitments",
             "epochCommitments",
         ];
@@ -5021,7 +5011,6 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
             NextEpochEncoderCommittee,
             NextEpochNetworkingCommittee,
             NextEpochProtocolVersion,
-            NextEpochVdfIterations,
             EpochCommitments,
             __SkipField__,
         }
@@ -5049,7 +5038,6 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                             "nextEpochEncoderCommittee" | "next_epoch_encoder_committee" => Ok(GeneratedField::NextEpochEncoderCommittee),
                             "nextEpochNetworkingCommittee" | "next_epoch_networking_committee" => Ok(GeneratedField::NextEpochNetworkingCommittee),
                             "nextEpochProtocolVersion" | "next_epoch_protocol_version" => Ok(GeneratedField::NextEpochProtocolVersion),
-                            "nextEpochVdfIterations" | "next_epoch_vdf_iterations" => Ok(GeneratedField::NextEpochVdfIterations),
                             "epochCommitments" | "epoch_commitments" => Ok(GeneratedField::EpochCommitments),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -5076,7 +5064,6 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                 let mut next_epoch_encoder_committee__ = None;
                 let mut next_epoch_networking_committee__ = None;
                 let mut next_epoch_protocol_version__ = None;
-                let mut next_epoch_vdf_iterations__ = None;
                 let mut epoch_commitments__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
@@ -5106,14 +5093,6 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::NextEpochVdfIterations => {
-                            if next_epoch_vdf_iterations__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("nextEpochVdfIterations"));
-                            }
-                            next_epoch_vdf_iterations__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::EpochCommitments => {
                             if epoch_commitments__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("epochCommitments"));
@@ -5130,7 +5109,6 @@ impl<'de> serde::Deserialize<'de> for EndOfEpochData {
                     next_epoch_encoder_committee: next_epoch_encoder_committee__,
                     next_epoch_networking_committee: next_epoch_networking_committee__,
                     next_epoch_protocol_version: next_epoch_protocol_version__,
-                    next_epoch_vdf_iterations: next_epoch_vdf_iterations__,
                     epoch_commitments: epoch_commitments__.unwrap_or_default(),
                 })
             }

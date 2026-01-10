@@ -34,6 +34,7 @@ ctr.workspace = true
 crypto-common.workspace = true
 store.workspace = true
 tonic-prost.workspace = true
+protocol-config.workspace = true
 # pyo3.workspace = true
 numpy.workspace = true
 ndarray.workspace = true

@@ -56,7 +56,7 @@ impl TransactionExecutor for ChangeEpochExecutor {
             TransactionKind::ChangeEpoch(change_epoch) => {
                 let next_protocol_config = protocol_config::ProtocolConfig::get_for_version(
                     change_epoch.protocol_version,
-                    protocol_config::Chain::Mainnet,
+                    protocol_config::Chain::Mainnet, // TODO: detect which chain to use here
                 );
 
                 let (validator_rewards, encoder_rewards) = state.advance_epoch(

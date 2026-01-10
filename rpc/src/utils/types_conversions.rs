@@ -1730,7 +1730,6 @@ impl TryFrom<types::checkpoints::EndOfEpochData> for crate::types::EndOfEpochDat
             next_epoch_encoder_committee: value.next_epoch_encoder_committee.into(), // Uses From
             next_epoch_networking_committee: value.next_epoch_networking_committee.into(), // Uses From
             next_epoch_protocol_version: value.next_epoch_protocol_version.as_u64(),
-            next_epoch_vdf_iterations: value.next_epoch_vdf_iterations,
             epoch_commitments: value
                 .epoch_commitments
                 .into_iter()
@@ -1757,7 +1756,6 @@ impl TryFrom<crate::types::EndOfEpochData> for types::checkpoints::EndOfEpochDat
 
         Ok(Self {
             next_epoch_protocol_version: value.next_epoch_protocol_version.into(),
-            next_epoch_vdf_iterations: value.next_epoch_vdf_iterations,
             next_epoch_validator_committee,
             next_epoch_encoder_committee,
             next_epoch_networking_committee,

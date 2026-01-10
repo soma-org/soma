@@ -11,10 +11,10 @@ use intelligence::evaluation::networking::tonic::{EvaluationTonicClient, Evaluat
 use intelligence::evaluation::networking::{EvaluationManager, EvaluationService};
 use intelligence::evaluation::work_queue::EvaluationWorkQueue;
 use intelligence::inference::engine::mock::MockInferenceEngine;
-use intelligence::inference::work_queue::InferenceWorkQueue;
 use intelligence::inference::networking::service::InferenceNetworkService;
 use intelligence::inference::networking::tonic::{InferenceTonicClient, InferenceTonicManager};
 use intelligence::inference::networking::InferenceServiceManager;
+use intelligence::inference::work_queue::InferenceWorkQueue;
 use object_store::memory::InMemory;
 use object_store::ObjectStore;
 use objects::downloader::ObjectDownloader;
@@ -24,6 +24,7 @@ use objects::services::{ObjectService, ObjectServiceManager};
 use objects::stores::memory::{EphemeralInMemoryStore, PersistentInMemoryStore};
 use objects::stores::{EphemeralStore, PersistentStore};
 use objects::MIN_PART_SIZE;
+use protocol_config::ProtocolVersion;
 use rand::Rng;
 use sdk::client_config::{SomaClientConfig, SomaEnv};
 use sdk::wallet_context::WalletContext;
@@ -36,6 +37,7 @@ use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::config::{SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
 use types::crypto::{DefaultHash, NetworkKeyPair};
+use types::digests::ChainIdentifier;
 use types::evaluation::{EvaluationOutput, EvaluationOutputV1};
 use types::metadata::{Metadata, MetadataV1, ObjectPath};
 use types::multiaddr::Multiaddr;
@@ -106,16 +108,9 @@ pub struct EncoderNode {
     input_manager: ActorManager<
         InputProcessor<EncoderInternalTonicClient, EvaluationTonicClient, InferenceTonicClient>,
     >,
-    inference_processor_manager: ActorManager<
-        InferenceWorkQueue<
-            MockInferenceEngine,
-        >,
-    >,
-    evaluation_processor_manager: ActorManager<
-        EvaluationWorkQueue<
-            MockEvaluator<InMemory, EphemeralInMemoryStore>,
-        >,
-    >,
+    inference_processor_manager: ActorManager<InferenceWorkQueue<MockInferenceEngine>>,
+    evaluation_processor_manager:
+        ActorManager<EvaluationWorkQueue<MockEvaluator<InMemory, EphemeralInMemoryStore>>>,
     store: Arc<dyn Store>,
     pub context: Context,
     object_storage: Arc<InMemory>, // TODO: make this use generic ObjectStore
@@ -161,8 +156,16 @@ impl EncoderNode {
             .parse()
             .expect("Valid multiaddr");
 
-        let (context, networking_info, allower) =
-            create_context_from_genesis(&config, encoder_keypair.public(), network_keypair.clone());
+        let genesis = config
+            .genesis
+            .genesis()
+            .expect("Cannot get genesis from config");
+
+        let (context, networking_info, allower) = create_context_from_genesis(
+            genesis.clone(),
+            encoder_keypair.public(),
+            network_keypair.clone(),
+        );
 
         let mut internal_network_manager = EncoderInternalTonicManager::new(
             networking_info.clone(),
@@ -236,15 +239,13 @@ impl EncoderNode {
         let object_http_client =
             ObjectHttpClient::new(network_keypair.clone(), Arc::new(HttpParameters::default()))
                 .unwrap();
-    
+
         let mock_inference_engine = Arc::new(MockInferenceEngine::new(
             encoder_keypair.public().clone(),
             persistent_store.clone(),
         ));
 
-        let inference_core_processor = InferenceWorkQueue::new(
-            mock_inference_engine,
-        );
+        let inference_core_processor = InferenceWorkQueue::new(mock_inference_engine);
 
         let inference_processor_manager =
             ActorManager::new(default_buffer, inference_core_processor);
@@ -271,9 +272,7 @@ impl EncoderNode {
             ephemeral_store.clone(),
         ));
 
-        let evaluation_core_processor = EvaluationWorkQueue::new(
-            mock_evaluator,
-        );
+        let evaluation_core_processor = EvaluationWorkQueue::new(mock_evaluator);
 
         let evaluation_processor_manager =
             ActorManager::new(default_buffer, evaluation_core_processor);
@@ -413,7 +412,7 @@ impl EncoderNode {
         );
         let validator_client = match EncoderValidatorClient::new(
             &config.validator_sync_address,
-            config.genesis.committee().unwrap(),
+            genesis.clone().committee().unwrap(),
             config.validator_sync_network_key.clone(),
         )
         .await
@@ -434,7 +433,7 @@ impl EncoderNode {
             context.clone(),
             networking_info.clone(),
             allower.clone(),
-            config.genesis.system_object().epoch_start_timestamp_ms(),
+            genesis.system_object().epoch_start_timestamp_ms(),
             config.epoch_duration_ms,
             encoder_keypair.public(),
         );
@@ -493,16 +492,12 @@ impl EncoderNode {
         self.object_service_manager.stop().await;
 
         <InferenceTonicManager as InferenceServiceManager<
-            InferenceNetworkService<
-                MockInferenceEngine,
-            >,
+            InferenceNetworkService<MockInferenceEngine>,
         >>::stop(&mut self.inference_network_manager)
         .await;
 
         <EvaluationTonicManager as EvaluationManager<
-            EvaluationNetworkService<
-                MockEvaluator<InMemory, EphemeralInMemoryStore>,
-            >,
+            EvaluationNetworkService<MockEvaluator<InMemory, EphemeralInMemoryStore>>,
         >>::stop(&mut self.evaluation_network_manager)
         .await;
 
@@ -568,21 +563,21 @@ async fn init_wallet_context(
 }
 
 fn create_context_from_genesis(
-    config: &EncoderConfig,
+    genesis: types::genesis::Genesis,
     own_encoder_key: EncoderPublicKey,
     own_network_keypair: NetworkKeyPair,
 ) -> (Context, EncoderNetworkingInfo, AllowPublicKeys) {
     let networking_info = EncoderNetworkingInfo::default();
     let allower = AllowPublicKeys::default();
 
-    let authority_committee = match config.genesis.committee() {
+    let authority_committee = match genesis.committee() {
         Ok(committee) => committee,
         Err(e) => {
             panic!("Failed to extract committee from genesis: {}", e);
         }
     };
 
-    let genesis_encoder_committee = config.genesis.encoder_committee();
+    let genesis_encoder_committee = genesis.encoder_committee();
 
     let (initial_networking_info, _object_servers) =
         extract_network_info_from_committees(&genesis_encoder_committee, None);
@@ -591,15 +586,18 @@ fn create_context_from_genesis(
         0,
         authority_committee,
         genesis_encoder_committee,
-        config.genesis.networking_committee(),
-        1,
+        genesis.networking_committee(),
+        ProtocolVersion::MIN,
     );
+
+    let chain = ChainIdentifier::from(*genesis.checkpoint().digest()).chain();
 
     let inner_context = InnerContext::new(
         [committees.clone(), committees],
         0,
         own_encoder_key,
         own_network_keypair,
+        chain,
     );
 
     if !initial_networking_info.is_empty() {

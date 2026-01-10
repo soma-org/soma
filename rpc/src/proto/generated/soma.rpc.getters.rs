@@ -308,7 +308,6 @@ mod _getter_impls {
                 next_epoch_encoder_committee: None,
                 next_epoch_networking_committee: None,
                 next_epoch_protocol_version: None,
-                next_epoch_vdf_iterations: None,
                 epoch_commitments: Vec::new(),
             }
         }
@@ -395,10 +394,6 @@ mod _getter_impls {
         }
         pub fn with_next_epoch_protocol_version(mut self, field: u64) -> Self {
             self.next_epoch_protocol_version = Some(field.into());
-            self
-        }
-        pub fn with_next_epoch_vdf_iterations(mut self, field: u64) -> Self {
-            self.next_epoch_vdf_iterations = Some(field.into());
             self
         }
         pub fn epoch_commitments(&self) -> &[CheckpointCommitment] {
